@@ -45,6 +45,7 @@ from pydantic_core import PydanticCustomError
 
 from ddd.diagnostics import Severity
 from ddd.editing import EditError, not_one_value, parse_raw
+from ddd.gui.depth import MAX_DEPTH, text_depth
 from ddd.loading import NESTED_TOO_DEEPLY
 from ddd.lsp.edits import PROPAGATED_KEYS
 
@@ -57,10 +58,6 @@ MAX_PATH: Final = 4096
 
 MAX_NAME: Final = 1024
 """The longest name a query gives: a variable, a unit, a type."""
-
-MAX_DEPTH: Final = 64
-"""The deepest json a query carries, and the deepest value an edit writes (``POST /api/edit``):
-a description nests a value five or six levels down."""
 
 LISTED: Final = (Severity.ERROR, Severity.WARNING, Severity.INFO)
 """The severities a finding is reported at, and so the ones ``GET /api/findings`` filters by:
@@ -305,7 +302,7 @@ def json_value(text: str) -> object:
 def _json(value: object) -> str:
     """``value``, where it is json text :func:`json_text` takes, or the refusal of it in
     :func:`~ddd.editing.parse_raw`'s words."""
-    if isinstance(value, str) and _depth(value) > MAX_DEPTH:
+    if isinstance(value, str) and text_depth(value) > MAX_DEPTH:
         raise not_one_value(value, NESTED_TOO_DEEPLY)
     parse_raw(value)
     assert isinstance(value, str)  # parse_raw refuses anything that is not text
@@ -314,30 +311,6 @@ def _json(value: object) -> str:
     except ValueError as error:
         raise not_one_value(value, error) from None
     return value
-
-
-def _depth(text: str) -> int:
-    """How deep ``text``'s brackets nest, outside its strings: counted in one pass over the
-    characters, so a text of any depth costs no stack. A backslash in a string escapes the
-    character after it, a quote included."""
-    deepest = depth = 0
-    quoted = escaped = False
-    for character in text:
-        if quoted:
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                quoted = False
-        elif character == '"':
-            quoted = True
-        elif character in "[{":
-            depth += 1
-            deepest = max(deepest, depth)
-        elif character in "]}":
-            depth -= 1
-    return deepest
 
 
 def _finite(number: str) -> float:

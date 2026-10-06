@@ -5,6 +5,7 @@ from __future__ import annotations
 import codecs
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -466,6 +467,42 @@ class TestRefusals:
         with pytest.raises(EditError) as refused:
             edited(text, operation)
         assert refused.value.code == INVALID
+
+    @pytest.mark.parametrize(
+        "operation",
+        [
+            Operation("set", "list[" + "9" * 4301 + "]", "1"),
+            Operation("set", "list[" + "9" * 4301 + "]", "[1]"),
+            Operation("insert", "list[" + "1" * 4301 + "]", "1"),
+            Operation("set", "a.b[" + "1" * 4301 + "].c", "1"),
+            Operation("set", "list[" + "9" * 20 + "]", "1"),
+        ],
+        ids=["set-a-literal", "set-a-list", "insert", "within", "twenty-digits"],
+    )
+    def test_an_index_longer_than_any_array_needs_is_not_a_pointer(self, operation):
+        """``int()`` refuses a string of more than 4,300 digits with a plain ``ValueError``,
+        which the pointer's own grammar met before anything could refuse it - reached through
+        the check of whether a batch can be made at once as much as through the operation's
+        own, and answered ``500``. No list holds more than ``sys.maxsize`` elements, so an index
+        spelled with more digits than that number names nothing, and is refused as a pointer
+        before it is read."""
+        with pytest.raises(EditError) as refused:
+            edited('{"a": 1, "list": [1, 2]}', operation)
+        assert (refused.value.code, str(refused.value)) == (
+            INVALID,
+            f"{operation.pointer!r} is not a pointer",
+        )
+
+    def test_an_index_of_as_many_digits_as_an_array_can_need_is_still_read(self):
+        """Nineteen digits, as many as ``sys.maxsize`` has on a 64-bit python: read as an index,
+        which names nothing in this array."""
+        index = "9" * len(str(sys.maxsize))
+        with pytest.raises(EditError) as refused:
+            edited('{"a": 1, "list": [1, 2]}', Operation("set", f"list[{index}]", "1"))
+        assert (refused.value.code, str(refused.value)) == (
+            INVALID,
+            f"nothing is written at list[{index}]",
+        )
 
     def test_an_operation_that_did_not_read_back_stops_the_ones_after_it(self):
         """Verified after every operation: the next one is checked against the text the last one

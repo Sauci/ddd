@@ -37,7 +37,9 @@ case then differs from that request in its one field alone; and no case is answe
 fingerprint's own refusal but a case of ``fingerprint`` itself, which is what a case meeting a file
 other than the one found would be answered. A lone surrogate reaches no field at all: json carries
 one only as an escape, ``\\ud800``, which the body's own reader refuses, ``400``, before any field
-is read.
+is read. And a hostile number goes into a pointer's array index as well as into its own field,
+spelled as the index of the well-formed edit's element (:data:`INDEXED`): sent whole, a value
+never reaches a grammar inside another, where a 4,301-digit index once reached ``int()``.
 
 The walk asserts no answer is 500 - never one of 400, 404 or 409 (ruling P18-7). The state
 route's ``?after=`` is lenient: none of these values is a whole number, so it is answered at
@@ -48,6 +50,7 @@ construct the api) means nothing here could wait regardless.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import types
 import typing
@@ -82,6 +85,17 @@ HOSTILE: tuple[str, ...] = (
 before anything resolves it - a rule spec section 5 predates, and so a value beyond its list
 that this walk owes the same hostility the rest get."""
 
+
+NUMBERS: Final = tuple(
+    value for value in HOSTILE if re.fullmatch(r"-?\d+(\.\d+)?([eE][-+]?\d+)?", value)
+)
+"""Each hostile value that spells a number, which the body walk sends in its own field and spells
+as well into a pointer's array index: ``int()`` refuses 4,301 digits with a plain ``ValueError``,
+which a pointer's grammar met before anything refused the index."""
+
+INDEXED: Final = "project.includes[0]"
+"""A well-formed pointer naming an array's element: the demo's first include, which the walk's
+indexed edit writes back as it is."""
 
 WRITTEN: Final = json.dumps("Described by the hostile walk")
 """The description the walk's well-formed edit writes, as json text: one the demo does not hold
@@ -321,6 +335,14 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
             "label": "the description",
         }
 
+    def indexed() -> dict[str, Any]:
+        # The same edit at an array's element, what a hostile number is spelled into as an index.
+        body = edit()
+        operation = body["changes"][0]["operations"][0]
+        operation["pointer"] = INDEXED
+        operation["raw"] = json.dumps("components/*.ddd.json")
+        return body
+
     def posted(api: Api, path: str, body: object) -> Reply:
         """What ``POST path`` is answered with ``body``; anything the api raises answered
         ``500``, as the server's own ``_answer`` answers it."""
@@ -350,6 +372,8 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
     assert json.loads(target.read_bytes())["project"]["description"] == json.loads(WRITTEN)
     assert posted(api, "/api/undo", {"at": 1}) == Reply(200, {"edit": 2})
     assert target.read_bytes() == found[target]
+    # And the indexed edit, the request every case of a number spelled as an index differs from.
+    assert posted(as_found(), "/api/edit", indexed()).status == 200
     # UndoRequest.at is int, the model's only field, so _string_fields finds none of it - named
     # and asserted here rather than left to be noticed by nothing below ever mentioning it.
     assert _string_fields(UndoRequest) == (), "UndoRequest has no string field: at is int"
@@ -395,6 +419,20 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
                     failed.append((*case, str(reply.body)[:200]))
                 if reply == refusal and (model, field) != (Change, "fingerprint"):
                     preempted.append(case)
+    assert NUMBERS == ("1" * 4301, "1e999")
+    for value in NUMBERS:
+        cases += 1
+        body = indexed()
+        body["changes"][0]["operations"][0]["pointer"] = INDEXED.replace("[0]", f"[{value}]")
+        reply = posted(as_found(), "/api/edit", body)
+        case = ("Operation.pointer, as its index", value[:20])
+        if reply.status == 500:
+            failed.append((*case, str(reply.body)[:200]))
+        if reply == refusal:
+            preempted.append(case)
     assert failed == [], "each case answered 500, or raising"
     assert preempted == [], "each case refused for the file's fingerprint before its own value"
-    assert cases == 77, "the seven string fields these five models hold, eleven values each"
+    assert cases == 79, (
+        "the seven string fields these five models hold, eleven values each, and the two "
+        "numbers spelled as an index"
+    )

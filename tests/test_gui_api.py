@@ -448,6 +448,15 @@ def nested(depth: int) -> list[Any]:
     return value
 
 
+def around(depth: int) -> Any:
+    """A number under lists, ``depth`` levels deep as pydantic-core counts them - the number at the
+    bottom one of them: ``0`` is one level, ``[0]`` two."""
+    value: Any = 0
+    for _ in range(depth - 1):
+        value = [value]
+    return value
+
+
 def block(depth: int) -> dict[str, Any]:
     """An extension block ``depth`` levels deep, itself the first of them: lists under ``v``."""
     return {"v": nested(depth - 1)}
@@ -1510,10 +1519,14 @@ class TestFiles:
         reply = get(Api(Session(root)), "/api/file", path=(root / "a.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
-    def test_a_file_255_levels_deep_is_answered_whole(self, root: Path, capsys) -> None:
-        """The deepest file its reply carries: ``data`` is the untyped field itself, and
-        pydantic-core writes such a field 255 levels deep."""
-        deep = {"component": {"name": "B", "description": nested(253)}}
+    @pytest.mark.parametrize("described", [nested(97), around(97)], ids=["lists", "a-number"])
+    def test_a_file_99_levels_deep_is_answered_whole(
+        self, root: Path, described: Any, capsys
+    ) -> None:
+        """The deepest file its reply carries on every system: ``data`` is the untyped field
+        itself, which pydantic-core writes 99 levels deep on Windows - and counts every value, the
+        number at the bottom of a list as much as the list."""
+        deep = {"component": {"name": "B", "description": described}}
         (root / "b.ddd.json").write_text(json.dumps(deep), encoding="utf-8")
         session = Session(root)
         session.open(root / "p.ddd.json")
@@ -1521,11 +1534,14 @@ class TestFiles:
         assert (reply.status, reply.body["data"]) == (200, deep)
         assert capsys.readouterr() == ("", "")
 
-    def test_a_file_256_levels_deep_is_refused_naming_it(self, root: Path, capsys) -> None:
-        """One level deeper, pydantic-core gave up writing the reply - ``Circular reference
-        detected (depth exceeded)`` - and it was answered ``500``; the depth is counted before
-        anything writes it now."""
-        deep = {"component": {"name": "B", "description": nested(254)}}
+    @pytest.mark.parametrize("described", [nested(98), around(98)], ids=["lists", "a-number"])
+    def test_a_file_100_levels_deep_is_refused_naming_it(
+        self, root: Path, described: Any, capsys
+    ) -> None:
+        """One level deeper, pydantic-core gives up writing the reply on Windows - ``Circular
+        reference detected (depth exceeded)``, answered ``500`` - so it is refused on every
+        system, the depth counted before anything writes it."""
+        deep = {"component": {"name": "B", "description": described}}
         (root / "b.ddd.json").write_text(json.dumps(deep), encoding="utf-8")
         session = Session(root)
         session.open(root / "p.ddd.json")
@@ -1534,7 +1550,7 @@ class TestFiles:
             409,
             {
                 "error": "unreadable",
-                "message": "b.ddd.json is nested more than 255 levels deep, "
+                "message": "b.ddd.json is nested more than 99 levels deep, "
                 "deeper than ddd gui can show",
             },
         )
@@ -1715,17 +1731,17 @@ class TestDictionaryAndChecks:
     @pytest.mark.parametrize(
         ("holder", "depth", "where"),
         [
-            ("object", 252, ("objects", "Speed")),
-            ("instance", 252, ("instances", "Inlet")),
-            ("project", 254, None),
+            ("object", 96, ("objects", "Speed")),
+            ("instance", 96, ("instances", "Inlet")),
+            ("project", 98, None),
         ],
     )
     def test_the_deepest_block_the_dictionary_carries_is_answered(
         self, tmp_path: Path, holder: str, depth: int, where: tuple[str, str] | None, capsys
     ) -> None:
-        """pydantic-core writes the dictionary's untyped json 255 levels deep: an object's block
-        sits three levels down it - the dictionary's ``objects`` or ``instances``, the object,
-        its ``extensions`` - and the project's own one, under ``extensions`` alone."""
+        """pydantic-core writes the dictionary's untyped json 99 levels deep on Windows: an
+        object's block sits three levels down it - the dictionary's ``objects`` or ``instances``,
+        the object, its ``extensions`` - and the project's own one, under ``extensions`` alone."""
         api = carried(tmp_path, self.BLOCKED[holder](depth))
         reply = get(api, "/api/dictionary")
         assert reply.status == 200
@@ -1741,17 +1757,17 @@ class TestDictionaryAndChecks:
     @pytest.mark.parametrize(
         ("holder", "depth", "file"),
         [
-            ("object", 253, "a.ddd.json"),
-            ("instance", 253, "a.ddd.json"),
-            ("project", 255, "p.ddd.json"),
+            ("object", 97, "a.ddd.json"),
+            ("instance", 97, "a.ddd.json"),
+            ("project", 99, "p.ddd.json"),
         ],
     )
     def test_a_block_a_level_deeper_is_refused_naming_its_file(
         self, tmp_path: Path, holder: str, depth: int, file: str, capsys
     ) -> None:
-        """One level deeper, writing the reply failed - ``Circular reference detected (depth
-        exceeded)`` - and it was answered ``500``; every block is measured before anything
-        writes it now, and the refusal names the file that states it."""
+        """One level deeper, writing the reply fails on Windows - ``Circular reference detected
+        (depth exceeded)``, answered ``500`` - so every block is measured before anything writes
+        it, on every system, and the refusal names the file that states it."""
         api = carried(tmp_path, self.BLOCKED[holder](depth))
         assert get(api, "/api/dictionary") == Reply(
             409,
@@ -1772,7 +1788,7 @@ class TestDictionaryAndChecks:
             tmp_path,
             {
                 "p.ddd.json": project("P", "sub/s.ddd.json"),
-                "sub/s.ddd.json": project("S", "a.ddd.json", extensions={"deep": block(255)}),
+                "sub/s.ddd.json": project("S", "a.ddd.json", extensions={"deep": block(99)}),
                 "sub/a.ddd.json": component("A", declare("output", "Speed")),
             },
         )
@@ -1780,10 +1796,73 @@ class TestDictionaryAndChecks:
             409,
             {
                 "error": "unreadable",
-                "message": "s.ddd.json holds an extension block nested more than 254 levels "
+                "message": "s.ddd.json holds an extension block nested more than 98 levels "
                 "deep, deeper than ddd gui can show",
             },
         )
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize(
+        "now",
+        [project("S", "a.ddd.json"), "{", {"component": {"name": "S"}}],
+        ids=["without-the-block", "not-json", "not-a-project"],
+    )
+    def test_settings_no_project_file_states_any_more_are_refused_naming_the_plugin(
+        self, tmp_path: Path, now: object, capsys
+    ) -> None:
+        """The dictionary keeps a plugin's settings, not the file that stated them, which is read
+        again to be named - and may have changed since the analysis read it. Named by no file
+        then, the sentence names the plugin whose settings they are."""
+        api = carried(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/s.ddd.json"),
+                "sub/s.ddd.json": project("S", "a.ddd.json", extensions={"deep": block(99)}),
+                "sub/a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        write_tree(tmp_path, {"sub/s.ddd.json": now})
+        assert get(api, "/api/dictionary") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "the settings of plugin 'deep', which no project file states any "
+                "more, are nested more than 98 levels deep, deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize(("depth", "status"), [(97, 200), (98, 409)])
+    def test_an_init_deeper_than_the_dictionary_carries_is_refused_by_the_net(
+        self, tmp_path: Path, depth: int, status: int, capsys
+    ) -> None:
+        """An init is a recursive value, kept by the loader whatever its shape - one deeper than
+        it is found ``init-invalid``, after which the project still resolves - and written two
+        levels down the dictionary's untyped json, under ``objects`` and the object. Past 99
+        levels in all, the reply is refused before it is written, by the net every reply is
+        written through rather than by a rule of this route's own."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[1], init=around(depth))
+                ),
+            },
+        )
+        reply = get(api, "/api/dictionary")
+        if status == 200:
+            speed = next(o for o in reply.body["dictionary"]["objects"] if o["name"] == "Speed")
+            assert (reply.status, speed["init"]) == (200, around(depth))
+        else:
+            assert reply == Reply(
+                409,
+                {
+                    "error": "unreadable",
+                    "message": "this answer is nested more than 99 levels deep, "
+                    "deeper than ddd gui can show",
+                },
+            )
         assert capsys.readouterr() == ("", "")
 
     def test_the_built_in_checks_are_listed_without_a_project(self, root: Path) -> None:
@@ -6850,6 +6929,58 @@ class TestTheValuesGrid:
         assert (plan.status, plan.body["error"]) == (409, "invalid")
         plans = get(api, "/api/values-plan", name="Cube", raw="7")
         assert (plans.status, plans.body["error"]) == (409, "invalid")
+
+    def test_an_init_that_does_not_fit_its_shape_is_refused_rather_than_drawn(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """A list a level deeper than the shape: the loader keeps it, the analysis finds it
+        ``init-invalid`` and still resolves the project, and its rows reached ``ValuesReply``
+        as lists where numbers belong - a ``ValidationError``, answered ``500``. Refused as the
+        three-dimension grid is, in the finding's own words."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[2], init=[[1], [2]])
+                ),
+            },
+        )
+        assert get(api, "/api/values", name="Speed") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Speed' is initialised with values that do not fit its shape: "
+                "element [0] is a list but the shape has no further dimension",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    def test_an_axis_whose_init_does_not_fit_its_shape_refuses_the_grid_it_lies_under(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """An axis's breakpoints are its init laid flat, and an element of it written as a list
+        reached ``GridAxis.breakpoints`` where a number belongs - a ``ValidationError`` answered
+        ``500`` for the curve, though its own init fits. The axis is named, its finding's words
+        given."""
+        root = copied_example(tmp_path, "demo")
+        changed(
+            root,
+            "components/controller.ddd.json",
+            lambda document: definition_of(document, "AxisA")["init"].__setitem__(0, [1]),
+        )
+        session = Session(root)
+        session.open(root / "demo.ddd.json")
+        api = Api(session, root / "demo.ddd.json", wait_seconds=0.05)
+        assert get(api, "/api/values", name="CurveA") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'AxisA' is initialised with values that do not fit its shape: "
+                "element [0] is a list but the shape has no further dimension",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
 
     def test_a_name_two_declarations_produce_is_read_only(self, tmp_path: Path) -> None:
         # The values come from the analysis's own producer and the file used to come from

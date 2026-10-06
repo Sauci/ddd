@@ -34,6 +34,7 @@ import json
 import os
 import re
 import stat
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -85,6 +86,14 @@ DEFAULT_INDENT_UNIT: Final = "  "
 """The indentation unit of a file that nests nothing on a line of its own."""
 
 _INDEXED: Final = re.compile(r"(.*)\[(\d+)\]")
+
+_INDEX_DIGITS: Final = len(str(sys.maxsize))
+"""The most digits an array index can need: no list holds more than ``sys.maxsize`` elements -
+nineteen digits on a 64-bit python."""
+
+_LONG_INDEX: Final = re.compile(rf"\[\d{{{_INDEX_DIGITS + 1},}}\]")
+"""An index of more digits than any array needs, which names nothing - and which ``int()``
+refuses with a plain ``ValueError`` past 4,300 digits."""
 
 
 class EditError(ValueError):
@@ -663,8 +672,14 @@ def _spelled(pointer: str) -> bool:
 
     The grammar reads more spellings than that - ``a..b``, ``a[01]``, ``a]`` - and a pointer
     spelled one of those ways names nothing the scan recorded, while the helpers here take every
-    pointer they are handed for one it did.
+    pointer they are handed for one it did. Nor does a pointer whose index has more digits than
+    any array can need (:data:`_INDEX_DIGITS`), and it is refused before the grammar reads the
+    index: ``int()`` refuses one of more than 4,300 digits with a ``ValueError``, which
+    ``ddd gui`` answered ``500``. Every caller asks this first - the check of whether a batch can
+    be made at once as much as each operation's own.
     """
+    if _LONG_INDEX.search(pointer):
+        return False
     written = "".join(
         f"[{part}]" if isinstance(part, int) else f".{part}" for part in segments(pointer)
     )

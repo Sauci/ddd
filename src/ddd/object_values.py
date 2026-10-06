@@ -27,7 +27,7 @@ from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.common import Datatype
 from ddd.models.conversion import Conversion
-from ddd.models.objects import InitValue
+from ddd.models.objects import InitValue, check_shape
 
 AXIS_REFERENCES: Final = ("axis", "x_axis", "y_axis")
 """The references that name an axis, in the order a grid lays them out.
@@ -43,9 +43,9 @@ class ValueRefusalError(Exception):
 
     code: Literal["invalid", "not-found"]
     """``not-found``: the project declares no object of that name. ``invalid``: the grid cannot
-    be drawn - a shape of more dimensions than rows of cells - or the change cannot be made: an
-    element outside the shape, a value the datatype cannot hold, an object whose init is text,
-    or no one declaration to write into."""
+    be drawn - a shape of more dimensions than rows of cells, an init that does not fit its
+    shape - or the change cannot be made: an element outside the shape, a value the datatype
+    cannot hold, an object whose init is text, or no one declaration to write into."""
 
     message: str
     """The sentence the refusal is shown with."""
@@ -130,6 +130,11 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         raise ValueRefusalError(
             "invalid", f"'{name}' has {len(shape)} dimensions, and a grid draws at most two"
         )
+    _fits(name, resolved.init, shape)
+    for position in AXIS_REFERENCES:
+        axis = dictionary.by_name.get(resolved.references.get(position) or "")
+        if axis is not None:
+            _fits(axis.name, axis.init, tuple(axis.shape))
     stated, rows = _laid_out(resolved.init, shape)
     axes = tuple(
         Axis(
@@ -179,6 +184,24 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         file=file,
         pointer=pointer,
     )
+
+
+def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
+    """Refuse an init written as a list that does not fit its object's shape, in the finding's own
+    words: a grid's rows, and its axes' breakpoints, are numbers in a shape.
+
+    The loader keeps an init whatever its shape, and the analysis finds one that does not fit
+    ``init-invalid`` and still resolves the project. Laid out regardless, a list a level deeper
+    than the shape reached :class:`Grid` where a number belongs - the object's own rows, or an
+    axis's breakpoints - and the answer failed to be built: a ``500``. A whole scalar fills every
+    cell, and text is no grid at all, so only a list is judged."""
+    if isinstance(init, tuple):
+        problem = check_shape(init, shape)
+        if problem is not None:
+            raise ValueRefusalError(
+                "invalid",
+                f"'{name}' is initialised with values that do not fit its shape: {problem}",
+            )
 
 
 def _breakpoints(init: InitValue | None) -> tuple[float, ...]:

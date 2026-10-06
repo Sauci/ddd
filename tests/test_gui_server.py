@@ -1026,9 +1026,8 @@ class TestAPagePath:
     ) -> None:
         """Windows opens a device for such a name, in any directory, whatever its extension or
         case: ``COM1`` a serial port, ``NUL`` the null device, ``CONIN$`` the console's own
-        input. It is never looked up, on any
-        system; and where it can be an ordinary file, on any system but Windows, that file is
-        not served either."""
+        input. It is never looked up, on any system; and where it can be an ordinary file, on
+        any system but Windows, that file is not served either."""
         if sys.platform != "win32":
             (pages / path[1:]).write_text("a device, on Windows", encoding="utf-8")
         asked = looked_up(monkeypatch)

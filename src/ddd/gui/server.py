@@ -116,7 +116,7 @@ DEVICE_NAMES: Final = frozenset(
 the null device, the console's own input and output, and the serial and parallel ports, ``COM``
 and ``LPT`` followed by a digit, the superscripts one, two and three among them. Windows reads
 such a name as the device in whatever directory it is written, so that opening it opens the
-device rather than a file (:func:`_names_a_device`); python's own ``os.path.isreserved``, from
+device rather than a file (:func:`_names_a_device`); python's own ``ntpath.isreserved``, from
 3.13, counts ``CONIN$`` and ``CONOUT$`` among them too."""
 
 SECURITY_HEADERS: Final = {

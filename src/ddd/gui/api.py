@@ -7,9 +7,10 @@ server ship in one wheel - and changes with the package.
 
 Every request and response body is a model of :mod:`ddd.gui.contract`: a request is read with
 :meth:`~pydantic.BaseModel.model_validate_json`, refusing anything the page's own types would
-not have sent, and a response is built as a model and left as ``model_dump(mode="json")`` -
+not have sent, and a response is built as a model and written by :func:`ddd.gui.depth.written` -
 never a hand-assembled ``dict`` - so the shape answered here and the shape
-``gui/src/generated/api.ts`` declares cannot drift apart.
+``gui/src/generated/api.ts`` declares cannot drift apart, and an answer nested deeper than the
+serializer writes is refused, ``409``, rather than failing to be written.
 """
 
 from __future__ import annotations
@@ -48,7 +49,6 @@ from ddd.editing import (
     FileChange,
     Operation,
     fingerprint,
-    not_one_value,
     unchanged,
 )
 from ddd.file_plans import (
@@ -67,9 +67,9 @@ from ddd.findings_by_file import Pair
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
+from ddd.gui.depth import TooDeepError, block_too_deep, file_too_deep, within_depth, written
 from ddd.gui.derived import Derived, derived, key_of
 from ddd.gui.queries import (
-    MAX_DEPTH,
     AddConstant,
     AddFile,
     AddRaster,
@@ -120,7 +120,6 @@ from ddd.gui.queries import (
     ValuesPlanQuery,
     ValuesQuery,
     VariableQuery,
-    _depth,
     _Query,
     actions_of,
     json_value,
@@ -146,8 +145,8 @@ from ddd.gui.session import (
     findings_with,
     kind_of,
 )
-from ddd.ir import DataDictionary, ResolvedInstance, ResolvedObject
-from ddd.loading import NESTED_TOO_DEEPLY, resolve_path
+from ddd.ir import DataDictionary
+from ddd.loading import resolve_path
 from ddd.lsp.edits import settle
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
@@ -235,34 +234,6 @@ yet. Answered 409, and answered differently once the analysis lands."""
 REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
-SERIALIZED_DEPTH: Final = 255
-"""How many levels of nested arrays and objects pydantic-core writes in an untyped field of a
-reply: past 255 its serializer gives up - ``ValueError: Circular reference detected (depth
-exceeded)`` - which was answered ``500``. Measured with pydantic-core 2.46.5: an ``Any`` field
-holding 255 nested lists is written, and one holding 256 is not."""
-
-FILE_DEPTH: Final = SERIALIZED_DEPTH
-"""The deepest description file ``GET /api/file`` answers, in levels of nested arrays and
-objects: :data:`SERIALIZED_DEPTH`, less the levels the reply puts around the file's json, which
-are none - :attr:`~ddd.gui.contract.FileContent.data` is the untyped field itself. Measured: a
-file 255 levels deep is answered, and one 256 deep was answered ``500``."""
-
-PROJECT_BLOCK_DEPTH: Final = SERIALIZED_DEPTH - 1
-"""The deepest extension block of the project's own settings that ``GET /api/dictionary``
-answers: :data:`SERIALIZED_DEPTH`, less the one level the reply puts around it - the
-dictionary's ``extensions``, keyed by plugin. The dictionary itself is a typed mapping of the
-reply, which the serializer does not count. Measured: a block 254 levels deep is answered, and
-one 255 deep was answered ``500``."""
-
-OBJECT_BLOCK_DEPTH: Final = SERIALIZED_DEPTH - 3
-"""The deepest extension block of an object that ``GET /api/dictionary`` answers:
-:data:`SERIALIZED_DEPTH`, less the three levels the reply puts around it - the dictionary's
-``objects``, or its ``instances`` for a structured object, the object itself, and its
-``extensions``. Measured: a block 252 levels deep is answered, and one 253 deep was answered
-``500``."""
-
-_TOO_DEEP: Final = "deeper than ddd gui can show"
-
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
 _NOTHING_RESOLVED: Final = "the open project did not resolve, so no object's values can be read"
@@ -335,6 +306,8 @@ class Api:
                 return given
         try:
             return route.answer(self, typed, given)
+        except TooDeepError as error:
+            return _error(409, UNREADABLE, str(error))
         except NoProjectError as error:
             return _error(409, "no-project", str(error))
         except NotAnalysedError as error:
@@ -359,17 +332,19 @@ class Api:
         found = find_projects(self.session.root, self.session.build_directories)
         return Reply(
             200,
-            contract.Found(
-                root=found.root.as_posix(),
-                projects=[
-                    {"path": p.path.as_posix(), "name": p.name, "images": p.images}
-                    for p in found.projects
-                ],
-                refused=[
-                    {"record": record.as_posix(), "reason": reason}
-                    for record, reason in found.refused
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.Found(
+                    root=found.root.as_posix(),
+                    projects=[
+                        {"path": p.path.as_posix(), "name": p.name, "images": p.images}
+                        for p in found.projects
+                    ],
+                    refused=[
+                        {"record": record.as_posix(), "reason": reason}
+                        for record, reason in found.refused
+                    ],
+                )
+            ),
         )
 
     def _open(self, query: NoQuery, body: contract.OpenRequest) -> Reply:
@@ -441,16 +416,18 @@ class Api:
         top = snapshot.undoable
         return Reply(
             200,
-            contract.State(
-                revision=number,
-                version=snapshot.version,
-                project=project.as_posix(),
-                files=files,
-                counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
-                undoable=None if top is None else {"at": top.at, "label": top.label},
-                analysing=snapshot.analysing,
-                edits=edits,
-            ).model_dump(mode="json"),
+            written(
+                contract.State(
+                    revision=number,
+                    version=snapshot.version,
+                    project=project.as_posix(),
+                    files=files,
+                    counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
+                    undoable=None if top is None else {"at": top.at, "label": top.label},
+                    analysing=snapshot.analysing,
+                    edits=edits,
+                )
+            ),
         )
 
     def _findings(self, query: FindingsQuery, body: None) -> Reply:
@@ -501,62 +478,61 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.FindingsReply(
-                revision=revision.number,
-                total=len(order),
-                offset=offset,
-                findings=[
-                    {
-                        **_finding(findings[at], derived.sources[at], cache),
-                        "key": key_of(findings[at], derived.repeats[at]),
-                    }
-                    for at in page
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.FindingsReply(
+                    revision=revision.number,
+                    total=len(order),
+                    offset=offset,
+                    findings=[
+                        {
+                            **_finding(findings[at], derived.sources[at], cache),
+                            "key": key_of(findings[at], derived.repeats[at]),
+                        }
+                        for at in page
+                    ],
+                )
+            ),
         )
 
     def _file(self, query: FileQuery, body: None) -> Reply:
-        """A description file's own json, refused where it nests deeper than its reply can
-        carry (:data:`FILE_DEPTH`): counted before anything writes it, rather than failing to."""
+        """A description file's own json, refused where it nests deeper than its answer carries
+        (:func:`~ddd.gui.depth.file_too_deep`), naming the file."""
         content = self.session.read_file(Path(query.path))
-        if _nesting(content.data) > FILE_DEPTH:
-            name = content.path.name
-            return _error(
-                409, UNREADABLE, f"{name} is nested more than {FILE_DEPTH} levels deep, {_TOO_DEEP}"
-            )
+        refused = file_too_deep(content.path, content.data)
+        if refused is not None:
+            return _error(409, UNREADABLE, refused)
         return Reply(
             200,
-            contract.FileContent(
-                path=content.path.as_posix(),
-                fingerprint=content.fingerprint,
-                data=content.data,
-                error=content.error,
-            ).model_dump(mode="json"),
+            written(
+                contract.FileContent(
+                    path=content.path.as_posix(),
+                    fingerprint=content.fingerprint,
+                    data=content.data,
+                    error=content.error,
+                )
+            ),
         )
 
     def _dictionary(self, query: NoQuery, body: None) -> Reply:
         """The dictionary of the newest revision, refused where an extension block it carries
-        nests deeper than its reply can carry (:func:`_too_deep_block`)."""
+        nests deeper than its answer carries (:func:`~ddd.gui.depth.block_too_deep`), naming the
+        file that states it."""
         revision = self._opened()
         dictionary = revision.dictionary
-        too_deep = _too_deep_block(revision)
-        if too_deep is not None:
-            file, depth = too_deep
-            return _error(
-                409,
-                UNREADABLE,
-                f"{file.name} holds an extension block nested more than {depth} levels deep, "
-                f"{_TOO_DEEP}",
-            )
+        refused = block_too_deep(revision)
+        if refused is not None:
+            return _error(409, UNREADABLE, refused)
         return Reply(
             200,
-            contract.DictionaryReply(
-                revision=revision.number,
-                # Dumped here rather than left a model for DictionaryReply to nest: the file
-                # format already publishes this shape under `ddd schema dictionary`, and the
-                # api schema is not the place to publish it a second time.
-                dictionary=None if dictionary is None else dictionary.model_dump(mode="json"),
-            ).model_dump(mode="json"),
+            written(
+                contract.DictionaryReply(
+                    revision=revision.number,
+                    # Dumped here rather than left a model for DictionaryReply to nest: the file
+                    # format already publishes this shape under `ddd schema dictionary`, and the
+                    # api schema is not the place to publish it a second time.
+                    dictionary=None if dictionary is None else written(dictionary),
+                )
+            ),
         )
 
     def _graph(self, query: NoQuery, body: None) -> Reply:
@@ -569,41 +545,44 @@ class Api:
         built = graph_of(revision.dictionary, modules, findings)
         return Reply(
             200,
-            contract.GraphReply(
-                revision=revision.number,
-                dictionary=revision.dictionary is not None,
-                modules=[
-                    {
-                        "path": module.path.as_posix(),
-                        "name": module.name,
-                        "loaded": module.loaded,
-                        "findings": {
-                            "error": module.errors,
-                            "warning": module.warnings,
-                            "info": module.infos,
-                        },
-                    }
-                    for module in built.modules
-                ],
-                flows=[
-                    {
-                        "source": flow.source.as_posix(),
-                        "to": flow.target.as_posix(),
-                        "objects": flow.objects,
-                        "severity": flow.severity,
-                        "disagreements": [
-                            {
-                                "object": disagreement.object,
-                                "check": disagreement.check,
-                                "severity": disagreement.severity,
-                                "message": disagreement.message,
-                            }
-                            for disagreement in flow.disagreements
-                        ],
-                    }
-                    for flow in built.flows
-                ],
-            ).model_dump(mode="json", by_alias=True),
+            written(
+                contract.GraphReply(
+                    revision=revision.number,
+                    dictionary=revision.dictionary is not None,
+                    modules=[
+                        {
+                            "path": module.path.as_posix(),
+                            "name": module.name,
+                            "loaded": module.loaded,
+                            "findings": {
+                                "error": module.errors,
+                                "warning": module.warnings,
+                                "info": module.infos,
+                            },
+                        }
+                        for module in built.modules
+                    ],
+                    flows=[
+                        {
+                            "source": flow.source.as_posix(),
+                            "to": flow.target.as_posix(),
+                            "objects": flow.objects,
+                            "severity": flow.severity,
+                            "disagreements": [
+                                {
+                                    "object": disagreement.object,
+                                    "check": disagreement.check,
+                                    "severity": disagreement.severity,
+                                    "message": disagreement.message,
+                                }
+                                for disagreement in flow.disagreements
+                            ],
+                        }
+                        for flow in built.flows
+                    ],
+                ),
+                by_alias=True,
+            ),
         )
 
     def _checks(self, query: NoQuery, body: None) -> Reply:
@@ -611,38 +590,42 @@ class Api:
         plugins = () if revision is None else revision.checks
         return Reply(
             200,
-            contract.ChecksReply(
-                checks=[
-                    {
-                        "check": info.identifier,
-                        "default_severity": info.default_severity,
-                        "description": info.description,
-                        "overridable": info.overridable,
-                        "needs_every_component": info.needs_every_component,
-                        "comparison": info.comparison,
-                    }
-                    for info in (*CHECKS.values(), *plugins)
-                ]
-            ).model_dump(mode="json"),
+            written(
+                contract.ChecksReply(
+                    checks=[
+                        {
+                            "check": info.identifier,
+                            "default_severity": info.default_severity,
+                            "description": info.description,
+                            "overridable": info.overridable,
+                            "needs_every_component": info.needs_every_component,
+                            "comparison": info.comparison,
+                        }
+                        for info in (*CHECKS.values(), *plugins)
+                    ]
+                )
+            ),
         )
 
     def _edit(self, query: NoQuery, body: contract.Changes) -> Reply:
         try:
-            _within_depth(body.changes)
-            at, written = self.session.edit([_file_change(c) for c in body.changes], body.label)
+            within_depth(body.changes)
+            at, wrote = self.session.edit([_file_change(c) for c in body.changes], body.label)
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
         # Answered once written, before its analysis: the edit's own number is what says when a
         # revision includes it.
         return Reply(
             200,
-            contract.EditReply(
-                edit=at,
-                files=[
-                    {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
-                    for file in written
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.EditReply(
+                    edit=at,
+                    files=[
+                        {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
+                        for file in wrote
+                    ],
+                )
+            ),
         )
 
     def _undo(self, query: NoQuery, body: None) -> Reply:
@@ -658,9 +641,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.UndoPreview(
-                revision=revision.number, at=top.at, label=top.label, changes=changes
-            ).model_dump(mode="json"),
+            written(
+                contract.UndoPreview(
+                    revision=revision.number, at=top.at, label=top.label, changes=changes
+                )
+            ),
         )
 
     def _apply_undo(self, query: NoQuery, body: contract.UndoRequest) -> Reply:
@@ -670,7 +655,7 @@ class Api:
             number = self.session.undo(body.at)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(200, contract.UndoReply(edit=number).model_dump(mode="json"))
+        return Reply(200, written(contract.UndoReply(edit=number)))
 
     def _variable(self, query: VariableQuery, body: None) -> Reply:
         revision = self._opened()
@@ -683,37 +668,39 @@ class Api:
         derived = self._derive(revision)
         return Reply(
             200,
-            contract.VariableReply(
-                revision=revision.number,
-                name=name,
-                declarations=[
-                    {
-                        "path": derived.resolve(entry.site.path).as_posix(),
-                        "pointer": entry.site.pointer,
-                        "component": entry.component,
-                        "role": entry.role,
-                        "stated": dict(entry.stated),
-                        "type": entry.type_name,
-                        "fixed": dict(entry.fixed),
-                    }
-                    for entry in declared
-                ],
-                # The dataclasses of `ddd.variable_keys` are the contract's models field for
-                # field; the contract validates what comes out, so a name that drifts apart
-                # fails here rather than reaching the page.
-                keys=[asdict(offer) for offer in offers(built, declared)],
-                findings=_listed(
-                    derived,
-                    [
-                        (file, found)
-                        for file, found in derived.findings.on_any(
-                            entry.site.path for entry in declared
-                        )
-                        if located_on(declared, file, found, derived.resolve)
+            written(
+                contract.VariableReply(
+                    revision=revision.number,
+                    name=name,
+                    declarations=[
+                        {
+                            "path": derived.resolve(entry.site.path).as_posix(),
+                            "pointer": entry.site.pointer,
+                            "component": entry.component,
+                            "role": entry.role,
+                            "stated": dict(entry.stated),
+                            "type": entry.type_name,
+                            "fixed": dict(entry.fixed),
+                        }
+                        for entry in declared
                     ],
-                    cache,
-                ),
-            ).model_dump(mode="json"),
+                    # The dataclasses of `ddd.variable_keys` are the contract's models field for
+                    # field; the contract validates what comes out, so a name that drifts apart
+                    # fails here rather than reaching the page.
+                    keys=[asdict(offer) for offer in offers(built, declared)],
+                    findings=_listed(
+                        derived,
+                        [
+                            (file, found)
+                            for file, found in derived.findings.on_any(
+                                entry.site.path for entry in declared
+                            )
+                            if located_on(declared, file, found, derived.resolve)
+                        ],
+                        cache,
+                    ),
+                )
+            ),
         )
 
     def _units(self, query: NoQuery, body: None) -> Reply:
@@ -744,26 +731,28 @@ class Api:
         rows = () if built is None else unit_rows(built, derived.findings, cache)
         return Reply(
             200,
-            contract.UnitsReply(
-                revision=revision.number,
-                vocabulary=None
-                if vocabulary is None
-                else [{"unit": unit, "description": text} for unit, text in vocabulary],
-                used=[{"unit": unit, "variables": count} for unit, count in used],
-                units=[
-                    {
-                        "unit": row.unit,
-                        "description": row.description,
-                        "files": [derived.resolve(path).as_posix() for path in row.files],
-                        "variables": row.variables,
-                        "types": row.types,
-                        "members": row.members,
-                        "findings": row.findings,
-                    }
-                    for row in rows
-                ],
-                adoptable=adoptable(built, project),
-            ).model_dump(mode="json"),
+            written(
+                contract.UnitsReply(
+                    revision=revision.number,
+                    vocabulary=None
+                    if vocabulary is None
+                    else [{"unit": unit, "description": text} for unit, text in vocabulary],
+                    used=[{"unit": unit, "variables": count} for unit, count in used],
+                    units=[
+                        {
+                            "unit": row.unit,
+                            "description": row.description,
+                            "files": [derived.resolve(path).as_posix() for path in row.files],
+                            "variables": row.variables,
+                            "types": row.types,
+                            "members": row.members,
+                            "findings": row.findings,
+                        }
+                        for row in rows
+                    ],
+                    adoptable=adoptable(built, project),
+                )
+            ),
         )
 
     def _unit(self, query: UnitQuery, body: None) -> Reply:
@@ -780,27 +769,29 @@ class Api:
         derived = self._derive(revision)
         return Reply(
             200,
-            contract.UnitReply(
-                revision=revision.number,
-                unit=unit,
-                description=description_of(built, unit, cache),
-                entries=[
-                    {"file": derived.resolve(entry.path).as_posix(), "pointer": entry.pointer}
-                    for entry in built.vocabulary.get(unit, ())
-                ],
-                sites=[
-                    {
-                        "path": derived.resolve(place.stated.site.path).as_posix(),
-                        "pointer": place.stated.site.pointer,
-                        "kind": place.stated.kind,
-                        "name": place.stated.name,
-                        "component": place.component,
-                        "role": place.role,
-                    }
-                    for place in places_of(built, unit, cache, _changed_in(derived))
-                ],
-                findings=_listed(derived, unit_findings(built, unit, derived.findings), cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.UnitReply(
+                    revision=revision.number,
+                    unit=unit,
+                    description=description_of(built, unit, cache),
+                    entries=[
+                        {"file": derived.resolve(entry.path).as_posix(), "pointer": entry.pointer}
+                        for entry in built.vocabulary.get(unit, ())
+                    ],
+                    sites=[
+                        {
+                            "path": derived.resolve(place.stated.site.path).as_posix(),
+                            "pointer": place.stated.site.pointer,
+                            "kind": place.stated.kind,
+                            "name": place.stated.name,
+                            "component": place.component,
+                            "role": place.role,
+                        }
+                        for place in places_of(built, unit, cache, _changed_in(derived))
+                    ],
+                    findings=_listed(derived, unit_findings(built, unit, derived.findings), cache),
+                )
+            ),
         )
 
     def _unit_plan(self, query: UnitPlanQuery, body: None) -> Reply:
@@ -831,9 +822,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
     def _types(self, query: NoQuery, body: None) -> Reply:
@@ -846,19 +839,21 @@ class Api:
         rows = () if built is None else type_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
-            contract.TypesReply(
-                revision=revision.number,
-                types=[
-                    {
-                        "name": row.name,
-                        "kind": row.kind,
-                        "description": row.description,
-                        "uses": row.uses,
-                        "findings": row.findings,
-                    }
-                    for row in rows
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.TypesReply(
+                    revision=revision.number,
+                    types=[
+                        {
+                            "name": row.name,
+                            "kind": row.kind,
+                            "description": row.description,
+                            "uses": row.uses,
+                            "findings": row.findings,
+                        }
+                        for row in rows
+                    ],
+                )
+            ),
         )
 
     def _type(self, query: TypeQuery, body: None) -> Reply:
@@ -880,45 +875,47 @@ class Api:
         header = stated.get("header")
         return Reply(
             200,
-            contract.TypeReply(
-                revision=revision.number,
-                name=name,
-                kind=row.kind,
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                description=row.description,
-                header=None if header is None else json.loads(header),
-                keys=[
-                    asdict(offer_for(built, key, stated.get(key), required=key in REQUIRED))
-                    for key in SCALAR_KEYS
-                ]
-                if row.kind == "scalar"
-                else [],
-                uses=[
-                    {
-                        "path": derived.resolve(use.site.path).as_posix(),
-                        "pointer": use.site.pointer,
-                        "kind": use.kind,
-                        "name": use.name,
-                        "component": use.component,
-                        "role": use.role,
-                    }
-                    for use in uses_of(built, name, cache)
-                ],
-                members=[
-                    {
-                        "name": member["name"],
-                        "member": member["member"],
-                        "typename": member.get("typename"),
-                        "datatype": member.get("datatype"),
-                        "unit": member.get("unit"),
-                        "bits": member.get("bits"),
-                        "dimensions": member.get("dimensions", ()),
-                    }
-                    for member in members_of(built, name, cache)
-                ],
-                findings=_listed(derived, type_findings(built, name, derived.findings), cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.TypeReply(
+                    revision=revision.number,
+                    name=name,
+                    kind=row.kind,
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    description=row.description,
+                    header=None if header is None else json.loads(header),
+                    keys=[
+                        asdict(offer_for(built, key, stated.get(key), required=key in REQUIRED))
+                        for key in SCALAR_KEYS
+                    ]
+                    if row.kind == "scalar"
+                    else [],
+                    uses=[
+                        {
+                            "path": derived.resolve(use.site.path).as_posix(),
+                            "pointer": use.site.pointer,
+                            "kind": use.kind,
+                            "name": use.name,
+                            "component": use.component,
+                            "role": use.role,
+                        }
+                        for use in uses_of(built, name, cache)
+                    ],
+                    members=[
+                        {
+                            "name": member["name"],
+                            "member": member["member"],
+                            "typename": member.get("typename"),
+                            "datatype": member.get("datatype"),
+                            "unit": member.get("unit"),
+                            "bits": member.get("bits"),
+                            "dimensions": member.get("dimensions", ()),
+                        }
+                        for member in members_of(built, name, cache)
+                    ],
+                    findings=_listed(derived, type_findings(built, name, derived.findings), cache),
+                )
+            ),
         )
 
     def _type_plan(self, query: TypePlanQuery, body: None) -> Reply:
@@ -946,9 +943,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
     def _shared(self, query: NoQuery, body: None) -> Reply:
@@ -961,19 +960,21 @@ class Api:
         rows = () if built is None else shared_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
-            contract.SharedReply(
-                revision=revision.number,
-                entries=[
-                    {
-                        "kind": row.kind,
-                        "name": row.name,
-                        "states": row.states,
-                        "uses": row.uses,
-                        "findings": row.findings,
-                    }
-                    for row in rows
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.SharedReply(
+                    revision=revision.number,
+                    entries=[
+                        {
+                            "kind": row.kind,
+                            "name": row.name,
+                            "states": row.states,
+                            "uses": row.uses,
+                            "findings": row.findings,
+                        }
+                        for row in rows
+                    ],
+                )
+            ),
         )
 
     def _constant(self, query: ConstantQuery, body: None) -> Reply:
@@ -997,16 +998,18 @@ class Api:
         texts = shown(CONSTANTS, built, name, cache)
         return Reply(
             200,
-            contract.ConstantReply(
-                revision=revision.number,
-                name=name,
-                value=texts["value"],
-                description=texts["description"],
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                uses=_entry_uses(CONSTANTS, derived, built, name, cache),
-                findings=_entry_findings(CONSTANTS, derived, built, name, cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.ConstantReply(
+                    revision=revision.number,
+                    name=name,
+                    value=texts["value"],
+                    description=texts["description"],
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    uses=_entry_uses(CONSTANTS, derived, built, name, cache),
+                    findings=_entry_findings(CONSTANTS, derived, built, name, cache),
+                )
+            ),
         )
 
     def _section(self, query: SectionQuery, body: None) -> Reply:
@@ -1024,17 +1027,19 @@ class Api:
         texts = shown(SECTIONS, built, name, cache)
         return Reply(
             200,
-            contract.SectionReply(
-                revision=revision.number,
-                name=name,
-                access=texts["access"],
-                alignment=texts["alignment"],
-                description=texts["description"],
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                uses=_entry_uses(SECTIONS, derived, built, name, cache),
-                findings=_entry_findings(SECTIONS, derived, built, name, cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.SectionReply(
+                    revision=revision.number,
+                    name=name,
+                    access=texts["access"],
+                    alignment=texts["alignment"],
+                    description=texts["description"],
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    uses=_entry_uses(SECTIONS, derived, built, name, cache),
+                    findings=_entry_findings(SECTIONS, derived, built, name, cache),
+                )
+            ),
         )
 
     def _raster(self, query: RasterQuery, body: None) -> Reply:
@@ -1052,17 +1057,19 @@ class Api:
         texts = shown(RASTERS, built, name, cache)
         return Reply(
             200,
-            contract.RasterReply(
-                revision=revision.number,
-                name=name,
-                event=texts["event"],
-                cycle=texts["cycle"],
-                description=texts["description"],
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                uses=_entry_uses(RASTERS, derived, built, name, cache),
-                findings=_entry_findings(RASTERS, derived, built, name, cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.RasterReply(
+                    revision=revision.number,
+                    name=name,
+                    event=texts["event"],
+                    cycle=texts["cycle"],
+                    description=texts["description"],
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    uses=_entry_uses(RASTERS, derived, built, name, cache),
+                    findings=_entry_findings(RASTERS, derived, built, name, cache),
+                )
+            ),
         )
 
     def _files(self, query: NoQuery, body: None) -> Reply:
@@ -1085,22 +1092,24 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.FilesReply(
-                revision=revision.number,
-                project=revision.project.as_posix(),
-                entries=[
-                    {
-                        "index": entry.index,
-                        "entry": entry.entry,
-                        "names": entry.names,
-                        "key": entry.key.as_posix(),
-                        "files": [file.as_posix() for file in entry.files],
-                        "findings": at_entry.get(entry.index, 0),
-                    }
-                    for entry in included_entries(revision.project, cache)
-                ],
-                creatable=CREATABLE,
-            ).model_dump(mode="json"),
+            written(
+                contract.FilesReply(
+                    revision=revision.number,
+                    project=revision.project.as_posix(),
+                    entries=[
+                        {
+                            "index": entry.index,
+                            "entry": entry.entry,
+                            "names": entry.names,
+                            "key": entry.key.as_posix(),
+                            "files": [file.as_posix() for file in entry.files],
+                            "findings": at_entry.get(entry.index, 0),
+                        }
+                        for entry in included_entries(revision.project, cache)
+                    ],
+                    creatable=CREATABLE,
+                )
+            ),
         )
 
     def _files_plan(self, query: FilesPlanQuery, body: None) -> Reply:
@@ -1134,16 +1143,18 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.FilesPlanReply(
-                revision=revision.number,
-                changes=_planned_changes(revision, derived, made),
-                unjudged=plan.unjudged,
-                brings=[
-                    {"file": path.as_posix(), "check": found.check, "message": found.message}
-                    for path, found in plan.brings
-                ],
-                kept_by=plan.kept_by,
-            ).model_dump(mode="json"),
+            written(
+                contract.FilesPlanReply(
+                    revision=revision.number,
+                    changes=_planned_changes(revision, derived, made),
+                    unjudged=plan.unjudged,
+                    brings=[
+                        {"file": path.as_posix(), "check": found.check, "message": found.message}
+                        for path, found in plan.brings
+                    ],
+                    kept_by=plan.kept_by,
+                )
+            ),
         )
 
     def _constant_plan(self, query: ConstantPlanQuery, body: None) -> Reply:
@@ -1198,9 +1209,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, made)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, made)
+                )
+            ),
         )
 
     def _settle(self, query: SettleQuery, body: None) -> Reply:
@@ -1226,9 +1239,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.SettleReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.SettleReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
     def _fix(self, query: FixQuery, body: None) -> Reply:
@@ -1257,7 +1272,7 @@ class Api:
             )
         return Reply(
             200,
-            contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
+            written(contract.FixReply(revision=revision.number, fixes=offered)),
         )
 
     def _declarable(self, query: DeclarableQuery, body: None) -> Reply:
@@ -1274,31 +1289,33 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.DeclarableReply(
-                revision=revision.number,
-                file=file.as_posix(),
-                names=tuple(
-                    contract.DeclarableName(
-                        name=entry.name,
-                        kind=entry.kind,
-                        producer=entry.producer,
-                        scopes=scopes_for(built, entry.name),
-                    )
-                    for entry in declarable(built, file, cache)
-                ),
-                kinds=tuple(
-                    # `asdict`, exactly as `_variable` already converts its offers: the
-                    # dataclasses of `ddd.variable_keys` are the contract's models field for
-                    # field, and the contract validates what comes out, so a name that drifts
-                    # apart fails here rather than reaching the page.
-                    contract.KindForm(
-                        kind=kind, keys=[asdict(offer) for offer in form_for(built, kind)]
-                    )
-                    for kind in KINDS
-                ),
-                scopes=SCOPES,
-                constants=tuple(sorted(built.constants)),
-            ).model_dump(mode="json"),
+            written(
+                contract.DeclarableReply(
+                    revision=revision.number,
+                    file=file.as_posix(),
+                    names=tuple(
+                        contract.DeclarableName(
+                            name=entry.name,
+                            kind=entry.kind,
+                            producer=entry.producer,
+                            scopes=scopes_for(built, entry.name),
+                        )
+                        for entry in declarable(built, file, cache)
+                    ),
+                    kinds=tuple(
+                        # `asdict`, exactly as `_variable` already converts its offers: the
+                        # dataclasses of `ddd.variable_keys` are the contract's models field for
+                        # field, and the contract validates what comes out, so a name that drifts
+                        # apart fails here rather than reaching the page.
+                        contract.KindForm(
+                            kind=kind, keys=[asdict(offer) for offer in form_for(built, kind)]
+                        )
+                        for kind in KINDS
+                    ),
+                    scopes=SCOPES,
+                    constants=tuple(sorted(built.constants)),
+                )
+            ),
         )
 
     def _declaration_plan(self, query: DeclarationPlanQuery, body: None) -> Reply:
@@ -1325,9 +1342,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
     def _values(self, query: ValuesQuery, body: None) -> Reply:
@@ -1350,32 +1369,34 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.ValuesReply(
-                revision=revision.number,
-                name=grid.name,
-                kind=grid.kind,
-                datatype=grid.datatype,
-                unit=grid.unit,
-                conversion=grid.conversion.model_dump(mode="json"),
-                minimum=grid.minimum,
-                maximum=grid.maximum,
-                shape=grid.shape,
-                rows=grid.rows,
-                stated=grid.stated,
-                axes=[
-                    {
-                        "position": axis.position,
-                        "name": axis.name,
-                        "unit": axis.unit,
-                        "breakpoints": axis.breakpoints,
-                        "conversion": axis.conversion.model_dump(mode="json"),
-                    }
-                    for axis in grid.axes
-                ],
-                owner=grid.owner,
-                file=grid.file,
-                findings=_listed(derived, _grid_findings(derived, grid), cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.ValuesReply(
+                    revision=revision.number,
+                    name=grid.name,
+                    kind=grid.kind,
+                    datatype=grid.datatype,
+                    unit=grid.unit,
+                    conversion=written(grid.conversion),
+                    minimum=grid.minimum,
+                    maximum=grid.maximum,
+                    shape=grid.shape,
+                    rows=grid.rows,
+                    stated=grid.stated,
+                    axes=[
+                        {
+                            "position": axis.position,
+                            "name": axis.name,
+                            "unit": axis.unit,
+                            "breakpoints": axis.breakpoints,
+                            "conversion": written(axis.conversion),
+                        }
+                        for axis in grid.axes
+                    ],
+                    owner=grid.owner,
+                    file=grid.file,
+                    findings=_listed(derived, _grid_findings(derived, grid), cache),
+                )
+            ),
         )
 
     def _value_plan(self, query: ValuePlanQuery, body: None) -> Reply:
@@ -1402,9 +1423,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
     def _values_plan(self, query: ValuesPlanQuery, body: None) -> Reply:
@@ -1430,9 +1453,11 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
     def _compare(self, query: CompareQuery, body: None) -> Reply:
@@ -1453,28 +1478,31 @@ class Api:
         )
         return Reply(
             200,
-            contract.CompareReply(
-                revision=revision.number,
-                verdict=result.verdict,
-                findings=[
-                    _finding(filed, derived.files.get(derived.resolve(filed.file)), cache)
-                    for filed in findings
-                ],
-                # Never a source for one of these, whatever file it resolves to: a baseline given
-                # as a project description can share files, ids and even paths with the open
-                # project, so being carried in this field rather than `findings` is what marks a
-                # finding as the baseline's - not a test of where it happens to sit, which
-                # answered this wrong for a baseline that was also a file of the open project. Two
-                # fields on the wire, mirroring `Compared`'s own two, rather than one merged list
-                # a reader would have to tell apart by matching the "in the baseline: " a message
-                # happens to carry - `CompareReply.baseline_findings`' own docstring is what that
-                # matching would be re-deriving, unreliably, from text a page does not own.
-                baseline_findings=[_finding(filed, None, cache) for filed in baseline_findings],
-                renames=[
-                    {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
-                    for entry in result.renames
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.CompareReply(
+                    revision=revision.number,
+                    verdict=result.verdict,
+                    findings=[
+                        _finding(filed, derived.files.get(derived.resolve(filed.file)), cache)
+                        for filed in findings
+                    ],
+                    # Never a source for one of these, whatever file it resolves to: a baseline
+                    # given as a project description can share files, ids and even paths with the
+                    # open project, so being carried in this field rather than `findings` is what
+                    # marks a finding as the baseline's - not a test of where it happens to sit,
+                    # which answered this wrong for a baseline that was also a file of the open
+                    # project. Two fields on the wire, mirroring `Compared`'s own two, rather than
+                    # one merged list a reader would have to tell apart by matching the
+                    # "in the baseline: " a message happens to carry -
+                    # `CompareReply.baseline_findings`' own docstring is what that matching would be
+                    # re-deriving, unreliably, from text a page does not own.
+                    baseline_findings=[_finding(filed, None, cache) for filed in baseline_findings],
+                    renames=[
+                        {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
+                        for entry in result.renames
+                    ],
+                )
+            ),
         )
 
     def _opened(self) -> Revision:
@@ -1582,18 +1610,20 @@ class Api:
             name = _name_in(_read_json(snapshot.project), "project")
             project = {"path": snapshot.project.as_posix(), "name": name}
         revision = snapshot.revision
-        return contract.SessionInfo(
-            version=__version__,
-            preview=True,
-            root=self.session.root.as_posix(),
-            project=project,
-            builds=[]
-            if revision is None
-            else [
-                {"image": info.image, "strict": info.strict, "severity": info.severity}
-                for info in revision.builds
-            ],
-        ).model_dump(mode="json")
+        return written(
+            contract.SessionInfo(
+                version=__version__,
+                preview=True,
+                root=self.session.root.as_posix(),
+                project=project,
+                builds=[]
+                if revision is None
+                else [
+                    {"image": info.image, "strict": info.strict, "severity": info.severity}
+                    for info in revision.builds
+                ],
+            )
+        )
 
 
 ROUTES: Final[tuple[Route, ...]] = (
@@ -1665,91 +1695,6 @@ def _error(status: int, code: str, message: str) -> Reply:
     return Reply(status, {"error": code, "message": message})
 
 
-def _nesting(value: object) -> int:
-    """How many levels of arrays and objects ``value`` nests: none for a number, a string or
-    ``None``, one for ``[]``, two for ``[[]]``. Counted without recursion, so that no value is
-    too deep to count - and so before anything writes it, which a value too deep for its reply
-    fails half-way through."""
-    deepest = 0
-    unseen: list[tuple[object, int]] = [(value, 1)]
-    while unseen:
-        item, level = unseen.pop()
-        if isinstance(item, dict):
-            children: Iterable[object] = item.values()
-        elif isinstance(item, list | tuple):
-            children = item
-        else:
-            continue
-        deepest = max(deepest, level)
-        unseen.extend(
-            (child, level + 1) for child in children if isinstance(child, dict | list | tuple)
-        )
-    return deepest
-
-
-def _too_deep_block(revision: Revision) -> tuple[Path, int] | None:
-    """The file stating the first extension block of ``revision``'s dictionary that nests deeper
-    than its reply carries such a block, and how deep it carries one - or ``None`` where every
-    block fits, as where there is no dictionary.
-
-    The blocks are the one part of a dictionary that is a description file's own json - carried
-    as the file states it where no plugin owns it, and as its plugin's model reads it otherwise
-    - and so the one part that can nest deeper than any reply carries: everything else a
-    dictionary holds is a shape DDD gives it. A project's own settings are carried a level below
-    the dictionary (:data:`PROJECT_BLOCK_DEPTH`), and an object's three
-    (:data:`OBJECT_BLOCK_DEPTH`)."""
-    resolved = revision.resolved
-    if resolved is None:
-        return None
-    dictionary = resolved.dictionary
-    for plugin, settings in dictionary.extensions.items():
-        if _nesting(settings) > PROJECT_BLOCK_DEPTH:
-            return _stating(revision, plugin), PROJECT_BLOCK_DEPTH
-    entries: list[ResolvedObject | ResolvedInstance] = [*dictionary.objects, *dictionary.instances]
-    for entry in entries:
-        for stamped in entry.extensions.values():
-            if _nesting(stamped) > OBJECT_BLOCK_DEPTH:
-                # The producer's declaration, which is the only one a block may be stated on.
-                located = resolved.locate(entry.name)
-                return (revision.project if located is None else located.path), OBJECT_BLOCK_DEPTH
-    return None
-
-
-def _stating(revision: Revision, plugin: str) -> Path:
-    """The project file of ``revision`` stating the settings of ``plugin``, read again: one file
-    of the tree states them, a second being refused, and the dictionary keeps the settings but
-    not where they were written. The open project's own description where none states them any
-    more, the file having changed since the analysis read it."""
-    stating = (
-        file.path
-        for file in revision.files
-        if file.kind == "project" and plugin in _settings_in(file.path)
-    )
-    return next(stating, revision.project)
-
-
-def _settings_in(path: Path) -> Mapping[str, Any]:
-    """The plugin settings a project file states, as it states them now: none from a file that
-    no longer reads as a project."""
-    data = _read_json(path)
-    described = data.get("project") if isinstance(data, dict) else None
-    settings = described.get("extensions") if isinstance(described, dict) else None
-    return settings if isinstance(settings, dict) else {}
-
-
-def _within_depth(changes: Sequence[contract.Change]) -> None:
-    """Refuse an edit writing a value nested more than :data:`~ddd.gui.queries.MAX_DEPTH` deep -
-    the deepest json a query carries - as the engine refuses one deeper than it lays out, its
-    file named first: so the page never writes a file deeper than it can show
-    (:data:`FILE_DEPTH`). The engine's own bound, python's stack, lies hundreds of levels
-    deeper, and stays for its other callers."""
-    for change in changes:
-        for operation in change.operations:
-            if operation.raw is not None and _depth(operation.raw) > MAX_DEPTH:
-                refused = not_one_value(operation.raw, NESTED_TOO_DEEPLY)
-                raise EditError(INVALID, f"{Path(change.file)}: {refused}")
-
-
 def _finding(
     filed: Filed, source: SourceFile | None, cache: dict[Path, Document]
 ) -> dict[str, Any]:
@@ -1763,33 +1708,35 @@ def _finding(
     # tests/test_gui_api.py imports it directly to check a note with no place is carried
     # without one.
     finding = filed.diagnostic
-    return contract.Finding(
-        file=filed.file.as_posix(),
-        check=finding.check,
-        severity=finding.severity,
-        message=finding.message,
-        pointer="" if finding.location is None else finding.location.pointer,
-        notes=[
-            {
-                "message": text,
-                "file": None if note is None else note.path.as_posix(),
-                "pointer": "" if note is None else note.pointer,
-            }
-            for text, note in finding.notes
-        ],
-        route=None
-        if source is None
-        else _route(
-            route_of(
-                finding.check,
-                filed.file,
-                "" if finding.location is None else finding.location.pointer,
-                source.kind,
-                source.loaded,
-                cache,
-            )
-        ),
-    ).model_dump(mode="json")
+    return written(
+        contract.Finding(
+            file=filed.file.as_posix(),
+            check=finding.check,
+            severity=finding.severity,
+            message=finding.message,
+            pointer="" if finding.location is None else finding.location.pointer,
+            notes=[
+                {
+                    "message": text,
+                    "file": None if note is None else note.path.as_posix(),
+                    "pointer": "" if note is None else note.pointer,
+                }
+                for text, note in finding.notes
+            ],
+            route=None
+            if source is None
+            else _route(
+                route_of(
+                    finding.check,
+                    filed.file,
+                    "" if finding.location is None else finding.location.pointer,
+                    source.kind,
+                    source.loaded,
+                    cache,
+                )
+            ),
+        )
+    )
 
 
 def _route(route: FindingRoute | None) -> dict[str, Any] | None:

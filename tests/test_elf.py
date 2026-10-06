@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import re
 import struct
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ from typing import Any
 
 import elftools
 import pytest
+from build_elf_fixtures import UNITS
 from elftools.elf.elffile import ELFFile
 
 from ddd.elf import (
@@ -129,6 +131,7 @@ U8 = die(
 U8_TYPE = Base("unsigned char", DW_ATE_UNSIGNED_CHAR, 1)
 AT = [("DW_OP_addr", [0x100])]
 DECLARATION = Attr(True, "DW_FORM_flag_present")
+EXTERNAL = Attr(True, "DW_FORM_flag_present")
 
 
 def variable(
@@ -524,7 +527,9 @@ class TestTypes:
 
 class TestVariables:
     def test_a_variable_has_its_name_unit_type_declaration_and_address(self) -> None:
-        (found,) = read(variable(b"Gain", DW_AT_decl_file=1, DW_AT_decl_line=12))
+        (found,) = read(
+            variable(b"Gain", DW_AT_decl_file=1, DW_AT_decl_line=12, DW_AT_external=EXTERNAL)
+        )
         assert found == Variable("Gain", "unit.c", U8_TYPE, Declared("unit.c", 12), 0x100)
 
     def test_an_indexed_address_is_resolved_through_the_unit(self) -> None:
@@ -650,6 +655,7 @@ class TestVariables:
             b"Spec",
             located=False,
             DW_AT_declaration=DECLARATION,
+            DW_AT_external=EXTERNAL,
             DW_AT_decl_file=1,
             DW_AT_decl_line=4,
         )
@@ -704,6 +710,43 @@ class TestVariables:
     def test_a_name_may_arrive_as_text(self) -> None:
         (found,) = read(variable("Text"))
         assert found.name == "Text"
+
+
+class TestLinkage:
+    """``DW_AT_external``, which tells a global from a ``static`` of the same name (Review
+    Focus 2)."""
+
+    def test_a_variable_stating_dw_at_external_is_a_global(self) -> None:
+        (found,) = read(variable(b"Global", DW_AT_external=EXTERNAL))
+        assert found.external is True
+
+    def test_a_variable_stating_nothing_is_a_static(self) -> None:
+        (found,) = read(variable(b"Local"))
+        assert found.external is False
+
+    def test_a_flag_of_zero_says_the_attribute_is_absent(self) -> None:
+        """DWARF 2 and 3 spell the flag as DW_FORM_flag, a byte whose 0 means absent; pyelftools
+        reads that byte as a bool."""
+        (found,) = read(variable(b"Local", DW_AT_external=Attr(False, "DW_FORM_flag")))
+        assert found.external is False
+
+    def test_a_definition_completing_a_declaration_takes_its_linkage_from_it(self) -> None:
+        """gcc's way: DW_AT_external on the declaration, and none on the definition that
+        completes it (measured on every gcc row of the matrix)."""
+        declaration = variable(
+            b"Spec", located=False, DW_AT_declaration=DECLARATION, DW_AT_external=EXTERNAL
+        )
+        definition = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(declaration, definition)
+        assert (found.name, found.address, found.external) == ("Spec", 0x100, True)
+
+    def test_a_variable_built_by_hand_stands_for_a_global(self) -> None:
+        """Ruling 2: every hand-built variable of the toolbox's tests stands for a global."""
+        assert Variable("v", "unit.c", U8_TYPE).external is True
 
 
 class TestUntrustedText:
@@ -820,6 +863,46 @@ def line_of(text: str) -> int:
     """The line of main.c holding ``text``: the oracle for where a variable is declared."""
     (found,) = [number for number, line in enumerate(MAIN, start=1) if text in line]
     return found
+
+
+_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+_BLOCK = re.compile(r"\{[^{}]*\}")
+_DECLARATOR = re.compile(r"(\w+)\s*(?:\[\w*\]\s*)*$")
+
+
+def linkage_in_the_source(cases: list[str]) -> list[tuple[str, str, bool]]:
+    """Every variable the units of a row state at file scope, as ``(unit, name, external)``:
+    the oracle for linkage, read off ``tests/fixtures/elf/src/`` as the row's compiler saw it.
+
+    Comments are dropped, and the lines of an ``#ifdef`` the row does not build; every braced
+    block - a structure's members, an initializer, a function's body - is folded away, so that
+    what is left splits at ``;`` into the declarations of the file's top level. Each one but a
+    typedef and a function names a variable, ``static`` or not; ``USED`` is the fixture's
+    ``__attribute__((used))``, which says nothing of linkage."""
+    found: dict[tuple[str, str], bool] = {}
+    for unit in UNITS:
+        text = _COMMENT.sub(" ", (FIXTURES / "src" / f"{unit}.c").read_text(encoding="utf-8"))
+        kept: list[str] = []
+        skipping = False
+        for line in text.splitlines():
+            if line.startswith("#ifdef"):
+                skipping = line.split()[1] not in cases
+            elif line.startswith("#else"):
+                skipping = not skipping
+            elif line.startswith("#endif"):
+                skipping = False
+            elif not line.startswith("#") and not skipping:
+                kept.append(line)
+        text = re.sub(r"\bUSED\b", "", "\n".join(kept))
+        while "{" in text:
+            text = _BLOCK.sub("@", text)
+        for statement in re.sub(r"\)\s*@", ");", text).split(";"):
+            words = statement.split()
+            declarator = _DECLARATOR.search(statement.split("=")[0])
+            if declarator is None or words[0] == "typedef":
+                continue
+            found[(f"{unit}.c", declarator[1])] = "static" not in words
+    return sorted((unit, name, external) for (unit, name), external in found.items())
 
 
 def by_name(image: Image, name: str) -> Variable:
@@ -1040,6 +1123,17 @@ class TestTheMatrix:
         assert "fixture_entry" in names
         assert any(record["name"] == "Tls_Counter" for record in entry["variables"])
         assert not {"fixture_entry", "Tls_Counter"} & image.symbols
+
+    def test_every_variable_has_the_linkage_its_source_gives_it(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """Review Focus 2, in the reader: a static is told from a global on every row, the
+        source being the oracle. gcc states DW_AT_external on the declaration a definition
+        completes (``Cal_Declared_First``, ``Cal_Curve``) and clang on the definition, its only
+        entry; ``Twin`` is a static in two units, ``Common_Counter`` a global in two."""
+        image, entry = row
+        found = sorted((v.unit, v.name, v.external) for v in image.variables)
+        assert found == linkage_in_the_source(entry["cases"])
 
     def test_a_definition_completing_a_declaration_is_declared_at_its_own_line(
         self, row: tuple[Image, dict[str, Any]]

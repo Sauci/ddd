@@ -208,7 +208,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("point-counts-mismatch", Severity.WARNING,
                "a curve or map and one of its axes store their point counts differently"),
         _check("address-missing", Severity.WARNING,
-               "an object reaching the a2l has no entry in the address map the run was given"),
+               "an object reaching the a2l gets no address from the address map or the image the "
+               "run was given"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
         _check("empty-vocabulary", Severity.INFO,
                "a types, units, constants, sections or rasters file declares nothing"),

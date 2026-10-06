@@ -1,8 +1,9 @@
 """The C variables of a linked ELF image, read from its DWARF debug information.
 
 This module knows nothing of DDD. It imports pyelftools and the standard library and nothing
-else, so that reading an address map straight out of an image - planned in section 6 of
-``SPEC.md`` - can use it without the toolbox; ``tests/test_backends.py`` holds it to that.
+else, so that :mod:`ddd.addresses`, which places the symbols of an a2l in an image (section 6
+of ``SPEC.md``), reads images with it without the toolbox; ``tests/test_backends.py`` holds
+it to that.
 
 What it offers is a small model of C types - :class:`Base`, :class:`Enum`, :class:`Struct`,
 :class:`Array`, :class:`Qualified`, :class:`Typedef` and :class:`Unsupported` - and the
@@ -190,6 +191,11 @@ class Variable:
     address: int | None = None
     missing: str = ""
     """Why ``address`` is None, as one of the constants of this module says it."""
+
+    external: bool = True
+    """Whether the variable has external linkage, as ``DW_AT_external`` states: False for a
+    ``static``. True by default, so that a variable built by hand stands for a global, as an
+    object of a project is; the reader always states it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -608,7 +614,11 @@ def _variable(entry: Entry, unit: Unit, types: _Types, symbols: _Symbols) -> Var
         missing = THREAD_LOCAL
     else:
         missing = REMOVED
-    return Variable(name, unit.name, ctype, declared_at, address, missing)
+    # Read where the name is: gcc states DW_AT_external on the declaration a definition
+    # completes and not on the definition, clang on the one entry it writes (measured over the
+    # fixture matrix). DWARF 2 and 3 spell it as a flag byte, whose 0 says it is absent.
+    external = bool(_either(entry, named, "DW_AT_external"))
+    return Variable(name, unit.name, ctype, declared_at, address, missing, external)
 
 
 def _address(value: Any, unit: Unit) -> tuple[int | None, str]:
@@ -713,7 +723,7 @@ class _Types:
         """An enum's sign: its underlying type's, else its encoding's, else whether an
         enumerator is negative - which an old producer states and nothing else."""
         if "DW_AT_type" in entry.attributes:
-            underlying = _core(self.inner(entry, unit))
+            underlying = core_of(self.inner(entry, unit))
             if isinstance(underlying, Base):
                 return underlying.encoding in _SIGNED_ENCODINGS
         encoding = _value(entry, "DW_AT_encoding")
@@ -821,7 +831,8 @@ def _enumerator(entry: Entry, *, signed: bool) -> tuple[str, int]:
     return _text(entry.attributes.get("DW_AT_name")) or "", value
 
 
-def _core(ctype: CType) -> CType:
+def core_of(ctype: CType) -> CType:
+    """``ctype`` without the typedefs and qualifiers around it."""
     while isinstance(ctype, Qualified | Typedef):
         ctype = ctype.inner
     return ctype

@@ -34,6 +34,21 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   Types, Units, Shared files and Files tabs, a component's own declarations, a unit's own
   places and a variable's keys draw only the rows in view.
 
+* **The a2l's addresses out of the linked image: `ddd generate a2l --image`.**  Every address
+  the a2l carries is read out of the linked ELF image's DWARF - an object by its name, a
+  structure member by its access path, at the offset the compiler gave it - and the a2l takes
+  the byte order the image states, which a contradicting `--byte-order` is refused for.  A
+  build needs no extraction script and works out no member offset by hand.  What the image
+  cannot place keeps address 0 and is reported as `address-missing`, each reason a note of
+  the finding.  In cmake, `ddd_generate(... ADDRESSES_FROM_IMAGE)` writes the a2l in a step
+  after the link, so that one build gives the complete a2l; `ADDRESS_MAP` and `--address-map`
+  stay as they were, for an image without debug information.  The map's reader has moved,
+  `load_address_map` and its `ADDRESS_PATTERN`, from `ddd.backends` to `ddd.addresses`, and
+  takes no `carried` any more: the 32-bit range of the addresses the a2l carries is checked by
+  `ddd.backends.weigh_addresses`, which a caller reading a map calls itself; and a map that is
+  both malformed and out of range for a symbol the a2l carries is now refused for the
+  malformed entry, still exit 2.  No file format changes.
+
 ## 0.11.0
 
 * **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one

@@ -50,7 +50,7 @@ Licence terms are in [LICENSE](https://github.com/Sauci/ddd/blob/master/LICENSE)
 ## Installation
 
 Requires Python 3.12 or newer; the runtime dependencies are pydantic, jinja2 and pyelftools,
-which reads ELF images for `ddd tool from-elf`.
+which reads ELF images for `ddd tool from-elf` and `ddd generate --image`.
 
 ```bash
 pip install ddd-tool                 # from the index
@@ -578,7 +578,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `name-similar` | two variables differ only in upper/lower case |
 | warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
-| warning | `address-missing` | an object in the a2l has no entry in the address map the run was given |
+| warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |
 | info | `empty-component` | a component declares no variable |
 | info | `empty-vocabulary` | a types, units, constants, sections or rasters file declares nothing |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
@@ -727,7 +727,8 @@ options, and subtracting an artefact takes its options with it, so `--without a2
 what would be written and exits `0` either way, so it is not a staleness gate on its own),
 `--force` (generate despite errors - the files are written using the producing component's
 definition, but the command still reports every finding and still exits `1`),
-`--byte-order big`, `--address-map addresses.json`.
+`--byte-order big`, `--address-map addresses.json`, `--image firmware.elf` (the a2l's
+addresses read out of the linked image, below).
 
 ## A2L support
 
@@ -749,9 +750,14 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 * a curve or map points at its axes with an `AXIS_DESCR` of attribute `COM_AXIS` plus an
   `AXIS_PTS_REF`; an axis referenced this way is always exported, because a dangling
   `AXIS_PTS_REF` would make the file invalid
-* the address of an object is `0x00000000` unless `--address-map` provides the linker
-  addresses (`ECU_ADDRESS` is simply the keyword the format uses);
+* the address of an object is `0x00000000` unless the linked image or an address map gives
+  it (`ECU_ADDRESS` is simply the keyword the format uses);
   `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking.
+  `--image firmware.elf` reads every address out of the linked ELF image's DWARF - an object
+  by its name, a structure member by its access path - and takes the image's byte order; a
+  symbol the image cannot place keeps address 0 and is reported, its reason a note, and in
+  cmake `ADDRESSES_FROM_IMAGE` makes the a2l one step after the link.  `--address-map` serves
+  an image without debug information.
   The map is a flat json object of symbol to address, decimal or hexadecimal, produced from
   the linker output after the first build; a symbol that is not in it keeps address 0, and
   an address outside `0` .. `0xFFFFFFFF` is refused rather than written out malformed:
@@ -770,7 +776,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | --- | --- |
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
-| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts |
+| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts; `--image ELF` reads the a2l's addresses out of the linked image |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers; `--standalone` lists a component alone |
 | `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change; `--standalone` dumps a component alone |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
@@ -878,7 +884,8 @@ report what the build reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
-the schemas), `ADDRESS_MAP`, `BYTE_ORDER`,
+the schemas), `ADDRESS_MAP`, `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
+addresses read out of the linked image), `BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an

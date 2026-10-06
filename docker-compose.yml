@@ -182,5 +182,29 @@ services:
         chown -R "$$(stat -c %u:%g .)" tests/fixtures/elf examples/firmware
         exit $$status
 
+  # docker compose run --rm address-fixtures rebuilds the images of `ddd generate a2l --image`
+  # that tests/fixtures/addresses/ holds, and their manifest, out of the C that `ddd generate c`
+  # wrote there and five rows of the toolchains above, whose image this service shares. The
+  # images are committed, so the suite needs neither Docker nor a compiler: this service is only
+  # for changing them, after `python docker/build_address_fixtures.py --generate` has rewritten
+  # the C on the host. What it writes into the checkout is handed back to the checkout's owner,
+  # since the image runs as root.
+  address-fixtures:
+    build:
+      context: docker
+      dockerfile: elf-fixtures.Dockerfile
+    image: ddd-elf-fixtures:dev
+    working_dir: /work
+    volumes:
+      - .:/work
+    command:
+      - sh
+      - -c
+      - |
+        python3 docker/build_address_fixtures.py
+        status=$$?
+        chown -R "$$(stat -c %u:%g .)" tests/fixtures/addresses
+        exit $$status
+
 volumes:
   gui-screenshots-packages:

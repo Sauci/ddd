@@ -495,13 +495,17 @@ that refers to it, nothing points at it any more and it disappears with them.
 How do I get the real addresses into the a2l?
 ----------------------------------------------
 
-With ``--address-map``, after linking. The address of a global variable is decided by the
-linker, so it cannot exist when the sources are generated - which is why DDD is meant to run
-twice per build: once before compiling, to produce the c code and an a2l with placeholder
-addresses, and once after linking, to produce the a2l the calibration tool is actually given.
+After linking, out of the linked image: ``ddd generate a2l --image firmware.elf`` reads every
+address the a2l carries out of the image's debug information, and in cmake
+``ADDRESSES_FROM_IMAGE`` makes that one step of the build (:doc:`build_integration`). The
+address of a global variable is decided by the linker, so it cannot exist when the sources
+are generated - which is why DDD is meant to run twice per build: once before compiling, to
+produce the c code and an a2l with placeholder addresses, and once after linking, to produce
+the a2l the calibration tool is actually given.
 
-The map is a flat json object of symbol name to address, decimal or hexadecimal, produced
-from the linker output by whatever already parses it in your build:
+An image without debug information takes ``--address-map`` instead: a flat json object of
+symbol name to address, decimal or hexadecimal, produced from the linker output by whatever
+already parses it in your build:
 
 .. code-block:: json
 

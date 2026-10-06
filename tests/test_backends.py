@@ -132,10 +132,21 @@ class TestLayering:
         assert not [module for module in imports if module.startswith("ddd.backends")], imports
 
     def test_the_elf_reader_knows_nothing_of_ddd(self) -> None:
-        """ddd.elf serves the toolbox today and, as SPEC.md section 6 plans, the reading of an
-        address map straight out of an image tomorrow: it imports no ddd module, so that
-        neither has to take the other with it."""
+        """ddd.elf serves the toolbox and ddd.addresses, which places the symbols of an a2l in
+        an image (SPEC.md section 6): it imports no ddd module, so that neither has to take the
+        other with it."""
         assert imported_modules(SOURCE / "elf.py") == set()
+
+    def test_a_build_s_addresses_reach_no_backend_and_no_command_line(self) -> None:
+        """Ruling 1: reading a build's addresses is core, and what an ``ECU_ADDRESS`` holds is
+        the a2l's own question - ddd.addresses importing ADDRESS_MAX from the backend would
+        turn the layering upside down."""
+        leaked = sorted(
+            module
+            for module in imported_modules(SOURCE / "addresses.py")
+            if module.startswith(("ddd.backends", "ddd.cli"))
+        )
+        assert not leaked, f"addresses.py reaches into {leaked}"
 
     def test_the_toolbox_reaches_no_backend_and_no_command_line(self) -> None:
         """A tool turns one thing into another; where its output goes is cli.py's alone, and

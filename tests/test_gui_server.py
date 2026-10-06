@@ -1065,7 +1065,11 @@ class TestAMalformedQueryOverTheWire:
             "message": "findings takes ?file= as a file's path",
         }
 
-    def test_a_version_of_too_many_digits_is_answered_not_failed(self, server) -> None:
+    def test_a_version_of_too_many_digits_is_answered_at_once(self, server, monkeypatch) -> None:
+        def never_waited(after: int, timeout: float) -> None:
+            raise AssertionError(f"waited for a version past {after}")
+
+        monkeypatch.setattr(server.api.session, "wait", never_waited)
         version = f"/api/state?after={'1' * 4301}"
         assert answered(server, "GET", version)["revision"] == 1
 

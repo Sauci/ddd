@@ -29,8 +29,9 @@ class Policy:
     """It opens a project, which the session then analyses."""
 
     runs_plugins: bool = False
-    """It runs the plugins of a project the request names - the one it opens, or the baseline it
-    compares - beyond the open project's own, which every analysis of it runs."""
+    """Its answer, or the analysis it asks for, may run a plugin's code: a project it opens, an
+    edit or an undo the session then analyses, a baseline it compares, and a plan judged by
+    analysing the project with its includes changed."""
 
     waits: bool = False
     """It may hold its answer until something changes: the state's long poll."""

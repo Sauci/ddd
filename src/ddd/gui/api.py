@@ -78,6 +78,7 @@ from ddd.gui.queries import (
     NoQuery,
     RasterQuery,
     SectionQuery,
+    Serving,
     SettleQuery,
     StateQuery,
     TypeQuery,
@@ -335,8 +336,13 @@ class Api:
         """The answer to one request: its route looked up by path and method, its query read one
         value a key and as its route's model, and a ``POST``'s body as its own - each refused in
         that order, as the first problem it finds - and only then the route's handler asked, with
-        the two it read. The query is read before anything asks for the open project, on every
-        route, so that a malformed query is answered as one whether a project is open or not."""
+        the two it read. A path in either is read against the directories served
+        (:meth:`_serving`).
+
+        The query is read before anything asks for the open project on every route whose query
+        has a model of its own, so that a malformed one is answered as one whether a project is
+        open or not. The plan routes read theirs by hand still (:class:`~ddd.gui.queries.Unread`),
+        each looking for the project first."""
         routes = [each for each in ROUTES if each.path == path]
         if not routes:
             return _error(404, "not-found", f"{path} is not part of the api")
@@ -347,13 +353,14 @@ class Api:
         values = one_value_each(query, route.name)
         if isinstance(values, str):
             return _error(400, "bad-request", values)
+        serving = self._serving()
         try:
-            typed = route.query.model_validate(values)
+            typed = route.query.model_validate(values, context=serving)
         except ValidationError as error:
             return _error(400, "bad-request", _query_message(route, error))
         given = None
         if route.body is not None:
-            given = _validated(route.body, body)
+            given = _validated(route.body, body, serving)
             if isinstance(given, Reply):
                 return given
         try:
@@ -364,6 +371,16 @@ class Api:
             return _error(409, ANALYSING, str(error))
         except NotInProjectError as error:
             return _error(404, "not-found", str(error))
+
+    def _serving(self) -> Serving:
+        """What a request's paths are read against: the directory ``ddd gui`` was started in,
+        and the directories the open project's newest revision serves - that one alone before
+        there is a revision."""
+        root = self.session.root.as_posix()
+        revision = self.session.revision
+        if revision is None:
+            return Serving(root, (root,))
+        return Serving(root, tuple(directory.as_posix() for directory in revision.served))
 
     def _session(self, query: NoQuery, body: None) -> Reply:
         return Reply(200, self._session_body())
@@ -1694,9 +1711,23 @@ ROUTES: Final[tuple[Route, ...]] = (
     Route("/api/dictionary", "GET", NoQuery, None, Api._dictionary),
     Route("/api/graph", "GET", NoQuery, None, Api._graph),
     Route("/api/checks", "GET", NoQuery, None, Api._checks),
-    Route("/api/edit", "POST", NoQuery, contract.Changes, Api._edit, Policy(writes=True)),
+    Route(
+        "/api/edit",
+        "POST",
+        NoQuery,
+        contract.Changes,
+        Api._edit,
+        Policy(writes=True, runs_plugins=True),
+    ),
     Route("/api/undo", "GET", NoQuery, None, Api._undo),
-    Route("/api/undo", "POST", NoQuery, contract.UndoRequest, Api._apply_undo, Policy(writes=True)),
+    Route(
+        "/api/undo",
+        "POST",
+        NoQuery,
+        contract.UndoRequest,
+        Api._apply_undo,
+        Policy(writes=True, runs_plugins=True),
+    ),
     Route("/api/variable", "GET", VariableQuery, None, Api._variable),
     Route("/api/units", "GET", NoQuery, None, Api._units),
     Route("/api/settle", "GET", SettleQuery, None, Api._settle),
@@ -1714,7 +1745,7 @@ ROUTES: Final[tuple[Route, ...]] = (
     Route("/api/raster", "GET", RasterQuery, None, Api._raster),
     Route("/api/raster-plan", "GET", Unread, None, Api._raster_plan),
     Route("/api/files", "GET", NoQuery, None, Api._files),
-    Route("/api/files-plan", "GET", Unread, None, Api._files_plan),
+    Route("/api/files-plan", "GET", Unread, None, Api._files_plan, Policy(runs_plugins=True)),
     Route("/api/declarable", "GET", DeclarableQuery, None, Api._declarable),
     Route("/api/declaration-plan", "GET", Unread, None, Api._declaration_plan),
     Route("/api/values", "GET", ValuesQuery, None, Api._values),
@@ -2480,14 +2511,17 @@ def _folded(flat: Sequence[float], dictionary: DataDictionary, name: str) -> lis
     return [list(flat[row * shape[1] : (row + 1) * shape[1]]) for row in range(shape[0])]
 
 
-def _validated[T: BaseModel](model: type[T], body: bytes | None) -> T | Reply:
-    """``body`` read as ``model``, or the 400 reply about the first way it is not one.
+def _validated[T: BaseModel](
+    model: type[T], body: bytes | None, serving: Serving | None = None
+) -> T | Reply:
+    """``body`` read as ``model``, or the 400 reply about the first way it is not one; a path
+    in it read against ``serving`` (:class:`~ddd.gui.queries.Serving`).
 
     Strict and closed, per the model's own configuration: an unknown key, a string where an
     index belongs or a boolean where an integer belongs never reaches a handler.
     """
     try:
-        return model.model_validate_json(body or b"")
+        return model.model_validate_json(body or b"", context=serving)
     except ValidationError as error:
         return _error(400, "bad-request", _message(error))
 

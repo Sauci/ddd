@@ -7,10 +7,14 @@ before. Every refusal a model makes is one sentence: the route's own, word for w
 already said one about that key (Appendix A of ``docs/superpowers/plans/2026-10-05-gui-
 security.md``).
 
-One value is read whole by its handler still: a compared baseline, which the reader types
-relative to the directory ``ddd gui`` serves, or absolute, and which :mod:`ddd.gui.compare`
-refuses in its own words - a NUL in it, a path outside that directory, a file it cannot read -
-as it always has.
+A path is read against the directories ``ddd gui`` serves (:class:`Serving`), which each
+request hands its models: a network path is a path like any other under one of them, and refused
+anywhere else before anything resolves it.
+
+A compared baseline is the one path read as the reader typed it, relative to the directory
+``ddd gui`` was started in or absolute: its model refuses only what must not reach
+:mod:`ddd.gui.compare`, and compare.py refuses the rest in its own words, as it always has - a
+NUL in it, a path outside that directory, a file it cannot read.
 """
 
 from __future__ import annotations
@@ -18,10 +22,12 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Annotated, ClassVar, Final, get_args
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, RootModel
+from pydantic import BaseModel, BeforeValidator, ConfigDict, RootModel, ValidationInfo
 from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
@@ -55,28 +61,92 @@ _NETWORK: Final = re.compile(r"[\\/]{2}")
 device forms ``\\\\?\\`` and ``\\\\.\\`` - each opened over the network, or as a device, on
 Windows, which treats ``/`` as a separator as well."""
 
+_CASELESS: Final = sys.platform == "win32"
+"""Whether a path is compared with another without its case: on Windows, which finds a file's
+name so."""
+
 _REFUSED: Final = object()
 """What a blank value of a type is read as where the route lets none through: refused, with the
 type's sentence, as anything else it cannot read is."""
 
 
+@dataclass(frozen=True, slots=True)
+class Serving:
+    """What a request's paths are read against: the directory ``ddd gui`` was started in, and
+    every directory it serves - that one, and the open project's own where it lies outside it
+    (:attr:`ddd.gui.session.Revision.served`) - each posix-separated, as the server names a
+    path. Handed to a request's models as pydantic's validation context by
+    :meth:`ddd.gui.api.Api.handle`; a model read without one serves no directory."""
+
+    root: str
+    served: tuple[str, ...]
+
+
+_NOTHING_SERVED: Final = Serving("", ())
+
+
 def refusal(sentence: str) -> PydanticCustomError:
-    """A refusal whose message is ``sentence`` exactly: braces in it are not a template."""
-    return PydanticCustomError("query", "{sentence}", {"sentence": sentence})
+    """A refusal whose message is ``sentence`` exactly: braces in it are not a template. A lone
+    surrogate in it, echoed from what was typed, is said as its escape, ``\\ud800``: pydantic
+    cannot carry the character itself in a message, and every other one stays as it is."""
+    said = sentence.encode("utf-8", "backslashreplace").decode("utf-8")
+    return PydanticCustomError("query", "{sentence}", {"sentence": said})
 
 
-def _validator(read: Callable[[object], object], blank: object) -> BeforeValidator:
+type _Reader = Callable[[object, ValidationInfo], object]
+
+
+def _validator(read: _Reader, blank: object) -> BeforeValidator:
     """``read`` as a field's validator, a blank value read as ``blank`` without asking it - unless
     ``blank`` is :data:`_REFUSED`, which leaves the blank to ``read`` like any other value."""
     if blank is _REFUSED:
         return BeforeValidator(read)
 
-    def letting(value: object) -> object:
+    def letting(value: object, info: ValidationInfo) -> object:
         if value == "":
             return blank
-        return read(value)
+        return read(value, info)
 
     return BeforeValidator(letting)
+
+
+def _serving(info: ValidationInfo) -> Serving:
+    """What the request being read is served: its context, or nothing for a model read without
+    one."""
+    context = info.context
+    if isinstance(context, Serving):
+        return context
+    return _NOTHING_SERVED
+
+
+def _folded(text: str) -> str:
+    """``text`` as a path is compared with another as text: every separator a ``/``, and on
+    Windows (:data:`_CASELESS`) every letter in one case."""
+    folded = text.replace("\\", "/")
+    if _CASELESS:
+        return folded.casefold()
+    return folded
+
+
+def _under(text: str, directories: Iterable[str]) -> bool:
+    """Whether ``text`` names one of ``directories``, or a path under one: compared as text, so
+    that nothing is resolved - and no network asked - to tell."""
+    given = _folded(text)
+    for directory in directories:
+        served = _folded(directory).rstrip("/")
+        if given == served or given.startswith(f"{served}/"):
+            return True
+    return False
+
+
+def _encodable(text: str) -> bool:
+    """Whether ``text`` holds no lone surrogate: a query arrives over HTTP decoded with
+    replacement, so only a caller in the process can hand one over."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _digits(value: object) -> int | None:
@@ -111,35 +181,36 @@ def file_path(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
 
     Absolute on every platform alike: from ``/``, or from a drive and its root, ``C:/`` or
     ``C:\\``, which is what the server answers a file's path as on Windows. Refused, whatever the
-    platform: an empty path; one of more than :data:`MAX_PATH` characters; one holding a NUL or a
-    lone surrogate, which no file's name holds and which ``Path.resolve`` raises on; and a
-    network or device form, which Windows would open for the asking. Whether the path is a file
-    of the project is the handler's question, as before.
+    platform: an empty path; one of more than :data:`MAX_PATH` characters; one holding a NUL,
+    which ``Path.resolve`` raises on, or a lone surrogate, which no path the page sends holds;
+    and a network or device form naming no path under a directory served (:class:`Serving`),
+    which Windows would open for the asking. One under such a directory is the network path a
+    mapped drive resolves to there, and is read like any other. Whether the path is a file of
+    the project is the handler's question, as before.
     """
 
-    def read(value: object) -> str:
-        if isinstance(value, str) and _absolute(value):
+    def read(value: object, info: ValidationInfo) -> str:
+        if isinstance(value, str) and _absolute(value, _serving(info).served):
             return value
         raise refusal(sentence)
 
     return _validator(read, blank)
 
 
-def _absolute(text: str) -> bool:
-    """Whether ``text`` is a path :func:`file_path` takes. A statement a rule, rather than one
-    condition, so that the coverage gate sees each rule decide."""
+def _absolute(text: str, served: Iterable[str]) -> bool:
+    """Whether ``text`` is a path :func:`file_path` takes, ``served`` the directories a network
+    path may name one under. A statement a rule, rather than one condition, so that the coverage
+    gate sees each rule decide."""
     if not text:
         return False
     if len(text) > MAX_PATH:
         return False
     if "\x00" in text:
         return False
-    try:
-        text.encode("utf-8")
-    except UnicodeEncodeError:
+    if not _encodable(text):
         return False
     if _NETWORK.match(text):
-        return False
+        return _under(text, served)
     return text.startswith("/") or _DRIVE.match(text) is not None
 
 
@@ -147,7 +218,7 @@ def named(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
     """A name: not empty, at most :data:`MAX_NAME` characters, no NUL. Whether anything goes by
     it is the handler's question; anything else is refused with ``sentence``."""
 
-    def read(value: object) -> str:
+    def read(value: object, info: ValidationInfo) -> str:
         if isinstance(value, str) and value and len(value) <= MAX_NAME and "\x00" not in value:
             return value
         raise refusal(sentence)
@@ -168,7 +239,7 @@ def json_text(sentence: str | None = None, *, blank: object = _REFUSED) -> Befor
     refuses a value with, which is how settle and the shared plans have always answered one.
     """
 
-    def read(value: object) -> str:
+    def read(value: object, info: ValidationInfo) -> str:
         try:
             return _json(value)
         except EditError as refused:
@@ -238,9 +309,14 @@ def actions_of(model: type[BaseModel]) -> dict[str, type[_Query]]:
 
 
 class _Query(BaseModel):
-    """A route's query: the keys it takes, each read as its type; closed and frozen."""
+    """A route's query: the keys it takes, each read as its type; closed, frozen and strict, as
+    a request's body is. Every value arrives as text, and its type's validator reads it into
+    what it is: strict, a value no validator read is never coerced, ``1.0`` into a number or
+    ``on`` into ``true``."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid", use_attribute_docstrings=True)
+    model_config = ConfigDict(
+        frozen=True, extra="forbid", strict=True, use_attribute_docstrings=True
+    )
 
     missing: ClassVar[str] = ""
     """What the route answers when a key it requires is left out or blank."""
@@ -421,12 +497,29 @@ class DeclarableQuery(_Query):
     """The component whose declarable names to answer."""
 
 
+_BASELINE: Final = "compare takes ?baseline= as a file's path"
+
+
+def _baseline(value: object, info: ValidationInfo) -> str:
+    """A baseline as the reader typed it, for :mod:`ddd.gui.compare` to read, refused here only
+    where it must not reach compare.py: nothing at all; a lone surrogate; and a network or device
+    form naming no path under a directory served, which resolving would open on Windows. That
+    one lies outside the root as written, and is refused in the words compare.py refuses a path
+    outside it with, before anything resolves it."""
+    if not isinstance(value, str) or not value or not _encodable(value):
+        raise refusal(_BASELINE)
+    serving = _serving(info)
+    if _NETWORK.match(value) and not _under(value, serving.served):
+        raise refusal(f"the baseline '{value}' is outside the session root '{serving.root}'")
+    return value
+
+
 class CompareQuery(_Query):
     """What ``GET /api/compare`` takes."""
 
     missing: ClassVar[str] = "compare takes ?baseline="
 
-    baseline: str = Field(min_length=1)
+    baseline: Annotated[str, BeforeValidator(_baseline)]
     """The delivery to compare the open project against: a dumped dictionary, or a project or
     component description, at a path under the directory ``ddd gui`` serves - relative to it, or
     absolute."""

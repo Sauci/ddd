@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal
 
@@ -19,6 +20,7 @@ from ddd.gui.queries import (
     FindingsQuery,
     FixQuery,
     NoQuery,
+    Serving,
     SettleQuery,
     StateQuery,
     _Query,
@@ -126,6 +128,75 @@ def test_an_absolute_path_is_answered_as_given(text) -> None:
     """Both spellings on every platform: the page names a file as the server answered it,
     ``C:/...`` on Windows and ``/...`` elsewhere."""
     assert Pathed.model_validate({"it": text}).it == text
+
+
+SERVED = Serving(root="//server/share/p", served=("//server/share/p",))
+"""What ``ddd gui`` started in a mapped network drive serves on Windows, whose ``Path.resolve``
+names the drive's directory by its network path: the paths it answers, and the page sends back,
+are spelt so too."""
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "//server/share/p/a.ddd.json",
+        "\\\\server\\share\\p\\a.ddd.json",
+        "//server/share/p\\sub/a.ddd.json",
+        "//server/share/p",
+    ],
+    ids=["slashes", "backslashes", "both", "the directory itself"],
+)
+def test_a_network_path_under_a_directory_served_is_a_path_like_any_other(text) -> None:
+    assert Pathed.model_validate({"it": text}, context=SERVED).it == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "//server/share/a.ddd.json",
+        "//server/share/project/a.ddd.json",
+        "//other/share/p/a.ddd.json",
+        "\\\\?\\UNC\\server\\share\\p\\a.ddd.json",
+        "\\\\.\\pipe\\p",
+    ],
+    ids=[
+        "above it",
+        "beside it, its name begun alike",
+        "on another server",
+        "the device form of a path under it",
+        "a device",
+    ],
+)
+def test_a_network_path_outside_every_directory_served_is_refused(text) -> None:
+    with pytest.raises(ValidationError) as refused:
+        Pathed.model_validate({"it": text}, context=SERVED)
+    assert refused.value.errors()[0]["msg"] == SAID
+
+
+@pytest.mark.parametrize("context", [None, SERVED, Serving(root="/srv/p", served=("/srv/p",))])
+def test_an_ordinary_path_is_read_alike_whatever_is_served(context) -> None:
+    for text in ("/a/b.ddd.json", "C:/a/b.ddd.json"):
+        assert Pathed.model_validate({"it": text}, context=context).it == text
+
+
+@pytest.mark.parametrize(("caseless", "accepted"), [(True, True), (False, False)])
+def test_a_network_path_is_compared_in_one_case_where_the_platform_compares_so(
+    monkeypatch, caseless, accepted
+) -> None:
+    """Windows compares a path without its case, and no other platform does: both readings,
+    on every platform."""
+    monkeypatch.setattr(queries_module, "_CASELESS", caseless)
+    asked = {"it": "//SERVER/Share/P/a.ddd.json"}
+    if accepted:
+        assert Pathed.model_validate(asked, context=SERVED).it == asked["it"]
+    else:
+        with pytest.raises(ValidationError) as refused:
+            Pathed.model_validate(asked, context=SERVED)
+        assert refused.value.errors()[0]["msg"] == SAID
+
+
+def test_case_is_folded_on_windows_alone() -> None:
+    assert queries_module._CASELESS is (sys.platform == "win32")
 
 
 class Named(BaseModel):
@@ -293,6 +364,17 @@ def test_without_a_sentence_json_is_refused_in_parse_raws_own_words(text, senten
     assert refused.value.errors()[0]["msg"] == sentence
 
 
+def test_a_sentence_echoing_a_lone_surrogate_says_it_as_its_escape() -> None:
+    """A refusal echoes what was typed, and pydantic cannot carry a lone surrogate in a message:
+    the sentence keeps every character it can say, and says that one as its escape."""
+    with pytest.raises(ValidationError) as refused:
+        Raw.model_validate({"it": '{"\ud800": 1, "\ud800": 2}'})
+    assert refused.value.errors()[0]["msg"] == (
+        "'{\"\\ud800\": 1, \"\\ud800\": 2}' is not one json value: key '\\ud800' appears twice in "
+        "one object; json would silently keep the last spelling, so decide which one stays"
+    )
+
+
 def test_too_deep_is_said_before_anything_else_is_wrong_with_the_text() -> None:
     """Counted first: text both too deep and malformed further on is refused for its depth."""
     text = "[" * (MAX_DEPTH + 1) + "x"
@@ -319,16 +401,35 @@ def test_a_blank_is_what_the_route_says_it_is_where_the_route_lets_it_through() 
     assert (given.file, given.raw) == ("/a.ddd.json", "1")
 
 
+class Strictly(_Query):
+    """A query of two plain-typed keys, as a model of a later route may have."""
+
+    count: int = 0
+    flag: bool = False
+
+
 class TestTheModels:
     """What each model answers its handler: a value read as its type, a blank as the route
     has always read it, and a key left out as its default."""
 
-    def test_a_query_is_closed_and_frozen(self) -> None:
+    def test_a_query_is_closed_frozen_and_strict(self) -> None:
         assert _Query.model_config["extra"] == "forbid"
         assert _Query.model_config["frozen"] is True
+        assert _Query.model_config["strict"] is True
         query = FindingsQuery.model_validate({})
         with pytest.raises(ValidationError):
             query.offset = 1
+
+    @pytest.mark.parametrize(
+        "given",
+        [{"count": "1_000"}, {"count": " 7 "}, {"count": "1.0"}, {"flag": "yes"}, {"flag": "on"}],
+    )
+    def test_a_value_is_never_coerced_into_a_type_it_is_not(self, given) -> None:
+        """Strict, as a body's models are: a key a model reads as a plain type takes that type
+        alone, never text pydantic would otherwise make one of."""
+        with pytest.raises(ValidationError) as refused:
+            Strictly.model_validate(given)
+        assert refused.value.errors()[0]["type"] in ("int_type", "bool_type")
 
     def test_a_route_with_no_query_takes_no_key(self) -> None:
         assert NoQuery.model_fields == {}
@@ -478,6 +579,11 @@ REFUSED = [
         {"name": "Value\x00A", "key": "unit"},
         "settle takes ?name= as a variable's name",
     ),
+    (
+        "/api/settle",
+        {"name": "ValueA", "key": "\ud800"},
+        "'\\ud800' is not a key the declarations of a variable share",
+    ),
     ("/api/fix", {}, FIX),
     ("/api/fix", {"file": "/p/a.ddd.json"}, FIX),
     ("/api/fix", {"file": "/p/a.ddd.json", "pointer": ""}, FIX),
@@ -503,6 +609,7 @@ REFUSED = [
     ("/api/declarable", {"file": "/p/\x00"}, "declarable takes ?file= as a file's path"),
     ("/api/compare", {}, "compare takes ?baseline="),
     ("/api/compare", {"baseline": ""}, "compare takes ?baseline="),
+    ("/api/compare", {"baseline": "base\ud800.json"}, "compare takes ?baseline= as a file's path"),
     *[
         (f"/api/{route}", {"x": "1"}, f"{route} takes no ?x=")
         for route in (

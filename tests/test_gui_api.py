@@ -8,7 +8,7 @@ import re
 import shutil
 import threading
 from collections.abc import Callable, Iterable, Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 import pytest
@@ -37,6 +37,7 @@ from ddd.diagnostics import CHECKS, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.file_plans import CREATABLE
 from ddd.findings_by_file import FindingsByFile
+from ddd.gui import contract
 from ddd.gui.api import (
     MEMO,
     RASTER_PLANS,
@@ -51,6 +52,7 @@ from ddd.gui.api import (
     _required_keys,
 )
 from ddd.gui.derived import Derived
+from ddd.gui.queries import Unread
 from ddd.gui.routes import Policy
 from ddd.gui.session import Filed, Revision, Session
 from ddd.lsp.navigation import Index, Site
@@ -361,6 +363,11 @@ SOLE_RASTER_IN_A_FILE = {
 }
 
 
+def never_waited(after: int, timeout: float) -> None:
+    """``Session.wait`` for a test of an answer given at once: waiting at all fails it."""
+    raise AssertionError(f"waited for a version past {after}")
+
+
 def opened(tmp_path: Path, files: dict[str, object]) -> Api:
     write_tree(tmp_path, files)
     session = Session(tmp_path)
@@ -515,14 +522,18 @@ class TestTheRouteTable:
         ]
 
     def test_what_each_route_does_besides_answering(self) -> None:
-        """A route not listed here does none of the four."""
+        """A route not listed here does none of the four. Plugin code runs where a route's
+        answer, or the analysis it asks for, analyses a project: one opened, an edit's or an
+        undo's, a baseline compared, and the files plan's judgement of the project with its
+        includes changed."""
         assert {
             (route.method, route.path): route.policy for route in ROUTES if route.policy != Policy()
         } == {
             ("POST", "/api/open"): Policy(opens=True, runs_plugins=True),
             ("GET", "/api/state"): Policy(waits=True),
-            ("POST", "/api/edit"): Policy(writes=True),
-            ("POST", "/api/undo"): Policy(writes=True),
+            ("POST", "/api/edit"): Policy(writes=True, runs_plugins=True),
+            ("POST", "/api/undo"): Policy(writes=True, runs_plugins=True),
+            ("GET", "/api/files-plan"): Policy(runs_plugins=True),
             ("GET", "/api/compare"): Policy(runs_plugins=True),
         }
         assert Policy() == Policy(writes=False, opens=False, runs_plugins=False, waits=False)
@@ -532,6 +543,13 @@ class TestTheRouteTable:
         assert [route.name for route in ROUTES] == [
             route.path.removeprefix("/api/") for route in ROUTES
         ]
+
+    def test_every_query_model_is_published_to_the_page(self) -> None:
+        """The page's own types are generated from what the contract publishes, so a query
+        model left out of it would leave the page building that query unchecked. ``Unread``
+        stands in for the queries the plan routes still read by hand."""
+        published = {model for model, _ in contract._ENDPOINTS}
+        assert {route.query for route in ROUTES} - {Unread} <= published
 
     def test_only_a_post_takes_a_body(self) -> None:
         assert {route.path for route in ROUTES if route.body is not None} == {
@@ -584,6 +602,82 @@ class TestTheQueryIsReadOnce:
         assert (reply.status, reply.body["name"]) == (200, "ValueB")
 
 
+class TestPathsAreReadAgainstWhatIsServed:
+    """A network path is a path like any other where it names one under a directory ``ddd gui``
+    serves - the directory it was started in, on a mapped drive Windows resolves to its network
+    path - and refused anywhere else, before anything resolves it. Spelt as strings: these tests
+    never ask a path of the platform, nor touch the network."""
+
+    def test_with_no_project_open_a_path_is_read_against_the_root(self, tmp_path: Path) -> None:
+        api = Api(Session(tmp_path))
+        api.session.root = PurePosixPath("//server/share/p")
+        under = api.handle("GET", "/api/file", {"path": ["//server/share/p/a.ddd.json"]}, None)
+        assert (under.status, under.body["error"]) == (409, "no-project")
+        outside = api.handle("GET", "/api/file", {"path": ["//server/share/q/a.ddd.json"]}, None)
+        assert outside == Reply(
+            400, {"error": "bad-request", "message": "file takes ?path= as a file's path"}
+        )
+
+    def test_a_body_s_path_is_read_against_the_same(self, tmp_path: Path) -> None:
+        api = Api(Session(tmp_path))
+        api.session.root = PurePosixPath("//server/share/p")
+
+        def edited(file: str) -> Reply:
+            change = {
+                "file": file,
+                "fingerprint": "x",
+                "operations": [{"op": "remove", "pointer": "a"}],
+            }
+            return post(api, "/api/edit", {"changes": [change], "label": "x"})
+
+        under = edited("//server/share/p/a.ddd.json")
+        assert (under.status, under.body["error"]) == (409, "no-project")
+        assert edited("//server/share/q/a.ddd.json") == Reply(
+            400, {"error": "bad-request", "message": "changes[0].file: edit takes a file's path"}
+        )
+
+    def test_with_a_revision_a_path_is_read_against_every_directory_it_serves(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A project the analysis could not read answers 409 before anything resolves the
+        baseline it was asked to compare against: what reaches that 409 was taken by the
+        query."""
+        api = unloaded(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        served = (*revision.served, PurePosixPath("//server/share/p"))
+        monkeypatch.setattr(api.session, "_revision", dataclasses.replace(revision, served=served))
+        under = get(api, "/api/compare", baseline="//server/share/p/baseline.json")
+        assert (under.status, under.body["error"]) == (409, "unreadable")
+        assert get(api, "/api/compare", baseline="//server/share/q/baseline.json") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": "the baseline '//server/share/q/baseline.json' is outside the session "
+                f"root '{tmp_path.resolve().as_posix()}'",
+            },
+        )
+
+    @pytest.mark.parametrize(
+        "baseline", ["//server/share/baseline.json", "\\\\server\\share\\baseline.json"]
+    )
+    def test_a_network_baseline_outside_is_refused_in_compare_s_words_before_it_is_resolved(
+        self, api: Api, root: Path, baseline: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def resolving(self: Path, *args: object, **kwargs: object) -> Path:
+            raise AssertionError(f"{self} was resolved")
+
+        monkeypatch.setattr(Path, "resolve", resolving)
+        assert get(api, "/api/compare", baseline=baseline) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{baseline}' is outside the session root "
+                f"'{api.session.root.as_posix()}'",
+            },
+        )
+
+
 class TestNoMalformedValueIsA500:
     """What spec §2 found answered 500 through a route whose query is plain, and what a NUL in a
     body's path reached: each answered now as the refusal it is, in the route's own words. And a
@@ -609,10 +703,10 @@ class TestNoMalformedValueIsA500:
         assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_a_version_of_more_digits_than_a_number_holds_is_answered_at_once(
-        self, api: Api
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """As a version that is not a number is: nothing is waited for."""
-        api.wait_seconds = 30
+        monkeypatch.setattr(api.session, "wait", never_waited)
         reply = get(api, "/api/state", after="1" * 4301)
         assert (reply.status, reply.body["revision"]) == (200, 1)
 
@@ -803,8 +897,10 @@ class TestState:
         assert (body["revision"], body["version"]) == (1, 2)
 
     @pytest.mark.parametrize("after", ["", "-1", "one", "٣"])
-    def test_an_after_that_is_not_a_number_does_not_wait(self, api: Api, after: str) -> None:
-        api.wait_seconds = 30
+    def test_an_after_that_is_not_a_number_does_not_wait(
+        self, api: Api, after: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(api.session, "wait", never_waited)
         assert get(api, "/api/state", after=after).body["revision"] == 1
 
     def test_the_state_needs_an_open_project(self, root: Path) -> None:

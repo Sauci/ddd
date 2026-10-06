@@ -24,8 +24,10 @@ from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
 from ddd.gui.server import (
+    _ELSEWHERE,
     CODE_SECONDS,
     MAX_BODY,
+    SIGN_IN_PAGE,
     SIGNED_IN_PAGE,
     TOKEN_BYTES,
     GuiServer,
@@ -425,6 +427,79 @@ class TestWhoMayAsk:
 
     def test_localhost_is_this_server_too(self, server) -> None:
         response, _ = ask(server, "GET", "/api/session", host=f"localhost:{server.port}")
+        assert response.status == 200
+
+    @pytest.mark.parametrize("site", ["same-site", "cross-site"])
+    @pytest.mark.parametrize("path", ["/api/session", "/api/compare?baseline=x"])
+    def test_an_api_request_from_another_page_is_refused(self, server, site, path) -> None:
+        """A page served from another port of 127.0.0.1 is the same site to a browser, which
+        sends it this server's SameSite=Strict cookie: probed against a1da6ce, its GET of
+        /api/compare ran the comparison, plugins and all."""
+        response, data = ask(server, "GET", path, headers={"Sec-Fetch-Site": site})
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": _ELSEWHERE},
+        )
+
+    def test_the_elsewhere_refusal_names_the_address_printed(self, server) -> None:
+        """The sentence pinned by its literal text, not by the constant a test and the
+        mutation that changed it could otherwise drift along together."""
+        _, data = ask(server, "GET", "/api/session", headers={"Sec-Fetch-Site": "same-site"})
+        assert json.loads(data) == {
+            "error": "forbidden",
+            "message": "ddd gui answers its own page alone, opened from the address it printed",
+        }
+
+    def test_a_page_requested_from_another_page_says_where_to_sign_in(self, server) -> None:
+        response, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
+
+    @pytest.mark.parametrize("origin", ["http://127.0.0.1:1", "http://evil.example", "null"])
+    def test_a_get_carrying_another_origin_is_refused(self, server, origin) -> None:
+        response, data = ask(server, "GET", "/api/session", origin=origin)
+        assert (response.status, json.loads(data)["message"]) == (403, _ELSEWHERE)
+
+    @pytest.mark.parametrize("site", ["same-origin", "none"])
+    def test_this_page_and_an_address_typed_are_answered(self, server, site) -> None:
+        response, _ = ask(server, "GET", "/api/session", headers={"Sec-Fetch-Site": site})
+        assert response.status == 200
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+    def test_this_servers_own_origin_is_answered(self, server, host) -> None:
+        response, _ = ask(server, "GET", "/api/session", origin=f"http://{host}:{server.port}")
+        assert response.status == 200
+
+    def test_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
+        response, _ = ask(
+            server, "GET", "/api/session", signed_in=False, headers={"Sec-Fetch-Site": "same-site"}
+        )
+        assert response.status == 403
+
+    def test_signing_in_is_answered_wherever_the_address_was_opened_from(self, server) -> None:
+        """A sign-in is answered wherever the address was opened from, since the token or the
+        code is what ``/open`` checks - never ``Sec-Fetch-Site`` or ``Origin``. ``cross-site``
+        is kept as the value a browser marks least trustworthy; a real launch arrives marked
+        ``none`` instead (a navigation the opener started), which signs in just the same."""
+        response, _ = ask(
+            server,
+            "GET",
+            f"/open?token={server.token}",
+            signed_in=False,
+            headers={"Sec-Fetch-Site": "cross-site"},
+        )
+        assert response.status == 200
+
+    def test_a_launch_code_is_answered_wherever_it_was_presented_from(self, server) -> None:
+        """The sibling of the test above, for a single-use launch code rather than the
+        long-lived token: presented cross-site too, since ``/open`` exempts a launch code from
+        the gate exactly as it exempts the token, reading neither header for either."""
+        response, _ = ask(
+            server,
+            "GET",
+            f"/open?code={server.issue_code()}",
+            signed_in=False,
+            headers={"Sec-Fetch-Site": "cross-site"},
+        )
         assert response.status == 200
 
     @pytest.mark.parametrize(

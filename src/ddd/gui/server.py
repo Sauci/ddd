@@ -279,6 +279,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._sign_in(parse_qs(url.query))
             return
         api = url.path.startswith("/api/")
+        if self._from_elsewhere():
+            if api:
+                self._send_json(403, {"error": "forbidden", "message": _ELSEWHERE})
+            else:
+                self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
+            return
         if not self._signed_in():
             if api:
                 self._send_json(401, {"error": "unauthorised", "message": _SIGN_IN})
@@ -360,12 +366,38 @@ class _Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
-    def _from_this_page(self) -> bool:
+    def _own_origins(self) -> tuple[str, str]:
+        """This server's own origin, spelled the two ways a browser may carry it: by
+        127.0.0.1 and by localhost, both at this server's port. What :meth:`_from_elsewhere`
+        and :meth:`_from_this_page` both compare a request's ``Origin`` against, kept in this
+        one place rather than each holding a literal tuple of its own."""
         port = self._gui.port
+        return (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+
+    def _from_elsewhere(self) -> bool:
+        """Whether the request says it came from somewhere other than this server's own page.
+
+        A browser marks every request it sends with ``Sec-Fetch-Site``: ``same-origin`` from
+        this server's own page, ``none`` for an address typed or a bookmark, and ``same-site``
+        from a page served on another port of this address - which also carries this server's
+        ``SameSite=Strict`` cookie, a cookie belonging to an address and not to a port. Every
+        browser sends it since 2023 (Chrome 76, Firefox 90, Safari 16.4). An ``Origin`` other
+        than this server's is refused too, for a browser older than those. A client that sends
+        neither - a script, ``curl``, these tests - goes on to the cookie, so the token still
+        decides.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site not in ("same-origin", "none"):
+            return True
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return False
+        return origin not in self._own_origins()
+
+    def _from_this_page(self) -> bool:
         origin = self.headers.get("Origin")
         kind = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
-        own = (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
-        return origin in own and kind == "application/json"
+        return origin in self._own_origins() and kind == "application/json"
 
     def _body(self) -> bytes | None:
         length = self.headers.get("Content-Length", "0")
@@ -407,6 +439,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(status, data, CONTENT_TYPES[".json"], {"Cache-Control": "no-store"})
 
 
+_ELSEWHERE: Final = "ddd gui answers its own page alone, opened from the address it printed"
 _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"

@@ -20,14 +20,18 @@ from __future__ import annotations
 
 import contextlib
 import hmac
+import html
 import ipaddress
 import json
+import os
 import secrets
+import shutil
 import socket
 import sys
+import tempfile
 import traceback
 import webbrowser
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
@@ -80,6 +84,18 @@ SIGN_IN_PAGE: Final = (
     b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
     b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
 )
+
+SIGNED_IN_PAGE: Final = (
+    '<!doctype html><html lang="en"><meta charset="utf-8">'
+    '<meta http-equiv="refresh" content="0; url={target}"><title>ddd gui</title>'
+    '<p><a href="{target}">Open ddd gui</a></p></html>'
+)
+"""What ``/open`` answers once it has set the cookie: a page that refreshes to the project, or
+to the start page. Not a redirect: a navigation that began at the ``file://`` page a launch
+opens (:data:`LAUNCH_PAGE`) is cross-site to the browser, and a ``SameSite=Strict`` cookie does
+not follow a redirect out of it, where a refresh this page makes is a navigation of this
+server's own origin, which it does. A meta refresh rather than a script, so that the content
+security policy lets it run."""
 
 
 def static_directory() -> Path:
@@ -242,7 +258,8 @@ class _Handler(BaseHTTPRequestHandler):
         # analysed until its first analysis lands.
         target = "/project" if self._gui.api.session.project is not None else "/"
         cookie = f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
-        self._send(303, b"", CONTENT_TYPES[".txt"], {"Location": target, "Set-Cookie": cookie})
+        page = SIGNED_IN_PAGE.format(target=target).encode("utf-8")
+        self._send(200, page, CONTENT_TYPES[".html"], {"Set-Cookie": cookie})
 
     def _signed_in(self) -> bool:
         """Whether the request carries this server's cookie with the token in it.
@@ -322,6 +339,35 @@ def _refused(value: str, port: int, error: Exception) -> int:
     return EXIT_USAGE
 
 
+LAUNCH_PAGE: Final = (
+    '<!doctype html><html lang="en"><meta charset="utf-8">'
+    '<meta http-equiv="refresh" content="0; url={address}"><title>ddd gui</title>'
+    '<p><a href="{address}">Open ddd gui</a></p></html>'
+)
+"""The page a launch hands the browser, refreshing to the address with its token."""
+
+
+def launched(address: str, opener: Callable[[str], object]) -> Path:
+    """Open ``address`` in a browser without putting it on a command line; answer the directory
+    the page that does so was written in, which the caller removes once the server stops.
+
+    ``webbrowser.open(address)`` starts the browser with the address as an argument, and a
+    process's arguments are readable by every user of the computer, in ``/proc`` on Linux:
+    the token in the address was theirs for the asking while the launch ran. The browser is
+    handed instead the ``file://`` path of a page holding it, readable by its owner alone:
+    the directory ``tempfile.mkdtemp`` makes is ``0o700``, and the page is created ``0o600``.
+    On windows both live in the user's own temporary directory, which only that user may read
+    unless someone changed it.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="ddd-gui-"))
+    page = directory / "open.html"
+    descriptor = os.open(page, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        file.write(LAUNCH_PAGE.format(address=html.escape(address)))
+    opener(page.as_uri())
+    return directory
+
+
 def run(
     project: Path | None,
     build_directories: Sequence[Path],
@@ -381,6 +427,7 @@ def run(
         except OSError as error:
             return _refused(address, port, error)
         print(f"ddd gui (preview) serving {server.address}", flush=True)
+        launch: Path | None = None
         if beyond_loopback:
             # No browser to open in a container, and nothing left to protect this with either:
             # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost,
@@ -395,12 +442,14 @@ def run(
                 file=sys.stderr,
             )
         elif open_browser:
-            webbrowser.open(server.address)
+            launch = launched(server.address, webbrowser.open)
         try:
             with contextlib.suppress(KeyboardInterrupt):
                 server.serve_forever()
         finally:
             server.server_close()
+            if launch is not None:
+                shutil.rmtree(launch, ignore_errors=True)
     finally:
         session.stop()
     return EXIT_OK

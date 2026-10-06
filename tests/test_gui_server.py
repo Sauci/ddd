@@ -615,6 +615,33 @@ class TestWhoMayAsk:
         )
         assert response.status == 413
 
+    @pytest.mark.parametrize("digits", [b"9" * 4301, b"0" * 4301], ids=["nines", "zeros"])
+    def test_a_content_length_of_more_than_4300_digits_is_never_500(
+        self, server, digits, capsys
+    ) -> None:
+        """``int()`` itself refuses a string of more than 4,300 digit characters, whatever
+        they are - zeros included - raising the same ``ValueError`` the hostile walk pins
+        over a query's own numbers (``MAX_DIGITS``, ``queries.py``), which ``_body`` read
+        straight into ``int()`` unguarded. A real body is never sent: 4,301 nines is refused
+        before ``_body`` ever tries to read one, and 4,301 zeros promises none to read."""
+        sent = (
+            b"POST /api/edit HTTP/1.1\r\n"
+            + f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
+            + f"Cookie: {cookie(server)}={server.token}\r\n".encode("ascii")
+            + f"Origin: http://127.0.0.1:{server.port}\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\nContent-Length: "
+            + digits
+            + b"\r\nConnection: close\r\n\r\n"
+        )
+        status, body = raw_answer(server, sent)
+        assert status != 500
+        if digits == b"9" * 4301:
+            assert (status, json.loads(body)) == (
+                413,
+                {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
+            )
+        assert capsys.readouterr().err == ""
+
     def test_a_length_that_is_not_one_is_a_bad_request(self, server) -> None:
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         connection.putrequest("POST", "/api/edit", skip_host=True)
@@ -673,9 +700,9 @@ class TestWhatIsServed:
           re-raises everything but a handful of other errnos.
 
         Either way, this used to reach ``_answer``'s own catch-all and print a traceback for
-        a 500, the one place the page's own claim of never answering malformed input with
-        one was not yet true: every ``/api/`` route already refuses both before a path is
-        ever built from either."""
+        a 500 - one of a few places that did, an oversized ``Content-Length`` and an
+        unsplittable target being two more - and each is served the index here instead,
+        like any other unknown path."""
         response, data = ask(server, "GET", path)
         assert (response.status, response.getheader("Content-Type"), data) == (
             200,
@@ -837,11 +864,11 @@ class TestWhatIsServed:
 class TestAMalformedAbsoluteFormTarget:
     """The absolute form of a target names its host before its path - ``http://host/path`` -
     and a malformed one, a bracket opened for an IPv6 address and never closed, makes
-    ``urlsplit`` itself raise. That used to happen before the Host check even read where the
-    request claims to come from, and before anything answered it: ``_answer``'s catch-all
-    split the same text again to print it, raised the same way, and socketserver printed a
-    traceback and closed the connection with nothing written - no token needed, since the
-    gate and the cookie are both later than this."""
+    ``urlsplit`` itself raise. That used to happen after the Host check, but before the gate
+    ever read where the request claims to come from, and before anything answered it:
+    ``_answer``'s catch-all split the same text again to print it, raised the same way, and
+    socketserver printed a traceback and closed the connection with nothing written - no
+    token needed, since the gate and the cookie are both later than this."""
 
     @pytest.mark.parametrize(
         "line",

@@ -362,10 +362,10 @@ class _Handler(BaseHTTPRequestHandler):
         except (ConnectionError, TimeoutError):
             raise
         except Exception:
-            # self.path, never split again to print it: a target that reaches here unanswered
-            # already broke by not splitting (below), and the path is anyone's text regardless
-            # - an escape sequence in it would otherwise reach the terminal raw, this one read
-            # for exactly that.
+            # self.path, not urlsplit(self.path).path: splitting again would drop the query
+            # and fragment this prints along with the path, and self.path is anyone's text
+            # regardless - an escape sequence in it would otherwise reach the terminal raw,
+            # this one read for exactly that.
             print(f"ddd gui: {method} {self.path!r} failed:", file=sys.stderr)
             traceback.print_exc()
             self._send_json(500, {"error": "internal", "message": _INTERNAL})
@@ -514,20 +514,28 @@ class _Handler(BaseHTTPRequestHandler):
         if not (length.isascii() and length.isdecimal()):
             self._send_json(400, {"error": "bad-request", "message": "Content-Length is no length"})
             return None
-        if int(length) > MAX_BODY:
+        # Leading zeros stripped before int() ever reads it: int() itself refuses a string of
+        # more than 4,300 digit characters regardless of their value (sys.get_int_max_str_
+        # digits), and a length that many digits long - zeros or not - already answers 413
+        # below, MAX_BODY needing only seven.
+        significant = length.lstrip("0") or "0"
+        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
             message = f"a request body is at most {MAX_BODY} bytes"
             self._send_json(413, {"error": "too-large", "message": message})
             return None
-        return self.rfile.read(int(length))
+        return self.rfile.read(int(significant))
 
     def _page(self, path: str) -> None:
         static = self._gui.static
         try:
             requested: Path | None = (static / unquote(path).lstrip("/")).resolve()
-        except ValueError:
-            # A NUL character, say: no file on this computer can be named by one, which
-            # makes it one more path with no file of its own rather than a failure - the
-            # client-side router turns it into a screen the same way it does an unknown one.
+        except (OSError, ValueError):
+            # A path this computer cannot even resolve - a NUL character (ValueError), or a
+            # name so long Windows answers ERROR_FILENAME_EXCED_RANGE (OSError) - is one more
+            # path with no file of its own, not a failure: the client-side router turns it
+            # into a screen the same way it does an unknown one. POSIX's own resolve() already
+            # ignores OSError when not strict, so no POSIX request reaches that branch; this
+            # guards the Windows path the same request would otherwise fail on.
             requested = None
         # os.path.isfile, not Path.is_file: a name over 255 bytes raises ENAMETOOLONG from the
         # stat it makes, which isfile has always caught alongside ValueError, on every Python

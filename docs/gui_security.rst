@@ -28,19 +28,19 @@ What it defends against
 
 * **Malformed input, from anyone, including the reader's own browser.** Every request this
   server reads in full is answered with a status and a sentence - never a ``500``, and
-  never a hang. (A request that stops arriving partway through - its headers, or a
-  signed-in ``POST``'s promised body - is closed unanswered once its connection has been
-  idle thirty seconds.) A path holding a NUL character or a lone surrogate, a number many
-  thousands of digits long, json nested thousands of levels deep, and a network or device
-  path such as ``\\server\share`` that does not name a path under a directory ``ddd gui``
-  serves are each refused with a plain ``400``, ``404`` or ``409`` - except a number this
-  server's own long poll reads as "wait for a later version": there, anything that is not
-  a clean number is treated as none given, and answered at once rather than refused. A
-  network or device path is refused before anything resolves it, and so is one holding a
-  dot segment. The standard library itself refuses two shapes before this server sees them
-  at all: a request line over 65,536 bytes answers ``414``, and a request carrying 100
-  header lines or more - the blank line that ends them counted - answers ``431``;
-  ninety-nine is the most ``ddd gui`` ever reads.
+  never a hang. (A request that stops arriving partway through - its headers, or the
+  promised body of a ``POST`` it has begun to read - is closed unanswered once its
+  connection has been idle thirty seconds.) A path holding a NUL character or a lone
+  surrogate, a number many thousands of digits long, json nested thousands of levels deep,
+  and a network or device path such as ``\\server\share`` that does not name a path under
+  a directory ``ddd gui`` serves are each refused with a plain ``400``, ``404`` or ``409``
+  - except a number this server's own long poll reads as "wait for a later version":
+  there, anything that is not a clean number is treated as none given, and answered at
+  once rather than refused. A network or device path is refused before anything resolves
+  it, and so is one holding a dot segment. The standard library itself refuses two shapes
+  before this server sees them at all: a request line over 65,536 bytes answers ``414``,
+  and a request carrying 100 header lines or more - the blank line that ends them counted
+  - answers ``431``; ninety-nine is the most ``ddd gui`` ever reads.
 
 What it trusts
 --------------

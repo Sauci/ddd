@@ -330,7 +330,13 @@ a plugin runs its backend alone. Each
 artefact takes only its own options - <code class="docutils literal notranslate"><span class="pre">-t</span></code> names the directory of jinja2
 templates the c sources are rendered from, required wherever c is rendered and with no
 default, because which files the project wants and what they look like is not
-something DDD can guess; <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> and <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> belong to the a2l.
+something DDD can guess; <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, <code class="docutils literal notranslate"><span class="pre">--image</span></code> and <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> belong to
+the a2l. <code class="docutils literal notranslate"><span class="pre">--image</span></code> reads every address the a2l carries out of a linked ELF image’s
+DWARF - an object by its name, a structure member by its access path - and the a2l takes
+the image’s byte order, so a <code class="docutils literal notranslate"><span class="pre">--byte-order</span></code> contradicting it is refused, as is
+<code class="docutils literal notranslate"><span class="pre">--image</span></code> beside <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>; what the image cannot place keeps address 0 and is
+reported as <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, each reason a note. It reads the images <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span>
+<span class="pre">from-elf</span></code> reads, and refuses the others in the same words.
 <code class="docutils literal notranslate"><span class="pre">all</span></code> alone takes <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">c</span></code> or <code class="docutils literal notranslate"><span class="pre">--without</span> <span class="pre">a2l</span></code>, repeatable, which leaves that
 built-in artefact out while still producing the plugins’ - the run a build wants when
 the a2l is written later, once the addresses are known. Naming <code class="docutils literal notranslate"><span class="pre">c</span></code> instead is not the
@@ -1120,7 +1126,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-generate">
 <h4>ddd generate<a class="headerlink" href="#ddd-generate" title="Link to this heading"></a></h4>
-<p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map. ‘all’ produces both, and the artefact of every plugin the project names that provides one, and takes –without to leave one of the built-in artefacts out of that; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
+<p>Generates the artefacts of a project, each out of the same resolved data dictionary. The artefact is part of the command, so every run states what it produces and carries only the options of that artefact: only a run that renders c takes a template directory, only one that writes the a2l takes an address map or an image. ‘all’ produces both, and the artefact of every plugin the project names that provides one, and takes –without to leave one of the built-in artefacts out of that; ‘a2l’ is the run a build repeats after linking, when the addresses are known but the c must not change.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate [-h] {c,a2l,all,&lt;plugin&gt;} ...</span>
 </pre></div>
 </div>
@@ -1136,8 +1142,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate a2l [-h] [-W CHECK=SEVERITY] [--strict]</span>
 <span class="go">                        [--format {text,json}] -o OUTPUT_DIR</span>
 <span class="go">                        [--byte-order {little,big}]</span>
-<span class="go">                        [--address-map ADDRESS_MAP] [--dictionary FILE]</span>
-<span class="go">                        [--dry-run] [--force]</span>
+<span class="go">                        [--address-map ADDRESS_MAP] [--image IMAGE]</span>
+<span class="go">                        [--dictionary FILE] [--dry-run] [--force]</span>
 <span class="go">                        project</span>
 </pre></div>
 </div>
@@ -1180,13 +1186,19 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-byte-order">
 <span class="sig-name descname"><span class="pre">--byte-order</span></span><span class="sig-prename descclassname"> <span class="pre">{little,big}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-byte-order" title="Link to this definition"></a></dt>
-<dd><p>byte order reported in the a2l file, default: little</p>
+<dd><p>byte order reported in the a2l file, default: little, or the image’s with –image</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-address-map">
 <span class="sig-name descname"><span class="pre">--address-map</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;address_map&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-address-map" title="Link to this definition"></a></dt>
 <dd><p>json file mapping variable names to their address in the target</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-a2l-image">
+<span class="sig-name descname"><span class="pre">--image</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;image&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-a2l-image" title="Link to this definition"></a></dt>
+<dd><p>linked ELF image whose DWARF debug information gives every address the a2l carries, and its byte order</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1213,8 +1225,9 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd generate all [-h] [-W CHECK=SEVERITY] [--strict]</span>
 <span class="go">                        [--format {text,json}] -o OUTPUT_DIR [-t TEMPLATE_DIR]</span>
 <span class="go">                        [--const-inputs] [--byte-order {little,big}]</span>
-<span class="go">                        [--address-map ADDRESS_MAP] [--without {c,a2l}]</span>
-<span class="go">                        [--dictionary FILE] [--dry-run] [--force]</span>
+<span class="go">                        [--address-map ADDRESS_MAP] [--image IMAGE]</span>
+<span class="go">                        [--without {c,a2l}] [--dictionary FILE] [--dry-run]</span>
+<span class="go">                        [--force]</span>
 <span class="go">                        project</span>
 </pre></div>
 </div>
@@ -1269,13 +1282,19 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-all-byte-order">
 <span class="sig-name descname"><span class="pre">--byte-order</span></span><span class="sig-prename descclassname"> <span class="pre">{little,big}</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-byte-order" title="Link to this definition"></a></dt>
-<dd><p>byte order reported in the a2l file, default: little</p>
+<dd><p>byte order reported in the a2l file, default: little, or the image’s with –image</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-generate-all-address-map">
 <span class="sig-name descname"><span class="pre">--address-map</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;address_map&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-address-map" title="Link to this definition"></a></dt>
 <dd><p>json file mapping variable names to their address in the target</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-generate-all-image">
+<span class="sig-name descname"><span class="pre">--image</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;image&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-generate-all-image" title="Link to this definition"></a></dt>
+<dd><p>linked ELF image whose DWARF debug information gives every address the a2l carries, and its byte order</p>
 </dd></dl>
 
 <dl class="std option">

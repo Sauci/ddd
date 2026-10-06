@@ -70,6 +70,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#what-the-build-tells-an-editor">What the build tells an editor</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-targets-it-creates">The targets it creates</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#options">Options</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-a2l-s-addresses">The a2l’s addresses</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#where-the-address-map-comes-from">Where the address map comes from</a></li>
 </ul>
 </li>
@@ -208,7 +209,10 @@ and are not declared as outputs, so a target that consumes one depends on
 extension, so <code class="docutils literal notranslate"><span class="pre">firmware.elf</span></code> gives <code class="docutils literal notranslate"><span class="pre">firmware_ddd_generation</span></code>. It has to be called in the
 <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> that defines the image, and after the components have been added, because
 it hands <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> to the components registered up to that point - which settles
-both which components get the generated headers and whose compile usage travels with them.</p>
+both which components get the generated headers and whose compile usage travels with them.
+The a2l is the one artefact that cannot be complete before the link, which decides every
+address it carries: with <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> the module writes it after the link instead,
+out of the linked image, and one build gives it whole (see <em>The a2l’s addresses</em> below).</p>
 <p>Besides the image it needs one thing: <code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span></code>, the directory of jinja2 templates
 the generated c code is rendered from. It is required and has no default, because the
 alternative would be a build whose generated sources change the day the tool is upgraded. What
@@ -488,16 +492,23 @@ table straight to the console: the project names the plugins its components’ b
 belong to and knows every producer and consumer, which a component listed on its own
 with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--standalone</span></code> cannot.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;component&gt;.ddd</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code></p></td>
+<td><p>with <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code>, built by default: writes the a2l once the image is
+linked, every address it carries read out of the image (see below). It depends on the
+image, on the project description and the files collected into it, on a <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin
+the call names and on the tool, and on nothing the c alone is rendered from.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;component&gt;.ddd</span></code></p></td>
 <td><p>one per registered component, checking that component alone (see above).</p></td>
 </tr>
 </tbody>
 </table>
 <p>The outputs declared for the generator are the files the template names already give away, plus
-the a2l and the dictionary. The per-component headers are written next to them, but their names
-come from inside the description files and are therefore unknown at configure time - which is
-precisely why a consumer depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> rather than on an individual header
-path.</p>
+the a2l and the dictionary - the a2l being the output of <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>’s step instead
+where <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> gives it one. The per-component headers are written next to
+them, but their names come from inside the description files and are therefore unknown at
+configure time - which is precisely why a consumer depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> rather
+than on an individual header path.</p>
 <p>That leaves the build system unable to clean a header whose component has left the image, which
 is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> cleans it itself: it owns its output directory, records what it wrote
 there and removes, on the next run, the files it no longer writes (see
@@ -587,14 +598,24 @@ fills the addresses in; a missing map in the source tree stays an error. An empt
 is a first run rather than a map with holes, so it raises no <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> does not fail it; a map that names some objects and not others does, once.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code></p></td>
+<td><p>write the a2l once the image is linked, every address it carries read out of the
+image’s debug information, so that one build gives the complete a2l: the run before the
+link leaves the a2l out, as <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code> does, and <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>, built by default,
+writes it after the link - again whenever the image relinks or a description changes,
+and under Ninja never otherwise; under Make also at every build that follows a run
+leaving the a2l unchanged. <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> names it as before, and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code>,
+<code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> and <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> apply to it. The image has to be ELF with DWARF, built
+with <code class="docutils literal notranslate"><span class="pre">-g</span></code>. Refused together with <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> or <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
 <td><p>byte order reported in the a2l.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&lt;check=level&gt;...</span></code></p></td>
 <td><p>severity overrides, exactly like <code class="docutils literal notranslate"><span class="pre">-W</span></code> on the command line. They apply to both the
 generation and the check target.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LINK_LIBRARIES</span> <span class="pre">&lt;target&gt;...</span></code></p></td>
 <td><p>usage requirements for compiling the generated definition file, stated by hand. The
 manual fallback: in the collected mode <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> already carries the
 interface compile usage of every registered component - include directories, compile
@@ -604,26 +625,26 @@ closure - and the definition file links it, so this remains for the hand written
 own c templates include. These libraries reach the definition file alone, so a
 component that includes a generated header needing one of them has to link it itself.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEPENDS</span> <span class="pre">&lt;file&gt;...</span></code></p></td>
 <td><p>additional files that retrigger the generation.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CONST_INPUTS</span></code></p></td>
 <td><p>declare input variables <code class="docutils literal notranslate"><span class="pre">const</span></code> in the consumer headers.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code></p></td>
 <td><p>do not generate the a2l file; no <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property is set then. The run still
 produces everything else the project has, the artefacts of the plugins named with
 <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> included: the a2l is subtracted from the run rather than the run being
 narrowed to the c sources.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_DICTIONARY</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_DICTIONARY</span></code></p></td>
 <td><p>do not write the resolved data dictionary beside the artefacts; no <code class="docutils literal notranslate"><span class="pre">DDD_DICTIONARY</span></code>
 property is set then.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRICT</span></code></p></td>
 <td><p>treat DDD warnings as errors.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code></p></td>
 <td><p>do not hand <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code>, and the compile usage it carries, to the
 registered components.</p></td>
 </tr>
@@ -647,14 +668,53 @@ the wanted <code class="docutils literal notranslate"><span class="pre">&lt;stem
 the two would leave the same ambiguity in place, because the automatic set still reaches every
 registered component rather than only the ones that image links.</p>
 </section>
+<section id="the-a2l-s-addresses">
+<h3>The a2l’s addresses<a class="headerlink" href="#the-a2l-s-addresses" title="Link to this heading"></a></h3>
+<p>The address of every object the a2l carries is decided by the linker, so the a2l is the one
+artefact a build cannot finish before the link. <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> gives it a step of its
+own after the link: the generation before the link leaves the a2l out, as <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code> does, and
+<code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>, built by default, runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--image</span></code> over the linked image,
+which reads every address the a2l carries out of the image’s debug information - an object by
+its name, a structure member by its access path, at the offset the compiler gave it. One build
+gives the complete a2l, with no map to extract and no member offset to work out by hand:</p>
+<div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">ddd_generate</span><span class="p">(</span><span class="s">firmware.elf</span>
+<span class="w">             </span><span class="s">TEMPLATE_DIRECTORY</span><span class="w"> </span><span class="s2">"${templates}"</span>
+<span class="w">             </span><span class="s">ADDRESSES_FROM_IMAGE</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The image has to be a linked ELF image whose DWARF describes the variables
+(<a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a>), which a build with debug information writes: <code class="docutils literal notranslate"><span class="pre">-g</span></code>, which
+CMake’s <code class="docutils literal notranslate"><span class="pre">Debug</span></code> and <code class="docutils literal notranslate"><span class="pre">RelWithDebInfo</span></code> build types add. The step depends on the image and on
+what the project is read from, so it runs again when the image relinks or a description
+changes - a conversion’s factor, which reaches the a2l and none of the c, included - and under
+Ninja a build with nothing changed runs nothing at all; under Make, every build that follows a
+run of the step leaving the a2l unchanged runs the step again. It writes the a2l into the
+directory the generation before the link wrote the c sources, the headers and the dictionary
+into, and takes none of them back (<a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>), so nothing is compiled again
+because the a2l was written.</p>
+<p>What the image cannot place keeps address 0 and is reported once, as <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, each
+symbol’s reason a note beneath it. The example above, built as <code class="docutils literal notranslate"><span class="pre">RelWithDebInfo</span></code> with the
+keyword added, places every object of the demo but <code class="docutils literal notranslate"><span class="pre">ValueG</span></code>, which a condition compiles out
+of this image:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>firmware.elf: warning[address-missing]: the image has no address for 'ValueG'; it reaches the a2l at address 0
+    note: the image's debug information holds no variable named 'ValueG'
+1 warning
+</pre></div>
+</div>
+<p>Under <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> that is an error, and the build stops rather than ship an a2l with an address
+of 0. <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> is held to the byte order the image states: one that contradicts it stops
+the build as well. So does an image the reader cannot read, in the reader’s own words - one
+built without <code class="docutils literal notranslate"><span class="pre">-g</span></code> is told to be, and one that is not ELF at all, as a host build on Windows
+links, is refused as such. A build like that keeps the address map below.</p>
+</section>
 <section id="where-the-address-map-comes-from">
 <h3>Where the address map comes from<a class="headerlink" href="#where-the-address-map-comes-from" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> names a file; writing it is the project’s step. DDD ships no extractor and
-runs no toolchain tool of its own - it reads no build output at all - which is what lets the
-generator run before anything has been compiled, and what leaves this half of the two-run flow
-to the build. What it needs is the json <a class="reference internal" href="generated_artefacts.html"><span class="doc">Generated artefacts</span></a> describes, one flat object
-of symbol to address; where that comes from is the project’s business, so a toolchain without
-<code class="docutils literal notranslate"><span class="pre">nm</span></code> costs nothing but the recipe below.</p>
+runs no toolchain tool of its own, and the generation before the link reads no build output at
+all, which is what lets it run before anything has been compiled; with a map, reading the
+linked image is left to the build. What it needs is the json <a class="reference internal" href="generated_artefacts.html"><span class="doc">Generated artefacts</span></a>
+describes, one flat object of symbol to address; where that comes from is the project’s
+business, so a toolchain without <code class="docutils literal notranslate"><span class="pre">nm</span></code> costs nothing but the recipe below.</p>
 <p>The step belongs after the link, so it is a <code class="docutils literal notranslate"><span class="pre">POST_BUILD</span></code> command on the image, writing into
 the very path <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> names:</p>
 <div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">set</span><span class="p">(</span><span class="s">address_map</span><span class="w"> </span><span class="s2">"${CMAKE_CURRENT_BINARY_DIR}/ddd/firmware.elf/addresses.json"</span><span class="p">)</span>
@@ -703,7 +763,8 @@ the map one symbol at two addresses, which <code class="docutils literal notrans
 <p>Two things such a script has to get right. A structured object’s members are addressed under
 their access path, <code class="docutils literal notranslate"><span class="pre">Inlet.latest</span></code> rather than <code class="docutils literal notranslate"><span class="pre">Inlet</span></code>, which a symbol lister does not
 print: a project with structured objects adds the member offsets itself, from the type
-description or from the debug information. And the addresses of the objects DDD <em>does</em> know
+description or from the debug information - which is what <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> reads, for an
+image that carries it. And the addresses of the objects DDD <em>does</em> know
 have to fit the <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">..</span> <span class="pre">0xFFFFFFFF</span></code> of an <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code>, which a host build of an embedded
 project runs into first: a 64 bit image is based above 4 GB, and no a2l can describe it. An
 entry for a symbol DDD does not know is neither weighed that way nor written anywhere, so

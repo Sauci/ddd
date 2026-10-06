@@ -809,9 +809,11 @@ describes each as resolved; the interpolation routine is unlikely to read both.<
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">address-missing</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>an object that reaches the a2l has no entry in the map <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> was given, so
-its <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> stays 0. A map produced from a linker output legitimately lacks the
-objects that were not linked into this image, which is why the run goes on; a post-link
+<td><p>an object that reaches the a2l has no entry in the map <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> was given, or
+the image <code class="docutils literal notranslate"><span class="pre">--image</span></code> was given does not place it, so its <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> stays 0; with
+an image, why it does not is a note of the finding. A map produced from a linker output
+legitimately lacks the objects that were not linked into this image, and an image lacks
+the objects a condition compiled out of it, which is why the run goes on; a post-link
 build that wants an a2l with no hole in it runs with <code class="docutils literal notranslate"><span class="pre">--strict</span></code>, which makes this an
 error and writes nothing.</p></td>
 </tr>

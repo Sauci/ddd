@@ -78,6 +78,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#what-the-calibration-tools-actually-implement">What the calibration tools actually implement</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-coverage-gate">The coverage gate</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-elf-fixtures">The ELF fixtures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-address-fixtures">The address fixtures</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-the-checks">Running the checks</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#development-builds">Development builds</a></li>
@@ -181,7 +182,11 @@ ownership ends up being re-implemented, slightly differently, in a jinja templat
 <td><p>ELF images, DWARF 2 to 5, C types, the variables of static storage</p></td>
 <td><p>DDD: it imports no <code class="docutils literal notranslate"><span class="pre">ddd</span></code> module</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/toolbox/</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/addresses.py</span></code></p></td>
+<td><p>a build’s addresses: the map a build writes, and where an image places each symbol</p></td>
+<td><p>any output format: what an <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> holds is the a2l backend’s to weigh</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">src/ddd/toolbox/</span></code></p></td>
 <td><p>turning what a project already has into DDD descriptions, once</p></td>
 <td><p>where its output goes, any output format</p></td>
 </tr>
@@ -231,7 +236,8 @@ formats under <a class="reference internal" href="data_contracts.html"><span cla
 <p>A layering that lives only in the documentation rots the first time somebody is in a hurry,
 so DDD asserts it. <code class="docutils literal notranslate"><span class="pre">tests/test_backends.py</span></code> parses the layered modules - <code class="docutils literal notranslate"><span class="pre">loading.py</span></code>,
 <code class="docutils literal notranslate"><span class="pre">analysis.py</span></code>, <code class="docutils literal notranslate"><span class="pre">ir.py</span></code>, <code class="docutils literal notranslate"><span class="pre">diagnostics.py</span></code>, everything under <code class="docutils literal notranslate"><span class="pre">backends/</span></code>,
-<code class="docutils literal notranslate"><span class="pre">plugins.py</span></code>, <code class="docutils literal notranslate"><span class="pre">elf.py</span></code> and everything under <code class="docutils literal notranslate"><span class="pre">toolbox/</span></code> - with <code class="docutils literal notranslate"><span class="pre">ast</span></code>, collects the
+<code class="docutils literal notranslate"><span class="pre">plugins.py</span></code>, <code class="docutils literal notranslate"><span class="pre">elf.py</span></code>, <code class="docutils literal notranslate"><span class="pre">addresses.py</span></code> and everything under <code class="docutils literal notranslate"><span class="pre">toolbox/</span></code> - with
+<code class="docutils literal notranslate"><span class="pre">ast</span></code>, collects the
 <code class="docutils literal notranslate"><span class="pre">ddd.*</span></code> modules each one imports, and fails if the import graph disagrees with the table
 above:</p>
 <ul class="simple">
@@ -245,8 +251,10 @@ output format silently has no name for it,</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">plugins.py</span></code> imports no loader, analysis or backend at runtime, so a plugin sees exactly
 what a backend sees, and the <code class="docutils literal notranslate"><span class="pre">Backend</span></code> protocol it names is only imported there under
 <code class="docutils literal notranslate"><span class="pre">TYPE_CHECKING</span></code>,</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">elf.py</span></code> imports no <code class="docutils literal notranslate"><span class="pre">ddd</span></code> module at all, so that reading an address map straight out of
-an image can use it without the toolbox, and</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">elf.py</span></code> imports no <code class="docutils literal notranslate"><span class="pre">ddd</span></code> module at all, so that <code class="docutils literal notranslate"><span class="pre">addresses.py</span></code> reads images with it
+without the toolbox,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">addresses.py</span></code> imports no backend and not <code class="docutils literal notranslate"><span class="pre">ddd.cli</span></code>: reading a build’s addresses is
+core, and the range an <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> holds is the a2l backend’s to weigh, and</p></li>
 <li><p>nothing under <code class="docutils literal notranslate"><span class="pre">toolbox/</span></code> imports a backend or <code class="docutils literal notranslate"><span class="pre">ddd.cli</span></code>.</p></li>
 </ul>
 <p>A second test in the same file reads the text of <code class="docutils literal notranslate"><span class="pre">src/ddd/models/</span></code> and fails if a spelling
@@ -465,6 +473,28 @@ the manifest records the compiler that built each image instead:</p>
 <p>The manifest holds a hash of every file the images are built from, and
 <code class="docutils literal notranslate"><span class="pre">tests/test_elf_fixtures.py</span></code> fails, naming that command, when one of them changed without a
 rebuild. Commit what the rebuild writes.</p>
+</section>
+<section id="the-address-fixtures">
+<h2>The address fixtures<a class="headerlink" href="#the-address-fixtures" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--image</span></code> is held to five images of one DDD project, which
+<code class="docutils literal notranslate"><span class="pre">tests/fixtures/addresses/</span></code> holds: scalars, a structure nesting another, arrays of structures
+in one and two dimensions, and structures mixing bitfields with the value members after them.
+The project’s c is what <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span></code> writes for it, committed beside it, and five rows
+of the matrix above compile and link it - little and big endian, 32 and 64 bit, gcc and clang,
+and <code class="docutils literal notranslate"><span class="pre">i686</span></code>, whose <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> aligns to 4 and so lays the project out otherwise. The
+manifest beside them is the toolchain’s word, never the reader’s: each variable’s address
+from <code class="docutils literal notranslate"><span class="pre">nm</span></code>, and each member’s offset from the compiler’s own <code class="docutils literal notranslate"><span class="pre">offsetof</span></code>, compiled into the
+image and read back with <code class="docutils literal notranslate"><span class="pre">readelf</span></code>.</p>
+<p>Two steps rebuild them, because DDD and the toolchains live in different places:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ python docker/build_address_fixtures.py --generate  # on the host: the c, the symbols, the oracle
+$ docker compose run --rm address-fixtures  # in docker: the five images and the manifest
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">tests/test_address_fixtures.py</span></code> regenerates the c with the current DDD and fails, naming
+the first command, when DDD has come to generate other c for the project, and, naming the
+second, when what the images are built from changed without a rebuild. A release needs
+neither: the one line it changes in every generated file, the banner naming DDD’s version,
+is read as naming the version the committed files record.</p>
 </section>
 <section id="running-the-checks">
 <h2>Running the checks<a class="headerlink" href="#running-the-checks" title="Link to this heading"></a></h2>

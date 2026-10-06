@@ -549,12 +549,16 @@ that refers to it, nothing points at it any more and it disappears with them.</p
 </section>
 <section id="how-do-i-get-the-real-addresses-into-the-a2l">
 <h2>How do I get the real addresses into the a2l?<a class="headerlink" href="#how-do-i-get-the-real-addresses-into-the-a2l" title="Link to this heading"></a></h2>
-<p>With <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, after linking. The address of a global variable is decided by the
-linker, so it cannot exist when the sources are generated - which is why DDD is meant to run
-twice per build: once before compiling, to produce the c code and an a2l with placeholder
-addresses, and once after linking, to produce the a2l the calibration tool is actually given.</p>
-<p>The map is a flat json object of symbol name to address, decimal or hexadecimal, produced
-from the linker output by whatever already parses it in your build:</p>
+<p>After linking, out of the linked image: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--image</span> <span class="pre">firmware.elf</span></code> reads every
+address the a2l carries out of the image’s debug information, and in cmake
+<code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> makes that one step of the build (<a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>). The
+address of a global variable is decided by the linker, so it cannot exist when the sources
+are generated - which is why DDD is meant to run twice per build: once before compiling, to
+produce the c code and an a2l with placeholder addresses, and once after linking, to produce
+the a2l the calibration tool is actually given.</p>
+<p>An image without debug information takes <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> instead: a flat json object of
+symbol name to address, decimal or hexadecimal, produced from the linker output by whatever
+already parses it in your build:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"ParameterA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>

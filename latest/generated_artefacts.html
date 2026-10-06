@@ -1254,15 +1254,23 @@ all produces no group rather than an empty one.</p>
 of DDD: a <code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code> carries its address in a keyed <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> line, while an
 <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code> and a <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> carry it as the first positional field of the record,
 right after the long identifier. Both are shown in the excerpts below.</p>
-<p>Two mechanisms exist to fix that up, and DDD offers both because projects are split between
-them. The first is <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code>, which names the c symbol the record describes and is
+<p>Three mechanisms exist to fix that up, and DDD offers all three because projects are split
+between them. The first is <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code>, which names the c symbol the record describes and is
 emitted for <strong>every</strong> object, always, whether or not an address is known. It is what an a2l
 address patcher - a tool that reads the map file or the debug information of the linked image
 and rewrites the <code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code> fields - matches on, so a build that patches its a2l after
 linking needs no configuration on the DDD side at all.</p>
-<p>The second is <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, which lets DDD do the substitution itself. It takes a flat
-json object mapping symbol names to addresses, written either as decimal numbers or as
-hexadecimal strings, whichever the tool producing it finds easier:</p>
+<p>The second is <code class="docutils literal notranslate"><span class="pre">--image</span></code>, which lets DDD read the addresses out of the linked image itself:
+an ELF image with DWARF debug information, in which every object the a2l carries is found by
+its name and every structure member by its access path, at the offset the compiler gave it.
+The a2l takes the byte order the image states, and an object the image does not place keeps
+address 0 and is reported, as <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, with why: no variable of that name - one a
+condition compiled out, say - or a member the image’s type does not have. Nothing has to be
+extracted, and no member offset worked out by hand.</p>
+<p>The third is <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, for an image without debug information: DDD does the
+substitution itself, out of a file the build writes. It takes a flat json object mapping
+symbol names to addresses, written either as decimal numbers or as hexadecimal strings,
+whichever the tool producing it finds easier:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span>
@@ -1302,7 +1310,8 @@ filled in:</p>
 </div>
 <p>This is why DDD is normally run twice per build: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">all</span></code> before compiling, to
 produce the c code and an a2l with zero addresses, and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span></code> after linking,
-with the map extracted from the linker output, to produce the a2l that ships. The artefact
+with the image or the map extracted from the linker output, to produce the a2l that ships.
+<a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a> makes the image’s run one step of a single build. The artefact
 name says what the second run is there for: it renders no c - it takes no template directory
 either - so it cannot invalidate the build it was produced from.</p>
 <p>A symbol the map does not mention keeps address 0, and the run says so: the

@@ -521,9 +521,10 @@ wrote       build/gen/DemoDevice.a2l (created)
 does not exist before then: the address of every object in the target. A measurement and
 calibration tool reaches a variable over the debug or xcp interface by address, so an a2l
 without addresses describes the software correctly but cannot be used to measure it. The
-addresses are decided by the linker, so DDD is handed a symbol to address map extracted from
-the linker output and rewrites the a2l with the real values. The map is a flat json object,
-with the addresses written in decimal or hexadecimal:</p>
+addresses are decided by the linker, so DDD reads them out of the linked image’s debug
+information (<code class="docutils literal notranslate"><span class="pre">--image</span></code>), or is handed a symbol to address map extracted from the linker
+output (<code class="docutils literal notranslate"><span class="pre">--address-map</span></code>), and rewrites the a2l with the real values. The map is a flat json
+object, with the addresses written in decimal or hexadecimal:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"ValueE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x20000100"</span><span class="p">,</span><span class="w"> </span><span class="nt">"AxisA"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0x08004000"</span><span class="p">,</span><span class="w"> </span><span class="nt">"CurveA"</span><span class="p">:</span><span class="w"> </span><span class="mi">134234112</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
@@ -555,7 +556,7 @@ have the symbol names in the file:</p>
 </pre></div>
 </div>
 <p class="plantuml">
-<img src="_images/plantuml-a7b08612ec11aa3d9e465856d363c012d5363cab.svg" alt="folder &quot;software repository&quot; as repository {
+<img src="_images/plantuml-d8d7ed7ca8224117bc9b8ada04d034d10b66dfa5.svg" alt="folder &quot;software repository&quot; as repository {
     collections &quot;component descriptions\n(*.ddd.json)&quot; as component_files
     file &quot;project description\n(demo.ddd.json)&quot; as project_file
     collections &quot;c templates\n(*.jinja2)&quot; as templates
@@ -563,7 +564,7 @@ have the symbol names in the file:</p>
 }
 
 component &quot;ddd generate all&quot; as ddd_first
-component &quot;ddd generate a2l\n--address-map&quot; as ddd_second
+component &quot;ddd generate a2l\n~--image or ~--address-map&quot; as ddd_second
 component &quot;compiler / linker&quot; as toolchain
 
 artifact &quot;ddd_globals.c, ddd_globals.h,\nddd_types.h, one header\nper component&quot; as generated_c
@@ -583,16 +584,18 @@ ddd_first --&gt; provisional_a2l
 generated_c --&gt; toolchain
 c_sources --&gt; toolchain: each component includes\nits own header only
 toolchain --&gt; image
-image --&gt; address_map: symbol addresses taken\nfrom the linker output
+image --&gt; ddd_second: --image: every address read\nout of its debug information
+image --&gt; address_map: or a map extracted\nfrom the linker output
 
 project_file --&gt; ddd_second
-address_map --&gt; ddd_second
+address_map --&gt; ddd_second: --address-map
 ddd_second --&gt; final_a2l: the a2l alone is rewritten;\nthe c sources are not touched
 final_a2l --&gt; mc_tool: measure and calibrate\nthe built software"/></p>
 <p>Neither run needs a compiler, a target or a calibration tool to be present, which is what makes
 the tool usable from a pipeline that only checks: <a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a> describes the
-exit codes and the machine readable output a ci job consumes, and <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>
-reduces the whole sequence above to two calls in a CMake project.</p>
+exit codes and the machine readable output a ci job consumes, and with
+<code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a> reduces the whole sequence above to two calls
+and one build in a CMake project.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>A project that has no use for an a2l at all runs <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">c</span></code> and uses DDD purely as

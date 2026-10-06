@@ -1210,16 +1210,25 @@ of DDD: a ``MEASUREMENT`` carries its address in a keyed ``ECU_ADDRESS`` line, w
 ``AXIS_PTS`` and a ``CHARACTERISTIC`` carry it as the first positional field of the record,
 right after the long identifier. Both are shown in the excerpts below.
 
-Two mechanisms exist to fix that up, and DDD offers both because projects are split between
-them. The first is ``SYMBOL_LINK``, which names the c symbol the record describes and is
+Three mechanisms exist to fix that up, and DDD offers all three because projects are split
+between them. The first is ``SYMBOL_LINK``, which names the c symbol the record describes and is
 emitted for **every** object, always, whether or not an address is known. It is what an a2l
 address patcher - a tool that reads the map file or the debug information of the linked image
 and rewrites the ``ECU_ADDRESS`` fields - matches on, so a build that patches its a2l after
 linking needs no configuration on the DDD side at all.
 
-The second is ``--address-map``, which lets DDD do the substitution itself. It takes a flat
-json object mapping symbol names to addresses, written either as decimal numbers or as
-hexadecimal strings, whichever the tool producing it finds easier:
+The second is ``--image``, which lets DDD read the addresses out of the linked image itself:
+an ELF image with DWARF debug information, in which every object the a2l carries is found by
+its name and every structure member by its access path, at the offset the compiler gave it.
+The a2l takes the byte order the image states, and an object the image does not place keeps
+address 0 and is reported, as ``address-missing``, with why: no variable of that name - one a
+condition compiled out, say - or a member the image's type does not have. Nothing has to be
+extracted, and no member offset worked out by hand.
+
+The third is ``--address-map``, for an image without debug information: DDD does the
+substitution itself, out of a file the build writes. It takes a flat json object mapping
+symbol names to addresses, written either as decimal numbers or as hexadecimal strings,
+whichever the tool producing it finds easier:
 
 .. code-block:: json
 
@@ -1265,7 +1274,8 @@ filled in:
 
 This is why DDD is normally run twice per build: ``ddd generate all`` before compiling, to
 produce the c code and an a2l with zero addresses, and ``ddd generate a2l`` after linking,
-with the map extracted from the linker output, to produce the a2l that ships. The artefact
+with the image or the map extracted from the linker output, to produce the a2l that ships.
+:doc:`build_integration` makes the image's run one step of a single build. The artefact
 name says what the second run is there for: it renders no c - it takes no template directory
 either - so it cannot invalidate the build it was produced from.
 

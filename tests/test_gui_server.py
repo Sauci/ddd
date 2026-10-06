@@ -25,6 +25,7 @@ from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
 from ddd.gui.server import (
     _ELSEWHERE,
+    _FORBIDDEN,
     CODE_SECONDS,
     MAX_BODY,
     SIGN_IN_PAGE,
@@ -376,6 +377,7 @@ class TestSigningIn:
     def test_a_page_without_the_cookie_says_where_to_sign_in(self, server) -> None:
         response, data = ask(server, "GET", "/", signed_in=False)
         assert (response.status, b"Open the address" in data) == (401, True)
+        assert response.getheader("Content-Type") == "text/html; charset=utf-8"
 
     def test_a_cookie_with_another_value_is_not_signed_in(self, server) -> None:
         forged = {"Cookie": f"{cookie(server)}=forged"}
@@ -442,8 +444,8 @@ class TestWhoMayAsk:
         )
 
     def test_the_elsewhere_refusal_names_the_address_printed(self, server) -> None:
-        """The sentence pinned by its literal text, not by the constant a test and the
-        mutation that changed it could otherwise drift along together."""
+        """Pinned by its literal text: comparing against the imported ``_ELSEWHERE`` constant
+        instead would drift along with any mutation to its wording, and catch nothing."""
         _, data = ask(server, "GET", "/api/session", headers={"Sec-Fetch-Site": "same-site"})
         assert json.loads(data) == {
             "error": "forbidden",
@@ -453,10 +455,13 @@ class TestWhoMayAsk:
     def test_a_page_requested_from_another_page_says_where_to_sign_in(self, server) -> None:
         response, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
         assert (response.status, data) == (403, SIGN_IN_PAGE)
+        assert response.getheader("Content-Type") == "text/html; charset=utf-8"
 
+    @pytest.mark.parametrize("site", [None, "same-origin", "none"])
     @pytest.mark.parametrize("origin", ["http://127.0.0.1:1", "http://evil.example", "null"])
-    def test_a_get_carrying_another_origin_is_refused(self, server, origin) -> None:
-        response, data = ask(server, "GET", "/api/session", origin=origin)
+    def test_a_get_carrying_another_origin_is_refused(self, server, origin, site) -> None:
+        headers = None if site is None else {"Sec-Fetch-Site": site}
+        response, data = ask(server, "GET", "/api/session", origin=origin, headers=headers)
         assert (response.status, json.loads(data)["message"]) == (403, _ELSEWHERE)
 
     @pytest.mark.parametrize("site", ["same-origin", "none"])
@@ -475,6 +480,24 @@ class TestWhoMayAsk:
         )
         assert response.status == 403
 
+    def test_a_post_from_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
+        """The POST sibling of test_another_page_is_refused_before_the_cookie_is_read: the gate
+        runs before ``_signed_in`` and before the POST rule alike, so a POST marked same-site
+        is refused by the gate's own sentence, not by ``_FORBIDDEN``, without ever reaching the
+        cookie."""
+        response, data = ask(
+            server,
+            "POST",
+            "/api/open",
+            body=b"{}",
+            signed_in=False,
+            headers={"Sec-Fetch-Site": "same-site"},
+        )
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": _ELSEWHERE},
+        )
+
     def test_signing_in_is_answered_wherever_the_address_was_opened_from(self, server) -> None:
         """A sign-in is answered wherever the address was opened from, since the token or the
         code is what ``/open`` checks - never ``Sec-Fetch-Site`` or ``Origin``. ``cross-site``
@@ -490,9 +513,10 @@ class TestWhoMayAsk:
         assert response.status == 200
 
     def test_a_launch_code_is_answered_wherever_it_was_presented_from(self, server) -> None:
-        """The sibling of the test above, for a single-use launch code rather than the
-        long-lived token: presented cross-site too, since ``/open`` exempts a launch code from
-        the gate exactly as it exempts the token, reading neither header for either."""
+        """The sibling of test_signing_in_is_answered_wherever_the_address_was_opened_from, for
+        a single-use launch code rather than the long-lived token: presented cross-site too,
+        since ``_route`` answers ``/open`` before the gate is ever reached, for a code exactly
+        as for the token - neither header is read there either."""
         response, _ = ask(
             server,
             "GET",
@@ -503,16 +527,22 @@ class TestWhoMayAsk:
         assert response.status == 200
 
     @pytest.mark.parametrize(
-        ("origin", "content_type"),
+        ("origin", "content_type", "message"),
         [
-            (None, "application/json"),
-            ("http://evil.example", "application/json"),
-            ("http://127.0.0.1:1", "application/json"),
-            ("OWN", "text/plain"),
+            # No Origin and no Sec-Fetch-Site: the gate lets it through, same as a script or
+            # curl would; the POST rule (step 5) is what refuses it, with _FORBIDDEN.
+            (None, "application/json", _FORBIDDEN),
+            # A foreign Origin, no Sec-Fetch-Site: the gate (step 3) catches it first, with
+            # _ELSEWHERE - before the POST rule is ever reached.
+            ("http://evil.example", "application/json", _ELSEWHERE),
+            ("http://127.0.0.1:1", "application/json", _ELSEWHERE),
+            # This server's own Origin, but the wrong content type: the gate lets it through,
+            # and the POST rule (step 5) refuses it, with _FORBIDDEN.
+            ("OWN", "text/plain", _FORBIDDEN),
         ],
     )
     def test_a_change_from_anywhere_but_this_page_is_forbidden(
-        self, server, origin, content_type
+        self, server, origin, content_type, message
     ) -> None:
         own = f"http://127.0.0.1:{server.port}"
         response, data = ask(
@@ -523,7 +553,10 @@ class TestWhoMayAsk:
             origin=own if origin == "OWN" else origin,
             content_type=content_type,
         )
-        assert (response.status, json.loads(data)["error"]) == (403, "forbidden")
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": message},
+        )
 
     def test_a_change_from_this_page_is_answered(self, server) -> None:
         response, _ = ask(

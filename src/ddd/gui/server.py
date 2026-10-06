@@ -65,6 +65,23 @@ state to change, and the connection that waits is never idle - the server is hol
 answer, and the page asks again the moment it arrives. A tab that has gone away leaves its
 connections behind, and this is what takes their threads back."""
 
+MAX_CONNECTIONS: Final = 64
+"""How many connections are answered at once, each on a thread of its own; the next is refused.
+
+A browser opens at most six connections to one host, across all its tabs, so the page never
+comes near this: sixty-four leaves room for ten browser profiles and some scripts. Without
+it, the threads grew with whatever was asked: probed against ``a1da6ce``, three hundred long
+polls took the server from 31 threads to 293."""
+
+BUSY: Final = "ddd gui is answering as many connections as it takes at once; ask again in a moment"
+"""What a connection past :data:`MAX_CONNECTIONS` is answered, with a ``503``."""
+
+REFUSAL_SECONDS: Final = 1
+"""How long the thread that accepts connections waits to write a refusal into a connection that
+will not take it, before giving that connection up: every other connection waits behind that
+thread meanwhile. A connection just accepted takes the refusal's few hundred bytes at once, so
+in practice it never waits at all."""
+
 CONTENT_TYPES: Final = {
     ".css": "text/css; charset=utf-8",
     ".html": "text/html; charset=utf-8",
@@ -131,6 +148,40 @@ def is_loopback(address: str) -> bool:
         return False
 
 
+def _head(kind: str, length: int, headers: dict[str, str] | None = None) -> dict[str, str]:
+    """The headers of an answer, in the order they are sent: the security headers, the
+    answer's own, then the type and length of what it carries. Read by every answer the
+    handler sends and by the refusal :func:`_refuse` writes by hand alike, so that the two
+    cannot drift apart."""
+    return {
+        **SECURITY_HEADERS,
+        **(headers or {}),
+        "Content-Type": kind,
+        "Content-Length": str(length),
+    }
+
+
+def _refuse(request: socket.socket) -> None:
+    """Write the 503 a connection past the cap gets, and give up on one that will not take it.
+
+    Written on the thread that accepts connections, which every other connection waits behind,
+    so nothing here waits on the client for long: what it has sent so far is drained without
+    waiting for more - closing with it unread would reset the connection, and could throw the
+    answer away before the client read it - and the answer is given :data:`REFUSAL_SECONDS` to
+    be written. A client already gone is let go without a word, as one that goes away
+    mid-answer is (:meth:`GuiServer.handle_error`)."""
+    data = json.dumps({"error": "busy", "message": BUSY}).encode("utf-8")
+    own = {"Cache-Control": "no-store", "Retry-After": "1", "Connection": "close"}
+    head = _head(CONTENT_TYPES[".json"], len(data), own)
+    lines = "".join(f"{name}: {value}\r\n" for name, value in head.items())
+    with contextlib.suppress(OSError):
+        request.setblocking(False)
+        with contextlib.suppress(BlockingIOError):
+            request.recv(65536)
+        request.settimeout(REFUSAL_SECONDS)
+        request.sendall(f"HTTP/1.1 503 Service Unavailable\r\n{lines}\r\n".encode("latin-1") + data)
+
+
 class GuiServer(ThreadingHTTPServer):
     """The server one run of ``ddd gui`` answers on."""
 
@@ -148,6 +199,7 @@ class GuiServer(ThreadingHTTPServer):
         host: str = "127.0.0.1",
         *,
         clock: Callable[[], float] = time.monotonic,
+        connections: int = MAX_CONNECTIONS,
     ) -> None:
         super().__init__((host, port), _Handler)
         self.api = api
@@ -157,6 +209,9 @@ class GuiServer(ThreadingHTTPServer):
         self._code: tuple[str, float] | None = None
         self._last_code: str | None = None
         self._code_lock = threading.Lock()
+        self.slots = threading.BoundedSemaphore(connections)
+        """One for each connection being answered. Bounded, so that a slot given back twice
+        raises rather than quietly letting one more connection in."""
 
     @property
     def port(self) -> int:
@@ -216,6 +271,29 @@ class GuiServer(ThreadingHTTPServer):
     def cookie(self) -> str:
         """The name of the cookie this server signs a page in with."""
         return f"{COOKIE}-{self.port}"
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        """Answer on a thread of its own if a slot is free; else refuse from this thread.
+
+        The refusal is written here, on the thread that accepts, so that a connection past the
+        cap starts no thread: what it reads first is drained without waiting, so that closing
+        does not reset the connection before the client reads its answer."""
+        if not self.slots.acquire(blocking=False):
+            _refuse(request)
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        """Answer one connection on its own thread, and give its slot back however that ends."""
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         """A page that went away mid-answer - a reload, a closed tab - is not an error to print."""
@@ -426,10 +504,8 @@ class _Handler(BaseHTTPRequestHandler):
         self, status: int, data: bytes, kind: str, headers: dict[str, str] | None = None
     ) -> None:
         self.send_response(status)
-        for name, value in {**SECURITY_HEADERS, **(headers or {})}.items():
+        for name, value in _head(kind, len(data), headers).items():
             self.send_header(name, value)
-        self.send_header("Content-Type", kind)
-        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 

@@ -108,6 +108,16 @@ CONTENT_TYPES: Final = {
     ".woff2": "font/woff2",
 }
 
+DEVICE_NAMES: Final = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "0123456789¹²³"}
+)
+"""The names Windows keeps for its devices: the console, the printer, the auxiliary port and
+the null device, and the serial and parallel ports, ``COM`` and ``LPT`` followed by a digit, the
+superscripts one, two and three among them. Windows reads such a name as the device in whatever
+directory it is written, so that opening it opens the device rather than a file
+(:func:`_names_a_device`)."""
+
 SECURITY_HEADERS: Final = {
     "Content-Security-Policy": (
         "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; "
@@ -159,6 +169,14 @@ def is_loopback(address: str) -> bool:
         return ipaddress.ip_address(address).is_loopback
     except ValueError:
         return False
+
+
+def _names_a_device(name: str) -> bool:
+    """Whether Windows reads ``name`` as one of :data:`DEVICE_NAMES`: such a name before the
+    name's first dot, in any case, less any spaces it ends in. ``nul.js``, ``Lpt9.txt``,
+    ``aux.`` and ``con .x`` each name a device there, and ``console`` and ``com10`` do not.
+    Asked on every system, so that a page path is answered alike on all of them."""
+    return name.partition(".")[0].rstrip(" ").upper() in DEVICE_NAMES
 
 
 def _head(kind: str, length: int, headers: dict[str, str] | None = None) -> dict[str, str]:
@@ -532,10 +550,11 @@ class _Handler(BaseHTTPRequestHandler):
 
         A page path is plain names under the pages, split on ``/``. A name that is empty, ``.``
         or ``..``, or that holds a NUL character, a backslash or a colon - on Windows a
-        separator, a drive or a stream - names no file, and is never looked up. Nor does a name
-        that is a symbolic link or a junction, or one past a name that is not a directory: so
-        nothing outside the pages is served, and a path of thousands of names is looked up no
-        deeper than the pages go.
+        separator, a drive or a stream - names no file, and is never looked up; nor, on any
+        system, does a name Windows keeps for a device (:func:`_names_a_device`), which it would
+        open as that device. Nor does a name that is a symbolic link or a junction, or one past
+        a name that is not a directory: so nothing outside the pages is served, and a path of
+        thousands of names is looked up no deeper than the pages go.
 
         Nothing a path names is resolved. Resolving it touched the file system before anything
         checked where it led: a loop of links raised on Python 3.12, and on Windows a network
@@ -549,6 +568,8 @@ class _Handler(BaseHTTPRequestHandler):
         # os.path's answer false for whatever they cannot read, and never raise.
         for name in unquote(path).lstrip("/").split("/"):
             if name in ("", ".", "..") or "\\" in name or ":" in name or "\0" in name:
+                break
+            if _names_a_device(name):
                 break
             if not os.path.isdir(found):  # noqa: PTH112
                 break

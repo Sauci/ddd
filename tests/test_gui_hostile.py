@@ -24,6 +24,21 @@ them, beside the plain ``str`` fields; ``Operation.to`` and :class:`~ddd.gui.con
 only field, ``at``, are both ``int`` and admit none - :class:`~ddd.gui.contract.UndoRequest`
 contributes no case, which is named and asserted, not left to be noticed by its absence.
 
+Every body case starts from the demo exactly as the walk found it (ruling P18-23): each file a
+case wrote is given back the bytes it held, and a session opened afresh over them, so that the
+fingerprint the well-formed edit carries - taken once, from the file as found - is always the
+file's own. The walk this replaced carried each case on from the last: its hostile ``pointer``
+``""``, which names the whole file, left the demo's project description a single json string,
+and from then on every edit whose value was json met that string, not the description it was
+written to replace, before its value was laid out - so that a value nested 3,000 deep, which the
+engine's layout failed on, never reached it. So every model's well-formed body is first shown to
+be answered as a good request is - a project opened, an edit applied, that edit undone - and each
+case then differs from that request in its one field alone; and no case is answered the
+fingerprint's own refusal but a case of ``fingerprint`` itself, which is what a case meeting a file
+other than the one found would be answered. A lone surrogate reaches no field at all: json carries
+one only as an escape, ``\\ud800``, which the body's own reader refuses, ``400``, before any field
+is read.
+
 The walk asserts no answer is 500 - never one of 400, 404 or 409 (ruling P18-7). The state
 route's ``?after=`` is lenient: none of these values is a whole number, so it is answered at
 once every time, and the walk's ``wait_seconds=0`` (as ``tests/test_gui_api.py``'s own fixtures
@@ -37,12 +52,14 @@ import shutil
 import types
 import typing
 from pathlib import Path
+from typing import Any, Final, Literal
 
+import pytest
 from pydantic import BaseModel
 
 from conftest import EXAMPLES
 from ddd.editing import fingerprint
-from ddd.gui.api import ROUTES, Api
+from ddd.gui.api import ROUTES, Api, Reply
 from ddd.gui.contract import Change, Changes, OpenRequest, Operation, UndoRequest
 from ddd.gui.queries import actions_of
 from ddd.gui.session import Session
@@ -66,20 +83,47 @@ before anything resolves it - a rule spec section 5 predates, and so a value bey
 that this walk owes the same hostility the rest get."""
 
 
+WRITTEN: Final = json.dumps("Described by the hostile walk")
+"""The description the walk's well-formed edit writes, as json text: one the demo does not hold
+already, so that the edit's own control sees the file change."""
+
+
 def _admits_string(annotation: object) -> bool:
-    """Whether a body field's own annotation can hold a string: ``str`` itself, ``str`` made
-    optional (``str | None``, as :class:`~ddd.gui.contract.Change`'s ``fingerprint`` and
-    :class:`~ddd.gui.contract.Operation`'s ``raw`` are), or a ``Literal`` of strings
-    (:class:`~ddd.gui.contract.Operation`'s ``op``), optional or not. Anything else - ``int``,
-    ``int | None``, a tuple of another model - admits none."""
-    if annotation is str:
+    """Whether a body field's own annotation can hold a string: ``str`` itself, ``Any``, ``str``
+    made optional (``str | None``, as :class:`~ddd.gui.contract.Change`'s ``fingerprint`` and
+    :class:`~ddd.gui.contract.Operation`'s ``raw`` are), or a ``Literal`` with a string among its
+    values (:class:`~ddd.gui.contract.Operation`'s ``op``, four strings), optional or not. Anything
+    else - ``int``, ``int | None``, a ``Literal`` of numbers alone, a tuple of another model -
+    admits none."""
+    if annotation in (str, Any):
         return True
     origin = typing.get_origin(annotation)
     if origin is typing.Literal:
-        return all(isinstance(value, str) for value in typing.get_args(annotation))
+        return any(isinstance(value, str) for value in typing.get_args(annotation))
     if origin is typing.Union or origin is types.UnionType:
         return any(_admits_string(part) for part in typing.get_args(annotation))
     return False
+
+
+@pytest.mark.parametrize(
+    ("annotation", "admits"),
+    [
+        (str, True),
+        (Any, True),
+        (str | None, True),
+        (Literal["set", "remove"], True),
+        (Literal["set", 1], True),
+        (Literal["set"] | None, True),
+        (int, False),
+        (int | None, False),
+        (Literal[1, 2], False),
+        (tuple[Operation, ...], False),
+    ],
+)
+def test_a_field_is_walked_where_its_annotation_admits_a_string(annotation, admits) -> None:
+    """``Any`` holds a string, and so does a ``Literal`` with one string among numbers: a field of
+    either kind is walked, as a plain ``str`` is, where a field holding none is not."""
+    assert _admits_string(annotation) is admits
 
 
 def _string_fields(model: type[BaseModel]) -> tuple[str, ...]:
@@ -91,17 +135,28 @@ def _string_fields(model: type[BaseModel]) -> tuple[str, ...]:
     )
 
 
+def opened(root: Path) -> Api:
+    """``ddd gui``'s api over the demo project at ``root``, opened and analysed afresh.
+    ``wait_seconds=0``, as the api's own tests construct it, so ``GET /api/state`` can never
+    hold this walk up."""
+    session = Session(root)
+    session.open(root / "demo.ddd.json")
+    return Api(session, root / "demo.ddd.json", wait_seconds=0)
+
+
 def demo_api(tmp_path: Path) -> tuple[Api, Path]:
     """``ddd gui``'s api over a copy of examples/demo, analysed: the session
     ``tests/test_gui_api.py``'s own hostile-value tests (``TestNoMalformedValueIsA500``,
     ``TestNoPlanValueIsA500``) already read their fixtures from, copied fresh so the walk's own
-    edits never touch the shipped example. ``wait_seconds=0``, as the api's own tests construct
-    it, so ``GET /api/state`` can never hold this walk up."""
+    edits never touch the shipped example."""
     root = tmp_path / "demo"
     shutil.copytree(EXAMPLES / "demo", root)
-    session = Session(root)
-    session.open(root / "demo.ddd.json")
-    return Api(session, root / "demo.ddd.json", wait_seconds=0), root
+    return opened(root), root
+
+
+def _files(root: Path) -> dict[Path, bytes]:
+    """Every file under ``root``, with the bytes it holds."""
+    return {path: path.read_bytes() for path in sorted(root.rglob("*")) if path.is_file()}
 
 
 def _well_formed(
@@ -231,75 +286,115 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
     :class:`~ddd.gui.contract.Operation` and :class:`~ddd.gui.contract.UndoRequest` that
     :func:`_string_fields` finds, each sent every hostile value in an otherwise well-formed
     body - the fields found, not a list typed by hand, are what fixes this test to the models
-    rather than to this file's own memory of them."""
-    api, root = demo_api(tmp_path)
-    demo_json = (root / "demo.ddd.json").resolve().as_posix()
-    target = root / "demo.ddd.json"
-    description = json.dumps("Demonstration project showing every kind of data object")
+    rather than to this file's own memory of them.
 
-    def well_formed_edit() -> dict[str, object]:
-        # The fingerprint is re-read fresh every call: an earlier case in this same walk may
-        # already have written it (a label, a pointer or a raw the engine accepts changes it),
-        # and one read once up front would then be stale for every case after the first - a
-        # 409, never a 500, but not the field under test either.
+    Ruling P18-23: every case asked of the demo as the walk found it, after a control of every
+    model, and none answered the fingerprint's own refusal but a case of ``fingerprint``. Every
+    case is asked before any is judged, and anything the api raises is answered ``500``, as the
+    server answers it, so that one run names every case that fails."""
+    _, root = demo_api(tmp_path)
+    found = _files(root)
+    target = root / "demo.ddd.json"
+    demo_json = target.resolve().as_posix()
+
+    def as_found() -> Api:
+        """The demo as the walk found it: every file a case wrote given back the bytes it held,
+        and a session opened afresh over them, so that no case meets what another left behind,
+        in a file or in a session's history."""
+        assert _files(root).keys() == found.keys(), "a case added or took away a file"
+        for path, data in found.items():
+            if path.read_bytes() != data:
+                path.write_bytes(data)
+        return opened(root)
+
+    def edit() -> dict[str, Any]:
+        # The fingerprint of the file as the walk found it, taken once: as_found() is what keeps
+        # it the file's own, case after case.
         return {
             "changes": [
                 {
                     "file": demo_json,
-                    "fingerprint": fingerprint(target.read_bytes()),
-                    "operations": [
-                        {"op": "set", "pointer": "project.description", "raw": description}
-                    ],
+                    "fingerprint": fingerprint(found[target]),
+                    "operations": [{"op": "set", "pointer": "project.description", "raw": WRITTEN}],
                 }
             ],
-            "label": "x",
+            "label": "the description",
         }
 
+    def posted(api: Api, path: str, body: object) -> Reply:
+        """What ``POST path`` is answered with ``body``; anything the api raises answered
+        ``500``, as the server's own ``_answer`` answers it."""
+        try:
+            return api.handle("POST", path, {}, json.dumps(body).encode("utf-8"))
+        except Exception as error:
+            return Reply(500, {"raised": f"{type(error).__name__}: {error}"})
+
+    # A control of each model: its well-formed body, answered as its route answers a good
+    # request. Changes, Change and Operation are three levels of the one body POST /api/edit
+    # takes, whose control is an edit applied; UndoRequest's is that edit put back.
+    opening = posted(as_found(), "/api/open", {"path": demo_json})
+    assert (opening.status, opening.body["project"]) == (
+        200,
+        {"path": demo_json, "name": "DemoDevice"},
+    )
+    api = as_found()
+    written = posted(api, "/api/edit", edit())
+    assert written == Reply(
+        200,
+        {
+            "edit": 1,
+            "files": [{"path": demo_json, "fingerprint": fingerprint(target.read_bytes())}],
+        },
+    )
+    assert target.read_bytes() != found[target]
+    assert json.loads(target.read_bytes())["project"]["description"] == json.loads(WRITTEN)
+    assert posted(api, "/api/undo", {"at": 1}) == Reply(200, {"edit": 2})
+    assert target.read_bytes() == found[target]
     # UndoRequest.at is int, the model's only field, so _string_fields finds none of it - named
     # and asserted here rather than left to be noticed by nothing below ever mentioning it.
     assert _string_fields(UndoRequest) == (), "UndoRequest has no string field: at is int"
 
+    # The fingerprint's own refusal, as the route answers it: what a case would be answered that
+    # met any file but the one found, before its own value was read.
+    stale = edit()
+    stale["changes"][0]["fingerprint"] = fingerprint(b"")
+    refusal = posted(as_found(), "/api/edit", stale)
+    assert refusal == Reply(
+        409, {"error": "stale", "message": f"{target.resolve()} changed on disk since it was read"}
+    )
+
+    # Each model with a string field: the route that reads it, its well-formed body, and where in
+    # that body the model's own fields sit. Operation.op is a Literal of four strings, found
+    # beside pointer and raw: the gap a review of this walk's first commit found - op hardcoded
+    # out of a by-hand field list - which reading the fields off each model closes by
+    # construction.
+    walked = (
+        (OpenRequest, "/api/open", lambda: {"path": demo_json}, lambda body: body),
+        (Changes, "/api/edit", edit, lambda body: body),
+        (Change, "/api/edit", edit, lambda body: body["changes"][0]),
+        (Operation, "/api/edit", edit, lambda body: body["changes"][0]["operations"][0]),
+    )
+    assert {model: _string_fields(model) for model, *_ in walked} == {
+        OpenRequest: ("path",),
+        Changes: ("label",),
+        Change: ("file", "fingerprint"),
+        Operation: ("op", "pointer", "raw"),
+    }
     cases = 0
-    open_fields = _string_fields(OpenRequest)
-    assert open_fields == ("path",)
-    for field in open_fields:
-        for value in HOSTILE:
-            cases += 1
-            body = json.dumps({field: value}).encode("utf-8")
-            reply = api.handle("POST", "/api/open", {}, body)
-            assert reply.status != 500, (f"OpenRequest.{field}", value[:20], reply.body)
-
-    changes_fields = _string_fields(Changes)
-    assert changes_fields == ("label",)
-    for field in changes_fields:
-        for value in HOSTILE:
-            cases += 1
-            body = well_formed_edit()
-            body[field] = value
-            reply = api.handle("POST", "/api/edit", {}, json.dumps(body).encode("utf-8"))
-            assert reply.status != 500, (f"Changes.{field}", value[:20], reply.body)
-
-    change_fields = _string_fields(Change)
-    assert change_fields == ("file", "fingerprint")
-    for field in change_fields:
-        for value in HOSTILE:
-            cases += 1
-            body = well_formed_edit()
-            body["changes"][0][field] = value
-            reply = api.handle("POST", "/api/edit", {}, json.dumps(body).encode("utf-8"))
-            assert reply.status != 500, (f"Change.{field}", value[:20], reply.body)
-
-    # Operation.op is a Literal of four strings, found beside pointer and raw: the gap a review
-    # of this walk's first commit found - op hardcoded out of a by-hand field list - which
-    # reading the field off the model, as every other field here now is, closes by construction.
-    operation_fields = _string_fields(Operation)
-    assert operation_fields == ("op", "pointer", "raw")
-    for field in operation_fields:
-        for value in HOSTILE:
-            cases += 1
-            body = well_formed_edit()
-            body["changes"][0]["operations"][0][field] = value
-            reply = api.handle("POST", "/api/edit", {}, json.dumps(body).encode("utf-8"))
-            assert reply.status != 500, (f"Operation.{field}", value[:20], reply.body)
-
-    assert cases == 77, "the seven string fields these five models hold, once each"
+    failed: list[tuple[str, str, str]] = []
+    preempted: list[tuple[str, str]] = []
+    for model, path, well_formed, fields_of in walked:
+        for field in _string_fields(model):
+            for value in HOSTILE:
+                cases += 1
+                body = well_formed()
+                fields_of(body)[field] = value
+                reply = posted(as_found(), path, body)
+                case = (f"{model.__name__}.{field}", value[:20])
+                if reply.status == 500:
+                    failed.append((*case, str(reply.body)[:200]))
+                if reply == refusal and (model, field) != (Change, "fingerprint"):
+                    preempted.append(case)
+    assert failed == [], "each case answered 500, or raising"
+    assert preempted == [], "each case refused for the file's fingerprint before its own value"
+    assert cases == 77, "the seven string fields these five models hold, eleven values each"

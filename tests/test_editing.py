@@ -129,6 +129,21 @@ class TestLayingOutAValue:
             self.layout("{")
         assert refused.value.code == INVALID
 
+    @pytest.mark.parametrize("depth", [600, 3000], ids=["writing", "reading"])
+    def test_a_value_too_deep_to_lay_out_is_refused_as_too_deep_to_read(self, depth):
+        """Python's parser reads a value far deeper than its layout goes: reading the tokens
+        spends a frame of the stack a level, and writing them out two, so six hundred levels
+        outrun the writing and three thousand the reading as well. Either is refused as the
+        loader refuses a document deeper than the parser goes, rather than raising
+        ``RecursionError``, which ``ddd gui`` answered an edit carrying one with: a ``500``."""
+        raw = "[" * depth + "]" * depth
+        with pytest.raises(EditError) as refused:
+            self.layout(raw)
+        assert (refused.value.code, str(refused.value)) == (
+            INVALID,
+            f"{raw!r} is not one json value: the json is nested too deeply to read",
+        )
+
 
 MULTI = (
     "{\n"

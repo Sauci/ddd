@@ -13,7 +13,7 @@ import sys
 import threading
 import time
 import types
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 from pathlib import Path
 from typing import Any, Final
 from urllib.parse import parse_qs, quote, urlsplit
@@ -50,6 +50,7 @@ from ddd.gui.server import (
     SIGNED_IN_PAGE,
     TOKEN_BYTES,
     GuiServer,
+    _names_a_device,
     is_loopback,
     launched,
     run,
@@ -642,9 +643,7 @@ class TestWhoMayAsk:
         )
         assert response.status == 413
 
-    def test_a_content_length_of_more_than_4300_digits_is_too_large_not_500(
-        self, server, capsys
-    ) -> None:
+    def test_a_content_length_of_4301_nines_is_too_large_not_500(self, server, capsys) -> None:
         """``int()`` itself refuses a string of more than 4,300 digit characters, whatever
         they are, raising the same ``ValueError`` the hostile walk pins over a query's own
         numbers (``MAX_DIGITS``, ``queries.py``), which ``_body`` read straight into ``int()``
@@ -875,13 +874,17 @@ def served(server: GuiServer, path: str) -> tuple[int, str | None, bytes]:
     return response.status, response.getheader("Content-Type"), data
 
 
-def looked_up(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+def looked_up(monkeypatch: pytest.MonkeyPatch, links: Collection[Path] = ()) -> list[str]:
     """Every path ``ddd.gui.server`` asks ``os.path`` about from here on, in the order asked:
     the module's ``os`` swapped for one whose ``path`` records each question's path before
     answering it. That module's questions alone - anything else in the process that asks the
     file system something is not what these tests are about - and only the four ``_page``
-    asks: a fifth fails the request, rather than going unrecorded."""
+    asks: a fifth fails the request, rather than going unrecorded.
+
+    Each of ``links`` is answered a symbolic link, whatever it is on disk: a link to a file,
+    which an ordinary account cannot make on Windows."""
     asked: list[str] = []
+    linked = {os.fspath(link) for link in links}
 
     def recording(question: Callable[[Any], bool]) -> Callable[[Any], bool]:
         def recorded(path: Any) -> bool:
@@ -890,10 +893,14 @@ def looked_up(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
         return recorded
 
-    questions = {
-        name: recording(getattr(os.path, name))
-        for name in ("isdir", "isfile", "isjunction", "islink")
-    }
+    answers = {name: getattr(os.path, name) for name in ("isdir", "isfile", "isjunction", "islink")}
+    on_disk = answers["islink"]
+
+    def islink(path: Any) -> bool:
+        return os.fspath(path) in linked or on_disk(path)
+
+    answers["islink"] = islink
+    questions = {name: recording(answer) for name, answer in answers.items()}
     path = types.SimpleNamespace(**questions)
     monkeypatch.setattr(module, "os", types.SimpleNamespace(path=path))
     return asked
@@ -998,6 +1005,93 @@ class TestAPagePath:
         directory_link(pages / "outside", pages.parent)
         assert served(server, "/outside/secret.txt") == INDEX
         assert capsys.readouterr().err == ""
+
+    def test_a_last_name_that_is_a_link_is_not_served(
+        self, server, pages, monkeypatch, capsys
+    ) -> None:
+        """The link check is made of the name a path ends in, as well as of each name it steps
+        into: a link to a file outside the pages is that last name. ``app.js``, the pages' own
+        script, answered a link by ``looked_up`` - a link to a file needs a privilege on Windows
+        that an ordinary account does not hold - is not served, where it otherwise is."""
+        looked_up(monkeypatch, links=[pages / "app.js"])
+        assert served(server, "/app.js") == INDEX
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        "path", ["/COM1", "/nul.js", "/con", "/Lpt9.txt", "/aux.", "/assets/CON"]
+    )
+    def test_a_name_windows_keeps_for_a_device_names_no_file_on_any_system(
+        self, server, pages, assets, path, monkeypatch, capsys
+    ) -> None:
+        """Windows opens a device for such a name, in any directory, whatever its extension or
+        case: ``COM1`` a serial port, ``NUL`` the null device. It is never looked up, on any
+        system; and where it can be an ordinary file, on any system but Windows, that file is
+        not served either."""
+        if sys.platform != "win32":
+            (pages / path[1:]).write_text("a device, on Windows", encoding="utf-8")
+        asked = looked_up(monkeypatch)
+        assert served(server, path) == INDEX
+        assert set(asked) <= {str(pages), str(pages / "assets")}
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        "device",
+        [
+            "CON",
+            "PRN",
+            "AUX",
+            "NUL",
+            "COM0",
+            "COM1",
+            "COM2",
+            "COM3",
+            "COM4",
+            "COM5",
+            "COM6",
+            "COM7",
+            "COM8",
+            "COM9",
+            "COM¹",
+            "COM²",
+            "COM³",
+            "LPT0",
+            "LPT1",
+            "LPT2",
+            "LPT3",
+            "LPT4",
+            "LPT5",
+            "LPT6",
+            "LPT7",
+            "LPT8",
+            "LPT9",
+            "LPT¹",
+            "LPT²",
+            "LPT³",
+        ],
+    )
+    def test_every_name_windows_keeps_for_a_device_is_one_however_it_is_spelled(
+        self, device
+    ) -> None:
+        """In any case, with any extension, and with the spaces or dots Windows takes off the
+        end of a name."""
+        spellings = [
+            device,
+            device.lower(),
+            device.title(),
+            f"{device}.txt",
+            f"{device.lower()}.tar.gz",
+            f"{device}.",
+            f"{device} ",
+            f"{device} .js",
+        ]
+        assert [name for name in spellings if not _names_a_device(name)] == []
+
+    @pytest.mark.parametrize(
+        "name",
+        ["console", "com10", "COM", "lpt", "nul_", "xaux", "aux-1.js", ".con", "COM⁴", "app.js"],
+    )
+    def test_a_name_merely_like_one_is_none(self, name) -> None:
+        assert not _names_a_device(name)
 
     def test_a_path_is_looked_up_no_deeper_than_the_pages_go(
         self, server, monkeypatch, capsys
@@ -1486,6 +1580,15 @@ def request_line(length: int) -> bytes:
     return line
 
 
+def header_line(length: int, name: bytes = b"X-Pad", filler: bytes = b"x") -> bytes:
+    """A header line ``name`` whose value is ``filler`` over and over, ``length`` bytes long
+    with its CRLF; nothing reads an ``X-Pad``."""
+    start, end = name + b": ", b"\r\n"
+    line = start + filler * (length - len(start) - len(end)) + end
+    assert len(line) == length
+    return line
+
+
 def headed(server: GuiServer, count: int, *, ended: bool = True) -> bytes:
     """A ``GET`` of the session with ``count`` header lines, ``Host`` and ``Connection: close``
     among them: ended by the blank line, or cut off after the last of them."""
@@ -1503,8 +1606,9 @@ def status_of(server: GuiServer, sent: bytes) -> int:
 
 class TestTheStandardLibrarysLimits:
     """Spec §6 leaves a request's own size to the standard library, ahead of anything of this
-    server's: the length of its request line and the number of its headers. Pinned here, each
-    on a connection of its own, so that a server that stopped answering them would be caught.
+    server's: the length of its request line and of each header line, and the number of its
+    headers. Pinned here, each on a connection of its own, so that a server that stopped
+    answering them would be caught.
 
     A refused request is sent only as far as the line it is refused at: a connection closed
     with bytes it never read is reset, and the answer can be lost with it."""
@@ -1515,6 +1619,22 @@ class TestTheStandardLibrarysLimits:
     def test_a_request_line_of_65536_bytes_is_read(self, server) -> None:
         end = f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n".encode("ascii")
         assert status_of(server, request_line(65536) + end) == 401
+
+    @pytest.mark.parametrize(
+        ("name", "filler"), [(b"X-Pad", b"x"), (b"Content-Length", b"9")], ids=["any", "a-length"]
+    )
+    def test_a_header_line_of_more_than_65536_bytes_is_answered_431(
+        self, server, name, filler
+    ) -> None:
+        """Whatever header it is: a ``Content-Length`` written with too many nines for its line
+        is refused here, before this server reads it as a length, too large or not."""
+        sent = b"POST /api/edit HTTP/1.1\r\n" + header_line(65537, name, filler)
+        assert status_of(server, sent) == 431
+
+    def test_a_header_line_of_65536_bytes_is_read(self, server) -> None:
+        end = f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n".encode("ascii")
+        sent = b"GET /api/session HTTP/1.1\r\n" + header_line(65536) + end
+        assert status_of(server, sent) == 401
 
     def test_a_request_of_101_headers_is_answered_431(self, server) -> None:
         assert status_of(server, headed(server, 101, ended=False)) == 431

@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-from ddd.loading import parse_json_text
+from ddd.loading import NESTED_TOO_DEEPLY, parse_json_text
 from ddd.pointers import parent_pointer, segments
 
 if TYPE_CHECKING:
@@ -158,10 +158,19 @@ def lay_out(raw: str, *, one_line: bool, indent: str, unit: str, newline: str) -
     literals - which is how a description writes a conversion, a range or a shape. Otherwise it
     goes one entry per line, each indented by ``unit`` from ``indent`` - the indentation of the
     line the value starts on - and the lines end with ``newline``.
+
+    A value nested deeper than the layout goes is refused as one too deep to read, the way the
+    loader refuses a document deeper than python's parser goes (:func:`parse_raw`). The parser
+    reads thousands of levels, where reading the tokens here spends a frame of python's stack a
+    level and writing them out two: a value three thousand levels deep, sent to ``ddd gui`` as
+    an edit's value, ended the request in a ``RecursionError``.
     """
     parse_raw(raw)
-    node, _ = _parsed(_tokens(raw), 0)
-    return _rendered(node, one_line=one_line, indent=indent, unit=unit, newline=newline)
+    try:
+        node, _ = _parsed(_tokens(raw), 0)
+        return _rendered(node, one_line=one_line, indent=indent, unit=unit, newline=newline)
+    except RecursionError:
+        raise not_one_value(raw, NESTED_TOO_DEEPLY) from None
 
 
 def _tokens(raw: str) -> list[str]:

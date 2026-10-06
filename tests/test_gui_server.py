@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-import html
 import http.client
 import json
-import os
 import shutil
 import socket
-import stat
 import sys
 import threading
 import time
-import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Final
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import pytest
 
@@ -28,9 +24,10 @@ from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
 from ddd.gui.server import (
-    LAUNCH_PAGE,
+    CODE_SECONDS,
     MAX_BODY,
     SIGNED_IN_PAGE,
+    TOKEN_BYTES,
     GuiServer,
     is_loopback,
     launched,
@@ -93,8 +90,10 @@ def bounded_run(*arguments: Any, **keywords: Any) -> int:
     return answer
 
 
-def serving(api: Api, static: Path) -> Iterator[GuiServer]:
-    server = GuiServer(api, static)
+def serving(
+    api: Api, static: Path, *, clock: Callable[[], float] = time.monotonic
+) -> Iterator[GuiServer]:
+    server = GuiServer(api, static, clock=clock)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -140,15 +139,54 @@ def ask(
     return response, data
 
 
-def launch_file(opened: list[str], address: str) -> Path:
-    """The file a launch handed the browser: a file:// uri, holding no token, whose page
-    refreshes to the address; answers its path."""
-    (uri,) = opened
-    assert uri.startswith("file://")
-    assert "token" not in uri
-    path = Path(urllib.request.url2pathname(urlsplit(uri).path))
-    assert html.escape(address) in path.read_text(encoding="utf-8")
-    return path
+class FakeClock:
+    """A clock a test can move without sleeping; ``GuiServer``'s own default is
+    ``time.monotonic``."""
+
+    def __init__(self, now: float = 0.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class Opened:
+    """A stand-in for ``webbrowser.open``: records what it is given, and signals once it is.
+
+    A launch now runs its opener off the thread that serves (so a browser that never returns
+    cannot hold that up), so a test cannot assume the call already happened just because
+    ``run()`` has returned - it waits for this instead.
+    """
+
+    def __init__(self) -> None:
+        self.addresses: list[str] = []
+        self._called = threading.Event()
+
+    def __call__(self, address: str) -> None:
+        self.addresses.append(address)
+        self._called.set()
+
+    def wait(self, timeout: float = 5) -> str:
+        assert self._called.wait(timeout=timeout), "the browser was never opened"
+        (address,) = self.addresses
+        return address
+
+
+def code_from(printed_line: str, opened_address: str) -> str:
+    """The single-use launch code a launch handed the browser: an address of this server's
+    own - the same port as the one the printed line carries, naming ``/open`` - holding a
+    fresh code and not the long-lived token the printed address carries. Answers the code."""
+    printed = urlsplit(printed_line.rsplit(" ", 1)[1])
+    opened = urlsplit(opened_address)
+    assert (opened.scheme, opened.hostname, opened.port, opened.path) == (
+        printed.scheme,
+        printed.hostname,
+        printed.port,
+        "/open",
+    )
+    code = parse_qs(opened.query)["code"][0]
+    assert code != parse_qs(printed.query)["token"][0]
+    return code
 
 
 class TestSigningIn:
@@ -160,15 +198,22 @@ class TestSigningIn:
             f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
         )
         assert response.getheader("Content-Type") == "text/html; charset=utf-8"
+        # Its URL holds the token: a shared cache must never store it, nor a browser replay
+        # it from history.
+        assert response.getheader("Cache-Control") == "no-store"
         assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
 
     def test_the_page_refreshes_to_its_target_without_a_script(self) -> None:
-        """A navigation that began at a file:// page is cross-site to the browser, and a
-        SameSite=Strict cookie does not follow a redirect out of it; a refresh this page makes
-        is a navigation of this origin's own, which it does follow. A meta refresh, not a
-        script, so the content security policy - default-src 'self' - lets it run."""
+        """/open may be reached cross-site - the token or a launch code pasted or clicked
+        from anywhere - and a SameSite=Strict cookie does not reliably follow a redirect
+        chain that began cross-site; a refresh this page makes itself is a fresh,
+        same-origin navigation, which the cookie does follow. A meta refresh, not a script:
+        no script is needed, so none is written, and the content security policy has
+        nothing to permit either way. The link below the refresh is the fallback for a
+        browser that blocks it, such as Firefox's accessibility.blockautorefresh."""
         page = SIGNED_IN_PAGE.format(target="/project")
         assert '<meta http-equiv="refresh" content="0; url=/project">' in page
+        assert '<a href="/project">Open ddd gui</a>' in page
         assert "<script" not in page
 
     def test_a_project_being_analysed_signs_in_to_its_own_page(
@@ -202,6 +247,78 @@ class TestSigningIn:
         response, data = ask(server, "GET", f"/open{query}", signed_in=False)
         assert response.status == 403
         assert b"Open the address" in data
+        # A refusal's URL held the guess that failed: just as worth never storing or replaying.
+        assert response.getheader("Cache-Control") == "no-store"
+
+    def test_a_code_is_as_strong_as_the_token(self, server) -> None:
+        """The ruling's two numbers, pinned by literal: 32 random bytes behind each - the
+        strength secrets.token_urlsafe(32) always renders as a 43-character string."""
+        assert TOKEN_BYTES == 32
+        assert len(server.issue_code()) == 43
+        assert len(server.token) == 43
+
+    def test_a_code_signs_a_browser_in_exactly_as_the_token_does(self, server) -> None:
+        code = server.issue_code()
+        response, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert response.status == 200
+        assert response.getheader("Set-Cookie") == (
+            f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
+        )
+        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
+
+    def test_a_code_signs_in_once_and_a_second_presentation_is_refused(self, server) -> None:
+        code = server.issue_code()
+        first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert first.status == 200
+        second, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert second.status == 403
+        assert b"Open the address" in data
+
+    def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server) -> None:
+        """A guess that is not the one outstanding code is refused on its own, and does not
+        spend that code: a stranger trying codes cannot grief the browser the launch is
+        waiting for."""
+        code = server.issue_code()
+        wrong, data = ask(server, "GET", "/open?code=wrong", signed_in=False)
+        assert wrong.status == 403
+        assert b"Open the address" in data
+        right, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert right.status == 200
+
+    def test_a_spent_code_already_signed_in_answers_the_page_not_a_refusal(self, server) -> None:
+        """A browser's own prefetch of the /open?code= address, or its navigating there a
+        second time once the first already set the cookie, presents a code that by then
+        looks exactly like a stranger's guess - the cookie already carried is what tells the
+        two apart, and only it is let through to the page rather than a 403."""
+        code = server.issue_code()
+        first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert first.status == 200
+        second, data = ask(server, "GET", f"/open?code={code}")  # signed_in=True by default
+        assert second.status == 200
+        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
+
+    def test_the_tokens_own_value_is_not_accepted_as_a_code(self, server) -> None:
+        response, data = ask(server, "GET", f"/open?code={server.token}", signed_in=False)
+        assert response.status == 403
+        assert b"Open the address" in data
+
+    def test_an_unused_code_expires_after_60_seconds(self, project_file, pages) -> None:
+        assert CODE_SECONDS == 60
+        clock = FakeClock()
+        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
+            code = started.issue_code()
+            clock.now += CODE_SECONDS
+            response, data = ask(started, "GET", f"/open?code={code}", signed_in=False)
+            assert response.status == 403
+            assert b"Open the address" in data
+
+    def test_a_code_still_signs_in_a_moment_before_60_seconds(self, project_file, pages) -> None:
+        clock = FakeClock()
+        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
+            code = started.issue_code()
+            clock.now += CODE_SECONDS - 1
+            response, _ = ask(started, "GET", f"/open?code={code}", signed_in=False)
+            assert response.status == 200
 
     def test_the_api_without_the_cookie_is_unauthorised(self, server) -> None:
         response, data = ask(server, "GET", "/api/session", signed_in=False)
@@ -980,22 +1097,16 @@ class TestRunning:
         monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
-        opened: list[str] = []
-        monkeypatch.setattr(module.webbrowser, "open", opened.append)
-
-        def serve_forever(self, poll_interval=0.5):
-            # The launch file only exists while the server is up: run()'s own cleanup
-            # removes it before returning, so it is read here, from the one moment a real
-            # browser would also be reading it, and not after run() has already removed it.
-            launch_file(opened, self.address)
-
-        monkeypatch.setattr(GuiServer, "serve_forever", serve_forever)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        opener = Opened()
+        monkeypatch.setattr(module.webbrowser, "open", opener)
 
         result = run(project_file, [], 0, open_browser=True, static=pages, host="localhost")
 
         assert result == EXIT_OK
         (line,) = capsys.readouterr().out.splitlines()
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
+        code_from(line, opener.wait())
 
     def test_uppercase_localhost_resolving_to_loopback_is_loopback(
         self, pages, monkeypatch, capsys
@@ -1071,20 +1182,14 @@ class TestRunning:
     def test_it_prints_its_address_serves_and_exits_cleanly_when_interrupted(
         self, project_file, pages, monkeypatch, capsys, open_browser
     ) -> None:
-        opened: list[str] = []
+        opener = Opened()
         stopped: list[bool] = []
-        pages_before_stopping: list[Path] = []
-        monkeypatch.setattr(module.webbrowser, "open", opened.append)
+        monkeypatch.setattr(module.webbrowser, "open", opener)
         monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: stopped.append(True))
 
         def interrupted(self, poll_interval=0.5):
-            # The launch file only exists while the server is up: run()'s own cleanup
-            # removes it before returning, so it is read here, from the one moment a real
-            # browser would also be reading it, and not after run() has already removed it.
-            if open_browser:
-                pages_before_stopping.append(launch_file(opened, self.address))
             raise KeyboardInterrupt
 
         monkeypatch.setattr(GuiServer, "serve_forever", interrupted)
@@ -1093,11 +1198,39 @@ class TestRunning:
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
         assert "/open?token=" in line
         if open_browser:
-            (page,) = pages_before_stopping
-            assert not page.parent.exists()  # removed once the server stopped
+            code_from(line, opener.wait())
         else:
-            assert opened == []
+            assert opener.addresses == []
         assert stopped == [True]
+
+    def test_a_browser_that_never_returns_does_not_hold_up_serving(
+        self, project_file, pages, monkeypatch
+    ) -> None:
+        """A BROWSER line with no trailing '&' makes webbrowser.open build a GenericBrowser,
+        whose open() waits for the browser to exit (p.wait()) before returning - and headless
+        Chrome never exits on its own. A console browser such as lynx or w3m waits the same
+        way. The launch now runs its opener off the thread that serves, so a browser that
+        blocks here - simulated with an Event nothing sets - never holds run() up before it
+        reaches serve_forever()."""
+        monkeypatch.setattr(Session, "start", lambda self: None)
+        monkeypatch.setattr(Session, "start_polling", lambda self: None)
+        monkeypatch.setattr(Session, "stop", lambda self: None)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        entered = threading.Event()
+        released = threading.Event()
+        opened: list[str] = []
+
+        def never_returns(address: str) -> None:
+            opened.append(address)
+            entered.set()
+            released.wait(timeout=10)
+
+        monkeypatch.setattr(module.webbrowser, "open", never_returns)
+
+        assert bounded_run(project_file, [], 0, open_browser=True, static=pages) == EXIT_OK
+        assert entered.wait(timeout=5), "the opener was never called"
+        assert len(opened) == 1
+        released.set()
 
     def test_a_server_shut_down_from_elsewhere_also_ends_cleanly(self, pages, monkeypatch) -> None:
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -1155,32 +1288,16 @@ class TestRunning:
 
 
 class TestTheLaunch:
-    def test_the_browser_is_handed_a_private_page_and_never_the_token(self) -> None:
-        address = "http://127.0.0.1:8123/open?token=abc&x=<y>"
+    def test_the_browser_is_handed_a_fresh_code_and_never_the_token(self, server) -> None:
         opened: list[str] = []
-        directory = launched(address, opened.append)
-        try:
-            page = launch_file(opened, address)
-            assert page.parent == directory
-            assert page.read_text(encoding="utf-8") == LAUNCH_PAGE.format(
-                address=html.escape(address)
-            )
-            if os.name != "nt":
-                assert stat.S_IMODE(page.stat().st_mode) == 0o600
-                assert stat.S_IMODE(directory.stat().st_mode) == 0o700
-        finally:
-            shutil.rmtree(directory)
-
-    def test_the_page_refreshes_to_the_address_without_a_script(self) -> None:
-        """Like SIGNED_IN_PAGE's own refresh: a meta refresh, not a script, so the content
-        security policy of whatever page it refreshes to is never asked to let one run from
-        a file:// origin."""
-        page = LAUNCH_PAGE.format(address="http://127.0.0.1:8123/open?token=abc")
-        assert (
-            '<meta http-equiv="refresh" content="0; url=http://127.0.0.1:8123/open?token=abc">'
-            in page
+        assert launched(server, opened.append) is None
+        (address,) = opened
+        code = code_from(f"ddd gui (preview) serving {server.address}", address)
+        response, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert (response.status, data) == (
+            200,
+            SIGNED_IN_PAGE.format(target="/project").encode("utf-8"),
         )
-        assert "<script" not in page
 
 
 def test_the_windows_server_does_not_share_a_port() -> None:

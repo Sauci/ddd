@@ -20,15 +20,13 @@ from __future__ import annotations
 
 import contextlib
 import hmac
-import html
 import ipaddress
 import json
-import os
 import secrets
-import shutil
 import socket
 import sys
-import tempfile
+import threading
+import time
 import traceback
 import webbrowser
 from collections.abc import Callable, Sequence
@@ -46,6 +44,15 @@ COOKIE: Final = "ddd-gui"
 """What the cookie a server signs a page in with is called, followed by ``-`` and the server's
 port: a browser sends every cookie of 127.0.0.1 to every port, so under one name a second
 ``ddd gui`` replaced the first one's cookie and signed its page out."""
+
+TOKEN_BYTES: Final = 32
+"""Random bytes in the long-lived token, and in each single-use launch code: the same
+strength, since either one alone signs a browser in."""
+
+CODE_SECONDS: Final = 60
+"""How long an unredeemed launch code stays valid: long enough for a slow browser to start and
+ask, short enough that a code a local reader of ``/proc`` raced from the launch cannot be tried
+for long."""
 
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
@@ -91,11 +98,12 @@ SIGNED_IN_PAGE: Final = (
     '<p><a href="{target}">Open ddd gui</a></p></html>'
 )
 """What ``/open`` answers once it has set the cookie: a page that refreshes to the project, or
-to the start page. Not a redirect: a navigation that began at the ``file://`` page a launch
-opens (:data:`LAUNCH_PAGE`) is cross-site to the browser, and a ``SameSite=Strict`` cookie does
-not follow a redirect out of it, where a refresh this page makes is a navigation of this
-server's own origin, which it does. A meta refresh rather than a script, so that the content
-security policy lets it run."""
+to the start page. Not a redirect: ``/open`` is reached however the token or a launch code got
+there - pasted, clicked from somewhere else, or a browser opened straight on it - and a
+``SameSite=Strict`` cookie does not reliably follow a redirect chain that began cross-site,
+where a refresh this page makes itself is a fresh, same-origin navigation, which the cookie
+does follow. A meta refresh rather than a script: no script is needed, so none is written, and
+the fallback link below it is for a browser that blocks the refresh itself."""
 
 
 def static_directory() -> Path:
@@ -132,15 +140,53 @@ class GuiServer(ThreadingHTTPServer):
     """Not on Windows, where the socket option lets a second server bind a port the first still
     listens on, so a taken ``--port`` would be shared instead of refused."""
 
-    def __init__(self, api: Api, static: Path, port: int = 0, host: str = "127.0.0.1") -> None:
+    def __init__(
+        self,
+        api: Api,
+        static: Path,
+        port: int = 0,
+        host: str = "127.0.0.1",
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         super().__init__((host, port), _Handler)
         self.api = api
         self.static = static.resolve()
-        self.token = secrets.token_urlsafe(32)
+        self.token = secrets.token_urlsafe(TOKEN_BYTES)
+        self._clock = clock
+        self._code: tuple[str, float] | None = None
+        self._code_lock = threading.Lock()
 
     @property
     def port(self) -> int:
         return int(self.server_address[1])
+
+    def issue_code(self) -> str:
+        """Mint a single-use code that signs a browser in exactly as the long-lived token
+        does, valid for :data:`CODE_SECONDS` from now or until redeemed, whichever is first.
+        Replaces whatever code was issued before it: only the launch that just started should
+        be able to use one."""
+        code = secrets.token_urlsafe(TOKEN_BYTES)
+        with self._code_lock:
+            self._code = (code, self._clock() + CODE_SECONDS)
+        return code
+
+    def redeem_code(self, given: str) -> bool:
+        """Whether ``given`` is the one outstanding launch code, presented before it expired.
+
+        Spends it the moment its value matches - whether or not it had already expired - so
+        a second presentation, even of the right value, never succeeds again. Compared in
+        constant time, like the token.
+        """
+        with self._code_lock:
+            pending = self._code
+            if pending is None:
+                return False
+            code, expires = pending
+            if not hmac.compare_digest(given.encode("utf-8"), code.encode("utf-8")):
+                return False
+            self._code = None
+            return self._clock() < expires
 
     @property
     def address(self) -> str:
@@ -250,16 +296,31 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_json(reply.status, reply.body)
 
     def _sign_in(self, query: dict[str, list[str]]) -> None:
-        given = (query.get("token") or [""])[0]
-        if not hmac.compare_digest(given.encode("utf-8"), self._gui.token.encode("utf-8")):
-            self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
+        given_token = (query.get("token") or [""])[0]
+        given_code = (query.get("code") or [""])[0]
+        just_signed_in = hmac.compare_digest(
+            given_token.encode("utf-8"), self._gui.token.encode("utf-8")
+        )
+        if not just_signed_in and given_code:
+            just_signed_in = self._gui.redeem_code(given_code)
+        # Its URL holds a secret - the token, or the code - so neither this page nor a
+        # refusal of it may be cached and replayed from a shared cache or browser history.
+        headers = {"Cache-Control": "no-store"}
+        if just_signed_in:
+            headers["Set-Cookie"] = (
+                f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
+            )
+        elif not (given_code and self._signed_in()):
+            # A spent or expired code, like a wrong token - unless this request already
+            # carries the cookie a first presentation of it already won: a browser's own
+            # prefetch of the /open?code= address, or its navigating there a second time.
+            self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], headers)
             return
         # A project open goes to its page, analysed yet or not: the page says it is being
         # analysed until its first analysis lands.
         target = "/project" if self._gui.api.session.project is not None else "/"
-        cookie = f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
         page = SIGNED_IN_PAGE.format(target=target).encode("utf-8")
-        self._send(200, page, CONTENT_TYPES[".html"], {"Set-Cookie": cookie})
+        self._send(200, page, CONTENT_TYPES[".html"], headers)
 
     def _signed_in(self) -> bool:
         """Whether the request carries this server's cookie with the token in it.
@@ -339,33 +400,21 @@ def _refused(value: str, port: int, error: Exception) -> int:
     return EXIT_USAGE
 
 
-LAUNCH_PAGE: Final = (
-    '<!doctype html><html lang="en"><meta charset="utf-8">'
-    '<meta http-equiv="refresh" content="0; url={address}"><title>ddd gui</title>'
-    '<p><a href="{address}">Open ddd gui</a></p></html>'
-)
-"""The page a launch hands the browser, refreshing to the address with its token."""
-
-
-def launched(address: str, opener: Callable[[str], object]) -> Path:
-    """Open ``address`` in a browser without putting it on a command line; answer the directory
-    the page that does so was written in, which the caller removes once the server stops.
+def launched(server: GuiServer, opener: Callable[[str], object]) -> None:
+    """Open a one-time address in a browser, instead of handing it the long-lived token.
 
     ``webbrowser.open(address)`` starts the browser with the address as an argument, and a
     process's arguments are readable by every user of the computer, in ``/proc`` on Linux:
-    the token in the address was theirs for the asking while the launch ran. The browser is
-    handed instead the ``file://`` path of a page holding it, readable by its owner alone:
-    the directory ``tempfile.mkdtemp`` makes is ``0o700``, and the page is created ``0o600``.
-    On windows both live in the user's own temporary directory, which only that user may read
-    unless someone changed it.
+    the long-lived token would be theirs for the asking while the launch ran. A single-use
+    launch code stands in for it instead, minted fresh by :meth:`GuiServer.issue_code` -
+    worthless the moment it is redeemed, or :data:`CODE_SECONDS` after it was minted,
+    whichever comes first.
+
+    Not a file: a sandboxed browser (a snap, a flatpak) has its own private temporary
+    directory, and cannot open one written to this computer's. An address of this server's
+    own reaches it the same way the printed one, pasted, would.
     """
-    directory = Path(tempfile.mkdtemp(prefix="ddd-gui-"))
-    page = directory / "open.html"
-    descriptor = os.open(page, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-        file.write(LAUNCH_PAGE.format(address=html.escape(address)))
-    opener(page.as_uri())
-    return directory
+    opener(f"http://127.0.0.1:{server.port}/open?code={server.issue_code()}")
 
 
 def run(
@@ -427,7 +476,6 @@ def run(
         except OSError as error:
             return _refused(address, port, error)
         print(f"ddd gui (preview) serving {server.address}", flush=True)
-        launch: Path | None = None
         if beyond_loopback:
             # No browser to open in a container, and nothing left to protect this with either:
             # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost,
@@ -442,14 +490,19 @@ def run(
                 file=sys.stderr,
             )
         elif open_browser:
-            launch = launched(server.address, webbrowser.open)
+            # On a thread of its own: an opener that waits for the browser to exit
+            # (GenericBrowser.open's p.wait(), for a BROWSER line with no trailing '&', or
+            # for a console browser such as lynx or w3m) would otherwise hold this up before
+            # serve_forever() below is ever reached, leaving the socket bound but nothing
+            # answered until that browser did.
+            threading.Thread(
+                target=launched, args=(server, webbrowser.open), daemon=True, name="ddd-gui-open"
+            ).start()
         try:
             with contextlib.suppress(KeyboardInterrupt):
                 server.serve_forever()
         finally:
             server.server_close()
-            if launch is not None:
-                shutil.rmtree(launch, ignore_errors=True)
     finally:
         session.stop()
     return EXIT_OK

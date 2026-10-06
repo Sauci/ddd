@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import http.client
 import json
@@ -860,6 +859,48 @@ def _recording(started: list[threading.Thread]) -> Callable[[threading.Thread], 
     return recorded
 
 
+def _noting(
+    taken: list[tuple[bool, float | None]], acquire: Callable[..., bool]
+) -> Callable[..., bool]:
+    """A semaphore's ``acquire``, noting in ``taken`` how each call asked for a slot: whether
+    it would wait for one, and for how long."""
+
+    def noted(blocking: bool = True, timeout: float | None = None) -> bool:
+        taken.append((blocking, timeout))
+        return acquire(blocking, timeout)
+
+    return noted
+
+
+class Deadlines:
+    """A connection's server end that notes every deadline it is given, and passes everything
+    else to the socket it stands in for."""
+
+    def __init__(self, end: socket.socket) -> None:
+        self.end = end
+        self.deadlines: list[float | None] = []
+
+    def settimeout(self, value: float | None) -> None:
+        self.deadlines.append(value)
+        self.end.settimeout(value)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.end, name)
+
+
+def filled(end: socket.socket) -> None:
+    """Send from ``end`` until it can send no more, its peer reading none of it - or fail at
+    64 MiB rather than send forever."""
+    end.setblocking(False)
+    chunk = bytes(65536)
+    for _ in range(1024):
+        try:
+            end.send(chunk)
+        except BlockingIOError:
+            return
+    pytest.fail("the connection took 64 MiB and was still not full")
+
+
 def arrived(end: socket.socket) -> None:
     """Wait, ten seconds at most, until what the other end of a pair sent, or its going away,
     can be read at ``end``: at once on a unix socket, and a moment later on Windows, where
@@ -868,11 +909,63 @@ def arrived(end: socket.socket) -> None:
     assert readable == [end], "nothing arrived"
 
 
+def arrived_in_full(end: socket.socket, sent: bytes) -> None:
+    """Wait, ten seconds at most, until all of ``sent`` can be read at ``end`` - peeked, so that
+    it is all still there for a refusal to drain. A unix socket has it at once. On Windows,
+    where ``socket.socketpair`` is two TCP sockets over loopback, a request of a few KB can
+    arrive in pieces, and a drain that read only the first would pass where it should fail."""
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        arrived(end)
+        if len(end.recv(len(sent), socket.MSG_PEEK)) == len(sent):
+            return
+    pytest.fail("the request never arrived in full")
+
+
 def read_to_the_end(end: socket.socket) -> bytes:
     """All that ``end`` reads until the other end closes, given ten seconds to."""
     end.settimeout(10)
     with end.makefile("rb") as reading:
         return reading.read()
+
+
+def refused(server: GuiServer, sent: bytes) -> bytes:
+    """What a client that sent ``sent`` reads once ``server`` is handed the other end of their
+    socket pair, as the accepting thread hands it a connection: ``sent`` arrived in full first,
+    so the drain meets all of it, and the answer read to its end. The server's end carries a
+    deadline of its own, so that a refusal that waited to read fails rather than hangs."""
+    ours, theirs = socket.socketpair()
+    with ours, theirs:
+        if sent:
+            theirs.sendall(sent)
+            arrived_in_full(ours, sent)
+        ours.settimeout(10)
+        server.process_request(ours, ("127.0.0.1", 0))
+        return read_to_the_end(theirs)
+
+
+BROWSERS_REQUEST: Final = (
+    "GET /api/state?after=7 HTTP/1.1\r\n"
+    "Host: 127.0.0.1:8123\r\n"
+    "Connection: keep-alive\r\n"
+    'sec-ch-ua: "Chromium";v="153", "Not.A/Brand";v="99"\r\n'
+    "sec-ch-ua-mobile: ?0\r\n"
+    'sec-ch-ua-platform: "Linux"\r\n'
+    "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/153.0.0.0 Safari/537.36\r\n"
+    "Accept: */*\r\n"
+    "Sec-Fetch-Site: same-origin\r\n"
+    "Sec-Fetch-Mode: cors\r\n"
+    "Sec-Fetch-Dest: empty\r\n"
+    "Accept-Encoding: gzip, deflate, br, zstd\r\n"
+    "Accept-Language: en-GB,en;q=0.9\r\n"
+    f"Cookie: ddd-gui-8123={'t' * 43}; "
+    + "; ".join(f"app-{n}-session={'s' * 120}" for n in range(32))
+    + "\r\n\r\n"
+).encode("ascii")
+"""A request the size a browser sends this server, about 5 KB: its usual headers, and a cookie
+header carrying, beside this server's own, what other apps on 127.0.0.1 have set - a browser
+sends every one of them to every port."""
 
 
 class TestTheCap:
@@ -883,6 +976,16 @@ class TestTheCap:
     rather than a sixty-fifth network connection: whether a refused client reads its answer
     before the close would then turn on whether its request had arrived when it was accepted,
     a race no assertion can pin (the plan's ruling 2)."""
+
+    @pytest.fixture
+    def one_slot(self, project_file: Path, pages: Path) -> Iterator[GuiServer]:
+        """A server of one slot that serves nothing itself: each test hands
+        ``process_request`` its connections, as the accepting thread would."""
+        server = GuiServer(Held(Session(project_file.parent)), pages, connections=1)
+        try:
+            yield server
+        finally:
+            server.server_close()
 
     def test_the_cap_is_sixty_four_connections(self) -> None:
         assert MAX_CONNECTIONS == 64
@@ -908,24 +1011,26 @@ class TestTheCap:
         api = Held(Session(project_file.parent))
         try:
             for server in serving(api, pages, connections=2):
-                held = [
-                    threading.Thread(target=ask, args=(server, "GET", "/api/session"), daemon=True)
-                    for _ in range(2)
-                ]
-                for each in held:
-                    each.start()
-                for _ in held:
-                    assert api.asked.acquire(timeout=10)
+                taken: list[tuple[bool, float | None]] = []
                 started: list[threading.Thread] = []
-                ours, theirs = socket.socketpair()
-                with ours, theirs:
-                    theirs.sendall(b"GET /api/session HTTP/1.1\r\nHost: x\r\n\r\n")
-                    arrived(ours)
-                    with monkeypatch.context() as watching:
-                        watching.setattr(threading.Thread, "start", _recording(started))
-                        server.process_request(ours, ("127.0.0.1", 0))
-                    answer = read_to_the_end(theirs)
+                with monkeypatch.context() as watching:
+                    watching.setattr(server.slots, "acquire", _noting(taken, server.slots.acquire))
+                    held = [
+                        threading.Thread(
+                            target=ask, args=(server, "GET", "/api/session"), daemon=True
+                        )
+                        for _ in range(2)
+                    ]
+                    for each in held:
+                        each.start()
+                    for _ in held:
+                        assert api.asked.acquire(timeout=10)
+                    watching.setattr(threading.Thread, "start", _recording(started))
+                    answer = refused(server, BROWSERS_REQUEST)
                 assert started == []  # no thread was started for it
+                # Every slot asked for without waiting, for the two connections answered and the
+                # one refused alike: every other connection is accepted behind this thread.
+                assert taken == [(False, None)] * 3
                 head, _, data = answer.partition(b"\r\n\r\n")
                 status, *fields = head.decode("latin-1").split("\r\n")
                 assert status == "HTTP/1.1 503 Service Unavailable"
@@ -974,12 +1079,7 @@ class TestTheCap:
                 each.start()
                 held.append(each)
                 assert api.asked.acquire(timeout=10)
-            ours, theirs = socket.socketpair()
-            with ours, theirs:
-                theirs.sendall(b"GET /api/session HTTP/1.1\r\nHost: x\r\n\r\n")
-                arrived(ours)
-                server.process_request(ours, ("127.0.0.1", 0))
-                answer = read_to_the_end(theirs)
+            answer = refused(server, BROWSERS_REQUEST)
             assert answer.split(b"\r\n", 1)[0] == b"HTTP/1.1 503 Service Unavailable"
             api.release.set()
             for each in held:
@@ -1001,86 +1101,61 @@ class TestTheCap:
             "ddd gui is answering as many connections as it takes at once; ask again in a moment"
         )
 
-    def test_a_thread_that_cannot_start_gives_its_slot_back(
-        self, project_file, pages, monkeypatch
-    ) -> None:
-        server = GuiServer(Held(Session(project_file.parent)), pages, connections=1)
-        try:
-            monkeypatch.setattr(threading.Thread, "start", _cannot_start)
-            ours, theirs = socket.socketpair()
-            with ours, theirs, pytest.raises(RuntimeError, match="can't start new thread"):
-                server.process_request(ours, ("127.0.0.1", 0))
-            monkeypatch.undo()
-            assert server.slots.acquire(blocking=False)  # the one slot is free
-        finally:
-            server.server_close()
+    def test_a_thread_that_cannot_start_gives_its_slot_back(self, one_slot, monkeypatch) -> None:
+        monkeypatch.setattr(threading.Thread, "start", _cannot_start)
+        ours, theirs = socket.socketpair()
+        with ours, theirs, pytest.raises(RuntimeError, match="can't start new thread"):
+            one_slot.process_request(ours, ("127.0.0.1", 0))
+        monkeypatch.undo()
+        assert one_slot.slots.acquire(blocking=False)  # the one slot is free
 
     def test_a_connection_that_has_sent_nothing_yet_is_refused_without_waiting_for_it(
-        self, project_file, pages
+        self, one_slot
     ) -> None:
         """What has arrived is drained and nothing more is waited for: the thread that writes
         the refusal is the one every other connection is accepted on."""
-        server = GuiServer(Held(Session(project_file.parent)), pages, connections=1)
-        try:
-            assert server.slots.acquire(blocking=False)  # the one slot, taken
-            ours, theirs = socket.socketpair()
-            with ours, theirs:
-                # A deadline of its own: a refusal that waited for the request would fail
-                # here rather than hang the suite.
-                ours.settimeout(10)
-                server.process_request(ours, ("127.0.0.1", 0))
-                answer = read_to_the_end(theirs)
-            assert answer.split(b"\r\n", 1)[0] == b"HTTP/1.1 503 Service Unavailable"
-            assert not server.slots.acquire(blocking=False)  # none taken, none given back
-        finally:
-            server.server_close()
+        assert one_slot.slots.acquire(blocking=False)  # the one slot, taken
+        answer = refused(one_slot, b"")
+        assert answer.split(b"\r\n", 1)[0] == b"HTTP/1.1 503 Service Unavailable"
+        assert not one_slot.slots.acquire(blocking=False)  # none taken, none given back
 
     @pytest.mark.parametrize("left", ["closed", "reset"])
-    def test_a_client_gone_before_its_refusal_is_let_go_quietly(
-        self, project_file, pages, left
-    ) -> None:
+    def test_a_client_gone_before_its_refusal_is_let_go_quietly(self, one_slot, left) -> None:
         """Gone by closing, which fails the refusal's write on a unix socket, or by resetting -
         closing with bytes it never read - which fails the read before the write. Neither
         failure leaves the accepting thread."""
-        server = GuiServer(Held(Session(project_file.parent)), pages, connections=1)
-        try:
-            assert server.slots.acquire(blocking=False)
-            ours, theirs = socket.socketpair()
-            with ours:
-                if left == "reset":
-                    ours.sendall(b"never read")
-                theirs.close()
-                arrived(ours)
-                server.process_request(ours, ("127.0.0.1", 0))
-                assert ours.fileno() == -1  # closed all the same
-        finally:
-            server.server_close()
+        assert one_slot.slots.acquire(blocking=False)
+        ours, theirs = socket.socketpair()
+        with ours:
+            if left == "reset":
+                ours.sendall(b"never read")
+            theirs.close()
+            arrived(ours)
+            one_slot.process_request(ours, ("127.0.0.1", 0))
+            assert ours.fileno() == -1  # closed all the same
 
     def test_a_client_that_does_not_read_its_refusal_cannot_hold_the_accepting_thread(
-        self, project_file, pages, monkeypatch
+        self, one_slot, monkeypatch
     ) -> None:
-        """The refusal is given a second to be written, shortened here. A connection just
-        accepted takes its few hundred bytes at once, so this one is filled first, standing in
-        for a connection that will not take them."""
+        """The refusal is given a second to be written, shortened here, and the deadline it is
+        written under is the one noted. A connection just accepted takes its few hundred bytes
+        at once, so this one is filled first, standing in for a connection that will not take
+        them."""
         assert REFUSAL_SECONDS == 1
         monkeypatch.setattr(module, "REFUSAL_SECONDS", 0.05)
-        server = GuiServer(Held(Session(project_file.parent)), pages, connections=1)
-        try:
-            assert server.slots.acquire(blocking=False)
-            ours, theirs = socket.socketpair()
-            with ours, theirs:
-                ours.setblocking(False)
-                with contextlib.suppress(BlockingIOError):
-                    while True:
-                        ours.send(bytes(65536))
-                refusing = threading.Thread(
-                    target=server.process_request, args=(ours, ("127.0.0.1", 0)), daemon=True
-                )
-                refusing.start()
-                refusing.join(10)
-                assert not refusing.is_alive(), "the refusal waited on a client that never reads"
-        finally:
-            server.server_close()
+        assert one_slot.slots.acquire(blocking=False)
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            filled(ours)
+            noted = Deadlines(ours)
+            refusing = threading.Thread(
+                target=one_slot.process_request, args=(noted, ("127.0.0.1", 0)), daemon=True
+            )
+            refusing.start()
+            refusing.join(10)
+            assert not refusing.is_alive(), "the refusal waited on a client that never reads"
+            assert noted.deadlines == [0.05]  # REFUSAL_SECONDS, read as it stands
+            assert ours.fileno() == -1  # given up on, and closed
 
     def test_a_connection_nobody_is_using_gives_its_slot_back(
         self, project_file, pages, monkeypatch

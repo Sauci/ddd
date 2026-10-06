@@ -70,8 +70,8 @@ MAX_CONNECTIONS: Final = 64
 
 A browser opens at most six connections to one host, across all its tabs, so the page never
 comes near this: sixty-four leaves room for ten browser profiles and some scripts. Without
-it, the threads grew with whatever was asked: probed against ``a1da6ce``, three hundred long
-polls took the server from 31 threads to 293."""
+it, the threads grew with whatever was asked: probed against ``7d7aaed``, three hundred long
+polls at once took the server from 4 threads to 275."""
 
 BUSY: Final = "ddd gui is answering as many connections as it takes at once; ask again in a moment"
 """What a connection past :data:`MAX_CONNECTIONS` is answered, with a ``503``."""
@@ -150,9 +150,11 @@ def is_loopback(address: str) -> bool:
 
 def _head(kind: str, length: int, headers: dict[str, str] | None = None) -> dict[str, str]:
     """The headers of an answer, in the order they are sent: the security headers, the
-    answer's own, then the type and length of what it carries. Read by every answer the
-    handler sends and by the refusal :func:`_refuse` writes by hand alike, so that the two
-    cannot drift apart."""
+    answer's own, then the type and length of what it carries. Read by every answer
+    :meth:`_Handler._send` writes and by the refusal :func:`_refuse` writes by hand alike, so
+    that the two cannot drift apart. The answers ``http.server`` writes itself with
+    ``send_error``, to a request it cannot read or does not handle (400, 414, 431, 501, 505),
+    do not come through here."""
     return {
         **SECURITY_HEADERS,
         **(headers or {}),
@@ -210,8 +212,8 @@ class GuiServer(ThreadingHTTPServer):
         self._last_code: str | None = None
         self._code_lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(connections)
-        """One for each connection being answered. Bounded, so that a slot given back twice
-        raises rather than quietly letting one more connection in."""
+        """One for each connection being answered. Bounded: a slot given back when every slot
+        is already free raises, rather than raising the cap."""
 
     @property
     def port(self) -> int:
@@ -284,7 +286,11 @@ class GuiServer(ThreadingHTTPServer):
             return
         try:
             super().process_request(request, client_address)
-        except BaseException:
+        except Exception:
+            # The thread never started, so nothing else will give its slot back. Not
+            # BaseException: an interrupt that lands after the thread has started would then
+            # give the slot back twice, once here and once by the thread. This way the worst is
+            # one slot leaked by a server that is being stopped anyway.
             self.slots.release()
             raise
 

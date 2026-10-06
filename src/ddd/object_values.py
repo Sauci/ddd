@@ -27,7 +27,7 @@ from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.common import Datatype
 from ddd.models.conversion import Conversion
-from ddd.models.objects import InitValue, check_shape
+from ddd.models.objects import InitElement, InitValue, check_shape
 
 AXIS_REFERENCES: Final = ("axis", "x_axis", "y_axis")
 """The references that name an axis, in the order a grid lays them out.
@@ -43,9 +43,10 @@ class ValueRefusalError(Exception):
 
     code: Literal["invalid", "not-found"]
     """``not-found``: the project declares no object of that name. ``invalid``: the grid cannot
-    be drawn - a shape of more dimensions than rows of cells, an init that does not fit its
-    shape - or the change cannot be made: an element outside the shape, a value the datatype
-    cannot hold, an object whose init is text, or no one declaration to write into."""
+    be drawn - a shape of more dimensions than rows of cells, an init with a list where a number
+    belongs or a number where a row belongs - or the change cannot be made: an element outside
+    the shape, a value the datatype cannot hold, an object whose init is text, or no one
+    declaration to write into."""
 
     message: str
     """The sentence the refusal is shown with."""
@@ -187,21 +188,48 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
 
 
 def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
-    """Refuse an init written as a list that does not fit its object's shape, in the finding's own
-    words: a grid's rows, and its axes' breakpoints, are numbers in a shape.
+    """Refuse an init a grid has no place for: a list where a number belongs, or a number where a
+    row belongs - in the object's own rows, or in an axis's breakpoints.
 
     The loader keeps an init whatever its shape, and the analysis finds one that does not fit
-    ``init-invalid`` and still resolves the project. Laid out regardless, a list a level deeper
-    than the shape reached :class:`Grid` where a number belongs - the object's own rows, or an
-    axis's breakpoints - and the answer failed to be built: a ``500``. A whole scalar fills every
-    cell, and text is no grid at all, so only a list is judged."""
-    if isinstance(init, tuple):
-        problem = check_shape(init, shape)
-        if problem is not None:
-            raise ValueRefusalError(
-                "invalid",
-                f"'{name}' is initialised with values that do not fit its shape: {problem}",
-            )
+    ``init-invalid`` and still resolves the project. Laid out regardless, an element of either
+    kind reached :class:`Grid` where the other belongs, and the answer failed to be built: a
+    ``500``. Nothing else is judged. A short or a ragged init is drawn as written: the finding
+    says what is wrong with it, and setting a cell or pasting a table - the two plans this grid
+    is read for - is how the page repairs it, which a refusal here would close; the variable
+    panel's own settle of ``dimensions`` can leave an init short. A whole scalar fills every
+    cell, text is no grid at all, and an object of no shape has no cell to lay any of its init
+    out in."""
+    if not isinstance(init, tuple):
+        return
+    if not shape:
+        return
+    problem = _misplaced(init, shape)
+    if problem is not None:
+        raise ValueRefusalError(
+            "invalid", f"'{name}' is initialised with values that do not fit its shape: {problem}"
+        )
+
+
+def _misplaced(
+    values: tuple[InitElement, ...], shape: tuple[int, ...], path: str = ""
+) -> str | None:
+    """The first element of ``values`` a grid of ``shape`` has no place for, or ``None``: in a
+    shape of two dimensions a row belongs at each element, and in a row a number. Said in the
+    words :func:`~ddd.models.objects.check_shape` - the analysis's own judge - says it of that
+    element, which a kind out of place always gives one. How many elements there are is not
+    judged, so a short row is still a row."""
+    for index, element in enumerate(values):
+        at = f"{path}[{index}]"
+        if len(shape) > 1:
+            if not isinstance(element, tuple):
+                return check_shape(element, shape[1:], at)
+            problem = _misplaced(element, shape[1:], at)
+            if problem is not None:
+                return problem
+        elif isinstance(element, tuple):
+            return check_shape(element, (), at)
+    return None
 
 
 def _breakpoints(init: InitValue | None) -> tuple[float, ...]:

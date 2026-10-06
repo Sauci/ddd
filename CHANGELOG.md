@@ -41,13 +41,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   cookie, is refused rather than answered.
 
 * **Every route of `ddd gui` reads its query through one typed model.**  A hostile value - a
-  path with a NUL character or a lone surrogate, a number thousands of digits long, json
-  nested more than 64 levels deep (an edit's own value among it), a network path outside
-  what `ddd gui` serves - is refused with a plain `400`, `404` or `409`, the long poll's
-  `?after=` excepted, which answers at once whatever else it is given.  No malformed input -
-  in a query, a body or a page's path - is answered with a `500` any more, and an answer
-  nested deeper than `ddd gui` can write - more than 99 levels - is refused `409` rather than
-  sent, naming the description file to blame where there is one.
+  path with a NUL character or a lone surrogate, a number thousands of digits long, json nested
+  more than 64 levels deep (an edit's own value among it), a network path outside what
+  `ddd gui` serves, a file to create under a name longer than 243 bytes - is refused with a
+  plain `400`, `404` or `409`, the long poll's `?after=` excepted, which answers at once
+  whatever else it is given.  No malformed input - in a query, a body or a page's path - is
+  answered with a `500` any more, and an answer carrying json nested more than 99 levels deep -
+  a file's contents, or a part of the project's dictionary - is refused `409` rather than sent:
+  naming the file, for a file that deep or one stating an extension block too deep, and no file
+  otherwise.
 
 * **`ddd gui` answers at most sixty-four connections at once.**  The sixty-fifth is refused
   immediately, `503`, rather than given a thread of its own: a local process that floods the

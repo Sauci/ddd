@@ -66,6 +66,14 @@ STAGING_SUFFIX: Final = ".ddd-staging"
 """What a file's new bytes are staged under beside it: the name ``ddd id`` and the artefact
 writer stage under, which no project gives a file of its own."""
 
+NAME_MAX: Final = 255
+"""The longest name of a file a file system takes, in the bytes utf-8 spells it with: what ext4
+counts, and never fewer than the utf-16 units NTFS counts, so a name within it is one both take."""
+
+CREATED_NAME_MAX: Final = NAME_MAX - len(STAGING_SUFFIX)
+"""The longest name a file can be created under: staged first under the name and
+:data:`STAGING_SUFFIX`, it must fit :data:`NAME_MAX`."""
+
 REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
 """How many times a file is renamed into place, or taken away, before a refusal stands.
 
@@ -900,8 +908,10 @@ def _created(pending: FileChange) -> bytes:
 
     As given, because there is no file yet whose layout an edit could follow - whoever plans the
     change lays the document out - and still read by the loader's rule first, so that no file
-    ``ddd check`` would refuse to read is ever written. A file already there is somebody's, and
-    the change was computed without it: refused as stale, whatever it holds.
+    ``ddd check`` would refuse to read is ever written. A name too long to create a file under
+    is refused next (:func:`name_too_long`), before the file system is asked anything about it.
+    A file already there is somebody's, and the change was computed without it: refused as
+    stale, whatever it holds.
     """
     only = pending.operations[0] if len(pending.operations) == 1 else None
     if only is None or (only.op, only.pointer) != ("set", "") or only.raw is None:
@@ -909,9 +919,32 @@ def _created(pending: FileChange) -> bytes:
             INVALID, f"{pending.path} is created whole, by one set at the top of the file"
         )
     _read(only.raw, INVALID, f"{pending.path} would be created holding what DDD does not read")
+    long = name_too_long(pending.path.name)
+    if long is not None:
+        raise EditError(INVALID, f"{pending.path} cannot be created: {long}")
     if pending.path.exists():
         raise EditError(STALE, f"{pending.path} exists already")
     return only.raw.encode("utf-8")
+
+
+def name_too_long(name: str) -> str | None:
+    """Why no file can be created under ``name``, or ``None`` where one can: a name longer than
+    :data:`CREATED_NAME_MAX` bytes is no name to create a file under, the request's to answer for.
+
+    Asked before the file system is asked anything about the name. Staged regardless, the file
+    system refused it and the edit was answered as a write that failed, ``500``, with the files
+    already written put back; and on Linux python 3.12's own ``Path.exists`` raises on a name
+    past :data:`NAME_MAX` rather than answer that nothing is there. Public for the plan of a new
+    file, which refuses its name by the same rule, in the same words.
+    """
+    length = len(name.encode("utf-8", "surrogatepass"))
+    if length > CREATED_NAME_MAX:
+        return (
+            f"its name is {length} bytes long, and a name is at most {CREATED_NAME_MAX} - the "
+            f"file is staged under the name and '{STAGING_SUFFIX}' first, and a file system takes "
+            f"{NAME_MAX} bytes"
+        )
+    return None
 
 
 def _stage_and_replace(path: Path, data: bytes, like: Path | None) -> None:

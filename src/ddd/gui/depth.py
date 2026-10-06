@@ -9,9 +9,13 @@ system ``ddd gui`` runs on, past which it gives up writing an answer - ``ValueEr
 reference detected (depth exceeded)`` - which was answered ``500``.
 
 Every answer is written through :func:`written`, which counts it first and refuses one deeper than
-that, so that no route can answer one, a route added later included. Where a description file is
-to blame, its own route refuses it first, naming the file: ``GET /api/file`` past
-:data:`FILE_DEPTH` (:func:`file_too_deep`), ``GET /api/dictionary`` for an extension block past
+that. A test reads ``api.py``'s syntax tree, and fails on a ``Reply`` there whose body is neither
+one the net wrote nor ``_error``'s two strings, and on any of pydantic's dumps there -
+``model_dump``, ``model_dump_json``, ``dump_python`` or ``dump_json``, whatever it is called on -
+but two reading a plan's own query: so a route added later is held to the net as every route
+there is, in whichever of these ways it would dump its answer. Where a description file is to
+blame, its own route refuses it first, naming the file: ``GET /api/file`` past :data:`FILE_DEPTH`
+(:func:`file_too_deep`), and ``GET /api/dictionary`` for an extension block past
 :data:`PROJECT_BLOCK_DEPTH` or :data:`OBJECT_BLOCK_DEPTH` (:func:`block_too_deep`).
 """
 
@@ -131,7 +135,14 @@ def counted(answer: BaseModel) -> int:
     counted one level, which the serializer counts only where it reaches the model through a
     definition it shares with another field: always counting it is what makes this a bound rather
     than an estimate, and so is reading a union of several kinds as an untyped value. The answer
-    itself is not counted, as the serializer does not count the model it was asked to write."""
+    itself is not counted, as the serializer does not count the model it was asked to write.
+
+    The serializer counts a shared definition that is not a model as well - a type alias a model
+    uses in more than one place - a level at each place it passes through one, and this counts
+    none. So the bound rests on the models an answer is written from sharing no such definition
+    but ``InitElement`` and ``InitScalar``, an object's ``init``, which this reads as unions of
+    several kinds, untyped, every value under them counted: a test lists every one there is, and
+    fails when another appears."""
     deepest = 0
     unseen: list[tuple[object, object, int]] = _fields_of(answer, 0)
     while unseen:

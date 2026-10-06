@@ -489,6 +489,44 @@ def unit_edit(
     }
 
 
+LONGEST_NAME: Final = 243
+"""The longest name a file can be created under, in bytes: staged under it and ``.ddd-staging``
+first, 255 bytes, the most a file system takes."""
+
+
+def too_long(name: str, length: int) -> str:
+    """The whole refusal of a name ``length`` bytes long, opening with ``name``: the file's path,
+    as the edit names the file, or its name, as the plan of a new file does."""
+    return (
+        f"{name} cannot be created: its name is {length} bytes long, and a name is at most "
+        f"{LONGEST_NAME} - the file is staged under the name and '.ddd-staging' first, and a file "
+        "system takes 255 bytes"
+    )
+
+
+def creating(root: Path, name: str) -> dict[str, Any]:
+    """An edit creating a units file called ``name`` beside ``root``'s project, whose includes
+    name it in the same edit - the one shape an edit may create a file in."""
+    described = root / "p.ddd.json"
+    return {
+        "changes": [
+            {
+                "file": (root / name).as_posix(),
+                "fingerprint": None,
+                "operations": [{"op": "set", "pointer": "", "raw": '{"units": ["rpm"]}'}],
+            },
+            {
+                "file": described.as_posix(),
+                "fingerprint": fingerprint(described.read_bytes()),
+                "operations": [
+                    {"op": "insert", "pointer": "project.includes[2]", "raw": json.dumps(name)}
+                ],
+            },
+        ],
+        "label": "the vocabulary adopted",
+    }
+
+
 class TestRoutes:
     def test_an_unknown_path_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/nothing") == Reply(
@@ -2280,6 +2318,36 @@ class TestEdit:
             "units",
             True,
         )
+
+    def test_the_longest_name_a_file_can_be_created_under_is_written(
+        self, api: Api, root: Path
+    ) -> None:
+        name = "n" * (LONGEST_NAME - len(".ddd.json")) + ".ddd.json"
+        assert len(name.encode("utf-8")) == LONGEST_NAME
+        assert post(api, "/api/edit", creating(root, name)).status == 200
+        assert (root / name).read_bytes() == b'{"units": ["rpm"]}'
+
+    @pytest.mark.parametrize(
+        ("name", "length"),
+        [
+            pytest.param("n" * 235 + ".ddd.json", 244, id="a-byte-longer"),
+            pytest.param("n" * 291 + ".ddd.json", 300, id="longer-than-a-file-system-takes"),
+            pytest.param("\u00e9" * 118 + ".ddd.json", 245, id="counted-in-bytes"),
+        ],
+    )
+    def test_a_longer_name_is_refused_before_anything_is_written(
+        self, api: Api, root: Path, name: str, length: int
+    ) -> None:
+        """Input, not a failure to write: refused before the file system is asked anything about
+        the name, which python 3.12's own ``Path.exists`` raises on past 255 bytes on Linux.
+        Counted in the bytes utf-8 spells it with - what ext4 counts, and never fewer than the
+        utf-16 units NTFS counts - so that a name ``é`` spells in 127 characters is refused at 245
+        bytes."""
+        before = contents(root)
+        assert post(api, "/api/edit", creating(root, name)) == Reply(
+            409, {"error": "invalid", "message": too_long(str((root / name).resolve()), length)}
+        )
+        assert contents(root) == before
 
     def test_a_file_the_edit_does_not_include_is_not_created(self, api: Api, root: Path) -> None:
         edit = {
@@ -6982,6 +7050,165 @@ class TestTheValuesGrid:
         )
         assert capsys.readouterr() == ("", "")
 
+    @pytest.mark.parametrize(
+        ("dimensions", "init", "says"),
+        [
+            pytest.param(
+                [3],
+                [1, [2]],
+                "element [1] is a list but the shape has no further dimension",
+                id="a-list-where-a-number-belongs-in-a-short-init",
+            ),
+            pytest.param(
+                [2, 2],
+                [[1], 2],
+                "element [1] must be a list of 2 elements; only the whole init may be a single "
+                "scalar",
+                id="a-number-where-a-row-belongs-after-a-short-row",
+            ),
+            pytest.param(
+                [2, 2],
+                [[1], [2, [3]]],
+                "element [1][1] is a list but the shape has no further dimension",
+                id="a-list-where-a-number-belongs-after-a-short-row",
+            ),
+        ],
+    )
+    def test_an_init_a_grid_has_no_place_for_is_refused_by_what_it_has_no_place_for(
+        self, tmp_path: Path, dimensions: list[int], init: list[Any], says: str
+    ) -> None:
+        """A grid is rows of numbers, so it has no place for a list where a number belongs, or a
+        number where a row belongs - the two kinds of init a grid was answered ``500`` for. Each
+        is refused by the element a grid cannot carry, in the words the analysis's own judge
+        gives that element, even where the init is also short or ragged and the finding names
+        that first: how many values an init holds is no reason to refuse its grid."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=dimensions, init=init)
+                ),
+            },
+        )
+        refusal = Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"'Speed' is initialised with values that do not fit its shape: {says}",
+            },
+        )
+        assert get(api, "/api/values", name="Speed") == refusal
+        assert get(api, "/api/values-plan", name="Speed", raw="1,2,3,4") == refusal
+
+    def test_a_short_init_is_drawn_as_written_and_planned_whole_or_a_cell_at_a_time(
+        self, tmp_path: Path
+    ) -> None:
+        """``[1, 2]`` on a shape of three - which the analysis finds ``init-invalid`` and resolves
+        regardless - is drawn as written, and both changes that repair it are planned: a cell, and
+        a pasted table, which, applied, leaves the init the shape asks for."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[3], init=[1, 2])
+                ),
+            },
+        )
+        drawn = get(api, "/api/values", name="Speed").body
+        assert (drawn["shape"], drawn["rows"], drawn["stated"]) == ([3], [[1, 2]], "array")
+        cell = get(api, "/api/value-plan", name="Speed", at="[1]", raw="7").body
+        assert [change["operations"] for change in cell["changes"]] == [
+            [{"op": "set", "pointer": "component.interface[0].definition.init[1]", "raw": "7"}]
+        ]
+        pasted = get(api, "/api/values-plan", name="Speed", raw="1,2,3").body
+        assert applied(api, pasted, "the values of Speed").status == 200
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2, 3]]
+
+    def test_a_ragged_init_is_drawn_as_written_and_planned_whole_or_a_cell_at_a_time(
+        self, tmp_path: Path
+    ) -> None:
+        """A second row one value short: drawn as written, and repaired as a short one is."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="rpm", dimensions=[2, 2], init=[[1, 2], [3]]),
+                ),
+            },
+        )
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2], [3]]
+        cell = get(api, "/api/value-plan", name="Speed", at="[0][1]", raw="7").body
+        assert [change["operations"] for change in cell["changes"]] == [
+            [{"op": "set", "pointer": "component.interface[0].definition.init[0][1]", "raw": "7"}]
+        ]
+        pasted = get(api, "/api/values-plan", name="Speed", raw="1,2,3,4").body
+        assert applied(api, pasted, "the values of Speed").status == 200
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2], [3, 4]]
+
+    @pytest.mark.parametrize("init", [[1, 2], [[1], 2]], ids=["a-list", "a-list-holding-a-list"])
+    def test_a_list_on_an_object_of_no_shape_is_drawn_as_no_cell(
+        self, tmp_path: Path, init: list[Any]
+    ) -> None:
+        """No shape, so no cell to lay a value in: the list is never laid out, whatever it holds,
+        and the grid is drawn empty, as any other object of no shape is; a pasted table has
+        nowhere to go."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm", init=init)),
+            },
+        )
+        drawn = get(api, "/api/values", name="Speed").body
+        assert (drawn["shape"], drawn["rows"], drawn["stated"]) == ([], [], "scalar")
+        assert get(api, "/api/values-plan", name="Speed", raw="1") == Reply(
+            409, {"error": "invalid", "message": "'Speed' has no cell for a value to sit in"}
+        )
+
+    def test_a_short_axis_is_drawn_as_written(self, tmp_path: Path) -> None:
+        """An axis whose init is a breakpoint short of its size: its breakpoints are drawn as
+        written, over the curve's own row."""
+        root = copied_example(tmp_path, "demo")
+        changed(
+            root,
+            "components/controller.ddd.json",
+            lambda document: definition_of(document, "AxisA")["init"].pop(),
+        )
+        session = Session(root)
+        session.open(root / "demo.ddd.json")
+        api = Api(session, root / "demo.ddd.json", wait_seconds=0.05)
+        drawn = get(api, "/api/values", name="CurveA").body
+        assert drawn["axes"][0]["breakpoints"] == [0, 3200, 6400, 12800, 19200]
+        assert drawn["rows"] == [[1200, 900, 800, 750, 700, 650]]
+
+    def test_a_short_init_the_dimensions_settle_leaves_is_drawn_and_its_paste_repairs_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The page's own flow: the variable panel settles ``dimensions`` to the consumer's
+        ``[3]``, which leaves the producer's ``[1, 2]`` a value short - and the grid is then
+        drawn, and the table pasted into it repairs the init."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[2], init=[1, 2])
+                ),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm", dimensions=[3])),
+            },
+        )
+        settled = get(api, "/api/settle", name="Speed", key="dimensions", raw="[3]").body
+        assert applied(api, settled, "the dimensions of Speed").status == 200
+        drawn = get(api, "/api/values", name="Speed").body
+        assert (drawn["shape"], drawn["rows"]) == ([3], [[1, 2]])
+        pasted = get(api, "/api/values-plan", name="Speed", raw="1,2,3").body
+        assert applied(api, pasted, "the values of Speed").status == 200
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2, 3]]
+
     def test_a_name_two_declarations_produce_is_read_only(self, tmp_path: Path) -> None:
         # The values come from the analysis's own producer and the file used to come from
         # `Index.producers[0]`, which is a different choice: with the project listing b first,
@@ -7821,6 +8048,31 @@ class TestCreatingAFile:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         assert refused(files_plan(api, "create", **query)) == (409, "invalid", says)
 
+    def test_the_longest_name_a_file_can_be_created_under_is_planned_and_written(
+        self, tmp_path: Path
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        name = "n" * (LONGEST_NAME - len(".ddd.json"))
+        preview = files_plan(api, "create", kind="constants", name=name).body
+        assert applied(api, preview, "a constants file created").status == 200
+        assert (root / f"{name}.ddd.json").is_file()
+
+    @pytest.mark.parametrize(
+        "letters", [235, 300], ids=["a-byte-longer", "longer-than-a-file-system-takes"]
+    )
+    def test_a_longer_name_is_refused_before_the_disk_is_asked_about_it(
+        self, tmp_path: Path, letters: int
+    ) -> None:
+        """The plan's own refusal, in the edit's words: a name of 247 letters or more, past what
+        a file system takes once ``.ddd.json`` is added, made python 3.12's own ``Path.exists``
+        raise on Linux, answered ``500``."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        assert refused(files_plan(api, "create", kind="constants", name="n" * letters)) == (
+            409,
+            "invalid",
+            too_long(f"{'n' * letters}.ddd.json", letters + len(".ddd.json")),
+        )
+
     def test_a_first_units_file_is_refused_while_a_file_did_not_load(self, tmp_path: Path) -> None:
         api = opened(tmp_path, HALF_SAVED)
         assert refused(files_plan(api, "create", kind="units", name="units")) == (
@@ -7968,6 +8220,13 @@ class TestAddingAFile:
                 "not-found",
                 "missing.ddd.json names no file; a file not there yet is created, not added",
                 id="no file",
+            ),
+            pytest.param(
+                "n" * 300 + ".ddd.json",
+                404,
+                "not-found",
+                f"{'n' * 300}.ddd.json names no file; a file not there yet is created, not added",
+                id="a name longer than a file system takes",
             ),
             pytest.param(
                 "p.ddd.json",

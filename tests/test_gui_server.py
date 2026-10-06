@@ -5,12 +5,14 @@ from __future__ import annotations
 import dataclasses
 import http.client
 import json
+import os
 import select
 import shutil
 import socket
 import sys
 import threading
 import time
+import types
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Final
@@ -19,7 +21,17 @@ from urllib.parse import parse_qs, quote, urlsplit
 import pytest
 
 import ddd
-from conftest import EXAMPLES, Gated, begun, component, declare, project, stopped, write_tree
+from conftest import (
+    EXAMPLES,
+    Gated,
+    begun,
+    component,
+    declare,
+    directory_link,
+    project,
+    stopped,
+    write_tree,
+)
 from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
 from ddd.gui import api as api_module
@@ -162,6 +174,21 @@ def raw_answer(server: GuiServer, sent: bytes) -> tuple[int, bytes]:
             data = answer.read()
     head, _, body = data.partition(b"\r\n\r\n")
     return int(head.split(b" ", 2)[1]), body
+
+
+def posted(server: GuiServer, length: str, body: bytes = b"") -> bytes:
+    """A signed-in ``POST /api/edit`` from this server's own page, as json, carrying ``body``
+    under a ``Content-Length`` spelled ``length`` - whatever ``body`` holds - and asking for
+    the connection to close after its answer, for :func:`raw_answer` to read to its end."""
+    return (
+        b"POST /api/edit HTTP/1.1\r\n"
+        + f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
+        + f"Cookie: {cookie(server)}={server.token}\r\n".encode("ascii")
+        + f"Origin: http://127.0.0.1:{server.port}\r\n".encode("ascii")
+        + b"Content-Type: application/json\r\n"
+        + f"Content-Length: {length}\r\nConnection: close\r\n\r\n".encode("ascii")
+        + body
+    )
 
 
 def answering_session(monkeypatch: pytest.MonkeyPatch, answer: Callable[..., object]) -> None:
@@ -615,31 +642,33 @@ class TestWhoMayAsk:
         )
         assert response.status == 413
 
-    @pytest.mark.parametrize("digits", [b"9" * 4301, b"0" * 4301], ids=["nines", "zeros"])
-    def test_a_content_length_of_more_than_4300_digits_is_never_500(
-        self, server, digits, capsys
+    def test_a_content_length_of_more_than_4300_digits_is_too_large_not_500(
+        self, server, capsys
     ) -> None:
         """``int()`` itself refuses a string of more than 4,300 digit characters, whatever
-        they are - zeros included - raising the same ``ValueError`` the hostile walk pins
-        over a query's own numbers (``MAX_DIGITS``, ``queries.py``), which ``_body`` read
-        straight into ``int()`` unguarded. A real body is never sent: 4,301 nines is refused
-        before ``_body`` ever tries to read one, and 4,301 zeros promises none to read."""
-        sent = (
-            b"POST /api/edit HTTP/1.1\r\n"
-            + f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
-            + f"Cookie: {cookie(server)}={server.token}\r\n".encode("ascii")
-            + f"Origin: http://127.0.0.1:{server.port}\r\n".encode("ascii")
-            + b"Content-Type: application/json\r\nContent-Length: "
-            + digits
-            + b"\r\nConnection: close\r\n\r\n"
+        they are, raising the same ``ValueError`` the hostile walk pins over a query's own
+        numbers (``MAX_DIGITS``, ``queries.py``), which ``_body`` read straight into ``int()``
+        unguarded. No body is sent: 4,301 nines is refused before ``_body`` reads one."""
+        status, body = raw_answer(server, posted(server, "9" * 4301))
+        assert (status, json.loads(body)) == (
+            413,
+            {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
         )
-        status, body = raw_answer(server, sent)
-        assert status != 500
-        if digits == b"9" * 4301:
-            assert (status, json.loads(body)) == (
-                413,
-                {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
-            )
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        ("length", "body"), [("0" * 4301, b""), ("00000002", b"{}")], ids=["zeros", "00000002"]
+    )
+    def test_leading_zeros_aside_a_length_is_read_as_its_value(
+        self, server, length, body, capsys
+    ) -> None:
+        """Zeros alone are a length of 0, however many there are, and zeros before a length
+        are no part of it: each is answered exactly as the same request spelling its length
+        plainly. ``00000002`` converted before ``_body`` stripped anything, so it pins that a
+        length is not refused for its digits alone, eight of them where ``MAX_BODY`` has
+        seven."""
+        plainly = raw_answer(server, posted(server, str(len(body)), body))
+        assert raw_answer(server, posted(server, length, body)) == plainly
         assert capsys.readouterr().err == ""
 
     def test_a_length_that_is_not_one_is_a_bad_request(self, server) -> None:
@@ -684,32 +713,6 @@ class TestWhatIsServed:
     ) -> None:
         response, data = ask(server, "GET", path)
         assert (response.status, response.getheader("Content-Type"), data) == (200, kind, text)
-
-    @pytest.mark.parametrize("path", ["/%00", "/a%00b.js", "/" + "a" * 300])
-    def test_a_page_path_that_cannot_be_statted_is_served_the_index_like_any_other_unknown_one(
-        self, server, path, capsys
-    ) -> None:
-        """Two different calls used to answer 500 for a path with no file of its own, each on
-        its own Python versions:
-
-        * a NUL cannot name a file on this computer, and ``Path.resolve()`` raised
-          ``ValueError`` on one rather than answering that no such file exists;
-        * a name over 255 bytes makes the stat ``Path.is_file()`` takes raise ``OSError``
-          (``ENAMETOOLONG``) - on Python 3.14, whose ``is_file`` is ``os.path.isfile`` and
-          swallows it, this machine cannot see the failure, but 3.12 and 3.13's ``Path``
-          re-raises everything but a handful of other errnos.
-
-        Either way, this used to reach ``_answer``'s own catch-all and print a traceback for
-        a 500 - one of a few places that did, an oversized ``Content-Length`` and an
-        unsplittable target being two more - and each is served the index here instead,
-        like any other unknown path."""
-        response, data = ask(server, "GET", path)
-        assert (response.status, response.getheader("Content-Type"), data) == (
-            200,
-            "text/html; charset=utf-8",
-            b"stand-in",
-        )
-        assert capsys.readouterr().err == ""
 
     def test_a_page_is_not_posted_to(self, server) -> None:
         response, _ = ask(
@@ -859,6 +862,154 @@ class TestWhatIsServed:
 
     def test_the_installed_pages_are_looked_for_beside_the_package(self) -> None:
         assert static_directory() == Path(ddd.__file__).parent / "gui" / "static"
+
+
+INDEX: Final = (200, "text/html; charset=utf-8", b"stand-in")
+"""The ``pages`` fixture's ``index.html``, as it is answered: what a path naming no file of the
+pages is served."""
+
+
+def served(server: GuiServer, path: str) -> tuple[int, str | None, bytes]:
+    """What a signed-in ``GET`` of ``path`` is answered: its status, its type and its body."""
+    response, data = ask(server, "GET", path)
+    return response.status, response.getheader("Content-Type"), data
+
+
+def looked_up(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every path ``ddd.gui.server`` asks ``os.path`` about from here on, in the order asked:
+    the module's ``os`` swapped for one whose ``path`` records each question's path before
+    answering it. That module's questions alone - anything else in the process that asks the
+    file system something is not what these tests are about - and only the four ``_page``
+    asks: a fifth fails the request, rather than going unrecorded."""
+    asked: list[str] = []
+
+    def recording(question: Callable[[Any], bool]) -> Callable[[Any], bool]:
+        def recorded(path: Any) -> bool:
+            asked.append(os.fspath(path))
+            return question(path)
+
+        return recorded
+
+    questions = {
+        name: recording(getattr(os.path, name))
+        for name in ("isdir", "isfile", "isjunction", "islink")
+    }
+    path = types.SimpleNamespace(**questions)
+    monkeypatch.setattr(module, "os", types.SimpleNamespace(path=path))
+    return asked
+
+
+def looped(first: Path, second: Path) -> None:
+    """Two links naming each other, so that nothing is ever found through either. Made with
+    :func:`directory_link`, which is a junction on Windows - where no link can name itself, a
+    junction's target having to exist when it is made, and its own name not to."""
+    second.mkdir()
+    directory_link(first, second)
+    second.rmdir()
+    directory_link(second, first)
+
+
+class TestAPagePath:
+    """A page path is read as plain names under the pages, and nothing it names is resolved.
+
+    It used to be resolved, then statted, and each step had a way to fail, answered 500 with a
+    traceback: on POSIX a NUL made ``Path.resolve()`` raise ``ValueError``; on 3.12 and 3.13 a
+    name over 255 bytes made ``Path.is_file()`` raise ``OSError``; on 3.12 a loop of links
+    made ``resolve()`` raise ``RuntimeError``, and a long chain of links ``RecursionError``.
+    On Windows, resolving opened a network or device spelling before anything checked where
+    it led. Every path here that names no file is answered the index, as any unknown path is,
+    with nothing printed."""
+
+    @pytest.fixture
+    def assets(self, pages: Path) -> Path:
+        """A directory of the pages, as the compiled pages' ``assets`` is, holding a script."""
+        (pages / "assets").mkdir()
+        (pages / "assets" / "index.js").write_text("export {};", encoding="utf-8")
+        return pages / "assets"
+
+    def test_a_file_nested_in_the_pages_is_served_with_its_own_type(self, server, assets) -> None:
+        assert served(server, "/assets/index.js") == (
+            200,
+            "text/javascript; charset=utf-8",
+            b"export {};",
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/%00",
+            "/a%00b.js",
+            "/../secret.txt",
+            "/%2e%2e/secret.txt",
+            "/./app.js",
+            "/%5C%5Chost%5Cshare%5Cx",
+            "/%5C%5C.%5Cpipe%5Cname",
+            "/C:%5Cx",
+            "/C:x",
+        ],
+    )
+    def test_a_name_that_is_not_plain_names_no_file_and_is_never_looked_up(
+        self, server, path, monkeypatch, capsys
+    ) -> None:
+        """A NUL, a dot segment, a backslash or a colon - the last two spell a network path, a
+        device or a drive on Windows - makes the path name no file before anything asks the
+        file system about it, even where the file it would name is there (``app.js``,
+        ``secret.txt``)."""
+        asked = looked_up(monkeypatch)
+        assert served(server, path) == INDEX
+        assert asked == []
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        "path", ["/" + "a" * 300, "/assets/", "/app.js/", "/assets//index.js", "/app.js/x"]
+    )
+    def test_a_path_with_no_file_of_its_own_is_answered_the_index(
+        self, server, assets, path, capsys
+    ) -> None:
+        """A name too long for a file system to hold; an empty one, after a trailing slash -
+        whether a directory or a file comes before it - or between two slashes, though
+        ``assets/index.js`` is there; and a name under a file."""
+        assert served(server, path) == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_loop_of_links_beside_the_pages_is_answered_the_index(
+        self, server, pages, capsys
+    ) -> None:
+        """A browser takes ``..`` out of a path; a client of the token holder's own may send it
+        as it is, as ``http.client`` does here."""
+        looped(pages.parent / "loop", pages.parent / "pool")
+        assert served(server, "/../loop") == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_loop_of_links_inside_the_pages_is_answered_the_index(
+        self, server, pages, capsys
+    ) -> None:
+        looped(pages / "loop", pages / "pool")
+        assert served(server, "/loop") == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_link_inside_the_pages_to_a_directory_outside_them_is_never_followed(
+        self, server, pages, capsys
+    ) -> None:
+        """The confinement spec section 2 keeps, which ``resolve()`` and ``is_relative_to``
+        gave before: a file outside the pages is never served, here ``secret.txt``, reached
+        through a link inside them. A link to a directory, which is a junction on Windows: a
+        link to a file needs a privilege there that an ordinary account does not hold."""
+        directory_link(pages / "outside", pages.parent)
+        assert served(server, "/outside/secret.txt") == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_path_is_looked_up_no_deeper_than_the_pages_go(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """A request line of 65,536 bytes holds up to 32,760 names. Asked about one after
+        another, each a longer path than the last, that many took forty seconds on the
+        development PC; but a name past one that is not a directory names no file, and is
+        never asked about."""
+        asked = looked_up(monkeypatch)
+        assert served(server, "/" + "a/" * 30_000 + "a") == INDEX
+        assert set(asked) == {str(server.static), str(server.static / "a")}
+        assert capsys.readouterr().err == ""
 
 
 class TestAMalformedAbsoluteFormTarget:

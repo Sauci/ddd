@@ -28,19 +28,26 @@ What it defends against
 
 * **Malformed input, from anyone, including the reader's own browser.** Every request this
   server reads in full is answered with a status and a sentence - never a ``500``, and
-  never a hang. (A request that stops arriving partway through - its headers, or the
-  promised body of a ``POST`` it has begun to read - is closed unanswered once its
-  connection has been idle thirty seconds.) A path holding a NUL character or a lone
-  surrogate, a number many thousands of digits long, json nested thousands of levels deep,
-  and a network or device path such as ``\\server\share`` that does not name a path under
-  a directory ``ddd gui`` serves are each refused with a plain ``400``, ``404`` or ``409``
-  - except a number this server's own long poll reads as "wait for a later version":
-  there, anything that is not a clean number is treated as none given, and answered at
-  once rather than refused. A network or device path is refused before anything resolves
-  it, and so is one holding a dot segment. The standard library itself refuses two shapes
-  before this server sees them at all: a request line over 65,536 bytes answers ``414``,
-  and a request carrying 100 header lines or more - the blank line that ends them counted
-  - answers ``431``; ninety-nine is the most ``ddd gui`` ever reads.
+  never a hang. (A request that stops arriving partway through - its headers, or a
+  ``POST``'s promised body, once the server has begun to read it - is closed unanswered
+  when its connection has been idle thirty seconds.) In a route's query or body, a path
+  holding a NUL character or a lone surrogate, a number many thousands of digits long, and
+  a network or device path such as ``\\server\share`` that does not name a path under a
+  directory ``ddd gui`` serves are each refused with a plain ``400``, ``404`` or ``409``,
+  and so is json nested thousands of levels deep in a query - except a number this server's
+  own long poll reads as "wait for a later version": there, anything that is not a clean
+  number is treated as none given, and answered at once rather than refused. Such a network
+  or device path is refused before anything resolves it, and so is one holding a dot
+  segment. A ``POST`` whose ``Content-Length`` is no length is refused ``400``, and one
+  promising more than 1,048,576 bytes ``413``, however many digits it is written with. A
+  page's own path is never resolved: it is read as plain names under the compiled pages,
+  and a name holding a NUL character, a backslash or a colon, or a dot segment, names no
+  file and is never looked up, so neither a network path nor a ``\\.\`` device path can be
+  spelled in one. A path naming no file is answered the page itself, as any unknown address
+  is. The standard library itself refuses two shapes before this server sees them at all: a
+  request line over 65,536 bytes answers ``414``, and a request carrying 100 header lines
+  or more - the blank line that ends them counted - answers ``431``; ninety-nine is the
+  most ``ddd gui`` ever reads.
 
 What it trusts
 --------------

@@ -514,10 +514,11 @@ class _Handler(BaseHTTPRequestHandler):
         if not (length.isascii() and length.isdecimal()):
             self._send_json(400, {"error": "bad-request", "message": "Content-Length is no length"})
             return None
-        # Leading zeros stripped before int() ever reads it: int() itself refuses a string of
-        # more than 4,300 digit characters regardless of their value (sys.get_int_max_str_
-        # digits), and a length that many digits long - zeros or not - already answers 413
-        # below, MAX_BODY needing only seven.
+        # Leading zeros are stripped before int() reads anything: int() refuses a string of more
+        # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
+        # how many. What is left is answered 413 if it is more than MAX_BODY, which its having
+        # more digits than MAX_BODY's seven settles without converting it, and is read as its
+        # value otherwise: zeros alone, however many, are a length of 0.
         significant = length.lstrip("0") or "0"
         if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
             message = f"a request body is at most {MAX_BODY} bytes"
@@ -526,28 +527,37 @@ class _Handler(BaseHTTPRequestHandler):
         return self.rfile.read(int(significant))
 
     def _page(self, path: str) -> None:
+        """Answer the file of the compiled pages a path names, or ``index.html``, whose router
+        makes a screen of any other path.
+
+        A page path is plain names under the pages, split on ``/``. A name that is empty, ``.``
+        or ``..``, or that holds a NUL character, a backslash or a colon - on Windows a
+        separator, a drive or a stream - names no file, and is never looked up. Nor does a name
+        that is a symbolic link or a junction, or one past a name that is not a directory: so
+        nothing outside the pages is served, and a path of thousands of names is looked up no
+        deeper than the pages go.
+
+        Nothing a path names is resolved. Resolving it touched the file system before anything
+        checked where it led: a loop of links raised on Python 3.12, and on Windows a network
+        or device spelling was opened.
+        """
         static = self._gui.static
-        try:
-            requested: Path | None = (static / unquote(path).lstrip("/")).resolve()
-        except (OSError, ValueError):
-            # A path this computer cannot even resolve - a NUL character (ValueError), or a
-            # name so long Windows answers ERROR_FILENAME_EXCED_RANGE (OSError) - is one more
-            # path with no file of its own, not a failure: the client-side router turns it
-            # into a screen the same way it does an unknown one. POSIX's own resolve() already
-            # ignores OSError when not strict, so no POSIX request reaches that branch; this
-            # guards the Windows path the same request would otherwise fail on.
-            requested = None
-        # os.path.isfile, not Path.is_file: a name over 255 bytes raises ENAMETOOLONG from the
-        # stat it makes, which isfile has always caught alongside ValueError, on every Python
-        # this runs on - pathlib.Path.is_file only started doing the same on 3.14, and on 3.12
-        # and 3.13 re-raises it, one more path with no file of its own answered as a failure.
-        target = (
-            requested
-            if requested is not None
-            and requested.is_relative_to(static)
-            and os.path.isfile(requested)  # noqa: PTH113 - Path.is_file is the bug, see above
-            else static / "index.html"
-        )
+        target = static / "index.html"
+        found = static
+        # os.path's questions, not pathlib's: on Python 3.12 and 3.13 Path.is_dir, is_symlink
+        # and is_file re-raise an error such as ENAMETOOLONG, a name over 255 bytes, where
+        # os.path's answer false for whatever they cannot read, and never raise.
+        for name in unquote(path).lstrip("/").split("/"):
+            if name in ("", ".", "..") or "\\" in name or ":" in name or "\0" in name:
+                break
+            if not os.path.isdir(found):  # noqa: PTH112
+                break
+            found /= name
+            if os.path.islink(found) or os.path.isjunction(found):  # noqa: PTH114
+                break
+        else:
+            if os.path.isfile(found):  # noqa: PTH113
+                target = found
         kind = CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")
         self._send(200, target.read_bytes(), kind)
 

@@ -34,6 +34,31 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   Types, Units, Shared files and Files tabs, a component's own declarations, a unit's own
   places and a variable's keys draw only the rows in view.
 
+* **`ddd gui` refuses a request that did not come from its own page.** Every request says,
+  through `Sec-Fetch-Site` and `Origin`, where it came from, checked before the cookie; a page
+  served from another port of `127.0.0.1`, which a browser still hands this server's cookie,
+  is refused rather than answered.
+
+* **Every route of `ddd gui` reads its query through one typed model.** A hostile value - a
+  path with a NUL character or a lone surrogate, a number thousands of digits long, JSON
+  nested thousands of levels deep, a network path - is refused with a plain `400`, `404` or
+  `409`; no route answers malformed input with a `500` any more.
+
+* **`ddd gui` answers at most sixty-four connections at once.** The sixty-fifth is refused
+  immediately, `503`, rather than given a thread of its own: a local process that floods the
+  port can no longer exhaust the machine's threads.
+
+* **The browser `ddd gui` opens for the reader never sees the long-lived token.** It is
+  launched on a one-time code instead, good for sixty seconds or one use, so the token no
+  longer sits on a command line any local user could read.
+
+* **`SECURITY.md`.** How to report a vulnerability in `ddd gui`, privately, through this
+  repository's Security tab.
+
+* **A security page, `docs/gui_security.rst`.** What `ddd gui` defends against, what it
+  trusts instead, and what it leaves open - including when run in a container - with a table
+  of every route.
+
 ## 0.11.0
 
 * **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one

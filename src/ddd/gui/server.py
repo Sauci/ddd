@@ -5,15 +5,23 @@ this one trusts nothing it did not hand out itself:
 
 * the address the command prints carries a token, which ``/open`` swaps for a cookie every other
   request has to present - ``SameSite=Strict``, so a request another site makes does not carry
-  it;
+  it; the browser ``ddd gui`` opens for the reader is launched on a one-time code instead, so
+  the token itself never sits on a command line for another local process to read;
 * a request has to name this server's own host and port, which refuses a page whose domain was
   re-pointed at the loopback address;
+* every request has to say, with ``Sec-Fetch-Site``, that it came from this page or from no page
+  at all, and, if it names an ``Origin``, that the ``Origin`` is this server's - checked before
+  the cookie, so a page on another port of this address is refused however it asks;
 * a request that changes anything has to come from this server's own origin, as json;
-* no page of it can be framed, and only its own scripts run.
+* no page of it can be framed, and only its own scripts run;
+* no more than sixty-four connections are answered at once; past that, the thread that accepts
+  connections refuses the next itself, so nobody's work can exhaust the machine's threads.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a
 browser told ``nosniff`` then refuses to run the page at all.
+
+See ``docs/gui_security.rst`` for the threat model this is reviewed against.
 """
 
 from __future__ import annotations

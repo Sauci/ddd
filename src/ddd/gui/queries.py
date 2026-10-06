@@ -59,7 +59,8 @@ MAX_NAME: Final = 1024
 """The longest name a query gives: a variable, a unit, a type."""
 
 MAX_DEPTH: Final = 64
-"""The deepest json a query carries: a description nests a value five or six levels down."""
+"""The deepest json a query carries, and the deepest value an edit writes (``POST /api/edit``):
+a description nests a value five or six levels down."""
 
 LISTED: Final = (Severity.ERROR, Severity.WARNING, Severity.INFO)
 """The severities a finding is reported at, and so the ones ``GET /api/findings`` filters by:

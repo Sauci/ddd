@@ -87,7 +87,8 @@ own. Validating one against the published schema is what an editor is for.
 
 NESTED_TOO_DEEPLY = "the json is nested too deeply to read"
 """Why a json text nested deeper than it can be read is refused: deeper than python's own parser
-goes, or than the deepest json ``ddd gui`` takes in a query (:data:`ddd.gui.queries.MAX_DEPTH`)."""
+goes, than the edit engine lays a value out (:func:`ddd.editing.lay_out`), or than the deepest
+json ``ddd gui`` takes in a query or writes in an edit (:data:`ddd.gui.queries.MAX_DEPTH`)."""
 
 _UNION_TAGS = discriminator_tags(AnyDataObject, Conversion, AnyType)
 """Discriminator values pydantic inserts into the error location of a tagged union."""

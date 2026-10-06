@@ -440,6 +440,30 @@ def post(api: Api, path: str, body: object) -> Reply:
     return api.handle("POST", path, {}, raw)
 
 
+def nested(depth: int) -> list[Any]:
+    """Lists ``depth`` levels deep, the innermost one empty: ``[]`` is one level, ``[[]]`` two."""
+    value: list[Any] = []
+    for _ in range(depth - 1):
+        value = [value]
+    return value
+
+
+def block(depth: int) -> dict[str, Any]:
+    """An extension block ``depth`` levels deep, itself the first of them: lists under ``v``."""
+    return {"v": nested(depth - 1)}
+
+
+def carried(tmp_path: Path, files: dict[str, object]) -> Api:
+    """``ddd gui`` over ``files``, whose project's one build ignores ``unknown-extension``: a
+    block no plugin owns is then carried into the dictionary as it is written, as a project
+    relaxing that check asks for."""
+    write_tree(tmp_path, files)
+    build_record(tmp_path, tmp_path / "p.ddd.json", severity=["unknown-extension=ignore"])
+    session = Session(tmp_path)
+    session.open(tmp_path / "p.ddd.json")
+    return Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
+
+
 def unit_edit(
     api: Api, root: Path, unit: str, name: str = "b.ddd.json", label: str = "the unit of Speed"
 ) -> dict:
@@ -1486,6 +1510,36 @@ class TestFiles:
         reply = get(Api(Session(root)), "/api/file", path=(root / "a.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
+    def test_a_file_255_levels_deep_is_answered_whole(self, root: Path, capsys) -> None:
+        """The deepest file its reply carries: ``data`` is the untyped field itself, and
+        pydantic-core writes such a field 255 levels deep."""
+        deep = {"component": {"name": "B", "description": nested(253)}}
+        (root / "b.ddd.json").write_text(json.dumps(deep), encoding="utf-8")
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        reply = get(Api(session), "/api/file", path=(root / "b.ddd.json").as_posix())
+        assert (reply.status, reply.body["data"]) == (200, deep)
+        assert capsys.readouterr() == ("", "")
+
+    def test_a_file_256_levels_deep_is_refused_naming_it(self, root: Path, capsys) -> None:
+        """One level deeper, pydantic-core gave up writing the reply - ``Circular reference
+        detected (depth exceeded)`` - and it was answered ``500``; the depth is counted before
+        anything writes it now."""
+        deep = {"component": {"name": "B", "description": nested(254)}}
+        (root / "b.ddd.json").write_text(json.dumps(deep), encoding="utf-8")
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        reply = get(Api(session), "/api/file", path=(root / "b.ddd.json").as_posix())
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "b.ddd.json is nested more than 255 levels deep, "
+                "deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
 
 class TestWhatTheSessionServes:
     """``ddd gui`` serves the directory it was started in, and the project it was pointed at
@@ -1633,6 +1687,104 @@ class TestDictionaryAndChecks:
 
     def test_the_dictionary_needs_an_open_project(self, root: Path) -> None:
         assert get(Api(Session(root)), "/api/dictionary").status == 409
+
+    BLOCKED: Final = {
+        "object": lambda depth: {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A", declare("output", "Speed", extensions={"deep": block(depth)})
+            ),
+        },
+        "instance": lambda depth: {
+            "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(struct_type("Sample_t")),
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Inlet", typename="Sample_t", extensions={"deep": block(depth)}),
+            ),
+        },
+        "project": lambda depth: {
+            "p.ddd.json": project("P", "a.ddd.json", extensions={"deep": block(depth)}),
+            "a.ddd.json": component("A", declare("output", "Speed")),
+        },
+    }
+    """A project holding one extension block ``depth`` levels deep: on an object, on a structured
+    object - which the dictionary lists under ``instances`` rather than ``objects`` - or among the
+    project's own settings, under the dictionary's ``extensions``."""
+
+    @pytest.mark.parametrize(
+        ("holder", "depth", "where"),
+        [
+            ("object", 252, ("objects", "Speed")),
+            ("instance", 252, ("instances", "Inlet")),
+            ("project", 254, None),
+        ],
+    )
+    def test_the_deepest_block_the_dictionary_carries_is_answered(
+        self, tmp_path: Path, holder: str, depth: int, where: tuple[str, str] | None, capsys
+    ) -> None:
+        """pydantic-core writes the dictionary's untyped json 255 levels deep: an object's block
+        sits three levels down it - the dictionary's ``objects`` or ``instances``, the object,
+        its ``extensions`` - and the project's own one, under ``extensions`` alone."""
+        api = carried(tmp_path, self.BLOCKED[holder](depth))
+        reply = get(api, "/api/dictionary")
+        assert reply.status == 200
+        dictionary = reply.body["dictionary"]
+        if where is None:
+            assert dictionary["extensions"] == {"deep": block(depth)}
+        else:
+            listed, name = where
+            entry = next(entry for entry in dictionary[listed] if entry["name"] == name)
+            assert entry["extensions"] == {"deep": block(depth)}
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize(
+        ("holder", "depth", "file"),
+        [
+            ("object", 253, "a.ddd.json"),
+            ("instance", 253, "a.ddd.json"),
+            ("project", 255, "p.ddd.json"),
+        ],
+    )
+    def test_a_block_a_level_deeper_is_refused_naming_its_file(
+        self, tmp_path: Path, holder: str, depth: int, file: str, capsys
+    ) -> None:
+        """One level deeper, writing the reply failed - ``Circular reference detected (depth
+        exceeded)`` - and it was answered ``500``; every block is measured before anything
+        writes it now, and the refusal names the file that states it."""
+        api = carried(tmp_path, self.BLOCKED[holder](depth))
+        assert get(api, "/api/dictionary") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": f"{file} holds an extension block nested more than {depth - 1} "
+                "levels deep, deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    def test_a_block_a_sub_project_states_is_refused_naming_that_project(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """A plugin's settings are stated by one project file of the tree, which need not be the
+        root: the refusal names the one that states them."""
+        api = carried(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/s.ddd.json"),
+                "sub/s.ddd.json": project("S", "a.ddd.json", extensions={"deep": block(255)}),
+                "sub/a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        assert get(api, "/api/dictionary") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "s.ddd.json holds an extension block nested more than 254 levels "
+                "deep, deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
 
     def test_the_built_in_checks_are_listed_without_a_project(self, root: Path) -> None:
         checks = get(Api(Session(root)), "/api/checks").body["checks"]
@@ -1803,6 +1955,52 @@ class TestEdit:
         }
         assert post(api, "/api/edit", edit).status == 200
         assert '"unit": 1.0' in target.read_text(encoding="utf-8")
+
+    @staticmethod
+    def described(target: Path, raw: str) -> dict[str, Any]:
+        """An edit writing ``raw`` as the description of ``target``'s first declaration."""
+        return {
+            "changes": [
+                {
+                    "file": target.as_posix(),
+                    "fingerprint": fingerprint(target.read_bytes()),
+                    "operations": [
+                        {
+                            "op": "set",
+                            "pointer": "component.interface[0].definition.description",
+                            "raw": raw,
+                        }
+                    ],
+                }
+            ],
+            "label": "a nested description",
+        }
+
+    def test_a_value_64_levels_deep_is_written(self, api: Api, root: Path) -> None:
+        """As deep as json a query carries (``MAX_DEPTH``), and well short of what the page can
+        show once it is written."""
+        target = root / "a.ddd.json"
+        assert post(api, "/api/edit", self.described(target, "[" * 64 + "]" * 64)).status == 200
+        written = json.loads(target.read_text(encoding="utf-8"))
+        assert written["component"]["interface"][0]["definition"]["description"] == nested(64)
+
+    def test_a_value_65_levels_deep_is_refused_in_the_engines_own_words(
+        self, api: Api, root: Path
+    ) -> None:
+        """Refused before the engine is asked, which lays out values hundreds of levels deeper:
+        the page would then write a file it could not show (``FILE_DEPTH``)."""
+        target = root / "a.ddd.json"
+        before = target.read_bytes()
+        raw = "[" * 65 + "]" * 65
+        assert post(api, "/api/edit", self.described(target, raw)) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{target}: {raw!r} is not one json value: "
+                "the json is nested too deeply to read",
+            },
+        )
+        assert target.read_bytes() == before
 
     def test_a_stale_edit_is_a_refusal_the_page_can_act_on(self, api: Api, root: Path) -> None:
         edit = unit_edit(api, root, "Hz")

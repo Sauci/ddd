@@ -48,6 +48,7 @@ from ddd.editing import (
     FileChange,
     Operation,
     fingerprint,
+    not_one_value,
     unchanged,
 )
 from ddd.file_plans import (
@@ -68,6 +69,7 @@ from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
 from ddd.gui.derived import Derived, derived, key_of
 from ddd.gui.queries import (
+    MAX_DEPTH,
     AddConstant,
     AddFile,
     AddRaster,
@@ -118,6 +120,7 @@ from ddd.gui.queries import (
     ValuesPlanQuery,
     ValuesQuery,
     VariableQuery,
+    _depth,
     _Query,
     actions_of,
     json_value,
@@ -143,8 +146,8 @@ from ddd.gui.session import (
     findings_with,
     kind_of,
 )
-from ddd.ir import DataDictionary
-from ddd.loading import resolve_path
+from ddd.ir import DataDictionary, ResolvedInstance, ResolvedObject
+from ddd.loading import NESTED_TOO_DEEPLY, resolve_path
 from ddd.lsp.edits import settle
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
@@ -231,6 +234,34 @@ yet. Answered 409, and answered differently once the analysis lands."""
 
 REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
+
+SERIALIZED_DEPTH: Final = 255
+"""How many levels of nested arrays and objects pydantic-core writes in an untyped field of a
+reply: past 255 its serializer gives up - ``ValueError: Circular reference detected (depth
+exceeded)`` - which was answered ``500``. Measured with pydantic-core 2.46.5: an ``Any`` field
+holding 255 nested lists is written, and one holding 256 is not."""
+
+FILE_DEPTH: Final = SERIALIZED_DEPTH
+"""The deepest description file ``GET /api/file`` answers, in levels of nested arrays and
+objects: :data:`SERIALIZED_DEPTH`, less the levels the reply puts around the file's json, which
+are none - :attr:`~ddd.gui.contract.FileContent.data` is the untyped field itself. Measured: a
+file 255 levels deep is answered, and one 256 deep was answered ``500``."""
+
+PROJECT_BLOCK_DEPTH: Final = SERIALIZED_DEPTH - 1
+"""The deepest extension block of the project's own settings that ``GET /api/dictionary``
+answers: :data:`SERIALIZED_DEPTH`, less the one level the reply puts around it - the
+dictionary's ``extensions``, keyed by plugin. The dictionary itself is a typed mapping of the
+reply, which the serializer does not count. Measured: a block 254 levels deep is answered, and
+one 255 deep was answered ``500``."""
+
+OBJECT_BLOCK_DEPTH: Final = SERIALIZED_DEPTH - 3
+"""The deepest extension block of an object that ``GET /api/dictionary`` answers:
+:data:`SERIALIZED_DEPTH`, less the three levels the reply puts around it - the dictionary's
+``objects``, or its ``instances`` for a structured object, the object itself, and its
+``extensions``. Measured: a block 252 levels deep is answered, and one 253 deep was answered
+``500``."""
+
+_TOO_DEEP: Final = "deeper than ddd gui can show"
 
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
@@ -485,7 +516,14 @@ class Api:
         )
 
     def _file(self, query: FileQuery, body: None) -> Reply:
+        """A description file's own json, refused where it nests deeper than its reply can
+        carry (:data:`FILE_DEPTH`): counted before anything writes it, rather than failing to."""
         content = self.session.read_file(Path(query.path))
+        if _nesting(content.data) > FILE_DEPTH:
+            name = content.path.name
+            return _error(
+                409, UNREADABLE, f"{name} is nested more than {FILE_DEPTH} levels deep, {_TOO_DEEP}"
+            )
         return Reply(
             200,
             contract.FileContent(
@@ -497,8 +535,19 @@ class Api:
         )
 
     def _dictionary(self, query: NoQuery, body: None) -> Reply:
+        """The dictionary of the newest revision, refused where an extension block it carries
+        nests deeper than its reply can carry (:func:`_too_deep_block`)."""
         revision = self._opened()
         dictionary = revision.dictionary
+        too_deep = _too_deep_block(revision)
+        if too_deep is not None:
+            file, depth = too_deep
+            return _error(
+                409,
+                UNREADABLE,
+                f"{file.name} holds an extension block nested more than {depth} levels deep, "
+                f"{_TOO_DEEP}",
+            )
         return Reply(
             200,
             contract.DictionaryReply(
@@ -579,6 +628,7 @@ class Api:
 
     def _edit(self, query: NoQuery, body: contract.Changes) -> Reply:
         try:
+            _within_depth(body.changes)
             at, written = self.session.edit([_file_change(c) for c in body.changes], body.label)
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
@@ -1613,6 +1663,91 @@ as the route's own model and its body as its own before its handler is asked."""
 
 def _error(status: int, code: str, message: str) -> Reply:
     return Reply(status, {"error": code, "message": message})
+
+
+def _nesting(value: object) -> int:
+    """How many levels of arrays and objects ``value`` nests: none for a number, a string or
+    ``None``, one for ``[]``, two for ``[[]]``. Counted without recursion, so that no value is
+    too deep to count - and so before anything writes it, which a value too deep for its reply
+    fails half-way through."""
+    deepest = 0
+    unseen: list[tuple[object, int]] = [(value, 1)]
+    while unseen:
+        item, level = unseen.pop()
+        if isinstance(item, dict):
+            children: Iterable[object] = item.values()
+        elif isinstance(item, list | tuple):
+            children = item
+        else:
+            continue
+        deepest = max(deepest, level)
+        unseen.extend(
+            (child, level + 1) for child in children if isinstance(child, dict | list | tuple)
+        )
+    return deepest
+
+
+def _too_deep_block(revision: Revision) -> tuple[Path, int] | None:
+    """The file stating the first extension block of ``revision``'s dictionary that nests deeper
+    than its reply carries such a block, and how deep it carries one - or ``None`` where every
+    block fits, as where there is no dictionary.
+
+    The blocks are the one part of a dictionary that is a description file's own json - carried
+    as the file states it where no plugin owns it, and as its plugin's model reads it otherwise
+    - and so the one part that can nest deeper than any reply carries: everything else a
+    dictionary holds is a shape DDD gives it. A project's own settings are carried a level below
+    the dictionary (:data:`PROJECT_BLOCK_DEPTH`), and an object's three
+    (:data:`OBJECT_BLOCK_DEPTH`)."""
+    resolved = revision.resolved
+    if resolved is None:
+        return None
+    dictionary = resolved.dictionary
+    for plugin, settings in dictionary.extensions.items():
+        if _nesting(settings) > PROJECT_BLOCK_DEPTH:
+            return _stating(revision, plugin), PROJECT_BLOCK_DEPTH
+    entries: list[ResolvedObject | ResolvedInstance] = [*dictionary.objects, *dictionary.instances]
+    for entry in entries:
+        for stamped in entry.extensions.values():
+            if _nesting(stamped) > OBJECT_BLOCK_DEPTH:
+                # The producer's declaration, which is the only one a block may be stated on.
+                located = resolved.locate(entry.name)
+                return (revision.project if located is None else located.path), OBJECT_BLOCK_DEPTH
+    return None
+
+
+def _stating(revision: Revision, plugin: str) -> Path:
+    """The project file of ``revision`` stating the settings of ``plugin``, read again: one file
+    of the tree states them, a second being refused, and the dictionary keeps the settings but
+    not where they were written. The open project's own description where none states them any
+    more, the file having changed since the analysis read it."""
+    stating = (
+        file.path
+        for file in revision.files
+        if file.kind == "project" and plugin in _settings_in(file.path)
+    )
+    return next(stating, revision.project)
+
+
+def _settings_in(path: Path) -> Mapping[str, Any]:
+    """The plugin settings a project file states, as it states them now: none from a file that
+    no longer reads as a project."""
+    data = _read_json(path)
+    described = data.get("project") if isinstance(data, dict) else None
+    settings = described.get("extensions") if isinstance(described, dict) else None
+    return settings if isinstance(settings, dict) else {}
+
+
+def _within_depth(changes: Sequence[contract.Change]) -> None:
+    """Refuse an edit writing a value nested more than :data:`~ddd.gui.queries.MAX_DEPTH` deep -
+    the deepest json a query carries - as the engine refuses one deeper than it lays out, its
+    file named first: so the page never writes a file deeper than it can show
+    (:data:`FILE_DEPTH`). The engine's own bound, python's stack, lies hundreds of levels
+    deeper, and stays for its other callers."""
+    for change in changes:
+        for operation in change.operations:
+            if operation.raw is not None and _depth(operation.raw) > MAX_DEPTH:
+                refused = not_one_value(operation.raw, NESTED_TOO_DEEPLY)
+                raise EditError(INVALID, f"{Path(change.file)}: {refused}")
 
 
 def _finding(

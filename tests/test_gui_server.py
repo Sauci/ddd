@@ -1018,13 +1018,15 @@ class TestAPagePath:
         assert capsys.readouterr().err == ""
 
     @pytest.mark.parametrize(
-        "path", ["/COM1", "/nul.js", "/con", "/Lpt9.txt", "/aux.", "/assets/CON"]
+        "path",
+        ["/COM1", "/nul.js", "/con", "/Lpt9.txt", "/aux.", "/assets/CON", "/CONIN$", "/conout$.js"],
     )
     def test_a_name_windows_keeps_for_a_device_names_no_file_on_any_system(
         self, server, pages, assets, path, monkeypatch, capsys
     ) -> None:
         """Windows opens a device for such a name, in any directory, whatever its extension or
-        case: ``COM1`` a serial port, ``NUL`` the null device. It is never looked up, on any
+        case: ``COM1`` a serial port, ``NUL`` the null device, ``CONIN$`` the console's own
+        input. It is never looked up, on any
         system; and where it can be an ordinary file, on any system but Windows, that file is
         not served either."""
         if sys.platform != "win32":
@@ -1067,6 +1069,8 @@ class TestAPagePath:
             "LPT¹",
             "LPT²",
             "LPT³",
+            "CONIN$",
+            "CONOUT$",
         ],
     )
     def test_every_name_windows_keeps_for_a_device_is_one_however_it_is_spelled(
@@ -1088,7 +1092,21 @@ class TestAPagePath:
 
     @pytest.mark.parametrize(
         "name",
-        ["console", "com10", "COM", "lpt", "nul_", "xaux", "aux-1.js", ".con", "COM⁴", "app.js"],
+        [
+            "console",
+            "com10",
+            "COM",
+            "lpt",
+            "nul_",
+            "xaux",
+            "aux-1.js",
+            ".con",
+            "COM⁴",
+            "app.js",
+            "CONIN",
+            "conout",
+            "CONIN$x",
+        ],
     )
     def test_a_name_merely_like_one_is_none(self, name) -> None:
         assert not _names_a_device(name)

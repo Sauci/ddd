@@ -34,24 +34,30 @@ What it defends against
   holding a NUL character or a lone surrogate, a number many thousands of digits long, and
   a network or device path such as ``\\server\share`` that does not name a path under a
   directory ``ddd gui`` serves are each refused with a plain ``400``, ``404`` or ``409``,
-  and so is json nested thousands of levels deep - except a number this server's own long
-  poll reads as "wait for a later version": there, anything that is not a clean number is
-  treated as none given, and answered at once rather than refused. Such a network or device
-  path is refused before anything resolves it, and so is one holding a dot segment. A
-  ``POST`` whose ``Content-Length`` is no length is refused ``400``, and one promising more
-  than 1,048,576 bytes ``413``, however many digits it is written with, short of a header
-  line too long to be read at all (below). A page's own path is never resolved: it is read
-  as plain names under the compiled pages, and a name holding a NUL character, a backslash
-  or a colon, or a dot segment, names no file and is never looked up, so neither a network
+  and so is json nested more than 64 levels deep, in a query or as the value an edit
+  writes - except a number this server's own long poll reads as "wait for a later version":
+  there, anything that is not a clean number is treated as none given, and answered at once
+  rather than refused. Such a network or device path is refused before anything resolves
+  it, and so is one holding a dot segment. A description file nested deeper than a reply
+  can carry is refused ``409`` too, naming it, rather than sent: by ``GET /api/file``,
+  which sends a file whole, when it is nested more than 255 levels deep; and by
+  ``GET /api/dictionary`` when the dictionary carries an extension block the file states
+  nested more than 252 levels deep, or 254 among the project's own settings. A ``POST``
+  whose ``Content-Length`` is no length is refused ``400``, and one promising more than
+  1,048,576 bytes ``413``, however many digits it is written with, short of a header line
+  too long to be read at all (below). A page's own path is never resolved: it is read as
+  plain names under the compiled pages, and a name holding a NUL character, a backslash or
+  a colon, or a dot segment, names no file and is never looked up, so neither a network
   path nor a ``\\.\`` device path can be spelled in one. A name Windows keeps for a device
   names no file either, on any system, and is never looked up: ``CON``, ``PRN``, ``AUX`` or
   ``NUL``, or ``COM`` or ``LPT`` followed by a digit from ``0`` to ``9`` or a superscript
-  ``¹``, ``²`` or ``³``, in any case and whatever extension it carries. A path naming no
-  file is answered the page itself, as any other unknown page address is. The standard
-  library itself refuses three shapes before this server sees them at all: a request line
-  over 65,536 bytes answers ``414``, and a header line over 65,536 bytes, or a request
-  carrying 100 header lines or more - the blank line that ends them counted - answers
-  ``431``; ninety-nine is the most ``ddd gui`` ever reads.
+  ``¹``, ``²`` or ``³``, in any case and whatever extension it carries. So are ``CONIN$``
+  and ``CONOUT$``, the console's own input and output. A path naming no file is answered
+  the page itself, as any other unknown page address is. The standard library itself
+  refuses three shapes before this server sees them at all: a request line over 65,536
+  bytes answers ``414``, and a header line over 65,536 bytes, or a request carrying 100
+  header lines or more - the blank line that ends them counted - answers ``431``;
+  ninety-nine is the most ``ddd gui`` ever reads.
 
 What it trusts
 --------------

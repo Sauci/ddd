@@ -109,14 +109,15 @@ CONTENT_TYPES: Final = {
 }
 
 DEVICE_NAMES: Final = frozenset(
-    {"CON", "PRN", "AUX", "NUL"}
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
     | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "0123456789¹²³"}
 )
 """The names Windows keeps for its devices: the console, the printer, the auxiliary port and
-the null device, and the serial and parallel ports, ``COM`` and ``LPT`` followed by a digit, the
-superscripts one, two and three among them. Windows reads such a name as the device in whatever
-directory it is written, so that opening it opens the device rather than a file
-(:func:`_names_a_device`)."""
+the null device, the console's own input and output, and the serial and parallel ports, ``COM``
+and ``LPT`` followed by a digit, the superscripts one, two and three among them. Windows reads
+such a name as the device in whatever directory it is written, so that opening it opens the
+device rather than a file (:func:`_names_a_device`); python's own ``os.path.isreserved``, from
+3.13, counts ``CONIN$`` and ``CONOUT$`` among them too."""
 
 SECURITY_HEADERS: Final = {
     "Content-Security-Policy": (

@@ -28,18 +28,19 @@ What it defends against
 
 * **Malformed input, from anyone, including the reader's own browser.** Every request this
   server reads in full is answered with a status and a sentence - never a ``500``, and
-  never a hang. (The one request that is not read in full - a ``POST`` whose promised body
-  stops arriving partway through - waits out the thirty-second idle timeout unanswered, as
-  HTTP's own rules require of a server still waiting for the rest of it.) A path holding a
-  NUL character or a lone surrogate, a number many thousands of digits long, JSON nested
-  thousands of levels deep, and a network or device path such as ``\\server\share`` that
-  does not name a path under a directory ``ddd gui`` serves are each refused with a plain
-  ``400``, ``404`` or ``409`` - except a number this server's own long poll reads as "wait
-  for a later version": there, anything that is not a clean number is treated as none
-  given, and answered at once rather than refused. So are the shapes the standard library
-  itself refuses before this server sees them at all: a request line over 65,536 bytes
-  answers ``414``, and a request carrying 100 header lines or more - the blank line that
-  ends them counted - answers ``431``; ninety-nine is the most ``ddd gui`` ever reads.
+  never a hang. (A request that stops arriving partway through - its headers, or a
+  signed-in ``POST``'s promised body - is closed unanswered once its connection has been
+  idle thirty seconds.) A path holding a NUL character or a lone surrogate, a number many
+  thousands of digits long, json nested thousands of levels deep, and a network or device
+  path such as ``\\server\share`` that does not name a path under a directory ``ddd gui``
+  serves are each refused with a plain ``400``, ``404`` or ``409`` - except a number this
+  server's own long poll reads as "wait for a later version": there, anything that is not
+  a clean number is treated as none given, and answered at once rather than refused. A
+  network or device path is refused before anything resolves it, and so is one holding a
+  dot segment. The standard library itself refuses two shapes before this server sees them
+  at all: a request line over 65,536 bytes answers ``414``, and a request carrying 100
+  header lines or more - the blank line that ends them counted - answers ``431``;
+  ninety-nine is the most ``ddd gui`` ever reads.
 
 What it trusts
 --------------
@@ -55,9 +56,8 @@ What it trusts
 
 * **Whoever holds the token.** It is the key: whoever started ``ddd gui`` holds it, and so
   does anyone its terminal shows it to. The printed address is for pasting into a browser's
-  own address bar; opened instead as a command - piped to a terminal's ``xdg-open``, say -
-  it reaches that opener's command line, which any local user can read for as long as it
-  runs.
+  own address bar; clicked in the terminal instead, it is handed to an opener such as
+  ``xdg-open`` on its command line, which any local user can read while it runs.
 
 The table of every route, below, marks which ones may run a project's or a baseline's
 plugins: opening a project, comparing against one, an edit or an undo - each re-analysed
@@ -95,20 +95,22 @@ What it does not defend against
 
 * **A local denial of service.** ``ddd gui`` answers at most sixty-four connections at
   once, each on a thread of its own; the sixty-fifth is refused before a thread is even
-  started for it. That keeps the machine's threads from being exhausted, not the page
-  available: anyone who can reach the port, token or not, can still open and hold
-  sixty-four connections, and so deny the page its server for as long as they keep them
-  open. A browser never comes near that limit by itself - six connections to one host,
-  across every tab - so this is a risk from another local process or user, not from
-  ordinary use.
+  started for it, ``503``. That keeps the machine's threads from being exhausted, not the
+  page available: anyone who can reach the port, token or not, can still open and hold
+  sixty-four connections, and so deny the page its server - though a connection idle for
+  thirty seconds is closed and gives its slot back, so holding one takes writing to it at
+  least that often. A browser never comes near that limit by itself - six connections to
+  one host, across every tab - so this is a risk from another local process or user, not
+  from ordinary use.
 
 * **The moment of launch.** The browser is handed a one-time code instead of the
   long-lived token, so the token itself never sits on a command line. But a local process
-  polling ``/proc`` and presenting that code before the reader's browser does is signed in
-  with the token for as long as this run of ``ddd gui`` lasts - not merely ahead of the
-  reader once. Two things show this happened: the reader's own browser lands on the sign-in
-  page instead of the project, and presenting that same code again without the cookie its
-  winner was given prints one line on the terminal, saying so.
+  reading the launcher's command line - polling ``/proc``, on Linux - and presenting that
+  code before the reader's browser does is signed in with the token for as long as this
+  run of ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this
+  happened: the reader's own browser lands on the sign-in page instead of the project, and
+  presenting that same code again without the cookie its winner was given prints one line
+  on the terminal, saying so.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

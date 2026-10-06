@@ -12,8 +12,9 @@ this one trusts nothing it did not hand out itself:
 * in a browser that sends ``Sec-Fetch-Site`` (Chrome 76, Firefox 90, Safari 16.4 and later),
   every request has to say, with it, that it came from this page or from no page at all, and,
   if it names an ``Origin``, that the ``Origin`` is this server's - checked before the cookie,
-  so a page on another port of this address is refused however it asks. An older browser sends
-  neither header on a plain request, so this does not catch it there;
+  so a page on another port of this address is refused however it asks, ``/open`` excepted,
+  which is routed before this check ever runs. An older browser sends neither header on a
+  plain request, so this does not catch it there;
 * a request that changes anything has to come from this server's own origin, as json;
 * no page of it can be framed, and only its own scripts run;
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
@@ -33,6 +34,7 @@ import contextlib
 import hmac
 import ipaddress
 import json
+import os
 import secrets
 import socket
 import sys
@@ -360,7 +362,11 @@ class _Handler(BaseHTTPRequestHandler):
         except (ConnectionError, TimeoutError):
             raise
         except Exception:
-            print(f"ddd gui: {method} {urlsplit(self.path).path} failed:", file=sys.stderr)
+            # self.path, never split again to print it: a target that reaches here unanswered
+            # already broke by not splitting (below), and the path is anyone's text regardless
+            # - an escape sequence in it would otherwise reach the terminal raw, this one read
+            # for exactly that.
+            print(f"ddd gui: {method} {self.path!r} failed:", file=sys.stderr)
             traceback.print_exc()
             self._send_json(500, {"error": "internal", "message": _INTERNAL})
 
@@ -369,7 +375,15 @@ class _Handler(BaseHTTPRequestHandler):
         if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
             self._send(421, b"misdirected request", CONTENT_TYPES[".txt"])
             return
-        url = urlsplit(self.path)
+        try:
+            url = urlsplit(self.path)
+        except ValueError:
+            # The absolute form of a target names its host before its path, and a malformed
+            # one - a bracket opened for an IPv6 address and never closed, say - makes urlsplit
+            # itself raise, before anything here has read where the request claims to come
+            # from or whether it carries this server's cookie.
+            self._send_json(400, {"error": "bad-request", "message": _NOT_A_TARGET})
+            return
         if method == "GET" and url.path == "/open":
             self._sign_in(parse_qs(url.query))
             return
@@ -515,9 +529,15 @@ class _Handler(BaseHTTPRequestHandler):
             # makes it one more path with no file of its own rather than a failure - the
             # client-side router turns it into a screen the same way it does an unknown one.
             requested = None
+        # os.path.isfile, not Path.is_file: a name over 255 bytes raises ENAMETOOLONG from the
+        # stat it makes, which isfile has always caught alongside ValueError, on every Python
+        # this runs on - pathlib.Path.is_file only started doing the same on 3.14, and on 3.12
+        # and 3.13 re-raises it, one more path with no file of its own answered as a failure.
         target = (
             requested
-            if requested is not None and requested.is_relative_to(static) and requested.is_file()
+            if requested is not None
+            and requested.is_relative_to(static)
+            and os.path.isfile(requested)  # noqa: PTH113 - Path.is_file is the bug, see above
             else static / "index.html"
         )
         kind = CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")
@@ -543,6 +563,7 @@ _ELSEWHERE: Final = "ddd gui answers its own page alone, opened from the address
 _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"
+_NOT_A_TARGET: Final = "the request's target cannot be read"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
 _CODE_REUSED: Final = (
     "ddd gui: a launch code arrived that was already spent, or had simply expired; if your "

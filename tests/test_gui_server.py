@@ -152,6 +152,18 @@ def ask(
     return response, data
 
 
+def raw_answer(server: GuiServer, sent: bytes) -> tuple[int, bytes]:
+    """The status and body ``server`` answers ``sent`` with, over a connection of its own,
+    read to its end. For bytes ``http.client`` itself refuses to send - a request line that
+    is not well-formed, say - which is exactly what a hostile request is not."""
+    with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+        connection.sendall(sent)
+        with connection.makefile("rb") as answer:
+            data = answer.read()
+    head, _, body = data.partition(b"\r\n\r\n")
+    return int(head.split(b" ", 2)[1]), body
+
+
 def answering_session(monkeypatch: pytest.MonkeyPatch, answer: Callable[..., object]) -> None:
     """``GET /api/session`` answered by ``answer`` instead, for one test: its route in the api's
     table replaced by one that differs in nothing else."""
@@ -646,15 +658,24 @@ class TestWhatIsServed:
         response, data = ask(server, "GET", path)
         assert (response.status, response.getheader("Content-Type"), data) == (200, kind, text)
 
-    @pytest.mark.parametrize("path", ["/%00", "/a%00b.js"])
-    def test_a_path_with_a_nul_character_is_served_the_index_like_any_other_unknown_path(
+    @pytest.mark.parametrize("path", ["/%00", "/a%00b.js", "/" + "a" * 300])
+    def test_a_page_path_that_cannot_be_statted_is_served_the_index_like_any_other_unknown_one(
         self, server, path, capsys
     ) -> None:
-        """A NUL cannot name a file on this computer, and ``Path.resolve()`` raises
-        ``ValueError`` on one rather than answering that no such file exists - which used to
-        reach ``_answer``'s own catch-all and print a traceback for a 500, the one place the
-        page's own claim of never answering malformed input with one was not yet true: every
-        ``/api/`` route already refuses a NUL before a path is ever built from it."""
+        """Two different calls used to answer 500 for a path with no file of its own, each on
+        its own Python versions:
+
+        * a NUL cannot name a file on this computer, and ``Path.resolve()`` raised
+          ``ValueError`` on one rather than answering that no such file exists;
+        * a name over 255 bytes makes the stat ``Path.is_file()`` takes raise ``OSError``
+          (``ENAMETOOLONG``) - on Python 3.14, whose ``is_file`` is ``os.path.isfile`` and
+          swallows it, this machine cannot see the failure, but 3.12 and 3.13's ``Path``
+          re-raises everything but a handful of other errnos.
+
+        Either way, this used to reach ``_answer``'s own catch-all and print a traceback for
+        a 500, the one place the page's own claim of never answering malformed input with
+        one was not yet true: every ``/api/`` route already refuses both before a path is
+        ever built from either."""
         response, data = ask(server, "GET", path)
         assert (response.status, response.getheader("Content-Type"), data) == (
             200,
@@ -717,8 +738,35 @@ class TestWhatIsServed:
             "message": "ddd gui failed on this request; the terminal it runs in shows why",
         }
         printed = capsys.readouterr().err
-        assert "GET /api/session" in printed
+        assert "GET '/api/session'" in printed
         assert "RuntimeError: a defect" in printed
+
+    def test_a_failure_is_printed_with_its_target_escaped(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """``self.path`` is anyone's text, and an escape sequence in it printed raw would
+        reach the terminal the page tells the reader to watch. Reaching this honestly, with
+        an ordinary route still dispatched and still made to fail, needs something a route
+        match never sees: a fragment, which ``urlsplit`` carries past the dispatcher unread,
+        yet which ``self.path`` - the whole target, unsplit - still holds when this prints
+        it."""
+
+        def failing(api: Api, query: object, body: object) -> None:
+            raise RuntimeError("a defect")
+
+        answering_session(monkeypatch, failing)
+        path = "/api/session#\x1b"
+        sent = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{server.port}\r\n"
+            f"Cookie: {cookie(server)}={server.token}\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii")
+        status, _ = raw_answer(server, sent)
+        assert status == 500
+        printed = capsys.readouterr().err
+        assert f"GET {path!r}" in printed
+        assert "\x1b" not in printed
 
     def test_an_answer_json_cannot_spell_is_a_failure_rather_than_a_body_no_page_reads(
         self, server, monkeypatch, capsys
@@ -784,6 +832,56 @@ class TestWhatIsServed:
 
     def test_the_installed_pages_are_looked_for_beside_the_package(self) -> None:
         assert static_directory() == Path(ddd.__file__).parent / "gui" / "static"
+
+
+class TestAMalformedAbsoluteFormTarget:
+    """The absolute form of a target names its host before its path - ``http://host/path`` -
+    and a malformed one, a bracket opened for an IPv6 address and never closed, makes
+    ``urlsplit`` itself raise. That used to happen before the Host check even read where the
+    request claims to come from, and before anything answered it: ``_answer``'s catch-all
+    split the same text again to print it, raised the same way, and socketserver printed a
+    traceback and closed the connection with nothing written - no token needed, since the
+    gate and the cookie are both later than this."""
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            b"GET http://[/ HTTP/1.1",
+            b"GET http://[/api/session HTTP/1.1",
+            b"GET http://[x]/ HTTP/1.1",
+        ],
+    )
+    def test_an_unsplittable_get_is_answered_400(self, server, line, capsys) -> None:
+        sent = line + (
+            f"\r\nHost: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n".encode("ascii")
+        )
+        status, body = raw_answer(server, sent)
+        assert (status, json.loads(body)) == (
+            400,
+            {"error": "bad-request", "message": "the request's target cannot be read"},
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_an_unsplittable_post_is_answered_400_too(self, server, capsys) -> None:
+        sent = b"POST http://[/project HTTP/1.1\r\n" + (
+            f"Host: 127.0.0.1:{server.port}\r\nContent-Length: 0\r\n"
+            "Connection: close\r\n\r\n".encode("ascii")
+        )
+        status, body = raw_answer(server, sent)
+        assert (status, json.loads(body)) == (
+            400,
+            {"error": "bad-request", "message": "the request's target cannot be read"},
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_a_well_formed_absolute_form_target_reaches_the_gate_instead(self, server) -> None:
+        """The control: an absolute-form target ``urlsplit`` can read goes on as any other
+        request would, past this check - here as far as the cookie, which it does not carry."""
+        sent = (
+            f"GET http://127.0.0.1:{server.port}/ HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n"
+        ).encode("ascii")
+        assert status_of(server, sent) == 401
 
 
 class TestOneConnectionCarriesManyAsks:
@@ -1222,10 +1320,7 @@ def headed(server: GuiServer, count: int, *, ended: bool = True) -> bytes:
 def status_of(server: GuiServer, sent: bytes) -> int:
     """The status ``server`` answers ``sent`` with, over a connection of its own, read to its
     end."""
-    with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
-        connection.sendall(sent)
-        with connection.makefile("rb") as answer:
-            return int(answer.read().split(b" ", 2)[1])
+    return raw_answer(server, sent)[0]
 
 
 class TestTheStandardLibrarysLimits:

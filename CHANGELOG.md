@@ -44,7 +44,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   path with a NUL character or a lone surrogate, a number thousands of digits long, json
   nested thousands of levels deep, a network path outside what `ddd gui` serves - is refused
   with a plain `400`, `404` or `409`, the long poll's `?after=` excepted, which answers at
-  once whatever it is given.  No route answers malformed input with a `500` any more.
+  once whatever else it is given.  No route answers malformed input with a `500` any more.
 
 * **`ddd gui` answers at most sixty-four connections at once.**  The sixty-fifth is refused
   immediately, `503`, rather than given a thread of its own: a local process that floods the

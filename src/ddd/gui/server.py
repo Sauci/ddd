@@ -9,13 +9,16 @@ this one trusts nothing it did not hand out itself:
   the token itself never sits on a command line for another local process to read;
 * a request has to name this server's own host and port, which refuses a page whose domain was
   re-pointed at the loopback address;
-* every request has to say, with ``Sec-Fetch-Site``, that it came from this page or from no page
-  at all, and, if it names an ``Origin``, that the ``Origin`` is this server's - checked before
-  the cookie, so a page on another port of this address is refused however it asks;
+* in a browser that sends ``Sec-Fetch-Site`` (Chrome 76, Firefox 90, Safari 16.4 and later),
+  every request has to say, with it, that it came from this page or from no page at all, and,
+  if it names an ``Origin``, that the ``Origin`` is this server's - checked before the cookie,
+  so a page on another port of this address is refused however it asks. An older browser sends
+  neither header on a plain request, so this does not catch it there;
 * a request that changes anything has to come from this server's own origin, as json;
 * no page of it can be framed, and only its own scripts run;
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
-  connections refuses the next itself, so nobody's work can exhaust the machine's threads.
+  connections refuses the next itself, so no flood of connections can exhaust the machine's
+  threads.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a
@@ -505,10 +508,16 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _page(self, path: str) -> None:
         static = self._gui.static
-        requested = (static / unquote(path).lstrip("/")).resolve()
+        try:
+            requested: Path | None = (static / unquote(path).lstrip("/")).resolve()
+        except ValueError:
+            # A NUL character, say: no file on this computer can be named by one, which
+            # makes it one more path with no file of its own rather than a failure - the
+            # client-side router turns it into a screen the same way it does an unknown one.
+            requested = None
         target = (
             requested
-            if requested.is_relative_to(static) and requested.is_file()
+            if requested is not None and requested.is_relative_to(static) and requested.is_file()
             else static / "index.html"
         )
         kind = CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")

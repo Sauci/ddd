@@ -646,6 +646,23 @@ class TestWhatIsServed:
         response, data = ask(server, "GET", path)
         assert (response.status, response.getheader("Content-Type"), data) == (200, kind, text)
 
+    @pytest.mark.parametrize("path", ["/%00", "/a%00b.js"])
+    def test_a_path_with_a_nul_character_is_served_the_index_like_any_other_unknown_path(
+        self, server, path, capsys
+    ) -> None:
+        """A NUL cannot name a file on this computer, and ``Path.resolve()`` raises
+        ``ValueError`` on one rather than answering that no such file exists - which used to
+        reach ``_answer``'s own catch-all and print a traceback for a 500, the one place the
+        page's own claim of never answering malformed input with one was not yet true: every
+        ``/api/`` route already refuses a NUL before a path is ever built from it."""
+        response, data = ask(server, "GET", path)
+        assert (response.status, response.getheader("Content-Type"), data) == (
+            200,
+            "text/html; charset=utf-8",
+            b"stand-in",
+        )
+        assert capsys.readouterr().err == ""
+
     def test_a_page_is_not_posted_to(self, server) -> None:
         response, _ = ask(
             server, "POST", "/project", body=b"{}", origin=f"http://127.0.0.1:{server.port}"
@@ -1228,6 +1245,12 @@ class TestTheStandardLibrarysLimits:
 
     def test_a_request_of_101_headers_is_answered_431(self, server) -> None:
         assert status_of(server, headed(server, 101, ended=False)) == 431
+
+    def test_a_request_of_100_headers_is_answered_431(self, server) -> None:
+        """The security page states this one, in round numbers: the blank line that ends the
+        headers is itself counted, so a hundred header lines already carry it past the
+        standard library's own limit."""
+        assert status_of(server, headed(server, 100)) == 431
 
     def test_a_request_of_99_headers_is_read(self, server) -> None:
         """Not 100: the standard library counts the blank line that ends the headers among its

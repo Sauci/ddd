@@ -3,13 +3,16 @@ import type {
   Changes,
   CompareQuery,
   CompareReply,
+  ConstantPlanQuery,
   ConstantQuery,
   ConstantReply,
   DeclarableQuery,
   DeclarableReply,
+  DeclarationPlanQuery,
   EditReply,
   FileContent,
   FileQuery,
+  FilesPlanQuery,
   FilesPlanReply,
   FilesReply,
   FindingsQuery,
@@ -19,8 +22,10 @@ import type {
   Found,
   GraphReply,
   PlanReply,
+  RasterPlanQuery,
   RasterQuery,
   RasterReply,
+  SectionPlanQuery,
   SectionQuery,
   SectionReply,
   SessionInfo,
@@ -29,14 +34,18 @@ import type {
   SharedReply,
   State,
   StateQuery,
+  TypePlanQuery,
   TypeQuery,
   TypeReply,
   TypesReply,
   UndoPreview,
   UndoReply,
+  UnitPlanQuery,
   UnitQuery,
   UnitReply,
   UnitsReply,
+  ValuePlanQuery,
+  ValuesPlanQuery,
   ValuesQuery,
   ValuesReply,
   VariableQuery,
@@ -170,28 +179,16 @@ export const getFix = (file: string, pointer: string, check: string, fetchImpl: 
 export const getCompare = (baseline: string, fetchImpl: Fetch = fetch) =>
   request<CompareReply>(`/api/compare${queryOf<CompareQuery>({ baseline })}`, {}, fetchImpl);
 
-/** One change to the project's units, as `GET /api/unit-plan` takes it: what each action needs,
- * and nothing it does not. */
-export type UnitPlanRequest =
-  | { action: "rename"; unit: string; to: string }
-  | { action: "add" | "remove"; unit: string }
-  | { action: "describe"; unit: string; description: string }
-  | { action: "adopt" };
+/** One change to the project's units, as `GET /api/unit-plan` takes it: `UnitPlanQuery`, the
+ * server's own model of the query - one model per action, what each needs and nothing it does
+ * not. */
+export type UnitPlanRequest = UnitPlanQuery;
 
 export const getUnit = (name: string, fetchImpl: Fetch = fetch) =>
   request<UnitReply>(`/api/unit${queryOf<UnitQuery>({ name })}`, {}, fetchImpl);
 
 export const getUnitPlan = (plan: UnitPlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(`/api/unit-plan?${planQuery(plan)}`, {}, fetchImpl);
-
-/** A plan's query: the action, then the unit and whichever of `to` and `description` it takes. */
-function planQuery(plan: UnitPlanRequest): string {
-  const parts: [string, string][] = [["action", plan.action]];
-  if (plan.action !== "adopt") parts.push(["unit", plan.unit]);
-  if (plan.action === "rename") parts.push(["to", plan.to]);
-  if (plan.action === "describe") parts.push(["description", plan.description]);
-  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
-}
+  request<PlanReply>(`/api/unit-plan${queryOf<UnitPlanQuery>(plan)}`, {}, fetchImpl);
 
 export const getTypes = (fetchImpl: Fetch = fetch) =>
   request<TypesReply>("/api/types", {}, fetchImpl);
@@ -199,29 +196,17 @@ export const getTypes = (fetchImpl: Fetch = fetch) =>
 export const getType = (name: string, fetchImpl: Fetch = fetch) =>
   request<TypeReply>(`/api/type${queryOf<TypeQuery>({ name })}`, {}, fetchImpl);
 
-/** One change to a type, as `GET /api/type-plan` takes it: what each action needs. */
-export type TypePlanRequest =
-  | { action: "set"; name: string; key: string; raw: string | null }
-  | { action: "rename"; name: string; to: string };
+/** A plan as the page holds one: its route's query - `Q`, the server's own model of it - but for a
+ * `set`'s `raw`, which may be `null` as well as left out. Both mean the key is to go, which the
+ * query says by carrying no `raw` at all (`held`). */
+type Held<Q> = Q extends { action: "set" } ? Omit<Q, "raw"> & { raw?: string | null } : Q;
+
+/** One change to a type, as `GET /api/type-plan` takes it: `TypePlanQuery`, the server's own model
+ * of the query, a `set`'s `raw` given as `null` where the key is to go (`Held`). */
+export type TypePlanRequest = Held<TypePlanQuery>;
 
 export const getTypePlan = (plan: TypePlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(`/api/type-plan?${typeQuery(plan)}`, {}, fetchImpl);
-
-/** A plan's query: the action and the type, then whichever of `key`, `raw` and `to` it takes.
- * A `raw` of `null` is left out, which is how the server reads "leave the key out". */
-function typeQuery(plan: TypePlanRequest): string {
-  const parts: [string, string][] = [
-    ["action", plan.action],
-    ["name", plan.name],
-  ];
-  if (plan.action === "set") {
-    parts.push(["key", plan.key]);
-    if (plan.raw !== null) parts.push(["raw", plan.raw]);
-  } else {
-    parts.push(["to", plan.to]);
-  }
-  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
-}
+  request<PlanReply>(`/api/type-plan${queryOf(held<TypePlanQuery>(plan))}`, {}, fetchImpl);
 
 export const getShared = (fetchImpl: Fetch = fetch) =>
   request<SharedReply>("/api/shared", {}, fetchImpl);
@@ -229,164 +214,68 @@ export const getShared = (fetchImpl: Fetch = fetch) =>
 export const getConstant = (name: string, fetchImpl: Fetch = fetch) =>
   request<ConstantReply>(`/api/constant${queryOf<ConstantQuery>({ name })}`, {}, fetchImpl);
 
-/** One change to a constant, as `GET /api/constant-plan` takes it: what each action needs, and
- * nothing it does not - `add`'s `raw` is a value it cannot go without, the way `set`'s can be
- * asked for before a reader has typed anything into the value field. */
-export type ConstantPlanRequest =
-  | { action: "set"; name: string; key: string; raw?: string | null }
-  | { action: "rename"; name: string; to: string }
-  | { action: "add"; name: string; raw: string }
-  | { action: "remove"; name: string };
+/** One change to a constant, as `GET /api/constant-plan` takes it: `ConstantPlanQuery`, the
+ * server's own model of the query, a `set`'s `raw` given as `null` where the key is to go
+ * (`Held`) - `add`'s `raw` is a value it cannot go without, the way `set`'s can be asked for
+ * before a reader has typed anything into the value field. */
+export type ConstantPlanRequest = Held<ConstantPlanQuery>;
 
 export const getConstantPlan = (plan: ConstantPlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(`/api/constant-plan?${constantQuery(plan)}`, {}, fetchImpl);
-
-/** A plan's query: the action and the name, then whichever of `key`, `raw` and `to` it takes.
- * `set`'s `raw` left out - whether omitted or given as `null` - is how the server reads "leave
- * the key out"; `add`'s `raw` is neither, so it always travels. */
-function constantQuery(plan: ConstantPlanRequest): string {
-  const parts: [string, string][] = [
-    ["action", plan.action],
-    ["name", plan.name],
-  ];
-  if (plan.action === "set") {
-    parts.push(["key", plan.key]);
-    if (plan.raw !== undefined && plan.raw !== null) parts.push(["raw", plan.raw]);
-  } else if (plan.action === "rename") {
-    parts.push(["to", plan.to]);
-  } else if (plan.action === "add") {
-    parts.push(["raw", plan.raw]);
-  }
-  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
-}
+  request<PlanReply>(`/api/constant-plan${queryOf(held<ConstantPlanQuery>(plan))}`, {}, fetchImpl);
 
 export const getSection = (name: string, fetchImpl: Fetch = fetch) =>
   request<SectionReply>(`/api/section${queryOf<SectionQuery>({ name })}`, {}, fetchImpl);
 
-/** One change to a section, as `GET /api/section-plan` takes it: the same four verbs as
- * `ConstantPlanRequest`, over the same three parameters, differing only in `add` - a section is
- * declared with one json text per required key (`access`, then `alignment`, the order
+/** One change to a section, as `GET /api/section-plan` takes it: `SectionPlanQuery`, the server's
+ * own model of the query, a `set`'s `raw` given as `null` where the key is to go (`Held`). The
+ * same four verbs as `ConstantPlanRequest`, differing only in `add` - a section is declared with
+ * one json text per required key (`access`, then `alignment`, the order
  * `ddd.gui.api._required_keys` reads off `Vocabulary.keys`) rather than a lone `raw`, because a
  * section the model gives no default for either key is one whose file would not load. */
-export type SectionPlanRequest =
-  | { action: "set"; name: string; key: string; raw?: string | null }
-  | { action: "rename"; name: string; to: string }
-  | { action: "add"; name: string; access: string; alignment: string }
-  | { action: "remove"; name: string };
+export type SectionPlanRequest = Held<SectionPlanQuery>;
 
 export const getSectionPlan = (plan: SectionPlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(`/api/section-plan?${sectionQuery(plan)}`, {}, fetchImpl);
-
-/** A plan's query: the action and the name, then whichever of `key`/`raw`, `to`, or `access`/
- * `alignment` it takes - as `constantQuery`'s, with `add`'s two required keys in place of the one
- * `raw` a constant's declaration takes. */
-function sectionQuery(plan: SectionPlanRequest): string {
-  const parts: [string, string][] = [
-    ["action", plan.action],
-    ["name", plan.name],
-  ];
-  if (plan.action === "set") {
-    parts.push(["key", plan.key]);
-    if (plan.raw !== undefined && plan.raw !== null) parts.push(["raw", plan.raw]);
-  } else if (plan.action === "rename") {
-    parts.push(["to", plan.to]);
-  } else if (plan.action === "add") {
-    parts.push(["access", plan.access], ["alignment", plan.alignment]);
-  }
-  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
-}
+  request<PlanReply>(`/api/section-plan${queryOf(held<SectionPlanQuery>(plan))}`, {}, fetchImpl);
 
 export const getRaster = (name: string, fetchImpl: Fetch = fetch) =>
   request<RasterReply>(`/api/raster${queryOf<RasterQuery>({ name })}`, {}, fetchImpl);
 
-/** One change to a raster, as `GET /api/raster-plan` takes it: the same four verbs as
- * `SectionPlanRequest`, over the same three parameters, differing only in `add` - a raster is
- * declared with the one json text for the one key the model gives no default for (`event`)
- * rather than the two `access`/`alignment` a section needs, because `RASTERS.required` is
- * `event` alone: `cycle` is optional and `description` defaults, so neither is `add`'s to supply. */
-export type RasterPlanRequest =
-  | { action: "set"; name: string; key: string; raw?: string | null }
-  | { action: "rename"; name: string; to: string }
-  | { action: "add"; name: string; event: string }
-  | { action: "remove"; name: string };
+/** One change to a raster, as `GET /api/raster-plan` takes it: `RasterPlanQuery`, the server's own
+ * model of the query, a `set`'s `raw` given as `null` where the key is to go (`Held`). The same
+ * four verbs as `SectionPlanRequest`, differing only in `add` - a raster is declared with the one
+ * json text for the one key the model gives no default for (`event`) rather than the two
+ * `access`/`alignment` a section needs, because `RASTERS.required` is `event` alone: `cycle` is
+ * optional and `description` defaults, so neither is `add`'s to supply. */
+export type RasterPlanRequest = Held<RasterPlanQuery>;
 
 export const getRasterPlan = (plan: RasterPlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(`/api/raster-plan?${rasterQuery(plan)}`, {}, fetchImpl);
-
-/** A plan's query: the action and the name, then whichever of `key`/`raw`, `to` or `event` it
- * takes - as `sectionQuery`'s, with `add`'s one required key in place of a section's two. */
-function rasterQuery(plan: RasterPlanRequest): string {
-  const parts: [string, string][] = [
-    ["action", plan.action],
-    ["name", plan.name],
-  ];
-  if (plan.action === "set") {
-    parts.push(["key", plan.key]);
-    if (plan.raw !== undefined && plan.raw !== null) parts.push(["raw", plan.raw]);
-  } else if (plan.action === "rename") {
-    parts.push(["to", plan.to]);
-  } else if (plan.action === "add") {
-    parts.push(["event", plan.event]);
-  }
-  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
-}
+  request<PlanReply>(`/api/raster-plan${queryOf(held<RasterPlanQuery>(plan))}`, {}, fetchImpl);
 
 export const getFiles = (fetchImpl: Fetch = fetch) =>
   request<FilesReply>("/api/files", {}, fetchImpl);
 
-/** One change to the project's own files, as `GET /api/files-plan` takes it: what each action
- * needs, and nothing it does not - `create`'s `component` is a new component's own name, taken
- * only for a `kind` of `"component"` and ignored for every other: `ddd.file_plans.create_plan`'s
- * own rule, stated in `FILE_PLANS`'s docstring though `component` is not itself one of the
- * parameters that dict lists. `add`'s `path` is typed relative to the project description or
- * absolute, the way a reader spells an `includes` entry; `remove`'s is a row's own absolute key
- * (`IncludedEntryReply.key`, or one of a pattern's own `files`) - one field name, two different
- * shapes of path, because that is what the two actions each take a path *as*. */
-export type FilesPlanRequest =
-  | { action: "create"; kind: string; name: string; component?: string }
-  | { action: "add"; path: string }
-  | { action: "remove"; path: string };
+/** One change to the project's own files, as `GET /api/files-plan` takes it: `FilesPlanQuery`,
+ * the server's own model of the query - what each action needs, and nothing it does not.
+ * `create`'s `component` is a new component's own name, read only for a `kind` of `"component"`
+ * and ignored for every other: `ddd.file_plans.create_plan`'s own rule, stated in
+ * `ddd.gui.queries.CreateFile`'s docstring. `add`'s `path` is typed relative to the project
+ * description or absolute, the way a reader spells an `includes` entry; `remove`'s is a row's own
+ * absolute key (`IncludedEntryReply.key`, or one of a pattern's own `files`) - one field name, two
+ * different shapes of path, because that is what the two actions each take a path *as*. */
+export type FilesPlanRequest = FilesPlanQuery;
 
 export const getFilesPlan = (plan: FilesPlanRequest, fetchImpl: Fetch = fetch) =>
-  request<FilesPlanReply>(`/api/files-plan?${filesQuery(plan)}`, {}, fetchImpl);
-
-/** A plan's query: the action, then `create`'s `kind` and `name` (and `component`, where given),
- * or `add`'s and `remove`'s shared `path`. */
-function filesQuery(plan: FilesPlanRequest): string {
-  const parts: [string, string][] = [["action", plan.action]];
-  if (plan.action === "create") {
-    parts.push(["kind", plan.kind], ["name", plan.name]);
-    if (plan.component !== undefined) parts.push(["component", plan.component]);
-  } else {
-    parts.push(["path", plan.path]);
-  }
-  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
-}
+  request<FilesPlanReply>(`/api/files-plan${queryOf<FilesPlanQuery>(plan)}`, {}, fetchImpl);
 
 export const getDeclarable = (file: string, fetchImpl: Fetch = fetch) =>
   request<DeclarableReply>(`/api/declarable${queryOf<DeclarableQuery>({ file })}`, {}, fetchImpl);
 
-/** One change to a component's interface, as `GET /api/declaration-plan` takes it. */
-export type DeclarationPlanRequest =
-  | { action: "read"; file: string; name: string; scope: string }
-  | { action: "declare"; file: string; scope: string; definition: string }
-  | { action: "remove"; file: string; name: string };
+/** One change to a component's interface, as `GET /api/declaration-plan` takes it:
+ * `DeclarationPlanQuery`, the server's own model of the query. */
+export type DeclarationPlanRequest = DeclarationPlanQuery;
 
 export const getDeclarationPlan = (plan: DeclarationPlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(`/api/declaration-plan?${declarationQuery(plan)}`, {}, fetchImpl);
-
-/** A plan's query: the action and the file, then whichever of `name`, `scope` and `definition`
- * the action takes - the same three sets the server's DECLARATION_PLANS names. */
-function declarationQuery(plan: DeclarationPlanRequest): string {
-  const parts: [string, string][] = [
-    ["action", plan.action],
-    ["file", plan.file],
-  ];
-  if (plan.action === "read") parts.push(["name", plan.name], ["scope", plan.scope]);
-  else if (plan.action === "remove") parts.push(["name", plan.name]);
-  else parts.push(["scope", plan.scope], ["definition", plan.definition]);
-  return parts.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
-}
+  request<PlanReply>(`/api/declaration-plan${queryOf<DeclarationPlanQuery>(plan)}`, {}, fetchImpl);
 
 /** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
  * soon as the answer arrives - a refused edit notes nothing. */
@@ -427,13 +316,12 @@ export interface ValuePlanRequest {
   raw: number;
 }
 
-export const getValuePlan = (plan: ValuePlanRequest, fetchImpl: Fetch = fetch) =>
-  request<PlanReply>(
-    `/api/value-plan?name=${encodeURIComponent(plan.name)}` +
-      `&at=${encodeURIComponent(plan.at)}&raw=${encodeURIComponent(String(plan.raw))}`,
-    {},
-    fetchImpl,
-  );
+/** The cell's change as its query takes it - `ValuePlanQuery`, the server's own model of it - the
+ * count spelled as the number it is. */
+export const getValuePlan = (plan: ValuePlanRequest, fetchImpl: Fetch = fetch) => {
+  const query = queryOf<ValuePlanQuery>({ name: plan.name, at: plan.at, raw: String(plan.raw) });
+  return request<PlanReply>(`/api/value-plan${query}`, {}, fetchImpl);
+};
 
 /** A whole table's change, as `GET /api/values-plan` takes it: the counts row-major, in one list. */
 export interface ValuesPlanRequest {
@@ -448,10 +336,11 @@ export interface ValuesPlanRequest {
  * of an encoded address is ascii, so its length in characters is its length in bytes. */
 const ADDRESS_LIMIT = 65536 - "GET ".length - " HTTP/1.1\r\n".length;
 
+/** The table's change as its query takes it - `ValuesPlanQuery`, the server's own model of it - the
+ * counts joined by commas. */
 export const getValuesPlan = async (plan: ValuesPlanRequest, fetchImpl: Fetch = fetch) => {
-  const address =
-    `/api/values-plan?name=${encodeURIComponent(plan.name)}` +
-    `&raw=${encodeURIComponent(plan.raw.join(","))}`;
+  const query = queryOf<ValuesPlanQuery>({ name: plan.name, raw: plan.raw.join(",") });
+  const address = `/api/values-plan${query}`;
   // Refused before it is asked for, rather than sent and answered 414: a count costs its own
   // digits plus the three of the `%2C` before it, which is about 8 000 whole counts and about
   // 2 500 that carry decimals, `rawOf` answering an unrounded double for a float datatype. The
@@ -466,6 +355,12 @@ export const getValuesPlan = async (plan: ValuesPlanRequest, fetchImpl: Fetch = 
   }
   return request<PlanReply>(address, {}, fetchImpl);
 };
+
+/** A plan as its query carries it: a `set`'s `raw` of `null` - the key to go - left out, which is
+ * how the query says so (`Held`). */
+function held<Q extends object>(plan: Held<Q>): Q {
+  return Object.fromEntries(Object.entries(plan).filter(([, value]) => value !== null)) as Q;
+}
 
 /** A query string: `?`, then each parameter of `query` in the order it is written, its value
  * encoded - or nothing, for a query of none. Given the type of the route's query, the server's

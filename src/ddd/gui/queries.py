@@ -7,6 +7,10 @@ before. Every refusal a model makes is one sentence: the route's own, word for w
 already said one about that key (Appendix A of ``docs/superpowers/plans/2026-10-05-gui-
 security.md``).
 
+A plan route that takes one of several actions reads its query as one model per action, the
+``action`` given choosing which (:class:`_Actions`): each action's model says what that action
+takes, and a key another action takes is one it does not.
+
 A path is read against the directories ``ddd gui`` serves (:class:`Serving`), which each
 request hands its models: a network path is a path like any other under one of them, and refused
 anywhere else before anything resolves it.
@@ -25,9 +29,17 @@ import re
 import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, get_args
+from typing import Annotated, ClassVar, Final, Literal, get_args
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, RootModel, ValidationInfo
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    RootModel,
+    ValidationInfo,
+    model_validator,
+)
 from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
@@ -121,17 +133,24 @@ def _serving(info: ValidationInfo) -> Serving:
 
 def _folded(text: str) -> str:
     """``text`` as a path is compared with another as text: every separator a ``/``, and on
-    Windows (:data:`_CASELESS`) every letter in one case."""
+    Windows (:data:`_CASELESS`) every letter in one case - ``lower()``'s, the case pathlib's own
+    Windows comparison folds to (``ntpath.normcase``), and so :func:`ddd.gui.session._served` and
+    :mod:`ddd.gui.compare`. ``casefold()`` would match spellings Windows tells apart: a sharp s
+    with ``ss``, a long s with ``s``."""
     folded = text.replace("\\", "/")
     if _CASELESS:
-        return folded.casefold()
+        return folded.lower()
     return folded
 
 
 def _under(text: str, directories: Iterable[str]) -> bool:
     """Whether ``text`` names one of ``directories``, or a path under one: compared as text, so
-    that nothing is resolved - and no network asked - to tell."""
+    that nothing is resolved - and no network asked - to tell. A path holding a ``.`` or ``..``
+    segment names none of them, wherever it would lead: only resolving it would say where, and
+    the server never answers with such a path."""
     given = _folded(text)
+    if any(segment in (".", "..") for segment in given.split("/")):
+        return False
     for directory in directories:
         served = _folded(directory).rstrip("/")
         if given == served or given.startswith(f"{served}/"):
@@ -184,9 +203,10 @@ def file_path(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
     platform: an empty path; one of more than :data:`MAX_PATH` characters; one holding a NUL,
     which ``Path.resolve`` raises on, or a lone surrogate, which no path the page sends holds;
     and a network or device form naming no path under a directory served (:class:`Serving`),
-    which Windows would open for the asking. One under such a directory is the network path a
-    mapped drive resolves to there, and is read like any other. Whether the path is a file of
-    the project is the handler's question, as before.
+    which Windows would open for the asking - a ``.`` or ``..`` segment in one included. One
+    under such a directory is the network path a mapped drive resolves to there, and is read
+    like any other. Whether the path is a file of the project is the handler's question, as
+    before.
     """
 
     def read(value: object, info: ValidationInfo) -> str:
@@ -197,17 +217,23 @@ def file_path(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
     return _validator(read, blank)
 
 
-def _absolute(text: str, served: Iterable[str]) -> bool:
-    """Whether ``text`` is a path :func:`file_path` takes, ``served`` the directories a network
-    path may name one under. A statement a rule, rather than one condition, so that the coverage
-    gate sees each rule decide."""
+def _readable(text: str) -> bool:
+    """Whether ``text`` can be a path at all: not empty, at most :data:`MAX_PATH` characters,
+    holding no NUL and no lone surrogate. A statement a rule, rather than one condition, so that
+    the coverage gate sees each rule decide."""
     if not text:
         return False
     if len(text) > MAX_PATH:
         return False
     if "\x00" in text:
         return False
-    if not _encodable(text):
+    return _encodable(text)
+
+
+def _absolute(text: str, served: Iterable[str]) -> bool:
+    """Whether ``text`` is a path :func:`file_path` takes, ``served`` the directories a network
+    path may name one under."""
+    if not _readable(text):
         return False
     if _NETWORK.match(text):
         return _under(text, served)
@@ -224,6 +250,20 @@ def named(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
         raise refusal(sentence)
 
     return _validator(read, blank)
+
+
+def any_text(sentence: str) -> BeforeValidator:
+    """Text of any kind but the empty one, left for the route's handler to read, which refuses
+    in words of its own whatever it cannot: the empty text, and anything that is not text, are
+    refused with ``sentence``. No length is bounded and no character refused: the handler's
+    reading answers for those."""
+
+    def read(value: object) -> str:
+        if isinstance(value, str) and value:
+            return value
+        raise refusal(sentence)
+
+    return BeforeValidator(read)
 
 
 def json_text(sentence: str | None = None, *, blank: object = _REFUSED) -> BeforeValidator:
@@ -248,6 +288,17 @@ def json_text(sentence: str | None = None, *, blank: object = _REFUSED) -> Befor
             raise refusal(sentence) from None
 
     return _validator(read, blank)
+
+
+def json_value(text: str) -> object:
+    """The value ``text`` stands for, where it is json text :func:`json_text` takes - its depth
+    counted before anything parses it, read by the loader's rule, its numbers finite - or the
+    :class:`~ddd.editing.EditError` refusing it in :func:`~ddd.editing.parse_raw`'s words.
+
+    What ``GET /api/declaration-plan`` reads a definition with, in its handler rather than its
+    query: it refuses one in a sentence of its own, ``409``, which the declare panel shows as an
+    offer's refusal (ruling 5 of the security review's plan)."""
+    return parse_raw(_json(text))
 
 
 def _json(value: object) -> str:
@@ -326,16 +377,32 @@ class NoQuery(_Query):
     """The query of a route that takes none."""
 
 
-class Unread(_Query):
-    """Every key given, one value each, left for the route's handler to read: the query of the
-    plan routes, which read theirs by hand still. Takes any key."""
+class _Actions[T](RootModel[T]):
+    """The query of a route that takes one of several actions, each with parts of its own: a
+    ``RootModel`` over a union of one model per action, discriminated by ``action``.
 
-    model_config = ConfigDict(extra="allow")
+    The action is read first, before the union: one the route does not take - or none - is
+    refused in the route's own words, naming every action it does take, in the order of its
+    union. The model of the action given then reads the rest, so that a part that action
+    requires, left out, answers its ``missing``, and a key it does not take - another action's
+    included - answers that it takes no such key (:func:`ddd.gui.api._query_message`)."""
 
-    @property
-    def values(self) -> dict[str, str]:
-        """The values given, by their key."""
-        return dict(self.model_extra or {})
+    model_config = ConfigDict(frozen=True)
+
+    route: ClassVar[str] = ""
+    """The route's name, as its refusals say it: ``unit-plan``."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _taken(cls, value: object) -> object:
+        """``value``, where its ``action`` is one the route takes; else the route's refusal."""
+        taken = actions_of(cls)
+        action = None
+        if isinstance(value, dict):
+            action = value.get("action")
+        if isinstance(action, str) and action in taken:
+            return value
+        raise refusal(f"{cls.route} takes ?action= one of {', '.join(taken)}")
 
 
 class StateQuery(_Query):
@@ -523,3 +590,535 @@ class CompareQuery(_Query):
     """The delivery to compare the open project against: a dumped dictionary, or a project or
     component description, at a path under the directory ``ddd gui`` serves - relative to it, or
     absolute."""
+
+
+class RenameUnit(_Query):
+    """A unit spelled anew wherever it is stated or listed: ``GET /api/unit-plan``'s
+    ``rename``."""
+
+    missing: ClassVar[str] = "rename takes ?unit= and ?to="
+
+    action: Literal["rename"]
+
+    unit: Annotated[str, named("rename takes ?unit= as a unit's name")]
+    """The unit, as it is spelled now."""
+
+    to: Annotated[str, named("rename takes ?to= as a unit's name", blank="")]
+    """Its new spelling; blank, the empty unit, which the plan refuses as no unit."""
+
+
+class AddUnit(_Query):
+    """A unit added to the vocabulary: ``GET /api/unit-plan``'s ``add``."""
+
+    missing: ClassVar[str] = "add takes ?unit="
+
+    action: Literal["add"]
+
+    unit: Annotated[str, named("add takes ?unit= as a unit's name")]
+    """The unit, as it is to be spelled."""
+
+
+class DescribeUnit(_Query):
+    """The vocabulary's description of a unit set: ``GET /api/unit-plan``'s ``describe``."""
+
+    missing: ClassVar[str] = "describe takes ?unit= and ?description="
+
+    action: Literal["describe"]
+
+    unit: Annotated[str, named("describe takes ?unit= as a unit's name")]
+    """The unit to describe."""
+
+    description: str
+    """Its description; blank, the empty text, which is how one is cleared."""
+
+
+class RemoveUnit(_Query):
+    """A unit nothing states taken out of the vocabulary: ``GET /api/unit-plan``'s
+    ``remove``."""
+
+    missing: ClassVar[str] = "remove takes ?unit="
+
+    action: Literal["remove"]
+
+    unit: Annotated[str, named("remove takes ?unit= as a unit's name")]
+    """The unit to take out."""
+
+
+class AdoptUnits(_Query):
+    """A vocabulary for a project whose units files list no unit, of every unit it states:
+    ``GET /api/unit-plan``'s ``adopt``."""
+
+    action: Literal["adopt"]
+
+
+class UnitPlanQuery(
+    _Actions[
+        Annotated[
+            RenameUnit | AddUnit | DescribeUnit | RemoveUnit | AdoptUnits,
+            Field(discriminator="action"),
+        ]
+    ]
+):
+    """What ``GET /api/unit-plan`` takes: one change of the project's units, by its action."""
+
+    route: ClassVar[str] = "unit-plan"
+
+
+class SetTypeKey(_Query):
+    """One key of a type set, or taken away: ``GET /api/type-plan``'s ``set``."""
+
+    missing: ClassVar[str] = "set takes ?name= and ?key="
+
+    action: Literal["set"]
+
+    name: Annotated[str, named("set takes ?name= as a type's name")]
+    """The type."""
+
+    key: Annotated[str, named("set takes ?key= as a key's name", blank="")]
+    """The key to set; whether the type's kind has one of that name is the plan's question."""
+
+    raw: Annotated[str | SkipJsonSchema[None], json_text(blank=None)] = None
+    """The value to set it to, as json text; left out or blank, the key is taken away."""
+
+
+class RenameType(_Query):
+    """A type renamed, and every ``typename`` reaching it: ``GET /api/type-plan``'s
+    ``rename``."""
+
+    missing: ClassVar[str] = "rename takes ?name= and ?to="
+
+    action: Literal["rename"]
+
+    name: Annotated[str, named("rename takes ?name= as a type's name")]
+    """The type."""
+
+    to: Annotated[str, named("rename takes ?to= as a type's name", blank="")]
+    """Its new name; whether it may be used is the plan's question, a blank one included."""
+
+
+class TypePlanQuery(_Actions[Annotated[SetTypeKey | RenameType, Field(discriminator="action")]]):
+    """What ``GET /api/type-plan`` takes: one change of a type, by its action."""
+
+    route: ClassVar[str] = "type-plan"
+
+
+class SetConstantKey(_Query):
+    """One key of a constant set, or taken away: ``GET /api/constant-plan``'s ``set``."""
+
+    missing: ClassVar[str] = "set takes ?name= and ?key="
+
+    action: Literal["set"]
+
+    name: Annotated[str, named("set takes ?name= as a constant's name")]
+    """The constant."""
+
+    key: Annotated[str, named("set takes ?key= as a key's name", blank="")]
+    """The key to set; whether a constant has one of that name is the plan's question."""
+
+    raw: Annotated[str | SkipJsonSchema[None], json_text(blank=None)] = None
+    """The value to set it to, as json text; left out or blank, the key is taken away."""
+
+
+class RenameConstant(_Query):
+    """A constant renamed, and every shape spelling it: ``GET /api/constant-plan``'s
+    ``rename``."""
+
+    missing: ClassVar[str] = "rename takes ?name= and ?to="
+
+    action: Literal["rename"]
+
+    name: Annotated[str, named("rename takes ?name= as a constant's name")]
+    """The constant."""
+
+    to: Annotated[str, named("rename takes ?to= as a constant's name", blank="")]
+    """Its new name; whether it may be used is the plan's question, a blank one included."""
+
+
+class AddConstant(_Query):
+    """A constant declared: ``GET /api/constant-plan``'s ``add``."""
+
+    missing: ClassVar[str] = "add takes ?name= and ?raw="
+
+    action: Literal["add"]
+
+    name: Annotated[str, named("add takes ?name= as a constant's name")]
+    """The new constant's name."""
+
+    raw: Annotated[str, json_text()]
+    """Its value, as json text: required, where ``set``'s may be left out - a constant declared
+    with no value is not what ``add`` means."""
+
+
+class RemoveConstant(_Query):
+    """A constant nothing names taken out: ``GET /api/constant-plan``'s ``remove``."""
+
+    missing: ClassVar[str] = "remove takes ?name="
+
+    action: Literal["remove"]
+
+    name: Annotated[str, named("remove takes ?name= as a constant's name")]
+    """The constant."""
+
+
+class ConstantPlanQuery(
+    _Actions[
+        Annotated[
+            SetConstantKey | RenameConstant | AddConstant | RemoveConstant,
+            Field(discriminator="action"),
+        ]
+    ]
+):
+    """What ``GET /api/constant-plan`` takes: one change of a constant, by its action."""
+
+    route: ClassVar[str] = "constant-plan"
+
+
+class SetSectionKey(_Query):
+    """One key of a section set, or taken away: ``GET /api/section-plan``'s ``set``."""
+
+    missing: ClassVar[str] = "set takes ?name= and ?key="
+
+    action: Literal["set"]
+
+    name: Annotated[str, named("set takes ?name= as a section's name")]
+    """The section."""
+
+    key: Annotated[str, named("set takes ?key= as a key's name", blank="")]
+    """The key to set; whether a section has one of that name is the plan's question."""
+
+    raw: Annotated[str | SkipJsonSchema[None], json_text(blank=None)] = None
+    """The value to set it to, as json text; left out or blank, the key is taken away."""
+
+
+class RenameSection(_Query):
+    """A section renamed, and every shape spelling it: ``GET /api/section-plan``'s
+    ``rename``."""
+
+    missing: ClassVar[str] = "rename takes ?name= and ?to="
+
+    action: Literal["rename"]
+
+    name: Annotated[str, named("rename takes ?name= as a section's name")]
+    """The section."""
+
+    to: Annotated[str, named("rename takes ?to= as a section's name", blank="")]
+    """Its new name; whether it may be used is the plan's question, a blank one included."""
+
+
+class AddSection(_Query):
+    """A section declared: ``GET /api/section-plan``'s ``add``.
+
+    One part per key of :attr:`ddd.project_shared.SECTIONS.required`, in the order the panel
+    draws them, which is the order a refusal of two names the first in: a section the model gives
+    no default for ``access`` or ``alignment`` is one whose file would not load the moment it was
+    written. Each is json text, as ``set``'s ``raw`` is: ``?access="read-only"&alignment=4``.
+    ``description`` is not among them, having a default, and is set from the panel afterwards."""
+
+    missing: ClassVar[str] = "add takes ?name= and ?access= and ?alignment="
+
+    action: Literal["add"]
+
+    name: Annotated[str, named("add takes ?name= as a section's name")]
+    """The new section's name."""
+
+    access: Annotated[str, json_text()]
+    """Its access, as json text: ``"read-only"`` or ``"read-write"``, in their quotes."""
+
+    alignment: Annotated[str, json_text()]
+    """Its alignment, as json text."""
+
+
+class RemoveSection(_Query):
+    """A section nothing names taken out: ``GET /api/section-plan``'s ``remove``."""
+
+    missing: ClassVar[str] = "remove takes ?name="
+
+    action: Literal["remove"]
+
+    name: Annotated[str, named("remove takes ?name= as a section's name")]
+    """The section."""
+
+
+class SectionPlanQuery(
+    _Actions[
+        Annotated[
+            SetSectionKey | RenameSection | AddSection | RemoveSection,
+            Field(discriminator="action"),
+        ]
+    ]
+):
+    """What ``GET /api/section-plan`` takes: one change of a section, by its action."""
+
+    route: ClassVar[str] = "section-plan"
+
+
+class SetRasterKey(_Query):
+    """One key of a raster set, or taken away: ``GET /api/raster-plan``'s ``set``."""
+
+    missing: ClassVar[str] = "set takes ?name= and ?key="
+
+    action: Literal["set"]
+
+    name: Annotated[str, named("set takes ?name= as a raster's name")]
+    """The raster."""
+
+    key: Annotated[str, named("set takes ?key= as a key's name", blank="")]
+    """The key to set; whether a raster has one of that name is the plan's question."""
+
+    raw: Annotated[str | SkipJsonSchema[None], json_text(blank=None)] = None
+    """The value to set it to, as json text; left out or blank, the key is taken away."""
+
+
+class RenameRaster(_Query):
+    """A raster renamed, and every shape spelling it: ``GET /api/raster-plan``'s
+    ``rename``."""
+
+    missing: ClassVar[str] = "rename takes ?name= and ?to="
+
+    action: Literal["rename"]
+
+    name: Annotated[str, named("rename takes ?name= as a raster's name")]
+    """The raster."""
+
+    to: Annotated[str, named("rename takes ?to= as a raster's name", blank="")]
+    """Its new name; whether it may be used is the plan's question, a blank one included."""
+
+
+class AddRaster(_Query):
+    """A raster declared: ``GET /api/raster-plan``'s ``add``.
+
+    One part per key of :attr:`ddd.project_shared.RASTERS.required`, which is ``event`` alone:
+    a raster's ``cycle`` may be left out and its ``description`` has a default, so both are set
+    from the panel afterwards. Named for the key rather than carried as ``?raw=``, as a section's
+    are, so that :func:`ddd.gui.api._declared` builds the entry off the vocabulary's descriptor."""
+
+    missing: ClassVar[str] = "add takes ?name= and ?event="
+
+    action: Literal["add"]
+
+    name: Annotated[str, named("add takes ?name= as a raster's name")]
+    """The new raster's name."""
+
+    event: Annotated[str, json_text()]
+    """Its event, as json text: a whole number."""
+
+
+class RemoveRaster(_Query):
+    """A raster nothing names taken out: ``GET /api/raster-plan``'s ``remove``."""
+
+    missing: ClassVar[str] = "remove takes ?name="
+
+    action: Literal["remove"]
+
+    name: Annotated[str, named("remove takes ?name= as a raster's name")]
+    """The raster."""
+
+
+class RasterPlanQuery(
+    _Actions[
+        Annotated[
+            SetRasterKey | RenameRaster | AddRaster | RemoveRaster,
+            Field(discriminator="action"),
+        ]
+    ]
+):
+    """What ``GET /api/raster-plan`` takes: one change of a raster, by its action."""
+
+    route: ClassVar[str] = "raster-plan"
+
+
+def outside_served(entry: str, served: Iterable[str]) -> str:
+    """Why ``entry``, a file outside every directory ``ddd gui`` serves, cannot be added to the
+    includes - named as the reader typed it, beside each directory served. Said by the query of
+    a network path (:class:`AddFile`), before anything resolves it, and by the plan
+    (:func:`ddd.gui.api._addition`) of any other path once resolved."""
+    return (
+        f"{entry} lies outside what ddd gui serves, {' and '.join(served)}; start it in a "
+        "directory holding this file to add it here"
+    )
+
+
+def _included(value: object, info: ValidationInfo) -> str:
+    """A file to add to the includes, as the reader typed its entry: relative to the description
+    or absolute. Refused where it can be no path at all (:func:`_readable`); and a network or
+    device form naming no path under a directory served, before anything resolves it - which on
+    Windows would open it - in the words a file outside them is refused with
+    (:func:`outside_served`). Whether the file is there, and of a kind a project includes, is the
+    plan's question."""
+    if not isinstance(value, str) or not _readable(value):
+        raise refusal("add takes ?path= as a file's path")
+    served = _serving(info).served
+    if _NETWORK.match(value) and not _under(value, served):
+        raise refusal(outside_served(value, served))
+    return value
+
+
+_ROW_KEY: Final = "remove takes ?path= as a row's key"
+
+
+def _row_key(value: object, info: ValidationInfo) -> str:
+    """A row's key, as ``GET /api/files`` answers one: a path :func:`file_path` takes. One that
+    is in every other way a path, but relative, is refused in the words the route always refused
+    it with, which echo it: read against the server's own working directory, it named another
+    file. Anything else is no row's key at all."""
+    if not isinstance(value, str):
+        raise refusal(_ROW_KEY)
+    if _absolute(value, _serving(info).served):
+        return value
+    if _readable(value) and _NETWORK.match(value) is None:
+        raise refusal(f"{_ROW_KEY}, which is absolute, and '{value}' is not")
+    raise refusal(_ROW_KEY)
+
+
+class CreateFile(_Query):
+    """A new description file, and the entry that includes it: ``GET /api/files-plan``'s
+    ``create``."""
+
+    missing: ClassVar[str] = "create takes ?kind= and ?name="
+
+    action: Literal["create"]
+
+    kind: Annotated[str, named("create takes ?kind= as a kind of file")]
+    """The kind of file: one of ``FilesReply.creatable``, which the plan checks."""
+
+    name: Annotated[str, named("create takes ?name= as a file's name")]
+    """The new file's name, without its ``.ddd.json``."""
+
+    component: Annotated[
+        str | SkipJsonSchema[None],
+        named("create takes ?component= as a component's name", blank=None),
+    ] = None
+    """A new component's own name: read for a ``kind`` of ``component`` alone, which the plan
+    refuses without one, and ignored for every other. Left out or blank, none."""
+
+
+class AddFile(_Query):
+    """A file there already appended to the includes, and the errors it is counted to bring:
+    ``GET /api/files-plan``'s ``add``."""
+
+    missing: ClassVar[str] = "add takes ?path="
+
+    action: Literal["add"]
+
+    path: Annotated[str, BeforeValidator(_included)]
+    """The file, as the includes' new entry is to name it: relative to the project description,
+    or absolute."""
+
+
+class RemoveFile(_Query):
+    """Every entry of the includes reaching a file taken out: ``GET /api/files-plan``'s
+    ``remove``."""
+
+    missing: ClassVar[str] = "remove takes ?path="
+
+    action: Literal["remove"]
+
+    path: Annotated[str, BeforeValidator(_row_key)]
+    """A row's key - ``IncludedEntryReply.key``, or one of a pattern's own ``files`` - which is
+    absolute."""
+
+
+class FilesPlanQuery(
+    _Actions[Annotated[CreateFile | AddFile | RemoveFile, Field(discriminator="action")]]
+):
+    """What ``GET /api/files-plan`` takes: one change of the project's own files, by its
+    action."""
+
+    route: ClassVar[str] = "files-plan"
+
+
+class ReadDeclaration(_Query):
+    """An object the project has declared in one more component, its definition the producer's:
+    ``GET /api/declaration-plan``'s ``read``. Every part is read by its handler, a blank one
+    included, as it always was."""
+
+    missing: ClassVar[str] = "read takes ?file= and ?name= and ?scope="
+
+    action: Literal["read"]
+
+    file: Annotated[str, file_path("read takes ?file= as a file's path", blank="")]
+    """The component to declare it in."""
+
+    name: Annotated[str, named("read takes ?name= as an object's name", blank="")]
+    """The object."""
+
+    scope: Annotated[str, named("read takes ?scope= as a declaration's scope", blank="")]
+    """The scope to declare it with: ``output``, ``input`` or ``local``."""
+
+
+class DeclareObject(_Query):
+    """A new object declared in a component: ``GET /api/declaration-plan``'s ``declare``.
+    Every part is read by its handler, a blank one included, as it always was."""
+
+    missing: ClassVar[str] = "declare takes ?file= and ?scope= and ?definition="
+
+    action: Literal["declare"]
+
+    file: Annotated[str, file_path("declare takes ?file= as a file's path", blank="")]
+    """The component to declare it in."""
+
+    scope: Annotated[str, named("declare takes ?scope= as a declaration's scope", blank="")]
+    """The scope to declare it with: ``output``, ``input`` or ``local``."""
+
+    definition: str
+    """Its definition, as json text: refused by the handler, as an offer's refusal, where it is
+    not one json object read by :func:`json_value`."""
+
+
+class RemoveDeclaration(_Query):
+    """A declaration taken out of a component: ``GET /api/declaration-plan``'s ``remove``.
+    Every part is read by its handler, a blank one included, as it always was."""
+
+    missing: ClassVar[str] = "remove takes ?file= and ?name="
+
+    action: Literal["remove"]
+
+    file: Annotated[str, file_path("remove takes ?file= as a file's path", blank="")]
+    """The component."""
+
+    name: Annotated[str, named("remove takes ?name= as an object's name", blank="")]
+    """The object whose declaration to take out."""
+
+
+class DeclarationPlanQuery(
+    _Actions[
+        Annotated[
+            ReadDeclaration | DeclareObject | RemoveDeclaration, Field(discriminator="action")
+        ]
+    ]
+):
+    """What ``GET /api/declaration-plan`` takes: one change of a component's interface, by its
+    action."""
+
+    route: ClassVar[str] = "declaration-plan"
+
+
+class ValuePlanQuery(_Query):
+    """What ``GET /api/value-plan`` takes: one element of an object's values set."""
+
+    missing: ClassVar[str] = "value-plan takes ?name= and ?at= and ?raw="
+
+    name: Annotated[str, named("value-plan takes ?name= as an object's name")]
+    """The object."""
+
+    at: Annotated[str, named("value-plan takes ?at= as an element's indices")]
+    """The element, as a json pointer's suffix: ``[2]``, or ``[1][3]``. Its length bounded here,
+    so that no index of it holds more digits than a number does; whether it names an element of
+    the object is the handler's question."""
+
+    raw: Annotated[str, any_text("value-plan takes ?raw= as a number")]
+    """The raw count to store; whether it is a number is the handler's question, answered as a
+    refusal of the count."""
+
+
+class ValuesPlanQuery(_Query):
+    """What ``GET /api/values-plan`` takes: every value of an object set at once."""
+
+    missing: ClassVar[str] = "values-plan takes ?name= and ?raw="
+
+    name: Annotated[str, named("values-plan takes ?name= as an object's name")]
+    """The object."""
+
+    raw: Annotated[str, any_text("values-plan takes ?raw= as numbers joined by commas")]
+    """Every raw count, row-major, joined by commas; whether each is a number is the handler's
+    question, answered as a refusal of the count."""

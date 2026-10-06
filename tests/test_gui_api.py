@@ -40,19 +40,16 @@ from ddd.findings_by_file import FindingsByFile
 from ddd.gui import contract
 from ddd.gui.api import (
     MEMO,
-    RASTER_PLANS,
     ROUTES,
-    SECTION_PLANS,
     Api,
     Reply,
     _changed_in,
     _declared,
     _finding,
-    _json_texts,
     _required_keys,
 )
 from ddd.gui.derived import Derived
-from ddd.gui.queries import Unread
+from ddd.gui.queries import AddRaster, AddSection
 from ddd.gui.routes import Policy
 from ddd.gui.session import Filed, Revision, Session
 from ddd.lsp.navigation import Index, Site
@@ -546,10 +543,9 @@ class TestTheRouteTable:
 
     def test_every_query_model_is_published_to_the_page(self) -> None:
         """The page's own types are generated from what the contract publishes, so a query
-        model left out of it would leave the page building that query unchecked. ``Unread``
-        stands in for the queries the plan routes still read by hand."""
+        model left out of it would leave the page building that query unchecked."""
         published = {model for model, _ in contract._ENDPOINTS}
-        assert {route.query for route in ROUTES} - {Unread} <= published
+        assert {route.query for route in ROUTES} <= published
 
     def test_only_a_post_takes_a_body(self) -> None:
         assert {route.path for route in ROUTES if route.body is not None} == {
@@ -756,6 +752,173 @@ class TestNoMalformedValueIsA500:
                 "message": "Invalid JSON: recursion limit exceeded at line 1 column 213",
             },
         )
+
+
+DIGITS: Final = "1" * 4301
+"""A whole number of one digit more than ``int()`` reads from text, which raises past 4,300."""
+
+NESTED: Final = ("[" * 3000 + "]" * 3000, '{"a": ' * 3000 + "1" + "}" * 3000, "[" * 100_000)
+"""Text nested 3,000 deep, as arrays and as objects, and an array opened 100,000 times and never
+closed. On the Linux development PC's Python 3.14, ``json.loads`` reads the first two and raises
+``RecursionError`` on the third: deeper than any query takes, each is refused before anything
+parses it."""
+
+
+class TestNoPlanValueIsA500:
+    """What a plan route once answered 500 for, each refused now: a count, or an element, of more
+    digits than a number holds; a count nested deeper than a parser goes; a definition the same;
+    a component's path holding a NUL. A count is refused by its handler, as one that is not a
+    number always was, and so is a definition (ruling 5): the panels show both."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_a_count_of_more_digits_than_a_number_holds_is_not_a_number(self, demo) -> None:
+        api, _ = demo
+        not_a_number = Reply(409, {"error": "invalid", "message": f"'{DIGITS}' is not a number"})
+        assert get(api, "/api/value-plan", name="CurveA", at="[2]", raw=DIGITS) == not_a_number
+        counts = f"1200,{DIGITS},800,750,700,650"
+        assert get(api, "/api/values-plan", name="CurveA", raw=counts) == not_a_number
+
+    @pytest.mark.parametrize("raw", NESTED, ids=["arrays", "objects", "unclosed"])
+    def test_a_count_nested_however_deep_is_not_a_number(self, demo, raw: str) -> None:
+        api, _ = demo
+        not_a_number = Reply(409, {"error": "invalid", "message": f"'{raw}' is not a number"})
+        assert get(api, "/api/value-plan", name="CurveA", at="[2]", raw=raw) == not_a_number
+        assert get(api, "/api/values-plan", name="CurveA", raw=raw) == not_a_number
+
+    @pytest.mark.parametrize("at", [DIGITS, f"[{DIGITS}]"])
+    def test_an_element_of_more_digits_than_a_number_holds_is_refused(self, demo, at: str) -> None:
+        api, _ = demo
+        assert get(api, "/api/value-plan", name="CurveA", at=at, raw="750") == Reply(
+            400,
+            {"error": "bad-request", "message": "value-plan takes ?at= as an element's indices"},
+        )
+
+    @pytest.mark.parametrize(
+        "definition",
+        [*NESTED, DIGITS, '{"name": "P", "init": ' + DIGITS + "}", '{"name": "P", "init": 1e999}'],
+        ids=["arrays", "objects", "unclosed", "digits", "digits inside", "too large a number"],
+    )
+    def test_a_definition_json_text_does_not_take_is_not_json(self, demo, definition: str) -> None:
+        """Read by json text's rules - its depth counted first, its numbers finite - and refused
+        as any other definition that is not one json object is, 409: the declare panel shows it
+        as its offer's refusal."""
+        api, root = demo
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="declare",
+            file=(root / "components" / "controller.ddd.json").as_posix(),
+            scope="output",
+            definition=definition,
+        )
+        assert reply == Reply(409, {"error": "invalid", "message": "the definition is not json"})
+
+    @pytest.mark.parametrize(
+        ("action", "query"),
+        [
+            ("read", {"name": "ValueC", "scope": "input"}),
+            ("declare", {"scope": "output", "definition": '{"name": "P"}'}),
+            ("remove", {"name": "ValueA"}),
+        ],
+    )
+    def test_a_component_s_path_holding_a_nul_is_refused(
+        self, demo, action: str, query: dict[str, str]
+    ) -> None:
+        api, root = demo
+        file = f"{(root / 'components' / 'controller.ddd.json').as_posix()}\x00"
+        reply = get(api, "/api/declaration-plan", action=action, file=file, **query)
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": f"{action} takes ?file= as a file's path"}
+        )
+
+
+class TestABlankPlanValueKeepsItsMeaning:
+    """A blank value of a plan route means what it always has: the empty text a description is
+    set to; a key taken away, as a ``raw`` left out takes it; a unit spelled empty, which the plan
+    itself refuses; no component; and, for a declaration, whatever its handler makes of it."""
+
+    def test_a_blank_spelling_to_rename_a_unit_to_is_refused_by_the_plan(self, api: Api) -> None:
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="")
+        assert reply == Reply(409, {"error": "invalid", "message": "the empty unit is no unit"})
+
+    def test_a_blank_description_sets_the_empty_text(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/unit-plan", action="describe", unit="rpm", description="")
+        assert [change["operations"] for change in reply.body["changes"]] == [
+            [{"op": "set", "pointer": "units[0].description", "raw": '""'}]
+        ]
+
+    @pytest.mark.parametrize(
+        ("example", "project_file", "route", "query"),
+        [
+            ("structures", "project.ddd.json", "/api/type-plan", {"name": "Temperature_t"}),
+            ("vocabulary", "project.ddd.json", "/api/constant-plan", {"name": "TREND_SAMPLES"}),
+            ("vocabulary", "project.ddd.json", "/api/section-plan", {"name": ".calib"}),
+            ("vocabulary", "project.ddd.json", "/api/raster-plan", {"name": "10ms"}),
+        ],
+    )
+    def test_a_blank_raw_takes_the_key_away_as_leaving_it_out_does(
+        self, tmp_path: Path, example: str, project_file: str, route: str, query: dict[str, str]
+    ) -> None:
+        api, _ = copied(tmp_path, example, project_file)
+        left_out = get(api, route, action="set", key="description", **query)
+        assert left_out.status == 200
+        assert [change["operations"][0]["op"] for change in left_out.body["changes"]] == ["remove"]
+        assert get(api, route, action="set", key="description", raw="", **query) == left_out
+
+    def test_a_blank_component_is_none(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        created = get(api, "/api/files-plan", action="create", kind="types", name="sizes")
+        assert created.status == 200
+        blank = get(
+            api, "/api/files-plan", action="create", kind="types", name="sizes", component=""
+        )
+        assert blank == created
+        assert get(
+            api, "/api/files-plan", action="create", kind="component", name="valve", component=""
+        ) == Reply(
+            409, {"error": "invalid", "message": "a new component needs a name, besides its file's"}
+        )
+
+    @pytest.mark.parametrize(
+        ("query", "status", "code", "sentence"),
+        [
+            (
+                {"action": "remove", "file": "", "name": "ValueA"},
+                404,
+                "not-found",
+                ". is not a description file of the open project",
+            ),
+            (
+                {"action": "read", "name": "", "scope": "input"},
+                404,
+                "not-found",
+                "the project declares no ''",
+            ),
+            (
+                {"action": "read", "name": "ValueC", "scope": ""},
+                409,
+                "invalid",
+                "'ValueC' may not be declared '' here",
+            ),
+            (
+                {"action": "declare", "scope": "output", "definition": ""},
+                409,
+                "invalid",
+                "the definition is not json",
+            ),
+        ],
+    )
+    def test_a_blank_part_of_a_declaration_reaches_its_handler(
+        self, tmp_path: Path, query: dict[str, str], status: int, code: str, sentence: str
+    ) -> None:
+        api, root = copied(tmp_path, "demo", "demo.ddd.json")
+        asked = {"file": (root / "components" / "controller.ddd.json").as_posix(), **query}
+        reply = get(api, "/api/declaration-plan", **asked)
+        assert reply == Reply(status, {"error": code, "message": sentence})
 
 
 class TestSession:
@@ -4053,36 +4216,39 @@ class TestUnitPlan:
         assert get(api, "/api/unit", name="rpm").status == 404
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "merge", "unit": "rpm"},
-            {"action": "rename", "unit": "rpm"},
-            {"action": "rename", "to": "Hz"},
-            {"action": "describe", "unit": "rpm"},
-            {"action": "remove", "unit": ""},
+            ({}, "unit-plan takes ?action= one of rename, add, describe, remove, adopt"),
+            (
+                {"action": "merge", "unit": "rpm"},
+                "unit-plan takes ?action= one of rename, add, describe, remove, adopt",
+            ),
+            ({"action": "rename", "unit": "rpm"}, "rename takes ?unit= and ?to="),
+            ({"action": "rename", "to": "Hz"}, "rename takes ?unit= and ?to="),
+            ({"action": "describe", "unit": "rpm"}, "describe takes ?unit= and ?description="),
+            ({"action": "remove", "unit": ""}, "remove takes ?unit="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, api: Api, query: dict[str, str]
+        self, api: Api, query: dict[str, str], sentence: str
     ) -> None:
         reply = get(api, "/api/unit-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {"action": "rename", "unit": "rpm", "to": "rpm"},
-            {"action": "rename", "unit": "rpm", "to": ""},
-            {"action": "add", "unit": "rpm"},
+            ({"action": "rename", "unit": "rpm", "to": "rpm"}, "'rpm' is spelled that way already"),
+            ({"action": "rename", "unit": "rpm", "to": ""}, "the empty unit is no unit"),
+            ({"action": "add", "unit": "rpm"}, "p.ddd.json includes no units file to add 'rpm' to"),
         ],
     )
     def test_a_plan_its_rules_refuse_is_invalid_and_writes_nothing(
-        self, api: Api, root: Path, query: dict[str, str]
+        self, api: Api, root: Path, query: dict[str, str], sentence: str
     ) -> None:
         before = contents(root)
         reply = get(api, "/api/unit-plan", **query)
-        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply == Reply(409, {"error": "invalid", "message": sentence})
         assert contents(root) == before
 
     def test_a_unit_the_project_neither_states_nor_lists_is_not_found(self, api: Api) -> None:
@@ -4224,11 +4390,24 @@ class TestTheTypesTab:
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert says in reply.body["message"]
 
-    def test_a_plan_takes_the_parameters_its_action_names(self, structures) -> None:
+    @pytest.mark.parametrize(
+        ("query", "sentence"),
+        [
+            ({"action": "set", "name": "Temperature_t"}, "set takes ?name= and ?key="),
+            ({"action": "rename", "name": "Temperature_t"}, "rename takes ?name= and ?to="),
+            (
+                {"action": "dance", "name": "Temperature_t"},
+                "type-plan takes ?action= one of set, rename",
+            ),
+            ({"name": "Temperature_t", "to": "X_t"}, "type-plan takes ?action= one of set, rename"),
+        ],
+    )
+    def test_a_plan_takes_the_parameters_its_action_names(
+        self, structures, query: dict[str, str], sentence: str
+    ) -> None:
         api, _ = structures
-        assert get(api, "/api/type-plan", action="set", name="Temperature_t").status == 400
-        assert get(api, "/api/type-plan", action="dance", name="Temperature_t").status == 400
-        assert get(api, "/api/type-plan", name="Temperature_t", to="X_t").status == 400
+        reply = get(api, "/api/type-plan", **query)
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_a_finding_inside_a_type_carries_its_route(self, structures) -> None:
         api, root = structures
@@ -4658,24 +4837,30 @@ class TestConstant:
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "dance", "name": "TREND_SAMPLES"},
-            {"action": "set", "name": "TREND_SAMPLES"},
-            {"action": "set", "name": "", "key": "value", "raw": "1"},
-            {"action": "rename", "name": "TREND_SAMPLES"},
-            {"action": "add", "name": "NEW"},
-            {"action": "add", "name": "NEW", "raw": ""},
-            {"action": "remove"},
+            ({}, "constant-plan takes ?action= one of set, rename, add, remove"),
+            (
+                {"action": "dance", "name": "TREND_SAMPLES"},
+                "constant-plan takes ?action= one of set, rename, add, remove",
+            ),
+            ({"action": "set", "name": "TREND_SAMPLES"}, "set takes ?name= and ?key="),
+            (
+                {"action": "set", "name": "", "key": "value", "raw": "1"},
+                "set takes ?name= and ?key=",
+            ),
+            ({"action": "rename", "name": "TREND_SAMPLES"}, "rename takes ?name= and ?to="),
+            ({"action": "add", "name": "NEW"}, "add takes ?name= and ?raw="),
+            ({"action": "add", "name": "NEW", "raw": ""}, "add takes ?name= and ?raw="),
+            ({"action": "remove"}, "remove takes ?name="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, tmp_path: Path, query: dict[str, str]
+        self, tmp_path: Path, query: dict[str, str], sentence: str
     ) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/constant-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_a_project_the_analysis_could_not_read_plans_no_constant_change(
         self, tmp_path: Path
@@ -5134,10 +5319,10 @@ class TestSection:
         self, tmp_path: Path
     ) -> None:
         """One bad value has only one sentence to answer with; two have a choice, and the choice is
-        the panel's field order. `_json_texts` walks `SECTIONS.keys` filtered to the required ones,
-        and the caller stops at the first text that is not json - so the refusal is about `access`,
-        the first field the form draws, and not about whichever key a container happened to yield
-        first."""
+        the panel's field order. `AddSection` declares its parts in `SECTIONS.keys`' order filtered
+        to the required ones, and a query is refused for the first part it reads that is not json
+        - so the refusal is about `access`, the first field the form draws, and not about
+        whichever key a container happened to yield first."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(
             api,
@@ -5147,8 +5332,14 @@ class TestSection:
             access="read-write",
             alignment="4 8",
         )
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        assert reply.body["message"].startswith("'read-write' is not one json value")
+        assert reply == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": "'read-write' is not one json value: Expecting value: line 1 column 1 "
+                "(char 0)",
+            },
+        )
 
     def test_two_values_the_model_refuses_name_the_same_one_every_run(self, tmp_path: Path) -> None:
         """The same choice one layer down, and the one the written file cannot show: `_entry_text`
@@ -5170,22 +5361,6 @@ class TestSection:
             '"read-sideways" is not an access a section may state'
         )
 
-    def test_the_json_texts_of_a_request_come_in_the_order_the_panel_draws_them(self) -> None:
-        """The two tests above pin the sentence a reader meets; this pins *which table decides* it.
-
-        Both are asked of `SECTIONS`, whose keys are drawn in alphabetical order by coincidence, so
-        over it alone the panel's order and `sorted(SECTIONS.required)` are the same list and
-        neither test above can tell them apart. `WIDE` draws `f, d, b, e, a, c`, where the two
-        disagree on every position: this assertion holds only if the order is read off
-        `Vocabulary.keys`, and fails against a sort.
-
-        Reading it off `keys` is what makes the answer a claim rather than an accident. A sort is
-        deterministic too, but it puts `access` before `alignment` because of the alphabet; the
-        panel's order puts it first because that is the field the reader is looking at. The helpers
-        take a `Vocabulary` precisely so this is askable without an endpoint."""
-        given = {key: f'"{key}"' for key in WIDE_KEYS}
-        assert _json_texts(WIDE, given, None) == [given[key] for key in WIDE_KEYS]
-
     def test_a_declared_entry_is_built_in_the_panels_own_order(self) -> None:
         """The other walk, pinned the same way, plus one promise of its own: `description` comes
         after the required keys and not among them. It is the key `add` supplies itself, so no
@@ -5198,30 +5373,46 @@ class TestSection:
         real vocabularies and required by neither, so it is never asked of a request. Asserted
         because a comprehension filter registers no branch with coverage.py - the loop there is
         written as statements for that reason, and this is the test that would notice if the skip
-        stopped happening."""
-        given = {key: f'"{key}"' for key in (*WIDE_KEYS, "description")}
-        assert "description" not in _json_texts(WIDE, given, None)
-        assert _json_texts(SECTIONS, {"description": '"prose"'}, None) == []
+        stopped happening.
+
+        `WIDE` draws `f, d, b, e, a, c`, where the panel's order and a sort disagree on every
+        position: the order holds only if it is read off `Vocabulary.keys`, and fails against a
+        sort, which would put `access` before `alignment` because of the alphabet rather than
+        because that is the field the reader is looking at."""
+        assert _required_keys(WIDE) == list(WIDE_KEYS)
+        assert "description" not in _required_keys(SECTIONS)
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "dance", "name": ".calib"},
-            {"action": "set", "name": ".calib"},
-            {"action": "set", "name": "", "key": "alignment", "raw": "4"},
-            {"action": "rename", "name": ".calib"},
-            {"action": "add", "name": ".nvm", "access": '"read-write"'},
-            {"action": "add", "name": ".nvm", "alignment": "4"},
-            {"action": "remove"},
+            ({}, "section-plan takes ?action= one of set, rename, add, remove"),
+            (
+                {"action": "dance", "name": ".calib"},
+                "section-plan takes ?action= one of set, rename, add, remove",
+            ),
+            ({"action": "set", "name": ".calib"}, "set takes ?name= and ?key="),
+            (
+                {"action": "set", "name": "", "key": "alignment", "raw": "4"},
+                "set takes ?name= and ?key=",
+            ),
+            ({"action": "rename", "name": ".calib"}, "rename takes ?name= and ?to="),
+            (
+                {"action": "add", "name": ".nvm", "access": '"read-write"'},
+                "add takes ?name= and ?access= and ?alignment=",
+            ),
+            (
+                {"action": "add", "name": ".nvm", "alignment": "4"},
+                "add takes ?name= and ?access= and ?alignment=",
+            ),
+            ({"action": "remove"}, "remove takes ?name="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, tmp_path: Path, query: dict[str, str]
+        self, tmp_path: Path, query: dict[str, str], sentence: str
     ) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/section-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_the_actions_a_section_plan_offers_are_named_in_its_refusal(
         self, tmp_path: Path
@@ -5236,17 +5427,17 @@ class TestSection:
 
     def test_an_add_names_a_parameter_for_each_key_the_section_model_requires(self) -> None:
         """The one thing neither the endpoint's tests nor the coverage gate can see going wrong:
-        `SECTION_PLANS["add"]` and `SECTIONS.required` are two tables of the same fact, and
+        `AddSection`'s parts and `SECTIONS.required` are two tables of the same fact, and
         `_declared` reads the request by the second. A key added to the model's required set
-        without a parameter here would raise `KeyError` inside the route - a 500 where a reader
+        without a part there would raise `KeyError` inside the route - a 500 where a reader
         should meet a form.
 
         Asserted against `_required_keys` rather than against `sorted(...)`, so the two statements
-        are the relation and the literal rather than the relation twice: the parameters after
-        `?name=` are the required keys in the order the panel draws them, which is also the order a
-        refusal names them in."""
-        assert SECTION_PLANS["add"] == ("name", *_required_keys(SECTIONS))
-        assert SECTION_PLANS["add"] == ("name", "access", "alignment")
+        are the relation and the literal rather than the relation twice: the parts after `?name=`
+        are the required keys in the order the panel draws them, which is also the order a
+        refusal names them in - the order the model reads them in."""
+        assert [*AddSection.model_fields] == ["action", "name", *_required_keys(SECTIONS)]
+        assert [*AddSection.model_fields] == ["action", "name", "access", "alignment"]
 
     def test_a_project_the_analysis_could_not_read_plans_no_section_change(
         self, tmp_path: Path
@@ -5698,23 +5889,29 @@ class TestRaster:
         assert reply.body["message"].startswith(f"{query[whose]!r} is not one json value")
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "dance", "name": "10ms"},
-            {"action": "set", "name": "10ms"},
-            {"action": "set", "name": "", "key": "cycle", "raw": '"20ms"'},
-            {"action": "rename", "name": "10ms"},
-            {"action": "add", "name": "50ms"},
-            {"action": "remove"},
+            ({}, "raster-plan takes ?action= one of set, rename, add, remove"),
+            (
+                {"action": "dance", "name": "10ms"},
+                "raster-plan takes ?action= one of set, rename, add, remove",
+            ),
+            ({"action": "set", "name": "10ms"}, "set takes ?name= and ?key="),
+            (
+                {"action": "set", "name": "", "key": "cycle", "raw": '"20ms"'},
+                "set takes ?name= and ?key=",
+            ),
+            ({"action": "rename", "name": "10ms"}, "rename takes ?name= and ?to="),
+            ({"action": "add", "name": "50ms"}, "add takes ?name= and ?event="),
+            ({"action": "remove"}, "remove takes ?name="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, tmp_path: Path, query: dict[str, str]
+        self, tmp_path: Path, query: dict[str, str], sentence: str
     ) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/raster-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_the_actions_a_raster_plan_offers_are_named_in_its_refusal(
         self, tmp_path: Path
@@ -5726,12 +5923,12 @@ class TestRaster:
         assert reply.body["message"] == "raster-plan takes ?action= one of set, rename, add, remove"
 
     def test_an_add_names_a_parameter_for_each_key_the_raster_model_requires(self) -> None:
-        """The same relation `SECTION_PLANS` is asserted by, at the vocabulary whose required set
-        has one member rather than two: a key added to the model's required set without a
-        parameter here would raise `KeyError` inside the route - a 500 where a reader should meet
+        """The same relation `AddSection` is asserted by, at the vocabulary whose required set
+        has one member rather than two: a key added to the model's required set without a part
+        in `AddRaster` would raise `KeyError` inside the route - a 500 where a reader should meet
         a form."""
-        assert RASTER_PLANS["add"] == ("name", *_required_keys(RASTERS))
-        assert RASTER_PLANS["add"] == ("name", "event")
+        assert [*AddRaster.model_fields] == ["action", "name", *_required_keys(RASTERS)]
+        assert [*AddRaster.model_fields] == ["action", "name", "event"]
 
     def test_a_project_the_analysis_could_not_read_plans_no_raster_change(
         self, tmp_path: Path
@@ -7514,6 +7711,32 @@ class TestAddingAFile:
             "invalid",
             f"{path} lies outside what ddd gui serves, {(tmp_path / 'inside').resolve().as_posix()}"
             "; start it in a directory holding this file to add it here",
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "//server/share/a.ddd.json",
+            "\\\\server\\share\\a.ddd.json",
+            "\\\\?\\UNC\\server\\share\\a.ddd.json",
+        ],
+    )
+    def test_a_network_file_outside_what_it_serves_is_refused_before_anything_resolves_it(
+        self, served_below: Api, tmp_path: Path, path: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """In the same words, by the query itself: resolving a network path is what would open
+        it, on Windows. Spelt as strings, and ``Path.resolve`` made to fail the test if asked."""
+        serves = (tmp_path / "inside").resolve().as_posix()
+
+        def resolving(self: Path, *args: object, **kwargs: object) -> Path:
+            raise AssertionError(f"{self} was resolved")
+
+        monkeypatch.setattr(Path, "resolve", resolving)
+        assert refused(files_plan(served_below, "add", path=path)) == (
+            400,
+            "bad-request",
+            f"{path} lies outside what ddd gui serves, {serves}; start it in a directory holding "
+            "this file to add it here",
         )
 
     def test_a_file_the_project_has_is_refused_as_such_before_its_kind(

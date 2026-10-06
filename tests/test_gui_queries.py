@@ -3,31 +3,51 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Annotated, ClassVar, Literal
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_validator
 
 import ddd.gui.queries as queries_module
-from ddd.gui.api import Api, Reply, _query_message
+from ddd.editing import EditError
+from ddd.gui.api import ROUTES, Api, Reply, _query_message
 from ddd.gui.queries import (
     MAX_DEPTH,
     MAX_DIGITS,
     MAX_NAME,
     MAX_PATH,
+    AddFile,
     CompareQuery,
+    ConstantPlanQuery,
+    CreateFile,
+    DeclarationPlanQuery,
+    DeclareObject,
+    DescribeUnit,
+    FilesPlanQuery,
     FindingsQuery,
     FixQuery,
     NoQuery,
+    RasterPlanQuery,
+    ReadDeclaration,
+    RemoveDeclaration,
+    RemoveFile,
+    SectionPlanQuery,
     Serving,
     SettleQuery,
     StateQuery,
+    TypePlanQuery,
+    UnitPlanQuery,
+    ValuePlanQuery,
+    ValuesPlanQuery,
     _Query,
     actions_of,
+    any_text,
     file_path,
     json_text,
+    json_value,
     named,
+    outside_served,
     refusal,
     whole,
 )
@@ -68,7 +88,7 @@ def test_a_whole_number_below_its_least_is_refused_and_its_least_is_not() -> Non
 
 def test_a_value_that_is_not_text_is_refused_by_every_type() -> None:
     """Only an in-process caller can hand a model anything but text: a query arrives as text."""
-    for model in (Whole, Pathed, Named, Json):
+    for model in (Whole, Pathed, Named, Json, Text):
         with pytest.raises(ValidationError) as refused:
             model.model_validate({"it": 7})
         assert refused.value.errors()[0]["msg"] == SAID
@@ -158,6 +178,10 @@ def test_a_network_path_under_a_directory_served_is_a_path_like_any_other(text) 
         "//other/share/p/a.ddd.json",
         "\\\\?\\UNC\\server\\share\\p\\a.ddd.json",
         "\\\\.\\pipe\\p",
+        "//server/share/p/../../other/a.ddd.json",
+        "\\\\server\\share\\p\\..\\..\\other\\a.ddd.json",
+        "//server/share/p/sub/../a.ddd.json",
+        "//server/share/p/./a.ddd.json",
     ],
     ids=[
         "above it",
@@ -165,12 +189,27 @@ def test_a_network_path_under_a_directory_served_is_a_path_like_any_other(text) 
         "on another server",
         "the device form of a path under it",
         "a device",
+        "out of it through dot-dot segments",
+        "out of it through dot-dot segments spelt with backslashes",
+        "a dot-dot segment ending under it",
+        "a dot segment",
     ],
 )
 def test_a_network_path_outside_every_directory_served_is_refused(text) -> None:
+    """A ``.`` or ``..`` segment included, wherever it would lead: only resolving the path would
+    say, and resolving a network path is what this refuses. The server never answers with one."""
     with pytest.raises(ValidationError) as refused:
         Pathed.model_validate({"it": text}, context=SERVED)
     assert refused.value.errors()[0]["msg"] == SAID
+
+
+def test_a_directory_served_may_end_in_its_separator() -> None:
+    """``ddd gui`` started at the root of a mapped drive: Windows names that root by its network
+    path, its separator kept - ``PureWindowsPath("//server/share/").as_posix()`` is
+    ``//server/share/``."""
+    share = Serving(root="//server/share/", served=("//server/share/",))
+    for text in ("//server/share/a.ddd.json", "\\\\server\\share\\p\\a.ddd.json"):
+        assert Pathed.model_validate({"it": text}, context=share).it == text
 
 
 @pytest.mark.parametrize("context", [None, SERVED, Serving(root="/srv/p", served=("/srv/p",))])
@@ -197,6 +236,25 @@ def test_a_network_path_is_compared_in_one_case_where_the_platform_compares_so(
 
 def test_case_is_folded_on_windows_alone() -> None:
     assert queries_module._CASELESS is (sys.platform == "win32")
+
+
+@pytest.mark.parametrize(
+    ("served", "asked"),
+    [
+        ("//server/share/straße", "//server/share/STRASSE/a.ddd.json"),
+        ("//server/share/\u017f", "//server/share/S/a.ddd.json"),
+    ],
+    ids=["a sharp s is no double s", "a long s is no s"],
+)
+def test_case_is_folded_as_windows_folds_a_path(monkeypatch, served, asked) -> None:
+    """One letter in one case, ``lower()``, as pathlib's Windows comparison folds it - the one
+    ``ddd.gui.session._served`` and compare.py ask. Folding with ``casefold()`` would match two
+    spellings Windows tells apart: a sharp s with ``ss``, a long s (``\\u017f``) with ``s``."""
+    monkeypatch.setattr(queries_module, "_CASELESS", True)
+    assert not PureWindowsPath(asked).is_relative_to(PureWindowsPath(served))
+    with pytest.raises(ValidationError) as refused:
+        Pathed.model_validate({"it": asked}, context=Serving(root=served, served=(served,)))
+    assert refused.value.errors()[0]["msg"] == SAID
 
 
 class Named(BaseModel):
@@ -389,6 +447,26 @@ def test_the_limits() -> None:
     assert (MAX_DIGITS, MAX_PATH, MAX_NAME, MAX_DEPTH) == (9, 4096, 1024, 64)
 
 
+class Text(BaseModel):
+    it: Annotated[str, any_text(SAID)]
+
+
+@pytest.mark.parametrize(
+    "text", ["750", " ", "a\x00b", "\ud800", "[" * 3000, "1" * 4301, "x" * (MAX_NAME + 1)]
+)
+def test_any_text_is_answered_as_given_for_its_handler_to_read(text) -> None:
+    """Even what no handler will take, which each refuses in words of its own: a count that is
+    not a number, say. A lone surrogate included, which pydantic's own reading of a string with
+    a constraint on it would refuse in its words rather than the route's."""
+    assert Text.model_validate({"it": text}).it == text
+
+
+def test_but_the_empty_text_is_refused_with_the_routes_own_sentence() -> None:
+    with pytest.raises(ValidationError) as refused:
+        Text.model_validate({"it": ""})
+    assert refused.value.errors()[0]["msg"] == SAID
+
+
 class Blanks(BaseModel):
     file: Annotated[str, file_path(SAID, blank="")]
     raw: Annotated[str | None, json_text(blank=None)]
@@ -513,6 +591,440 @@ SETTLE = "settle takes ?name= and ?key=, and ?raw= unless the key goes"
 FIX = "fix takes ?file=, ?pointer= and ?check="
 DEEP = "[" * 3000 + "]" * 3000
 
+UNIT_ACTIONS = "unit-plan takes ?action= one of rename, add, describe, remove, adopt"
+TYPE_ACTIONS = "type-plan takes ?action= one of set, rename"
+FILES_ACTIONS = "files-plan takes ?action= one of create, add, remove"
+DECLARATION_ACTIONS = "declaration-plan takes ?action= one of read, declare, remove"
+NOT_JSON = "'{}' is not one json value: Expecting value: line 1 column 1 (char 0)"
+TOO_DEEP = f"{DEEP!r} is not one json value: the json is nested too deeply to read"
+NOT_FINITE = (
+    "'1e999' is not one json value: '1e999' is not a finite number; DDD has no representation "
+    "for it"
+)
+C = "/p/c.ddd.json"
+"""A component's path, as the page names one: whether it is the open project's is the
+handler's question, and none is open here."""
+
+
+def shared(route: str, noun: str, add: dict[str, str], sentence: str) -> list[tuple]:
+    """The refusals one of the shared files' plan routes makes of its query: the four actions of
+    each, ``add`` given what ``route``'s vocabulary requires."""
+    actions = f"{route.removeprefix('/api/')} takes ?action= one of set, rename, add, remove"
+    return [
+        (route, {}, actions),
+        (route, {"action": "move", "name": "X"}, actions),
+        (route, {"action": "set", "name": "X"}, "set takes ?name= and ?key="),
+        (route, {"action": "set", "name": "", "key": "description"}, "set takes ?name= and ?key="),
+        (
+            route,
+            {"action": "set", "name": "X\x00", "key": "description"},
+            f"set takes ?name= as {noun} name",
+        ),
+        (
+            route,
+            {"action": "set", "name": "X", "key": "x" * (MAX_NAME + 1)},
+            "set takes ?key= as a key's name",
+        ),
+        (
+            route,
+            {"action": "set", "name": "X", "key": "description", "raw": "x"},
+            NOT_JSON.format("x"),
+        ),
+        (route, {"action": "set", "name": "X", "key": "description", "raw": DEEP}, TOO_DEEP),
+        (
+            route,
+            {"action": "set", "name": "X", "key": "description", "to": "Y"},
+            "set takes no ?to=",
+        ),
+        (route, {"action": "rename", "name": "X"}, "rename takes ?name= and ?to="),
+        (
+            route,
+            {"action": "rename", "name": "X", "to": "Y\x00"},
+            f"rename takes ?to= as {noun} name",
+        ),
+        (
+            route,
+            {"action": "rename", "name": "X", "to": "Y", "raw": '"x"'},
+            "rename takes no ?raw=",
+        ),
+        (
+            route,
+            {"action": "rename", "name": "X", "to": "Y", "key": "description"},
+            "rename takes no ?key=",
+        ),
+        (route, {"action": "add", "name": "X"}, sentence),
+        (route, {"action": "add", **add, "name": ""}, sentence),
+        (route, {"action": "add", **add, "name": "X\x00"}, f"add takes ?name= as {noun} name"),
+        (route, {"action": "add", **add, "key": "description"}, "add takes no ?key="),
+        (route, {"action": "remove"}, "remove takes ?name="),
+        (route, {"action": "remove", "name": ""}, "remove takes ?name="),
+        (route, {"action": "remove", "name": "X", "raw": '"x"'}, "remove takes no ?raw="),
+    ]
+
+
+PLANS_REFUSED = [
+    ("/api/unit-plan", {}, UNIT_ACTIONS),
+    ("/api/unit-plan", {"action": ""}, UNIT_ACTIONS),
+    ("/api/unit-plan", {"action": "merge", "unit": "rpm"}, UNIT_ACTIONS),
+    ("/api/unit-plan", {"action": "rename", "unit": "rpm"}, "rename takes ?unit= and ?to="),
+    ("/api/unit-plan", {"action": "rename", "to": "Hz"}, "rename takes ?unit= and ?to="),
+    (
+        "/api/unit-plan",
+        {"action": "rename", "unit": "", "to": "Hz"},
+        "rename takes ?unit= and ?to=",
+    ),
+    (
+        "/api/unit-plan",
+        {"action": "rename", "unit": "r\x00m", "to": "Hz"},
+        "rename takes ?unit= as a unit's name",
+    ),
+    (
+        "/api/unit-plan",
+        {"action": "rename", "unit": "rpm", "to": "H\x00z"},
+        "rename takes ?to= as a unit's name",
+    ),
+    (
+        "/api/unit-plan",
+        {"action": "rename", "unit": "rpm", "to": "Hz", "description": "speed"},
+        "rename takes no ?description=",
+    ),
+    ("/api/unit-plan", {"action": "add"}, "add takes ?unit="),
+    ("/api/unit-plan", {"action": "add", "unit": ""}, "add takes ?unit="),
+    (
+        "/api/unit-plan",
+        {"action": "add", "unit": "x" * (MAX_NAME + 1)},
+        "add takes ?unit= as a unit's name",
+    ),
+    ("/api/unit-plan", {"action": "add", "unit": "bar", "to": "Hz"}, "add takes no ?to="),
+    (
+        "/api/unit-plan",
+        {"action": "describe", "unit": "rpm"},
+        "describe takes ?unit= and ?description=",
+    ),
+    (
+        "/api/unit-plan",
+        {"action": "describe", "unit": "r\x00m", "description": ""},
+        "describe takes ?unit= as a unit's name",
+    ),
+    (
+        "/api/unit-plan",
+        {"action": "describe", "unit": "rpm", "description": "speed", "to": "Hz"},
+        "describe takes no ?to=",
+    ),
+    ("/api/unit-plan", {"action": "remove"}, "remove takes ?unit="),
+    ("/api/unit-plan", {"action": "remove", "unit": ""}, "remove takes ?unit="),
+    (
+        "/api/unit-plan",
+        {"action": "remove", "unit": "r\x00m"},
+        "remove takes ?unit= as a unit's name",
+    ),
+    (
+        "/api/unit-plan",
+        {"action": "remove", "unit": "kPa", "description": ""},
+        "remove takes no ?description=",
+    ),
+    ("/api/unit-plan", {"action": "adopt", "unit": "rpm"}, "adopt takes no ?unit="),
+    ("/api/type-plan", {}, TYPE_ACTIONS),
+    ("/api/type-plan", {"action": "dance", "name": "Temperature_t"}, TYPE_ACTIONS),
+    ("/api/type-plan", {"name": "Temperature_t", "to": "X_t"}, TYPE_ACTIONS),
+    ("/api/type-plan", {"action": "set", "name": "Temperature_t"}, "set takes ?name= and ?key="),
+    ("/api/type-plan", {"action": "set", "name": "", "key": "unit"}, "set takes ?name= and ?key="),
+    (
+        "/api/type-plan",
+        {"action": "set", "name": "T\x00", "key": "unit"},
+        "set takes ?name= as a type's name",
+    ),
+    (
+        "/api/type-plan",
+        {"action": "set", "name": "Temperature_t", "key": "u\x00"},
+        "set takes ?key= as a key's name",
+    ),
+    (
+        "/api/type-plan",
+        {"action": "set", "name": "Temperature_t", "key": "unit", "raw": "K"},
+        NOT_JSON.format("K"),
+    ),
+    (
+        "/api/type-plan",
+        {"action": "set", "name": "Temperature_t", "key": "unit", "raw": DEEP},
+        TOO_DEEP,
+    ),
+    (
+        "/api/type-plan",
+        {"action": "set", "name": "Temperature_t", "key": "limits", "raw": "1e999"},
+        NOT_FINITE,
+    ),
+    (
+        "/api/type-plan",
+        {"action": "set", "name": "Temperature_t", "key": "unit", "to": "X_t"},
+        "set takes no ?to=",
+    ),
+    (
+        "/api/type-plan",
+        {"action": "rename", "name": "Temperature_t"},
+        "rename takes ?name= and ?to=",
+    ),
+    (
+        "/api/type-plan",
+        {"action": "rename", "name": "Temperature_t", "to": "X\x00"},
+        "rename takes ?to= as a type's name",
+    ),
+    (
+        "/api/type-plan",
+        {"action": "rename", "name": "Temperature_t", "to": "X_t", "raw": '"K"'},
+        "rename takes no ?raw=",
+    ),
+    *shared(
+        "/api/constant-plan",
+        "a constant's",
+        {"name": "X", "raw": "8"},
+        "add takes ?name= and ?raw=",
+    ),
+    ("/api/constant-plan", {"action": "add", "name": "X", "raw": ""}, "add takes ?name= and ?raw="),
+    (
+        "/api/constant-plan",
+        {"action": "add", "name": "X", "raw": "eight"},
+        NOT_JSON.format("eight"),
+    ),
+    *shared(
+        "/api/section-plan",
+        "a section's",
+        {"name": "X", "access": '"read-write"', "alignment": "4"},
+        "add takes ?name= and ?access= and ?alignment=",
+    ),
+    (
+        "/api/section-plan",
+        {"action": "add", "name": ".nvm", "access": "", "alignment": "4"},
+        "add takes ?name= and ?access= and ?alignment=",
+    ),
+    (
+        "/api/section-plan",
+        {"action": "add", "name": ".nvm", "access": "read-write", "alignment": "4 8"},
+        NOT_JSON.format("read-write"),
+    ),
+    (
+        "/api/section-plan",
+        {"action": "add", "name": ".nvm", "access": '"read-write"', "alignment": "4", "raw": "4"},
+        "add takes no ?raw=",
+    ),
+    *shared(
+        "/api/raster-plan",
+        "a raster's",
+        {"name": "X", "event": "1"},
+        "add takes ?name= and ?event=",
+    ),
+    ("/api/raster-plan", {"action": "add", "name": "5ms", "event": "1e999"}, NOT_FINITE),
+    (
+        "/api/raster-plan",
+        {"action": "add", "name": "5ms", "event": "1", "access": '"read-only"'},
+        "add takes no ?access=",
+    ),
+    ("/api/files-plan", {}, FILES_ACTIONS),
+    ("/api/files-plan", {"action": "rename", "path": "/p/a.ddd.json"}, FILES_ACTIONS),
+    ("/api/files-plan", {"action": "create", "name": "sizes"}, "create takes ?kind= and ?name="),
+    (
+        "/api/files-plan",
+        {"action": "create", "kind": "", "name": "sizes"},
+        "create takes ?kind= and ?name=",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "create", "kind": "types", "name": ""},
+        "create takes ?kind= and ?name=",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "create", "kind": "ty\x00pes", "name": "sizes"},
+        "create takes ?kind= as a kind of file",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "create", "kind": "types", "name": "si\x00zes"},
+        "create takes ?name= as a file's name",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "create", "kind": "component", "name": "pump", "component": "P\x00"},
+        "create takes ?component= as a component's name",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "create", "kind": "types", "name": "sizes", "path": "a.ddd.json"},
+        "create takes no ?path=",
+    ),
+    ("/api/files-plan", {"action": "add"}, "add takes ?path="),
+    ("/api/files-plan", {"action": "add", "path": ""}, "add takes ?path="),
+    (
+        "/api/files-plan",
+        {"action": "add", "path": "a\x00.ddd.json"},
+        "add takes ?path= as a file's path",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "add", "path": "a" * (MAX_PATH + 1)},
+        "add takes ?path= as a file's path",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "add", "path": "a.ddd.json", "component": "A"},
+        "add takes no ?component=",
+    ),
+    ("/api/files-plan", {"action": "remove"}, "remove takes ?path="),
+    ("/api/files-plan", {"action": "remove", "path": ""}, "remove takes ?path="),
+    (
+        "/api/files-plan",
+        {"action": "remove", "path": "a.ddd.json"},
+        "remove takes ?path= as a row's key, which is absolute, and 'a.ddd.json' is not",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "remove", "path": "/p/a\x00.ddd.json"},
+        "remove takes ?path= as a row's key",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "remove", "path": "//server/share/a.ddd.json"},
+        "remove takes ?path= as a row's key",
+    ),
+    (
+        "/api/files-plan",
+        {"action": "remove", "path": "/p/a.ddd.json", "kind": "types"},
+        "remove takes no ?kind=",
+    ),
+    ("/api/declaration-plan", {}, DECLARATION_ACTIONS),
+    ("/api/declaration-plan", {"action": "invent", "file": C}, DECLARATION_ACTIONS),
+    (
+        "/api/declaration-plan",
+        {"action": "read", "file": C},
+        "read takes ?file= and ?name= and ?scope=",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "read", "file": "/p/c\x00.ddd.json", "name": "ValueC", "scope": "input"},
+        "read takes ?file= as a file's path",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "read", "file": "c.ddd.json", "name": "ValueC", "scope": "input"},
+        "read takes ?file= as a file's path",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "read", "file": C, "name": "Value\x00C", "scope": "input"},
+        "read takes ?name= as an object's name",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "read", "file": C, "name": "ValueC", "scope": "in\x00put"},
+        "read takes ?scope= as a declaration's scope",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "read", "file": C, "name": "ValueC", "scope": "input", "definition": "{}"},
+        "read takes no ?definition=",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "declare", "file": C, "scope": "output"},
+        "declare takes ?file= and ?scope= and ?definition=",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "declare", "file": "/p/c\x00.ddd.json", "scope": "output", "definition": "{}"},
+        "declare takes ?file= as a file's path",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "declare", "file": C, "scope": "out\x00put", "definition": "{}"},
+        "declare takes ?scope= as a declaration's scope",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "declare", "file": C, "scope": "output", "definition": "{}", "name": "P"},
+        "declare takes no ?name=",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "remove", "file": C},
+        "remove takes ?file= and ?name=",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "remove", "file": "/p/c\x00.ddd.json", "name": "ValueA"},
+        "remove takes ?file= as a file's path",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "remove", "file": C, "name": "Value\x00A"},
+        "remove takes ?name= as an object's name",
+    ),
+    (
+        "/api/declaration-plan",
+        {"action": "remove", "file": C, "name": "ValueA", "scope": "input"},
+        "remove takes no ?scope=",
+    ),
+    ("/api/value-plan", {}, "value-plan takes ?name= and ?at= and ?raw="),
+    (
+        "/api/value-plan",
+        {"name": "CurveA", "at": "[2]"},
+        "value-plan takes ?name= and ?at= and ?raw=",
+    ),
+    (
+        "/api/value-plan",
+        {"name": "CurveA", "at": "", "raw": "750"},
+        "value-plan takes ?name= and ?at= and ?raw=",
+    ),
+    (
+        "/api/value-plan",
+        {"name": "CurveA", "at": "[2]", "raw": ""},
+        "value-plan takes ?name= and ?at= and ?raw=",
+    ),
+    (
+        "/api/value-plan",
+        {"name": "Curve\x00A", "at": "[2]", "raw": "750"},
+        "value-plan takes ?name= as an object's name",
+    ),
+    (
+        "/api/value-plan",
+        {"name": "CurveA", "at": "1" * 4301, "raw": "750"},
+        "value-plan takes ?at= as an element's indices",
+    ),
+    (
+        "/api/value-plan",
+        {"name": "CurveA", "at": "[2]", "raw": "750", "action": "set"},
+        "value-plan takes no ?action=",
+    ),
+    ("/api/values-plan", {}, "values-plan takes ?name= and ?raw="),
+    ("/api/values-plan", {"name": "CurveA", "raw": ""}, "values-plan takes ?name= and ?raw="),
+    (
+        "/api/values-plan",
+        {"name": "Curve\x00A", "raw": "1"},
+        "values-plan takes ?name= as an object's name",
+    ),
+    ("/api/values-plan", {"name": "CurveA", "raw": "1", "at": "[2]"}, "values-plan takes no ?at="),
+    *[
+        (f"/api/{route}-plan", {"action": "rename", "name": "X\x00", "to": "Y"}, sentence)
+        for route, sentence in (
+            ("type", "rename takes ?name= as a type's name"),
+            ("constant", "rename takes ?name= as a constant's name"),
+            ("section", "rename takes ?name= as a section's name"),
+            ("raster", "rename takes ?name= as a raster's name"),
+        )
+    ],
+    *[
+        (f"/api/{route}-plan", {"action": "remove", "name": "x" * (MAX_NAME + 1)}, sentence)
+        for route, sentence in (
+            ("constant", "remove takes ?name= as a constant's name"),
+            ("section", "remove takes ?name= as a section's name"),
+            ("raster", "remove takes ?name= as a raster's name"),
+        )
+    ],
+]
+"""What the nine plan routes refuse of their query. An action route says each problem in the words
+of the action it is under: a part that action requires, left out or blank where a blank means
+nothing; a key it does not take, another action's included; and a value of the wrong form. Every
+sentence these routes said before is said word for word."""
+
 REFUSED = [
     ("/api/state", {"x": "1"}, "state takes no ?x="),
     ("/api/findings", {"offset": "1" * 4301}, "findings takes ?offset= as a whole number from 0"),
@@ -625,6 +1137,7 @@ REFUSED = [
             "undo",
         )
     ],
+    *PLANS_REFUSED,
 ]
 
 
@@ -718,3 +1231,194 @@ class TestAQueryOfOneModelPerAction:
         with pytest.raises(ValidationError) as refused:
             Planned.model_validate(query)
         assert _query_message(route, refused.value) == sentence
+
+
+class TestThePlanRoutesQueries:
+    """The nine plan routes' queries: seven read as one model per action, ``action`` choosing
+    which, and value-plan's and values-plan's as one model each."""
+
+    def test_each_action_route_takes_its_actions_in_the_order_its_refusal_names_them(
+        self,
+    ) -> None:
+        assert {
+            route.name: list(actions_of(route.query)) for route in ROUTES if actions_of(route.query)
+        } == {
+            "unit-plan": ["rename", "add", "describe", "remove", "adopt"],
+            "type-plan": ["set", "rename"],
+            "constant-plan": ["set", "rename", "add", "remove"],
+            "section-plan": ["set", "rename", "add", "remove"],
+            "raster-plan": ["set", "rename", "add", "remove"],
+            "files-plan": ["create", "add", "remove"],
+            "declaration-plan": ["read", "declare", "remove"],
+        }
+
+    def test_each_names_its_route_as_the_route_table_does(self) -> None:
+        """The name its refusal of an action says, which only the route table holds otherwise."""
+        named_so = {route.name: route.query.route for route in ROUTES if actions_of(route.query)}
+        assert named_so == {name: name for name in named_so}
+
+    @pytest.mark.parametrize(
+        "value", [None, "action=rename", ["rename"], {"action": 1}, {"action": ["rename"]}]
+    )
+    def test_an_action_is_read_before_any_model_of_one_reads_the_query(self, value) -> None:
+        """Only a caller in the process can hand a query anything but text a key: each of these
+        is refused as an action the route does not take, before the union is read."""
+        with pytest.raises(ValidationError) as refused:
+            UnitPlanQuery.model_validate(value)
+        assert refused.value.errors()[0]["msg"] == UNIT_ACTIONS
+
+    def test_a_blank_means_what_it_has_always_meant(self) -> None:
+        """A description cleared; a unit, a type or an entry renamed to nothing, which the plan
+        refuses; a key taken away; no component; and every part of a declaration, which its
+        handler reads as it always has."""
+        assert UnitPlanQuery.model_validate(
+            {"action": "describe", "unit": "rpm", "description": ""}
+        ).root == DescribeUnit(action="describe", unit="rpm", description="")
+        for query in (
+            UnitPlanQuery,
+            TypePlanQuery,
+            ConstantPlanQuery,
+            SectionPlanQuery,
+            RasterPlanQuery,
+        ):
+            named_so = "unit" if query is UnitPlanQuery else "name"
+            asked = query.model_validate({"action": "rename", named_so: "x", "to": ""})
+            assert asked.root.to == ""
+        for query in (TypePlanQuery, ConstantPlanQuery, SectionPlanQuery, RasterPlanQuery):
+            for raw in ({}, {"raw": ""}):
+                asked = query.model_validate({"action": "set", "name": "x", "key": "", **raw})
+                assert (asked.root.key, asked.root.raw) == ("", None)
+        for component in ({}, {"component": ""}):
+            created = FilesPlanQuery.model_validate(
+                {"action": "create", "kind": "types", "name": "sizes", **component}
+            )
+            assert created.root == CreateFile(action="create", kind="types", name="sizes")
+        assert DeclarationPlanQuery.model_validate(
+            {"action": "read", "file": "", "name": "", "scope": ""}
+        ).root == ReadDeclaration(action="read", file="", name="", scope="")
+        assert DeclarationPlanQuery.model_validate(
+            {"action": "declare", "file": "", "scope": "", "definition": ""}
+        ).root == DeclareObject(action="declare", file="", scope="", definition="")
+        assert DeclarationPlanQuery.model_validate(
+            {"action": "remove", "file": "", "name": ""}
+        ).root == RemoveDeclaration(action="remove", file="", name="")
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "a.ddd.json",
+            "../a.ddd.json",
+            "/srv/a.ddd.json",
+            "C:/a.ddd.json",
+            "//server/share/p/a.ddd.json",
+        ],
+    )
+    def test_a_file_to_add_is_named_as_its_entry_is_to_read(self, path: str) -> None:
+        """Relative to the description or absolute, as the reader types an entry of the includes;
+        a network one where it names a file under a directory served."""
+        asked = FilesPlanQuery.model_validate({"action": "add", "path": path}, context=SERVED)
+        assert (type(asked.root), asked.root.path) == (AddFile, path)
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "//other/share/a.ddd.json",
+            "\\\\server\\share\\a.ddd.json",
+            "//server/share/p/../q/a.ddd.json",
+            "\\\\?\\C:\\a.ddd.json",
+        ],
+    )
+    def test_a_network_file_to_add_outside_what_is_served_is_refused_as_lying_outside(
+        self, path: str
+    ) -> None:
+        """In the words its handler refuses any file outside what is served with, once it is
+        resolved - which a network path is refused before."""
+        with pytest.raises(ValidationError) as refused:
+            FilesPlanQuery.model_validate({"action": "add", "path": path}, context=SERVED)
+        assert refused.value.errors()[0]["msg"] == (
+            f"{path} lies outside what ddd gui serves, //server/share/p; start it in a "
+            "directory holding this file to add it here"
+        )
+        assert refused.value.errors()[0]["msg"] == outside_served(path, SERVED.served)
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/srv/p/a.ddd.json",
+            "C:/p/a.ddd.json",
+            "c:\\p\\a.ddd.json",
+            "//server/share/p/a.ddd.json",
+        ],
+    )
+    def test_a_row_s_key_is_an_absolute_path(self, path: str) -> None:
+        asked = FilesPlanQuery.model_validate({"action": "remove", "path": path}, context=SERVED)
+        assert (type(asked.root), asked.root.path) == (RemoveFile, path)
+
+    @pytest.mark.parametrize(
+        ("path", "sentence"),
+        [
+            (
+                "p/a.ddd.json",
+                "remove takes ?path= as a row's key, which is absolute, and 'p/a.ddd.json' is not",
+            ),
+            (
+                "\\a.ddd.json",
+                "remove takes ?path= as a row's key, which is absolute, and '\\a.ddd.json' is not",
+            ),
+            ("/p/a\x00.ddd.json", "remove takes ?path= as a row's key"),
+            ("/p/a\ud800.ddd.json", "remove takes ?path= as a row's key"),
+            ("/" + "a" * MAX_PATH, "remove takes ?path= as a row's key"),
+            ("//other/share/a.ddd.json", "remove takes ?path= as a row's key"),
+            ("//server/share/p/./a.ddd.json", "remove takes ?path= as a row's key"),
+        ],
+    )
+    def test_anything_else_is_no_row_s_key(self, path: str, sentence: str) -> None:
+        """A path in every way but being absolute is refused in the route's own words for that,
+        which echo it; anything else is no row's key at all."""
+        with pytest.raises(ValidationError) as refused:
+            FilesPlanQuery.model_validate({"action": "remove", "path": path}, context=SERVED)
+        assert refused.value.errors()[0]["msg"] == sentence
+
+    def test_a_value_that_is_not_text_is_no_file_to_add_nor_a_row_s_key(self) -> None:
+        """Only an in-process caller can hand a query anything but text."""
+        for action, sentence in (
+            ("add", "add takes ?path= as a file's path"),
+            ("remove", "remove takes ?path= as a row's key"),
+        ):
+            with pytest.raises(ValidationError) as refused:
+                FilesPlanQuery.model_validate({"action": action, "path": 7})
+            assert refused.value.errors()[0]["msg"] == sentence
+
+    def test_a_definition_is_read_by_json_text_s_rules(self) -> None:
+        """Its value, where json text is one ``json_text`` takes; else ``parse_raw``'s refusal,
+        which declaration-plan's handler answers in its own words (ruling 5)."""
+        assert json_value('{"name": "P", "init": 1.5}') == {"name": "P", "init": 1.5}
+        for text in (nested(MAX_DEPTH + 1), "1" * 4301, "1e999", "NaN", '{"a": 1, "a": 2}', ""):
+            with pytest.raises(EditError):
+                json_value(text)
+
+    @pytest.mark.parametrize(
+        ("model", "query", "sentence"),
+        [
+            (
+                ValuePlanQuery,
+                {"name": "CurveA", "at": "[2]"},
+                "value-plan takes ?raw= as a number",
+            ),
+            (
+                ValuesPlanQuery,
+                {"name": "CurveA"},
+                "values-plan takes ?raw= as numbers joined by commas",
+            ),
+        ],
+    )
+    def test_counts_are_any_text_their_handler_reads(
+        self, model: type[_Query], query: dict[str, object], sentence: str
+    ) -> None:
+        """Whether a count is a number is the handler's question, answered as its own refusal of
+        the count: the query takes any text, a lone surrogate included, and refuses only what is
+        no text at all - which a caller in the process alone can hand over."""
+        assert model.model_validate({**query, "raw": "\ud800"}).raw == "\ud800"
+        with pytest.raises(ValidationError) as refused:
+            model.model_validate({**query, "raw": 750})
+        assert refused.value.errors()[0]["msg"] == sentence

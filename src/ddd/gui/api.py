@@ -48,7 +48,6 @@ from ddd.editing import (
     FileChange,
     Operation,
     fingerprint,
-    parse_raw,
     unchanged,
 )
 from ddd.file_plans import (
@@ -69,25 +68,60 @@ from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
 from ddd.gui.derived import Derived, derived, key_of
 from ddd.gui.queries import (
+    AddConstant,
+    AddFile,
+    AddRaster,
+    AddSection,
+    AddUnit,
+    AdoptUnits,
     CompareQuery,
+    ConstantPlanQuery,
     ConstantQuery,
+    CreateFile,
     DeclarableQuery,
+    DeclarationPlanQuery,
+    DeclareObject,
+    DescribeUnit,
     FileQuery,
+    FilesPlanQuery,
     FindingsQuery,
     FixQuery,
     NoQuery,
+    RasterPlanQuery,
     RasterQuery,
+    ReadDeclaration,
+    RemoveConstant,
+    RemoveDeclaration,
+    RemoveFile,
+    RemoveRaster,
+    RemoveSection,
+    RemoveUnit,
+    RenameConstant,
+    RenameRaster,
+    RenameSection,
+    RenameType,
+    RenameUnit,
+    SectionPlanQuery,
     SectionQuery,
     Serving,
+    SetConstantKey,
+    SetRasterKey,
+    SetSectionKey,
     SettleQuery,
+    SetTypeKey,
     StateQuery,
+    TypePlanQuery,
     TypeQuery,
+    UnitPlanQuery,
     UnitQuery,
-    Unread,
+    ValuePlanQuery,
+    ValuesPlanQuery,
     ValuesQuery,
     VariableQuery,
     _Query,
     actions_of,
+    json_value,
+    outside_served,
 )
 from ddd.gui.routes import Policy, Route, one_value_each
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
@@ -198,97 +232,6 @@ yet. Answered 409, and answered differently once the analysis lands."""
 REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
-UNIT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "rename": ("unit", "to"),
-    "add": ("unit",),
-    "describe": ("unit", "description"),
-    "remove": ("unit",),
-    "adopt": (),
-}
-"""The changes ``GET /api/unit-plan`` previews, each with the parameters it takes besides
-``action``."""
-
-TYPE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-}
-"""What each change of a type takes, beside the action itself. ``set`` takes ``raw`` too, which
-may be absent: leaving a key out is what its absence means."""
-
-CONSTANT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-    "add": ("name", "raw"),
-    "remove": ("name",),
-}
-"""What each change of a constant takes, beside the action itself. ``set`` takes ``raw`` too,
-which may be absent: leaving it out is what taking the key away means. ``add`` takes ``raw`` as
-one of its required parameters instead: a constant declared with no value is not what ``add``
-means, unlike ``set``, which a reader may ask of a row without having typed anything yet."""
-
-SECTION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-    "add": ("name", "access", "alignment"),
-    "remove": ("name",),
-}
-"""What each change of a section takes, beside the action itself.
-
-``set``, ``rename`` and ``remove`` are the constants table's own, spelled again rather than shared:
-these are the query parameters of one url, and a table two urls read from would tie a change of
-either endpoint to the other.
-
-``add`` is where the two differ, and where the descriptor decides: one parameter per key of
-:attr:`ddd.project_shared.SECTIONS.required`, in the order :func:`_required_keys` reads them off
-:attr:`~ddd.project_shared.Vocabulary.keys`, because a section the model gives no default for
-``access`` or ``alignment`` is one whose file would not load the moment it was written -
-``?raw=`` alone, which is all a constant's one required key needs, could not say either. Each
-carries json text, judged as ``set``'s ``raw`` is:
-``?access="read-only"&alignment=4``. ``description`` is not among them, having a default, and is
-set from the panel afterwards.
-"""
-
-RASTER_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-    "add": ("name", "event"),
-    "remove": ("name",),
-}
-"""What each change of a raster takes, beside the action itself.
-
-The third table of the same four verbs, spelled again rather than shared for the reason
-:data:`SECTION_PLANS` gives: these are one url's query parameters, and a table two urls read from
-would tie a change of either to the other.
-
-``add`` is one parameter per key of :attr:`ddd.project_shared.RASTERS.required`, which is ``event``
-alone - a raster's ``cycle`` is ``str | None`` and its ``description`` defaults, so neither is the
-request's to supply and both are set from the panel afterwards. One required key, as a constant
-has, and still named for the key rather than carried as ``?raw=``: a section is not the only
-vocabulary whose ``add`` says which key it is declaring, and a url reading ``?event=1`` is what
-lets :func:`_declared` build the entry off the descriptor instead of off this route's memory of
-which key a vocabulary happens to require.
-"""
-
-FILE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "create": ("kind", "name"),
-    "add": ("path",),
-    "remove": ("path",),
-}
-"""What each change of the project's files takes, beside the action itself: ``create`` the kind
-and the name of the new file, ``add`` a path relative to the description or absolute, as the
-reader typed it, and ``remove`` the key of a row of ``GET /api/files``.
-
-``create`` takes ``component`` as well, a new component's name, and may go without it: absent
-or empty, it reaches :func:`ddd.file_plans.create_plan` as ``None``, which refuses a component
-without a name in words of its own, and ignores it for every other kind."""
-
-DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "read": ("file", "name", "scope"),
-    "declare": ("file", "scope", "definition"),
-    "remove": ("file", "name"),
-}
-"""Which query parameters each action of ``GET /api/declaration-plan`` takes."""
-
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
 _NOTHING_RESOLVED: Final = "the open project did not resolve, so no object's values can be read"
@@ -299,12 +242,10 @@ _NOTHING_COMPARABLE: Final = (
 
 type Query = Mapping[str, Sequence[str]]
 
-type SharedPlanner = Callable[
-    [str, Index, SharedProject, Mapping[str, str], str | None, dict[Path, Document]], SharedPlan
-]
-"""What :meth:`Api._shared_plan` asks for the plan itself: the action, the index, the project's own
-files, the parameters the action takes, ``?raw=`` where the request carried one, and the read cache
-the route shares. One per vocabulary, since ``add`` is spelled differently for each."""
+type SharedPlanner[A] = Callable[[A, Index, SharedProject, dict[Path, Document]], SharedPlan]
+"""What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
+model (``A``), the index, the project's own files and the read cache the route shares. One per
+vocabulary, since ``add`` is spelled differently for each."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,10 +280,8 @@ class Api:
         the two it read. A path in either is read against the directories served
         (:meth:`_serving`).
 
-        The query is read before anything asks for the open project on every route whose query
-        has a model of its own, so that a malformed one is answered as one whether a project is
-        open or not. The plan routes read theirs by hand still (:class:`~ddd.gui.queries.Unread`),
-        each looking for the project first."""
+        The query is read before anything asks for the open project, on every route, so that a
+        malformed one is answered as one whether a project is open or not."""
         routes = [each for each in ROUTES if each.path == path]
         if not routes:
             return _error(404, "not-found", f"{path} is not part of the api")
@@ -814,19 +753,8 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _unit_plan(self, query: Unread, body: None) -> Reply:
+    def _unit_plan(self, query: UnitPlanQuery, body: None) -> Reply:
         revision = self._opened()
-        values = query.values
-        action = values.get("action") or ""
-        takes = UNIT_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400, "bad-request", f"unit-plan takes ?action= one of {', '.join(UNIT_PLANS)}"
-            )
-        given = {part: value for part in takes if (value := values.get(part)) is not None}
-        if len(given) < len(takes) or given.get("unit") == "":
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
         built = revision.index
         if built is None:
             unread = [file.path.name for file in revision.files if not file.loaded]
@@ -841,7 +769,7 @@ class Api:
             revision.project, [file.path for file in revision.files if not file.loaded], cache
         )
         try:
-            plan = _unit_plan_of(action, built, project, given, cache)
+            plan = _unit_plan_of(query.root, built, project, cache)
         except UnitRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -943,19 +871,8 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _type_plan(self, query: Unread, body: None) -> Reply:
+    def _type_plan(self, query: TypePlanQuery, body: None) -> Reply:
         revision = self._opened()
-        values = query.values
-        action = values.get("action") or ""
-        takes = TYPE_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400, "bad-request", f"type-plan takes ?action= one of {', '.join(TYPE_PLANS)}"
-            )
-        given = {part: value for part in takes if (value := values.get(part)) is not None}
-        if len(given) < len(takes) or given.get("name") == "":
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
         built = revision.index
         if built is None:
             unread = [file.path.name for file in revision.files if not file.loaded]
@@ -966,9 +883,8 @@ class Api:
                 "so no type of the project can be changed",
             )
         cache: dict[Path, Document] = {}
-        raw = values.get("raw") or None
         try:
-            plan = _type_plan_of(action, built, given, raw, cache)
+            plan = _type_plan_of(query.root, built, cache)
         except TypeRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1137,47 +1053,25 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _files_plan(self, query: Unread, body: None) -> Reply:
+    def _files_plan(self, query: FilesPlanQuery, body: None) -> Reply:
         """One change of the project's files - creating, adding or removing one - previewed and
         never written, with the errors an add is counted to bring.
 
-        A parameter :data:`FILE_PLANS` names that is missing or empty is a bad request, and so
-        is a key to remove that is not absolute, as a row's never is: read against the server's
+        Its query read as :class:`~ddd.gui.queries.FilesPlanQuery` before anything else, a key to
+        remove that is not absolute refused there, as a row's never is: read against the server's
         own working directory, a relative one named another file. Past that, each refusal is the
         plan's own or :func:`_addition`'s and :func:`_removal`'s, in the order they ask them,
         ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
         revision would falsify is refused ``stale``.
         """
         revision = self._opened()
-        values = query.values
-        action = values.get("action") or ""
-        takes = FILE_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400, "bad-request", f"files-plan takes ?action= one of {', '.join(FILE_PLANS)}"
-            )
-        given: dict[str, str] = {}
-        for part in takes:
-            value = values.get(part)
-            if not value:
-                wanted = " and ".join(f"?{taken}=" for taken in takes)
-                return _error(400, "bad-request", f"{action} takes {wanted}")
-            given[part] = value
-        if action == "remove" and not Path(given["path"]).is_absolute():
-            return _error(
-                400,
-                "bad-request",
-                f"remove takes ?path= as a row's key, which is absolute, and '{given['path']}' "
-                "is not",
-            )
-        component = values.get("component") or None
         cache: dict[Path, Document] = {}
 
         def refuse(paths: Iterable[Path]) -> None:
             self._refuse_unanalysed(revision, paths)
 
         try:
-            plan = _files_plan_of(action, revision, given, component, cache, refuse)
+            plan = _files_plan_of(query.root, revision, cache, refuse)
         except FileRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1202,52 +1096,29 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _constant_plan(self, query: Unread, body: None) -> Reply:
-        return self._shared_plan(CONSTANTS, CONSTANT_PLANS, _constant_plan_of, query.values)
+    def _constant_plan(self, query: ConstantPlanQuery, body: None) -> Reply:
+        return self._shared_plan(CONSTANTS, query.root, _constant_plan_of)
 
-    def _section_plan(self, query: Unread, body: None) -> Reply:
-        return self._shared_plan(SECTIONS, SECTION_PLANS, _section_plan_of, query.values)
+    def _section_plan(self, query: SectionPlanQuery, body: None) -> Reply:
+        return self._shared_plan(SECTIONS, query.root, _section_plan_of)
 
-    def _raster_plan(self, query: Unread, body: None) -> Reply:
-        return self._shared_plan(RASTERS, RASTER_PLANS, _raster_plan_of, query.values)
+    def _raster_plan(self, query: RasterPlanQuery, body: None) -> Reply:
+        return self._shared_plan(RASTERS, query.root, _raster_plan_of)
 
-    def _shared_plan(
-        self,
-        vocabulary: Vocabulary,
-        plans: Mapping[str, tuple[str, ...]],
-        plan_of: SharedPlanner,
-        values: Mapping[str, str],
-    ) -> Reply:
-        """One change of one entry of ``vocabulary``, previewed and never written.
+    def _shared_plan[A](self, vocabulary: Vocabulary, asked: A, plan_of: SharedPlanner[A]) -> Reply:
+        """One change of one entry of ``vocabulary``, ``asked`` as its route's query read it,
+        previewed and never written.
 
-        Written once for both endpoints rather than twice: the two differ in their table of
-        actions, the verb each action reaches and the noun a refusal names, all three of which
-        arrive as arguments - everything else here is about the request and the revision, which a
-        second copy would only be able to get wrong differently.
+        Written once for the three endpoints rather than three times: they differ in the actions
+        their queries take, the verb each action reaches and the noun a refusal names, all of
+        which arrive as arguments - everything else here is about the revision, which a second
+        copy would only be able to get wrong differently. Every part that has to be json - a
+        ``?raw=``, and each value an ``add`` declares - was read as json text by the query, before
+        anything asked for the project: a request that is not json is a mistake about the
+        request, not a refusal about the project, so it answers 400 rather than being folded into
+        a :class:`~ddd.shared_plans.SharedRefusalError`.
         """
         revision = self._opened()
-        action = values.get("action") or ""
-        takes = plans.get(action)
-        if takes is None:
-            return _error(
-                400,
-                "bad-request",
-                f"{vocabulary.kind}-plan takes ?action= one of {', '.join(plans)}",
-            )
-        given = {part: value for part in takes if (value := values.get(part)) is not None}
-        if len(given) < len(takes) or given.get("name") == "" or given.get("raw") == "":
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
-        # Validated before any plan is asked for, as settle's query (`SettleQuery`) validates
-        # its own `raw`: a request that is not json is a mistake about the request, not a refusal
-        # about the project, so it answers 400 rather than being folded into a
-        # `SharedRefusalError`.
-        raw = values.get("raw") or None
-        for text in _json_texts(vocabulary, given, raw):
-            try:
-                parse_raw(text)
-            except EditError as refused:
-                return _error(400, "bad-request", str(refused))
         built = revision.index
         if built is None:
             unread = [file.path.name for file in revision.files if not file.loaded]
@@ -1265,7 +1136,7 @@ class Api:
             cache,
         )
         try:
-            plan = plan_of(action, built, project, given, raw, cache)
+            plan = plan_of(asked, built, project, cache)
         except SharedRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1380,23 +1251,11 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _declaration_plan(self, query: Unread, body: None) -> Reply:
-        values = query.values
-        action = values.get("action") or ""
-        takes = DECLARATION_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400,
-                "bad-request",
-                f"declaration-plan takes ?action= one of {', '.join(DECLARATION_PLANS)}",
-            )
-        given = {part: value for part in takes if (value := values.get(part)) is not None}
-        if len(given) < len(takes):
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
+    def _declaration_plan(self, query: DeclarationPlanQuery, body: None) -> Reply:
+        asked = query.root
         revision = self._opened()
         try:
-            file = _source(revision, Path(given["file"]))
+            file = _source(revision, Path(asked.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
@@ -1404,7 +1263,7 @@ class Api:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
         cache: dict[Path, Document] = {}
         try:
-            plan = _declaration_plan_of(action, built, file, given, cache)
+            plan = _declaration_plan_of(asked, built, file, cache)
         except DeclarationRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1469,18 +1328,14 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _value_plan(self, query: Unread, body: None) -> Reply:
-        values = query.values
-        name, at, raw_text = values.get("name"), values.get("at"), values.get("raw")
-        if not name or not at or not raw_text:
-            return _error(400, "bad-request", "value-plan takes ?name= and ?at= and ?raw=")
+    def _value_plan(self, query: ValuePlanQuery, body: None) -> Reply:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _error(409, UNREADABLE, _NOTHING_RESOLVED)
         try:
-            raw = _number(raw_text)
-            plan = set_cell(dictionary, built, name, at, raw, {})
+            raw = _number(query.raw)
+            plan = set_cell(dictionary, built, query.name, query.at, raw, {})
         except ValueRefusalError as refused:
             # Both codes again, as in _values above - a name the project has not, and every
             # other refusal - so both arms need a status and a test reaching them: a ternary
@@ -1502,17 +1357,14 @@ class Api:
             ).model_dump(mode="json"),
         )
 
-    def _values_plan(self, query: Unread, body: None) -> Reply:
-        values = query.values
-        name, counts = values.get("name"), values.get("raw")
-        if not name or not counts:
-            return _error(400, "bad-request", "values-plan takes ?name= and ?raw=")
+    def _values_plan(self, query: ValuesPlanQuery, body: None) -> Reply:
+        name = query.name
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _error(409, UNREADABLE, _NOTHING_RESOLVED)
         try:
-            flat = [_number(piece) for piece in counts.split(",")]
+            flat = [_number(piece) for piece in query.raw.split(",")]
             plan = set_values(dictionary, built, name, _folded(flat, dictionary, name))
         except ValueRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
@@ -1733,24 +1585,26 @@ ROUTES: Final[tuple[Route, ...]] = (
     Route("/api/settle", "GET", SettleQuery, None, Api._settle),
     Route("/api/fix", "GET", FixQuery, None, Api._fix),
     Route("/api/unit", "GET", UnitQuery, None, Api._unit),
-    Route("/api/unit-plan", "GET", Unread, None, Api._unit_plan),
+    Route("/api/unit-plan", "GET", UnitPlanQuery, None, Api._unit_plan),
     Route("/api/types", "GET", NoQuery, None, Api._types),
     Route("/api/type", "GET", TypeQuery, None, Api._type),
-    Route("/api/type-plan", "GET", Unread, None, Api._type_plan),
+    Route("/api/type-plan", "GET", TypePlanQuery, None, Api._type_plan),
     Route("/api/shared", "GET", NoQuery, None, Api._shared),
     Route("/api/constant", "GET", ConstantQuery, None, Api._constant),
-    Route("/api/constant-plan", "GET", Unread, None, Api._constant_plan),
+    Route("/api/constant-plan", "GET", ConstantPlanQuery, None, Api._constant_plan),
     Route("/api/section", "GET", SectionQuery, None, Api._section),
-    Route("/api/section-plan", "GET", Unread, None, Api._section_plan),
+    Route("/api/section-plan", "GET", SectionPlanQuery, None, Api._section_plan),
     Route("/api/raster", "GET", RasterQuery, None, Api._raster),
-    Route("/api/raster-plan", "GET", Unread, None, Api._raster_plan),
+    Route("/api/raster-plan", "GET", RasterPlanQuery, None, Api._raster_plan),
     Route("/api/files", "GET", NoQuery, None, Api._files),
-    Route("/api/files-plan", "GET", Unread, None, Api._files_plan, Policy(runs_plugins=True)),
+    Route(
+        "/api/files-plan", "GET", FilesPlanQuery, None, Api._files_plan, Policy(runs_plugins=True)
+    ),
     Route("/api/declarable", "GET", DeclarableQuery, None, Api._declarable),
-    Route("/api/declaration-plan", "GET", Unread, None, Api._declaration_plan),
+    Route("/api/declaration-plan", "GET", DeclarationPlanQuery, None, Api._declaration_plan),
     Route("/api/values", "GET", ValuesQuery, None, Api._values),
-    Route("/api/value-plan", "GET", Unread, None, Api._value_plan),
-    Route("/api/values-plan", "GET", Unread, None, Api._values_plan),
+    Route("/api/value-plan", "GET", ValuePlanQuery, None, Api._value_plan),
+    Route("/api/values-plan", "GET", ValuesPlanQuery, None, Api._values_plan),
     Route("/api/compare", "GET", CompareQuery, None, Api._compare, Policy(runs_plugins=True)),
 )
 """Every route of the api, in one table: what :meth:`Api.handle` dispatches by, its query read
@@ -1915,56 +1769,49 @@ def _changed_since(file: SourceFile) -> bool:
 
 
 def _unit_plan_of(
-    action: str,
+    asked: RenameUnit | AddUnit | DescribeUnit | RemoveUnit | AdoptUnits,
     built: Index,
     project: UnitProject,
-    given: Mapping[str, str],
     cache: dict[Path, Document],
 ) -> UnitPlan:
-    """The plan ``action`` names, over the parameters :data:`UNIT_PLANS` says it takes."""
-    if action == "rename":
-        return rename_unit(built, project, given["unit"], given["to"], cache)
-    if action == "add":
-        return add_unit(built, project, given["unit"], cache)
-    if action == "describe":
-        return describe_unit(built, project, given["unit"], given["description"], cache)
-    if action == "remove":
-        return remove_unit(built, project, given["unit"], cache)
+    """The plan ``asked`` names, over the parts its model read."""
+    if isinstance(asked, RenameUnit):
+        return rename_unit(built, project, asked.unit, asked.to, cache)
+    if isinstance(asked, AddUnit):
+        return add_unit(built, project, asked.unit, cache)
+    if isinstance(asked, DescribeUnit):
+        return describe_unit(built, project, asked.unit, asked.description, cache)
+    if isinstance(asked, RemoveUnit):
+        return remove_unit(built, project, asked.unit, cache)
     return adopt_units(built, project, cache)
 
 
 def _type_plan_of(
-    action: str,
-    built: Index,
-    given: Mapping[str, str],
-    raw: str | None,
-    cache: dict[Path, Document],
+    asked: SetTypeKey | RenameType, built: Index, cache: dict[Path, Document]
 ) -> TypePlan:
-    """The plan ``action`` names, over the parameters :data:`TYPE_PLANS` says it takes."""
-    if action == "set":
-        return set_key(built, given["name"], given["key"], raw, cache)
-    return rename_type(built, given["name"], given["to"], cache)
+    """The plan ``asked`` names, over the parts its model read."""
+    if isinstance(asked, SetTypeKey):
+        return set_key(built, asked.name, asked.key, asked.raw, cache)
+    return rename_type(built, asked.name, asked.to, cache)
 
 
 def _constant_plan_of(
-    action: str,
+    asked: SetConstantKey | RenameConstant | AddConstant | RemoveConstant,
     built: Index,
     project: SharedProject,
-    given: Mapping[str, str],
-    raw: str | None,
     cache: dict[Path, Document],
 ) -> SharedPlan:
-    """The plan ``action`` names, over the parameters :data:`CONSTANT_PLANS` says it takes.
+    """The plan ``asked`` names, over the parts its model read.
 
     ``project`` is unused by three of the four: only ``add`` may have to create a constants
     file, which is the one verb that needs to know where the project's constants files are.
     """
-    if action == "set":
-        return set_entry(CONSTANTS, built, given["name"], given["key"], raw, cache)
-    if action == "rename":
-        return rename_entry(CONSTANTS, built, given["name"], given["to"], cache)
-    if action == "remove":
-        return remove_entry(CONSTANTS, built, given["name"], cache)
+    if isinstance(asked, SetConstantKey):
+        return set_entry(CONSTANTS, built, asked.name, asked.key, asked.raw, cache)
+    if isinstance(asked, RenameConstant):
+        return rename_entry(CONSTANTS, built, asked.name, asked.to, cache)
+    if isinstance(asked, RemoveConstant):
+        return remove_entry(CONSTANTS, built, asked.name, cache)
     # `description` is given too, empty, rather than left out: `add`'s form offers no description
     # and the entry it writes has always stated one, which is the byte a newly declared constant
     # is compared against.
@@ -1972,60 +1819,57 @@ def _constant_plan_of(
         CONSTANTS,
         built,
         project,
-        given["name"],
-        {"value": given["raw"], "description": '""'},
+        asked.name,
+        {"value": asked.raw, "description": '""'},
         cache,
     )
 
 
 def _section_plan_of(
-    action: str,
+    asked: SetSectionKey | RenameSection | AddSection | RemoveSection,
     built: Index,
     project: SharedProject,
-    given: Mapping[str, str],
-    raw: str | None,
     cache: dict[Path, Document],
 ) -> SharedPlan:
-    """The plan ``action`` names, over the parameters :data:`SECTION_PLANS` says it takes.
+    """The plan ``asked`` names, over the parts its model read.
 
-    The same four verbs as :func:`_constant_plan_of`, over the same three parameters, differing
-    only in ``add``: a section is declared with one json text per required key rather than a lone
-    ``?raw=``, which is why the two dispatchers are written out instead of one taking the
-    descriptor. Sharing them would mean either naming a constant's value ``?value=`` on the wire -
-    a url the page already calls - or teaching one function which of its parameters each
-    vocabulary spells differently, and that is the branch the descriptor exists to remove.
+    The same four verbs as :func:`_constant_plan_of`, differing only in ``add``: a section is
+    declared with one json text per required key rather than a lone ``?raw=``, which is why the
+    two dispatchers are written out instead of one taking the descriptor. Sharing them would mean
+    either naming a constant's value ``?value=`` on the wire - a url the page already calls - or
+    teaching one function which of its parameters each vocabulary spells differently, and that is
+    the branch the descriptor exists to remove.
     """
-    if action == "set":
-        return set_entry(SECTIONS, built, given["name"], given["key"], raw, cache)
-    if action == "rename":
-        return rename_entry(SECTIONS, built, given["name"], given["to"], cache)
-    if action == "remove":
-        return remove_entry(SECTIONS, built, given["name"], cache)
-    return add_entry(SECTIONS, built, project, given["name"], _declared(SECTIONS, given), cache)
+    if isinstance(asked, SetSectionKey):
+        return set_entry(SECTIONS, built, asked.name, asked.key, asked.raw, cache)
+    if isinstance(asked, RenameSection):
+        return rename_entry(SECTIONS, built, asked.name, asked.to, cache)
+    if isinstance(asked, RemoveSection):
+        return remove_entry(SECTIONS, built, asked.name, cache)
+    declared = _declared(SECTIONS, asked.model_dump())
+    return add_entry(SECTIONS, built, project, asked.name, declared, cache)
 
 
 def _raster_plan_of(
-    action: str,
+    asked: SetRasterKey | RenameRaster | AddRaster | RemoveRaster,
     built: Index,
     project: SharedProject,
-    given: Mapping[str, str],
-    raw: str | None,
     cache: dict[Path, Document],
 ) -> SharedPlan:
-    """The plan ``action`` names, over the parameters :data:`RASTER_PLANS` says it takes.
+    """The plan ``asked`` names, over the parts its model read.
 
-    The same four verbs over the same three parameters as :func:`_section_plan_of`, and the same
-    ``add``: one json text per key the model gives no default for, read off the descriptor by
-    :func:`_declared` rather than named here, so the only word this function spells that its
-    sibling does not is the vocabulary.
+    The same four verbs as :func:`_section_plan_of`, and the same ``add``: one json text per key
+    the model gives no default for, read off the descriptor by :func:`_declared` rather than named
+    here, so the only word this function spells that its sibling does not is the vocabulary.
     """
-    if action == "set":
-        return set_entry(RASTERS, built, given["name"], given["key"], raw, cache)
-    if action == "rename":
-        return rename_entry(RASTERS, built, given["name"], given["to"], cache)
-    if action == "remove":
-        return remove_entry(RASTERS, built, given["name"], cache)
-    return add_entry(RASTERS, built, project, given["name"], _declared(RASTERS, given), cache)
+    if isinstance(asked, SetRasterKey):
+        return set_entry(RASTERS, built, asked.name, asked.key, asked.raw, cache)
+    if isinstance(asked, RenameRaster):
+        return rename_entry(RASTERS, built, asked.name, asked.to, cache)
+    if isinstance(asked, RemoveRaster):
+        return remove_entry(RASTERS, built, asked.name, cache)
+    declared = _declared(RASTERS, asked.model_dump())
+    return add_entry(RASTERS, built, project, asked.name, declared, cache)
 
 
 def _required_keys(vocabulary: Vocabulary) -> list[str]:
@@ -2053,10 +1897,12 @@ def _required_keys(vocabulary: Vocabulary) -> list[str]:
 
     Why the order is visible at all: both :func:`~ddd.shared_plans.add_entry` and
     :func:`~ddd.shared_plans._created` walk ``raws.items()`` and stop at the first key
-    :func:`~ddd.shared_plans._judged` refuses, and :func:`_json_texts`'s caller stops at the first
-    text that is not json. So an ``add`` carrying two bad values answers about whichever came
-    first. What it does *not* decide is the file: :func:`~ddd.shared_plans._entry_text` composes
-    the entry in ``keys`` order whatever order ``raws`` arrives in.
+    :func:`~ddd.shared_plans._judged` refuses; and a query is refused for the first of its parts
+    that is not json, in the order its model declares them, which is this one
+    (:class:`~ddd.gui.queries.AddSection`). So an ``add`` carrying two bad values answers about
+    whichever came first. What it does *not* decide is the file:
+    :func:`~ddd.shared_plans._entry_text` composes the entry in ``keys`` order whatever order
+    ``raws`` arrives in.
     """
     ordered = []
     for key in vocabulary.keys:
@@ -2076,31 +1922,6 @@ def _declared(vocabulary: Vocabulary, given: Mapping[str, str]) -> dict[str, str
     declared = {key: given[key] for key in _required_keys(vocabulary)}
     declared["description"] = '""'
     return declared
-
-
-def _json_texts(vocabulary: Vocabulary, given: Mapping[str, str], raw: str | None) -> list[str]:
-    """Every part of a shared plan request that has to be json, in the order a refusal should
-    name them.
-
-    ``?raw=`` where there is one, and the value of each required key an ``add`` carries, through
-    :func:`_required_keys`. Both are embedded into a file verbatim, so both are the request's
-    business to get right: read as text a reader who typed ``read-only`` where ``"read-only"`` was
-    wanted would otherwise meet *"read-only is not an access a section may state ... : read-write
-    or read-only"*, a sentence naming the value it refuses among the ones it allows.
-
-    ``name``, ``to`` and ``key`` are not here: each is a plain string the verb quotes itself.
-
-    Two statements rather than two conditional expressions, for the reason
-    :func:`_required_keys` gives: neither the request without a ``?raw=`` nor the action that
-    carries no required key would register a branch of its own.
-    """
-    texts = []
-    if raw is not None:
-        texts.append(raw)
-    for key in _required_keys(vocabulary):
-        if key in given:
-            texts.append(given[key])
-    return texts
 
 
 def _entry_uses(
@@ -2174,15 +1995,13 @@ class _FilesPlanned:
 
 
 def _files_plan_of(
-    action: str,
+    asked: CreateFile | AddFile | RemoveFile,
     revision: Revision,
-    given: Mapping[str, str],
-    component: str | None,
     cache: dict[Path, Document],
     refuse: Callable[[Iterable[Path]], None],
 ) -> _FilesPlanned:
-    """The plan ``action`` names, over the parameters :data:`FILE_PLANS` says it takes. A row's
-    key is passed on as it arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
+    """The plan ``asked`` names, over the parts its model read. A row's key is passed on as it
+    arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
     :func:`ddd.file_plans.included_entries` made it, and names it as it was sent. Resolved here
     instead, a key ending in a link would be named by what the link leads to, which may lie
     outside what is served.
@@ -2191,13 +2010,13 @@ def _files_plan_of(
     been asked and before anything is judged (:meth:`Api._refuse_unanalysed`): judged, a
     description an edit wrote and no analysis has read yet would be refused ``stale`` instead,
     for the very write the reader made."""
-    if action == "create":
-        edits = _creation(revision, given["kind"], given["name"], component, cache)
+    if isinstance(asked, CreateFile):
+        edits = _creation(revision, asked.kind, asked.name, asked.component, cache)
         refuse(edit.path for edit in edits)
         return _FilesPlanned(edits)
-    if action == "add":
-        return _addition(revision, given["path"], cache, refuse)
-    return _removal(revision, Path(given["path"]), cache, refuse)
+    if isinstance(asked, AddFile):
+        return _addition(revision, asked.path, cache, refuse)
+    return _removal(revision, Path(asked.path), cache, refuse)
 
 
 def _creation(
@@ -2272,12 +2091,8 @@ def _addition(
     try:
         _served(revision, added)
     except NotInProjectError:
-        serves = " and ".join(directory.as_posix() for directory in revision.served)
-        raise FileRefusalError(
-            "invalid",
-            f"{entry} lies outside what ddd gui serves, {serves}; start it in a directory "
-            "holding this file to add it here",
-        ) from None
+        serves = (directory.as_posix() for directory in revision.served)
+        raise FileRefusalError("invalid", outside_served(entry, serves)) from None
     plan = add_plan(revision.project, entry, cache)
     kind = kind_of(added, _read_json(added))
     if kind == "plugin":
@@ -2398,24 +2213,29 @@ def _judged(revision: Revision, includes: Sequence[str]) -> tuple[Pair, ...]:
 
 
 def _declaration_plan_of(
-    action: str,
+    asked: ReadDeclaration | DeclareObject | RemoveDeclaration,
     built: Index,
     file: Path,
-    given: Mapping[str, str],
     cache: dict[Path, Document],
 ) -> DeclarationPlan:
-    """The plan ``action`` names, over the parameters :data:`DECLARATION_PLANS` says it takes."""
-    if action == "read":
-        return read_object(built, file, given["name"], given["scope"], cache)
-    if action == "remove":
-        return remove_declaration(built, file, given["name"], cache)
+    """The plan ``asked`` names, over the parts its model read.
+
+    A definition is read here, rather than by the query, as json text is read everywhere else in
+    a query (:func:`~ddd.gui.queries.json_value`): its depth counted before anything parses it,
+    by the loader's rule, its numbers finite. Text that is not such json, or not one json object,
+    is refused ``invalid``, 409, in the one sentence it always was - the declare panel shows it
+    as its offer's refusal (ruling 5 of the security review's plan)."""
+    if isinstance(asked, ReadDeclaration):
+        return read_object(built, file, asked.name, asked.scope, cache)
+    if isinstance(asked, RemoveDeclaration):
+        return remove_declaration(built, file, asked.name, cache)
     try:
-        definition = json.loads(given["definition"])
-    except json.JSONDecodeError as malformed:
+        definition = json_value(asked.definition)
+    except EditError as malformed:
         raise DeclarationRefusalError("invalid", "the definition is not json") from malformed
     if not isinstance(definition, dict):
         raise DeclarationRefusalError("invalid", "the definition is not json")
-    return declare_object(built, file, given["scope"], definition, cache)
+    return declare_object(built, file, asked.scope, definition, cache)
 
 
 def _planned_changes(
@@ -2487,10 +2307,17 @@ def _number(text: str) -> float:
     ``json.loads`` rather than ``float``, so that ``750`` stays an ``int`` and is written back
     as ``750`` rather than ``750.0`` - the file's own spelling, and the one the integer check
     weighs.
+
+    Refused as anything else that is not a number is, with the same sentence: text holding a
+    bracket before anything parses it - no number holds one, and parsed, an array nested deep
+    enough exhausts the stack; and a whole number of more digits than ``int()`` reads, which
+    ``json.loads`` raises a plain ``ValueError`` for, not a ``JSONDecodeError``.
     """
+    if "[" in text or "{" in text:
+        raise ValueRefusalError("invalid", f"'{text}' is not a number")
     try:
         value = json.loads(text)
-    except json.JSONDecodeError as malformed:
+    except ValueError as malformed:
         raise ValueRefusalError("invalid", f"'{text}' is not a number") from malformed
     if not isinstance(value, int | float) or isinstance(value, bool):
         raise ValueRefusalError("invalid", f"'{text}' is not a number")

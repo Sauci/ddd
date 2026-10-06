@@ -178,10 +178,10 @@ export function selectedIndices(rows: readonly FileRow[], selected: string): num
 // lists as it lists them, and `kept_by` put into words.
 
 /** The kind of file New file asks a second name for, in the word `ddd.file_plans.CREATABLE`
- * spells it with, which `FilesReply.creatable` sends: `ddd.gui.api.FILE_PLANS`' docstring says
- * `create` takes `component` as well, "a new component's name", and `create_plan` ignores it for
- * every other kind. A server renaming the kind would stop the field being drawn, and its own
- * refusal - "a new component needs a name, besides its file's" - would say what is missing. */
+ * spells it with, which `FilesReply.creatable` sends: `create` takes `component` as well, "a new
+ * component's own name" (`CreateFile`, the server's model of its query), and `create_plan` ignores
+ * it for every other kind. A server renaming the kind would stop the field being drawn, and its
+ * own refusal - "a new component needs a name, besides its file's" - would say what is missing. */
 const COMPONENT_KIND = "component";
 
 /** Whether New file asks for a component's name beside the file's, the kind field holding
@@ -193,7 +193,7 @@ export function asksComponentName(kind: string): boolean {
 }
 
 /** The plan New file asks for as its three fields stand, or `null` while the kind or the file's
- * name is still empty: `create` takes both (`FILE_PLANS`), and answers a missing or empty one 400
+ * name is still empty: `create` takes both (`CreateFile`), and answers a missing or empty one 400
  * - a mistake about the request, not a refusal a reader could act on, as `constantAdd`'s own doc
  * (`lib/shared.ts`) says of `add`'s.
  *

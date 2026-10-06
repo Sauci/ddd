@@ -1745,22 +1745,33 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (queries.SettleQuery, "validation"),
     (queries.FixQuery, "validation"),
     (queries.UnitQuery, "validation"),
+    (queries.UnitPlanQuery, "validation"),
     (queries.TypeQuery, "validation"),
+    (queries.TypePlanQuery, "validation"),
     (queries.ConstantQuery, "validation"),
+    (queries.ConstantPlanQuery, "validation"),
     (queries.SectionQuery, "validation"),
+    (queries.SectionPlanQuery, "validation"),
     (queries.RasterQuery, "validation"),
+    (queries.RasterPlanQuery, "validation"),
+    (queries.FilesPlanQuery, "validation"),
     (queries.DeclarableQuery, "validation"),
+    (queries.DeclarationPlanQuery, "validation"),
     (queries.ValuesQuery, "validation"),
+    (queries.ValuePlanQuery, "validation"),
+    (queries.ValuesPlanQuery, "validation"),
     (queries.CompareQuery, "validation"),
 )
 """Every request and response of spec section 6.5, with the schema pydantic builds for each:
 ``"validation"`` for a request, read for the shape a caller must send; ``"serialization"`` for
 a response, read for the shape ``model_dump(mode="json")`` produces - the two differ wherever a
 field has a default. A route's query is a request too: the model it reads its query as
-(:mod:`ddd.gui.queries`), each key the page may send and the type its value is read as.
+(:mod:`ddd.gui.queries`), each key the page may send and the type its value is read as - for a
+plan route, the union of one model per action, which the page's types read as a union too.
 
 Nothing else needs listing: every other model above is reachable from one of these and is
-published under ``$defs`` regardless, :class:`Operation` and :class:`Severity` included.
+published under ``$defs`` regardless, :class:`Operation` and :class:`Severity` included, and
+each action's model under its plan route's union.
 """
 
 

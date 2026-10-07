@@ -12,14 +12,15 @@ What it defends against
 * **Another page open in the same browser,** even one served from a different port of
   ``127.0.0.1``. A browser treats every port of one address as the same site, but the
   token is no cookie: the page keeps it in ``localStorage`` for its own origin, port
-  included, and sends it as ``Authorization: Bearer``. A page elsewhere cannot send that
-  header without a CORS preflight, which this server never grants, so in any browser - an
-  older one included - such a page's request reaches the api with no credential, and is
-  answered ``401``. The gate stays as a second defence: a request marked, with
+  included, and sends it as ``Authorization: Bearer`` itself, rather than a browser
+  attaching it unasked. A page elsewhere has no token to send, and cannot send
+  ``Authorization`` at all without a CORS preflight, which this server never grants - the
+  first defence, in any browser. The gate is the second: a request marked, with
   ``Sec-Fetch-Site``, anything but ``same-origin`` or ``none``, or naming an ``Origin``
   that is not this server's own, is refused before it reaches a handler - ``GET /open``
   excepted, which answers the page itself, needing no credential. See *The browsers it
-  protects*, below, for what holds in a browser that sends neither header.
+  protects*, below, for the one kind of request that reaches a handler with neither
+  header, and what still catches it there.
 
 * **Another server on** ``127.0.0.1`` that the reader's browser is pointed at - on an
   address typed or bookmarked there, or on whatever a page served there asks of its own
@@ -121,8 +122,8 @@ on every request; the last of them, Safari 16.4, shipped in March 2023.
 An older browser sends neither header on a plain request, so the gate lets such a request
 through. That no longer matters: the token is in this page's own ``localStorage``, which a
 page on another port cannot read, and such a page cannot send ``Authorization`` without a
-CORS preflight, which this server never grants. A cross-site request from an older browser
-therefore carries no credential either, and is answered ``401`` like any other.
+CORS preflight, which this server never grants. Such a request therefore carries no
+credential either, and is answered ``401`` like any other.
 
 Running it in a container
 -------------------------

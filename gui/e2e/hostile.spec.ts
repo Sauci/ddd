@@ -27,9 +27,10 @@ test("a page on another port cannot make ddd gui run a baseline's plugin", async
   //   token is in the storage of ddd gui's own origin, out of this one's reach.
   // - The gate refuses it anyway: the browser marks it `Sec-Fetch-Site: same-site`, which
   //   `_from_elsewhere` (`server.py`) tells apart from a request the server's own page made.
-  // Taking the gate out used to turn this journey red, the cookie riding along. It no longer
-  // does: the request reaches the API with no credential, and is answered 401. The cookie's
-  // leak is pinned by `loopback.spec.ts` now.
+  // With the gate taken out, the plugin still never runs: the request reaches the API with no
+  // credential, and is answered 401. So the gate is pinned by its own answer, the 403 below.
+  // Before part 18b the cookie rode along, and the plugin ran once the gate was out; that the
+  // token reaches no other server is pinned by `loopback.spec.ts`.
   // `mode: "no-cors"` is what a page with no business reading the answer actually sends: it
   // cannot read an opaque response either way, so it asks and moves on once the browser reports
   // the attempt settled, never mind to what.
@@ -55,8 +56,16 @@ fetch(${JSON.stringify(asked)}, { credentials: "include", mode: "no-cors" })
 
     // Opened in the same context as the sign-in above, as the reader's own browser would open
     // it: whatever that context holds for 127.0.0.1, `credentials: "include"` offers to send.
-    await page.goto(`http://127.0.0.1:${address.port}/`);
+    // The answer is opaque to the page, but the browser reports its status to Playwright: the
+    // gate's 403, where a request let past the gate with no credential is answered 401.
+    const [answered] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.url().startsWith(`http://127.0.0.1:${port}/api/compare?`),
+      ),
+      page.goto(`http://127.0.0.1:${address.port}/`),
+    ]);
     await expect(page).toHaveTitle("asked");
+    expect(answered.status()).toBe(403);
 
     // The plugin never ran, so it never wrote the file its body writes first.
     expect(existsSync(join(gui.directory, "baseline", "ran"))).toBe(false);

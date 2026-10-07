@@ -326,9 +326,17 @@ class TestSigningIn:
         assert at_release == [None]
 
     def test_the_api_without_the_token_is_unauthorised(self, server) -> None:
+        """Pinned by its literal text: the other tests of this refusal compare its message
+        against the imported ``_SIGN_IN``, which would drift along with any rewording of it, or
+        read its status alone."""
         response, data = ask(server, "GET", "/api/session", signed_in=False)
-        assert response.status == 401
-        assert json.loads(data)["error"] == "unauthorised"
+        assert (response.status, json.loads(data)) == (
+            401,
+            {
+                "error": "unauthorised",
+                "message": "open the address ddd gui printed in its terminal",
+            },
+        )
 
 
 class TestTheSignInExchange:
@@ -1503,13 +1511,14 @@ class TestOneConnectionCarriesManyAsks:
         # /open answers a page, not a redirect: two of these are pages, bytes that are not
         # json, and two are the api's json - the shapes a connection read twice has to tell
         # apart, in the order a browser meets them. Each says how long it is, which is what
-        # lets it be told from the next.
+        # lets it be told from the next. The token goes with the api's asks alone, as the page
+        # sends it: a page needs no credential.
         signed_in = {"Authorization": f"Bearer {server.token}"}
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         try:
             asked = [
                 self.again(connection, server, f"/open?token={server.token}"),
-                self.again(connection, server, "/", **signed_in),
+                self.again(connection, server, "/"),
                 self.again(connection, server, "/api/session", **signed_in),
                 self.again(connection, server, "/api/nothing", **signed_in),
             ]

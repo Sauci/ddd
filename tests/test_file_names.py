@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ddd.editing import uncreatable
+from ddd.file_names import uncreatable
 
 KEPT_OUT = "which Windows keeps out of a file's name"
 

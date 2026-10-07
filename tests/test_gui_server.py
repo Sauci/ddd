@@ -34,7 +34,8 @@ from conftest import (
     write_tree,
 )
 from ddd.cli import EXIT_OK, EXIT_USAGE
-from ddd.editing import device_named, fingerprint
+from ddd.editing import fingerprint
+from ddd.file_names import device_named
 from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply

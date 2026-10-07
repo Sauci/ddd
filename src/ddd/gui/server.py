@@ -50,7 +50,7 @@ from typing import Any, Final, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from ddd.cli import EXIT_OK, EXIT_USAGE
-from ddd.editing import device_named
+from ddd.file_names import device_named
 from ddd.gui.api import Api
 from ddd.gui.session import Session
 
@@ -547,7 +547,7 @@ class _Handler(BaseHTTPRequestHandler):
         A page path is plain names under the pages, split on ``/``. A name that is empty, ``.``
         or ``..``, or that holds a NUL character, a backslash or a colon - on Windows a
         separator, a drive or a stream - names no file, and is never looked up; nor, on any
-        system, does a name Windows keeps for a device (:func:`ddd.editing.device_named`, the
+        system, does a name Windows keeps for a device (:func:`ddd.file_names.device_named`, the
         rule a file an edit creates is refused by too), which it would open as that device. Nor
         does a name that is a symbolic link or a junction, or one past a name that is not a
         directory: so nothing outside the pages is served, and a path of thousands of names is

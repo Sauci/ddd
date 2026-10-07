@@ -35,7 +35,8 @@ from typing import Any, Final, Literal
 from pydantic import TypeAdapter, ValidationError
 
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.editing import Operation, uncreatable
+from ddd.editing import Operation
+from ddd.file_names import uncreatable
 from ddd.findings_by_file import Pair
 from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
@@ -371,7 +372,7 @@ def create_plan(
     Refused ``invalid``, in this order, before anything is built: a kind not in
     :data:`CREATABLE`; a name :data:`FILE_NAME` does not take; a name no file can be created
     under - one Windows keeps for a device, or one too long to stage - in the edit's own words
-    (:func:`ddd.editing.uncreatable`), asked before the disk is asked anything about it; a file
+    (:func:`ddd.file_names.uncreatable`), asked before the disk is asked anything about it; a file
     of that name beside the description already; and for a component, no name for it, or a name
     a check of the project would reject - one the model's own
     :data:`~ddd.models.common.Identifier` does not take, one reserved, or one of ``taken``, the

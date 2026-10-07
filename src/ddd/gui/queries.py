@@ -43,7 +43,8 @@ from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
 from ddd.diagnostics import Severity
-from ddd.editing import EditError, device_named, not_one_value, parse_raw
+from ddd.editing import EditError, not_one_value, parse_raw
+from ddd.file_names import device_named
 from ddd.gui.depth import MAX_DEPTH, finite, text_depth
 from ddd.loading import NESTED_TOO_DEEPLY
 from ddd.lsp.edits import PROPAGATED_KEYS
@@ -75,10 +76,11 @@ _CASELESS: Final = sys.platform == "win32"
 name so."""
 
 _OPENS_DEVICES: Final = sys.platform == "win32"
-"""Whether the system opens a device for a name it keeps for one (:func:`ddd.editing.device_named`)
-in whatever directory the name is written: Windows does, and resolving a path asks it about every
-directory along the way - so a path holding such a name, in any of its names, is no path to read
-there. Linux keeps a file or a directory of such a name like any other."""
+"""Whether the system opens a device for a name it keeps for one
+(:func:`ddd.file_names.device_named`) in whatever directory the name is written: Windows does, and
+resolving a path asks it about every directory along the way - so a path holding such a name, in
+any of its names, is no path to read there. Linux keeps a file or a directory of such a name like
+any other."""
 
 _SEPARATORS: Final = re.compile(r"[\\/]")
 """Either separator, as Windows reads both: what splits a path into its names."""

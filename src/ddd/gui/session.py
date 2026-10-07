@@ -46,8 +46,8 @@ from ddd.editing import (
     edited,
     fingerprint,
     restore,
-    uncreatable,
 )
+from ddd.file_names import uncreatable
 from ddd.ir import DataDictionary
 from ddd.loading import included_files, parse_json_text, resolve_path
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
@@ -841,7 +841,7 @@ def _served(revision: Revision, resolved: Path) -> Path:
 
 def _creatable(changes: Sequence[FileChange]) -> None:
     """Refuse an edit creating a file under a name no file can be created under
-    (:func:`ddd.editing.uncreatable`), before any change of it is confined: a name Windows keeps
+    (:func:`ddd.file_names.uncreatable`), before any change of it is confined: a name Windows keeps
     for a device, or one too long to stage, is refused on every system alike, whatever an
     operating system would answer about it - Windows' answer about a name too long for NTFS is
     not one ``Path.resolve`` is sure to walk past.

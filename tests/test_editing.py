@@ -14,7 +14,6 @@ import ddd.editing as editing
 from ddd.backends.base import STAGING_SUFFIX as ARTEFACT_STAGING_SUFFIX
 from ddd.editing import (
     INVALID,
-    STAGING_SUFFIX,
     STALE,
     UNREADABLE,
     UNVERIFIED,
@@ -37,6 +36,7 @@ from ddd.editing import (
     restore,
     unchanged,
 )
+from ddd.file_names import STAGING_SUFFIX
 from ddd.lsp.ranges import Document
 
 

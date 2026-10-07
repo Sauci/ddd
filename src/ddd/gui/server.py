@@ -668,17 +668,30 @@ _CODE_REUSED: Final = (
 
 def _secret_of(body: bytes) -> tuple[str, str] | None:
     """What ``POST /open`` was given: ``("code", <code>)`` or ``("token", <token>)``, or
-    ``None`` for anything but a json object of exactly one of the two, its value text. A body
-    nested deeper than python's own parser goes raises ``RecursionError``, which is no
-    ``ValueError``, and is refused as any other malformed body."""
+    ``None`` for anything but a json object of exactly one of the two, its value text that
+    UTF-8 can encode.
+
+    Each object is read as the tuple of its pairs, and json reads an array as a list, so a
+    tuple is an object, and a name given twice is two pairs. Read into a dict, an object kept
+    the last of a repeated name, and ``{"token": "x", "token": <the token>}`` signed in.
+
+    A lone surrogate is text UTF-8 cannot encode, which json spells as an escape, or as the
+    bytes it decodes anyway. Comparing a secret encodes it, so one raised there, and was
+    answered 500. A body nested deeper than python's own parser goes raises
+    ``RecursionError``, which is no ``ValueError``, and is refused as any other malformed
+    body."""
     try:
-        given = json.loads(body)
+        given = json.loads(body, object_pairs_hook=tuple)
     except (ValueError, RecursionError):
         return None
-    if not isinstance(given, dict) or len(given) != 1:
+    if not isinstance(given, tuple) or len(given) != 1:
         return None
-    ((kind, value),) = given.items()
+    ((kind, value),) = given
     if kind not in ("code", "token") or not isinstance(value, str):
+        return None
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
         return None
     return kind, value
 

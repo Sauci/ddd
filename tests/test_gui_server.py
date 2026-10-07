@@ -609,8 +609,26 @@ class TestTheSignInExchange:
 
     @pytest.mark.parametrize(
         "given",
-        [{}, {"code": "a", "token": "b"}, {"code": 1}, {"other": "x"}, ["code"], "code", None],
-        ids=["empty", "both", "a-number", "a-stray-key", "a-list", "a-string", "null"],
+        [
+            {},
+            {"code": "a", "token": "b"},
+            {"code": 1},
+            {"other": "x"},
+            ["code"],
+            [["code", "x"]],
+            "code",
+            None,
+        ],
+        ids=[
+            "empty",
+            "both",
+            "a-number",
+            "a-stray-key",
+            "a-list",
+            "a-pair-in-a-list",
+            "a-string",
+            "null",
+        ],
     )
     def test_anything_but_one_secret_is_refused(self, server, given) -> None:
         response, data = exchange(server, given)
@@ -639,6 +657,44 @@ class TestTheSignInExchange:
             "POST",
             "/open",
             body=body,
+            origin=f"http://127.0.0.1:{server.port}",
+            signed_in=False,
+        )
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+
+    @pytest.mark.parametrize(
+        ("kind", "signed_in_once"),
+        [("token", False), ("code", False), ("code", True)],
+        ids=["the-token", "a-code-while-one-is-pending", "a-code-once-one-signed-in"],
+    )
+    def test_a_value_utf_8_cannot_encode_is_refused_not_failed(
+        self, server, kind, signed_in_once, capsys
+    ) -> None:
+        """A lone surrogate, which json spells as an escape and ``json.loads`` reads back as text
+        that UTF-8 cannot encode. Comparing it encoded it, which raised: a 500, and a traceback
+        on the terminal. A code is issued first, as in a real run, since with none pending or
+        redeemed a code is refused before anything encodes it."""
+        code = server.issue_code()
+        if signed_in_once:
+            assert exchange(server, {"code": code})[0].status == 200
+        response, data = exchange(server, {kind: chr(0xD800)})
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_a_name_given_twice_counts_twice(self, server) -> None:
+        """Read into a dict, the object kept the last of a repeated name and was exactly one
+        secret, so this one signed in. Sent as bytes: ``json.dumps`` cannot repeat a name."""
+        response, data = ask(
+            server,
+            "POST",
+            "/open",
+            body=f'{{"token": "x", "token": "{server.token}"}}'.encode("ascii"),
             origin=f"http://127.0.0.1:{server.port}",
             signed_in=False,
         )

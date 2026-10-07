@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
@@ -105,15 +105,11 @@ export async function openPanel(
  * Shape cell's own button - CurveA's and MapA's own among Controller's fourteen declarations,
  * past the box's edge at this viewport (part 17's task 9: the declarations table is virtualised).
  * Wheeled into view first, the mouse over the table, rather than left to the click's own
- * auto-scroll: React Aria's own ScrollView sets `pointer-events: none` on a long table's content
- * while it scrolls and for 300 ms after (`private/virtualizer/ScrollView.mjs`), and Playwright's
- * own actionability check hit-tests only a click's first event - so a click sent mid-scroll can
- * pass that check against a target already back under the pointer, and still open nothing,
- * `usePress` itself cancelling a press made while `pointer-events` read `none` partway through
- * (measured: `Show the values of CurveA` clicked at the box's own reported, visible position
- * still opened nothing, the page left on Controller's own heading - and the same click, the box
- * already wheeled to rest first, opened CurveA's grid every time). Never enlarges the box: this
- * is the wheel a reader's own hand would turn over it. */
+ * auto-scroll, and clicked once it takes the pointer again: a click that scrolls the box itself
+ * aims its press before the page has caught up with that scroll, and React Aria's own ScrollView
+ * then takes the pointer from the table's content under it (`scrolledIntoView`'s own doc says
+ * what was measured). Never enlarges the box: this is the wheel a reader's own hand would turn
+ * over it. */
 export async function openValues(
   page: Page,
   address: string,
@@ -138,7 +134,19 @@ export async function openValues(
  * a row a reader could not actually see (measured: true before any wheel at all, for a row the
  * overscan had already drawn past the box's own last visible one). Bounded at forty steps: a
  * target that never comes within the box's own bounds fails here, in words that say why, rather
- * than at whatever assertion happens to be next. */
+ * than at whatever assertion happens to be next.
+ *
+ * Then waits for `target` to take the pointer again, so that the click its caller sends next
+ * lands on it. React Aria's own ScrollView sets `pointer-events: none` on a long table's content
+ * from a scroll until 300 ms after the last one (`private/virtualizer/ScrollView.mjs`), and
+ * `target` inherits it. Settled on `scrollTop` alone, this returned inside that window every
+ * time: in Chrome on the Linux development PC, the wheel's one scroll event came at about 30 ms,
+ * `scrollTop` settled by 65 to 98 ms, and the window closed at about 345 ms. Every click after it
+ * found the table in the way of its hit-test three or four times, and Playwright retried it with
+ * the box scrolled to other alignments (end, center, start), each of those scrolls opening the
+ * window again; a retry aimed before the page had caught up with its own scroll lost its press to
+ * the table, and the grid never opened (CI: run 37688993981 on ubuntu chromium, run 37697917866
+ * on windows msedge). Waited for, the click's first attempt scrolls nothing, and lands. */
 export async function scrolledIntoView(page: Page, label: string, target: Locator): Promise<void> {
   const box = page.getByRole("grid", { name: label });
   const container = await box.boundingBox();
@@ -163,6 +171,12 @@ export async function scrolledIntoView(page: Page, label: string, target: Locato
   if (!(await withinBox(page, label, target))) {
     throw new Error(`scrolling "${label}" never brought its target row within the box`);
   }
+  // Read off the target itself, which inherits what the ScrollView sets on the content above it:
+  // a reader's click lands on it once this reads anything but `none`, and not before.
+  await expect(target, `"${label}" never gave its target row the pointer back`).not.toHaveCSS(
+    "pointer-events",
+    "none",
+  );
 }
 
 /** Whether `target` sits whole inside the box of the long table labelled `label`, top to bottom:

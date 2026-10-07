@@ -394,8 +394,8 @@ class TestSigningIn:
     def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
         """A guess that is not the one outstanding code is refused on its own, and does not
         spend that code: a stranger trying codes cannot grief the browser the launch is
-        waiting for. It prints nothing: unlike a spent or expired code, it was never the
-        real one."""
+        waiting for. It prints nothing: unlike a code presented again after it signed a
+        browser in, it was never the real one."""
         code = server.issue_code()
         wrong, data = ask(server, "GET", "/open?code=wrong", signed_in=False)
         assert wrong.status == 403
@@ -1124,8 +1124,8 @@ class TestAPagePath:
     def test_every_name_windows_keeps_for_a_device_is_one_however_it_is_spelled(
         self, device
     ) -> None:
-        """In any case, with any extension, and with the spaces or dots Windows takes off the
-        end of a name."""
+        """In any case, with any extension, with the spaces or dots Windows takes off the end
+        of a name, and with a colon after it, which Windows cuts a device's name at as well."""
         spellings = [
             device,
             device.lower(),
@@ -1135,6 +1135,8 @@ class TestAPagePath:
             f"{device}.",
             f"{device} ",
             f"{device} .js",
+            f"{device}:",
+            f"{device.lower()}:stream",
         ]
         assert {device_named(name) for name in spellings} == {device}
 

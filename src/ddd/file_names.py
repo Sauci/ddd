@@ -101,10 +101,11 @@ def _kept_out(name: str) -> str | None:
 
 def device_named(name: str) -> str | None:
     """The device of :data:`DEVICE_NAMES` Windows reads ``name`` as, or ``None``: such a name
-    before the name's first dot, in any case, less any spaces it ends in. ``nul.js``,
-    ``Lpt9.txt``, ``aux.`` and ``con .x`` each name a device there, and ``console`` and ``com10``
-    do not. Asked on every system, so that a name is answered alike on all of them."""
-    device = name.partition(".")[0].rstrip(" ").upper()
+    before the name's first dot or colon, in any case, less any spaces it ends in, as python's
+    own ``PurePath.is_reserved`` read it on 3.12. ``nul.js``, ``Lpt9.txt``, ``aux.``, ``con .x``
+    and ``COM1:`` each name a device there, and ``console`` and ``com10`` do not. Asked on every
+    system, so that a name is answered alike on all of them."""
+    device = name.partition(".")[0].partition(":")[0].rstrip(" ").upper()
     if device in DEVICE_NAMES:
         return device
     return None

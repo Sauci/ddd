@@ -244,6 +244,9 @@ DEVICE_PATHS = [
     pytest.param("/x/aux.ddd.json", id="the-auxiliary-port-with-an-extension"),
     pytest.param("c:\\x\\nul .ddd.json", id="the-null-device-a-space-before-its-dot"),
     pytest.param("//server/share/p/CON/a.ddd.json", id="the-console-under-a-directory-served"),
+    pytest.param("C:/x/COM1:", id="a-port-a-colon-after-it"),
+    pytest.param("C:/x/nul:s", id="the-null-device-a-stream-of-it"),
+    pytest.param("C:/proj/COM3:/units.ddd.json", id="a-port-and-its-colon-along-the-way"),
 ]
 
 
@@ -265,7 +268,9 @@ def test_a_path_naming_a_device_is_no_path_where_the_platform_opens_one(
         assert Pathed.model_validate({"it": text}, context=SERVED).it == text
 
 
-@pytest.mark.parametrize("baseline", ["COM1", "sub/lpt9.json", "C:/x/CONIN$/b.json"])
+@pytest.mark.parametrize(
+    "baseline", ["COM1", "sub/lpt9.json", "C:/x/CONIN$/b.json", "COM1:x", "sub/nul:s.json"]
+)
 @pytest.mark.parametrize("opens", [True, False], ids=["where-a-device-is-opened", "elsewhere"])
 def test_a_baseline_naming_a_device_is_no_path_where_the_platform_opens_one(
     monkeypatch, baseline, opens

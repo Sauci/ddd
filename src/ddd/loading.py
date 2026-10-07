@@ -1491,7 +1491,8 @@ def resolve_path(path: Path) -> Path:
     about a thousand, ``RecursionError``, both of which 3.13's walks past. On 3.12 an include
     through such a loop ended ``ddd check`` in a traceback, and a request of ``ddd gui`` naming
     a path through one was answered ``500``; every route of it resolves a path a request names
-    through here.
+    through here, but compare's baseline, which ``ddd.gui.compare`` resolves under a guard of its
+    own as wide, and a page's path, which is never resolved.
 
     A leading ``~`` is left where it stands: expansion is the shell's, and a root named
     ``~x.ddd.json`` was being looked for in user ``x``'s home directory, a path its author

@@ -75,7 +75,7 @@ What it defends against
   name Windows keeps for a device names no file either, on any system, and is never looked
   up: ``CON``, ``PRN``, ``AUX`` or ``NUL``, or ``COM`` or ``LPT`` followed by a digit from
   ``0`` to ``9`` or a superscript ``¹``, ``²`` or ``³``, in any case and whatever extension
-  it carries. So are ``CONIN$`` and ``CONOUT$``, the console's own input and output. A path
+  it carries, or a colon and what follows it. So are ``CONIN$`` and ``CONOUT$``, the console's own input and output. A path
   naming no file is answered the page itself, as any other unknown page address is. The
   standard library itself refuses three shapes before this server sees them at all: a
   request line over 65,536 bytes answers ``414``, and a header line over 65,536 bytes, or a

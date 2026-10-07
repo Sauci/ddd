@@ -2745,7 +2745,8 @@ class TestEdit:
         ("name", "why"),
         [
             *[
-                pytest.param(f"a{c}b.ddd.json", f"its name holds '{c}'", id=f"holding-{c}")
+                # Never second: "a:b.ddd.json" joined to a Windows path is a drive's path.
+                pytest.param(f"ab{c}c.ddd.json", f"its name holds '{c}'", id=f"holding-{c}")
                 for c in '<>:"|?*'
             ],
             pytest.param(

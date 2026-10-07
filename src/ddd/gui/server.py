@@ -343,7 +343,9 @@ class _Handler(BaseHTTPRequestHandler):
     """Whether the request being answered has had its body read. A ``POST`` answered before it
     has, whatever the answer - misdirected, refused at the gate, sent to a page, its body too
     long or of no length - is answered ``Connection: close`` and its connection closed: the body
-    left on it would be read as the next request."""
+    left on it would be read as the next request. A body sent ``Transfer-Encoding: chunked`` is
+    never read, though it counts as read: it has no ``Content-Length``, which this server takes for
+    none."""
 
     def do_GET(self) -> None:  # the name the base class dispatches GET to
         self._answer("GET")
@@ -618,9 +620,9 @@ _CODE_REUSED: Final = (
 def _shown(text: str) -> str:
     """``text`` as it may reach a terminal: every character that does not print as itself - a
     control character, the ``ESC`` an escape sequence begins with among them, or one that turns
-    the text after it around - written as its escape, ``\\x1b``, and every line break kept. What a
-    failure's traceback is printed through: an exception's own message is anyone's text once it
-    carries a request's."""
+    the text after it around - written as its escape, ``\\x1b``; a newline is kept, and every other
+    line break, a carriage return among them, escaped too. What a failure's traceback is printed
+    through: an exception's own message is anyone's text once it carries a request's."""
     return "".join(
         character
         if character == "\n" or character.isprintable()

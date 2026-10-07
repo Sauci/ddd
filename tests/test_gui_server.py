@@ -2,28 +2,62 @@
 
 from __future__ import annotations
 
+import dataclasses
 import http.client
 import json
+import os
+import select
 import shutil
 import socket
 import sys
 import threading
 import time
-from collections.abc import Iterator
+import types
+from collections.abc import Callable, Collection, Iterator
 from pathlib import Path
 from typing import Any, Final
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 
 import pytest
 
 import ddd
-from conftest import EXAMPLES, Gated, begun, component, declare, project, stopped, write_tree
+from conftest import (
+    EXAMPLES,
+    Gated,
+    begun,
+    component,
+    declare,
+    directory_link,
+    looped,
+    project,
+    stopped,
+    write_tree,
+)
 from ddd.cli import EXIT_OK, EXIT_USAGE
 from ddd.editing import fingerprint
+from ddd.file_names import device_named
 from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
-from ddd.gui.server import MAX_BODY, GuiServer, is_loopback, run, static_directory
+from ddd.gui.server import (
+    _CODE_REUSED,
+    _ELSEWHERE,
+    _FORBIDDEN,
+    BUSY,
+    CODE_SECONDS,
+    MAX_BODY,
+    MAX_CONNECTIONS,
+    REFUSAL_SECONDS,
+    SECURITY_HEADERS,
+    SIGN_IN_PAGE,
+    SIGNED_IN_PAGE,
+    TOKEN_BYTES,
+    GuiServer,
+    is_loopback,
+    launched,
+    run,
+    static_directory,
+)
 from ddd.gui.session import Revision, Session
 
 FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
@@ -80,8 +114,14 @@ def bounded_run(*arguments: Any, **keywords: Any) -> int:
     return answer
 
 
-def serving(api: Api, static: Path) -> Iterator[GuiServer]:
-    server = GuiServer(api, static)
+def serving(
+    api: Api,
+    static: Path,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+    connections: int = MAX_CONNECTIONS,
+) -> Iterator[GuiServer]:
+    server = GuiServer(api, static, clock=clock, connections=connections)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -127,14 +167,125 @@ def ask(
     return response, data
 
 
+def raw_answer(server: GuiServer, sent: bytes) -> tuple[int, bytes]:
+    """The status and body ``server`` answers ``sent`` with, over a connection of its own,
+    read to its end. For bytes ``http.client`` itself refuses to send - a request line that
+    is not well-formed, say - which is exactly what a hostile request is not."""
+    with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+        connection.sendall(sent)
+        with connection.makefile("rb") as answer:
+            data = answer.read()
+    head, _, body = data.partition(b"\r\n\r\n")
+    return int(head.split(b" ", 2)[1]), body
+
+
+def posted(server: GuiServer, length: str, body: bytes = b"") -> bytes:
+    """A signed-in ``POST /api/edit`` from this server's own page, as json, carrying ``body``
+    under a ``Content-Length`` spelled ``length`` - whatever ``body`` holds - and asking for
+    the connection to close after its answer, for :func:`raw_answer` to read to its end."""
+    return (
+        b"POST /api/edit HTTP/1.1\r\n"
+        + f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
+        + f"Cookie: {cookie(server)}={server.token}\r\n".encode("ascii")
+        + f"Origin: http://127.0.0.1:{server.port}\r\n".encode("ascii")
+        + b"Content-Type: application/json\r\n"
+        + f"Content-Length: {length}\r\nConnection: close\r\n\r\n".encode("ascii")
+        + body
+    )
+
+
+def answering_session(monkeypatch: pytest.MonkeyPatch, answer: Callable[..., object]) -> None:
+    """``GET /api/session`` answered by ``answer`` instead, for one test: its route in the api's
+    table replaced by one that differs in nothing else."""
+    monkeypatch.setattr(
+        api_module,
+        "ROUTES",
+        tuple(
+            dataclasses.replace(route, answer=answer) if route.path == "/api/session" else route
+            for route in api_module.ROUTES
+        ),
+    )
+
+
+class FakeClock:
+    """A clock a test can move without sleeping; ``GuiServer``'s own default is
+    ``time.monotonic``."""
+
+    def __init__(self, now: float = 0.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class Opened:
+    """A stand-in for ``webbrowser.open``: records what it is given, and signals once it is.
+
+    A launch now runs its opener off the thread that serves (so a browser that never returns
+    cannot hold that up), so a test cannot assume the call already happened just because
+    ``run()`` has returned - it waits for this instead.
+    """
+
+    def __init__(self) -> None:
+        self.addresses: list[str] = []
+        self._called = threading.Event()
+
+    def __call__(self, address: str) -> None:
+        self.addresses.append(address)
+        self._called.set()
+
+    def wait(self, timeout: float = 5) -> str:
+        assert self._called.wait(timeout=timeout), "the browser was never opened"
+        (address,) = self.addresses
+        return address
+
+
+def code_from(printed_line: str, opened_address: str) -> str:
+    """The single-use launch code a launch handed the browser: an address of this server's
+    own - the same port as the one the printed line carries, naming ``/open``, its query
+    exactly one fresh code - never the long-lived token the printed address carries, not as
+    the code and not anywhere else in the address either. Answers the code."""
+    printed = urlsplit(printed_line.rsplit(" ", 1)[1])
+    opened = urlsplit(opened_address)
+    assert (opened.scheme, opened.hostname, opened.port, opened.path) == (
+        printed.scheme,
+        printed.hostname,
+        printed.port,
+        "/open",
+    )
+    token = parse_qs(printed.query)["token"][0]
+    assert token not in opened_address
+    code = parse_qs(opened.query)["code"][0]
+    assert parse_qs(opened.query) == {"code": [code]}
+    return code
+
+
 class TestSigningIn:
     def test_the_token_is_swapped_for_a_strict_cookie_and_the_project_page(self, server) -> None:
-        response, _ = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
-        assert response.status == 303
-        assert response.getheader("Location") == "/project"
+        response, data = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
+        assert response.status == 200
+        assert response.getheader("Location") is None
         assert response.getheader("Set-Cookie") == (
             f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
         )
+        assert response.getheader("Content-Type") == "text/html; charset=utf-8"
+        # Its URL holds the token: a shared cache must never store it, nor a browser replay
+        # it from history.
+        assert response.getheader("Cache-Control") == "no-store"
+        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
+
+    def test_the_page_refreshes_to_its_target_without_a_script(self) -> None:
+        """/open may be reached cross-site - the token or a launch code pasted or clicked
+        from anywhere - and a SameSite=Strict cookie does not reliably follow a redirect
+        chain that began cross-site; a refresh this page makes itself is a fresh,
+        same-origin navigation, which the cookie does follow. A meta refresh, not a script:
+        no script is needed, so none is written, and the content security policy has
+        nothing to permit either way. The link below the refresh is the fallback for a
+        browser that blocks it, such as Firefox's accessibility.blockautorefresh."""
+        page = SIGNED_IN_PAGE.format(target="/project")
+        assert '<meta http-equiv="refresh" content="0; url=/project">' in page
+        assert '<a href="/project">Open ddd gui</a>' in page
+        assert "<script" not in page
 
     def test_a_project_being_analysed_signs_in_to_its_own_page(
         self, project_file: Path, pages: Path
@@ -145,25 +296,181 @@ class TestSigningIn:
             session.open(project_file)
             begun(session)
             for server in serving(Api(session, project_file), pages):
-                response, _ = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
-                assert (response.status, response.getheader("Location")) == (303, "/project")
+                response, data = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
+                assert (response.status, data) == (
+                    200,
+                    SIGNED_IN_PAGE.format(target="/project").encode("utf-8"),
+                )
                 assert session.revision is None
         finally:
             session.gate.set()
             stopped(session)
 
-    def test_without_an_open_project_the_redirect_is_to_the_start_page(
+    def test_without_an_open_project_the_page_refreshes_to_the_start_page(
         self, project_file, pages
     ) -> None:
         for started in serving(Api(Session(project_file.parent)), pages):
-            response, _ = ask(started, "GET", f"/open?token={started.token}", signed_in=False)
-            assert response.getheader("Location") == "/"
+            _, data = ask(started, "GET", f"/open?token={started.token}", signed_in=False)
+            assert data == SIGNED_IN_PAGE.format(target="/").encode("utf-8")
 
+    @pytest.mark.parametrize("signed_in", [False, True])
     @pytest.mark.parametrize("query", ["", "?token=wrong", "?token=%C3%A9"])
-    def test_a_wrong_or_missing_token_is_refused(self, server, query) -> None:
-        response, data = ask(server, "GET", f"/open{query}", signed_in=False)
+    def test_a_wrong_or_missing_token_is_refused(self, server, query, signed_in, capsys) -> None:
+        """Refused whether or not the request already carries this server's cookie: the
+        cookie alone does not turn a wrong or missing token into a sign-in, which only the
+        exception for a code the ruling names - never a token - does."""
+        response, data = ask(server, "GET", f"/open{query}", signed_in=signed_in)
         assert response.status == 403
         assert b"Open the address" in data
+        # A refusal's URL held the guess that failed: just as worth never storing or replaying.
+        assert response.getheader("Cache-Control") == "no-store"
+        assert capsys.readouterr().err == ""
+
+    def test_a_code_is_as_strong_as_the_token(self, server) -> None:
+        """The ruling's two numbers, pinned by literal: 32 random bytes behind each - the
+        strength secrets.token_urlsafe(32) always renders as a 43-character string."""
+        assert TOKEN_BYTES == 32
+        assert len(server.issue_code()) == 43
+        assert len(server.token) == 43
+
+    def test_redeem_code_holds_the_lock_across_the_compare(self, server, monkeypatch) -> None:
+        """The read, the compare and the clear are one atomic step: two concurrent
+        presentations of the same code cannot both see it still pending."""
+        code = server.issue_code()
+        locked_during_compare: list[bool] = []
+        real_compare_digest = module.hmac.compare_digest
+
+        def recording_compare_digest(a: bytes, b: bytes) -> bool:
+            locked_during_compare.append(server._code_lock.locked())
+            return real_compare_digest(a, b)
+
+        monkeypatch.setattr(module.hmac, "compare_digest", recording_compare_digest)
+        assert server.redeem_code(code) is True
+        assert locked_during_compare == [True]
+
+    def test_redeem_code_spends_the_code_before_it_lets_the_lock_go(
+        self, server, monkeypatch
+    ) -> None:
+        """The spend is the single use itself: cleared once the lock was let go, two concurrent
+        presentations of the same code could both find it pending and both sign in. What the
+        code stands at, as the lock is let go, recorded by a lock that records it."""
+        code = server.issue_code()
+        lock = server._code_lock
+        at_release: list[object] = []
+
+        class Recording:
+            def __enter__(self) -> None:
+                lock.acquire()
+
+            def __exit__(self, *raised: object) -> None:
+                at_release.append(server._code)
+                lock.release()
+
+        monkeypatch.setattr(server, "_code_lock", Recording())
+        assert server.redeem_code(code) is True
+        assert at_release == [None]
+
+    def test_a_code_signs_a_browser_in_exactly_as_the_token_does(self, server) -> None:
+        code = server.issue_code()
+        response, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert response.status == 200
+        assert response.getheader("Set-Cookie") == (
+            f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
+        )
+        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
+
+    def test_a_code_signs_in_once_and_a_second_presentation_is_refused(
+        self, server, capsys
+    ) -> None:
+        code = server.issue_code()
+        first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert first.status == 200
+        assert capsys.readouterr().err == ""
+        second, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert second.status == 403
+        assert b"Open the address" in data
+        assert capsys.readouterr().err == f"{_CODE_REUSED}\n"
+
+    def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
+        """A guess that is not the one outstanding code is refused on its own, and does not
+        spend that code: a stranger trying codes cannot grief the browser the launch is
+        waiting for. It prints nothing: unlike a code presented again after it signed a
+        browser in, it was never the real one."""
+        code = server.issue_code()
+        wrong, data = ask(server, "GET", "/open?code=wrong", signed_in=False)
+        assert wrong.status == 403
+        assert b"Open the address" in data
+        assert capsys.readouterr().err == ""
+        right, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert right.status == 200
+
+    def test_a_spent_code_already_signed_in_answers_the_page_not_a_refusal(
+        self, server, capsys
+    ) -> None:
+        """A browser's own prefetch of the /open?code= address, or its navigating there a
+        second time once the first already set the cookie, presents a code that by then
+        looks exactly like a stranger's guess - the cookie already carried is what tells the
+        two apart, and only it is let through to the page rather than a 403. Nothing is
+        printed: this request carries the cookie, so it is not the case the terminal line
+        warns about."""
+        code = server.issue_code()
+        first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert first.status == 200
+        second, data = ask(server, "GET", f"/open?code={code}")  # signed_in=True by default
+        assert second.status == 200
+        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
+        assert capsys.readouterr().err == ""
+
+    def test_the_tokens_own_value_is_not_accepted_as_a_code(self, server) -> None:
+        server.issue_code()  # a code is pending during the window that matters
+        response, data = ask(server, "GET", f"/open?code={server.token}", signed_in=False)
+        assert response.status == 403
+        assert b"Open the address" in data
+
+    def test_an_unused_code_expires_after_60_seconds(self, project_file, pages, capsys) -> None:
+        """Refused, and nothing printed, however often it is presented: a code nobody signed in
+        with is no sign of anyone, and the terminal's warning is for a code somebody did."""
+        assert CODE_SECONDS == 60
+        clock = FakeClock()
+        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
+            code = started.issue_code()
+            clock.now += CODE_SECONDS
+            for _ in range(2):
+                response, data = ask(started, "GET", f"/open?code={code}", signed_in=False)
+                assert response.status == 403
+                assert b"Open the address" in data
+                assert capsys.readouterr().err == ""
+
+    def test_a_code_to_a_server_that_never_issued_one_is_refused_without_a_word(
+        self, server, capsys
+    ) -> None:
+        response, data = ask(server, "GET", "/open?code=anything", signed_in=False)
+        assert response.status == 403
+        assert b"Open the address" in data
+        assert capsys.readouterr().err == ""
+
+    def test_a_code_that_signed_a_browser_in_says_why_to_restart_when_presented_again(
+        self, server, capsys
+    ) -> None:
+        """Its winner holds the token itself, which a restart takes from it and the printed
+        address does not: printed once a presentation, without the cookie the winner was given."""
+        code = server.issue_code()
+        assert ask(server, "GET", f"/open?code={code}", signed_in=False)[0].status == 200
+        ask(server, "GET", f"/open?code={code}&token=wrong", signed_in=False)
+        assert capsys.readouterr().err == (
+            "ddd gui: a launch code that already signed a browser in was presented again; if "
+            "your browser is not signed in, another process on this computer may have signed "
+            "in with it first and now holds the token itself, so restart ddd gui rather than "
+            "open the address it printed\n"
+        )
+
+    def test_a_code_still_signs_in_a_moment_before_60_seconds(self, project_file, pages) -> None:
+        clock = FakeClock()
+        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
+            code = started.issue_code()
+            clock.now += CODE_SECONDS - 1
+            response, _ = ask(started, "GET", f"/open?code={code}", signed_in=False)
+            assert response.status == 200
 
     def test_the_api_without_the_cookie_is_unauthorised(self, server) -> None:
         response, data = ask(server, "GET", "/api/session", signed_in=False)
@@ -173,6 +480,7 @@ class TestSigningIn:
     def test_a_page_without_the_cookie_says_where_to_sign_in(self, server) -> None:
         response, data = ask(server, "GET", "/", signed_in=False)
         assert (response.status, b"Open the address" in data) == (401, True)
+        assert response.getheader("Content-Type") == "text/html; charset=utf-8"
 
     def test_a_cookie_with_another_value_is_not_signed_in(self, server) -> None:
         forged = {"Cookie": f"{cookie(server)}=forged"}
@@ -226,17 +534,118 @@ class TestWhoMayAsk:
         response, _ = ask(server, "GET", "/api/session", host=f"localhost:{server.port}")
         assert response.status == 200
 
+    @pytest.mark.parametrize("site", ["same-site", "cross-site"])
+    @pytest.mark.parametrize("path", ["/api/session", "/api/compare?baseline=x"])
+    def test_an_api_request_from_another_page_is_refused(self, server, site, path) -> None:
+        """A page served from another port of 127.0.0.1 is the same site to a browser, which
+        sends it this server's SameSite=Strict cookie: probed against a1da6ce, its GET of
+        /api/compare ran the comparison, plugins and all."""
+        response, data = ask(server, "GET", path, headers={"Sec-Fetch-Site": site})
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": _ELSEWHERE},
+        )
+
+    def test_the_elsewhere_refusal_names_the_address_printed(self, server) -> None:
+        """Pinned by its literal text: comparing against the imported ``_ELSEWHERE`` constant
+        instead would drift along with any mutation to its wording, and catch nothing."""
+        _, data = ask(server, "GET", "/api/session", headers={"Sec-Fetch-Site": "same-site"})
+        assert json.loads(data) == {
+            "error": "forbidden",
+            "message": "ddd gui answers its own page alone, opened from the address it printed",
+        }
+
+    def test_a_page_requested_from_another_page_says_where_to_sign_in(self, server) -> None:
+        response, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
+        assert response.getheader("Content-Type") == "text/html; charset=utf-8"
+
+    @pytest.mark.parametrize("site", [None, "same-origin", "none"])
+    @pytest.mark.parametrize("origin", ["http://127.0.0.1:1", "http://evil.example", "null"])
+    def test_a_get_carrying_another_origin_is_refused(self, server, origin, site) -> None:
+        headers = None if site is None else {"Sec-Fetch-Site": site}
+        response, data = ask(server, "GET", "/api/session", origin=origin, headers=headers)
+        assert (response.status, json.loads(data)["message"]) == (403, _ELSEWHERE)
+
+    @pytest.mark.parametrize("site", ["same-origin", "none"])
+    def test_this_page_and_an_address_typed_are_answered(self, server, site) -> None:
+        response, _ = ask(server, "GET", "/api/session", headers={"Sec-Fetch-Site": site})
+        assert response.status == 200
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+    def test_this_servers_own_origin_is_answered(self, server, host) -> None:
+        response, _ = ask(server, "GET", "/api/session", origin=f"http://{host}:{server.port}")
+        assert response.status == 200
+
+    def test_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
+        response, _ = ask(
+            server, "GET", "/api/session", signed_in=False, headers={"Sec-Fetch-Site": "same-site"}
+        )
+        assert response.status == 403
+
+    def test_a_post_from_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
+        """The POST sibling of test_another_page_is_refused_before_the_cookie_is_read: the gate
+        runs before ``_signed_in`` and before the POST rule alike, so a POST marked same-site
+        is refused by the gate's own sentence, not by ``_FORBIDDEN``, without ever reaching the
+        cookie."""
+        response, data = ask(
+            server,
+            "POST",
+            "/api/open",
+            body=b"{}",
+            signed_in=False,
+            headers={"Sec-Fetch-Site": "same-site"},
+        )
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": _ELSEWHERE},
+        )
+
+    def test_signing_in_is_answered_wherever_the_address_was_opened_from(self, server) -> None:
+        """A sign-in is answered wherever the address was opened from, since the token or the
+        code is what ``/open`` checks - never ``Sec-Fetch-Site`` or ``Origin``. ``cross-site``
+        is kept as the value a browser marks least trustworthy; a real launch arrives marked
+        ``none`` instead (a navigation the opener started), which signs in just the same."""
+        response, _ = ask(
+            server,
+            "GET",
+            f"/open?token={server.token}",
+            signed_in=False,
+            headers={"Sec-Fetch-Site": "cross-site"},
+        )
+        assert response.status == 200
+
+    def test_a_launch_code_is_answered_wherever_it_was_presented_from(self, server) -> None:
+        """The sibling of test_signing_in_is_answered_wherever_the_address_was_opened_from, for
+        a single-use launch code rather than the long-lived token: presented cross-site too,
+        since ``_route`` answers ``/open`` before the gate is ever reached, for a code exactly
+        as for the token - neither header is read there either."""
+        response, _ = ask(
+            server,
+            "GET",
+            f"/open?code={server.issue_code()}",
+            signed_in=False,
+            headers={"Sec-Fetch-Site": "cross-site"},
+        )
+        assert response.status == 200
+
     @pytest.mark.parametrize(
-        ("origin", "content_type"),
+        ("origin", "content_type", "message"),
         [
-            (None, "application/json"),
-            ("http://evil.example", "application/json"),
-            ("http://127.0.0.1:1", "application/json"),
-            ("OWN", "text/plain"),
+            # No Origin and no Sec-Fetch-Site: the gate lets it through, same as a script or
+            # curl would; the POST rule (step 5) is what refuses it, with _FORBIDDEN.
+            (None, "application/json", _FORBIDDEN),
+            # A foreign Origin, no Sec-Fetch-Site: the gate (step 3) catches it first, with
+            # _ELSEWHERE - before the POST rule is ever reached.
+            ("http://evil.example", "application/json", _ELSEWHERE),
+            ("http://127.0.0.1:1", "application/json", _ELSEWHERE),
+            # This server's own Origin, but the wrong content type: the gate lets it through,
+            # and the POST rule (step 5) refuses it, with _FORBIDDEN.
+            ("OWN", "text/plain", _FORBIDDEN),
         ],
     )
     def test_a_change_from_anywhere_but_this_page_is_forbidden(
-        self, server, origin, content_type
+        self, server, origin, content_type, message
     ) -> None:
         own = f"http://127.0.0.1:{server.port}"
         response, data = ask(
@@ -247,7 +656,10 @@ class TestWhoMayAsk:
             origin=own if origin == "OWN" else origin,
             content_type=content_type,
         )
-        assert (response.status, json.loads(data)["error"]) == (403, "forbidden")
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": message},
+        )
 
     def test_a_change_from_this_page_is_answered(self, server) -> None:
         response, _ = ask(
@@ -270,6 +682,33 @@ class TestWhoMayAsk:
             headers={"Content-Length": str(MAX_BODY + 1)},
         )
         assert response.status == 413
+
+    def test_a_content_length_of_4301_nines_is_too_large_not_500(self, server, capsys) -> None:
+        """``int()`` itself refuses a string of more than 4,300 digit characters, whatever
+        they are, raising the same ``ValueError`` the hostile walk pins over a query's own
+        numbers (``MAX_DIGITS``, ``queries.py``), which ``_body`` read straight into ``int()``
+        unguarded. No body is sent: 4,301 nines is refused before ``_body`` reads one."""
+        status, body = raw_answer(server, posted(server, "9" * 4301))
+        assert (status, json.loads(body)) == (
+            413,
+            {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
+        )
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        ("length", "body"), [("0" * 4301, b""), ("00000002", b"{}")], ids=["zeros", "00000002"]
+    )
+    def test_leading_zeros_aside_a_length_is_read_as_its_value(
+        self, server, length, body, capsys
+    ) -> None:
+        """Zeros alone are a length of 0, however many there are, and zeros before a length
+        are no part of it: each is answered exactly as the same request spelling its length
+        plainly. ``00000002`` converted before ``_body`` stripped anything, so it pins that a
+        length is not refused for its digits alone, eight of them where ``MAX_BODY`` has
+        seven."""
+        plainly = raw_answer(server, posted(server, str(len(body)), body))
+        assert raw_answer(server, posted(server, length, body)) == plainly
+        assert capsys.readouterr().err == ""
 
     def test_a_length_that_is_not_one_is_a_bad_request(self, server) -> None:
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
@@ -359,7 +798,7 @@ class TestWhatIsServed:
         def failing(api: Api, query: object, body: object) -> None:
             raise RuntimeError("a defect")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": failing})
+        answering_session(monkeypatch, failing)
         response, data = ask(server, "GET", "/api/session")
         assert response.status == 500
         assert response.getheader("Cache-Control") == "no-store"
@@ -368,8 +807,54 @@ class TestWhatIsServed:
             "message": "ddd gui failed on this request; the terminal it runs in shows why",
         }
         printed = capsys.readouterr().err
-        assert "GET /api/session" in printed
+        assert "GET '/api/session'" in printed
         assert "RuntimeError: a defect" in printed
+
+    def test_a_failure_is_printed_with_its_target_escaped(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """``self.path`` is anyone's text, and an escape sequence in it printed raw would
+        reach the terminal the page tells the reader to watch. Reaching this honestly, with
+        an ordinary route still dispatched and still made to fail, needs something a route
+        match never sees: a fragment, which ``urlsplit`` carries past the dispatcher unread,
+        yet which ``self.path`` - the whole target, unsplit - still holds when this prints
+        it."""
+
+        def failing(api: Api, query: object, body: object) -> None:
+            raise RuntimeError("a defect")
+
+        answering_session(monkeypatch, failing)
+        path = "/api/session#\x1b"
+        sent = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{server.port}\r\n"
+            f"Cookie: {cookie(server)}={server.token}\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii")
+        status, _ = raw_answer(server, sent)
+        assert status == 500
+        printed = capsys.readouterr().err
+        assert f"GET {path!r}" in printed
+        assert "\x1b" not in printed
+
+    def test_a_failure_is_printed_with_its_traceback_escaped(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """An exception's own message is printed as it stands, and one that carried request
+        text into it through ``str()`` - none does today, each formats it with ``%r`` - would
+        put an escape sequence on the terminal raw: the title's, the screen cleared, the text
+        that follows turned around. Every character a terminal does not print as itself is
+        written as its escape instead, but the line breaks a traceback is made of."""
+
+        def failing(api: Api, query: object, body: object) -> None:
+            raise RuntimeError("a defect \x1b]0;owned\x07 \x1b[2J\u202e\r\tend")
+
+        answering_session(monkeypatch, failing)
+        response, _ = ask(server, "GET", "/api/session")
+        assert response.status == 500
+        printed = capsys.readouterr().err
+        assert "RuntimeError: a defect \\x1b]0;owned\\x07 \\x1b[2J\\u202e\\r\\tend\n" in printed
+        assert [c for c in printed if not (c == "\n" or c.isprintable())] == []
 
     def test_an_answer_json_cannot_spell_is_a_failure_rather_than_a_body_no_page_reads(
         self, server, monkeypatch, capsys
@@ -379,7 +864,7 @@ class TestWhatIsServed:
         def slipped(api: Api, query: object, body: object) -> Reply:
             return Reply(200, {"limit": float("nan")})
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": slipped})
+        answering_session(monkeypatch, slipped)
         response, data = ask(server, "GET", "/api/session")
         assert (response.status, json.loads(data)["error"]) == (500, "internal")
         assert "ValueError: Out of range float values are not JSON compliant" in (
@@ -392,7 +877,7 @@ class TestWhatIsServed:
         def gone(api: Api, query: object, body: object) -> None:
             raise ConnectionAbortedError("the tab was closed")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": gone})
+        answering_session(monkeypatch, gone)
         with pytest.raises(http.client.RemoteDisconnected):
             ask(server, "GET", "/api/session")
         assert capsys.readouterr().err == ""
@@ -407,7 +892,7 @@ class TestWhatIsServed:
         def stalled(api: Api, query: object, body: object) -> None:
             raise TimeoutError("the page stopped reading")
 
-        monkeypatch.setitem(api_module._ROUTES, "/api/session", {"GET": stalled})
+        answering_session(monkeypatch, stalled)
         with pytest.raises(http.client.RemoteDisconnected):
             ask(server, "GET", "/api/session")
         assert capsys.readouterr().err == ""
@@ -437,6 +922,414 @@ class TestWhatIsServed:
         assert static_directory() == Path(ddd.__file__).parent / "gui" / "static"
 
 
+INDEX: Final = (200, "text/html; charset=utf-8", b"stand-in")
+"""The ``pages`` fixture's ``index.html``, as it is answered: what a path naming no file of the
+pages is served."""
+
+
+def served(server: GuiServer, path: str) -> tuple[int, str | None, bytes]:
+    """What a signed-in ``GET`` of ``path`` is answered: its status, its type and its body."""
+    response, data = ask(server, "GET", path)
+    return response.status, response.getheader("Content-Type"), data
+
+
+def looked_up(monkeypatch: pytest.MonkeyPatch, links: Collection[Path] = ()) -> list[str]:
+    """Every path ``ddd.gui.server`` asks ``os.path`` about from here on, in the order asked:
+    the module's ``os`` swapped for one whose ``path`` records each question's path before
+    answering it. That module's questions alone - anything else in the process that asks the
+    file system something is not what these tests are about - and only the four ``_page``
+    asks: a fifth fails the request, rather than going unrecorded.
+
+    Each of ``links`` is answered a symbolic link, whatever it is on disk: a link to a file,
+    which an ordinary account cannot make on Windows."""
+    asked: list[str] = []
+    linked = {os.fspath(link) for link in links}
+
+    def recording(question: Callable[[Any], bool]) -> Callable[[Any], bool]:
+        def recorded(path: Any) -> bool:
+            asked.append(os.fspath(path))
+            return question(path)
+
+        return recorded
+
+    answers = {name: getattr(os.path, name) for name in ("isdir", "isfile", "isjunction", "islink")}
+    on_disk = answers["islink"]
+
+    def islink(path: Any) -> bool:
+        return os.fspath(path) in linked or on_disk(path)
+
+    answers["islink"] = islink
+    questions = {name: recording(answer) for name, answer in answers.items()}
+    path = types.SimpleNamespace(**questions)
+    monkeypatch.setattr(module, "os", types.SimpleNamespace(path=path))
+    return asked
+
+
+class TestAPagePath:
+    """A page path is read as plain names under the pages, and nothing it names is resolved.
+
+    It used to be resolved, then statted, and each step had a way to fail, answered 500 with a
+    traceback: on POSIX a NUL made ``Path.resolve()`` raise ``ValueError``; on 3.12 and 3.13 a
+    name over 255 bytes made ``Path.is_file()`` raise ``OSError``; on 3.12 a loop of links
+    made ``resolve()`` raise ``RuntimeError``, and a long chain of links ``RecursionError``.
+    On Windows, resolving opened a network or device spelling before anything checked where
+    it led. Every path here that names no file is answered the index, as any unknown path is,
+    with nothing printed."""
+
+    @pytest.fixture
+    def assets(self, pages: Path) -> Path:
+        """A directory of the pages, as the compiled pages' ``assets`` is, holding a script."""
+        (pages / "assets").mkdir()
+        (pages / "assets" / "index.js").write_text("export {};", encoding="utf-8")
+        return pages / "assets"
+
+    def test_a_file_nested_in_the_pages_is_served_with_its_own_type(self, server, assets) -> None:
+        assert served(server, "/assets/index.js") == (
+            200,
+            "text/javascript; charset=utf-8",
+            b"export {};",
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/%00",
+            "/a%00b.js",
+            "/../secret.txt",
+            "/%2e%2e/secret.txt",
+            "/./app.js",
+            "/%5C%5Chost%5Cshare%5Cx",
+            "/%5C%5C.%5Cpipe%5Cname",
+            "/C:%5Cx",
+            "/C:x",
+        ],
+    )
+    def test_a_name_that_is_not_plain_names_no_file_and_is_never_looked_up(
+        self, server, path, monkeypatch, capsys
+    ) -> None:
+        """A NUL, a dot segment, a backslash or a colon - the last two spell a network path, a
+        device or a drive on Windows - makes the path name no file before anything asks the
+        file system about it, even where the file it would name is there (``app.js``,
+        ``secret.txt``)."""
+        asked = looked_up(monkeypatch)
+        assert served(server, path) == INDEX
+        assert asked == []
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        "path", ["/" + "a" * 300, "/assets/", "/app.js/", "/assets//index.js", "/app.js/x"]
+    )
+    def test_a_path_with_no_file_of_its_own_is_answered_the_index(
+        self, server, assets, path, capsys
+    ) -> None:
+        """A name too long for a file system to hold; an empty one, after a trailing slash -
+        whether a directory or a file comes before it - or between two slashes, though
+        ``assets/index.js`` is there; and a name under a file."""
+        assert served(server, path) == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_loop_of_links_beside_the_pages_is_answered_the_index(
+        self, server, pages, capsys
+    ) -> None:
+        """A browser takes ``..`` out of a path; a client of the token holder's own may send it
+        as it is, as ``http.client`` does here."""
+        looped(pages.parent / "loop", pages.parent / "pool")
+        assert served(server, "/../loop") == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_loop_of_links_inside_the_pages_is_answered_the_index(
+        self, server, pages, capsys
+    ) -> None:
+        looped(pages / "loop", pages / "pool")
+        assert served(server, "/loop") == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_link_inside_the_pages_to_a_directory_outside_them_is_never_followed(
+        self, server, pages, capsys
+    ) -> None:
+        """The confinement spec section 2 keeps, which ``resolve()`` and ``is_relative_to``
+        gave before: a file outside the pages is never served, here ``secret.txt``, reached
+        through a link inside them. A link to a directory, which is a junction on Windows: a
+        link to a file needs a privilege there that an ordinary account does not hold."""
+        directory_link(pages / "outside", pages.parent)
+        assert served(server, "/outside/secret.txt") == INDEX
+        assert capsys.readouterr().err == ""
+
+    def test_a_last_name_that_is_a_link_is_not_served(
+        self, server, pages, monkeypatch, capsys
+    ) -> None:
+        """The link check is made of the name a path ends in, as well as of each name it steps
+        into: a link to a file outside the pages is that last name. ``app.js``, the pages' own
+        script, answered a link by ``looked_up`` - a link to a file needs a privilege on Windows
+        that an ordinary account does not hold - is not served, where it otherwise is."""
+        looked_up(monkeypatch, links=[pages / "app.js"])
+        assert served(server, "/app.js") == INDEX
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/COM1", "/nul.js", "/con", "/Lpt9.txt", "/aux.", "/assets/CON", "/CONIN$", "/conout$.js"],
+    )
+    def test_a_name_windows_keeps_for_a_device_names_no_file_on_any_system(
+        self, server, pages, assets, path, monkeypatch, capsys
+    ) -> None:
+        """Windows opens a device for such a name, in any directory, whatever its extension or
+        case: ``COM1`` a serial port, ``NUL`` the null device, ``CONIN$`` the console's own
+        input. It is never looked up, on any system; and where it can be an ordinary file, on
+        any system but Windows, that file is not served either."""
+        if sys.platform != "win32":
+            (pages / path[1:]).write_text("a device, on Windows", encoding="utf-8")
+        asked = looked_up(monkeypatch)
+        assert served(server, path) == INDEX
+        assert set(asked) <= {str(pages), str(pages / "assets")}
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        "device",
+        [
+            "CON",
+            "PRN",
+            "AUX",
+            "NUL",
+            "COM0",
+            "COM1",
+            "COM2",
+            "COM3",
+            "COM4",
+            "COM5",
+            "COM6",
+            "COM7",
+            "COM8",
+            "COM9",
+            "COM¹",
+            "COM²",
+            "COM³",
+            "LPT0",
+            "LPT1",
+            "LPT2",
+            "LPT3",
+            "LPT4",
+            "LPT5",
+            "LPT6",
+            "LPT7",
+            "LPT8",
+            "LPT9",
+            "LPT¹",
+            "LPT²",
+            "LPT³",
+            "CONIN$",
+            "CONOUT$",
+        ],
+    )
+    def test_every_name_windows_keeps_for_a_device_is_one_however_it_is_spelled(
+        self, device
+    ) -> None:
+        """In any case, with any extension, with the spaces or dots Windows takes off the end
+        of a name, and with a colon after it, which Windows cuts a device's name at as well."""
+        spellings = [
+            device,
+            device.lower(),
+            device.title(),
+            f"{device}.txt",
+            f"{device.lower()}.tar.gz",
+            f"{device}.",
+            f"{device} ",
+            f"{device} .js",
+            f"{device}:",
+            f"{device.lower()}:stream",
+        ]
+        assert {device_named(name) for name in spellings} == {device}
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "console",
+            "com10",
+            "COM",
+            "lpt",
+            "nul_",
+            "xaux",
+            "aux-1.js",
+            ".con",
+            "COM⁴",
+            "app.js",
+            "CONIN",
+            "conout",
+            "CONIN$x",
+        ],
+    )
+    def test_a_name_merely_like_one_is_none(self, name) -> None:
+        assert device_named(name) is None
+
+    def test_a_path_is_looked_up_no_deeper_than_the_pages_go(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """A request line of 65,536 bytes holds up to 32,760 names. Asked about one after
+        another, each a longer path than the last, that many took forty seconds on the
+        development PC; but a name past one that is not a directory names no file, and is
+        never asked about."""
+        asked = looked_up(monkeypatch)
+        assert served(server, "/" + "a/" * 30_000 + "a") == INDEX
+        assert set(asked) == {str(server.static), str(server.static / "a")}
+        assert capsys.readouterr().err == ""
+
+
+class TestAMalformedAbsoluteFormTarget:
+    """The absolute form of a target names its host before its path - ``http://host/path`` -
+    and a malformed one, a bracket opened for an IPv6 address and never closed, makes
+    ``urlsplit`` itself raise. That used to happen after the Host check, but before the gate
+    ever read where the request claims to come from, and before anything answered it:
+    ``_answer``'s catch-all split the same text again to print it, raised the same way, and
+    socketserver printed a traceback and closed the connection with nothing written - no
+    token needed, since the gate and the cookie are both later than this."""
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            b"GET http://[/ HTTP/1.1",
+            b"GET http://[/api/session HTTP/1.1",
+            b"GET http://[x]/ HTTP/1.1",
+        ],
+    )
+    def test_an_unsplittable_get_is_answered_400(self, server, line, capsys) -> None:
+        sent = line + (
+            f"\r\nHost: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n".encode("ascii")
+        )
+        status, body = raw_answer(server, sent)
+        assert (status, json.loads(body)) == (
+            400,
+            {"error": "bad-request", "message": "the request's target cannot be read"},
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_an_unsplittable_post_is_answered_400_too(self, server, capsys) -> None:
+        sent = b"POST http://[/project HTTP/1.1\r\n" + (
+            f"Host: 127.0.0.1:{server.port}\r\nContent-Length: 0\r\n"
+            "Connection: close\r\n\r\n".encode("ascii")
+        )
+        status, body = raw_answer(server, sent)
+        assert (status, json.loads(body)) == (
+            400,
+            {"error": "bad-request", "message": "the request's target cannot be read"},
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_a_well_formed_absolute_form_target_reaches_the_gate_instead(self, server) -> None:
+        """The control: an absolute-form target ``urlsplit`` can read goes on as any other
+        request would, past this check - here as far as the cookie, which it does not carry."""
+        sent = (
+            f"GET http://127.0.0.1:{server.port}/ HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n"
+        ).encode("ascii")
+        assert status_of(server, sent) == 401
+
+
+def every_answer(server: GuiServer, sent: bytes) -> bytes:
+    """Everything ``server`` writes back to ``sent``, on a connection of its own that asks to be
+    kept open, read until the server closes it - or until five seconds pass with nothing more,
+    the server holding it open for another request."""
+    received = b""
+    with socket.create_connection(("127.0.0.1", server.port), timeout=5) as connection:
+        connection.sendall(sent)
+        try:
+            while chunk := connection.recv(65536):
+                received += chunk
+        except TimeoutError:
+            pass
+    return received
+
+
+class TestABodyLeftUnread:
+    """A ``POST`` refused before its body is read leaves that body on the connection, where the
+    server read it as the next request and answered that too, keeping the connection open.
+    Such a refusal closes the connection instead, and says so (``Connection: close``): one
+    answer, then nothing. The smuggled request carries no cookie, so this was never more than
+    a confusion - but the body is anyone's text."""
+
+    SMUGGLED: Final = b"GET /api/session HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+
+    @pytest.fixture(autouse=True)
+    def briefly_idle(self, monkeypatch) -> None:
+        """A connection left open closes after half a second idle, rather than thirty, so that
+        reading one to its end - kept open, or held for a request that never comes - ends
+        soon either way."""
+        monkeypatch.setattr(module._Handler, "timeout", 0.5)
+
+    @pytest.mark.parametrize(
+        ("target", "headers", "status"),
+        [
+            ("/api/edit", "", 401),
+            ("/api/edit", "COOKIE Sec-Fetch-Site: cross-site\r\n", 403),
+            ("/api/edit", "COOKIE OWN Content-Type: text/plain\r\n", 403),
+            ("/index.html", "COOKIE OWN Content-Type: application/json\r\n", 405),
+            ("http://[/api/edit", "", 400),
+        ],
+        ids=["unsigned", "from-elsewhere", "not-json", "to-a-page", "an-unsplittable-target"],
+    )
+    def test_a_post_refused_before_its_body_is_read_is_answered_once_and_closed(
+        self, server, target, headers, status
+    ) -> None:
+        signed = f"Cookie: {cookie(server)}={server.token}\r\n"
+        own = f"Origin: http://127.0.0.1:{server.port}\r\n"
+        headers = headers.replace("COOKIE ", signed).replace("OWN ", own)
+        sent = (
+            f"POST {target} HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n{headers}"
+            f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
+        ).encode("ascii") + self.SMUGGLED
+        answered = every_answer(server, sent)
+        assert answered.count(b"HTTP/1.1 ") == 1
+        assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
+        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+
+    @pytest.mark.parametrize(
+        ("length", "status"),
+        [(str(MAX_BODY + 1), 413), ("ten", 400)],
+        ids=["too-long", "no-length"],
+    )
+    def test_a_post_whose_length_is_refused_is_answered_once_and_closed(
+        self, server, length, status
+    ) -> None:
+        """Its body is never read, whatever follows: too long to read, or of no length to read
+        by."""
+        sent = posted(server, length).replace(b"Connection: close\r\n", b"") + self.SMUGGLED
+        answered = every_answer(server, sent)
+        assert answered.count(b"HTTP/1.1 ") == 1
+        assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
+        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+
+    def test_a_misdirected_post_is_answered_once_and_closed(self, server) -> None:
+        sent = (
+            f"POST /api/edit HTTP/1.1\r\nHost: example.com:{server.port}\r\n"
+            f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
+        ).encode("ascii") + self.SMUGGLED
+        answered = every_answer(server, sent)
+        assert answered.count(b"HTTP/1.1 ") == 1
+        assert answered.startswith(b"HTTP/1.1 421 ")
+        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+
+    def test_a_post_whose_body_was_read_keeps_its_connection(self, server) -> None:
+        """Answered whatever its body says, as one request, and the connection kept for the
+        next, which here follows it at once: a refusal of what the body holds reads the body
+        first."""
+        body = b"{}"
+        sent = posted(server, str(len(body)), body).replace(b"Connection: close\r\n", b"")
+        answered = every_answer(server, sent + self.SMUGGLED)
+        assert answered.count(b"HTTP/1.1 ") == 2
+        assert b"\r\nConnection: close\r\n" not in answered
+
+    def test_a_post_refused_after_one_whose_body_was_read_is_closed_too(self, server) -> None:
+        """Down one connection: whether a body was read is each request's own."""
+        body = b"{}"
+        read = posted(server, str(len(body)), body).replace(b"Connection: close\r\n", b"")
+        refused = (
+            f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+            f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
+        ).encode("ascii") + self.SMUGGLED
+        answered = every_answer(server, read + refused)
+        assert answered.count(b"HTTP/1.1 ") == 2
+        assert answered.partition(b"HTTP/1.1 401 ")[2].count(b"\r\nConnection: close\r\n") == 1
+
+
 class TestOneConnectionCarriesManyAsks:
     """Opening a panel asks this server twenty-odd times. Under HTTP/1.0 each ask cost a
     connection of its own, and a suite of browser journeys against 127.0.0.1 ran a windows
@@ -450,10 +1343,13 @@ class TestOneConnectionCarriesManyAsks:
         response = connection.getresponse()
         return response, response.read()
 
-    def test_a_redirect_a_page_and_the_api_are_answered_down_the_same_one(self, server) -> None:
-        # The redirect answers with no body at all, and the page with bytes that are not json:
-        # the three shapes a connection read twice has to tell apart, in the order a browser
-        # meets them. Each says how long it is, which is what lets it be told from the next.
+    def test_the_open_page_a_static_page_and_the_api_are_answered_down_the_same_one(
+        self, server
+    ) -> None:
+        # /open answers a page, not a redirect: two of these are pages, bytes that are not
+        # json, and two are the api's json - the shapes a connection read twice has to tell
+        # apart, in the order a browser meets them. Each says how long it is, which is what
+        # lets it be told from the next.
         signed_in = {"Cookie": f"{cookie(server)}={server.token}"}
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         try:
@@ -465,9 +1361,10 @@ class TestOneConnectionCarriesManyAsks:
             ]
         finally:
             connection.close()
-        assert [response.status for response, _ in asked] == [303, 200, 200, 404]
+        assert [response.status for response, _ in asked] == [200, 200, 200, 404]
         assert [response.version for response, _ in asked] == [11, 11, 11, 11]
         assert [response.will_close for response, _ in asked] == [False] * 4
+        assert asked[0][1] == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
         assert asked[1][1] == b"stand-in"
         assert json.loads(asked[2][1])["version"] == ddd.__version__
 
@@ -492,6 +1389,440 @@ class TestOneConnectionCarriesManyAsks:
                 pytest.fail("the connection was held open")
         finally:
             connection.close()
+
+
+class Held:
+    """A stand-in for the API: every request waits until the test lets it go."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+        self.asked = threading.Semaphore(0)
+        self.release = threading.Event()
+
+    def handle(self, method, path, query, body):
+        self.asked.release()
+        assert self.release.wait(10), "the test never let the request go"
+        return Reply(200, {"held": True})
+
+
+def _cannot_start(self) -> None:
+    raise RuntimeError("can't start new thread")
+
+
+def _recording(started: list[threading.Thread]) -> Callable[[threading.Thread], None]:
+    """``threading.Thread.start``, noting in ``started`` every thread it is asked to start."""
+    start = threading.Thread.start
+
+    def recorded(thread: threading.Thread) -> None:
+        started.append(thread)
+        start(thread)
+
+    return recorded
+
+
+def _noting(
+    taken: list[tuple[bool, float | None]], acquire: Callable[..., bool]
+) -> Callable[..., bool]:
+    """A semaphore's ``acquire``, noting in ``taken`` how each call asked for a slot: whether
+    it would wait for one, and for how long."""
+
+    def noted(blocking: bool = True, timeout: float | None = None) -> bool:
+        taken.append((blocking, timeout))
+        return acquire(blocking, timeout)
+
+    return noted
+
+
+class Deadlines:
+    """A connection's server end that notes every deadline it is given, and passes everything
+    else to the socket it stands in for."""
+
+    def __init__(self, end: socket.socket) -> None:
+        self.end = end
+        self.deadlines: list[float | None] = []
+
+    def settimeout(self, value: float | None) -> None:
+        self.deadlines.append(value)
+        self.end.settimeout(value)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.end, name)
+
+
+def filled(end: socket.socket) -> None:
+    """Send from ``end`` until it can send no more, its peer reading none of it - or fail at
+    64 MiB rather than send forever."""
+    end.setblocking(False)
+    chunk = bytes(65536)
+    for _ in range(1024):
+        try:
+            end.send(chunk)
+        except BlockingIOError:
+            return
+    pytest.fail("the connection took 64 MiB and was still not full")
+
+
+def arrived(end: socket.socket) -> None:
+    """Wait, ten seconds at most, until what the other end of a pair sent, or its going away,
+    can be read at ``end``: at once on a unix socket, and a moment later on Windows, where
+    ``socket.socketpair`` is two TCP sockets over loopback."""
+    readable, _, _ = select.select([end], [], [], 10)
+    assert readable == [end], "nothing arrived"
+
+
+def arrived_in_full(end: socket.socket, sent: bytes) -> None:
+    """Wait, ten seconds at most, until all of ``sent`` can be read at ``end`` - peeked, so that
+    it is all still there for a refusal to drain. A unix socket has it at once. On Windows,
+    where ``socket.socketpair`` is two TCP sockets over loopback, a request of a few KB can
+    arrive in pieces, and a drain that read only the first would pass where it should fail."""
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        arrived(end)
+        if len(end.recv(len(sent), socket.MSG_PEEK)) == len(sent):
+            return
+    pytest.fail("the request never arrived in full")
+
+
+def read_to_the_end(end: socket.socket) -> bytes:
+    """All that ``end`` reads until the other end closes, given ten seconds to."""
+    end.settimeout(10)
+    with end.makefile("rb") as reading:
+        return reading.read()
+
+
+def refused(server: GuiServer, sent: bytes) -> bytes:
+    """What a client that sent ``sent`` reads once ``server`` is handed the other end of their
+    socket pair, as the accepting thread hands it a connection: ``sent`` arrived in full first,
+    so the drain meets all of it, and the answer read to its end. The server's end carries a
+    deadline of its own, so that a refusal that waited to read fails rather than hangs."""
+    ours, theirs = socket.socketpair()
+    with ours, theirs:
+        if sent:
+            theirs.sendall(sent)
+            arrived_in_full(ours, sent)
+        ours.settimeout(10)
+        server.process_request(ours, ("127.0.0.1", 0))
+        return read_to_the_end(theirs)
+
+
+BROWSERS_REQUEST: Final = (
+    "GET /api/state?after=7 HTTP/1.1\r\n"
+    "Host: 127.0.0.1:8123\r\n"
+    "Connection: keep-alive\r\n"
+    'sec-ch-ua: "Chromium";v="153", "Not.A/Brand";v="99"\r\n'
+    "sec-ch-ua-mobile: ?0\r\n"
+    'sec-ch-ua-platform: "Linux"\r\n'
+    "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/153.0.0.0 Safari/537.36\r\n"
+    "Accept: */*\r\n"
+    "Sec-Fetch-Site: same-origin\r\n"
+    "Sec-Fetch-Mode: cors\r\n"
+    "Sec-Fetch-Dest: empty\r\n"
+    "Accept-Encoding: gzip, deflate, br, zstd\r\n"
+    "Accept-Language: en-GB,en;q=0.9\r\n"
+    f"Cookie: ddd-gui-8123={'t' * 43}; "
+    + "; ".join(f"app-{n}-session={'s' * 120}" for n in range(32))
+    + "\r\n\r\n"
+).encode("ascii")
+"""A request the size a browser sends this server, about 5 KB: its usual headers, and a cookie
+header carrying, beside this server's own, what other apps on 127.0.0.1 have set - a browser
+sends every one of them to every port."""
+
+
+class TestTheCap:
+    """Spec §6: a connection takes one of sixty-four slots before it gets a thread, and with
+    none free the thread that accepts it answers 503 itself and closes it, starting no thread.
+
+    The refusal is read off a ``socket.socketpair`` handed to ``process_request`` directly,
+    rather than a sixty-fifth network connection: whether a refused client reads its answer
+    before the close would then turn on whether its request had arrived when it was accepted,
+    a race no assertion can pin (the plan's ruling 2)."""
+
+    @pytest.fixture
+    def one_slot(self, project_file: Path, pages: Path) -> Iterator[GuiServer]:
+        """A server of one slot that serves nothing itself: each test hands
+        ``process_request`` its connections, as the accepting thread would."""
+        server = GuiServer(Held(Session(project_file.parent)), pages, connections=1)
+        try:
+            yield server
+        finally:
+            server.server_close()
+
+    def test_the_cap_is_sixty_four_connections(self) -> None:
+        assert MAX_CONNECTIONS == 64
+
+    def test_a_server_takes_sixty_four_connections_at_once_unless_told_otherwise(
+        self, project_file, pages
+    ) -> None:
+        server = GuiServer(Held(Session(project_file.parent)), pages)
+        try:
+            taken = [server.slots.acquire(blocking=False) for _ in range(65)]
+            assert taken == [True] * 64 + [False]
+            for _ in range(64):
+                server.slots.release()
+            # Bounded: a slot given back twice is an error, never a sixty-fifth slot.
+            with pytest.raises(ValueError, match="Semaphore released too many times"):
+                server.slots.release()
+        finally:
+            server.server_close()
+
+    def test_a_connection_past_the_cap_is_answered_503_by_the_accepting_thread(
+        self, project_file, pages, monkeypatch
+    ) -> None:
+        api = Held(Session(project_file.parent))
+        try:
+            for server in serving(api, pages, connections=2):
+                taken: list[tuple[bool, float | None]] = []
+                started: list[threading.Thread] = []
+                with monkeypatch.context() as watching:
+                    watching.setattr(server.slots, "acquire", _noting(taken, server.slots.acquire))
+                    held = [
+                        threading.Thread(
+                            target=ask, args=(server, "GET", "/api/session"), daemon=True
+                        )
+                        for _ in range(2)
+                    ]
+                    for each in held:
+                        each.start()
+                    for _ in held:
+                        assert api.asked.acquire(timeout=10)
+                    watching.setattr(threading.Thread, "start", _recording(started))
+                    answer = refused(server, BROWSERS_REQUEST)
+                assert started == []  # no thread was started for it
+                # Every slot asked for without waiting, for the two connections answered and the
+                # one refused alike: every other connection is accepted behind this thread.
+                assert taken == [(False, None)] * 3
+                head, _, data = answer.partition(b"\r\n\r\n")
+                status, *fields = head.decode("latin-1").split("\r\n")
+                assert status == "HTTP/1.1 503 Service Unavailable"
+                expected = {
+                    **SECURITY_HEADERS,
+                    "Cache-Control": "no-store",
+                    "Retry-After": "1",
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Content-Length": str(len(data)),
+                    "Connection": "close",
+                }
+                assert sorted(tuple(field.split(": ", 1)) for field in fields) == sorted(
+                    expected.items()
+                )
+                assert json.loads(data) == {"error": "busy", "message": BUSY}
+                api.release.set()
+                for each in held:
+                    each.join(10)
+                    assert not each.is_alive()
+                # A slot is given back on its connection's own thread once the connection has
+                # closed, a moment after its client read the answer: waited for, not assumed.
+                assert server.slots.acquire(timeout=10)
+                server.slots.release()
+                response, data = ask(server, "GET", "/api/session")  # a slot is free again
+                assert (response.status, json.loads(data)) == (200, {"held": True})
+        finally:
+            api.release.set()
+
+    def test_at_the_cap_itself_the_sixty_fifth_is_refused_and_a_freed_slot_serves_the_next(
+        self, project_file, pages
+    ) -> None:
+        """Spec §9's case at the real cap: a server built without ``connections``, sixty-four
+        connections held by a handler waiting on an event. They are opened one at a time, each
+        held before the next is opened: the server listens with a backlog of five, and a burst
+        past it waits on Linux and may be refused on Windows."""
+        api = Held(Session(project_file.parent))
+        server = GuiServer(api, pages)
+        serving_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        serving_thread.start()
+        try:
+            held = []
+            for _ in range(64):
+                each = threading.Thread(
+                    target=ask, args=(server, "GET", "/api/session"), daemon=True
+                )
+                each.start()
+                held.append(each)
+                assert api.asked.acquire(timeout=10)
+            answer = refused(server, BROWSERS_REQUEST)
+            assert answer.split(b"\r\n", 1)[0] == b"HTTP/1.1 503 Service Unavailable"
+            api.release.set()
+            for each in held:
+                each.join(10)
+                assert not each.is_alive()
+            assert server.slots.acquire(timeout=10)
+            server.slots.release()
+            assert ask(server, "GET", "/api/session")[0].status == 200
+        finally:
+            api.release.set()
+            server.shutdown()
+            server.server_close()
+            serving_thread.join(10)
+
+    def test_the_refusal_says_the_server_is_busy_and_to_ask_again(self) -> None:
+        """Pinned by its literal text: the 503's own test compares against the imported
+        ``BUSY``, which would drift along with any change to its wording."""
+        assert BUSY == (
+            "ddd gui is answering as many connections as it takes at once; ask again in a moment"
+        )
+
+    def test_a_thread_that_cannot_start_gives_its_slot_back(self, one_slot, monkeypatch) -> None:
+        monkeypatch.setattr(threading.Thread, "start", _cannot_start)
+        ours, theirs = socket.socketpair()
+        with ours, theirs, pytest.raises(RuntimeError, match="can't start new thread"):
+            one_slot.process_request(ours, ("127.0.0.1", 0))
+        monkeypatch.undo()
+        assert one_slot.slots.acquire(blocking=False)  # the one slot is free
+
+    def test_a_connection_that_has_sent_nothing_yet_is_refused_without_waiting_for_it(
+        self, one_slot
+    ) -> None:
+        """What has arrived is drained and nothing more is waited for: the thread that writes
+        the refusal is the one every other connection is accepted on."""
+        assert one_slot.slots.acquire(blocking=False)  # the one slot, taken
+        answer = refused(one_slot, b"")
+        assert answer.split(b"\r\n", 1)[0] == b"HTTP/1.1 503 Service Unavailable"
+        assert not one_slot.slots.acquire(blocking=False)  # none taken, none given back
+
+    @pytest.mark.parametrize("left", ["closed", "reset"])
+    def test_a_client_gone_before_its_refusal_is_let_go_quietly(self, one_slot, left) -> None:
+        """Gone by closing, which fails the refusal's write on a unix socket, or by resetting -
+        closing with bytes it never read - which fails the read before the write. Neither
+        failure leaves the accepting thread."""
+        assert one_slot.slots.acquire(blocking=False)
+        ours, theirs = socket.socketpair()
+        with ours:
+            if left == "reset":
+                ours.sendall(b"never read")
+            theirs.close()
+            arrived(ours)
+            one_slot.process_request(ours, ("127.0.0.1", 0))
+            assert ours.fileno() == -1  # closed all the same
+
+    def test_a_client_that_does_not_read_its_refusal_cannot_hold_the_accepting_thread(
+        self, one_slot, monkeypatch
+    ) -> None:
+        """The refusal is given a second to be written, shortened here, and the deadline it is
+        written under is the one noted. A connection just accepted takes its few hundred bytes
+        at once, so this one is filled first, standing in for a connection that will not take
+        them."""
+        assert REFUSAL_SECONDS == 1
+        monkeypatch.setattr(module, "REFUSAL_SECONDS", 0.05)
+        assert one_slot.slots.acquire(blocking=False)
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            filled(ours)
+            noted = Deadlines(ours)
+            refusing = threading.Thread(
+                target=one_slot.process_request, args=(noted, ("127.0.0.1", 0)), daemon=True
+            )
+            refusing.start()
+            refusing.join(10)
+            assert not refusing.is_alive(), "the refusal waited on a client that never reads"
+            assert noted.deadlines == [0.05]  # REFUSAL_SECONDS, read as it stands
+            assert ours.fileno() == -1  # given up on, and closed
+
+    def test_a_connection_nobody_is_using_gives_its_slot_back(
+        self, project_file, pages, monkeypatch
+    ) -> None:
+        """Spec §6: a connection kept open and left idle still gives its slot up once the
+        deadline every connection is given has passed - shortened here, as in
+        ``TestOneConnectionCarriesManyAsks``."""
+        monkeypatch.setattr(module._Handler, "timeout", 0.05)
+        api = Held(Session(project_file.parent))
+        api.release.set()
+        for server in serving(api, pages, connections=1):
+            idle = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
+            try:
+                signed_in = {
+                    "Host": f"127.0.0.1:{server.port}",
+                    "Cookie": f"{cookie(server)}={server.token}",
+                }
+                idle.request("GET", "/api/session", headers=signed_in)
+                response = idle.getresponse()
+                response.read()
+                assert (response.status, response.will_close) == (200, False)
+                # Kept open, and asked nothing more: closed by the server, its slot given back.
+                assert server.slots.acquire(timeout=10)
+                server.slots.release()
+                assert ask(server, "GET", "/api/session")[0].status == 200
+            finally:
+                idle.close()
+
+
+def request_line(length: int) -> bytes:
+    """A ``GET`` of the session whose request line, its CRLF included, is ``length`` bytes."""
+    start, end = b"GET /api/session?", b" HTTP/1.1\r\n"
+    line = start + b"x" * (length - len(start) - len(end)) + end
+    assert len(line) == length
+    return line
+
+
+def header_line(length: int, name: bytes = b"X-Pad", filler: bytes = b"x") -> bytes:
+    """A header line ``name`` whose value is ``filler`` over and over, ``length`` bytes long
+    with its CRLF; nothing reads an ``X-Pad``."""
+    start, end = name + b": ", b"\r\n"
+    line = start + filler * (length - len(start) - len(end)) + end
+    assert len(line) == length
+    return line
+
+
+def headed(server: GuiServer, count: int, *, ended: bool = True) -> bytes:
+    """A ``GET`` of the session with ``count`` header lines, ``Host`` and ``Connection: close``
+    among them: ended by the blank line, or cut off after the last of them."""
+    lines = [f"Host: 127.0.0.1:{server.port}", "Connection: close"]
+    lines += [f"X-Header-{n}: {n}" for n in range(count - len(lines))]
+    sent = "GET /api/session HTTP/1.1\r\n" + "".join(f"{line}\r\n" for line in lines)
+    return (sent + "\r\n" if ended else sent).encode("ascii")
+
+
+def status_of(server: GuiServer, sent: bytes) -> int:
+    """The status ``server`` answers ``sent`` with, over a connection of its own, read to its
+    end."""
+    return raw_answer(server, sent)[0]
+
+
+class TestTheStandardLibrarysLimits:
+    """Spec §6 leaves a request's own size to the standard library, ahead of anything of this
+    server's: the length of its request line and of each header line, and the number of its
+    headers. Pinned here, each on a connection of its own, so that a server that stopped
+    answering them would be caught.
+
+    A refused request is sent only as far as the line it is refused at: a connection closed
+    with bytes it never read is reset, and the answer can be lost with it."""
+
+    def test_a_request_line_of_more_than_65536_bytes_is_answered_414(self, server) -> None:
+        assert status_of(server, request_line(65537)) == 414
+
+    def test_a_request_line_of_65536_bytes_is_read(self, server) -> None:
+        end = f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n".encode("ascii")
+        assert status_of(server, request_line(65536) + end) == 401
+
+    @pytest.mark.parametrize(
+        ("name", "filler"), [(b"X-Pad", b"x"), (b"Content-Length", b"9")], ids=["any", "a-length"]
+    )
+    def test_a_header_line_of_more_than_65536_bytes_is_answered_431(
+        self, server, name, filler
+    ) -> None:
+        """Whatever header it is: a ``Content-Length`` written with too many nines for its line
+        is refused here, before this server reads it as a length, too large or not."""
+        sent = b"POST /api/edit HTTP/1.1\r\n" + header_line(65537, name, filler)
+        assert status_of(server, sent) == 431
+
+    def test_a_header_line_of_65536_bytes_is_read(self, server) -> None:
+        end = f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n".encode("ascii")
+        sent = b"GET /api/session HTTP/1.1\r\n" + header_line(65536) + end
+        assert status_of(server, sent) == 401
+
+    def test_a_request_of_101_headers_is_answered_431(self, server) -> None:
+        assert status_of(server, headed(server, 101, ended=False)) == 431
+
+    def test_a_request_of_100_headers_is_answered_431(self, server) -> None:
+        """The security page states this one, in round numbers: the blank line that ends the
+        headers is itself counted, so a hundred header lines already carry it past the
+        standard library's own limit."""
+        assert status_of(server, headed(server, 100)) == 431
+
+    def test_a_request_of_99_headers_is_read(self, server) -> None:
+        """Not 100: the standard library counts the blank line that ends the headers among its
+        hundred, on python 3.12 to 3.14."""
+        assert status_of(server, headed(server, 99)) == 401
 
 
 def answered(
@@ -649,8 +1980,9 @@ class TestEveryEndpointOnTheDemo:
 
 
 class TestBlankParameters:
-    """A parameter given with no value reaches the api as the empty text: clearing a unit's
-    description sends ``description=``. Every other handler answers it as a missing one."""
+    """A parameter given with no value reaches the api as the empty text, which each route reads
+    as it always has: clearing a unit's description sends ``description=``, a blank ``raw`` takes
+    a key away, and each route below refuses a blank key it requires as one left out."""
 
     @pytest.fixture
     def described(self, tmp_path: Path, pages: Path) -> Iterator[tuple[GuiServer, Path]]:
@@ -685,28 +2017,71 @@ class TestBlankParameters:
         assert units == [{"unit": "rpm", "description": ""}]
 
     @pytest.mark.parametrize(
-        "path",
+        ("path", "sentence"),
         [
-            "/api/variable?name=",
-            "/api/type?name=",
-            "/api/constant?name=",
-            "/api/section?name=",
-            "/api/values?name=",
-            "/api/unit?name=",
-            "/api/file?path=",
-            "/api/settle?name=&key=unit",
-            "/api/unit-plan?action=",
-            "/api/unit-plan?action=rename&unit=&to=rpm",
+            ("/api/variable?name=", "variable takes ?name="),
+            ("/api/type?name=", "type takes ?name="),
+            ("/api/constant?name=", "constant takes ?name="),
+            ("/api/section?name=", "section takes ?name="),
+            ("/api/raster?name=", "raster takes ?name="),
+            ("/api/values?name=", "values takes ?name="),
+            ("/api/unit?name=", "unit takes ?name="),
+            ("/api/file?path=", "file takes ?path="),
+            ("/api/declarable?file=", "declarable takes ?file="),
+            ("/api/compare?baseline=", "compare takes ?baseline="),
+            (
+                "/api/settle?name=&key=unit",
+                "settle takes ?name= and ?key=, and ?raw= unless the key goes",
+            ),
+            (
+                "/api/fix?file=&pointer=&check=missing-id",
+                "fix takes ?file=, ?pointer= and ?check=",
+            ),
+            (
+                "/api/unit-plan?action=",
+                "unit-plan takes ?action= one of rename, add, describe, remove, adopt",
+            ),
+            ("/api/unit-plan?action=rename&unit=&to=rpm", "rename takes ?unit= and ?to="),
         ],
     )
-    def test_any_other_blank_parameter_is_refused_as_a_missing_one(self, server, path) -> None:
-        assert answered(server, "GET", path, status=400)["error"] == "bad-request"
+    def test_any_other_blank_parameter_is_refused_as_a_missing_one(
+        self, server, path, sentence
+    ) -> None:
+        assert answered(server, "GET", path, status=400) == {
+            "error": "bad-request",
+            "message": sentence,
+        }
 
     def test_a_blank_raw_takes_the_key_out_as_a_missing_one_does(self, server) -> None:
         changes = answered(server, "GET", "/api/settle?name=Speed&key=unit&raw=")["changes"]
         assert [change["operations"] for change in changes] == [
             [{"op": "remove", "pointer": "component.interface[0].definition.unit", "raw": None}]
         ]
+
+
+class TestAMalformedQueryOverTheWire:
+    """What spec §2 sent over HTTP, read off the request line as the page's own requests are:
+    ``%00`` decoded into a NUL, and a number of more digits than one holds."""
+
+    def test_a_file_filter_holding_a_nul_is_refused_not_failed(self, server) -> None:
+        assert answered(server, "GET", "/api/findings?file=%00", status=400) == {
+            "error": "bad-request",
+            "message": "findings takes ?file= as a file's path",
+        }
+
+    def test_a_version_of_too_many_digits_is_answered_at_once(self, server, monkeypatch) -> None:
+        def never_waited(after: int, timeout: float) -> None:
+            raise AssertionError(f"waited for a version past {after}")
+
+        monkeypatch.setattr(server.api.session, "wait", never_waited)
+        version = f"/api/state?after={'1' * 4301}"
+        assert answered(server, "GET", version)["revision"] == 1
+
+    def test_a_key_given_twice_is_refused_by_the_route_s_name(self, server) -> None:
+        assert answered(server, "GET", "/api/findings?offset=0&offset=1", status=400) == {
+            "error": "bad-request",
+            "message": "findings takes ?offset= once",
+        }
 
 
 class TestAProjectWithAFileThatDoesNotParse:
@@ -939,15 +2314,15 @@ class TestRunning:
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: None)
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
-        opened: list[str] = []
-        monkeypatch.setattr(module.webbrowser, "open", opened.append)
+        opener = Opened()
+        monkeypatch.setattr(module.webbrowser, "open", opener)
 
         result = run(project_file, [], 0, open_browser=True, static=pages, host="localhost")
 
         assert result == EXIT_OK
         (line,) = capsys.readouterr().out.splitlines()
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
-        assert opened == [line.rsplit(" ", 1)[1]]
+        code_from(line, opener.wait())
 
     def test_uppercase_localhost_resolving_to_loopback_is_loopback(
         self, pages, monkeypatch, capsys
@@ -1023,9 +2398,9 @@ class TestRunning:
     def test_it_prints_its_address_serves_and_exits_cleanly_when_interrupted(
         self, project_file, pages, monkeypatch, capsys, open_browser
     ) -> None:
-        opened: list[str] = []
+        opener = Opened()
         stopped: list[bool] = []
-        monkeypatch.setattr(module.webbrowser, "open", opened.append)
+        monkeypatch.setattr(module.webbrowser, "open", opener)
         monkeypatch.setattr(Session, "start", lambda self: None)
         monkeypatch.setattr(Session, "start_polling", lambda self: None)
         monkeypatch.setattr(Session, "stop", lambda self: stopped.append(True))
@@ -1038,8 +2413,47 @@ class TestRunning:
         (line,) = capsys.readouterr().out.splitlines()
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
         assert "/open?token=" in line
-        assert opened == ([line.rsplit(" ", 1)[1]] if open_browser else [])
+        if open_browser:
+            code_from(line, opener.wait())
+        else:
+            assert opener.addresses == []
         assert stopped == [True]
+
+    def test_a_browser_that_never_returns_does_not_hold_up_serving(
+        self, project_file, pages, monkeypatch
+    ) -> None:
+        """A BROWSER line with no trailing '&' makes webbrowser.open build a GenericBrowser,
+        whose open() waits for the browser to exit (p.wait()) before returning - and headless
+        Chrome never exits on its own. A console browser such as lynx or w3m waits the same
+        way. The launch now runs its opener off the thread that serves, so a browser that
+        blocks here - simulated with an Event nothing sets - never holds run() up before it
+        reaches serve_forever()."""
+        monkeypatch.setattr(Session, "start", lambda self: None)
+        monkeypatch.setattr(Session, "start_polling", lambda self: None)
+        monkeypatch.setattr(Session, "stop", lambda self: None)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        entered = threading.Event()
+        released = threading.Event()
+        opened: list[str] = []
+        daemon: list[bool] = []
+
+        def never_returns(address: str) -> None:
+            opened.append(address)
+            daemon.append(threading.current_thread().daemon)
+            entered.set()
+            # Well beyond bounded_run's own 10 s join: the ablation that calls this opener
+            # on the serving thread itself must lose that race by a wide margin, not by the
+            # milliseconds between thread.start() and join() - only the ablation's kill, not
+            # this passing run, waits anywhere near this long; it is released long before.
+            released.wait(timeout=30)
+
+        monkeypatch.setattr(module.webbrowser, "open", never_returns)
+
+        assert bounded_run(project_file, [], 0, open_browser=True, static=pages) == EXIT_OK
+        assert entered.wait(timeout=5), "the opener was never called"
+        assert len(opened) == 1
+        assert daemon == [True]  # so it never holds ddd gui from exiting either
+        released.set()
 
     def test_a_server_shut_down_from_elsewhere_also_ends_cleanly(self, pages, monkeypatch) -> None:
         monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
@@ -1094,6 +2508,19 @@ class TestRunning:
         assert served == [(project_file.resolve(), None, True)]
         (line,) = capsys.readouterr().out.splitlines()
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
+
+
+class TestTheLaunch:
+    def test_the_browser_is_handed_a_fresh_code_and_never_the_token(self, server) -> None:
+        opened: list[str] = []
+        assert launched(server, opened.append) is None
+        (address,) = opened
+        code = code_from(f"ddd gui (preview) serving {server.address}", address)
+        response, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
+        assert (response.status, data) == (
+            200,
+            SIGNED_IN_PAGE.format(target="/project").encode("utf-8"),
+        )
 
 
 def test_the_windows_server_does_not_share_a_port() -> None:

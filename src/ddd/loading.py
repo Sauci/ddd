@@ -85,6 +85,11 @@ None of these is a project, so there is nothing to resolve or generate from one 
 own. Validating one against the published schema is what an editor is for.
 """
 
+NESTED_TOO_DEEPLY = "the json is nested too deeply to read"
+"""Why a json text nested deeper than it can be read is refused: deeper than python's own parser
+goes, than the edit engine lays a value out (:func:`ddd.editing.lay_out`), or than the deepest
+json ``ddd gui`` takes in a query or writes in an edit (:data:`ddd.gui.depth.MAX_DEPTH`)."""
+
 _UNION_TAGS = discriminator_tags(AnyDataObject, Conversion, AnyType)
 """Discriminator values pydantic inserts into the error location of a tagged union."""
 
@@ -120,7 +125,7 @@ def parse_json_text(text: str) -> Any:
     except RecursionError:
         # A document nested thousands of levels deep. Python gives up on it, and it has to
         # give up as a refusal like any other rather than as a traceback.
-        raise ValueError("the json is nested too deeply to read") from None
+        raise ValueError(NESTED_TOO_DEEPLY) from None
 
 
 def _parse_json(text: str, path: Path, bag: DiagnosticBag) -> dict[str, Any] | None:
@@ -1480,7 +1485,14 @@ def resolve_path(path: Path) -> Path:
     is handed back unresolved rather than raising. Where that refusal surfaces is otherwise
     a property of the platform: linux rejects such a path in ``resolve()`` while Windows
     carries it as far as the read. Degrading here puts every one of them through the same
-    handler in :func:`_read_text`, so the run ends with one located finding on both.
+    handler in :func:`_read_text`, so the run ends with one located finding on both. So is a
+    path ``resolve()`` cannot resolve for any other reason it raises: on Windows an error its
+    walk does not list, and on python 3.12 a loop of links, ``RuntimeError``, or a chain of
+    about a thousand, ``RecursionError``, both of which 3.13's walks past. On 3.12 an include
+    through such a loop ended ``ddd check`` in a traceback, and a request of ``ddd gui`` naming
+    a path through one was answered ``500``; every route of it resolves a path a request names
+    through here, but compare's baseline, which ``ddd.gui.compare`` resolves under a guard of its
+    own as wide, and a page's path, which is never resolved.
 
     A leading ``~`` is left where it stands: expansion is the shell's, and a root named
     ``~x.ddd.json`` was being looked for in user ``x``'s home directory, a path its author
@@ -1488,7 +1500,9 @@ def resolve_path(path: Path) -> Path:
     """
     try:
         return Path(path).resolve()
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError, RecursionError):
+        # One clause, so that every python's NUL test enters it; RecursionError is a
+        # RuntimeError already, and named for the chain of links 3.12 raises it on.
         return Path(path)
 
 

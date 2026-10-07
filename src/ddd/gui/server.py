@@ -5,15 +5,27 @@ this one trusts nothing it did not hand out itself:
 
 * the address the command prints carries a token, which ``/open`` swaps for a cookie every other
   request has to present - ``SameSite=Strict``, so a request another site makes does not carry
-  it;
+  it; the browser ``ddd gui`` opens for the reader is launched on a one-time code instead, so
+  the token itself never sits on a command line for another local process to read;
 * a request has to name this server's own host and port, which refuses a page whose domain was
   re-pointed at the loopback address;
+* in a browser that sends ``Sec-Fetch-Site`` (Chrome 76, Firefox 90, Safari 16.4 and later),
+  every request has to say, with it, that it came from this page or from no page at all, and,
+  if it names an ``Origin``, that the ``Origin`` is this server's - checked before the cookie,
+  so a page on another port of this address is refused however it asks, ``/open`` excepted,
+  which is routed before this check ever runs. An older browser sends neither header on a
+  plain request, so this does not catch it there;
 * a request that changes anything has to come from this server's own origin, as json;
-* no page of it can be framed, and only its own scripts run.
+* no page of it can be framed, and only its own scripts run;
+* no more than sixty-four connections are answered at once; past that, the thread that accepts
+  connections refuses the next itself, so no flood of connections can exhaust the machine's
+  threads.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a
 browser told ``nosniff`` then refuses to run the page at all.
+
+See ``docs/gui_security.rst`` for the threat model this is reviewed against.
 """
 
 from __future__ import annotations
@@ -22,12 +34,15 @@ import contextlib
 import hmac
 import ipaddress
 import json
+import os
 import secrets
 import socket
 import sys
+import threading
+import time
 import traceback
 import webbrowser
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
@@ -35,6 +50,7 @@ from typing import Any, Final, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from ddd.cli import EXIT_OK, EXIT_USAGE
+from ddd.file_names import device_named
 from ddd.gui.api import Api
 from ddd.gui.session import Session
 
@@ -42,6 +58,15 @@ COOKIE: Final = "ddd-gui"
 """What the cookie a server signs a page in with is called, followed by ``-`` and the server's
 port: a browser sends every cookie of 127.0.0.1 to every port, so under one name a second
 ``ddd gui`` replaced the first one's cookie and signed its page out."""
+
+TOKEN_BYTES: Final = 32
+"""Random bytes in the long-lived token, and in each single-use launch code: the same
+strength, since either one alone signs a browser in."""
+
+CODE_SECONDS: Final = 60
+"""How long an unredeemed launch code stays valid: long enough for a slow browser to start and
+ask, short enough that a code a local reader of ``/proc`` raced from the launch cannot be tried
+for long."""
 
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
@@ -53,6 +78,23 @@ Longer than any gap a page of this server leaves: the slowest thing it does is w
 state to change, and the connection that waits is never idle - the server is holding the
 answer, and the page asks again the moment it arrives. A tab that has gone away leaves its
 connections behind, and this is what takes their threads back."""
+
+MAX_CONNECTIONS: Final = 64
+"""How many connections are answered at once, each on a thread of its own; the next is refused.
+
+A browser opens at most six connections to one host, across all its tabs, so the page never
+comes near this: sixty-four leaves room for ten browser profiles and some scripts. Without
+it, the threads grew with whatever was asked: probed against ``7d7aaed``, three hundred long
+polls at once took the server from 4 threads to 275."""
+
+BUSY: Final = "ddd gui is answering as many connections as it takes at once; ask again in a moment"
+"""What a connection past :data:`MAX_CONNECTIONS` is answered, with a ``503``."""
+
+REFUSAL_SECONDS: Final = 1
+"""How long the thread that accepts connections waits to write a refusal into a connection that
+will not take it, before giving that connection up: every other connection waits behind that
+thread meanwhile. A connection just accepted takes the refusal's few hundred bytes at once, so
+in practice it never waits at all."""
 
 CONTENT_TYPES: Final = {
     ".css": "text/css; charset=utf-8",
@@ -81,6 +123,19 @@ SIGN_IN_PAGE: Final = (
     b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
 )
 
+SIGNED_IN_PAGE: Final = (
+    '<!doctype html><html lang="en"><meta charset="utf-8">'
+    '<meta http-equiv="refresh" content="0; url={target}"><title>ddd gui</title>'
+    '<p><a href="{target}">Open ddd gui</a></p></html>'
+)
+"""What ``/open`` answers once it has set the cookie: a page that refreshes to the project, or
+to the start page. Not a redirect: ``/open`` is reached however the token or a launch code got
+there - pasted, clicked from somewhere else, or a browser opened straight on it - and a
+``SameSite=Strict`` cookie does not reliably follow a redirect chain that began cross-site,
+where a refresh this page makes itself is a fresh, same-origin navigation, which the cookie
+does follow. A meta refresh rather than a script: no script is needed, so none is written, and
+the fallback link below it is for a browser that blocks the refresh itself."""
+
 
 def static_directory() -> Path:
     """Where the compiled pages are installed: ``static`` beside this module."""
@@ -107,6 +162,42 @@ def is_loopback(address: str) -> bool:
         return False
 
 
+def _head(kind: str, length: int, headers: dict[str, str] | None = None) -> dict[str, str]:
+    """The headers of an answer, in the order they are sent: the security headers, the
+    answer's own, then the type and length of what it carries. Read by every answer
+    :meth:`_Handler._send` writes and by the refusal :func:`_refuse` writes by hand alike, so
+    that the two cannot drift apart. The answers ``http.server`` writes itself with
+    ``send_error``, to a request it cannot read or does not handle (400, 414, 431, 501, 505),
+    do not come through here."""
+    return {
+        **SECURITY_HEADERS,
+        **(headers or {}),
+        "Content-Type": kind,
+        "Content-Length": str(length),
+    }
+
+
+def _refuse(request: socket.socket) -> None:
+    """Write the 503 a connection past the cap gets, and give up on one that will not take it.
+
+    Written on the thread that accepts connections, which every other connection waits behind,
+    so nothing here waits on the client for long: what it has sent so far is drained without
+    waiting for more - closing with it unread would reset the connection, and could throw the
+    answer away before the client read it - and the answer is given :data:`REFUSAL_SECONDS` to
+    be written. A client already gone is let go without a word, as one that goes away
+    mid-answer is (:meth:`GuiServer.handle_error`)."""
+    data = json.dumps({"error": "busy", "message": BUSY}).encode("utf-8")
+    own = {"Cache-Control": "no-store", "Retry-After": "1", "Connection": "close"}
+    head = _head(CONTENT_TYPES[".json"], len(data), own)
+    lines = "".join(f"{name}: {value}\r\n" for name, value in head.items())
+    with contextlib.suppress(OSError):
+        request.setblocking(False)
+        with contextlib.suppress(BlockingIOError):
+            request.recv(65536)
+        request.settimeout(REFUSAL_SECONDS)
+        request.sendall(f"HTTP/1.1 503 Service Unavailable\r\n{lines}\r\n".encode("latin-1") + data)
+
+
 class GuiServer(ThreadingHTTPServer):
     """The server one run of ``ddd gui`` answers on."""
 
@@ -116,15 +207,73 @@ class GuiServer(ThreadingHTTPServer):
     """Not on Windows, where the socket option lets a second server bind a port the first still
     listens on, so a taken ``--port`` would be shared instead of refused."""
 
-    def __init__(self, api: Api, static: Path, port: int = 0, host: str = "127.0.0.1") -> None:
+    def __init__(
+        self,
+        api: Api,
+        static: Path,
+        port: int = 0,
+        host: str = "127.0.0.1",
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        connections: int = MAX_CONNECTIONS,
+    ) -> None:
         super().__init__((host, port), _Handler)
         self.api = api
         self.static = static.resolve()
-        self.token = secrets.token_urlsafe(32)
+        self.token = secrets.token_urlsafe(TOKEN_BYTES)
+        self._clock = clock
+        self._code: tuple[str, float] | None = None
+        self._redeemed: str | None = None
+        self._code_lock = threading.Lock()
+        self.slots = threading.BoundedSemaphore(connections)
+        """One for each connection being answered. Bounded: a slot given back when every slot
+        is already free raises, rather than raising the cap."""
 
     @property
     def port(self) -> int:
         return int(self.server_address[1])
+
+    def issue_code(self) -> str:
+        """Mint a single-use code that signs a browser in exactly as the long-lived token
+        does, valid for :data:`CODE_SECONDS` from now or until redeemed, whichever is first.
+        Replaces whatever code was issued before it: only the launch that just started should
+        be able to use one."""
+        code = secrets.token_urlsafe(TOKEN_BYTES)
+        with self._code_lock:
+            self._code = (code, self._clock() + CODE_SECONDS)
+        return code
+
+    def redeem_code(self, given: str) -> bool:
+        """Whether ``given`` is the one outstanding launch code, presented before it expired.
+
+        Spends it the moment its value matches - whether or not it had already expired - so
+        a second presentation, even of the right value, never succeeds again; and remembers it
+        only where it signs a browser in (:meth:`code_redeemed`). Compared in constant time,
+        like the token.
+        """
+        with self._code_lock:
+            pending = self._code
+            if pending is None:
+                return False
+            code, expires = pending
+            if not hmac.compare_digest(given.encode("utf-8"), code.encode("utf-8")):
+                return False
+            self._code = None
+            if self._clock() >= expires:
+                return False
+            self._redeemed = code
+            return True
+
+    def code_redeemed(self, given: str) -> bool:
+        """Whether ``given`` is the launch code that signed a browser in. Used only to decide
+        what a refusal to sign in prints - never whether to sign in, which is
+        :meth:`redeem_code` alone. A code that expired unused signed nobody in, and is no sign
+        of anyone."""
+        with self._code_lock:
+            redeemed = self._redeemed
+        return redeemed is not None and hmac.compare_digest(
+            given.encode("utf-8"), redeemed.encode("utf-8")
+        )
 
     @property
     def address(self) -> str:
@@ -142,6 +291,33 @@ class GuiServer(ThreadingHTTPServer):
     def cookie(self) -> str:
         """The name of the cookie this server signs a page in with."""
         return f"{COOKIE}-{self.port}"
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        """Answer on a thread of its own if a slot is free; else refuse from this thread.
+
+        The refusal is written here, on the thread that accepts, so that a connection past the
+        cap starts no thread: what it reads first is drained without waiting, so that closing
+        does not reset the connection before the client reads its answer."""
+        if not self.slots.acquire(blocking=False):
+            _refuse(request)
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            # The thread never started, so nothing else will give its slot back. Not
+            # BaseException: an interrupt that lands after the thread has started would then
+            # give the slot back twice, once here and once by the thread. This way the worst is
+            # one slot leaked by a server that is being stopped anyway.
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        """Answer one connection on its own thread, and give its slot back however that ends."""
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         """A page that went away mid-answer - a reload, a closed tab - is not an error to print."""
@@ -163,6 +339,14 @@ class _Handler(BaseHTTPRequestHandler):
     timeout = IDLE_SECONDS
     """Applied to the socket, so a connection nobody is using does not hold its thread."""
 
+    _body_read = False
+    """Whether the request being answered has had its body read. A ``POST`` answered before it
+    has, whatever the answer - misdirected, refused at the gate, sent to a page, its body too
+    long or of no length - is answered ``Connection: close`` and its connection closed: the body
+    left on it would be read as the next request. A body sent ``Transfer-Encoding: chunked`` is
+    never read, though it counts as read: it has no ``Content-Length``, which this server takes for
+    none."""
+
     def do_GET(self) -> None:  # the name the base class dispatches GET to
         self._answer("GET")
 
@@ -182,17 +366,23 @@ class _Handler(BaseHTTPRequestHandler):
         Left to the base class, a failure printed its traceback and dropped the connection, and
         the page then said the server was not answering - or, waiting for the state to change,
         that it had stopped - about a server that was running. The traceback still goes to the
-        terminal, where whoever reads the page's message is sent. A page that went away
+        terminal, where whoever reads the page's message is sent, every character a terminal
+        does not print as itself escaped (:func:`_shown`). A page that went away
         mid-answer is let go as before: there is nobody left to answer, and nothing worth
         printing, whether it closed the connection or only stopped reading it.
         """
+        self._body_read = False
         try:
             self._route(method)
         except (ConnectionError, TimeoutError):
             raise
         except Exception:
-            print(f"ddd gui: {method} {urlsplit(self.path).path} failed:", file=sys.stderr)
-            traceback.print_exc()
+            # self.path, not urlsplit(self.path).path: splitting again would drop the query
+            # and fragment this prints along with the path, and self.path is anyone's text
+            # regardless - an escape sequence in it would otherwise reach the terminal raw,
+            # this one read for exactly that.
+            print(f"ddd gui: {method} {self.path!r} failed:", file=sys.stderr)
+            print(_shown(traceback.format_exc()), end="", file=sys.stderr)
             self._send_json(500, {"error": "internal", "message": _INTERNAL})
 
     def _route(self, method: str) -> None:
@@ -200,11 +390,25 @@ class _Handler(BaseHTTPRequestHandler):
         if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
             self._send(421, b"misdirected request", CONTENT_TYPES[".txt"])
             return
-        url = urlsplit(self.path)
+        try:
+            url = urlsplit(self.path)
+        except ValueError:
+            # The absolute form of a target names its host before its path, and a malformed
+            # one - a bracket opened for an IPv6 address and never closed, say - makes urlsplit
+            # itself raise, before anything here has read where the request claims to come
+            # from or whether it carries this server's cookie.
+            self._send_json(400, {"error": "bad-request", "message": _NOT_A_TARGET})
+            return
         if method == "GET" and url.path == "/open":
             self._sign_in(parse_qs(url.query))
             return
         api = url.path.startswith("/api/")
+        if self._from_elsewhere():
+            if api:
+                self._send_json(403, {"error": "forbidden", "message": _ELSEWHERE})
+            else:
+                self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
+            return
         if not self._signed_in():
             if api:
                 self._send_json(401, {"error": "unauthorised", "message": _SIGN_IN})
@@ -225,24 +429,49 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._body()
             if body is None:
                 return
-        # Blank values kept: clearing a unit's description asks for `description=`, which means
-        # the empty text, where a parameter left out means nothing was given. Every handler that
-        # reads a parameter answers a blank one as it answers a missing one, as it did when
-        # blank values were dropped here.
+        # Blank values kept: what a blank means is each route's own to say - the empty text for
+        # a unit's description, the whole file for a fix's place in it, the key taken away for a
+        # settled value, and, for most keys a route requires, the refusal of one left out. Every
+        # value is kept too, a key given twice included, for the api to refuse
+        # (`ddd.gui.routes.one_value_each`).
         query = parse_qs(url.query, keep_blank_values=True)
         reply = self._gui.api.handle(method, url.path, query, body)
         self._send_json(reply.status, reply.body)
 
     def _sign_in(self, query: dict[str, list[str]]) -> None:
-        given = (query.get("token") or [""])[0]
-        if not hmac.compare_digest(given.encode("utf-8"), self._gui.token.encode("utf-8")):
-            self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
+        given_token = (query.get("token") or [""])[0]
+        given_code = (query.get("code") or [""])[0]
+        just_signed_in = hmac.compare_digest(
+            given_token.encode("utf-8"), self._gui.token.encode("utf-8")
+        )
+        if not just_signed_in and given_code:
+            just_signed_in = self._gui.redeem_code(given_code)
+        # Its URL holds a secret - the token, or the code - so neither this page nor a
+        # refusal of it may be cached and replayed from a shared cache or browser history.
+        headers = {"Cache-Control": "no-store"}
+        if just_signed_in:
+            headers["Set-Cookie"] = (
+                f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
+            )
+        elif not (given_code and self._signed_in()):
+            # Exactly which requests get the signed-in page instead of this refusal: one
+            # naming a code that did not redeem - wrong, spent or expired alike - that
+            # already carries this server's valid cookie, as a browser's own prefetch of
+            # the /open?code= address does, or its navigating there a second time after the
+            # first already won the cookie, whatever token it names besides. A request naming
+            # no code - a wrong token, or nothing at all - refuses here regardless of the
+            # cookie.
+            if given_code and self._gui.code_redeemed(given_code):
+                # It signed a browser in once already, and this request carries none of the
+                # cookie that browser was given: so it is not the browser that won it.
+                print(_CODE_REUSED, file=sys.stderr)
+            self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], headers)
             return
         # A project open goes to its page, analysed yet or not: the page says it is being
         # analysed until its first analysis lands.
         target = "/project" if self._gui.api.session.project is not None else "/"
-        cookie = f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
-        self._send(303, b"", CONTENT_TYPES[".txt"], {"Location": target, "Set-Cookie": cookie})
+        page = SIGNED_IN_PAGE.format(target=target).encode("utf-8")
+        self._send(200, page, CONTENT_TYPES[".html"], headers)
 
     def _signed_in(self) -> bool:
         """Whether the request carries this server's cookie with the token in it.
@@ -262,43 +491,108 @@ class _Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
-    def _from_this_page(self) -> bool:
+    def _own_origins(self) -> tuple[str, str]:
+        """This server's own origin, spelled the two ways a browser may carry it: by
+        127.0.0.1 and by localhost, both at this server's port. What :meth:`_from_elsewhere`
+        and :meth:`_from_this_page` both compare a request's ``Origin`` against, kept in this
+        one place rather than each holding a literal tuple of its own."""
         port = self._gui.port
+        return (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+
+    def _from_elsewhere(self) -> bool:
+        """Whether the request says it came from somewhere other than this server's own page.
+
+        A browser marks every request it sends with ``Sec-Fetch-Site``: ``same-origin`` from
+        this server's own page, ``none`` for an address typed or a bookmark, and ``same-site``
+        from a page served on another port of this address - which also carries this server's
+        ``SameSite=Strict`` cookie, a cookie belonging to an address and not to a port. Every
+        browser sends it since 2023 (Chrome 76, Firefox 90, Safari 16.4). An ``Origin`` other
+        than this server's is refused too, for a browser older than those. A client that sends
+        neither - a script, ``curl``, these tests - goes on to the cookie, so the token still
+        decides.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site not in ("same-origin", "none"):
+            return True
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return False
+        return origin not in self._own_origins()
+
+    def _from_this_page(self) -> bool:
         origin = self.headers.get("Origin")
         kind = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
-        own = (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
-        return origin in own and kind == "application/json"
+        return origin in self._own_origins() and kind == "application/json"
 
     def _body(self) -> bytes | None:
         length = self.headers.get("Content-Length", "0")
         if not (length.isascii() and length.isdecimal()):
             self._send_json(400, {"error": "bad-request", "message": "Content-Length is no length"})
             return None
-        if int(length) > MAX_BODY:
+        # Leading zeros are stripped before int() reads anything: int() refuses a string of more
+        # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
+        # how many. What is left is answered 413 if it is more than MAX_BODY, which its having
+        # more digits than MAX_BODY's seven settles without converting it, and is read as its
+        # value otherwise: zeros alone, however many, are a length of 0.
+        significant = length.lstrip("0") or "0"
+        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
             message = f"a request body is at most {MAX_BODY} bytes"
             self._send_json(413, {"error": "too-large", "message": message})
             return None
-        return self.rfile.read(int(length))
+        body = self.rfile.read(int(significant))
+        self._body_read = True
+        return body
 
     def _page(self, path: str) -> None:
+        """Answer the file of the compiled pages a path names, or ``index.html``, whose router
+        makes a screen of any other path.
+
+        A page path is plain names under the pages, split on ``/``. A name that is empty, ``.``
+        or ``..``, or that holds a NUL character, a backslash or a colon - on Windows a
+        separator, a drive or a stream - names no file, and is never looked up; nor, on any
+        system, does a name Windows keeps for a device (:func:`ddd.file_names.device_named`, the
+        rule a file an edit creates is refused by too), which it would open as that device. Nor
+        does a name that is a symbolic link or a junction, or one past a name that is not a
+        directory: so nothing outside the pages is served, and a path of thousands of names is
+        looked up no deeper than the pages go.
+
+        Nothing a path names is resolved. Resolving it touched the file system before anything
+        checked where it led: a loop of links raised on Python 3.12, and on Windows a network
+        or device spelling was opened.
+        """
         static = self._gui.static
-        requested = (static / unquote(path).lstrip("/")).resolve()
-        target = (
-            requested
-            if requested.is_relative_to(static) and requested.is_file()
-            else static / "index.html"
-        )
+        target = static / "index.html"
+        found = static
+        # os.path's questions, not pathlib's: on Python 3.12 and 3.13 Path.is_dir, is_symlink
+        # and is_file re-raise an error such as ENAMETOOLONG, a name over 255 bytes, where
+        # os.path's answer false for whatever they cannot read, and never raise.
+        for name in unquote(path).lstrip("/").split("/"):
+            if name in ("", ".", "..") or "\\" in name or ":" in name or "\0" in name:
+                break
+            if device_named(name) is not None:
+                break
+            if not os.path.isdir(found):  # noqa: PTH112
+                break
+            found /= name
+            if os.path.islink(found) or os.path.isjunction(found):  # noqa: PTH114
+                break
+        else:
+            if os.path.isfile(found):  # noqa: PTH113
+                target = found
         kind = CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")
         self._send(200, target.read_bytes(), kind)
 
     def _send(
         self, status: int, data: bytes, kind: str, headers: dict[str, str] | None = None
     ) -> None:
+        own = dict(headers or {})
+        if self.command == "POST" and not self._body_read:
+            # Sent as a header, which also has the base class close the connection once this is
+            # written.
+            own["Connection"] = "close"
         self.send_response(status)
-        for name, value in {**SECURITY_HEADERS, **(headers or {})}.items():
+        for name, value in _head(kind, len(data), own).items():
             self.send_header(name, value)
-        self.send_header("Content-Type", kind)
-        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 
@@ -309,10 +603,32 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(status, data, CONTENT_TYPES[".json"], {"Cache-Control": "no-store"})
 
 
+_ELSEWHERE: Final = "ddd gui answers its own page alone, opened from the address it printed"
 _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"
+_NOT_A_TARGET: Final = "the request's target cannot be read"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
+_CODE_REUSED: Final = (
+    "ddd gui: a launch code that already signed a browser in was presented again; if your "
+    "browser is not signed in, another process on this computer may have signed in with it "
+    "first and now holds the token itself, so restart ddd gui rather than open the address it "
+    "printed"
+)
+
+
+def _shown(text: str) -> str:
+    """``text`` as it may reach a terminal: every character that does not print as itself - a
+    control character, the ``ESC`` an escape sequence begins with among them, or one that turns
+    the text after it around - written as its escape, ``\\x1b``; a newline is kept, and every other
+    line break, a carriage return among them, escaped too. What a failure's traceback is printed
+    through: an exception's own message is anyone's text once it carries a request's."""
+    return "".join(
+        character
+        if character == "\n" or character.isprintable()
+        else character.encode("unicode_escape").decode("ascii")
+        for character in text
+    )
 
 
 def _refused(value: str, port: int, error: Exception) -> int:
@@ -320,6 +636,23 @@ def _refused(value: str, port: int, error: Exception) -> int:
     resolving ``--host`` or binding what it resolved to is what failed."""
     print(f"ddd: cannot serve {value} on port {port}: {error}", file=sys.stderr)
     return EXIT_USAGE
+
+
+def launched(server: GuiServer, opener: Callable[[str], object]) -> None:
+    """Open a one-time address in a browser, instead of handing it the long-lived token.
+
+    ``webbrowser.open(address)`` starts the browser with the address as an argument, and a
+    process's arguments are readable by every user of the computer, in ``/proc`` on Linux:
+    the long-lived token would be theirs for the asking while the launch ran. A single-use
+    launch code stands in for it instead, minted fresh by :meth:`GuiServer.issue_code` -
+    worthless the moment it is redeemed, or :data:`CODE_SECONDS` after it was minted,
+    whichever comes first.
+
+    Not a file: a sandboxed browser (a snap, a flatpak) has its own private temporary
+    directory, and cannot open one written to this computer's. An address of this server's
+    own reaches it the same way the printed one, pasted, would.
+    """
+    opener(f"http://127.0.0.1:{server.port}/open?code={server.issue_code()}")
 
 
 def run(
@@ -395,7 +728,14 @@ def run(
                 file=sys.stderr,
             )
         elif open_browser:
-            webbrowser.open(server.address)
+            # On a thread of its own: an opener that waits for the browser to exit
+            # (GenericBrowser.open's p.wait(), for a BROWSER line with no trailing '&', or
+            # for a console browser such as lynx or w3m) would otherwise hold this up before
+            # serve_forever() below is ever reached, leaving the socket bound but nothing
+            # answered until that browser did.
+            threading.Thread(
+                target=launched, args=(server, webbrowser.open), daemon=True, name="ddd-gui-open"
+            ).start()
         try:
             with contextlib.suppress(KeyboardInterrupt):
                 server.serve_forever()

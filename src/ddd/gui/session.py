@@ -47,6 +47,7 @@ from ddd.editing import (
     fingerprint,
     restore,
 )
+from ddd.file_names import uncreatable
 from ddd.ir import DataDictionary
 from ddd.loading import included_files, parse_json_text, resolve_path
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
@@ -478,6 +479,7 @@ class Session:
         """
         with self._lock:
             revision = self._required()
+            _creatable(changes)
             confined = [_confined(revision, pending, changes) for pending in changes]
             written = apply_changes(confined)
             self._edits += 1
@@ -808,8 +810,12 @@ def _source(revision: Revision, path: Path) -> Path:
     ``includes`` and ``GET /api/file`` reading it back was the page widening its own reach - and
     checked here rather than at that one route, because this is where every route that takes a
     path from the page resolves it, and where an edit resolves the file it writes.
+
+    Resolved as the loader resolves a path (:func:`ddd.loading.resolve_path`), which hands one it
+    cannot resolve back as given, to be no file of the project: on python 3.12 a loop of links
+    made ``Path.resolve`` raise, which answered the request ``500``.
     """
-    resolved = path.resolve()
+    resolved = resolve_path(path)
     if not any(file.path == resolved and file.kind != "plugin" for file in revision.files):
         raise NotInProjectError(f"{path.as_posix()} is not a description file of the open project")
     return _served(revision, resolved)
@@ -833,15 +839,39 @@ def _served(revision: Revision, resolved: Path) -> Path:
     return resolved
 
 
+def _creatable(changes: Sequence[FileChange]) -> None:
+    """Refuse an edit creating a file under a name no file can be created under
+    (:func:`ddd.file_names.uncreatable`), before any change of it is confined: a name Windows keeps
+    for a device, one holding a character it keeps out of a name or ending in a dot or a space,
+    or one too long to stage, is refused on every system alike, whatever an operating system
+    would answer about it - Windows' answer about a name too long for NTFS is not one
+    ``Path.resolve`` is sure to walk past.
+
+    Every one before any is confined: confining a file to be created looks up each name the
+    project description's includes give (:func:`_included`), another created file's among them,
+    and on Windows looking up a device's name opens the device."""
+    for pending in changes:
+        if pending.fingerprint is None:
+            refused = uncreatable(pending.path.name)
+            if refused is not None:
+                raise EditError(INVALID, f"{pending.path} cannot be created: {refused}")
+
+
 def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileChange]) -> FileChange:
     """One change of an edit, its file resolved and allowed: a description file of the open
-    project, or a file the edit may create, which takes the access of the project description."""
+    project, or a file the edit may create, which takes the access of the project description.
+
+    A file to be created has had its name judged already, as every one of the edit has
+    (:func:`_creatable`). Its path is resolved as the loader resolves one
+    (:func:`ddd.loading.resolve_path`), and so is each other change's, to find the project
+    description among them: a path the system will not resolve is handed back as given rather
+    than raised on."""
     if pending.fingerprint is not None:
         return FileChange(_source(revision, pending.path), pending.fingerprint, pending.operations)
-    target = pending.path.resolve()
+    target = resolve_path(pending.path)
     project = revision.project
     described = next(
-        (c for c in changes if c.fingerprint is not None and c.path.resolve() == project), None
+        (c for c in changes if c.fingerprint is not None and resolve_path(c.path) == project), None
     )
     if (
         target.parent != project.parent

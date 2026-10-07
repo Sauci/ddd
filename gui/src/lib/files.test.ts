@@ -368,9 +368,10 @@ describe("fileCreate", () => {
 
   test("a vocabulary file is asked for by its kind and name, and never with a component's name", () => {
     // The text typed into a Component name field left from an earlier choice is not sent: `toEqual`
-    // alone would catch `component: "Left over"`, the one form of it `filesQuery` puts in the url.
-    // `toStrictEqual` also refuses a `component: undefined` key, which `filesQuery` would skip as
-    // readily - so it pins the object's own shape, `FilesPlanRequest`'s, not the url.
+    // alone would catch `component: "Left over"`, which the url would carry. `toStrictEqual` also
+    // refuses a `component: undefined` key, which the url would carry too, as the text `undefined`
+    // (`queryOf` sends every key of the request) - so it pins the object's own shape,
+    // `FilesPlanRequest`'s, which is what the url is made of.
     expect(fileCreate("constants", "limits", "Left over")).toStrictEqual({
       action: "create",
       kind: "constants",

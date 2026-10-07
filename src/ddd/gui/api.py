@@ -7,9 +7,10 @@ server ship in one wheel - and changes with the package.
 
 Every request and response body is a model of :mod:`ddd.gui.contract`: a request is read with
 :meth:`~pydantic.BaseModel.model_validate_json`, refusing anything the page's own types would
-not have sent, and a response is built as a model and left as ``model_dump(mode="json")`` -
+not have sent, and a response is built as a model and written by :func:`ddd.gui.depth.written` -
 never a hand-assembled ``dict`` - so the shape answered here and the shape
-``gui/src/generated/api.ts`` declares cannot drift apart.
+``gui/src/generated/api.ts`` declares cannot drift apart, and an answer nested deeper than the
+serializer writes is refused, ``409``, rather than failing to be written.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from pydantic import BaseModel, ValidationError
+from pydantic_core import ErrorDetails
 
 from ddd import __version__
 from ddd.declaration_plans import (
@@ -37,7 +39,7 @@ from ddd.declaration_plans import (
     remove_declaration,
     scopes_for,
 )
-from ddd.diagnostics import CHECKS, Severity
+from ddd.diagnostics import CHECKS
 from ddd.editing import (
     INVALID,
     STALE,
@@ -47,7 +49,6 @@ from ddd.editing import (
     FileChange,
     Operation,
     fingerprint,
-    parse_raw,
     unchanged,
 )
 from ddd.file_plans import (
@@ -60,12 +61,71 @@ from ddd.file_plans import (
     remove_plan,
 )
 from ddd.finding_fixes import fixes_for
-from ddd.finding_routes import Route, route_of
+from ddd.finding_routes import Route as FindingRoute
+from ddd.finding_routes import route_of
 from ddd.findings_by_file import Pair
 from ddd.graph import Module, graph_of
 from ddd.gui import contract
 from ddd.gui.compare import BaselineCache, BaselineRefusedError, compared
+from ddd.gui.depth import TooDeepError, block_too_deep, file_too_deep, within_depth, written
 from ddd.gui.derived import Derived, derived, key_of
+from ddd.gui.queries import (
+    AddConstant,
+    AddFile,
+    AddRaster,
+    AddSection,
+    AddUnit,
+    AdoptUnits,
+    CompareQuery,
+    ConstantPlanQuery,
+    ConstantQuery,
+    CreateFile,
+    DeclarableQuery,
+    DeclarationPlanQuery,
+    DeclareObject,
+    DescribeUnit,
+    FileQuery,
+    FilesPlanQuery,
+    FindingsQuery,
+    FixQuery,
+    NoQuery,
+    QueryModel,
+    RasterPlanQuery,
+    RasterQuery,
+    ReadDeclaration,
+    RemoveConstant,
+    RemoveDeclaration,
+    RemoveFile,
+    RemoveRaster,
+    RemoveSection,
+    RemoveUnit,
+    RenameConstant,
+    RenameRaster,
+    RenameSection,
+    RenameType,
+    RenameUnit,
+    SectionPlanQuery,
+    SectionQuery,
+    Serving,
+    SetConstantKey,
+    SetRasterKey,
+    SetSectionKey,
+    SettleQuery,
+    SetTypeKey,
+    StateQuery,
+    TypePlanQuery,
+    TypeQuery,
+    UnitPlanQuery,
+    UnitQuery,
+    ValuePlanQuery,
+    ValuesPlanQuery,
+    ValuesQuery,
+    VariableQuery,
+    actions_of,
+    json_value,
+    outside_served,
+)
+from ddd.gui.routes import Policy, Route, one_value_each
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
     Filed,
@@ -87,7 +147,7 @@ from ddd.gui.session import (
 )
 from ddd.ir import DataDictionary
 from ddd.loading import resolve_path
-from ddd.lsp.edits import PROPAGATED_KEYS, settle
+from ddd.lsp.edits import settle
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
@@ -166,10 +226,6 @@ tabs' rows, and the pages of findings a reader scrolls back to. A bound, the old
 without one, every page of a findings-heavy project a reader scrolled through would be kept until
 its next analysis."""
 
-LISTED: Final = (Severity.ERROR, Severity.WARNING, Severity.INFO)
-"""The severities a finding is reported at, and so the ones ``GET /api/findings`` filters by:
-``ignore`` means a finding is not reported at all."""
-
 ANALYSING: Final = "analysing"
 """The refusal of a request the analysis has not caught up with: asked of the open project before
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
@@ -177,97 +233,6 @@ yet. Answered 409, and answered differently once the analysis lands."""
 
 REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
-
-UNIT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "rename": ("unit", "to"),
-    "add": ("unit",),
-    "describe": ("unit", "description"),
-    "remove": ("unit",),
-    "adopt": (),
-}
-"""The changes ``GET /api/unit-plan`` previews, each with the parameters it takes besides
-``action``."""
-
-TYPE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-}
-"""What each change of a type takes, beside the action itself. ``set`` takes ``raw`` too, which
-may be absent: leaving a key out is what its absence means."""
-
-CONSTANT_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-    "add": ("name", "raw"),
-    "remove": ("name",),
-}
-"""What each change of a constant takes, beside the action itself. ``set`` takes ``raw`` too,
-which may be absent: leaving it out is what taking the key away means. ``add`` takes ``raw`` as
-one of its required parameters instead: a constant declared with no value is not what ``add``
-means, unlike ``set``, which a reader may ask of a row without having typed anything yet."""
-
-SECTION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-    "add": ("name", "access", "alignment"),
-    "remove": ("name",),
-}
-"""What each change of a section takes, beside the action itself.
-
-``set``, ``rename`` and ``remove`` are the constants table's own, spelled again rather than shared:
-these are the query parameters of one url, and a table two urls read from would tie a change of
-either endpoint to the other.
-
-``add`` is where the two differ, and where the descriptor decides: one parameter per key of
-:attr:`ddd.project_shared.SECTIONS.required`, in the order :func:`_required_keys` reads them off
-:attr:`~ddd.project_shared.Vocabulary.keys`, because a section the model gives no default for
-``access`` or ``alignment`` is one whose file would not load the moment it was written -
-``?raw=`` alone, which is all a constant's one required key needs, could not say either. Each
-carries json text, judged as ``set``'s ``raw`` is:
-``?access="read-only"&alignment=4``. ``description`` is not among them, having a default, and is
-set from the panel afterwards.
-"""
-
-RASTER_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "set": ("name", "key"),
-    "rename": ("name", "to"),
-    "add": ("name", "event"),
-    "remove": ("name",),
-}
-"""What each change of a raster takes, beside the action itself.
-
-The third table of the same four verbs, spelled again rather than shared for the reason
-:data:`SECTION_PLANS` gives: these are one url's query parameters, and a table two urls read from
-would tie a change of either to the other.
-
-``add`` is one parameter per key of :attr:`ddd.project_shared.RASTERS.required`, which is ``event``
-alone - a raster's ``cycle`` is ``str | None`` and its ``description`` defaults, so neither is the
-request's to supply and both are set from the panel afterwards. One required key, as a constant
-has, and still named for the key rather than carried as ``?raw=``: a section is not the only
-vocabulary whose ``add`` says which key it is declaring, and a url reading ``?event=1`` is what
-lets :func:`_declared` build the entry off the descriptor instead of off this route's memory of
-which key a vocabulary happens to require.
-"""
-
-FILE_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "create": ("kind", "name"),
-    "add": ("path",),
-    "remove": ("path",),
-}
-"""What each change of the project's files takes, beside the action itself: ``create`` the kind
-and the name of the new file, ``add`` a path relative to the description or absolute, as the
-reader typed it, and ``remove`` the key of a row of ``GET /api/files``.
-
-``create`` takes ``component`` as well, a new component's name, and may go without it: absent
-or empty, it reaches :func:`ddd.file_plans.create_plan` as ``None``, which refuses a component
-without a name in words of its own, and ignores it for every other kind."""
-
-DECLARATION_PLANS: Final[Mapping[str, tuple[str, ...]]] = {
-    "read": ("file", "name", "scope"),
-    "declare": ("file", "scope", "definition"),
-    "remove": ("file", "name"),
-}
-"""Which query parameters each action of ``GET /api/declaration-plan`` takes."""
 
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
@@ -279,12 +244,10 @@ _NOTHING_COMPARABLE: Final = (
 
 type Query = Mapping[str, Sequence[str]]
 
-type SharedPlanner = Callable[
-    [str, Index, SharedProject, Mapping[str, str], str | None, dict[Path, Document]], SharedPlan
-]
-"""What :meth:`Api._shared_plan` asks for the plan itself: the action, the index, the project's own
-files, the parameters the action takes, ``?raw=`` where the request carried one, and the read cache
-the route shares. One per vocabulary, since ``add`` is spelled differently for each."""
+type SharedPlanner[A] = Callable[[A, Index, SharedProject, dict[Path, Document]], SharedPlan]
+"""What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
+model (``A``), the index, the project's own files and the read cache the route shares. One per
+vocabulary, since ``add`` is spelled differently for each."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,14 +276,38 @@ class Api:
         self._state_kept: tuple[int, Reply] | None = None
 
     def handle(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
-        route = _ROUTES.get(path)
-        if route is None:
+        """The answer to one request: its route looked up by path and method, its query read one
+        value a key and as its route's model, and a ``POST``'s body as its own - each refused in
+        that order, as the first problem it finds - and only then the route's handler asked, with
+        the two it read. A path in either is read against the directories served
+        (:meth:`_serving`).
+
+        The query is read before anything asks for the open project, on every route, so that a
+        malformed one is answered as one whether a project is open or not."""
+        routes = [each for each in ROUTES if each.path == path]
+        if not routes:
             return _error(404, "not-found", f"{path} is not part of the api")
-        answer = route.get(method)
-        if answer is None:
-            return _error(405, "method-not-allowed", f"{path} takes {' or '.join(route)}")
+        route = next((each for each in routes if each.method == method), None)
+        if route is None:
+            methods = " or ".join(each.method for each in routes)
+            return _error(405, "method-not-allowed", f"{path} takes {methods}")
+        values = one_value_each(query, route.name)
+        if isinstance(values, str):
+            return _error(400, "bad-request", values)
+        serving = self._serving()
         try:
-            return answer(self, query, body)
+            typed = route.query.model_validate(values, context=serving)
+        except ValidationError as error:
+            return _error(400, "bad-request", _query_message(route, error))
+        given = None
+        if route.body is not None:
+            given = _validated(route.body, body, serving)
+            if isinstance(given, Reply):
+                return given
+        try:
+            return route.answer(self, typed, given)
+        except TooDeepError as error:
+            return _error(409, UNREADABLE, str(error))
         except NoProjectError as error:
             return _error(409, "no-project", str(error))
         except NotAnalysedError as error:
@@ -328,35 +315,44 @@ class Api:
         except NotInProjectError as error:
             return _error(404, "not-found", str(error))
 
-    def _session(self, query: Query, body: bytes | None) -> Reply:
+    def _serving(self) -> Serving:
+        """What a request's paths are read against: the directory ``ddd gui`` was started in,
+        and the directories the open project's newest revision serves - that one alone before
+        there is a revision."""
+        root = self.session.root.as_posix()
+        revision = self.session.revision
+        if revision is None:
+            return Serving(root, (root,))
+        return Serving(root, tuple(directory.as_posix() for directory in revision.served))
+
+    def _session(self, query: NoQuery, body: None) -> Reply:
         return Reply(200, self._session_body())
 
-    def _projects(self, query: Query, body: bytes | None) -> Reply:
+    def _projects(self, query: NoQuery, body: None) -> Reply:
         found = find_projects(self.session.root, self.session.build_directories)
         return Reply(
             200,
-            contract.Found(
-                root=found.root.as_posix(),
-                projects=[
-                    {"path": p.path.as_posix(), "name": p.name, "images": p.images}
-                    for p in found.projects
-                ],
-                refused=[
-                    {"record": record.as_posix(), "reason": reason}
-                    for record, reason in found.refused
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.Found(
+                    root=found.root.as_posix(),
+                    projects=[
+                        {"path": p.path.as_posix(), "name": p.name, "images": p.images}
+                        for p in found.projects
+                    ],
+                    refused=[
+                        {"record": record.as_posix(), "reason": reason}
+                        for record, reason in found.refused
+                    ],
+                )
+            ),
         )
 
-    def _open(self, query: Query, body: bytes | None) -> Reply:
-        request = _validated(contract.OpenRequest, body)
-        if isinstance(request, Reply):
-            return request
-        wanted = Path(request.path).resolve()
+    def _open(self, query: NoQuery, body: contract.OpenRequest) -> Reply:
+        wanted = resolve_path(Path(body.path))
         found = find_projects(self.session.root, self.session.build_directories)
         allowed = {p.path for p in found.projects} | ({self.project} if self.project else set())
         if wanted not in allowed:
-            return _error(404, "not-found", f"{request.path} is not a project found here")
+            return _error(404, "not-found", f"{body.path} is not a project found here")
         try:
             self.session.open(wanted)
         except ValueError as error:
@@ -365,7 +361,7 @@ class Api:
         # state, which says it is being analysed until it lands.
         return Reply(200, self._session_body())
 
-    def _state(self, query: Query, body: bytes | None) -> Reply:
+    def _state(self, query: StateQuery, body: None) -> Reply:
         """What the session says: at once, or as soon as its version is past ``?after=``, or
         once the wait runs out.
 
@@ -375,7 +371,7 @@ class Api:
         both find nothing kept both make it from the one derivation, and one made at an older
         version can be kept over a newer one's, which the newer version's next request makes
         again. Each answer is the one its own version says; only work is repeated."""
-        after = _integer(query.get("after"))
+        after = query.after
         if after is None:
             snapshot = self.session.snapshot()
         else:
@@ -420,19 +416,21 @@ class Api:
         top = snapshot.undoable
         return Reply(
             200,
-            contract.State(
-                revision=number,
-                version=snapshot.version,
-                project=project.as_posix(),
-                files=files,
-                counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
-                undoable=None if top is None else {"at": top.at, "label": top.label},
-                analysing=snapshot.analysing,
-                edits=edits,
-            ).model_dump(mode="json"),
+            written(
+                contract.State(
+                    revision=number,
+                    version=snapshot.version,
+                    project=project.as_posix(),
+                    files=files,
+                    counts={"error": counts[0], "warning": counts[1], "info": counts[2]},
+                    undoable=None if top is None else {"at": top.at, "label": top.label},
+                    analysing=snapshot.analysing,
+                    edits=edits,
+                )
+            ),
         )
 
-    def _findings(self, query: Query, body: bytes | None) -> Reply:
+    def _findings(self, query: FindingsQuery, body: None) -> Reply:
         """A page of the newest revision's findings: from ``?offset=`` - ``0`` when none is given -
         at most ``?limit=`` of them, or every one from the offset on when no limit is given, of
         those ``?severity=``, ``?file=`` (a file's path, however spelled) and ``?check=`` leave,
@@ -441,23 +439,8 @@ class Api:
         Kept for the revision (:meth:`_memoised`), one answer per page and filters: a reader
         scrolling back to a page finds it made already."""
         revision = self._opened()
-        offset: int | None = 0
-        given = query.get("offset")
-        if given is not None:
-            offset = _integer(given)
-        if offset is None:
-            return _error(400, "bad-request", "findings takes ?offset= as a whole number from 0")
-        limit: int | None = None
-        given = query.get("limit")
-        if given is not None:
-            limit = _integer(given)
-            if limit is None or limit < 1:
-                return _error(400, "bad-request", "findings takes ?limit= as a whole number from 1")
-        severity = _single(query.get("severity"))
-        if severity is not None and severity not in LISTED:
-            return _error(400, "bad-request", "findings takes ?severity= as error, warning or info")
-        file = _single(query.get("file"))
-        check = _single(query.get("check"))
+        offset, limit, severity = query.offset, query.limit, query.severity
+        file, check = query.file, query.check
         return self._memoised(
             revision,
             ("findings", offset, limit, severity, file, check),
@@ -495,50 +478,64 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.FindingsReply(
-                revision=revision.number,
-                total=len(order),
-                offset=offset,
-                findings=[
-                    {
-                        **_finding(findings[at], derived.sources[at], cache),
-                        "key": key_of(findings[at], derived.repeats[at]),
-                    }
-                    for at in page
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.FindingsReply(
+                    revision=revision.number,
+                    total=len(order),
+                    offset=offset,
+                    findings=[
+                        {
+                            **_finding(findings[at], derived.sources[at], cache),
+                            "key": key_of(findings[at], derived.repeats[at]),
+                        }
+                        for at in page
+                    ],
+                )
+            ),
         )
 
-    def _file(self, query: Query, body: bytes | None) -> Reply:
-        path = _single(query.get("path"))
-        if not path:
-            return _error(400, "bad-request", "file takes ?path=")
-        content = self.session.read_file(Path(path))
+    def _file(self, query: FileQuery, body: None) -> Reply:
+        """A description file's own json, refused where it nests deeper than its answer carries
+        (:func:`~ddd.gui.depth.file_too_deep`), naming the file."""
+        content = self.session.read_file(Path(query.path))
+        refused = file_too_deep(content.path, content.data)
+        if refused is not None:
+            return _error(409, UNREADABLE, refused)
         return Reply(
             200,
-            contract.FileContent(
-                path=content.path.as_posix(),
-                fingerprint=content.fingerprint,
-                data=content.data,
-                error=content.error,
-            ).model_dump(mode="json"),
+            written(
+                contract.FileContent(
+                    path=content.path.as_posix(),
+                    fingerprint=content.fingerprint,
+                    data=content.data,
+                    error=content.error,
+                )
+            ),
         )
 
-    def _dictionary(self, query: Query, body: bytes | None) -> Reply:
+    def _dictionary(self, query: NoQuery, body: None) -> Reply:
+        """The dictionary of the newest revision, refused where an extension block it carries
+        nests deeper than its answer carries (:func:`~ddd.gui.depth.block_too_deep`), naming the
+        file that states it."""
         revision = self._opened()
         dictionary = revision.dictionary
+        refused = block_too_deep(revision)
+        if refused is not None:
+            return _error(409, UNREADABLE, refused)
         return Reply(
             200,
-            contract.DictionaryReply(
-                revision=revision.number,
-                # Dumped here rather than left a model for DictionaryReply to nest: the file
-                # format already publishes this shape under `ddd schema dictionary`, and the
-                # api schema is not the place to publish it a second time.
-                dictionary=None if dictionary is None else dictionary.model_dump(mode="json"),
-            ).model_dump(mode="json"),
+            written(
+                contract.DictionaryReply(
+                    revision=revision.number,
+                    # Dumped here rather than left a model for DictionaryReply to nest: the file
+                    # format already publishes this shape under `ddd schema dictionary`, and the
+                    # api schema is not the place to publish it a second time.
+                    dictionary=None if dictionary is None else written(dictionary),
+                )
+            ),
         )
 
-    def _graph(self, query: Query, body: bytes | None) -> Reply:
+    def _graph(self, query: NoQuery, body: None) -> Reply:
         revision = self._opened()
         return self._memoised(revision, ("graph",), lambda: self._graph_of(revision))
 
@@ -548,87 +545,90 @@ class Api:
         built = graph_of(revision.dictionary, modules, findings)
         return Reply(
             200,
-            contract.GraphReply(
-                revision=revision.number,
-                dictionary=revision.dictionary is not None,
-                modules=[
-                    {
-                        "path": module.path.as_posix(),
-                        "name": module.name,
-                        "loaded": module.loaded,
-                        "findings": {
-                            "error": module.errors,
-                            "warning": module.warnings,
-                            "info": module.infos,
-                        },
-                    }
-                    for module in built.modules
-                ],
-                flows=[
-                    {
-                        "source": flow.source.as_posix(),
-                        "to": flow.target.as_posix(),
-                        "objects": flow.objects,
-                        "severity": flow.severity,
-                        "disagreements": [
-                            {
-                                "object": disagreement.object,
-                                "check": disagreement.check,
-                                "severity": disagreement.severity,
-                                "message": disagreement.message,
-                            }
-                            for disagreement in flow.disagreements
-                        ],
-                    }
-                    for flow in built.flows
-                ],
-            ).model_dump(mode="json", by_alias=True),
+            written(
+                contract.GraphReply(
+                    revision=revision.number,
+                    dictionary=revision.dictionary is not None,
+                    modules=[
+                        {
+                            "path": module.path.as_posix(),
+                            "name": module.name,
+                            "loaded": module.loaded,
+                            "findings": {
+                                "error": module.errors,
+                                "warning": module.warnings,
+                                "info": module.infos,
+                            },
+                        }
+                        for module in built.modules
+                    ],
+                    flows=[
+                        {
+                            "source": flow.source.as_posix(),
+                            "to": flow.target.as_posix(),
+                            "objects": flow.objects,
+                            "severity": flow.severity,
+                            "disagreements": [
+                                {
+                                    "object": disagreement.object,
+                                    "check": disagreement.check,
+                                    "severity": disagreement.severity,
+                                    "message": disagreement.message,
+                                }
+                                for disagreement in flow.disagreements
+                            ],
+                        }
+                        for flow in built.flows
+                    ],
+                ),
+                by_alias=True,
+            ),
         )
 
-    def _checks(self, query: Query, body: bytes | None) -> Reply:
+    def _checks(self, query: NoQuery, body: None) -> Reply:
         revision = self.session.revision
         plugins = () if revision is None else revision.checks
         return Reply(
             200,
-            contract.ChecksReply(
-                checks=[
-                    {
-                        "check": info.identifier,
-                        "default_severity": info.default_severity,
-                        "description": info.description,
-                        "overridable": info.overridable,
-                        "needs_every_component": info.needs_every_component,
-                        "comparison": info.comparison,
-                    }
-                    for info in (*CHECKS.values(), *plugins)
-                ]
-            ).model_dump(mode="json"),
+            written(
+                contract.ChecksReply(
+                    checks=[
+                        {
+                            "check": info.identifier,
+                            "default_severity": info.default_severity,
+                            "description": info.description,
+                            "overridable": info.overridable,
+                            "needs_every_component": info.needs_every_component,
+                            "comparison": info.comparison,
+                        }
+                        for info in (*CHECKS.values(), *plugins)
+                    ]
+                )
+            ),
         )
 
-    def _edit(self, query: Query, body: bytes | None) -> Reply:
-        request = _validated(contract.Changes, body)
-        if isinstance(request, Reply):
-            return request
+    def _edit(self, query: NoQuery, body: contract.Changes) -> Reply:
         try:
-            at, written = self.session.edit(
-                [_file_change(c) for c in request.changes], request.label
-            )
+            within_depth(body.changes)
+            at, wrote = self.session.edit([_file_change(c) for c in body.changes], body.label)
         except EditError as refusal:
             return _error(409 if refusal.code in REFUSALS else 500, refusal.code, str(refusal))
         # Answered once written, before its analysis: the edit's own number is what says when a
         # revision includes it.
         return Reply(
             200,
-            contract.EditReply(
-                edit=at,
-                files=[
-                    {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
-                    for file in written
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.EditReply(
+                    edit=at,
+                    files=[
+                        {"path": file.path.as_posix(), "fingerprint": file.fingerprint}
+                        for file in wrote
+                    ],
+                )
+            ),
         )
 
-    def _undo(self, query: Query, body: bytes | None) -> Reply:
+    def _undo(self, query: NoQuery, body: None) -> Reply:
         """What putting the last edit back would give each file, read from the disk as it
         stands."""
         revision = self._opened()
@@ -641,28 +641,25 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.UndoPreview(
-                revision=revision.number, at=top.at, label=top.label, changes=changes
-            ).model_dump(mode="json"),
+            written(
+                contract.UndoPreview(
+                    revision=revision.number, at=top.at, label=top.label, changes=changes
+                )
+            ),
         )
 
-    def _apply_undo(self, query: Query, body: bytes | None) -> Reply:
+    def _apply_undo(self, query: NoQuery, body: contract.UndoRequest) -> Reply:
         """Put that edit back, and answer the number the undo took, once the files are back -
         before its analysis."""
-        request = _validated(contract.UndoRequest, body)
-        if isinstance(request, Reply):
-            return request
         try:
-            number = self.session.undo(request.at)
+            number = self.session.undo(body.at)
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
-        return Reply(200, contract.UndoReply(edit=number).model_dump(mode="json"))
+        return Reply(200, written(contract.UndoReply(edit=number)))
 
-    def _variable(self, query: Query, body: bytes | None) -> Reply:
+    def _variable(self, query: VariableQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "variable takes ?name=")
+        name = query.name
         built = revision.index
         cache: dict[Path, Document] = {}
         declared = () if built is None else declarations_of(built, name, cache)
@@ -671,40 +668,42 @@ class Api:
         derived = self._derive(revision)
         return Reply(
             200,
-            contract.VariableReply(
-                revision=revision.number,
-                name=name,
-                declarations=[
-                    {
-                        "path": derived.resolve(entry.site.path).as_posix(),
-                        "pointer": entry.site.pointer,
-                        "component": entry.component,
-                        "role": entry.role,
-                        "stated": dict(entry.stated),
-                        "type": entry.type_name,
-                        "fixed": dict(entry.fixed),
-                    }
-                    for entry in declared
-                ],
-                # The dataclasses of `ddd.variable_keys` are the contract's models field for
-                # field; the contract validates what comes out, so a name that drifts apart
-                # fails here rather than reaching the page.
-                keys=[asdict(offer) for offer in offers(built, declared)],
-                findings=_listed(
-                    derived,
-                    [
-                        (file, found)
-                        for file, found in derived.findings.on_any(
-                            entry.site.path for entry in declared
-                        )
-                        if located_on(declared, file, found, derived.resolve)
+            written(
+                contract.VariableReply(
+                    revision=revision.number,
+                    name=name,
+                    declarations=[
+                        {
+                            "path": derived.resolve(entry.site.path).as_posix(),
+                            "pointer": entry.site.pointer,
+                            "component": entry.component,
+                            "role": entry.role,
+                            "stated": dict(entry.stated),
+                            "type": entry.type_name,
+                            "fixed": dict(entry.fixed),
+                        }
+                        for entry in declared
                     ],
-                    cache,
-                ),
-            ).model_dump(mode="json"),
+                    # The dataclasses of `ddd.variable_keys` are the contract's models field for
+                    # field; the contract validates what comes out, so a name that drifts apart
+                    # fails here rather than reaching the page.
+                    keys=[asdict(offer) for offer in offers(built, declared)],
+                    findings=_listed(
+                        derived,
+                        [
+                            (file, found)
+                            for file, found in derived.findings.on_any(
+                                entry.site.path for entry in declared
+                            )
+                            if located_on(declared, file, found, derived.resolve)
+                        ],
+                        cache,
+                    ),
+                )
+            ),
         )
 
-    def _units(self, query: Query, body: bytes | None) -> Reply:
+    def _units(self, query: NoQuery, body: None) -> Reply:
         """The vocabulary, the units in use, the Units tab's rows and whether adopting is offered.
 
         Answered anew each time, never kept (:meth:`_memoised`): the offer reads the disk as it
@@ -732,33 +731,33 @@ class Api:
         rows = () if built is None else unit_rows(built, derived.findings, cache)
         return Reply(
             200,
-            contract.UnitsReply(
-                revision=revision.number,
-                vocabulary=None
-                if vocabulary is None
-                else [{"unit": unit, "description": text} for unit, text in vocabulary],
-                used=[{"unit": unit, "variables": count} for unit, count in used],
-                units=[
-                    {
-                        "unit": row.unit,
-                        "description": row.description,
-                        "files": [derived.resolve(path).as_posix() for path in row.files],
-                        "variables": row.variables,
-                        "types": row.types,
-                        "members": row.members,
-                        "findings": row.findings,
-                    }
-                    for row in rows
-                ],
-                adoptable=adoptable(built, project),
-            ).model_dump(mode="json"),
+            written(
+                contract.UnitsReply(
+                    revision=revision.number,
+                    vocabulary=None
+                    if vocabulary is None
+                    else [{"unit": unit, "description": text} for unit, text in vocabulary],
+                    used=[{"unit": unit, "variables": count} for unit, count in used],
+                    units=[
+                        {
+                            "unit": row.unit,
+                            "description": row.description,
+                            "files": [derived.resolve(path).as_posix() for path in row.files],
+                            "variables": row.variables,
+                            "types": row.types,
+                            "members": row.members,
+                            "findings": row.findings,
+                        }
+                        for row in rows
+                    ],
+                    adoptable=adoptable(built, project),
+                )
+            ),
         )
 
-    def _unit(self, query: Query, body: bytes | None) -> Reply:
+    def _unit(self, query: UnitQuery, body: None) -> Reply:
         revision = self._opened()
-        unit = _single(query.get("name"))
-        if not unit:
-            return _error(400, "bad-request", "unit takes ?name=")
+        unit = query.name
         built = revision.index
         if built is None or (unit not in built.units and unit not in built.vocabulary):
             return _undeclared(revision, unit)
@@ -770,41 +769,33 @@ class Api:
         derived = self._derive(revision)
         return Reply(
             200,
-            contract.UnitReply(
-                revision=revision.number,
-                unit=unit,
-                description=description_of(built, unit, cache),
-                entries=[
-                    {"file": derived.resolve(entry.path).as_posix(), "pointer": entry.pointer}
-                    for entry in built.vocabulary.get(unit, ())
-                ],
-                sites=[
-                    {
-                        "path": derived.resolve(place.stated.site.path).as_posix(),
-                        "pointer": place.stated.site.pointer,
-                        "kind": place.stated.kind,
-                        "name": place.stated.name,
-                        "component": place.component,
-                        "role": place.role,
-                    }
-                    for place in places_of(built, unit, cache, _changed_in(derived))
-                ],
-                findings=_listed(derived, unit_findings(built, unit, derived.findings), cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.UnitReply(
+                    revision=revision.number,
+                    unit=unit,
+                    description=description_of(built, unit, cache),
+                    entries=[
+                        {"file": derived.resolve(entry.path).as_posix(), "pointer": entry.pointer}
+                        for entry in built.vocabulary.get(unit, ())
+                    ],
+                    sites=[
+                        {
+                            "path": derived.resolve(place.stated.site.path).as_posix(),
+                            "pointer": place.stated.site.pointer,
+                            "kind": place.stated.kind,
+                            "name": place.stated.name,
+                            "component": place.component,
+                            "role": place.role,
+                        }
+                        for place in places_of(built, unit, cache, _changed_in(derived))
+                    ],
+                    findings=_listed(derived, unit_findings(built, unit, derived.findings), cache),
+                )
+            ),
         )
 
-    def _unit_plan(self, query: Query, body: bytes | None) -> Reply:
+    def _unit_plan(self, query: UnitPlanQuery, body: None) -> Reply:
         revision = self._opened()
-        action = _single(query.get("action")) or ""
-        takes = UNIT_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400, "bad-request", f"unit-plan takes ?action= one of {', '.join(UNIT_PLANS)}"
-            )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
-        if len(given) < len(takes) or given.get("unit") == "":
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
         built = revision.index
         if built is None:
             unread = [file.path.name for file in revision.files if not file.loaded]
@@ -819,7 +810,7 @@ class Api:
             revision.project, [file.path for file in revision.files if not file.loaded], cache
         )
         try:
-            plan = _unit_plan_of(action, built, project, given, cache)
+            plan = _unit_plan_of(query.root, built, project, cache)
         except UnitRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -831,12 +822,14 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
-    def _types(self, query: Query, body: bytes | None) -> Reply:
+    def _types(self, query: NoQuery, body: None) -> Reply:
         revision = self._opened()
         return self._memoised(revision, ("types",), lambda: self._types_of(revision))
 
@@ -846,26 +839,26 @@ class Api:
         rows = () if built is None else type_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
-            contract.TypesReply(
-                revision=revision.number,
-                types=[
-                    {
-                        "name": row.name,
-                        "kind": row.kind,
-                        "description": row.description,
-                        "uses": row.uses,
-                        "findings": row.findings,
-                    }
-                    for row in rows
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.TypesReply(
+                    revision=revision.number,
+                    types=[
+                        {
+                            "name": row.name,
+                            "kind": row.kind,
+                            "description": row.description,
+                            "uses": row.uses,
+                            "findings": row.findings,
+                        }
+                        for row in rows
+                    ],
+                )
+            ),
         )
 
-    def _type(self, query: Query, body: bytes | None) -> Reply:
+    def _type(self, query: TypeQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "type takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.types:
             return _undeclared(revision, name)
@@ -882,59 +875,51 @@ class Api:
         header = stated.get("header")
         return Reply(
             200,
-            contract.TypeReply(
-                revision=revision.number,
-                name=name,
-                kind=row.kind,
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                description=row.description,
-                header=None if header is None else json.loads(header),
-                keys=[
-                    asdict(offer_for(built, key, stated.get(key), required=key in REQUIRED))
-                    for key in SCALAR_KEYS
-                ]
-                if row.kind == "scalar"
-                else [],
-                uses=[
-                    {
-                        "path": derived.resolve(use.site.path).as_posix(),
-                        "pointer": use.site.pointer,
-                        "kind": use.kind,
-                        "name": use.name,
-                        "component": use.component,
-                        "role": use.role,
-                    }
-                    for use in uses_of(built, name, cache)
-                ],
-                members=[
-                    {
-                        "name": member["name"],
-                        "member": member["member"],
-                        "typename": member.get("typename"),
-                        "datatype": member.get("datatype"),
-                        "unit": member.get("unit"),
-                        "bits": member.get("bits"),
-                        "dimensions": member.get("dimensions", ()),
-                    }
-                    for member in members_of(built, name, cache)
-                ],
-                findings=_listed(derived, type_findings(built, name, derived.findings), cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.TypeReply(
+                    revision=revision.number,
+                    name=name,
+                    kind=row.kind,
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    description=row.description,
+                    header=None if header is None else json.loads(header),
+                    keys=[
+                        asdict(offer_for(built, key, stated.get(key), required=key in REQUIRED))
+                        for key in SCALAR_KEYS
+                    ]
+                    if row.kind == "scalar"
+                    else [],
+                    uses=[
+                        {
+                            "path": derived.resolve(use.site.path).as_posix(),
+                            "pointer": use.site.pointer,
+                            "kind": use.kind,
+                            "name": use.name,
+                            "component": use.component,
+                            "role": use.role,
+                        }
+                        for use in uses_of(built, name, cache)
+                    ],
+                    members=[
+                        {
+                            "name": member["name"],
+                            "member": member["member"],
+                            "typename": member.get("typename"),
+                            "datatype": member.get("datatype"),
+                            "unit": member.get("unit"),
+                            "bits": member.get("bits"),
+                            "dimensions": member.get("dimensions", ()),
+                        }
+                        for member in members_of(built, name, cache)
+                    ],
+                    findings=_listed(derived, type_findings(built, name, derived.findings), cache),
+                )
+            ),
         )
 
-    def _type_plan(self, query: Query, body: bytes | None) -> Reply:
+    def _type_plan(self, query: TypePlanQuery, body: None) -> Reply:
         revision = self._opened()
-        action = _single(query.get("action")) or ""
-        takes = TYPE_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400, "bad-request", f"type-plan takes ?action= one of {', '.join(TYPE_PLANS)}"
-            )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
-        if len(given) < len(takes) or given.get("name") == "":
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
         built = revision.index
         if built is None:
             unread = [file.path.name for file in revision.files if not file.loaded]
@@ -945,9 +930,8 @@ class Api:
                 "so no type of the project can be changed",
             )
         cache: dict[Path, Document] = {}
-        raw = _single(query.get("raw")) or None
         try:
-            plan = _type_plan_of(action, built, given, raw, cache)
+            plan = _type_plan_of(query.root, built, cache)
         except TypeRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -959,12 +943,14 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
-    def _shared(self, query: Query, body: bytes | None) -> Reply:
+    def _shared(self, query: NoQuery, body: None) -> Reply:
         revision = self._opened()
         return self._memoised(revision, ("shared",), lambda: self._shared_of(revision))
 
@@ -974,26 +960,26 @@ class Api:
         rows = () if built is None else shared_rows(built, self._derive(revision).findings, cache)
         return Reply(
             200,
-            contract.SharedReply(
-                revision=revision.number,
-                entries=[
-                    {
-                        "kind": row.kind,
-                        "name": row.name,
-                        "states": row.states,
-                        "uses": row.uses,
-                        "findings": row.findings,
-                    }
-                    for row in rows
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.SharedReply(
+                    revision=revision.number,
+                    entries=[
+                        {
+                            "kind": row.kind,
+                            "name": row.name,
+                            "states": row.states,
+                            "uses": row.uses,
+                            "findings": row.findings,
+                        }
+                        for row in rows
+                    ],
+                )
+            ),
         )
 
-    def _constant(self, query: Query, body: bytes | None) -> Reply:
+    def _constant(self, query: ConstantQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "constant takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.constants:
             return _undeclared(revision, name)
@@ -1012,23 +998,23 @@ class Api:
         texts = shown(CONSTANTS, built, name, cache)
         return Reply(
             200,
-            contract.ConstantReply(
-                revision=revision.number,
-                name=name,
-                value=texts["value"],
-                description=texts["description"],
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                uses=_entry_uses(CONSTANTS, derived, built, name, cache),
-                findings=_entry_findings(CONSTANTS, derived, built, name, cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.ConstantReply(
+                    revision=revision.number,
+                    name=name,
+                    value=texts["value"],
+                    description=texts["description"],
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    uses=_entry_uses(CONSTANTS, derived, built, name, cache),
+                    findings=_entry_findings(CONSTANTS, derived, built, name, cache),
+                )
+            ),
         )
 
-    def _section(self, query: Query, body: bytes | None) -> Reply:
+    def _section(self, query: SectionQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "section takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.sections:
             return _undeclared(revision, name)
@@ -1041,24 +1027,24 @@ class Api:
         texts = shown(SECTIONS, built, name, cache)
         return Reply(
             200,
-            contract.SectionReply(
-                revision=revision.number,
-                name=name,
-                access=texts["access"],
-                alignment=texts["alignment"],
-                description=texts["description"],
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                uses=_entry_uses(SECTIONS, derived, built, name, cache),
-                findings=_entry_findings(SECTIONS, derived, built, name, cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.SectionReply(
+                    revision=revision.number,
+                    name=name,
+                    access=texts["access"],
+                    alignment=texts["alignment"],
+                    description=texts["description"],
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    uses=_entry_uses(SECTIONS, derived, built, name, cache),
+                    findings=_entry_findings(SECTIONS, derived, built, name, cache),
+                )
+            ),
         )
 
-    def _raster(self, query: Query, body: bytes | None) -> Reply:
+    def _raster(self, query: RasterQuery, body: None) -> Reply:
         revision = self._opened()
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "raster takes ?name=")
+        name = query.name
         built = revision.index
         if built is None or name not in built.rasters:
             return _undeclared(revision, name)
@@ -1071,20 +1057,22 @@ class Api:
         texts = shown(RASTERS, built, name, cache)
         return Reply(
             200,
-            contract.RasterReply(
-                revision=revision.number,
-                name=name,
-                event=texts["event"],
-                cycle=texts["cycle"],
-                description=texts["description"],
-                file=derived.resolve(site.path).as_posix(),
-                pointer=site.pointer,
-                uses=_entry_uses(RASTERS, derived, built, name, cache),
-                findings=_entry_findings(RASTERS, derived, built, name, cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.RasterReply(
+                    revision=revision.number,
+                    name=name,
+                    event=texts["event"],
+                    cycle=texts["cycle"],
+                    description=texts["description"],
+                    file=derived.resolve(site.path).as_posix(),
+                    pointer=site.pointer,
+                    uses=_entry_uses(RASTERS, derived, built, name, cache),
+                    findings=_entry_findings(RASTERS, derived, built, name, cache),
+                )
+            ),
         )
 
-    def _files(self, query: Query, body: bytes | None) -> Reply:
+    def _files(self, query: NoQuery, body: None) -> Reply:
         """The root's includes, each entry as the loader's own rule reads it, and what each
         brings - the files a row joins ``State.files`` on, and the findings at the entry
         itself, which a row naming nothing has no file to carry.
@@ -1104,64 +1092,45 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.FilesReply(
-                revision=revision.number,
-                project=revision.project.as_posix(),
-                entries=[
-                    {
-                        "index": entry.index,
-                        "entry": entry.entry,
-                        "names": entry.names,
-                        "key": entry.key.as_posix(),
-                        "files": [file.as_posix() for file in entry.files],
-                        "findings": at_entry.get(entry.index, 0),
-                    }
-                    for entry in included_entries(revision.project, cache)
-                ],
-                creatable=CREATABLE,
-            ).model_dump(mode="json"),
+            written(
+                contract.FilesReply(
+                    revision=revision.number,
+                    project=revision.project.as_posix(),
+                    entries=[
+                        {
+                            "index": entry.index,
+                            "entry": entry.entry,
+                            "names": entry.names,
+                            "key": entry.key.as_posix(),
+                            "files": [file.as_posix() for file in entry.files],
+                            "findings": at_entry.get(entry.index, 0),
+                        }
+                        for entry in included_entries(revision.project, cache)
+                    ],
+                    creatable=CREATABLE,
+                )
+            ),
         )
 
-    def _files_plan(self, query: Query, body: bytes | None) -> Reply:
+    def _files_plan(self, query: FilesPlanQuery, body: None) -> Reply:
         """One change of the project's files - creating, adding or removing one - previewed and
         never written, with the errors an add is counted to bring.
 
-        A parameter :data:`FILE_PLANS` names that is missing or empty is a bad request, and so
-        is a key to remove that is not absolute, as a row's never is: read against the server's
+        Its query read as :class:`~ddd.gui.queries.FilesPlanQuery` before anything else, a key to
+        remove that is not absolute refused there, as a row's never is: read against the server's
         own working directory, a relative one named another file. Past that, each refusal is the
         plan's own or :func:`_addition`'s and :func:`_removal`'s, in the order they ask them,
         ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
         revision would falsify is refused ``stale``.
         """
         revision = self._opened()
-        action = _single(query.get("action")) or ""
-        takes = FILE_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400, "bad-request", f"files-plan takes ?action= one of {', '.join(FILE_PLANS)}"
-            )
-        given: dict[str, str] = {}
-        for part in takes:
-            value = _single(query.get(part))
-            if not value:
-                wanted = " and ".join(f"?{taken}=" for taken in takes)
-                return _error(400, "bad-request", f"{action} takes {wanted}")
-            given[part] = value
-        if action == "remove" and not Path(given["path"]).is_absolute():
-            return _error(
-                400,
-                "bad-request",
-                f"remove takes ?path= as a row's key, which is absolute, and '{given['path']}' "
-                "is not",
-            )
-        component = _single(query.get("component")) or None
         cache: dict[Path, Document] = {}
 
         def refuse(paths: Iterable[Path]) -> None:
             self._refuse_unanalysed(revision, paths)
 
         try:
-            plan = _files_plan_of(action, revision, given, component, cache, refuse)
+            plan = _files_plan_of(query.root, revision, cache, refuse)
         except FileRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1174,63 +1143,43 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.FilesPlanReply(
-                revision=revision.number,
-                changes=_planned_changes(revision, derived, made),
-                unjudged=plan.unjudged,
-                brings=[
-                    {"file": path.as_posix(), "check": found.check, "message": found.message}
-                    for path, found in plan.brings
-                ],
-                kept_by=plan.kept_by,
-            ).model_dump(mode="json"),
+            written(
+                contract.FilesPlanReply(
+                    revision=revision.number,
+                    changes=_planned_changes(revision, derived, made),
+                    unjudged=plan.unjudged,
+                    brings=[
+                        {"file": path.as_posix(), "check": found.check, "message": found.message}
+                        for path, found in plan.brings
+                    ],
+                    kept_by=plan.kept_by,
+                )
+            ),
         )
 
-    def _constant_plan(self, query: Query, body: bytes | None) -> Reply:
-        return self._shared_plan(CONSTANTS, CONSTANT_PLANS, _constant_plan_of, query)
+    def _constant_plan(self, query: ConstantPlanQuery, body: None) -> Reply:
+        return self._shared_plan(CONSTANTS, query.root, _constant_plan_of)
 
-    def _section_plan(self, query: Query, body: bytes | None) -> Reply:
-        return self._shared_plan(SECTIONS, SECTION_PLANS, _section_plan_of, query)
+    def _section_plan(self, query: SectionPlanQuery, body: None) -> Reply:
+        return self._shared_plan(SECTIONS, query.root, _section_plan_of)
 
-    def _raster_plan(self, query: Query, body: bytes | None) -> Reply:
-        return self._shared_plan(RASTERS, RASTER_PLANS, _raster_plan_of, query)
+    def _raster_plan(self, query: RasterPlanQuery, body: None) -> Reply:
+        return self._shared_plan(RASTERS, query.root, _raster_plan_of)
 
-    def _shared_plan(
-        self,
-        vocabulary: Vocabulary,
-        plans: Mapping[str, tuple[str, ...]],
-        plan_of: SharedPlanner,
-        query: Query,
-    ) -> Reply:
-        """One change of one entry of ``vocabulary``, previewed and never written.
+    def _shared_plan[A](self, vocabulary: Vocabulary, asked: A, plan_of: SharedPlanner[A]) -> Reply:
+        """One change of one entry of ``vocabulary``, ``asked`` as its route's query read it,
+        previewed and never written.
 
-        Written once for both endpoints rather than twice: the two differ in their table of
-        actions, the verb each action reaches and the noun a refusal names, all three of which
-        arrive as arguments - everything else here is about the request and the revision, which a
-        second copy would only be able to get wrong differently.
+        Written once for the three endpoints rather than three times: they differ in the actions
+        their queries take, the verb each action reaches and the noun a refusal names, all of
+        which arrive as arguments - everything else here is about the revision, which a second
+        copy would only be able to get wrong differently. Every part that has to be json - a
+        ``?raw=``, and each value an ``add`` declares - was read as json text by the query, before
+        anything asked for the project: a request that is not json is a mistake about the
+        request, not a refusal about the project, so it answers 400 rather than being folded into
+        a :class:`~ddd.shared_plans.SharedRefusalError`.
         """
         revision = self._opened()
-        action = _single(query.get("action")) or ""
-        takes = plans.get(action)
-        if takes is None:
-            return _error(
-                400,
-                "bad-request",
-                f"{vocabulary.kind}-plan takes ?action= one of {', '.join(plans)}",
-            )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
-        if len(given) < len(takes) or given.get("name") == "" or given.get("raw") == "":
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
-        # Validated before any plan is asked for, as `_settle` already validates its own `raw`:
-        # a request that is not json is a mistake about the request, not a refusal about the
-        # project, so it answers 400 rather than being folded into a `SharedRefusalError`.
-        raw = _single(query.get("raw")) or None
-        for text in _json_texts(vocabulary, given, raw):
-            try:
-                parse_raw(text)
-            except EditError as refused:
-                return _error(400, "bad-request", str(refused))
         built = revision.index
         if built is None:
             unread = [file.path.name for file in revision.files if not file.loaded]
@@ -1248,7 +1197,7 @@ class Api:
             cache,
         )
         try:
-            plan = plan_of(action, built, project, given, raw, cache)
+            plan = plan_of(asked, built, project, cache)
         except SharedRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1260,29 +1209,18 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, made)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, made)
+                )
+            ),
         )
 
-    def _settle(self, query: Query, body: bytes | None) -> Reply:
+    def _settle(self, query: SettleQuery, body: None) -> Reply:
         revision = self._opened()
-        name, key = (_single(query.get(part)) for part in ("name", "key"))
-        # A blank ``raw`` is none, as a missing one: the key goes from every declaration.
-        raw = _single(query.get("raw")) or None
-        if not name or not key:
-            return _error(
-                400, "bad-request", "settle takes ?name= and ?key=, and ?raw= unless the key goes"
-            )
-        if key not in PROPAGATED_KEYS:
-            return _error(
-                400, "bad-request", f"'{key}' is not a key the declarations of a variable share"
-            )
-        if raw is not None:
-            try:
-                parse_raw(raw)
-            except EditError as refused:
-                return _error(400, "bad-request", str(refused))
+        # ``raw`` is none where it was left out or given blank: the key goes from every
+        # declaration.
+        name, key, raw = query.name, query.key, query.raw
         built = revision.index
         if built is None or name not in built.declarations:
             return _undeclared(revision, name)
@@ -1301,18 +1239,17 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.SettleReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.SettleReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
-    def _fix(self, query: Query, body: bytes | None) -> Reply:
+    def _fix(self, query: FixQuery, body: None) -> Reply:
         revision = self._opened()
-        file, check = (_single(query.get(part)) for part in ("file", "check"))
-        pointer = _single(query.get("pointer"))
-        if not file or not check or pointer is None:
-            return _error(400, "bad-request", "fix takes ?file=, ?pointer= and ?check=")
-        wanted = Path(file).resolve()
+        file, pointer, check = query.file, query.pointer, query.check
+        wanted = resolve_path(Path(file))
         derived = self._derive(revision)
         source = next((f for f in revision.files if derived.resolve(f.path) == wanted), None)
         if source is None:
@@ -1335,16 +1272,13 @@ class Api:
             )
         return Reply(
             200,
-            contract.FixReply(revision=revision.number, fixes=offered).model_dump(mode="json"),
+            written(contract.FixReply(revision=revision.number, fixes=offered)),
         )
 
-    def _declarable(self, query: Query, body: bytes | None) -> Reply:
-        path = _single(query.get("file"))
-        if not path:
-            return _error(400, "bad-request", "declarable takes ?file=")
+    def _declarable(self, query: DeclarableQuery, body: None) -> Reply:
         revision = self._opened()
         try:
-            file = _source(revision, Path(path))
+            file = _source(revision, Path(query.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
@@ -1355,49 +1289,40 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.DeclarableReply(
-                revision=revision.number,
-                file=file.as_posix(),
-                names=tuple(
-                    contract.DeclarableName(
-                        name=entry.name,
-                        kind=entry.kind,
-                        producer=entry.producer,
-                        scopes=scopes_for(built, entry.name),
-                    )
-                    for entry in declarable(built, file, cache)
-                ),
-                kinds=tuple(
-                    # `asdict`, exactly as `_variable` already converts its offers: the
-                    # dataclasses of `ddd.variable_keys` are the contract's models field for
-                    # field, and the contract validates what comes out, so a name that drifts
-                    # apart fails here rather than reaching the page.
-                    contract.KindForm(
-                        kind=kind, keys=[asdict(offer) for offer in form_for(built, kind)]
-                    )
-                    for kind in KINDS
-                ),
-                scopes=SCOPES,
-                constants=tuple(sorted(built.constants)),
-            ).model_dump(mode="json"),
+            written(
+                contract.DeclarableReply(
+                    revision=revision.number,
+                    file=file.as_posix(),
+                    names=tuple(
+                        contract.DeclarableName(
+                            name=entry.name,
+                            kind=entry.kind,
+                            producer=entry.producer,
+                            scopes=scopes_for(built, entry.name),
+                        )
+                        for entry in declarable(built, file, cache)
+                    ),
+                    kinds=tuple(
+                        # `asdict`, exactly as `_variable` already converts its offers: the
+                        # dataclasses of `ddd.variable_keys` are the contract's models field for
+                        # field, and the contract validates what comes out, so a name that drifts
+                        # apart fails here rather than reaching the page.
+                        contract.KindForm(
+                            kind=kind, keys=[asdict(offer) for offer in form_for(built, kind)]
+                        )
+                        for kind in KINDS
+                    ),
+                    scopes=SCOPES,
+                    constants=tuple(sorted(built.constants)),
+                )
+            ),
         )
 
-    def _declaration_plan(self, query: Query, body: bytes | None) -> Reply:
-        action = _single(query.get("action")) or ""
-        takes = DECLARATION_PLANS.get(action)
-        if takes is None:
-            return _error(
-                400,
-                "bad-request",
-                f"declaration-plan takes ?action= one of {', '.join(DECLARATION_PLANS)}",
-            )
-        given = {part: value for part in takes if (value := _single(query.get(part))) is not None}
-        if len(given) < len(takes):
-            wanted = " and ".join(f"?{part}=" for part in takes)
-            return _error(400, "bad-request", f"{action} takes {wanted}")
+    def _declaration_plan(self, query: DeclarationPlanQuery, body: None) -> Reply:
+        asked = query.root
         revision = self._opened()
         try:
-            file = _source(revision, Path(given["file"]))
+            file = _source(revision, Path(asked.file))
         except NotInProjectError as outside:
             return _error(404, "not-found", str(outside))
         built = revision.index
@@ -1405,7 +1330,7 @@ class Api:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
         cache: dict[Path, Document] = {}
         try:
-            plan = _declaration_plan_of(action, built, file, given, cache)
+            plan = _declaration_plan_of(asked, built, file, cache)
         except DeclarationRefusalError as refused:
             status = 404 if refused.code == "not-found" else 409
             return _error(status, refused.code, refused.message)
@@ -1417,15 +1342,15 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
-    def _values(self, query: Query, body: bytes | None) -> Reply:
-        name = _single(query.get("name"))
-        if not name:
-            return _error(400, "bad-request", "values takes ?name=")
+    def _values(self, query: ValuesQuery, body: None) -> Reply:
+        name = query.name
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
@@ -1444,47 +1369,44 @@ class Api:
         cache: dict[Path, Document] = {}
         return Reply(
             200,
-            contract.ValuesReply(
-                revision=revision.number,
-                name=grid.name,
-                kind=grid.kind,
-                datatype=grid.datatype,
-                unit=grid.unit,
-                conversion=grid.conversion.model_dump(mode="json"),
-                minimum=grid.minimum,
-                maximum=grid.maximum,
-                shape=grid.shape,
-                rows=grid.rows,
-                stated=grid.stated,
-                axes=[
-                    {
-                        "position": axis.position,
-                        "name": axis.name,
-                        "unit": axis.unit,
-                        "breakpoints": axis.breakpoints,
-                        "conversion": axis.conversion.model_dump(mode="json"),
-                    }
-                    for axis in grid.axes
-                ],
-                owner=grid.owner,
-                file=grid.file,
-                findings=_listed(derived, _grid_findings(derived, grid), cache),
-            ).model_dump(mode="json"),
+            written(
+                contract.ValuesReply(
+                    revision=revision.number,
+                    name=grid.name,
+                    kind=grid.kind,
+                    datatype=grid.datatype,
+                    unit=grid.unit,
+                    conversion=written(grid.conversion),
+                    minimum=grid.minimum,
+                    maximum=grid.maximum,
+                    shape=grid.shape,
+                    rows=grid.rows,
+                    stated=grid.stated,
+                    axes=[
+                        {
+                            "position": axis.position,
+                            "name": axis.name,
+                            "unit": axis.unit,
+                            "breakpoints": axis.breakpoints,
+                            "conversion": written(axis.conversion),
+                        }
+                        for axis in grid.axes
+                    ],
+                    owner=grid.owner,
+                    file=grid.file,
+                    findings=_listed(derived, _grid_findings(derived, grid), cache),
+                )
+            ),
         )
 
-    def _value_plan(self, query: Query, body: bytes | None) -> Reply:
-        name = _single(query.get("name"))
-        at = _single(query.get("at"))
-        raw_text = _single(query.get("raw"))
-        if not name or not at or not raw_text:
-            return _error(400, "bad-request", "value-plan takes ?name= and ?at= and ?raw=")
+    def _value_plan(self, query: ValuePlanQuery, body: None) -> Reply:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _error(409, UNREADABLE, _NOTHING_RESOLVED)
         try:
-            raw = _number(raw_text)
-            plan = set_cell(dictionary, built, name, at, raw, {})
+            raw = _number(query.raw)
+            plan = set_cell(dictionary, built, query.name, query.at, raw, {})
         except ValueRefusalError as refused:
             # Both codes again, as in _values above - a name the project has not, and every
             # other refusal - so both arms need a status and a test reaching them: a ternary
@@ -1501,22 +1423,21 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
-    def _values_plan(self, query: Query, body: bytes | None) -> Reply:
-        name = _single(query.get("name"))
-        counts = _single(query.get("raw"))
-        if not name or not counts:
-            return _error(400, "bad-request", "values-plan takes ?name= and ?raw=")
+    def _values_plan(self, query: ValuesPlanQuery, body: None) -> Reply:
+        name = query.name
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
             return _error(409, UNREADABLE, _NOTHING_RESOLVED)
         try:
-            flat = [_number(piece) for piece in counts.split(",")]
+            flat = [_number(piece) for piece in query.raw.split(",")]
             plan = set_values(dictionary, built, name, _folded(flat, dictionary, name))
         except ValueRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
@@ -1532,20 +1453,21 @@ class Api:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
             200,
-            contract.PlanReply(
-                revision=revision.number, changes=_planned_changes(revision, derived, planned)
-            ).model_dump(mode="json"),
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
         )
 
-    def _compare(self, query: Query, body: bytes | None) -> Reply:
+    def _compare(self, query: CompareQuery, body: None) -> Reply:
         revision = self._opened()
-        path = _single(query.get("baseline"))
-        if not path:
-            return _error(400, "bad-request", "compare takes ?baseline=")
         if revision.dictionary is None:
             return _error(409, UNREADABLE, _NOTHING_COMPARABLE)
         try:
-            result = compared(revision, Path(path), self.session.root, self._compare_cache)
+            result = compared(
+                revision, Path(query.baseline), self.session.root, self._compare_cache
+            )
         except BaselineRefusedError as refused:
             return _error(400, "bad-request", str(refused))
         derived = self._derive(revision)
@@ -1556,28 +1478,31 @@ class Api:
         )
         return Reply(
             200,
-            contract.CompareReply(
-                revision=revision.number,
-                verdict=result.verdict,
-                findings=[
-                    _finding(filed, derived.files.get(derived.resolve(filed.file)), cache)
-                    for filed in findings
-                ],
-                # Never a source for one of these, whatever file it resolves to: a baseline given
-                # as a project description can share files, ids and even paths with the open
-                # project, so being carried in this field rather than `findings` is what marks a
-                # finding as the baseline's - not a test of where it happens to sit, which
-                # answered this wrong for a baseline that was also a file of the open project. Two
-                # fields on the wire, mirroring `Compared`'s own two, rather than one merged list
-                # a reader would have to tell apart by matching the "in the baseline: " a message
-                # happens to carry - `CompareReply.baseline_findings`' own docstring is what that
-                # matching would be re-deriving, unreliably, from text a page does not own.
-                baseline_findings=[_finding(filed, None, cache) for filed in baseline_findings],
-                renames=[
-                    {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
-                    for entry in result.renames
-                ],
-            ).model_dump(mode="json"),
+            written(
+                contract.CompareReply(
+                    revision=revision.number,
+                    verdict=result.verdict,
+                    findings=[
+                        _finding(filed, derived.files.get(derived.resolve(filed.file)), cache)
+                        for filed in findings
+                    ],
+                    # Never a source for one of these, whatever file it resolves to: a baseline
+                    # given as a project description can share files, ids and even paths with the
+                    # open project, so being carried in this field rather than `findings` is what
+                    # marks a finding as the baseline's - not a test of where it happens to sit,
+                    # which answered this wrong for a baseline that was also a file of the open
+                    # project. Two fields on the wire, mirroring `Compared`'s own two, rather than
+                    # one merged list a reader would have to tell apart by matching the
+                    # "in the baseline: " a message happens to carry -
+                    # `CompareReply.baseline_findings`' own docstring is what that matching would be
+                    # re-deriving, unreliably, from text a page does not own.
+                    baseline_findings=[_finding(filed, None, cache) for filed in baseline_findings],
+                    renames=[
+                        {"id": entry["id"], "old": entry["from"], "new": entry["to"]}
+                        for entry in result.renames
+                    ],
+                )
+            ),
         )
 
     def _opened(self) -> Revision:
@@ -1685,59 +1610,85 @@ class Api:
             name = _name_in(_read_json(snapshot.project), "project")
             project = {"path": snapshot.project.as_posix(), "name": name}
         revision = snapshot.revision
-        return contract.SessionInfo(
-            version=__version__,
-            preview=True,
-            root=self.session.root.as_posix(),
-            project=project,
-            builds=[]
-            if revision is None
-            else [
-                {"image": info.image, "strict": info.strict, "severity": info.severity}
-                for info in revision.builds
-            ],
-        ).model_dump(mode="json")
+        return written(
+            contract.SessionInfo(
+                version=__version__,
+                preview=True,
+                root=self.session.root.as_posix(),
+                project=project,
+                builds=[]
+                if revision is None
+                else [
+                    {"image": info.image, "strict": info.strict, "severity": info.severity}
+                    for info in revision.builds
+                ],
+            )
+        )
 
 
-type Answer = Callable[[Api, Query, bytes | None], Reply]
-
-_ROUTES: Final[dict[str, dict[str, Answer]]] = {
-    "/api/session": {"GET": Api._session},
-    "/api/projects": {"GET": Api._projects},
-    "/api/open": {"POST": Api._open},
-    "/api/state": {"GET": Api._state},
-    "/api/findings": {"GET": Api._findings},
-    "/api/file": {"GET": Api._file},
-    "/api/dictionary": {"GET": Api._dictionary},
-    "/api/graph": {"GET": Api._graph},
-    "/api/checks": {"GET": Api._checks},
-    "/api/edit": {"POST": Api._edit},
-    "/api/undo": {"GET": Api._undo, "POST": Api._apply_undo},
-    "/api/variable": {"GET": Api._variable},
-    "/api/units": {"GET": Api._units},
-    "/api/settle": {"GET": Api._settle},
-    "/api/fix": {"GET": Api._fix},
-    "/api/unit": {"GET": Api._unit},
-    "/api/unit-plan": {"GET": Api._unit_plan},
-    "/api/types": {"GET": Api._types},
-    "/api/type": {"GET": Api._type},
-    "/api/type-plan": {"GET": Api._type_plan},
-    "/api/shared": {"GET": Api._shared},
-    "/api/constant": {"GET": Api._constant},
-    "/api/constant-plan": {"GET": Api._constant_plan},
-    "/api/section": {"GET": Api._section},
-    "/api/section-plan": {"GET": Api._section_plan},
-    "/api/raster": {"GET": Api._raster},
-    "/api/raster-plan": {"GET": Api._raster_plan},
-    "/api/files": {"GET": Api._files},
-    "/api/files-plan": {"GET": Api._files_plan},
-    "/api/declarable": {"GET": Api._declarable},
-    "/api/declaration-plan": {"GET": Api._declaration_plan},
-    "/api/values": {"GET": Api._values},
-    "/api/value-plan": {"GET": Api._value_plan},
-    "/api/values-plan": {"GET": Api._values_plan},
-    "/api/compare": {"GET": Api._compare},
-}
+ROUTES: Final[tuple[Route, ...]] = (
+    Route("/api/session", "GET", NoQuery, None, Api._session),
+    Route("/api/projects", "GET", NoQuery, None, Api._projects),
+    Route(
+        "/api/open",
+        "POST",
+        NoQuery,
+        contract.OpenRequest,
+        Api._open,
+        Policy(opens=True, runs_plugins=True),
+    ),
+    Route("/api/state", "GET", StateQuery, None, Api._state, Policy(waits=True)),
+    Route("/api/findings", "GET", FindingsQuery, None, Api._findings),
+    Route("/api/file", "GET", FileQuery, None, Api._file),
+    Route("/api/dictionary", "GET", NoQuery, None, Api._dictionary),
+    Route("/api/graph", "GET", NoQuery, None, Api._graph),
+    Route("/api/checks", "GET", NoQuery, None, Api._checks),
+    Route(
+        "/api/edit",
+        "POST",
+        NoQuery,
+        contract.Changes,
+        Api._edit,
+        Policy(writes=True, runs_plugins=True),
+    ),
+    Route("/api/undo", "GET", NoQuery, None, Api._undo),
+    Route(
+        "/api/undo",
+        "POST",
+        NoQuery,
+        contract.UndoRequest,
+        Api._apply_undo,
+        Policy(writes=True, runs_plugins=True),
+    ),
+    Route("/api/variable", "GET", VariableQuery, None, Api._variable),
+    Route("/api/units", "GET", NoQuery, None, Api._units),
+    Route("/api/settle", "GET", SettleQuery, None, Api._settle),
+    Route("/api/fix", "GET", FixQuery, None, Api._fix),
+    Route("/api/unit", "GET", UnitQuery, None, Api._unit),
+    Route("/api/unit-plan", "GET", UnitPlanQuery, None, Api._unit_plan),
+    Route("/api/types", "GET", NoQuery, None, Api._types),
+    Route("/api/type", "GET", TypeQuery, None, Api._type),
+    Route("/api/type-plan", "GET", TypePlanQuery, None, Api._type_plan),
+    Route("/api/shared", "GET", NoQuery, None, Api._shared),
+    Route("/api/constant", "GET", ConstantQuery, None, Api._constant),
+    Route("/api/constant-plan", "GET", ConstantPlanQuery, None, Api._constant_plan),
+    Route("/api/section", "GET", SectionQuery, None, Api._section),
+    Route("/api/section-plan", "GET", SectionPlanQuery, None, Api._section_plan),
+    Route("/api/raster", "GET", RasterQuery, None, Api._raster),
+    Route("/api/raster-plan", "GET", RasterPlanQuery, None, Api._raster_plan),
+    Route("/api/files", "GET", NoQuery, None, Api._files),
+    Route(
+        "/api/files-plan", "GET", FilesPlanQuery, None, Api._files_plan, Policy(runs_plugins=True)
+    ),
+    Route("/api/declarable", "GET", DeclarableQuery, None, Api._declarable),
+    Route("/api/declaration-plan", "GET", DeclarationPlanQuery, None, Api._declaration_plan),
+    Route("/api/values", "GET", ValuesQuery, None, Api._values),
+    Route("/api/value-plan", "GET", ValuePlanQuery, None, Api._value_plan),
+    Route("/api/values-plan", "GET", ValuesPlanQuery, None, Api._values_plan),
+    Route("/api/compare", "GET", CompareQuery, None, Api._compare, Policy(runs_plugins=True)),
+)
+"""Every route of the api, in one table: what :meth:`Api.handle` dispatches by, its query read
+as the route's own model and its body as its own before its handler is asked."""
 
 
 def _error(status: int, code: str, message: str) -> Reply:
@@ -1757,36 +1708,38 @@ def _finding(
     # tests/test_gui_api.py imports it directly to check a note with no place is carried
     # without one.
     finding = filed.diagnostic
-    return contract.Finding(
-        file=filed.file.as_posix(),
-        check=finding.check,
-        severity=finding.severity,
-        message=finding.message,
-        pointer="" if finding.location is None else finding.location.pointer,
-        notes=[
-            {
-                "message": text,
-                "file": None if note is None else note.path.as_posix(),
-                "pointer": "" if note is None else note.pointer,
-            }
-            for text, note in finding.notes
-        ],
-        route=None
-        if source is None
-        else _route(
-            route_of(
-                finding.check,
-                filed.file,
-                "" if finding.location is None else finding.location.pointer,
-                source.kind,
-                source.loaded,
-                cache,
-            )
-        ),
-    ).model_dump(mode="json")
+    return written(
+        contract.Finding(
+            file=filed.file.as_posix(),
+            check=finding.check,
+            severity=finding.severity,
+            message=finding.message,
+            pointer="" if finding.location is None else finding.location.pointer,
+            notes=[
+                {
+                    "message": text,
+                    "file": None if note is None else note.path.as_posix(),
+                    "pointer": "" if note is None else note.pointer,
+                }
+                for text, note in finding.notes
+            ],
+            route=None
+            if source is None
+            else _route(
+                route_of(
+                    finding.check,
+                    filed.file,
+                    "" if finding.location is None else finding.location.pointer,
+                    source.kind,
+                    source.loaded,
+                    cache,
+                )
+            ),
+        )
+    )
 
 
-def _route(route: Route | None) -> dict[str, Any] | None:
+def _route(route: FindingRoute | None) -> dict[str, Any] | None:
     return None if route is None else {"kind": route.kind, "name": route.name}
 
 
@@ -1898,56 +1851,49 @@ def _changed_since(file: SourceFile) -> bool:
 
 
 def _unit_plan_of(
-    action: str,
+    asked: RenameUnit | AddUnit | DescribeUnit | RemoveUnit | AdoptUnits,
     built: Index,
     project: UnitProject,
-    given: Mapping[str, str],
     cache: dict[Path, Document],
 ) -> UnitPlan:
-    """The plan ``action`` names, over the parameters :data:`UNIT_PLANS` says it takes."""
-    if action == "rename":
-        return rename_unit(built, project, given["unit"], given["to"], cache)
-    if action == "add":
-        return add_unit(built, project, given["unit"], cache)
-    if action == "describe":
-        return describe_unit(built, project, given["unit"], given["description"], cache)
-    if action == "remove":
-        return remove_unit(built, project, given["unit"], cache)
+    """The plan ``asked`` names, over the parts its model read."""
+    if isinstance(asked, RenameUnit):
+        return rename_unit(built, project, asked.unit, asked.to, cache)
+    if isinstance(asked, AddUnit):
+        return add_unit(built, project, asked.unit, cache)
+    if isinstance(asked, DescribeUnit):
+        return describe_unit(built, project, asked.unit, asked.description, cache)
+    if isinstance(asked, RemoveUnit):
+        return remove_unit(built, project, asked.unit, cache)
     return adopt_units(built, project, cache)
 
 
 def _type_plan_of(
-    action: str,
-    built: Index,
-    given: Mapping[str, str],
-    raw: str | None,
-    cache: dict[Path, Document],
+    asked: SetTypeKey | RenameType, built: Index, cache: dict[Path, Document]
 ) -> TypePlan:
-    """The plan ``action`` names, over the parameters :data:`TYPE_PLANS` says it takes."""
-    if action == "set":
-        return set_key(built, given["name"], given["key"], raw, cache)
-    return rename_type(built, given["name"], given["to"], cache)
+    """The plan ``asked`` names, over the parts its model read."""
+    if isinstance(asked, SetTypeKey):
+        return set_key(built, asked.name, asked.key, asked.raw, cache)
+    return rename_type(built, asked.name, asked.to, cache)
 
 
 def _constant_plan_of(
-    action: str,
+    asked: SetConstantKey | RenameConstant | AddConstant | RemoveConstant,
     built: Index,
     project: SharedProject,
-    given: Mapping[str, str],
-    raw: str | None,
     cache: dict[Path, Document],
 ) -> SharedPlan:
-    """The plan ``action`` names, over the parameters :data:`CONSTANT_PLANS` says it takes.
+    """The plan ``asked`` names, over the parts its model read.
 
     ``project`` is unused by three of the four: only ``add`` may have to create a constants
     file, which is the one verb that needs to know where the project's constants files are.
     """
-    if action == "set":
-        return set_entry(CONSTANTS, built, given["name"], given["key"], raw, cache)
-    if action == "rename":
-        return rename_entry(CONSTANTS, built, given["name"], given["to"], cache)
-    if action == "remove":
-        return remove_entry(CONSTANTS, built, given["name"], cache)
+    if isinstance(asked, SetConstantKey):
+        return set_entry(CONSTANTS, built, asked.name, asked.key, asked.raw, cache)
+    if isinstance(asked, RenameConstant):
+        return rename_entry(CONSTANTS, built, asked.name, asked.to, cache)
+    if isinstance(asked, RemoveConstant):
+        return remove_entry(CONSTANTS, built, asked.name, cache)
     # `description` is given too, empty, rather than left out: `add`'s form offers no description
     # and the entry it writes has always stated one, which is the byte a newly declared constant
     # is compared against.
@@ -1955,60 +1901,57 @@ def _constant_plan_of(
         CONSTANTS,
         built,
         project,
-        given["name"],
-        {"value": given["raw"], "description": '""'},
+        asked.name,
+        {"value": asked.raw, "description": '""'},
         cache,
     )
 
 
 def _section_plan_of(
-    action: str,
+    asked: SetSectionKey | RenameSection | AddSection | RemoveSection,
     built: Index,
     project: SharedProject,
-    given: Mapping[str, str],
-    raw: str | None,
     cache: dict[Path, Document],
 ) -> SharedPlan:
-    """The plan ``action`` names, over the parameters :data:`SECTION_PLANS` says it takes.
+    """The plan ``asked`` names, over the parts its model read.
 
-    The same four verbs as :func:`_constant_plan_of`, over the same three parameters, differing
-    only in ``add``: a section is declared with one json text per required key rather than a lone
-    ``?raw=``, which is why the two dispatchers are written out instead of one taking the
-    descriptor. Sharing them would mean either naming a constant's value ``?value=`` on the wire -
-    a url the page already calls - or teaching one function which of its parameters each
-    vocabulary spells differently, and that is the branch the descriptor exists to remove.
+    The same four verbs as :func:`_constant_plan_of`, differing only in ``add``: a section is
+    declared with one json text per required key rather than a lone ``?raw=``, which is why the
+    two dispatchers are written out instead of one taking the descriptor. Sharing them would mean
+    either naming a constant's value ``?value=`` on the wire - a url the page already calls - or
+    teaching one function which of its parameters each vocabulary spells differently, and that is
+    the branch the descriptor exists to remove.
     """
-    if action == "set":
-        return set_entry(SECTIONS, built, given["name"], given["key"], raw, cache)
-    if action == "rename":
-        return rename_entry(SECTIONS, built, given["name"], given["to"], cache)
-    if action == "remove":
-        return remove_entry(SECTIONS, built, given["name"], cache)
-    return add_entry(SECTIONS, built, project, given["name"], _declared(SECTIONS, given), cache)
+    if isinstance(asked, SetSectionKey):
+        return set_entry(SECTIONS, built, asked.name, asked.key, asked.raw, cache)
+    if isinstance(asked, RenameSection):
+        return rename_entry(SECTIONS, built, asked.name, asked.to, cache)
+    if isinstance(asked, RemoveSection):
+        return remove_entry(SECTIONS, built, asked.name, cache)
+    declared = _declared(SECTIONS, asked.model_dump())
+    return add_entry(SECTIONS, built, project, asked.name, declared, cache)
 
 
 def _raster_plan_of(
-    action: str,
+    asked: SetRasterKey | RenameRaster | AddRaster | RemoveRaster,
     built: Index,
     project: SharedProject,
-    given: Mapping[str, str],
-    raw: str | None,
     cache: dict[Path, Document],
 ) -> SharedPlan:
-    """The plan ``action`` names, over the parameters :data:`RASTER_PLANS` says it takes.
+    """The plan ``asked`` names, over the parts its model read.
 
-    The same four verbs over the same three parameters as :func:`_section_plan_of`, and the same
-    ``add``: one json text per key the model gives no default for, read off the descriptor by
-    :func:`_declared` rather than named here, so the only word this function spells that its
-    sibling does not is the vocabulary.
+    The same four verbs as :func:`_section_plan_of`, and the same ``add``: one json text per key
+    the model gives no default for, read off the descriptor by :func:`_declared` rather than named
+    here, so the only word this function spells that its sibling does not is the vocabulary.
     """
-    if action == "set":
-        return set_entry(RASTERS, built, given["name"], given["key"], raw, cache)
-    if action == "rename":
-        return rename_entry(RASTERS, built, given["name"], given["to"], cache)
-    if action == "remove":
-        return remove_entry(RASTERS, built, given["name"], cache)
-    return add_entry(RASTERS, built, project, given["name"], _declared(RASTERS, given), cache)
+    if isinstance(asked, SetRasterKey):
+        return set_entry(RASTERS, built, asked.name, asked.key, asked.raw, cache)
+    if isinstance(asked, RenameRaster):
+        return rename_entry(RASTERS, built, asked.name, asked.to, cache)
+    if isinstance(asked, RemoveRaster):
+        return remove_entry(RASTERS, built, asked.name, cache)
+    declared = _declared(RASTERS, asked.model_dump())
+    return add_entry(RASTERS, built, project, asked.name, declared, cache)
 
 
 def _required_keys(vocabulary: Vocabulary) -> list[str]:
@@ -2036,10 +1979,12 @@ def _required_keys(vocabulary: Vocabulary) -> list[str]:
 
     Why the order is visible at all: both :func:`~ddd.shared_plans.add_entry` and
     :func:`~ddd.shared_plans._created` walk ``raws.items()`` and stop at the first key
-    :func:`~ddd.shared_plans._judged` refuses, and :func:`_json_texts`'s caller stops at the first
-    text that is not json. So an ``add`` carrying two bad values answers about whichever came
-    first. What it does *not* decide is the file: :func:`~ddd.shared_plans._entry_text` composes
-    the entry in ``keys`` order whatever order ``raws`` arrives in.
+    :func:`~ddd.shared_plans._judged` refuses; and a query is refused for the first of its parts
+    that is not json, in the order its model declares them, which is this one
+    (:class:`~ddd.gui.queries.AddSection`). So an ``add`` carrying two bad values answers about
+    whichever came first. What it does *not* decide is the file:
+    :func:`~ddd.shared_plans._entry_text` composes the entry in ``keys`` order whatever order
+    ``raws`` arrives in.
     """
     ordered = []
     for key in vocabulary.keys:
@@ -2059,31 +2004,6 @@ def _declared(vocabulary: Vocabulary, given: Mapping[str, str]) -> dict[str, str
     declared = {key: given[key] for key in _required_keys(vocabulary)}
     declared["description"] = '""'
     return declared
-
-
-def _json_texts(vocabulary: Vocabulary, given: Mapping[str, str], raw: str | None) -> list[str]:
-    """Every part of a shared plan request that has to be json, in the order a refusal should
-    name them.
-
-    ``?raw=`` where there is one, and the value of each required key an ``add`` carries, through
-    :func:`_required_keys`. Both are embedded into a file verbatim, so both are the request's
-    business to get right: read as text a reader who typed ``read-only`` where ``"read-only"`` was
-    wanted would otherwise meet *"read-only is not an access a section may state ... : read-write
-    or read-only"*, a sentence naming the value it refuses among the ones it allows.
-
-    ``name``, ``to`` and ``key`` are not here: each is a plain string the verb quotes itself.
-
-    Two statements rather than two conditional expressions, for the reason
-    :func:`_required_keys` gives: neither the request without a ``?raw=`` nor the action that
-    carries no required key would register a branch of its own.
-    """
-    texts = []
-    if raw is not None:
-        texts.append(raw)
-    for key in _required_keys(vocabulary):
-        if key in given:
-            texts.append(given[key])
-    return texts
 
 
 def _entry_uses(
@@ -2157,15 +2077,13 @@ class _FilesPlanned:
 
 
 def _files_plan_of(
-    action: str,
+    asked: CreateFile | AddFile | RemoveFile,
     revision: Revision,
-    given: Mapping[str, str],
-    component: str | None,
     cache: dict[Path, Document],
     refuse: Callable[[Iterable[Path]], None],
 ) -> _FilesPlanned:
-    """The plan ``action`` names, over the parameters :data:`FILE_PLANS` says it takes. A row's
-    key is passed on as it arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
+    """The plan ``asked`` names, over the parts its model read. A row's key is passed on as it
+    arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
     :func:`ddd.file_plans.included_entries` made it, and names it as it was sent. Resolved here
     instead, a key ending in a link would be named by what the link leads to, which may lie
     outside what is served.
@@ -2174,13 +2092,13 @@ def _files_plan_of(
     been asked and before anything is judged (:meth:`Api._refuse_unanalysed`): judged, a
     description an edit wrote and no analysis has read yet would be refused ``stale`` instead,
     for the very write the reader made."""
-    if action == "create":
-        edits = _creation(revision, given["kind"], given["name"], component, cache)
+    if isinstance(asked, CreateFile):
+        edits = _creation(revision, asked.kind, asked.name, asked.component, cache)
         refuse(edit.path for edit in edits)
         return _FilesPlanned(edits)
-    if action == "add":
-        return _addition(revision, given["path"], cache, refuse)
-    return _removal(revision, Path(given["path"]), cache, refuse)
+    if isinstance(asked, AddFile):
+        return _addition(revision, asked.path, cache, refuse)
+    return _removal(revision, Path(asked.path), cache, refuse)
 
 
 def _creation(
@@ -2255,12 +2173,8 @@ def _addition(
     try:
         _served(revision, added)
     except NotInProjectError:
-        serves = " and ".join(directory.as_posix() for directory in revision.served)
-        raise FileRefusalError(
-            "invalid",
-            f"{entry} lies outside what ddd gui serves, {serves}; start it in a directory "
-            "holding this file to add it here",
-        ) from None
+        serves = (directory.as_posix() for directory in revision.served)
+        raise FileRefusalError("invalid", outside_served(entry, serves)) from None
     plan = add_plan(revision.project, entry, cache)
     kind = kind_of(added, _read_json(added))
     if kind == "plugin":
@@ -2381,24 +2295,29 @@ def _judged(revision: Revision, includes: Sequence[str]) -> tuple[Pair, ...]:
 
 
 def _declaration_plan_of(
-    action: str,
+    asked: ReadDeclaration | DeclareObject | RemoveDeclaration,
     built: Index,
     file: Path,
-    given: Mapping[str, str],
     cache: dict[Path, Document],
 ) -> DeclarationPlan:
-    """The plan ``action`` names, over the parameters :data:`DECLARATION_PLANS` says it takes."""
-    if action == "read":
-        return read_object(built, file, given["name"], given["scope"], cache)
-    if action == "remove":
-        return remove_declaration(built, file, given["name"], cache)
+    """The plan ``asked`` names, over the parts its model read.
+
+    A definition is read here, rather than by the query, as json text is read everywhere else in
+    a query (:func:`~ddd.gui.queries.json_value`): its depth counted before anything parses it,
+    by the loader's rule, its numbers finite. Text that is not such json, or not one json object,
+    is refused ``invalid``, 409, in the one sentence it always was - the declare panel shows it
+    as its offer's refusal (ruling 5 of the security review's plan)."""
+    if isinstance(asked, ReadDeclaration):
+        return read_object(built, file, asked.name, asked.scope, cache)
+    if isinstance(asked, RemoveDeclaration):
+        return remove_declaration(built, file, asked.name, cache)
     try:
-        definition = json.loads(given["definition"])
-    except json.JSONDecodeError as malformed:
+        definition = json_value(asked.definition)
+    except EditError as malformed:
         raise DeclarationRefusalError("invalid", "the definition is not json") from malformed
     if not isinstance(definition, dict):
         raise DeclarationRefusalError("invalid", "the definition is not json")
-    return declare_object(built, file, given["scope"], definition, cache)
+    return declare_object(built, file, asked.scope, definition, cache)
 
 
 def _planned_changes(
@@ -2464,25 +2383,23 @@ def _undone_changes(entry: Undoable) -> list[dict[str, Any]]:
     return changes
 
 
-def _single(values: Sequence[str] | None) -> str | None:
-    return values[0] if values else None
-
-
-def _integer(values: Sequence[str] | None) -> int | None:
-    text = _single(values)
-    return int(text) if text is not None and text.isascii() and text.isdecimal() else None
-
-
 def _number(text: str) -> float:
     """A raw count as the query spells it: a whole number where it is one, else a float.
 
     ``json.loads`` rather than ``float``, so that ``750`` stays an ``int`` and is written back
     as ``750`` rather than ``750.0`` - the file's own spelling, and the one the integer check
     weighs.
+
+    Refused as anything else that is not a number is, with the same sentence: text holding a
+    bracket before anything parses it - no number holds one, and parsed, an array nested deep
+    enough exhausts the stack; and a whole number of more digits than ``int()`` reads, which
+    ``json.loads`` raises a plain ``ValueError`` for, not a ``JSONDecodeError``.
     """
+    if "[" in text or "{" in text:
+        raise ValueRefusalError("invalid", f"'{text}' is not a number")
     try:
         value = json.loads(text)
-    except json.JSONDecodeError as malformed:
+    except ValueError as malformed:
         raise ValueRefusalError("invalid", f"'{text}' is not a number") from malformed
     if not isinstance(value, int | float) or isinstance(value, bool):
         raise ValueRefusalError("invalid", f"'{text}' is not a number")
@@ -2503,14 +2420,17 @@ def _folded(flat: Sequence[float], dictionary: DataDictionary, name: str) -> lis
     return [list(flat[row * shape[1] : (row + 1) * shape[1]]) for row in range(shape[0])]
 
 
-def _validated[T: BaseModel](model: type[T], body: bytes | None) -> T | Reply:
-    """``body`` read as ``model``, or the 400 reply about the first way it is not one.
+def _validated[T: BaseModel](
+    model: type[T], body: bytes | None, serving: Serving | None = None
+) -> T | Reply:
+    """``body`` read as ``model``, or the 400 reply about the first way it is not one; a path
+    in it read against ``serving`` (:class:`~ddd.gui.queries.Serving`).
 
     Strict and closed, per the model's own configuration: an unknown key, a string where an
     index belongs or a boolean where an integer belongs never reaches a handler.
     """
     try:
-        return model.model_validate_json(body or b"")
+        return model.model_validate_json(body or b"", context=serving)
     except ValidationError as error:
         return _error(400, "bad-request", _message(error))
 
@@ -2528,6 +2448,35 @@ def _message(error: ValidationError) -> str:
     for part in first["loc"]:
         where += f"[{part}]" if isinstance(part, int) else f".{part}" if where else str(part)
     return f"{where}: {first['msg']}" if where else first["msg"]
+
+
+def _query_message(route: Route, error: ValidationError) -> str:
+    """The first problem ``error`` found with a query of ``route``, as the one sentence the route
+    answers it with: for a key it does not take, that it takes no such key; for a key it requires,
+    left out or given blank, its ``missing``; for anything else, the sentence of the value's own
+    type - or of a check the model makes of the query as a whole, before reading any key.
+
+    A query read as one model per action has its problem placed under the action given, which
+    pydantic puts first in the problem's location: that action's model is the one whose ``missing``
+    is answered, and the action names the key it does not take."""
+    first = error.errors(include_url=False)[0]
+    where, named, model = first["loc"], route.name, route.query
+    actions = actions_of(model)
+    if where and where[0] in actions:
+        named = str(where[0])
+        model, where = actions[named], where[1:]
+    if first["type"] == "extra_forbidden":
+        return f"{named} takes no ?{where[0]}="
+    if where and issubclass(model, QueryModel) and _left_out(model, str(where[0]), first):
+        return model.missing
+    return first["msg"]
+
+
+def _left_out(model: type[QueryModel], key: str, problem: ErrorDetails) -> bool:
+    """Whether ``problem`` is a key ``model`` requires being left out or given blank."""
+    if problem["type"] == "missing":
+        return True
+    return problem["input"] == "" and model.model_fields[key].is_required()
 
 
 def _file_change(change: contract.Change) -> FileChange:

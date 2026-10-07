@@ -34,13 +34,15 @@ import json
 import os
 import re
 import stat
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-from ddd.loading import parse_json_text
+from ddd.file_names import STAGING_SUFFIX, uncreatable
+from ddd.loading import NESTED_TOO_DEEPLY, parse_json_text
 from ddd.pointers import parent_pointer, segments
 
 if TYPE_CHECKING:
@@ -60,10 +62,6 @@ STALE: Final = "stale"
 
 UNWRITABLE: Final = "unwritable"
 """A file could not be written; the ones already written were put back where they could be."""
-
-STAGING_SUFFIX: Final = ".ddd-staging"
-"""What a file's new bytes are staged under beside it: the name ``ddd id`` and the artefact
-writer stage under, which no project gives a file of its own."""
 
 REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
 """How many times a file is renamed into place, or taken away, before a refusal stands.
@@ -86,6 +84,14 @@ DEFAULT_INDENT_UNIT: Final = "  "
 
 _INDEXED: Final = re.compile(r"(.*)\[(\d+)\]")
 
+_INDEX_DIGITS: Final = len(str(sys.maxsize))
+"""The most digits an array index can need: no list holds more than ``sys.maxsize`` elements -
+nineteen digits on a 64-bit python."""
+
+_LONG_INDEX: Final = re.compile(rf"\[\d{{{_INDEX_DIGITS + 1},}}\]")
+"""An index of more digits than any array needs, which names nothing - and which ``int()``
+refuses with a plain ``ValueError`` past 4,300 digits."""
+
 
 class EditError(ValueError):
     """An edit that cannot be made, carrying the code ``ddd gui`` answers it with."""
@@ -107,7 +113,14 @@ def parse_raw(raw: object) -> Any:
     try:
         return parse_json_text(raw)
     except ValueError as error:
-        raise EditError(INVALID, f"{raw!r} is not one json value: {error}") from None
+        raise not_one_value(raw, error) from None
+
+
+def not_one_value(raw: str, why: object) -> EditError:
+    """The refusal of ``raw`` as a value, saying ``why``: the words of every refusal
+    :func:`parse_raw` makes, and of the ones ``ddd gui`` makes of a value in a query before
+    parsing it (:func:`ddd.gui.queries.json_text`)."""
+    return EditError(INVALID, f"{raw!r} is not one json value: {why}")
 
 
 def newline_at(text: str, offset: int) -> str:
@@ -151,10 +164,19 @@ def lay_out(raw: str, *, one_line: bool, indent: str, unit: str, newline: str) -
     literals - which is how a description writes a conversion, a range or a shape. Otherwise it
     goes one entry per line, each indented by ``unit`` from ``indent`` - the indentation of the
     line the value starts on - and the lines end with ``newline``.
+
+    A value nested deeper than the layout goes is refused as one too deep to read, the way the
+    loader refuses a document deeper than python's parser goes (:func:`parse_raw`). The parser
+    reads thousands of levels, where reading the tokens here spends a frame of python's stack a
+    level and writing them out two: a value three thousand levels deep, sent to ``ddd gui`` as
+    an edit's value, ended the request in a ``RecursionError``.
     """
     parse_raw(raw)
-    node, _ = _parsed(_tokens(raw), 0)
-    return _rendered(node, one_line=one_line, indent=indent, unit=unit, newline=newline)
+    try:
+        node, _ = _parsed(_tokens(raw), 0)
+        return _rendered(node, one_line=one_line, indent=indent, unit=unit, newline=newline)
+    except RecursionError:
+        raise not_one_value(raw, NESTED_TOO_DEEPLY) from None
 
 
 def _tokens(raw: str) -> list[str]:
@@ -647,8 +669,14 @@ def _spelled(pointer: str) -> bool:
 
     The grammar reads more spellings than that - ``a..b``, ``a[01]``, ``a]`` - and a pointer
     spelled one of those ways names nothing the scan recorded, while the helpers here take every
-    pointer they are handed for one it did.
+    pointer they are handed for one it did. Nor does a pointer whose index has more digits than
+    any array can need (:data:`_INDEX_DIGITS`), and it is refused before the grammar reads the
+    index: ``int()`` refuses one of more than 4,300 digits with a ``ValueError``, which
+    ``ddd gui`` answered ``500``. Every caller asks this first - the check of whether a batch can
+    be made at once as much as each operation's own.
     """
+    if _LONG_INDEX.search(pointer):
+        return False
     written = "".join(
         f"[{part}]" if isinstance(part, int) else f".{part}" for part in segments(pointer)
     )
@@ -869,8 +897,10 @@ def _created(pending: FileChange) -> bytes:
 
     As given, because there is no file yet whose layout an edit could follow - whoever plans the
     change lays the document out - and still read by the loader's rule first, so that no file
-    ``ddd check`` would refuse to read is ever written. A file already there is somebody's, and
-    the change was computed without it: refused as stale, whatever it holds.
+    ``ddd check`` would refuse to read is ever written. A name no file can be created under is
+    refused next (:func:`uncreatable`), before the engine asks the file system anything about it.
+    A file already there is somebody's, and the change was computed without it: refused as
+    stale, whatever it holds.
     """
     only = pending.operations[0] if len(pending.operations) == 1 else None
     if only is None or (only.op, only.pointer) != ("set", "") or only.raw is None:
@@ -878,6 +908,9 @@ def _created(pending: FileChange) -> bytes:
             INVALID, f"{pending.path} is created whole, by one set at the top of the file"
         )
     _read(only.raw, INVALID, f"{pending.path} would be created holding what DDD does not read")
+    refused = uncreatable(pending.path.name)
+    if refused is not None:
+        raise EditError(INVALID, f"{pending.path} cannot be created: {refused}")
     if pending.path.exists():
         raise EditError(STALE, f"{pending.path} exists already")
     return only.raw.encode("utf-8")

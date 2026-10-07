@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import json
+import os
 import re
 import shutil
 import threading
 from collections.abc import Callable, Iterable, Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 import pytest
 
 import ddd.gui.api as api_module
+import ddd.gui.queries as queries_module
 from conftest import (
     EXAMPLES,
     Gated,
@@ -23,6 +26,7 @@ from conftest import (
     declare,
     directory_link,
     landed,
+    looped,
     project,
     scalar_type,
     stopped,
@@ -37,19 +41,20 @@ from ddd.diagnostics import CHECKS, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.file_plans import CREATABLE
 from ddd.findings_by_file import FindingsByFile
+from ddd.gui import contract
 from ddd.gui.api import (
     MEMO,
-    RASTER_PLANS,
-    SECTION_PLANS,
+    ROUTES,
     Api,
     Reply,
     _changed_in,
     _declared,
     _finding,
-    _json_texts,
     _required_keys,
 )
 from ddd.gui.derived import Derived
+from ddd.gui.queries import AddRaster, AddSection
+from ddd.gui.routes import Policy
 from ddd.gui.session import Filed, Revision, Session
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document
@@ -62,6 +67,8 @@ from ddd.variable_keys import KEY_ORDER
 from ddd.variables import declarations_of, located_on
 
 UNIT = "component.interface[0].definition.unit"
+
+SETTLE_TAKES = "settle takes ?name= and ?key=, and ?raw= unless the key goes"
 
 TYPED = {
     "p.ddd.json": project("P", "types.ddd.json", "a.ddd.json", "b.ddd.json"),
@@ -357,6 +364,11 @@ SOLE_RASTER_IN_A_FILE = {
 }
 
 
+def never_waited(after: int, timeout: float) -> None:
+    """``Session.wait`` for a test of an answer given at once: waiting at all fails it."""
+    raise AssertionError(f"waited for a version past {after}")
+
+
 def opened(tmp_path: Path, files: dict[str, object]) -> Api:
     write_tree(tmp_path, files)
     session = Session(tmp_path)
@@ -432,6 +444,39 @@ def post(api: Api, path: str, body: object) -> Reply:
     return api.handle("POST", path, {}, raw)
 
 
+def nested(depth: int) -> list[Any]:
+    """Lists ``depth`` levels deep, the innermost one empty: ``[]`` is one level, ``[[]]`` two."""
+    value: list[Any] = []
+    for _ in range(depth - 1):
+        value = [value]
+    return value
+
+
+def around(depth: int) -> Any:
+    """A number under lists, ``depth`` levels deep as pydantic-core counts them - the number at the
+    bottom one of them: ``0`` is one level, ``[0]`` two."""
+    value: Any = 0
+    for _ in range(depth - 1):
+        value = [value]
+    return value
+
+
+def block(depth: int) -> dict[str, Any]:
+    """An extension block ``depth`` levels deep, itself the first of them: lists under ``v``."""
+    return {"v": nested(depth - 1)}
+
+
+def carried(tmp_path: Path, files: dict[str, object]) -> Api:
+    """``ddd gui`` over ``files``, whose project's one build ignores ``unknown-extension``: a
+    block no plugin owns is then carried into the dictionary as it is written, as a project
+    relaxing that check asks for."""
+    write_tree(tmp_path, files)
+    build_record(tmp_path, tmp_path / "p.ddd.json", severity=["unknown-extension=ignore"])
+    session = Session(tmp_path)
+    session.open(tmp_path / "p.ddd.json")
+    return Api(session, tmp_path / "p.ddd.json", wait_seconds=0.05)
+
+
 def unit_edit(
     api: Api, root: Path, unit: str, name: str = "b.ddd.json", label: str = "the unit of Speed"
 ) -> dict:
@@ -448,6 +493,82 @@ def unit_edit(
     }
 
 
+LONGEST_NAME: Final = 243
+"""The longest name a file can be created under, in bytes: staged under it and ``.ddd-staging``
+first, 255 bytes, the most ext4 takes - and never more than the 255 UTF-16 units NTFS takes."""
+
+
+def too_long(name: str, length: int) -> str:
+    """The whole refusal of a name ``length`` bytes long, opening with ``name``: the file's path,
+    as the edit names the file, or its name, as the plan of a new file does."""
+    return (
+        f"{name} cannot be created: its name is {length} bytes long, and a name is at most "
+        f"{LONGEST_NAME} - the file is staged under the name and '.ddd-staging' first, and ext4 "
+        "takes a name of at most 255 bytes, NTFS one of at most 255 UTF-16 units, which 255 bytes "
+        "never exceed"
+    )
+
+
+def a_device(name: str, device: str) -> str:
+    """The whole refusal of a name Windows reads as ``device``, opening with ``name``, as
+    :func:`too_long` opens."""
+    return (
+        f"{name} cannot be created: Windows reads its name as the device {device}, which it would "
+        "open instead of a file"
+    )
+
+
+def asked_about(monkeypatch: pytest.MonkeyPatch, name: str) -> list[str]:
+    """The questions the file system is asked from here on about a path ending in ``name``, by
+    the function it is asked through: six of ``os``'s - ``stat``, ``lstat``, ``open``, ``readlink``,
+    ``scandir`` and ``listdir`` - six of ``os.path``'s, ``realpath`` among them, which
+    ``Path.resolve`` asks on every system, and ``io.open``, which ``pathlib`` opens a file by -
+    each swapped for one recording the path before it answers. Not every way there is to ask:
+    the ways an edit and the plan of a new file take."""
+    asked: list[str] = []
+
+    def record(where: Any, function: str) -> None:
+        answer = getattr(where, function)
+
+        def recorded(place: Any, *args: Any, **kwargs: Any) -> Any:
+            spelled = isinstance(place, str | bytes | os.PathLike)
+            if spelled and os.fsdecode(os.fspath(place)).endswith(name):
+                asked.append(f"{where.__name__}.{function}")
+            return answer(place, *args, **kwargs)
+
+        monkeypatch.setattr(where, function, recorded)
+
+    for function in ("stat", "lstat", "open", "readlink", "scandir", "listdir"):
+        record(os, function)
+    for function in ("realpath", "exists", "lexists", "isfile", "isdir", "islink"):
+        record(os.path, function)
+    record(io, "open")
+    return asked
+
+
+def creating(root: Path, name: str) -> dict[str, Any]:
+    """An edit creating a units file called ``name`` beside ``root``'s project, whose includes
+    name it in the same edit - the one shape an edit may create a file in."""
+    described = root / "p.ddd.json"
+    return {
+        "changes": [
+            {
+                "file": (root / name).as_posix(),
+                "fingerprint": None,
+                "operations": [{"op": "set", "pointer": "", "raw": '{"units": ["rpm"]}'}],
+            },
+            {
+                "file": described.as_posix(),
+                "fingerprint": fingerprint(described.read_bytes()),
+                "operations": [
+                    {"op": "insert", "pointer": "project.includes[2]", "raw": json.dumps(name)}
+                ],
+            },
+        ],
+        "label": "the vocabulary adopted",
+    }
+
+
 class TestRoutes:
     def test_an_unknown_path_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/nothing") == Reply(
@@ -457,6 +578,700 @@ class TestRoutes:
     def test_a_known_path_with_the_wrong_method_is_refused(self, api: Api) -> None:
         reply = api.handle("POST", "/api/state", {}, b"{}")
         assert (reply.status, reply.body["error"]) == (405, "method-not-allowed")
+
+    def test_a_path_taking_two_methods_names_both_in_the_order_they_are_routed(
+        self, api: Api
+    ) -> None:
+        assert api.handle("PUT", "/api/undo", {}, None) == Reply(
+            405, {"error": "method-not-allowed", "message": "/api/undo takes GET or POST"}
+        )
+
+
+class TestTheRouteTable:
+    """One record a route, in the order the api has always listed them, each saying what it
+    does besides answering."""
+
+    def test_every_route_of_the_api_is_listed_once_in_its_order(self) -> None:
+        assert [(route.method, route.path) for route in ROUTES] == [
+            ("GET", "/api/session"),
+            ("GET", "/api/projects"),
+            ("POST", "/api/open"),
+            ("GET", "/api/state"),
+            ("GET", "/api/findings"),
+            ("GET", "/api/file"),
+            ("GET", "/api/dictionary"),
+            ("GET", "/api/graph"),
+            ("GET", "/api/checks"),
+            ("POST", "/api/edit"),
+            ("GET", "/api/undo"),
+            ("POST", "/api/undo"),
+            ("GET", "/api/variable"),
+            ("GET", "/api/units"),
+            ("GET", "/api/settle"),
+            ("GET", "/api/fix"),
+            ("GET", "/api/unit"),
+            ("GET", "/api/unit-plan"),
+            ("GET", "/api/types"),
+            ("GET", "/api/type"),
+            ("GET", "/api/type-plan"),
+            ("GET", "/api/shared"),
+            ("GET", "/api/constant"),
+            ("GET", "/api/constant-plan"),
+            ("GET", "/api/section"),
+            ("GET", "/api/section-plan"),
+            ("GET", "/api/raster"),
+            ("GET", "/api/raster-plan"),
+            ("GET", "/api/files"),
+            ("GET", "/api/files-plan"),
+            ("GET", "/api/declarable"),
+            ("GET", "/api/declaration-plan"),
+            ("GET", "/api/values"),
+            ("GET", "/api/value-plan"),
+            ("GET", "/api/values-plan"),
+            ("GET", "/api/compare"),
+        ]
+
+    def test_what_each_route_does_besides_answering(self) -> None:
+        """A route not listed here does none of the four. Plugin code runs where a route's
+        answer, or the analysis it asks for, analyses a project: one opened, an edit's or an
+        undo's, a baseline compared, and the files plan's judgement of the project with its
+        includes changed."""
+        assert {
+            (route.method, route.path): route.policy for route in ROUTES if route.policy != Policy()
+        } == {
+            ("POST", "/api/open"): Policy(opens=True, runs_plugins=True),
+            ("GET", "/api/state"): Policy(waits=True),
+            ("POST", "/api/edit"): Policy(writes=True, runs_plugins=True),
+            ("POST", "/api/undo"): Policy(writes=True, runs_plugins=True),
+            ("GET", "/api/files-plan"): Policy(runs_plugins=True),
+            ("GET", "/api/compare"): Policy(runs_plugins=True),
+        }
+        assert Policy() == Policy(writes=False, opens=False, runs_plugins=False, waits=False)
+
+    def test_a_route_is_called_by_its_path_s_last_segment(self) -> None:
+        """How its sentences name it: ``findings``, ``unit-plan``."""
+        assert [route.name for route in ROUTES] == [
+            route.path.removeprefix("/api/") for route in ROUTES
+        ]
+
+    def test_every_query_model_is_published_to_the_page(self) -> None:
+        """The page's own types are generated from what the contract publishes, so a query
+        model left out of it would leave the page building that query unchecked."""
+        published = {model for model, _ in contract._ENDPOINTS}
+        assert {route.query for route in ROUTES} <= published
+
+    def test_only_a_post_takes_a_body(self) -> None:
+        assert {route.path for route in ROUTES if route.body is not None} == {
+            "/api/open",
+            "/api/edit",
+            "/api/undo",
+        }
+        assert all(route.method == "POST" for route in ROUTES if route.body is not None)
+
+
+class TestTheQueryIsReadOnce:
+    """Every request's query read once, one value a key, through the route's own model, before
+    the route is asked anything: a key given twice and a key the route does not take are
+    refused, by the route's name."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> Api:
+        """``ddd gui``'s api over a copy of examples/demo, which declares both ``ValueA`` and
+        ``ValueB``: neither name is refused for what it means."""
+        api, _ = copied(tmp_path, "demo", "demo.ddd.json")
+        return api
+
+    def test_a_key_given_twice_is_refused(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/variable", {"name": ["ValueA", "ValueB"]}, None)
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "variable takes ?name= once"}
+        )
+
+    def test_a_key_the_route_does_not_take_is_refused(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/variable", {"name": ["ValueA"], "x": ["1"]}, None)
+        assert reply == Reply(400, {"error": "bad-request", "message": "variable takes no ?x="})
+
+    def test_a_route_with_no_query_refuses_one(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/session", {"x": ["1"]}, None)
+        assert reply == Reply(400, {"error": "bad-request", "message": "session takes no ?x="})
+
+    def test_the_first_key_given_twice_is_the_one_named(self, demo: Api) -> None:
+        reply = demo.handle(
+            "GET",
+            "/api/findings",
+            {"limit": ["1"], "offset": ["0", "1"], "check": ["a", "b"]},
+            None,
+        )
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "findings takes ?offset= once"}
+        )
+
+    def test_the_values_read_once_are_what_the_route_answers_from(self, demo: Api) -> None:
+        reply = demo.handle("GET", "/api/variable", {"name": ["ValueB"]}, None)
+        assert (reply.status, reply.body["name"]) == (200, "ValueB")
+
+
+class TestPathsAreReadAgainstWhatIsServed:
+    """A network path is a path like any other where it names one under a directory ``ddd gui``
+    serves - the directory it was started in, on a mapped drive Windows resolves to its network
+    path - and refused anywhere else, before anything resolves it. Spelt as strings: these tests
+    never ask a path of the platform, nor touch the network."""
+
+    def test_with_no_project_open_a_path_is_read_against_the_root(self, tmp_path: Path) -> None:
+        api = Api(Session(tmp_path))
+        api.session.root = PurePosixPath("//server/share/p")
+        under = api.handle("GET", "/api/file", {"path": ["//server/share/p/a.ddd.json"]}, None)
+        assert (under.status, under.body["error"]) == (409, "no-project")
+        outside = api.handle("GET", "/api/file", {"path": ["//server/share/q/a.ddd.json"]}, None)
+        assert outside == Reply(
+            400, {"error": "bad-request", "message": "file takes ?path= as a file's path"}
+        )
+
+    def test_a_body_s_path_is_read_against_the_same(self, tmp_path: Path) -> None:
+        api = Api(Session(tmp_path))
+        api.session.root = PurePosixPath("//server/share/p")
+
+        def edited(file: str) -> Reply:
+            change = {
+                "file": file,
+                "fingerprint": "x",
+                "operations": [{"op": "remove", "pointer": "a"}],
+            }
+            return post(api, "/api/edit", {"changes": [change], "label": "x"})
+
+        under = edited("//server/share/p/a.ddd.json")
+        assert (under.status, under.body["error"]) == (409, "no-project")
+        assert edited("//server/share/q/a.ddd.json") == Reply(
+            400, {"error": "bad-request", "message": "changes[0].file: edit takes a file's path"}
+        )
+
+    def test_with_a_revision_a_path_is_read_against_every_directory_it_serves(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A project the analysis could not read answers 409 before anything resolves the
+        baseline it was asked to compare against: what reaches that 409 was taken by the
+        query."""
+        api = unloaded(tmp_path)
+        revision = api.session.revision
+        assert revision is not None
+        served = (*revision.served, PurePosixPath("//server/share/p"))
+        monkeypatch.setattr(api.session, "_revision", dataclasses.replace(revision, served=served))
+        under = get(api, "/api/compare", baseline="//server/share/p/baseline.json")
+        assert (under.status, under.body["error"]) == (409, "unreadable")
+        assert get(api, "/api/compare", baseline="//server/share/q/baseline.json") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": "the baseline '//server/share/q/baseline.json' is outside the session "
+                f"root '{tmp_path.resolve().as_posix()}'",
+            },
+        )
+
+    @pytest.mark.parametrize(
+        "baseline", ["//server/share/baseline.json", "\\\\server\\share\\baseline.json"]
+    )
+    def test_a_network_baseline_outside_is_refused_in_compare_s_words_before_it_is_resolved(
+        self, api: Api, root: Path, baseline: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def resolving(self: Path, *args: object, **kwargs: object) -> Path:
+            raise AssertionError(f"{self} was resolved")
+
+        monkeypatch.setattr(Path, "resolve", resolving)
+        assert get(api, "/api/compare", baseline=baseline) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline '{baseline}' is outside the session root "
+                f"'{api.session.root.as_posix()}'",
+            },
+        )
+
+
+class TestNoMalformedValueIsA500:
+    """What spec §2 found answered 500 through a route whose query is plain, and what a NUL in a
+    body's path reached: each answered now as the refusal it is, in the route's own words. And a
+    body nested too deep, which pydantic's own parser refuses, as it did."""
+
+    def test_a_file_filter_holding_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        reply = get(api, "/api/findings", file=f"{posix(root, 'a.ddd.json')}\x00")
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "findings takes ?file= as a file's path"}
+        )
+
+    @pytest.mark.parametrize(
+        ("key", "sentence"),
+        [
+            ("offset", "findings takes ?offset= as a whole number from 0"),
+            ("limit", "findings takes ?limit= as a whole number from 1"),
+        ],
+    )
+    def test_a_page_of_more_digits_than_a_number_holds_is_refused_as_any_other_is(
+        self, api: Api, key: str, sentence: str
+    ) -> None:
+        reply = get(api, "/api/findings", **{key: "1" * 4301})
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
+
+    def test_a_version_of_more_digits_than_a_number_holds_is_answered_at_once(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """As a version that is not a number is: nothing is waited for."""
+        monkeypatch.setattr(api.session, "wait", never_waited)
+        reply = get(api, "/api/state", after="1" * 4301)
+        assert (reply.status, reply.body["revision"]) == (200, 1)
+
+    def test_a_file_path_holding_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        reply = get(api, "/api/file", path=f"{posix(root, 'a.ddd.json')}\x00")
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "file takes ?path= as a file's path"}
+        )
+
+    def test_a_value_nested_three_thousand_deep_is_refused_in_parse_raws_words(
+        self, api: Api
+    ) -> None:
+        raw = "[" * 3000 + "]" * 3000
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw=raw)
+        assert reply == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"{raw!r} is not one json value: the json is nested too deeply to read",
+            },
+        )
+
+    def test_a_project_to_open_named_with_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        reply = post(api, "/api/open", {"path": f"{posix(root, 'p.ddd.json')}\x00"})
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "path: open takes a project's path"}
+        )
+
+    def test_an_edit_of_a_file_named_with_a_nul_is_refused(self, api: Api, root: Path) -> None:
+        edit = unit_edit(api, root, "Hz")
+        edit["changes"][0]["file"] += "\x00"
+        reply = post(api, "/api/edit", edit)
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "changes[0].file: edit takes a file's path"}
+        )
+
+    def test_a_body_nested_three_thousand_deep_is_refused_at_the_parsers_own_limit(
+        self, api: Api
+    ) -> None:
+        """Json in a body keeps pydantic's own limit on depth (spec §6), which refuses the
+        request whole, never a ``RecursionError``."""
+        body = ('{"changes": ' + "[" * 3000 + "]" * 3000 + ', "label": "x"}').encode("utf-8")
+        assert api.handle("POST", "/api/edit", {}, body) == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": "Invalid JSON: recursion limit exceeded at line 1 column 213",
+            },
+        )
+
+
+@pytest.fixture(params=["a-loop-of-links", "a-resolve-that-raises"])
+def unresolvable(
+    request: pytest.FixtureRequest, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A directory under ``root`` no path through which resolves: two links naming each other,
+    which python 3.12's ``Path.resolve`` raises ``RuntimeError`` on and 3.13's walks past; or a
+    ``resolve`` raising that error for every path through it, on every python, as one through a
+    loop raised on 3.12 - and as Windows raises ``OSError`` for an error its walk does not list."""
+    directory = root / "loop"
+    if request.param == "a-loop-of-links":
+        looped(directory, root / "pool")
+        return directory
+    resolve = Path.resolve
+
+    def refusing(path: Path, strict: bool = False) -> Path:
+        if directory.name in path.parts:
+            raise RuntimeError(f"Symlink loop from {str(path)!r}")
+        return resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", refusing)
+    return directory
+
+
+def unreadable_baseline(baseline: str) -> str:
+    """``GET /api/compare``'s refusal of ``baseline``, a path through :func:`unresolvable`'s
+    directory, in the words this python gives it: where ``resolve`` raises, the path as given
+    and the error; where it walks past the loop, the path it resolved to and the error opening
+    it raises - the operating system's own words, which this suite has no business spelling."""
+    path = Path(baseline)
+    try:
+        resolved = path.resolve()
+    except RuntimeError as error:
+        return f"the baseline '{path.as_posix()}' is unreadable: {error}"
+    with pytest.raises(OSError) as refused:
+        resolved.open("rb")
+    return f"the baseline '{resolved.as_posix()}' is unreadable: {refused.value}"
+
+
+class TestAPathThatWillNotResolve:
+    """Every route that takes a path, given one through a loop of links: answered as a path that
+    names nothing of the project, never ``500``. Each resolves it as the loader does
+    (:func:`ddd.loading.resolve_path`), which hands back a path it cannot resolve as given; on
+    python 3.12 ``Path.resolve`` itself raised ``RuntimeError`` there, and every one of these
+    answered ``500`` with a traceback. On 3.13 and later the loop is walked past and these pass
+    either way - the raising ``resolve`` is what holds each route to it on every python."""
+
+    def test_a_file_is_not_one_of_the_project(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/file", path=looping) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} is not a description file of the open project",
+            },
+        )
+
+    def test_its_findings_are_none(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/findings", file=looping) == Reply(
+            200, {"revision": 1, "total": 0, "offset": 0, "findings": []}
+        )
+
+    def test_a_fix_is_of_no_file_of_the_project(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        reply = get(api, "/api/fix", file=looping, pointer="", check="unknown-unit")
+        assert reply == Reply(
+            404, {"error": "not-found", "message": f"{looping} is not a file of the open project"}
+        )
+
+    @pytest.mark.parametrize(
+        ("route", "query"),
+        [
+            ("/api/declarable", {}),
+            ("/api/declaration-plan", {"action": "read", "name": "Speed", "scope": "local"}),
+        ],
+        ids=["declarable", "declaration-plan"],
+    )
+    def test_a_component_is_not_one_of_the_project(
+        self, api: Api, unresolvable: Path, route: str, query: dict[str, str]
+    ) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, route, file=looping, **query) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} is not a description file of the open project",
+            },
+        )
+
+    def test_a_file_to_add_names_no_file(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/files-plan", action="add", path=looping) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} names no file; a file not there yet is created, not added",
+            },
+        )
+
+    def test_a_file_to_remove_is_no_row(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/files-plan", action="remove", path=looping) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": "no entry of p.ddd.json's includes names p.ddd.json, and none of its "
+                "patterns matches it",
+            },
+        )
+
+    def test_a_baseline_is_unreadable(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/compare", baseline=looping) == Reply(
+            400, {"error": "bad-request", "message": unreadable_baseline(looping)}
+        )
+
+    def test_a_project_to_open_is_not_one_found_here(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert post(api, "/api/open", {"path": looping}) == Reply(
+            404, {"error": "not-found", "message": f"{looping} is not a project found here"}
+        )
+
+    def test_a_file_to_edit_is_not_one_of_the_project(
+        self, api: Api, root: Path, unresolvable: Path
+    ) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        edit = creating(root, "units.ddd.json")
+        changed = edit["changes"][1]
+        changed["file"] = looping
+        assert post(api, "/api/edit", {"changes": [changed], "label": "x"}) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} is not a description file of the open project",
+            },
+        )
+
+    def test_a_file_to_create_beside_it_is_created_beside_no_description_the_edit_changes(
+        self, api: Api, root: Path, unresolvable: Path
+    ) -> None:
+        """The created file confined first, its fellow changes each resolved to find the
+        description that includes it: the one through the loop is that description nowhere."""
+        edit = creating(root, "units.ddd.json")
+        edit["changes"][1]["file"] = (unresolvable / "p.ddd.json").as_posix()
+        assert post(api, "/api/edit", edit) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{root / 'units.ddd.json'} can be created only beside p.ddd.json, "
+                "by an edit that adds it to the includes there",
+            },
+        )
+        assert not (root / "units.ddd.json").exists()
+
+
+class TestAPathNamingADevice:
+    """Where a device is opened for its name - on Windows, in whatever directory the name is
+    written - a path a request names holding one, in any of its names, is refused ``400`` in its
+    route's own words before anything looks it up: resolving it asks the system about each
+    directory along the way, and opening a serial port can reset the board on it. Read here
+    where a device is opened (``ddd.gui.queries._OPENS_DEVICES``), on every system; elsewhere
+    such a name is a file or a directory like any other."""
+
+    @pytest.fixture(autouse=True)
+    def opening(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(queries_module, "_OPENS_DEVICES", True)
+
+    @pytest.mark.parametrize(
+        ("route", "key", "query", "said"),
+        [
+            ("/api/file", "path", {}, "file takes ?path= as a file's path"),
+            ("/api/findings", "file", {}, "findings takes ?file= as a file's path"),
+            (
+                "/api/fix",
+                "file",
+                {"pointer": "", "check": "unknown-unit"},
+                "fix takes ?file= as a file's path",
+            ),
+            ("/api/declarable", "file", {}, "declarable takes ?file= as a file's path"),
+            (
+                "/api/declaration-plan",
+                "file",
+                {"action": "read", "name": "Speed", "scope": "local"},
+                "read takes ?file= as a file's path",
+            ),
+            ("/api/files-plan", "path", {"action": "add"}, "add takes ?path= as a file's path"),
+            ("/api/files-plan", "path", {"action": "remove"}, "remove takes ?path= as a row's key"),
+            ("/api/compare", "baseline", {}, "compare takes ?baseline= as a file's path"),
+        ],
+        ids=[
+            "file",
+            "findings",
+            "fix",
+            "declarable",
+            "declaration-plan",
+            "files-plan-add",
+            "files-plan-remove",
+            "compare",
+        ],
+    )
+    def test_a_query_naming_one_is_refused_before_it_is_looked_up(
+        self,
+        api: Api,
+        root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        route: str,
+        key: str,
+        query: dict[str, str],
+        said: str,
+    ) -> None:
+        asked = asked_about(monkeypatch, "COM1")
+        reply = get(api, route, **{key: (root / "COM1" / "a.ddd.json").as_posix()}, **query)
+        assert reply == Reply(400, {"error": "bad-request", "message": said})
+        assert asked == []
+
+    def test_a_project_to_open_naming_one_is_refused_before_it_is_looked_up(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        asked = asked_about(monkeypatch, "COM1")
+        reply = post(api, "/api/open", {"path": (root / "COM1" / "p.ddd.json").as_posix()})
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "path: open takes a project's path"}
+        )
+        assert asked == []
+
+    def test_a_file_to_create_under_a_devices_name_is_refused_before_it_is_looked_up(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Before the session judges the name it would create (``uncreatable``), which answers
+        such a name ``409`` where no device is opened for it."""
+        request = creating(root, "COM1.ddd.json")
+        before = contents(root)
+        asked = asked_about(monkeypatch, "COM1.ddd.json")
+        assert post(api, "/api/edit", request) == Reply(
+            400, {"error": "bad-request", "message": "changes[0].file: edit takes a file's path"}
+        )
+        assert asked == []
+        assert contents(root) == before
+
+
+DIGITS: Final = "1" * 4301
+"""A whole number of one digit more than ``int()`` reads from text, which raises past 4,300."""
+
+NESTED: Final = ("[" * 3000 + "]" * 3000, '{"a": ' * 3000 + "1" + "}" * 3000, "[" * 100_000)
+"""Text nested 3,000 deep, as arrays and as objects, and an array opened 100,000 times and never
+closed. On the Linux development PC's Python 3.14, ``json.loads`` reads the first two and raises
+``RecursionError`` on the third: deeper than any query takes, each is refused before anything
+parses it."""
+
+
+class TestNoPlanValueIsA500:
+    """What a plan route once answered 500 for, each refused now: a count, or an element, of more
+    digits than a number holds; a count nested deeper than a parser goes; a definition the same;
+    a component's path holding a NUL. A count is refused by its handler, as one that is not a
+    number always was, and so is a definition (ruling 5): the panels show both."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_a_count_of_more_digits_than_a_number_holds_is_not_a_number(self, demo) -> None:
+        api, _ = demo
+        not_a_number = Reply(409, {"error": "invalid", "message": f"'{DIGITS}' is not a number"})
+        assert get(api, "/api/value-plan", name="CurveA", at="[2]", raw=DIGITS) == not_a_number
+        counts = f"1200,{DIGITS},800,750,700,650"
+        assert get(api, "/api/values-plan", name="CurveA", raw=counts) == not_a_number
+
+    @pytest.mark.parametrize("raw", NESTED, ids=["arrays", "objects", "unclosed"])
+    def test_a_count_nested_however_deep_is_not_a_number(self, demo, raw: str) -> None:
+        api, _ = demo
+        not_a_number = Reply(409, {"error": "invalid", "message": f"'{raw}' is not a number"})
+        assert get(api, "/api/value-plan", name="CurveA", at="[2]", raw=raw) == not_a_number
+        assert get(api, "/api/values-plan", name="CurveA", raw=raw) == not_a_number
+
+    @pytest.mark.parametrize("at", [DIGITS, f"[{DIGITS}]"])
+    def test_an_element_of_more_digits_than_a_number_holds_is_refused(self, demo, at: str) -> None:
+        api, _ = demo
+        assert get(api, "/api/value-plan", name="CurveA", at=at, raw="750") == Reply(
+            400,
+            {"error": "bad-request", "message": "value-plan takes ?at= as an element's indices"},
+        )
+
+    @pytest.mark.parametrize(
+        "definition",
+        [*NESTED, DIGITS, '{"name": "P", "init": ' + DIGITS + "}", '{"name": "P", "init": 1e999}'],
+        ids=["arrays", "objects", "unclosed", "digits", "digits inside", "too large a number"],
+    )
+    def test_a_definition_json_text_does_not_take_is_not_json(self, demo, definition: str) -> None:
+        """Read by json text's rules - its depth counted first, its numbers finite - and refused
+        as any other definition that is not one json object is, 409: the declare panel shows it
+        as its offer's refusal."""
+        api, root = demo
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="declare",
+            file=(root / "components" / "controller.ddd.json").as_posix(),
+            scope="output",
+            definition=definition,
+        )
+        assert reply == Reply(409, {"error": "invalid", "message": "the definition is not json"})
+
+    @pytest.mark.parametrize(
+        ("action", "query"),
+        [
+            ("read", {"name": "ValueC", "scope": "input"}),
+            ("declare", {"scope": "output", "definition": '{"name": "P"}'}),
+            ("remove", {"name": "ValueA"}),
+        ],
+    )
+    def test_a_component_s_path_holding_a_nul_is_refused(
+        self, demo, action: str, query: dict[str, str]
+    ) -> None:
+        api, root = demo
+        file = f"{(root / 'components' / 'controller.ddd.json').as_posix()}\x00"
+        reply = get(api, "/api/declaration-plan", action=action, file=file, **query)
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": f"{action} takes ?file= as a file's path"}
+        )
+
+
+class TestABlankPlanValueKeepsItsMeaning:
+    """A blank value of a plan route means what it always has: the empty text a description is
+    set to; a key taken away, as a ``raw`` left out takes it; a unit spelled empty, which the plan
+    itself refuses; no component; and, for a declaration, whatever its handler makes of it."""
+
+    def test_a_blank_spelling_to_rename_a_unit_to_is_refused_by_the_plan(self, api: Api) -> None:
+        reply = get(api, "/api/unit-plan", action="rename", unit="rpm", to="")
+        assert reply == Reply(409, {"error": "invalid", "message": "the empty unit is no unit"})
+
+    def test_a_blank_description_sets_the_empty_text(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        reply = get(api, "/api/unit-plan", action="describe", unit="rpm", description="")
+        assert [change["operations"] for change in reply.body["changes"]] == [
+            [{"op": "set", "pointer": "units[0].description", "raw": '""'}]
+        ]
+
+    @pytest.mark.parametrize(
+        ("example", "project_file", "route", "query"),
+        [
+            ("structures", "project.ddd.json", "/api/type-plan", {"name": "Temperature_t"}),
+            ("vocabulary", "project.ddd.json", "/api/constant-plan", {"name": "TREND_SAMPLES"}),
+            ("vocabulary", "project.ddd.json", "/api/section-plan", {"name": ".calib"}),
+            ("vocabulary", "project.ddd.json", "/api/raster-plan", {"name": "10ms"}),
+        ],
+    )
+    def test_a_blank_raw_takes_the_key_away_as_leaving_it_out_does(
+        self, tmp_path: Path, example: str, project_file: str, route: str, query: dict[str, str]
+    ) -> None:
+        api, _ = copied(tmp_path, example, project_file)
+        left_out = get(api, route, action="set", key="description", **query)
+        assert left_out.status == 200
+        assert [change["operations"][0]["op"] for change in left_out.body["changes"]] == ["remove"]
+        assert get(api, route, action="set", key="description", raw="", **query) == left_out
+
+    def test_a_blank_component_is_none(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        created = get(api, "/api/files-plan", action="create", kind="types", name="sizes")
+        assert created.status == 200
+        blank = get(
+            api, "/api/files-plan", action="create", kind="types", name="sizes", component=""
+        )
+        assert blank == created
+        assert get(
+            api, "/api/files-plan", action="create", kind="component", name="valve", component=""
+        ) == Reply(
+            409, {"error": "invalid", "message": "a new component needs a name, besides its file's"}
+        )
+
+    @pytest.mark.parametrize(
+        ("query", "status", "code", "sentence"),
+        [
+            (
+                {"action": "remove", "file": "", "name": "ValueA"},
+                404,
+                "not-found",
+                ". is not a description file of the open project",
+            ),
+            (
+                {"action": "read", "name": "", "scope": "input"},
+                404,
+                "not-found",
+                "the project declares no ''",
+            ),
+            (
+                {"action": "read", "name": "ValueC", "scope": ""},
+                409,
+                "invalid",
+                "'ValueC' may not be declared '' here",
+            ),
+            (
+                {"action": "declare", "scope": "output", "definition": ""},
+                409,
+                "invalid",
+                "the definition is not json",
+            ),
+        ],
+    )
+    def test_a_blank_part_of_a_declaration_reaches_its_handler(
+        self, tmp_path: Path, query: dict[str, str], status: int, code: str, sentence: str
+    ) -> None:
+        api, root = copied(tmp_path, "demo", "demo.ddd.json")
+        asked = {"file": (root / "components" / "controller.ddd.json").as_posix(), **query}
+        reply = get(api, "/api/declaration-plan", **asked)
+        assert reply == Reply(status, {"error": code, "message": sentence})
 
 
 class TestSession:
@@ -598,8 +1413,10 @@ class TestState:
         assert (body["revision"], body["version"]) == (1, 2)
 
     @pytest.mark.parametrize("after", ["", "-1", "one", "٣"])
-    def test_an_after_that_is_not_a_number_does_not_wait(self, api: Api, after: str) -> None:
-        api.wait_seconds = 30
+    def test_an_after_that_is_not_a_number_does_not_wait(
+        self, api: Api, after: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(api.session, "wait", never_waited)
         assert get(api, "/api/state", after=after).body["revision"] == 1
 
     def test_the_state_needs_an_open_project(self, root: Path) -> None:
@@ -1012,12 +1829,52 @@ class TestFiles:
         # same banner as the rest, and on windows it read with backslashes.
         assert (root / "other" / "q.ddd.json").as_posix() in reply.body["message"]
 
-    def test_a_file_request_needs_a_path(self, api: Api) -> None:
-        assert get(api, "/api/file").status == 400
+    @pytest.mark.parametrize("query", [{}, {"path": ""}])
+    def test_a_file_request_needs_a_path(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/file", **query) == Reply(
+            400, {"error": "bad-request", "message": "file takes ?path="}
+        )
 
     def test_a_file_request_needs_an_open_project(self, root: Path) -> None:
         reply = get(Api(Session(root)), "/api/file", path=(root / "a.ddd.json").as_posix())
         assert (reply.status, reply.body["error"]) == (409, "no-project")
+
+    @pytest.mark.parametrize("described", [nested(97), around(97)], ids=["lists", "a-number"])
+    def test_a_file_99_levels_deep_is_answered_whole(
+        self, root: Path, described: Any, capsys
+    ) -> None:
+        """The deepest file its reply carries on every system: ``data`` is the untyped field
+        itself, which pydantic-core writes 99 levels deep on Windows - and counts every value, the
+        number at the bottom of a list as much as the list."""
+        deep = {"component": {"name": "B", "description": described}}
+        (root / "b.ddd.json").write_text(json.dumps(deep), encoding="utf-8")
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        reply = get(Api(session), "/api/file", path=(root / "b.ddd.json").as_posix())
+        assert (reply.status, reply.body["data"]) == (200, deep)
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize("described", [nested(98), around(98)], ids=["lists", "a-number"])
+    def test_a_file_100_levels_deep_is_refused_naming_it(
+        self, root: Path, described: Any, capsys
+    ) -> None:
+        """One level deeper, pydantic-core gives up writing the reply on Windows - ``Circular
+        reference detected (depth exceeded)``, answered ``500`` - so it is refused on every
+        system, the depth counted before anything writes it."""
+        deep = {"component": {"name": "B", "description": described}}
+        (root / "b.ddd.json").write_text(json.dumps(deep), encoding="utf-8")
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        reply = get(Api(session), "/api/file", path=(root / "b.ddd.json").as_posix())
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "b.ddd.json is nested more than 99 levels deep, "
+                "deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
 
 
 class TestWhatTheSessionServes:
@@ -1166,6 +2023,167 @@ class TestDictionaryAndChecks:
 
     def test_the_dictionary_needs_an_open_project(self, root: Path) -> None:
         assert get(Api(Session(root)), "/api/dictionary").status == 409
+
+    BLOCKED: Final = {
+        "object": lambda depth: {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A", declare("output", "Speed", extensions={"deep": block(depth)})
+            ),
+        },
+        "instance": lambda depth: {
+            "p.ddd.json": project("P", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": types(struct_type("Sample_t")),
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Inlet", typename="Sample_t", extensions={"deep": block(depth)}),
+            ),
+        },
+        "project": lambda depth: {
+            "p.ddd.json": project("P", "a.ddd.json", extensions={"deep": block(depth)}),
+            "a.ddd.json": component("A", declare("output", "Speed")),
+        },
+    }
+    """A project holding one extension block ``depth`` levels deep: on an object, on a structured
+    object - which the dictionary lists under ``instances`` rather than ``objects`` - or among the
+    project's own settings, under the dictionary's ``extensions``."""
+
+    @pytest.mark.parametrize(
+        ("holder", "depth", "where"),
+        [
+            ("object", 96, ("objects", "Speed")),
+            ("instance", 96, ("instances", "Inlet")),
+            ("project", 98, None),
+        ],
+    )
+    def test_the_deepest_block_the_dictionary_carries_is_answered(
+        self, tmp_path: Path, holder: str, depth: int, where: tuple[str, str] | None, capsys
+    ) -> None:
+        """pydantic-core writes the dictionary's untyped json 99 levels deep on Windows: an
+        object's block sits three levels down it - the dictionary's ``objects`` or ``instances``,
+        the object, its ``extensions`` - and the project's own one, under ``extensions`` alone."""
+        api = carried(tmp_path, self.BLOCKED[holder](depth))
+        reply = get(api, "/api/dictionary")
+        assert reply.status == 200
+        dictionary = reply.body["dictionary"]
+        if where is None:
+            assert dictionary["extensions"] == {"deep": block(depth)}
+        else:
+            listed, name = where
+            entry = next(entry for entry in dictionary[listed] if entry["name"] == name)
+            assert entry["extensions"] == {"deep": block(depth)}
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize(
+        ("holder", "depth", "file"),
+        [
+            ("object", 97, "a.ddd.json"),
+            ("instance", 97, "a.ddd.json"),
+            ("project", 99, "p.ddd.json"),
+        ],
+    )
+    def test_a_block_a_level_deeper_is_refused_naming_its_file(
+        self, tmp_path: Path, holder: str, depth: int, file: str, capsys
+    ) -> None:
+        """One level deeper, writing the reply fails on Windows - ``Circular reference detected
+        (depth exceeded)``, answered ``500`` - so every block is measured before anything writes
+        it, on every system, and the refusal names the file that states it."""
+        api = carried(tmp_path, self.BLOCKED[holder](depth))
+        assert get(api, "/api/dictionary") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": f"{file} holds an extension block nested more than {depth - 1} "
+                "levels deep, deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    def test_a_block_a_sub_project_states_is_refused_naming_that_project(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """A plugin's settings are stated by one project file of the tree, which need not be the
+        root: the refusal names the one that states them."""
+        api = carried(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/s.ddd.json"),
+                "sub/s.ddd.json": project("S", "a.ddd.json", extensions={"deep": block(99)}),
+                "sub/a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        assert get(api, "/api/dictionary") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "s.ddd.json holds an extension block nested more than 98 levels "
+                "deep, deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize(
+        "now",
+        [project("S", "a.ddd.json"), "{", {"component": {"name": "S"}}],
+        ids=["without-the-block", "not-json", "not-a-project"],
+    )
+    def test_settings_no_project_file_states_any_more_are_refused_naming_the_plugin(
+        self, tmp_path: Path, now: object, capsys
+    ) -> None:
+        """The dictionary keeps a plugin's settings, not the file that stated them, which is read
+        again to be named - and may have changed since the analysis read it. Named by no file
+        then, the sentence names the plugin whose settings they are."""
+        api = carried(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "sub/s.ddd.json"),
+                "sub/s.ddd.json": project("S", "a.ddd.json", extensions={"deep": block(99)}),
+                "sub/a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        write_tree(tmp_path, {"sub/s.ddd.json": now})
+        assert get(api, "/api/dictionary") == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "the settings of plugin 'deep', which no project file states any "
+                "more, are nested more than 98 levels deep, deeper than ddd gui can show",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize(("depth", "status"), [(97, 200), (98, 409)])
+    def test_an_init_deeper_than_the_dictionary_carries_is_refused_by_the_net(
+        self, tmp_path: Path, depth: int, status: int, capsys
+    ) -> None:
+        """An init is a recursive value, kept by the loader whatever its shape - one deeper than
+        it is found ``init-invalid``, after which the project still resolves - and written two
+        levels down the dictionary's untyped json, under ``objects`` and the object. Past 99
+        levels in all, the reply is refused before it is written, by the net every reply is
+        written through rather than by a rule of this route's own."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[1], init=around(depth))
+                ),
+            },
+        )
+        reply = get(api, "/api/dictionary")
+        if status == 200:
+            speed = next(o for o in reply.body["dictionary"]["objects"] if o["name"] == "Speed")
+            assert (reply.status, speed["init"]) == (200, around(depth))
+        else:
+            assert reply == Reply(
+                409,
+                {
+                    "error": "unreadable",
+                    "message": "this answer is nested more than 99 levels deep, "
+                    "deeper than ddd gui can show",
+                },
+            )
+        assert capsys.readouterr() == ("", "")
 
     def test_the_built_in_checks_are_listed_without_a_project(self, root: Path) -> None:
         checks = get(Api(Session(root)), "/api/checks").body["checks"]
@@ -1336,6 +2354,93 @@ class TestEdit:
         }
         assert post(api, "/api/edit", edit).status == 200
         assert '"unit": 1.0' in target.read_text(encoding="utf-8")
+
+    @staticmethod
+    def described(target: Path, raw: str) -> dict[str, Any]:
+        """An edit writing ``raw`` as the description of ``target``'s first declaration."""
+        return {
+            "changes": [
+                {
+                    "file": target.as_posix(),
+                    "fingerprint": fingerprint(target.read_bytes()),
+                    "operations": [
+                        {
+                            "op": "set",
+                            "pointer": "component.interface[0].definition.description",
+                            "raw": raw,
+                        }
+                    ],
+                }
+            ],
+            "label": "a nested description",
+        }
+
+    def test_a_value_64_levels_deep_is_written(self, api: Api, root: Path) -> None:
+        """As deep as json a query carries (``MAX_DEPTH``), and well short of what the page can
+        show once it is written."""
+        target = root / "a.ddd.json"
+        assert post(api, "/api/edit", self.described(target, "[" * 64 + "]" * 64)).status == 200
+        written = json.loads(target.read_text(encoding="utf-8"))
+        assert written["component"]["interface"][0]["definition"]["description"] == nested(64)
+
+    def test_a_value_65_levels_deep_is_refused_in_the_engines_own_words(
+        self, api: Api, root: Path
+    ) -> None:
+        """Refused before the engine is asked, which lays out values hundreds of levels deeper:
+        the page would then write a file it could not show (``FILE_DEPTH``)."""
+        target = root / "a.ddd.json"
+        before = target.read_bytes()
+        raw = "[" * 65 + "]" * 65
+        assert post(api, "/api/edit", self.described(target, raw)) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{target}: {raw!r} is not one json value: "
+                "the json is nested too deeply to read",
+            },
+        )
+        assert target.read_bytes() == before
+
+    @pytest.mark.parametrize(
+        ("raw", "number"),
+        [("1e999", "1e999"), ('{"max": -1e999}', "-1e999"), ("[1, 2.5e400]", "2.5e400")],
+        ids=["alone", "in-an-object", "in-an-array"],
+    )
+    def test_a_value_holding_a_number_too_large_to_be_finite_is_refused(
+        self, api: Api, root: Path, raw: str, number: str
+    ) -> None:
+        """As the same text in a query is (``ddd.gui.queries.json_text``): ``1e999`` reads as
+        infinity, which DDD has no representation for. Written, it was shown back as ``null``,
+        which is how pydantic writes infinity, and the analysis filed a finding of the file it
+        made. Refused before the engine is asked, in its own words."""
+        target = root / "a.ddd.json"
+        before = target.read_bytes()
+        assert post(api, "/api/edit", self.described(target, raw)) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{target}: {raw!r} is not one json value: '{number}' is not a "
+                "finite number; DDD has no representation for it",
+            },
+        )
+        assert target.read_bytes() == before
+
+    def test_a_value_json_cannot_read_is_the_engines_to_refuse_in_its_own_order(
+        self, api: Api, root: Path
+    ) -> None:
+        """Only a value json reads is judged before the engine is asked, as it was: one it
+        cannot read at all is refused by the engine, after what the engine refuses first - here,
+        a file changed since the edit was computed."""
+        edit = unit_edit(api, root, "Hz")
+        edit["changes"][0]["operations"][0]["raw"] = "not json"
+        (root / "b.ddd.json").write_text("{}", encoding="utf-8")
+        assert post(api, "/api/edit", edit) == Reply(
+            409,
+            {
+                "error": "stale",
+                "message": f"{root / 'b.ddd.json'} changed on disk since it was read",
+            },
+        )
 
     def test_a_stale_edit_is_a_refusal_the_page_can_act_on(self, api: Api, root: Path) -> None:
         edit = unit_edit(api, root, "Hz")
@@ -1536,6 +2641,144 @@ class TestEdit:
             "units",
             True,
         )
+
+    def test_the_longest_name_a_file_can_be_created_under_is_written(
+        self, api: Api, root: Path
+    ) -> None:
+        name = "n" * (LONGEST_NAME - len(".ddd.json")) + ".ddd.json"
+        assert len(name.encode("utf-8")) == LONGEST_NAME
+        assert post(api, "/api/edit", creating(root, name)).status == 200
+        assert (root / name).read_bytes() == b'{"units": ["rpm"]}'
+
+    @pytest.mark.parametrize(
+        ("name", "length"),
+        [
+            pytest.param("n" * 235 + ".ddd.json", 244, id="a-byte-longer"),
+            pytest.param("n" * 291 + ".ddd.json", 300, id="longer-than-a-file-system-takes"),
+            pytest.param("\u00e9" * 118 + ".ddd.json", 245, id="counted-in-bytes"),
+        ],
+    )
+    def test_a_longer_name_is_refused_before_anything_is_written(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, name: str, length: int
+    ) -> None:
+        """Input, not a failure to write: refused before the file system is asked anything about
+        the name - which python 3.12's own ``Path.exists`` raises on past 255 bytes on Linux, and
+        which Windows answers with an error ``Path.resolve`` may not walk past. Counted in the
+        bytes utf-8 spells it with - what ext4 counts, and never fewer than the utf-16 units NTFS
+        counts - so that a name ``é`` spells in 127 characters is refused at 245 bytes. The
+        refusal names the file's path as the edit gives it, which here is the directory's
+        resolved already - pytest's own temporary directory is - and the name."""
+        request = creating(root, name)
+        before = contents(root)
+        asked = asked_about(monkeypatch, name)
+        assert post(api, "/api/edit", request) == Reply(
+            409, {"error": "invalid", "message": too_long(str(root.resolve() / name), length)}
+        )
+        assert asked == []
+        assert contents(root) == before
+
+    @pytest.mark.parametrize(
+        ("name", "device"),
+        [
+            pytest.param("COM1.ddd.json", "COM1", id="a-port"),
+            pytest.param("con.ddd.json", "CON", id="the-console-in-lower-case"),
+            pytest.param("nul .ddd.json", "NUL", id="a-space-before-the-dot"),
+            pytest.param("CONIN$.ddd.json", "CONIN$", id="the-console-s-input"),
+            pytest.param("LPT\u00b9.ddd.json", "LPT\u00b9", id="a-superscript"),
+        ],
+    )
+    def test_a_name_windows_keeps_for_a_device_is_refused_before_anything_is_written(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, name: str, device: str
+    ) -> None:
+        """On every system, a project being as much Windows' as its own: there, staging the file
+        or renaming it into place opens the device rather than a file. Refused as the page path
+        is (``ddd.gui.server``), before anything looks the name up. The session's own rule, read
+        where no device is opened for a name in a path: where one is, the path is refused
+        before the session sees it (:class:`TestAPathNamingADevice`)."""
+        monkeypatch.setattr(queries_module, "_OPENS_DEVICES", False)
+        request = creating(root, name)
+        before = contents(root)
+        asked = asked_about(monkeypatch, name)
+        assert post(api, "/api/edit", request) == Reply(
+            409, {"error": "invalid", "message": a_device(str(root.resolve() / name), device)}
+        )
+        assert asked == []
+        assert contents(root) == before
+
+    @pytest.mark.parametrize(
+        ("name", "said"),
+        [
+            pytest.param("COM1.ddd.json", lambda path: a_device(path, "COM1"), id="a-device"),
+            pytest.param(
+                "n" * 235 + ".ddd.json", lambda path: too_long(path, 244), id="a-byte-too-long"
+            ),
+        ],
+    )
+    def test_a_second_file_to_create_is_judged_before_the_first_is_looked_up(
+        self,
+        api: Api,
+        root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        name: str,
+        said: Callable[[str], str],
+    ) -> None:
+        """Every name an edit creates is judged before any change of it is confined: confining
+        the first file looks up each name the project description's includes give, the second's
+        among them, and on Windows looking up a device's name opens the device. Read where no
+        device is opened for a name in a path, as the session's own rule is above."""
+        monkeypatch.setattr(queries_module, "_OPENS_DEVICES", False)
+        request = creating(root, "units.ddd.json")
+        second = {**request["changes"][0], "file": (root / name).as_posix()}
+        request["changes"].insert(1, second)
+        request["changes"][2]["operations"].append(
+            {"op": "insert", "pointer": "project.includes[3]", "raw": json.dumps(name)}
+        )
+        before = contents(root)
+        asked = asked_about(monkeypatch, name)
+        assert post(api, "/api/edit", request) == Reply(
+            409, {"error": "invalid", "message": said(str(root.resolve() / name))}
+        )
+        assert asked == []
+        assert contents(root) == before
+
+    @pytest.mark.parametrize(
+        ("name", "why"),
+        [
+            *[
+                # Never second: "a:b.ddd.json" joined to a Windows path is a drive's path.
+                pytest.param(f"ab{c}c.ddd.json", f"its name holds '{c}'", id=f"holding-{c}")
+                for c in '<>:"|?*'
+            ],
+            pytest.param(
+                "a\x01b.ddd.json", "its name holds the control character U+0001", id="a-control"
+            ),
+            pytest.param("units.ddd.json.", "its name ends in a dot", id="a-dot-last"),
+            pytest.param("units.ddd.json ", "its name ends in a space", id="a-space-last"),
+        ],
+    )
+    def test_a_name_windows_could_not_create_is_refused_before_anything_is_written(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, name: str, why: str
+    ) -> None:
+        """On every system, as a device's name is: on Windows the staged write of such a name
+        failed, answered ``500``, a colon naming a stream of another file instead, and a dot or
+        a space it ends in would be dropped, creating the file under another name than the one
+        the includes give it. The separators are no part of a name a path gives."""
+        request = creating(root, name)
+        before = contents(root)
+        asked = asked_about(monkeypatch, name)
+        if why.startswith("its name holds"):
+            said = f"{why}, which Windows keeps out of a file's name"
+        else:
+            said = f"{why}, which Windows drops from a file's name"
+        assert post(api, "/api/edit", request) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{root.resolve() / name} cannot be created: {said}",
+            },
+        )
+        assert asked == []
+        assert contents(root) == before
 
     def test_a_file_the_edit_does_not_include_is_not_created(self, api: Api, root: Path) -> None:
         edit = {
@@ -2261,8 +3504,11 @@ class TestVariable:
         assert (declarations[0]["type"], declarations[0]["fixed"]["unit"]) == ("Speed_t", '"rpm"')
         assert "unit" not in declarations[0]["stated"]
 
-    def test_a_variable_is_asked_for_by_name(self, api: Api) -> None:
-        assert get(api, "/api/variable").status == 400
+    @pytest.mark.parametrize("query", [{}, {"name": ""}])
+    def test_a_variable_is_asked_for_by_name(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/variable", **query) == Reply(
+            400, {"error": "bad-request", "message": "variable takes ?name="}
+        )
 
     def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/variable", name="Torque").status == 404
@@ -2511,17 +3757,26 @@ class TestSettle:
         assert (reply.status, reply.body["error"]) == (409, "unverified")
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {"key": "unit", "raw": '"%"'},
-            {"name": "Speed", "raw": '"%"'},
-            {"name": "Speed", "key": "name", "raw": '"B"'},
-            {"name": "Speed", "key": "unit", "raw": "not json"},
+            ({"key": "unit", "raw": '"%"'}, SETTLE_TAKES),
+            ({"name": "Speed", "raw": '"%"'}, SETTLE_TAKES),
+            (
+                {"name": "Speed", "key": "name", "raw": '"B"'},
+                "'name' is not a key the declarations of a variable share",
+            ),
+            (
+                {"name": "Speed", "key": "unit", "raw": "not json"},
+                "'not json' is not one json value: Expecting value: line 1 column 1 (char 0)",
+            ),
         ],
     )
-    def test_a_malformed_request_is_bad(self, api: Api, query: dict[str, str]) -> None:
-        reply = get(api, "/api/settle", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+    def test_a_malformed_request_is_bad(
+        self, api: Api, query: dict[str, str], sentence: str
+    ) -> None:
+        assert get(api, "/api/settle", **query) == Reply(
+            400, {"error": "bad-request", "message": sentence}
+        )
 
     def test_a_name_nothing_declares_is_not_found(self, api: Api) -> None:
         assert get(api, "/api/settle", name="Torque", key="unit", raw='"%"').status == 404
@@ -2726,11 +3981,23 @@ class TestFix:
         assert (reply.status, reply.body["fixes"]) == (200, [])
 
     @pytest.mark.parametrize(
-        "query",
-        [{}, {"file": "a.ddd.json"}, {"file": "a.ddd.json", "pointer": "x"}],
+        ("query", "sentence"),
+        [
+            ({}, "fix takes ?file=, ?pointer= and ?check="),
+            ({"file": "/p/a.ddd.json"}, "fix takes ?file=, ?pointer= and ?check="),
+            ({"file": "/p/a.ddd.json", "pointer": "x"}, "fix takes ?file=, ?pointer= and ?check="),
+            (
+                {"file": "a.ddd.json", "pointer": "x", "check": "missing-id"},
+                "fix takes ?file= as a file's path",
+            ),
+        ],
     )
-    def test_a_malformed_request_is_bad(self, api: Api, query: dict[str, str]) -> None:
-        assert get(api, "/api/fix", **query).status == 400
+    def test_a_malformed_request_is_bad(
+        self, api: Api, query: dict[str, str], sentence: str
+    ) -> None:
+        assert get(api, "/api/fix", **query) == Reply(
+            400, {"error": "bad-request", "message": sentence}
+        )
 
     def test_a_file_of_no_project_is_not_found(self, api: Api, tmp_path: Path) -> None:
         reply = get(
@@ -2857,9 +4124,11 @@ class TestCompare:
         # cannot tell apart from a baseline kept somewhere else entirely.
         assert {Path(f["file"]).name for f in forwarded} == {"a.ddd.json", "b.ddd.json"}
 
-    def test_a_missing_baseline_is_bad(self, api: Api) -> None:
-        reply = get(api, "/api/compare")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+    @pytest.mark.parametrize("query", [{}, {"baseline": ""}])
+    def test_a_missing_baseline_is_bad(self, api: Api, query: dict[str, str]) -> None:
+        assert get(api, "/api/compare", **query) == Reply(
+            400, {"error": "bad-request", "message": "compare takes ?baseline="}
+        )
 
     def test_a_baseline_outside_the_root_is_refused(self, api: Api, tmp_path: Path) -> None:
         outside = tmp_path / "elsewhere.json"
@@ -2926,6 +4195,33 @@ class TestCompare:
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
         assert "whatever.json' is unreadable" in reply.body["message"]
 
+    @pytest.mark.parametrize(
+        "error",
+        [
+            RuntimeError("Symlink loop from 'whatever.json'"),
+            RecursionError("maximum recursion depth exceeded"),
+        ],
+        ids=["a-loop-on-python-3.12", "a-chain-of-links-on-python-3.12"],
+    )
+    def test_a_baseline_whose_resolve_raises_as_python_3_12_does_is_refused(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        """The two python 3.12's ``Path.resolve`` raises besides those, which 3.13's never does:
+        ``RuntimeError`` for a loop of links and ``RecursionError`` for a chain of about a
+        thousand. Forced, one test each, for the reason the two above are."""
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            raise error
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        assert get(api, "/api/compare", baseline="whatever.json") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline 'whatever.json' is unreadable: {error}",
+            },
+        )
+
     def test_a_baseline_that_is_not_json_is_refused(self, api: Api, root: Path) -> None:
         (root / "bad.json").write_text("{not json at all")
         reply = get(api, "/api/compare", baseline=posix(root, "bad.json"))
@@ -2946,8 +4242,16 @@ class TestCompare:
         reply = get(unloaded(tmp_path), "/api/compare", baseline=posix(tmp_path, "p.ddd.json"))
         assert (reply.status, reply.body["error"]) == (409, "unreadable")
 
-    def test_comparing_needs_an_open_project(self, root: Path) -> None:
+    def test_a_missing_baseline_is_refused_before_any_project_is_looked_for(
+        self, root: Path
+    ) -> None:
+        """The query first, on every route: asked with no project open and no baseline, the
+        answer is the query's refusal, not the 409 of the project."""
         reply = get(Api(Session(root)), "/api/compare")
+        assert reply == Reply(400, {"error": "bad-request", "message": "compare takes ?baseline="})
+
+    def test_comparing_needs_an_open_project(self, root: Path) -> None:
+        reply = get(Api(Session(root)), "/api/compare", baseline=posix(root, "p.ddd.json"))
         assert (reply.status, reply.body["error"]) == (409, "no-project")
 
 
@@ -3646,8 +4950,9 @@ class TestUnit:
         ]
 
     def test_a_unit_is_asked_for_by_name(self, api: Api) -> None:
-        reply = get(api, "/api/unit")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert get(api, "/api/unit") == Reply(
+            400, {"error": "bad-request", "message": "unit takes ?name="}
+        )
 
     def test_a_unit_nothing_states_or_lists_is_not_found(self, api: Api) -> None:
         reply = get(api, "/api/unit", name="RPM")
@@ -3714,36 +5019,39 @@ class TestUnitPlan:
         assert get(api, "/api/unit", name="rpm").status == 404
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "merge", "unit": "rpm"},
-            {"action": "rename", "unit": "rpm"},
-            {"action": "rename", "to": "Hz"},
-            {"action": "describe", "unit": "rpm"},
-            {"action": "remove", "unit": ""},
+            ({}, "unit-plan takes ?action= one of rename, add, describe, remove, adopt"),
+            (
+                {"action": "merge", "unit": "rpm"},
+                "unit-plan takes ?action= one of rename, add, describe, remove, adopt",
+            ),
+            ({"action": "rename", "unit": "rpm"}, "rename takes ?unit= and ?to="),
+            ({"action": "rename", "to": "Hz"}, "rename takes ?unit= and ?to="),
+            ({"action": "describe", "unit": "rpm"}, "describe takes ?unit= and ?description="),
+            ({"action": "remove", "unit": ""}, "remove takes ?unit="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, api: Api, query: dict[str, str]
+        self, api: Api, query: dict[str, str], sentence: str
     ) -> None:
         reply = get(api, "/api/unit-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {"action": "rename", "unit": "rpm", "to": "rpm"},
-            {"action": "rename", "unit": "rpm", "to": ""},
-            {"action": "add", "unit": "rpm"},
+            ({"action": "rename", "unit": "rpm", "to": "rpm"}, "'rpm' is spelled that way already"),
+            ({"action": "rename", "unit": "rpm", "to": ""}, "the empty unit is no unit"),
+            ({"action": "add", "unit": "rpm"}, "p.ddd.json includes no units file to add 'rpm' to"),
         ],
     )
     def test_a_plan_its_rules_refuse_is_invalid_and_writes_nothing(
-        self, api: Api, root: Path, query: dict[str, str]
+        self, api: Api, root: Path, query: dict[str, str], sentence: str
     ) -> None:
         before = contents(root)
         reply = get(api, "/api/unit-plan", **query)
-        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply == Reply(409, {"error": "invalid", "message": sentence})
         assert contents(root) == before
 
     def test_a_unit_the_project_neither_states_nor_lists_is_not_found(self, api: Api) -> None:
@@ -3839,8 +5147,9 @@ class TestTheTypesTab:
 
     def test_a_type_is_asked_for_by_name(self, structures) -> None:
         api, _ = structures
-        reply = get(api, "/api/type")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert get(api, "/api/type") == Reply(
+            400, {"error": "bad-request", "message": "type takes ?name="}
+        )
 
     def test_a_type_the_project_does_not_declare_is_not_found(self, structures) -> None:
         api, _ = structures
@@ -3884,11 +5193,24 @@ class TestTheTypesTab:
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert says in reply.body["message"]
 
-    def test_a_plan_takes_the_parameters_its_action_names(self, structures) -> None:
+    @pytest.mark.parametrize(
+        ("query", "sentence"),
+        [
+            ({"action": "set", "name": "Temperature_t"}, "set takes ?name= and ?key="),
+            ({"action": "rename", "name": "Temperature_t"}, "rename takes ?name= and ?to="),
+            (
+                {"action": "dance", "name": "Temperature_t"},
+                "type-plan takes ?action= one of set, rename",
+            ),
+            ({"name": "Temperature_t", "to": "X_t"}, "type-plan takes ?action= one of set, rename"),
+        ],
+    )
+    def test_a_plan_takes_the_parameters_its_action_names(
+        self, structures, query: dict[str, str], sentence: str
+    ) -> None:
         api, _ = structures
-        assert get(api, "/api/type-plan", action="set", name="Temperature_t").status == 400
-        assert get(api, "/api/type-plan", action="dance", name="Temperature_t").status == 400
-        assert get(api, "/api/type-plan", name="Temperature_t", to="X_t").status == 400
+        reply = get(api, "/api/type-plan", **query)
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_a_finding_inside_a_type_carries_its_route(self, structures) -> None:
         api, root = structures
@@ -4073,8 +5395,9 @@ class TestConstant:
 
     def test_a_constant_is_asked_for_by_name(self, tmp_path: Path) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
-        reply = get(api, "/api/constant")
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert get(api, "/api/constant") == Reply(
+            400, {"error": "bad-request", "message": "constant takes ?name="}
+        )
 
     def test_a_constant_the_project_does_not_declare_is_not_found(self, tmp_path: Path) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
@@ -4317,24 +5640,30 @@ class TestConstant:
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "dance", "name": "TREND_SAMPLES"},
-            {"action": "set", "name": "TREND_SAMPLES"},
-            {"action": "set", "name": "", "key": "value", "raw": "1"},
-            {"action": "rename", "name": "TREND_SAMPLES"},
-            {"action": "add", "name": "NEW"},
-            {"action": "add", "name": "NEW", "raw": ""},
-            {"action": "remove"},
+            ({}, "constant-plan takes ?action= one of set, rename, add, remove"),
+            (
+                {"action": "dance", "name": "TREND_SAMPLES"},
+                "constant-plan takes ?action= one of set, rename, add, remove",
+            ),
+            ({"action": "set", "name": "TREND_SAMPLES"}, "set takes ?name= and ?key="),
+            (
+                {"action": "set", "name": "", "key": "value", "raw": "1"},
+                "set takes ?name= and ?key=",
+            ),
+            ({"action": "rename", "name": "TREND_SAMPLES"}, "rename takes ?name= and ?to="),
+            ({"action": "add", "name": "NEW"}, "add takes ?name= and ?raw="),
+            ({"action": "add", "name": "NEW", "raw": ""}, "add takes ?name= and ?raw="),
+            ({"action": "remove"}, "remove takes ?name="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, tmp_path: Path, query: dict[str, str]
+        self, tmp_path: Path, query: dict[str, str], sentence: str
     ) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/constant-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_a_project_the_analysis_could_not_read_plans_no_constant_change(
         self, tmp_path: Path
@@ -4764,21 +6093,24 @@ class TestSection:
         )
 
     @pytest.mark.parametrize(
-        ("query", "whose"),
+        ("query", "said"),
         [
-            ({"action": "set", "name": ".calib", "key": "alignment", "raw": "not json"}, "raw"),
+            (
+                {"action": "set", "name": ".calib", "key": "alignment", "raw": "not json"},
+                "'not json' is not one json value: Expecting value: line 1 column 1 (char 0)",
+            ),
             (
                 {"action": "add", "name": ".nvm", "access": "read-write", "alignment": "4"},
-                "access",
+                "'read-write' is not one json value: Expecting value: line 1 column 1 (char 0)",
             ),
             (
                 {"action": "add", "name": ".nvm", "access": '"read-write"', "alignment": "4 8"},
-                "alignment",
+                "'4 8' is not one json value: Extra data: line 1 column 3 (char 2)",
             ),
         ],
     )
     def test_a_value_that_is_not_json_is_bad_before_any_refusal_about_the_project(
-        self, tmp_path: Path, query: dict[str, str], whose: str
+        self, tmp_path: Path, query: dict[str, str], said: str
     ) -> None:
         """`?access=read-write` is the mistake this guard is really for. Left to the model, it
         would meet *"read-write is not an access a section may state ... : read-write or
@@ -4786,17 +6118,16 @@ class TestSection:
         what is wrong with it is the missing quotes and not the word."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/section-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        assert f"{query[whose]!r} is not one json value" in reply.body["message"]
+        assert reply == Reply(400, {"error": "bad-request", "message": said})
 
     def test_two_values_that_are_not_json_are_refused_in_a_fixed_order(
         self, tmp_path: Path
     ) -> None:
         """One bad value has only one sentence to answer with; two have a choice, and the choice is
-        the panel's field order. `_json_texts` walks `SECTIONS.keys` filtered to the required ones,
-        and the caller stops at the first text that is not json - so the refusal is about `access`,
-        the first field the form draws, and not about whichever key a container happened to yield
-        first."""
+        the panel's field order. `AddSection` declares its parts in `SECTIONS.keys`' order filtered
+        to the required ones, and a query is refused for the first part it reads that is not json
+        - so the refusal is about `access`, the first field the form draws, and not about
+        whichever key a container happened to yield first."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(
             api,
@@ -4806,8 +6137,14 @@ class TestSection:
             access="read-write",
             alignment="4 8",
         )
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        assert reply.body["message"].startswith("'read-write' is not one json value")
+        assert reply == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": "'read-write' is not one json value: Expecting value: line 1 column 1 "
+                "(char 0)",
+            },
+        )
 
     def test_two_values_the_model_refuses_name_the_same_one_every_run(self, tmp_path: Path) -> None:
         """The same choice one layer down, and the one the written file cannot show: `_entry_text`
@@ -4829,22 +6166,6 @@ class TestSection:
             '"read-sideways" is not an access a section may state'
         )
 
-    def test_the_json_texts_of_a_request_come_in_the_order_the_panel_draws_them(self) -> None:
-        """The two tests above pin the sentence a reader meets; this pins *which table decides* it.
-
-        Both are asked of `SECTIONS`, whose keys are drawn in alphabetical order by coincidence, so
-        over it alone the panel's order and `sorted(SECTIONS.required)` are the same list and
-        neither test above can tell them apart. `WIDE` draws `f, d, b, e, a, c`, where the two
-        disagree on every position: this assertion holds only if the order is read off
-        `Vocabulary.keys`, and fails against a sort.
-
-        Reading it off `keys` is what makes the answer a claim rather than an accident. A sort is
-        deterministic too, but it puts `access` before `alignment` because of the alphabet; the
-        panel's order puts it first because that is the field the reader is looking at. The helpers
-        take a `Vocabulary` precisely so this is askable without an endpoint."""
-        given = {key: f'"{key}"' for key in WIDE_KEYS}
-        assert _json_texts(WIDE, given, None) == [given[key] for key in WIDE_KEYS]
-
     def test_a_declared_entry_is_built_in_the_panels_own_order(self) -> None:
         """The other walk, pinned the same way, plus one promise of its own: `description` comes
         after the required keys and not among them. It is the key `add` supplies itself, so no
@@ -4857,30 +6178,46 @@ class TestSection:
         real vocabularies and required by neither, so it is never asked of a request. Asserted
         because a comprehension filter registers no branch with coverage.py - the loop there is
         written as statements for that reason, and this is the test that would notice if the skip
-        stopped happening."""
-        given = {key: f'"{key}"' for key in (*WIDE_KEYS, "description")}
-        assert "description" not in _json_texts(WIDE, given, None)
-        assert _json_texts(SECTIONS, {"description": '"prose"'}, None) == []
+        stopped happening.
+
+        `WIDE` draws `f, d, b, e, a, c`, where the panel's order and a sort disagree on every
+        position: the order holds only if it is read off `Vocabulary.keys`, and fails against a
+        sort, which would put `access` before `alignment` because of the alphabet rather than
+        because that is the field the reader is looking at."""
+        assert _required_keys(WIDE) == list(WIDE_KEYS)
+        assert "description" not in _required_keys(SECTIONS)
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "dance", "name": ".calib"},
-            {"action": "set", "name": ".calib"},
-            {"action": "set", "name": "", "key": "alignment", "raw": "4"},
-            {"action": "rename", "name": ".calib"},
-            {"action": "add", "name": ".nvm", "access": '"read-write"'},
-            {"action": "add", "name": ".nvm", "alignment": "4"},
-            {"action": "remove"},
+            ({}, "section-plan takes ?action= one of set, rename, add, remove"),
+            (
+                {"action": "dance", "name": ".calib"},
+                "section-plan takes ?action= one of set, rename, add, remove",
+            ),
+            ({"action": "set", "name": ".calib"}, "set takes ?name= and ?key="),
+            (
+                {"action": "set", "name": "", "key": "alignment", "raw": "4"},
+                "set takes ?name= and ?key=",
+            ),
+            ({"action": "rename", "name": ".calib"}, "rename takes ?name= and ?to="),
+            (
+                {"action": "add", "name": ".nvm", "access": '"read-write"'},
+                "add takes ?name= and ?access= and ?alignment=",
+            ),
+            (
+                {"action": "add", "name": ".nvm", "alignment": "4"},
+                "add takes ?name= and ?access= and ?alignment=",
+            ),
+            ({"action": "remove"}, "remove takes ?name="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, tmp_path: Path, query: dict[str, str]
+        self, tmp_path: Path, query: dict[str, str], sentence: str
     ) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/section-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_the_actions_a_section_plan_offers_are_named_in_its_refusal(
         self, tmp_path: Path
@@ -4895,17 +6232,17 @@ class TestSection:
 
     def test_an_add_names_a_parameter_for_each_key_the_section_model_requires(self) -> None:
         """The one thing neither the endpoint's tests nor the coverage gate can see going wrong:
-        `SECTION_PLANS["add"]` and `SECTIONS.required` are two tables of the same fact, and
+        `AddSection`'s parts and `SECTIONS.required` are two tables of the same fact, and
         `_declared` reads the request by the second. A key added to the model's required set
-        without a parameter here would raise `KeyError` inside the route - a 500 where a reader
+        without a part there would raise `KeyError` inside the route - a 500 where a reader
         should meet a form.
 
         Asserted against `_required_keys` rather than against `sorted(...)`, so the two statements
-        are the relation and the literal rather than the relation twice: the parameters after
-        `?name=` are the required keys in the order the panel draws them, which is also the order a
-        refusal names them in."""
-        assert SECTION_PLANS["add"] == ("name", *_required_keys(SECTIONS))
-        assert SECTION_PLANS["add"] == ("name", "access", "alignment")
+        are the relation and the literal rather than the relation twice: the parts after `?name=`
+        are the required keys in the order the panel draws them, which is also the order a
+        refusal names them in - the order the model reads them in."""
+        assert [*AddSection.model_fields] == ["action", "name", *_required_keys(SECTIONS)]
+        assert [*AddSection.model_fields] == ["action", "name", "access", "alignment"]
 
     def test_a_project_the_analysis_could_not_read_plans_no_section_change(
         self, tmp_path: Path
@@ -5337,43 +6674,52 @@ class TestRaster:
         )
 
     @pytest.mark.parametrize(
-        ("query", "whose"),
+        ("query", "said"),
         [
-            ({"action": "set", "name": "10ms", "key": "cycle", "raw": "not json"}, "raw"),
-            ({"action": "add", "name": "50ms", "event": "3 4"}, "event"),
+            (
+                {"action": "set", "name": "10ms", "key": "cycle", "raw": "not json"},
+                "'not json' is not one json value: Expecting value: line 1 column 1 (char 0)",
+            ),
+            (
+                {"action": "add", "name": "50ms", "event": "3 4"},
+                "'3 4' is not one json value: Extra data: line 1 column 3 (char 2)",
+            ),
         ],
     )
     def test_a_value_that_is_not_json_is_bad_before_any_refusal_about_the_project(
-        self, tmp_path: Path, query: dict[str, str], whose: str
+        self, tmp_path: Path, query: dict[str, str], said: str
     ) -> None:
+        """The whole sentence, as the section pair's own
+        ``test_two_values_that_are_not_json_are_refused_in_a_fixed_order`` asserts it: the
+        clause ``parse_raw`` writes, and after it python's json decoder's own words."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/raster-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        # `startswith` and not `in`, matching the section pair's own
-        # `test_two_values_that_are_not_json_are_refused_in_a_fixed_order`: what follows the
-        # clause is python's json decoder's own text (`: Expecting value: line 1 column 1`),
-        # which this suite has no business pinning - but `in` would leave the prefix free too,
-        # and the prefix is the sentence `parse_raw` writes.
-        assert reply.body["message"].startswith(f"{query[whose]!r} is not one json value")
+        assert reply == Reply(400, {"error": "bad-request", "message": said})
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "sentence"),
         [
-            {},
-            {"action": "dance", "name": "10ms"},
-            {"action": "set", "name": "10ms"},
-            {"action": "set", "name": "", "key": "cycle", "raw": '"20ms"'},
-            {"action": "rename", "name": "10ms"},
-            {"action": "add", "name": "50ms"},
-            {"action": "remove"},
+            ({}, "raster-plan takes ?action= one of set, rename, add, remove"),
+            (
+                {"action": "dance", "name": "10ms"},
+                "raster-plan takes ?action= one of set, rename, add, remove",
+            ),
+            ({"action": "set", "name": "10ms"}, "set takes ?name= and ?key="),
+            (
+                {"action": "set", "name": "", "key": "cycle", "raw": '"20ms"'},
+                "set takes ?name= and ?key=",
+            ),
+            ({"action": "rename", "name": "10ms"}, "rename takes ?name= and ?to="),
+            ({"action": "add", "name": "50ms"}, "add takes ?name= and ?event="),
+            ({"action": "remove"}, "remove takes ?name="),
         ],
     )
     def test_a_missing_or_unknown_parameter_is_a_bad_request(
-        self, tmp_path: Path, query: dict[str, str]
+        self, tmp_path: Path, query: dict[str, str], sentence: str
     ) -> None:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/raster-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply == Reply(400, {"error": "bad-request", "message": sentence})
 
     def test_the_actions_a_raster_plan_offers_are_named_in_its_refusal(
         self, tmp_path: Path
@@ -5385,12 +6731,12 @@ class TestRaster:
         assert reply.body["message"] == "raster-plan takes ?action= one of set, rename, add, remove"
 
     def test_an_add_names_a_parameter_for_each_key_the_raster_model_requires(self) -> None:
-        """The same relation `SECTION_PLANS` is asserted by, at the vocabulary whose required set
-        has one member rather than two: a key added to the model's required set without a
-        parameter here would raise `KeyError` inside the route - a 500 where a reader should meet
+        """The same relation `AddSection` is asserted by, at the vocabulary whose required set
+        has one member rather than two: a key added to the model's required set without a part
+        in `AddRaster` would raise `KeyError` inside the route - a 500 where a reader should meet
         a form."""
-        assert RASTER_PLANS["add"] == ("name", *_required_keys(RASTERS))
-        assert RASTER_PLANS["add"] == ("name", "event")
+        assert [*AddRaster.model_fields] == ["action", "name", *_required_keys(RASTERS)]
+        assert [*AddRaster.model_fields] == ["action", "name", "event"]
 
     def test_a_project_the_analysis_could_not_read_plans_no_raster_change(
         self, tmp_path: Path
@@ -6114,6 +7460,217 @@ class TestTheValuesGrid:
         assert (plan.status, plan.body["error"]) == (409, "invalid")
         plans = get(api, "/api/values-plan", name="Cube", raw="7")
         assert (plans.status, plans.body["error"]) == (409, "invalid")
+
+    def test_an_init_that_does_not_fit_its_shape_is_refused_rather_than_drawn(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """A list a level deeper than the shape: the loader keeps it, the analysis finds it
+        ``init-invalid`` and still resolves the project, and its rows reached ``ValuesReply``
+        as lists where numbers belong - a ``ValidationError``, answered ``500``. Refused as the
+        three-dimension grid is, in the finding's own words."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[2], init=[[1], [2]])
+                ),
+            },
+        )
+        assert get(api, "/api/values", name="Speed") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Speed' is initialised with values that do not fit its shape: "
+                "element [0] is a list but the shape has no further dimension",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    def test_an_axis_whose_init_does_not_fit_its_shape_refuses_the_grid_it_lies_under(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """An axis's breakpoints are its init laid flat, and an element of it written as a list
+        reached ``GridAxis.breakpoints`` where a number belongs - a ``ValidationError`` answered
+        ``500`` for the curve, though its own init fits. The axis is named, its finding's words
+        given."""
+        root = copied_example(tmp_path, "demo")
+        changed(
+            root,
+            "components/controller.ddd.json",
+            lambda document: definition_of(document, "AxisA")["init"].__setitem__(0, [1]),
+        )
+        session = Session(root)
+        session.open(root / "demo.ddd.json")
+        api = Api(session, root / "demo.ddd.json", wait_seconds=0.05)
+        assert get(api, "/api/values", name="CurveA") == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'AxisA' is initialised with values that do not fit its shape: "
+                "element [0] is a list but the shape has no further dimension",
+            },
+        )
+        assert capsys.readouterr() == ("", "")
+
+    @pytest.mark.parametrize(
+        ("dimensions", "init", "says"),
+        [
+            pytest.param(
+                [3],
+                [1, [2]],
+                "element [1] is a list but the shape has no further dimension",
+                id="a-list-where-a-number-belongs-in-a-short-init",
+            ),
+            pytest.param(
+                [2, 2],
+                [[1], 2],
+                "element [1] must be a list of 2 elements; only the whole init may be a single "
+                "scalar",
+                id="a-number-where-a-row-belongs-after-a-short-row",
+            ),
+            pytest.param(
+                [2, 2],
+                [[1], [2, [3]]],
+                "element [1][1] is a list but the shape has no further dimension",
+                id="a-list-where-a-number-belongs-after-a-short-row",
+            ),
+        ],
+    )
+    def test_an_init_a_grid_has_no_place_for_is_refused_by_what_it_has_no_place_for(
+        self, tmp_path: Path, dimensions: list[int], init: list[Any], says: str
+    ) -> None:
+        """A grid is rows of numbers, so it has no place for a list where a number belongs, or a
+        number where a row belongs - the two kinds of init a grid was answered ``500`` for. Each
+        is refused by the element a grid cannot carry, in the words the analysis's own judge
+        gives that element, even where the init is also short or ragged and the finding names
+        that first: how many values an init holds is no reason to refuse its grid."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=dimensions, init=init)
+                ),
+            },
+        )
+        refusal = Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"'Speed' is initialised with values that do not fit its shape: {says}",
+            },
+        )
+        assert get(api, "/api/values", name="Speed") == refusal
+        assert get(api, "/api/values-plan", name="Speed", raw="1,2,3,4") == refusal
+
+    def test_a_short_init_is_drawn_as_written_and_planned_whole_or_a_cell_at_a_time(
+        self, tmp_path: Path
+    ) -> None:
+        """``[1, 2]`` on a shape of three - which the analysis finds ``init-invalid`` and resolves
+        regardless - is drawn as written, and both changes that repair it are planned: a cell, and
+        a pasted table, which, applied, leaves the init the shape asks for."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[3], init=[1, 2])
+                ),
+            },
+        )
+        drawn = get(api, "/api/values", name="Speed").body
+        assert (drawn["shape"], drawn["rows"], drawn["stated"]) == ([3], [[1, 2]], "array")
+        cell = get(api, "/api/value-plan", name="Speed", at="[1]", raw="7").body
+        assert [change["operations"] for change in cell["changes"]] == [
+            [{"op": "set", "pointer": "component.interface[0].definition.init[1]", "raw": "7"}]
+        ]
+        pasted = get(api, "/api/values-plan", name="Speed", raw="1,2,3").body
+        assert applied(api, pasted, "the values of Speed").status == 200
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2, 3]]
+
+    def test_a_ragged_init_is_drawn_as_written_and_planned_whole_or_a_cell_at_a_time(
+        self, tmp_path: Path
+    ) -> None:
+        """A second row one value short: drawn as written, and repaired as a short one is."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="rpm", dimensions=[2, 2], init=[[1, 2], [3]]),
+                ),
+            },
+        )
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2], [3]]
+        cell = get(api, "/api/value-plan", name="Speed", at="[0][1]", raw="7").body
+        assert [change["operations"] for change in cell["changes"]] == [
+            [{"op": "set", "pointer": "component.interface[0].definition.init[0][1]", "raw": "7"}]
+        ]
+        pasted = get(api, "/api/values-plan", name="Speed", raw="1,2,3,4").body
+        assert applied(api, pasted, "the values of Speed").status == 200
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2], [3, 4]]
+
+    @pytest.mark.parametrize("init", [[1, 2], [[1], 2]], ids=["a-list", "a-list-holding-a-list"])
+    def test_a_list_on_an_object_of_no_shape_is_drawn_as_no_cell(
+        self, tmp_path: Path, init: list[Any]
+    ) -> None:
+        """No shape, so no cell to lay a value in: the list is never laid out, whatever it holds,
+        and the grid is drawn empty, as any other object of no shape is; a pasted table has
+        nowhere to go."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm", init=init)),
+            },
+        )
+        drawn = get(api, "/api/values", name="Speed").body
+        assert (drawn["shape"], drawn["rows"], drawn["stated"]) == ([], [], "scalar")
+        assert get(api, "/api/values-plan", name="Speed", raw="1") == Reply(
+            409, {"error": "invalid", "message": "'Speed' has no cell for a value to sit in"}
+        )
+
+    def test_a_short_axis_is_drawn_as_written(self, tmp_path: Path) -> None:
+        """An axis whose init is a breakpoint short of its size: its breakpoints are drawn as
+        written, over the curve's own row."""
+        root = copied_example(tmp_path, "demo")
+        changed(
+            root,
+            "components/controller.ddd.json",
+            lambda document: definition_of(document, "AxisA")["init"].pop(),
+        )
+        session = Session(root)
+        session.open(root / "demo.ddd.json")
+        api = Api(session, root / "demo.ddd.json", wait_seconds=0.05)
+        drawn = get(api, "/api/values", name="CurveA").body
+        assert drawn["axes"][0]["breakpoints"] == [0, 3200, 6400, 12800, 19200]
+        assert drawn["rows"] == [[1200, 900, 800, 750, 700, 650]]
+
+    def test_a_short_init_the_dimensions_settle_leaves_is_drawn_and_its_paste_repairs_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The page's own flow: the variable panel settles ``dimensions`` to the consumer's
+        ``[3]``, which leaves the producer's ``[1, 2]`` a value short - and the grid is then
+        drawn, and the table pasted into it repairs the init."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", unit="rpm", dimensions=[2], init=[1, 2])
+                ),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="rpm", dimensions=[3])),
+            },
+        )
+        settled = get(api, "/api/settle", name="Speed", key="dimensions", raw="[3]").body
+        assert applied(api, settled, "the dimensions of Speed").status == 200
+        drawn = get(api, "/api/values", name="Speed").body
+        assert (drawn["shape"], drawn["rows"]) == ([3], [[1, 2]])
+        pasted = get(api, "/api/values-plan", name="Speed", raw="1,2,3").body
+        assert applied(api, pasted, "the values of Speed").status == 200
+        assert get(api, "/api/values", name="Speed").body["rows"] == [[1, 2, 3]]
 
     def test_a_name_two_declarations_produce_is_read_only(self, tmp_path: Path) -> None:
         # The values come from the analysis's own producer and the file used to come from
@@ -6954,6 +8511,51 @@ class TestCreatingAFile:
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         assert refused(files_plan(api, "create", **query)) == (409, "invalid", says)
 
+    def test_the_longest_name_a_file_can_be_created_under_is_planned_and_written(
+        self, tmp_path: Path
+    ) -> None:
+        api, root = copied(tmp_path, "vocabulary", "project.ddd.json")
+        name = "n" * (LONGEST_NAME - len(".ddd.json"))
+        preview = files_plan(api, "create", kind="constants", name=name).body
+        assert applied(api, preview, "a constants file created").status == 200
+        assert (root / f"{name}.ddd.json").is_file()
+
+    @pytest.mark.parametrize(
+        "letters", [235, 300], ids=["a-byte-longer", "longer-than-a-file-system-takes"]
+    )
+    def test_a_longer_name_is_refused_before_the_disk_is_asked_about_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, letters: int
+    ) -> None:
+        """The plan's own refusal, in the edit's words: a name of 247 letters or more, past what
+        a file system takes once ``.ddd.json`` is added, made python 3.12's own ``Path.exists``
+        raise on Linux, answered ``500``."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        asked = asked_about(monkeypatch, f"{'n' * letters}.ddd.json")
+        assert refused(files_plan(api, "create", kind="constants", name="n" * letters)) == (
+            409,
+            "invalid",
+            too_long(f"{'n' * letters}.ddd.json", letters + len(".ddd.json")),
+        )
+        assert asked == []
+
+    @pytest.mark.parametrize(
+        ("name", "device"),
+        [("COM1", "COM1"), ("con", "CON"), ("Nul", "NUL"), ("lpt9", "LPT9"), ("prn", "PRN")],
+    )
+    def test_a_name_windows_keeps_for_a_device_is_refused_before_the_disk_is_asked_about_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, device: str
+    ) -> None:
+        """The edit's own refusal, on every system: :data:`~ddd.file_plans.FILE_NAME` takes
+        ``COM1`` and the rest, letters and digits, and Windows opens the device for them."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        asked = asked_about(monkeypatch, f"{name}.ddd.json")
+        assert refused(files_plan(api, "create", kind="constants", name=name)) == (
+            409,
+            "invalid",
+            a_device(f"{name}.ddd.json", device),
+        )
+        assert asked == []
+
     def test_a_first_units_file_is_refused_while_a_file_did_not_load(self, tmp_path: Path) -> None:
         api = opened(tmp_path, HALF_SAVED)
         assert refused(files_plan(api, "create", kind="units", name="units")) == (
@@ -7103,6 +8705,13 @@ class TestAddingAFile:
                 id="no file",
             ),
             pytest.param(
+                "n" * 300 + ".ddd.json",
+                404,
+                "not-found",
+                f"{'n' * 300}.ddd.json names no file; a file not there yet is created, not added",
+                id="a name longer than a file system takes",
+            ),
+            pytest.param(
                 "p.ddd.json",
                 409,
                 "invalid",
@@ -7173,6 +8782,32 @@ class TestAddingAFile:
             "invalid",
             f"{path} lies outside what ddd gui serves, {(tmp_path / 'inside').resolve().as_posix()}"
             "; start it in a directory holding this file to add it here",
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "//server/share/a.ddd.json",
+            "\\\\server\\share\\a.ddd.json",
+            "\\\\?\\UNC\\server\\share\\a.ddd.json",
+        ],
+    )
+    def test_a_network_file_outside_what_it_serves_is_refused_before_anything_resolves_it(
+        self, served_below: Api, tmp_path: Path, path: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """In the same words, by the query itself: resolving a network path is what would open
+        it, on Windows. Spelt as strings, and ``Path.resolve`` made to fail the test if asked."""
+        serves = (tmp_path / "inside").resolve().as_posix()
+
+        def resolving(self: Path, *args: object, **kwargs: object) -> Path:
+            raise AssertionError(f"{self} was resolved")
+
+        monkeypatch.setattr(Path, "resolve", resolving)
+        assert refused(files_plan(served_below, "add", path=path)) == (
+            400,
+            "bad-request",
+            f"{path} lies outside what ddd gui serves, {serves}; start it in a directory holding "
+            "this file to add it here",
         )
 
     def test_a_file_the_project_has_is_refused_as_such_before_its_kind(

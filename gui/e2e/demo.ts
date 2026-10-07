@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 
@@ -381,6 +381,38 @@ export function dump(directory: string, project: string, output: string): void {
         `${result.stderr.toString("utf8")}`,
     );
   }
+}
+
+/** A baseline under `directory/baseline`, for `hostile.spec.ts`'s own page on another port to
+ * name through `?baseline=` - another way the Compare tab's baseline reaches the server, not
+ * through `dump` above but written by hand: a project naming one component file and loading
+ * `marker.py`. `marker.py` is invalid past its first line of real code - it exposes no `PLUGIN`,
+ * so `ddd.plugins.load_plugin` refuses it - and that is beside the point: a plugin's module
+ * body runs on import, before it is ever validated as a plugin at all, so `marker.py` has
+ * already written `ran` beside itself the moment anything asks to read this baseline, whatever
+ * it decides about the baseline afterwards.
+ *
+ * Returns the path `?baseline=` would name, relative to `directory`, in this platform's own
+ * separator - the one `pathlib` resolves natively on whichever machine also runs the server. */
+export function writeHostileBaseline(directory: string): string {
+  const dir = join(directory, "baseline");
+  mkdirSync(dir);
+  const component = { component: { name: "Hostile", interface: [] } };
+  writeFileSync(join(dir, "component.ddd.json"), `${JSON.stringify(component, null, 2)}\n`, "utf8");
+  const project = {
+    project: { name: "Hostile", includes: ["component.ddd.json"], plugins: ["marker.py"] },
+  };
+  writeFileSync(join(dir, "baseline.ddd.json"), `${JSON.stringify(project, null, 2)}\n`, "utf8");
+  writeFileSync(
+    join(dir, "marker.py"),
+    [
+      "from pathlib import Path",
+      'Path(__file__).with_name("ran").write_text("the plugin ran", encoding="utf-8")',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return join("baseline", "baseline.ddd.json");
 }
 
 /** One frame as a reader saw it: what a field read, whether the page said "Updating the

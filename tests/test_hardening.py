@@ -18,6 +18,7 @@ from conftest import (
     checks,
     component,
     declare,
+    looped,
     messages,
     project,
     render_files,
@@ -30,7 +31,7 @@ from ddd.backends.c.literals import c_literal
 from ddd.cli import EXIT_FINDINGS, main
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity, index_order
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
-from ddd.loading import load_dictionary, load_workspace
+from ddd.loading import load_dictionary, load_workspace, resolve_path
 from ddd.models import Datatype
 
 
@@ -1217,6 +1218,37 @@ class TestTheRestOfTheEdges:
         bag = DiagnosticBag()
         assert load_workspace(tree / "a\x00b.ddd.json", bag) is None
         assert "cannot read" in messages(bag)
+
+    def test_an_include_through_a_loop_of_links_is_a_located_finding(self, tree: Path) -> None:
+        """``ddd check`` ended here in a traceback on python 3.12, whose ``Path.resolve`` raises
+        ``RuntimeError`` on a loop of links where 3.13's walks past it to a read that fails, a
+        finding at the entry. Now the entry is resolved as far as it can be on every python, and
+        the read's failure is that finding on all of them - its reason the system's own words.
+        How far is the platform's: linux leaves the loop where it was written, and Windows walks
+        one junction into it before giving up, so the finding names the entry as resolve_path
+        reads it there."""
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "loop/x.ddd.json"),
+                "a.ddd.json": component("A", declare("local", "X")),
+            },
+        )
+        looped(tree / "loop", tree / "pool")
+        through = tree / "loop" / "x.ddd.json"
+        with pytest.raises(OSError) as refused:
+            through.read_text(encoding="utf-8")
+        bag = DiagnosticBag()
+        load_workspace(tree / "p.ddd.json", bag)
+        assert [(d.check, d.severity, d.location, d.message) for d in bag] == [
+            (
+                "file-not-found",
+                Severity.ERROR,
+                Location(tree / "p.ddd.json", "project.includes[1]"),
+                f"cannot read '{resolve_path(through).as_posix()}': "
+                f"{refused.value.strerror or refused.value}",
+            )
+        ]
 
     def test_a_path_refused_by_resolve_itself(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch

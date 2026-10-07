@@ -5,6 +5,7 @@ from __future__ import annotations
 import codecs
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,6 @@ import ddd.editing as editing
 from ddd.backends.base import STAGING_SUFFIX as ARTEFACT_STAGING_SUFFIX
 from ddd.editing import (
     INVALID,
-    STAGING_SUFFIX,
     STALE,
     UNREADABLE,
     UNVERIFIED,
@@ -36,6 +36,7 @@ from ddd.editing import (
     restore,
     unchanged,
 )
+from ddd.file_names import STAGING_SUFFIX
 from ddd.lsp.ranges import Document
 
 
@@ -128,6 +129,21 @@ class TestLayingOutAValue:
         with pytest.raises(EditError) as refused:
             self.layout("{")
         assert refused.value.code == INVALID
+
+    @pytest.mark.parametrize("depth", [600, 3000], ids=["writing", "reading"])
+    def test_a_value_too_deep_to_lay_out_is_refused_as_too_deep_to_read(self, depth):
+        """Python's parser reads a value far deeper than its layout goes: reading the tokens
+        spends a frame of the stack a level, and writing them out two, so six hundred levels
+        outrun the writing and three thousand the reading as well. Either is refused as the
+        loader refuses a document deeper than the parser goes, rather than raising
+        ``RecursionError``, which ``ddd gui`` answered an edit carrying one with: a ``500``."""
+        raw = "[" * depth + "]" * depth
+        with pytest.raises(EditError) as refused:
+            self.layout(raw)
+        assert (refused.value.code, str(refused.value)) == (
+            INVALID,
+            f"{raw!r} is not one json value: the json is nested too deeply to read",
+        )
 
 
 MULTI = (
@@ -451,6 +467,42 @@ class TestRefusals:
         with pytest.raises(EditError) as refused:
             edited(text, operation)
         assert refused.value.code == INVALID
+
+    @pytest.mark.parametrize(
+        "operation",
+        [
+            Operation("set", "list[" + "9" * 4301 + "]", "1"),
+            Operation("set", "list[" + "9" * 4301 + "]", "[1]"),
+            Operation("insert", "list[" + "1" * 4301 + "]", "1"),
+            Operation("set", "a.b[" + "1" * 4301 + "].c", "1"),
+            Operation("set", "list[" + "9" * 20 + "]", "1"),
+        ],
+        ids=["set-a-literal", "set-a-list", "insert", "within", "twenty-digits"],
+    )
+    def test_an_index_longer_than_any_array_needs_is_not_a_pointer(self, operation):
+        """``int()`` refuses a string of more than 4,300 digits with a plain ``ValueError``,
+        which the pointer's own grammar met before anything could refuse it - reached through
+        the check of whether a batch can be made at once as much as through the operation's
+        own, and answered ``500``. No list holds more than ``sys.maxsize`` elements, so an index
+        spelled with more digits than that number names nothing, and is refused as a pointer
+        before it is read."""
+        with pytest.raises(EditError) as refused:
+            edited('{"a": 1, "list": [1, 2]}', operation)
+        assert (refused.value.code, str(refused.value)) == (
+            INVALID,
+            f"{operation.pointer!r} is not a pointer",
+        )
+
+    def test_an_index_of_as_many_digits_as_an_array_can_need_is_still_read(self):
+        """Nineteen digits, as many as ``sys.maxsize`` has on a 64-bit python: read as an index,
+        which names nothing in this array."""
+        index = "9" * len(str(sys.maxsize))
+        with pytest.raises(EditError) as refused:
+            edited('{"a": 1, "list": [1, 2]}', Operation("set", f"list[{index}]", "1"))
+        assert (refused.value.code, str(refused.value)) == (
+            INVALID,
+            f"nothing is written at list[{index}]",
+        )
 
     def test_an_operation_that_did_not_read_back_stops_the_ones_after_it(self):
         """Verified after every operation: the next one is checked against the text the last one
@@ -816,6 +868,33 @@ class TestCreatingAFile:
             apply_changes([created(path, raw)])
         assert refused.value.code == INVALID
         assert not path.exists()
+
+    def test_a_file_is_never_created_under_a_name_too_long_to_stage(self, tmp_path):
+        """244 bytes, 256 once staged: past the 255 a file system takes. ``ddd gui`` refuses the
+        name before this is asked (``ddd.gui.session``); this is the engine's own rule, for any
+        other caller."""
+        path = tmp_path / ("n" * 235 + ".ddd.json")
+        with pytest.raises(EditError) as refused:
+            apply_changes([created(path, UNITS_FILE)])
+        assert refused.value.code == INVALID
+        assert str(refused.value) == (
+            f"{path} cannot be created: its name is 244 bytes long, and a name is at most 243 - "
+            "the file is staged under the name and '.ddd-staging' first, and ext4 takes a name of "
+            "at most 255 bytes, NTFS one of at most 255 UTF-16 units, which 255 bytes never exceed"
+        )
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_file_is_never_created_under_a_name_windows_keeps_for_a_device(self, tmp_path):
+        """On every system: Windows reads ``com1.ddd.json`` as its first serial port."""
+        path = tmp_path / "com1.ddd.json"
+        with pytest.raises(EditError) as refused:
+            apply_changes([created(path, UNITS_FILE)])
+        assert refused.value.code == INVALID
+        assert str(refused.value) == (
+            f"{path} cannot be created: Windows reads its name as the device COM1, which it would "
+            "open instead of a file"
+        )
+        assert list(tmp_path.iterdir()) == []
 
     def test_a_file_that_exists_by_the_time_of_the_edit_is_stale(self, tmp_path):
         path = tmp_path / "units.ddd.json"

@@ -688,6 +688,30 @@ class TestPathsAsWritten:
         monkeypatch.chdir(tree)
         assert resolve_path(Path("~x.ddd.json")) == resolve_path(tree) / "~x.ddd.json"
 
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError(40, "Too many levels of symbolic links"),
+            ValueError("embedded null byte"),
+            RuntimeError("Symlink loop from 'loop/a.ddd.json'"),
+            RecursionError("maximum recursion depth exceeded"),
+        ],
+        ids=["an-os-error", "a-nul", "a-loop-on-python-3.12", "a-chain-of-links-on-python-3.12"],
+    )
+    def test_a_path_resolve_raises_on_is_handed_back_as_written(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        """Each exception ``Path.resolve`` raises for a path the system will not resolve, one
+        test each, so that none drops out of the one ``except`` unseen: an error its walk does
+        not list, on Windows; a NUL, on POSIX; and on python 3.12 a loop of links, which raises
+        ``RuntimeError``, and a chain of a thousand, ``RecursionError``."""
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            raise error
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        assert resolve_path(tree / "a.ddd.json") == tree / "a.ddd.json"
+
 
 class TestTheMappingFormOfEnumerators:
     """The shorthand is rewritten into the list the model holds, and the file is not."""

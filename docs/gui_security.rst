@@ -15,9 +15,10 @@ What it defends against
   with ``Sec-Fetch-Site`` - Chrome 76, Firefox 90, Safari 16.4 and later - that is checked
   before the cookie is even read: a request marked anything but ``same-origin`` or ``none``,
   or naming an ``Origin`` that is not this server's own, is refused before it reaches a
-  handler. An older browser sends neither header on a plain request; see *The browsers it
-  protects*, below, for what still holds there and what does not. The server of a page on
-  another port of ``127.0.0.1`` is another matter: it receives the cookie itself
+  handler - ``GET /open`` excepted, which trades the token or a code for the cookie before
+  this check runs. An older browser sends neither header on a plain request; see *The
+  browsers it protects*, below, for what still holds there and what does not. The server of
+  a page on another port of ``127.0.0.1`` is another matter: it receives the cookie itself
   (*Another server on* ``127.0.0.1``, below).
 
 * **Any other local process or user that reaches the port without the token** - short of
@@ -111,8 +112,10 @@ cookie - depends on the browser sending ``Sec-Fetch-Site``. Chrome 76, Firefox 9
 in March 2023.
 
 An older browser sends neither header on a plain request, so the gate lets it through; the
-browser still attaches the cookie, since every port of ``127.0.0.1`` is one site to it, so
-the request is answered as if it came from this server's own page. What still holds there:
+browser still attaches the cookie - to a request from a page on another port of
+``127.0.0.1``, which is one site to it, and, in a browser older than ``SameSite`` itself
+(Chrome 51, Firefox 60, Safari 12), to a request from a page of any site at all - so the
+request is answered as if it came from this server's own page. What still holds there:
 that page cannot read the answer, and it cannot ``POST``, which needs this server's own
 ``Origin`` and a json body, neither of which it can forge. What does not: a ``GET`` that
 runs plugin code is still answered - ``/api/compare``, for a baseline under the directory

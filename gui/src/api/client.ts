@@ -1,4 +1,5 @@
 import { type OwnEdits, ownEdits } from "../state/edits";
+import { type Keeper, type SignedOut, signedOut, token } from "./token";
 import type {
   Changes,
   CompareQuery,
@@ -52,7 +53,9 @@ import type {
   VariableReply,
 } from "./types";
 
-type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
+/** The `fetch` a request is sent through: the global by default, a stub in the tests. Declared
+ * here and imported where else it is needed (`signIn.ts`), so the two cannot drift apart. */
+export type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 /** A refusal or a failure the server answered with, carrying its code for the page to act on. */
 export class ApiError extends Error {
@@ -78,20 +81,44 @@ export class ServerUnreachable extends Error {
 /** What a body that does not parse reads as, told apart from a body that is json's own `null`. */
 const NOT_JSON = Symbol("not json");
 
+/** What `request` is asked with: a `RequestInit` whose headers are a plain record, as every
+ * caller here builds them, so that the token's header is added beside them. */
+export type Ask = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
+
 export async function request<T>(
   path: string,
-  init: RequestInit = {},
+  init: Ask = {},
   fetchImpl: Fetch = fetch,
+  kept: Keeper = token,
+  out: SignedOut = signedOut,
 ): Promise<T> {
+  // The token goes as a header, and no cookie goes at all: a browser sends a cookie to every
+  // port of 127.0.0.1, so to every other server there too (part 18b).
+  const held = kept.get();
+  const headers =
+    held === null ? init.headers : { ...init.headers, Authorization: `Bearer ${held}` };
   let response: Response;
   try {
-    response = await fetchImpl(path, { credentials: "same-origin", ...init });
+    response = await fetchImpl(path, {
+      ...init,
+      credentials: "omit",
+      ...(headers === undefined ? {} : { headers }),
+    });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ServerUnreachable(error);
   }
   const body: unknown = await response.json().catch(() => NOT_JSON);
   if (!response.ok) {
+    if (response.status === 401) {
+      // Refused: the token this ask carried is stale, or there was none. Cleared only if the
+      // keeper still holds that same token - between the send and this answer another tab may
+      // have stored a newer one, which this ask's 401 says nothing about and must not clear
+      // (M-1). The page is marked signed out either way; nothing asks again on its own, and
+      // other tabs follow on their next ask, since they read the same storage.
+      if (kept.get() === held) kept.clear();
+      out.mark();
+    }
     const code =
       isRecord(body) && typeof body.error === "string" ? body.error : `http-${response.status}`;
     const message =
@@ -373,7 +400,7 @@ function queryOf<Q extends object>(query: Q): string {
   return parts.length === 0 ? "" : `?${parts.join("&")}`;
 }
 
-function post(body: unknown): RequestInit {
+function post(body: unknown): Ask {
   return {
     method: "POST",
     headers: { "Content-Type": "application/json" },

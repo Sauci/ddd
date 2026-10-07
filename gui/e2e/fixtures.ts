@@ -157,10 +157,11 @@ async function started(
  * timeout for what the press never asked for.
  */
 async function analysed(address: string): Promise<void> {
-  const signedIn = await fetch(address, { redirect: "manual" });
-  const [cookie] = signedIn.headers.getSetCookie();
-  if (cookie === undefined) throw new Error("ddd gui set no cookie for the address it printed");
-  const headers = { cookie: cookie.split(";", 1)[0] ?? cookie };
+  // The token the printed address carries, sent as the page sends it. Nothing sets a cookie
+  // any more (part 18b).
+  const token = new URL(address).searchParams.get("token");
+  if (token === null) throw new Error(`ddd gui printed an address with no token: ${address}`);
+  const headers = { authorization: `Bearer ${token}` };
   let after: number | null = null;
   for (;;) {
     const asked = new URL(after === null ? "/api/state" : `/api/state?after=${after}`, address);

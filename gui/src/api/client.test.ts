@@ -39,6 +39,7 @@ import {
   request,
   ServerUnreachable,
 } from "./client";
+import { keeperOver, signedOutStore } from "./token";
 import type { Changes } from "./types";
 
 function answering(status: number, body: string) {
@@ -53,10 +54,10 @@ function recorded() {
 }
 
 describe("requests to the server", () => {
-  test("a success is its parsed body, asked for with the page's own cookie", async () => {
+  test("a success is its parsed body, asked for with no cookie", async () => {
     const fetchImpl = answering(200, '{"version": "0.10.0"}');
     await expect(request("/api/session", {}, fetchImpl)).resolves.toEqual({ version: "0.10.0" });
-    expect(fetchImpl).toHaveBeenCalledWith("/api/session", { credentials: "same-origin" });
+    expect(fetchImpl).toHaveBeenCalledWith("/api/session", { credentials: "omit" });
   });
 
   test("a refusal carries the code and message the server gave", async () => {
@@ -210,118 +211,106 @@ describe("requests to the server", () => {
     await getValues("CurveA", fetchImpl);
     await getValuePlan({ name: "CurveA", at: "[2]", raw: 750 }, fetchImpl);
     expect(fetchImpl.mock.calls).toEqual([
-      ["/api/session", { credentials: "same-origin" }],
-      ["/api/projects", { credentials: "same-origin" }],
+      ["/api/session", { credentials: "omit" }],
+      ["/api/projects", { credentials: "omit" }],
       [
         "/api/open",
         {
-          credentials: "same-origin",
+          credentials: "omit",
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: '{"path":"C:/p/p.ddd.json"}',
         },
       ],
-      ["/api/state", { credentials: "same-origin" }],
-      ["/api/state?after=3", { credentials: "same-origin", signal }],
-      ["/api/file?path=C%3A%2Fp%2Fa%20b.ddd.json", { credentials: "same-origin" }],
-      ["/api/graph", { credentials: "same-origin" }],
-      ["/api/variable?name=Value%20A", { credentials: "same-origin" }],
-      ["/api/units", { credentials: "same-origin" }],
-      ["/api/settle?name=ValueA&key=unit&raw=%22%25%22", { credentials: "same-origin" }],
-      ["/api/settle?name=ValueA&key=unit", { credentials: "same-origin" }],
+      ["/api/state", { credentials: "omit" }],
+      ["/api/state?after=3", { credentials: "omit", signal }],
+      ["/api/file?path=C%3A%2Fp%2Fa%20b.ddd.json", { credentials: "omit" }],
+      ["/api/graph", { credentials: "omit" }],
+      ["/api/variable?name=Value%20A", { credentials: "omit" }],
+      ["/api/units", { credentials: "omit" }],
+      ["/api/settle?name=ValueA&key=unit&raw=%22%25%22", { credentials: "omit" }],
+      ["/api/settle?name=ValueA&key=unit", { credentials: "omit" }],
       [
         "/api/fix?file=a.ddd.json&pointer=component.interface%5B0%5D.definition&check=missing-id",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      ["/api/compare?baseline=C%3A%2Fp%2Fbaseline%20copy.json", { credentials: "same-origin" }],
-      ["/api/unit?name=%C2%B0C", { credentials: "same-origin" }],
-      ["/api/unit-plan?action=rename&unit=RPM&to=rpm", { credentials: "same-origin" }],
-      ["/api/unit-plan?action=add&unit=m%2Fs", { credentials: "same-origin" }],
-      ["/api/unit-plan?action=remove&unit=kPa", { credentials: "same-origin" }],
+      ["/api/compare?baseline=C%3A%2Fp%2Fbaseline%20copy.json", { credentials: "omit" }],
+      ["/api/unit?name=%C2%B0C", { credentials: "omit" }],
+      ["/api/unit-plan?action=rename&unit=RPM&to=rpm", { credentials: "omit" }],
+      ["/api/unit-plan?action=add&unit=m%2Fs", { credentials: "omit" }],
+      ["/api/unit-plan?action=remove&unit=kPa", { credentials: "omit" }],
       [
         "/api/unit-plan?action=describe&unit=rpm&description=rotational%20speed%2C%201%2Fmin",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      ["/api/unit-plan?action=adopt", { credentials: "same-origin" }],
-      ["/api/types", { credentials: "same-origin" }],
-      ["/api/type?name=Temperature_t", { credentials: "same-origin" }],
+      ["/api/unit-plan?action=adopt", { credentials: "omit" }],
+      ["/api/types", { credentials: "omit" }],
+      ["/api/type?name=Temperature_t", { credentials: "omit" }],
       [
         "/api/type-plan?action=set&name=Temperature_t&key=unit&raw=%22K%22",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      ["/api/type-plan?action=set&name=Temperature_t&key=unit", { credentials: "same-origin" }],
-      ["/api/type-plan?action=rename&name=Sensor_t&to=Probe_t", { credentials: "same-origin" }],
-      ["/api/shared", { credentials: "same-origin" }],
-      ["/api/constant?name=TREND%20SAMPLES%231", { credentials: "same-origin" }],
+      ["/api/type-plan?action=set&name=Temperature_t&key=unit", { credentials: "omit" }],
+      ["/api/type-plan?action=rename&name=Sensor_t&to=Probe_t", { credentials: "omit" }],
+      ["/api/shared", { credentials: "omit" }],
+      ["/api/constant?name=TREND%20SAMPLES%231", { credentials: "omit" }],
       [
         "/api/constant-plan?action=set&name=TREND_SAMPLES&key=value&raw=16",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      [
-        "/api/constant-plan?action=set&name=TREND_SAMPLES&key=description",
-        { credentials: "same-origin" },
-      ],
-      [
-        "/api/constant-plan?action=set&name=TREND_SAMPLES&key=description",
-        { credentials: "same-origin" },
-      ],
+      ["/api/constant-plan?action=set&name=TREND_SAMPLES&key=description", { credentials: "omit" }],
+      ["/api/constant-plan?action=set&name=TREND_SAMPLES&key=description", { credentials: "omit" }],
       [
         "/api/constant-plan?action=rename&name=TREND_SAMPLES&to=TREND_SLOTS",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      ["/api/constant-plan?action=add&name=CELLS&raw=8", { credentials: "same-origin" }],
-      ["/api/constant-plan?action=remove&name=CELLS", { credentials: "same-origin" }],
-      ["/api/section?name=.calib%241", { credentials: "same-origin" }],
+      ["/api/constant-plan?action=add&name=CELLS&raw=8", { credentials: "omit" }],
+      ["/api/constant-plan?action=remove&name=CELLS", { credentials: "omit" }],
+      ["/api/section?name=.calib%241", { credentials: "omit" }],
       [
         "/api/section-plan?action=set&name=.calib&key=access&raw=%22read-only%22",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      ["/api/section-plan?action=set&name=.calib&key=alignment", { credentials: "same-origin" }],
-      ["/api/section-plan?action=set&name=.calib&key=alignment", { credentials: "same-origin" }],
-      ["/api/section-plan?action=rename&name=.calib&to=.trend", { credentials: "same-origin" }],
+      ["/api/section-plan?action=set&name=.calib&key=alignment", { credentials: "omit" }],
+      ["/api/section-plan?action=set&name=.calib&key=alignment", { credentials: "omit" }],
+      ["/api/section-plan?action=rename&name=.calib&to=.trend", { credentials: "omit" }],
       [
         "/api/section-plan?action=add&name=.calib&access=%22read-only%22&alignment=4",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      ["/api/section-plan?action=remove&name=.calib", { credentials: "same-origin" }],
-      ["/api/raster?name=10ms", { credentials: "same-origin" }],
-      [
-        "/api/raster-plan?action=set&name=10ms&key=cycle&raw=%2220ms%22",
-        { credentials: "same-origin" },
-      ],
-      ["/api/raster-plan?action=set&name=10ms&key=description", { credentials: "same-origin" }],
-      ["/api/raster-plan?action=set&name=10ms&key=description", { credentials: "same-origin" }],
-      ["/api/raster-plan?action=rename&name=10ms&to=20ms", { credentials: "same-origin" }],
-      ["/api/raster-plan?action=add&name=10ms&event=1", { credentials: "same-origin" }],
-      ["/api/raster-plan?action=remove&name=10ms", { credentials: "same-origin" }],
-      ["/api/files", { credentials: "same-origin" }],
-      ["/api/files-plan?action=create&kind=types&name=sizes", { credentials: "same-origin" }],
+      ["/api/section-plan?action=remove&name=.calib", { credentials: "omit" }],
+      ["/api/raster?name=10ms", { credentials: "omit" }],
+      ["/api/raster-plan?action=set&name=10ms&key=cycle&raw=%2220ms%22", { credentials: "omit" }],
+      ["/api/raster-plan?action=set&name=10ms&key=description", { credentials: "omit" }],
+      ["/api/raster-plan?action=set&name=10ms&key=description", { credentials: "omit" }],
+      ["/api/raster-plan?action=rename&name=10ms&to=20ms", { credentials: "omit" }],
+      ["/api/raster-plan?action=add&name=10ms&event=1", { credentials: "omit" }],
+      ["/api/raster-plan?action=remove&name=10ms", { credentials: "omit" }],
+      ["/api/files", { credentials: "omit" }],
+      ["/api/files-plan?action=create&kind=types&name=sizes", { credentials: "omit" }],
       [
         "/api/files-plan?action=create&kind=component&name=pump&component=Pump",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
-      ["/api/files-plan?action=add&path=sensors%2Fa.ddd.json", { credentials: "same-origin" }],
-      [
-        "/api/files-plan?action=remove&path=%2Ftmp%2Fp%2Fa.ddd.json",
-        { credentials: "same-origin" },
-      ],
-      ["/api/declarable?file=%2Ftmp%2Fc.ddd.json", { credentials: "same-origin" }],
+      ["/api/files-plan?action=add&path=sensors%2Fa.ddd.json", { credentials: "omit" }],
+      ["/api/files-plan?action=remove&path=%2Ftmp%2Fp%2Fa.ddd.json", { credentials: "omit" }],
+      ["/api/declarable?file=%2Ftmp%2Fc.ddd.json", { credentials: "omit" }],
       [
         "/api/declaration-plan?action=read&file=%2Ftmp%2Fc.ddd.json&name=ValueC&scope=input",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
       [
         "/api/declaration-plan?action=remove&file=%2Ftmp%2Fc.ddd.json&name=ValueA",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
       [
         "/api/declaration-plan?action=declare&file=%2Ftmp%2Fc.ddd.json&scope=output&definition=%7B%22name%22%3A%22P%22%7D",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
       [
         "/api/edit",
         {
-          credentials: "same-origin",
+          credentials: "omit",
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body:
@@ -329,18 +318,18 @@ describe("requests to the server", () => {
             '"label":"the unit of ValueA"}',
         },
       ],
-      ["/api/undo", { credentials: "same-origin" }],
+      ["/api/undo", { credentials: "omit" }],
       [
         "/api/undo",
         {
-          credentials: "same-origin",
+          credentials: "omit",
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: '{"at":3}',
         },
       ],
-      ["/api/values?name=CurveA", { credentials: "same-origin" }],
-      ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "same-origin" }],
+      ["/api/values?name=CurveA", { credentials: "omit" }],
+      ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "omit" }],
     ]);
   });
 
@@ -356,14 +345,14 @@ describe("requests to the server", () => {
       calls.fetch,
     );
     expect(calls.urls).toEqual([
-      ["/api/findings", { credentials: "same-origin" }],
-      ["/api/findings?offset=0&limit=100", { credentials: "same-origin" }],
-      ["/api/findings?offset=300", { credentials: "same-origin" }],
-      ["/api/findings?file=C%3A%2Fp%2Fsensors%2Fa%20b.ddd.json", { credentials: "same-origin" }],
-      ["/api/findings?file=C%3A%2Fp%2Fa.ddd.json&check=missing-id", { credentials: "same-origin" }],
+      ["/api/findings", { credentials: "omit" }],
+      ["/api/findings?offset=0&limit=100", { credentials: "omit" }],
+      ["/api/findings?offset=300", { credentials: "omit" }],
+      ["/api/findings?file=C%3A%2Fp%2Fsensors%2Fa%20b.ddd.json", { credentials: "omit" }],
+      ["/api/findings?file=C%3A%2Fp%2Fa.ddd.json&check=missing-id", { credentials: "omit" }],
       [
         "/api/findings?offset=100&limit=100&severity=error&file=%2Fp%2Fa%26b.ddd.json&check=a%2Fb",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
     ]);
   });
@@ -374,7 +363,7 @@ describe("requests to the server", () => {
     expect(calls.urls).toEqual([
       [
         "/api/values-plan?name=CurveA&raw=1300%2C950%2C850%2C800%2C750%2C700",
-        { credentials: "same-origin" },
+        { credentials: "omit" },
       ],
     ]);
   });
@@ -391,6 +380,98 @@ describe("requests to the server", () => {
         "of address, and ddd gui reads at most 65521",
     );
     expect(calls.urls).toEqual([]);
+  });
+});
+
+describe("the token, as a header", () => {
+  const remembering = () =>
+    keeperOver(() => {
+      throw new Error("no storage here");
+    });
+
+  test("goes with every request once the page keeps one", async () => {
+    const kept = remembering();
+    kept.set("t");
+    const fetchImpl = answering(200, "{}");
+    await request("/api/session", {}, fetchImpl, kept);
+    expect(fetchImpl).toHaveBeenCalledWith("/api/session", {
+      credentials: "omit",
+      headers: { Authorization: "Bearer t" },
+    });
+  });
+
+  test("goes beside a post's own header", async () => {
+    const kept = remembering();
+    kept.set("t");
+    const fetchImpl = answering(200, "{}");
+    await request(
+      "/api/undo",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      fetchImpl,
+      kept,
+    );
+    expect(fetchImpl).toHaveBeenCalledWith("/api/undo", {
+      method: "POST",
+      credentials: "omit",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer t" },
+      body: "{}",
+    });
+  });
+
+  test("a 401 clears it and signs the page out, and nothing asks again", async () => {
+    const kept = remembering();
+    kept.set("stale");
+    const out = signedOutStore();
+    const fetchImpl = answering(
+      401,
+      '{"error": "unauthorised", "message": "open the address ddd gui printed in its terminal"}',
+    );
+    await expect(request("/api/state", {}, fetchImpl, kept, out)).rejects.toMatchObject({
+      status: 401,
+      code: "unauthorised",
+      message: "open the address ddd gui printed in its terminal",
+    });
+    expect(kept.get()).toBeNull();
+    expect(out.current()).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("a 401 keeps a token stored since the ask went out, and still signs the page out", async () => {
+    // Between this ask's send and its 401, another tab signed in and stored a newer token. The
+    // 401 is about the token this ask carried, which is stale; the newer one must survive it, or
+    // the tab that just signed in is signed straight back out (M-1).
+    const kept = remembering();
+    kept.set("stale");
+    const out = signedOutStore();
+    const fetchImpl = vi.fn(async () => {
+      kept.set("newer");
+      return new Response(
+        '{"error": "unauthorised", "message": "open the address ddd gui printed in its terminal"}',
+        { status: 401 },
+      );
+    });
+    await expect(request("/api/state", {}, fetchImpl, kept, out)).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(kept.get()).toBe("newer");
+    expect(out.current()).toBe(true);
+  });
+
+  test("any other refusal leaves the page signed in", async () => {
+    const kept = remembering();
+    kept.set("t");
+    const out = signedOutStore();
+    await expect(
+      request(
+        "/api/state",
+        {},
+        answering(409, '{"error": "no-project", "message": "m"}'),
+        kept,
+        out,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(kept.get()).toBe("t");
+    expect(out.current()).toBe(false);
   });
 });
 

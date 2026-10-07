@@ -14,21 +14,26 @@ test("a page on another port cannot make ddd gui run a baseline's plugin", async
   // (`ddd.plugins`, `demo.ts`'s own doc on `writeHostileBaseline`).
   const baseline = writeHostileBaseline(gui.directory);
 
-  // Opening the server's own address in this context is what stores its `SameSite=Strict`
-  // cookie - the same first step every other journey takes, signed in exactly as a reader would
-  // be. `/open` answers with a page that refreshes itself to `/project` (`SIGNED_IN_PAGE`,
-  // `server.py`); waited out here, rather than left in flight, so that navigating to the
-  // hostile page below is not itself read as interrupting that still-pending refresh.
+  // Signed in through the server's own address, the same first step every other journey takes,
+  // exactly as a reader would be: the page trades the token at `/open` for the one it keeps in
+  // its own origin's storage, and lands on `/project` (`signIn.ts`). Waited out here, so that
+  // the hostile page below is opened by a browser already signed in.
   await page.goto(gui.address);
   await page.waitForURL(/\/project$/);
 
   // The hostile page: a server of its own, on another port of 127.0.0.1 - the same site as ddd
-  // gui's own address, so the cookie above rides along once asked for under `credentials:
-  // "include"`, but a different origin, which is exactly what a browser's own `Sec-Fetch-Site:
-  // same-site` (and `_from_elsewhere`, `server.py`) tell apart from a request the server's own
-  // page made. `mode: "no-cors"` is what a page with no business reading the answer actually
-  // sends: it cannot read an opaque response either way, so it asks and moves on once the
-  // browser reports the attempt settled, never mind to what.
+  // gui's own address, but a different origin. Two defences now hold against its fetch:
+  // - It carries no credential. No cookie exists for `credentials: "include"` to offer, and the
+  //   token is in the storage of ddd gui's own origin, out of this one's reach.
+  // - The gate refuses it anyway: the browser marks it `Sec-Fetch-Site: same-site`, which
+  //   `_from_elsewhere` (`server.py`) tells apart from a request the server's own page made.
+  // With the gate taken out, the plugin still never runs: the request reaches the API with no
+  // credential, and is answered 401. So the gate is pinned by its own answer, the 403 below.
+  // Before part 18b the cookie rode along, and the plugin ran once the gate was out; that the
+  // token reaches no other server is pinned by `loopback.spec.ts`.
+  // `mode: "no-cors"` is what a page with no business reading the answer actually sends: it
+  // cannot read an opaque response either way, so it asks and moves on once the browser reports
+  // the attempt settled, never mind to what.
   const port = new URL(gui.address).port;
   const asked = `http://127.0.0.1:${port}/api/compare?baseline=${encodeURIComponent(baseline)}`;
   const html = `<!doctype html>
@@ -49,12 +54,20 @@ fetch(${JSON.stringify(asked)}, { credentials: "include", mode: "no-cors" })
       throw new Error("the hostile server did not bind a port of its own");
     }
 
-    // Opened in the same context as the sign-in above, so its cookie is the one `credentials:
-    // "include"` offers to send.
-    await page.goto(`http://127.0.0.1:${address.port}/`);
+    // Opened in the same context as the sign-in above, as the reader's own browser would open
+    // it: whatever that context holds for 127.0.0.1, `credentials: "include"` offers to send.
+    // The answer is opaque to the page, but the browser reports its status to Playwright: the
+    // gate's 403, where a request let past the gate with no credential is answered 401.
+    const [answered] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.url().startsWith(`http://127.0.0.1:${port}/api/compare?`),
+      ),
+      page.goto(`http://127.0.0.1:${address.port}/`),
+    ]);
     await expect(page).toHaveTitle("asked");
+    expect(answered.status()).toBe(403);
 
-    // The gate held: the plugin never ran, so it never wrote the file its body writes first.
+    // The plugin never ran, so it never wrote the file its body writes first.
     expect(existsSync(join(gui.directory, "baseline", "ran"))).toBe(false);
   } finally {
     await new Promise<void>((resolve) => {

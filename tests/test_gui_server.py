@@ -30,7 +30,6 @@ from conftest import (
     directory_link,
     looped,
     project,
-    stopped,
     write_tree,
 )
 from ddd.cli import EXIT_OK, EXIT_USAGE
@@ -43,14 +42,17 @@ from ddd.gui.server import (
     _CODE_REUSED,
     _ELSEWHERE,
     _FORBIDDEN,
+    _OPEN_TAKES,
+    _OPEN_TOO_LARGE,
+    _SIGN_IN,
     BUSY,
     CODE_SECONDS,
     MAX_BODY,
     MAX_CONNECTIONS,
+    OPEN_BODY,
     REFUSAL_SECONDS,
     SECURITY_HEADERS,
     SIGN_IN_PAGE,
-    SIGNED_IN_PAGE,
     TOKEN_BYTES,
     GuiServer,
     is_loopback,
@@ -62,11 +64,6 @@ from ddd.gui.session import Revision, Session
 
 FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
 """Cookies other apps on 127.0.0.1 leave in a browser, which sends them to every port."""
-
-
-def cookie(server: GuiServer) -> str:
-    """The name a server signs a page in under, which carries its port."""
-    return f"ddd-gui-{server.port}"
 
 
 @pytest.fixture
@@ -154,7 +151,7 @@ def ask(
     connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
     sent = {"Host": host or f"127.0.0.1:{server.port}"}
     if signed_in:
-        sent["Cookie"] = f"{cookie(server)}={server.token}"
+        sent["Authorization"] = f"Bearer {server.token}"
     if origin is not None:
         sent["Origin"] = origin
     if body is not None:
@@ -165,6 +162,26 @@ def ask(
     data = response.read()
     connection.close()
     return response, data
+
+
+def exchange(
+    server: GuiServer, given: object, **keywords: Any
+) -> tuple[http.client.HTTPResponse, bytes]:
+    """``POST /open`` as the page posts it: from this server's own origin, as json, with no
+    credential, since the sign-in is where the page gets one."""
+    return ask(
+        server,
+        "POST",
+        "/open",
+        body=json.dumps(given).encode("utf-8"),
+        origin=f"http://127.0.0.1:{server.port}",
+        signed_in=False,
+        **keywords,
+    )
+
+
+REFUSED: Final = {"error": "forbidden", "message": _SIGN_IN}
+"""What ``POST /open`` answers a secret that signs nothing in."""
 
 
 def raw_answer(server: GuiServer, sent: bytes) -> tuple[int, bytes]:
@@ -186,7 +203,7 @@ def posted(server: GuiServer, length: str, body: bytes = b"") -> bytes:
     return (
         b"POST /api/edit HTTP/1.1\r\n"
         + f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
-        + f"Cookie: {cookie(server)}={server.token}\r\n".encode("ascii")
+        + f"Authorization: Bearer {server.token}\r\n".encode("ascii")
         + f"Origin: http://127.0.0.1:{server.port}\r\n".encode("ascii")
         + b"Content-Type: application/json\r\n"
         + f"Content-Length: {length}\r\nConnection: close\r\n\r\n".encode("ascii")
@@ -261,77 +278,17 @@ def code_from(printed_line: str, opened_address: str) -> str:
 
 
 class TestSigningIn:
-    def test_the_token_is_swapped_for_a_strict_cookie_and_the_project_page(self, server) -> None:
-        response, data = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
-        assert response.status == 200
-        assert response.getheader("Location") is None
-        assert response.getheader("Set-Cookie") == (
-            f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
-        )
-        assert response.getheader("Content-Type") == "text/html; charset=utf-8"
-        # Its URL holds the token: a shared cache must never store it, nor a browser replay
-        # it from history.
-        assert response.getheader("Cache-Control") == "no-store"
-        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
-
-    def test_the_page_refreshes_to_its_target_without_a_script(self) -> None:
-        """/open may be reached cross-site - the token or a launch code pasted or clicked
-        from anywhere - and a SameSite=Strict cookie does not reliably follow a redirect
-        chain that began cross-site; a refresh this page makes itself is a fresh,
-        same-origin navigation, which the cookie does follow. A meta refresh, not a script:
-        no script is needed, so none is written, and the content security policy has
-        nothing to permit either way. The link below the refresh is the fallback for a
-        browser that blocks it, such as Firefox's accessibility.blockautorefresh."""
-        page = SIGNED_IN_PAGE.format(target="/project")
-        assert '<meta http-equiv="refresh" content="0; url=/project">' in page
-        assert '<a href="/project">Open ddd gui</a>' in page
-        assert "<script" not in page
-
-    def test_a_project_being_analysed_signs_in_to_its_own_page(
-        self, project_file: Path, pages: Path
-    ) -> None:
-        session = Gated(project_file.parent)
-        session.start()
-        try:
-            session.open(project_file)
-            begun(session)
-            for server in serving(Api(session, project_file), pages):
-                response, data = ask(server, "GET", f"/open?token={server.token}", signed_in=False)
-                assert (response.status, data) == (
-                    200,
-                    SIGNED_IN_PAGE.format(target="/project").encode("utf-8"),
-                )
-                assert session.revision is None
-        finally:
-            session.gate.set()
-            stopped(session)
-
-    def test_without_an_open_project_the_page_refreshes_to_the_start_page(
-        self, project_file, pages
-    ) -> None:
-        for started in serving(Api(Session(project_file.parent)), pages):
-            _, data = ask(started, "GET", f"/open?token={started.token}", signed_in=False)
-            assert data == SIGNED_IN_PAGE.format(target="/").encode("utf-8")
-
-    @pytest.mark.parametrize("signed_in", [False, True])
-    @pytest.mark.parametrize("query", ["", "?token=wrong", "?token=%C3%A9"])
-    def test_a_wrong_or_missing_token_is_refused(self, server, query, signed_in, capsys) -> None:
-        """Refused whether or not the request already carries this server's cookie: the
-        cookie alone does not turn a wrong or missing token into a sign-in, which only the
-        exception for a code the ruling names - never a token - does."""
-        response, data = ask(server, "GET", f"/open{query}", signed_in=signed_in)
-        assert response.status == 403
-        assert b"Open the address" in data
-        # A refusal's URL held the guess that failed: just as worth never storing or replaying.
-        assert response.getheader("Cache-Control") == "no-store"
-        assert capsys.readouterr().err == ""
-
     def test_a_code_is_as_strong_as_the_token(self, server) -> None:
         """The ruling's two numbers, pinned by literal: 32 random bytes behind each - the
         strength secrets.token_urlsafe(32) always renders as a 43-character string."""
         assert TOKEN_BYTES == 32
         assert len(server.issue_code()) == 43
         assert len(server.token) == 43
+
+    def test_a_code_expires_60_seconds_after_it_is_issued(self) -> None:
+        """Pinned by its literal: the tests of an expired code move their clocks by
+        ``CODE_SECONDS`` itself, and would drift along with any change to it."""
+        assert CODE_SECONDS == 60
 
     def test_redeem_code_holds_the_lock_across_the_compare(self, server, monkeypatch) -> None:
         """The read, the compare and the clear are one atomic step: two concurrent
@@ -370,93 +327,46 @@ class TestSigningIn:
         assert server.redeem_code(code) is True
         assert at_release == [None]
 
-    def test_a_code_signs_a_browser_in_exactly_as_the_token_does(self, server) -> None:
-        code = server.issue_code()
-        response, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
-        assert response.status == 200
-        assert response.getheader("Set-Cookie") == (
-            f"ddd-gui-{server.port}={server.token}; HttpOnly; SameSite=Strict; Path=/"
+    def test_the_api_without_the_token_is_unauthorised(self, server) -> None:
+        """Pinned by its literal text: the other tests of this refusal compare its message
+        against the imported ``_SIGN_IN``, which would drift along with any rewording of it, or
+        read its status alone."""
+        response, data = ask(server, "GET", "/api/session", signed_in=False)
+        assert (response.status, json.loads(data)) == (
+            401,
+            {
+                "error": "unauthorised",
+                "message": "open the address ddd gui printed in its terminal",
+            },
         )
-        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
 
-    def test_a_code_signs_in_once_and_a_second_presentation_is_refused(
-        self, server, capsys
-    ) -> None:
+
+class TestTheSignInExchange:
+    """``POST /open``: the token, or a launch code, traded for the token the page then keeps
+    and sends as ``Authorization: Bearer``."""
+
+    def test_the_token_is_answered_with_itself(self, server) -> None:
+        response, data = exchange(server, {"token": server.token})
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
+        assert response.getheader("Cache-Control") == "no-store"
+        assert response.getheader("Set-Cookie") is None
+
+    def test_a_launch_code_is_traded_for_the_token_once(self, server, capsys) -> None:
         code = server.issue_code()
-        first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
-        assert first.status == 200
+        response, data = exchange(server, {"code": code})
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
         assert capsys.readouterr().err == ""
-        second, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
-        assert second.status == 403
-        assert b"Open the address" in data
+        again, data = exchange(server, {"code": code})
+        assert (again.status, json.loads(data)) == (403, REFUSED)
         assert capsys.readouterr().err == f"{_CODE_REUSED}\n"
 
-    def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
-        """A guess that is not the one outstanding code is refused on its own, and does not
-        spend that code: a stranger trying codes cannot grief the browser the launch is
-        waiting for. It prints nothing: unlike a code presented again after it signed a
-        browser in, it was never the real one."""
-        code = server.issue_code()
-        wrong, data = ask(server, "GET", "/open?code=wrong", signed_in=False)
-        assert wrong.status == 403
-        assert b"Open the address" in data
-        assert capsys.readouterr().err == ""
-        right, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
-        assert right.status == 200
-
-    def test_a_spent_code_already_signed_in_answers_the_page_not_a_refusal(
-        self, server, capsys
-    ) -> None:
-        """A browser's own prefetch of the /open?code= address, or its navigating there a
-        second time once the first already set the cookie, presents a code that by then
-        looks exactly like a stranger's guess - the cookie already carried is what tells the
-        two apart, and only it is let through to the page rather than a 403. Nothing is
-        printed: this request carries the cookie, so it is not the case the terminal line
-        warns about."""
-        code = server.issue_code()
-        first, _ = ask(server, "GET", f"/open?code={code}", signed_in=False)
-        assert first.status == 200
-        second, data = ask(server, "GET", f"/open?code={code}")  # signed_in=True by default
-        assert second.status == 200
-        assert data == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
-        assert capsys.readouterr().err == ""
-
-    def test_the_tokens_own_value_is_not_accepted_as_a_code(self, server) -> None:
-        server.issue_code()  # a code is pending during the window that matters
-        response, data = ask(server, "GET", f"/open?code={server.token}", signed_in=False)
-        assert response.status == 403
-        assert b"Open the address" in data
-
-    def test_an_unused_code_expires_after_60_seconds(self, project_file, pages, capsys) -> None:
-        """Refused, and nothing printed, however often it is presented: a code nobody signed in
-        with is no sign of anyone, and the terminal's warning is for a code somebody did."""
-        assert CODE_SECONDS == 60
-        clock = FakeClock()
-        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
-            code = started.issue_code()
-            clock.now += CODE_SECONDS
-            for _ in range(2):
-                response, data = ask(started, "GET", f"/open?code={code}", signed_in=False)
-                assert response.status == 403
-                assert b"Open the address" in data
-                assert capsys.readouterr().err == ""
-
-    def test_a_code_to_a_server_that_never_issued_one_is_refused_without_a_word(
-        self, server, capsys
-    ) -> None:
-        response, data = ask(server, "GET", "/open?code=anything", signed_in=False)
-        assert response.status == 403
-        assert b"Open the address" in data
-        assert capsys.readouterr().err == ""
-
-    def test_a_code_that_signed_a_browser_in_says_why_to_restart_when_presented_again(
-        self, server, capsys
-    ) -> None:
+    def test_a_code_presented_again_says_why_to_restart(self, server, capsys) -> None:
         """Its winner holds the token itself, which a restart takes from it and the printed
-        address does not: printed once a presentation, without the cookie the winner was given."""
+        address does not. Pinned by its literal text: the test above compares against the
+        imported ``_CODE_REUSED``, which would drift along with any rewording of it."""
         code = server.issue_code()
-        assert ask(server, "GET", f"/open?code={code}", signed_in=False)[0].status == 200
-        ask(server, "GET", f"/open?code={code}&token=wrong", signed_in=False)
+        assert exchange(server, {"code": code})[0].status == 200
+        exchange(server, {"code": code})
         assert capsys.readouterr().err == (
             "ddd gui: a launch code that already signed a browser in was presented again; if "
             "your browser is not signed in, another process on this computer may have signed "
@@ -464,65 +374,375 @@ class TestSigningIn:
             "open the address it printed\n"
         )
 
-    def test_a_code_still_signs_in_a_moment_before_60_seconds(self, project_file, pages) -> None:
+    def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
+        code = server.issue_code()
+        response, data = exchange(server, {"code": "wrong"})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
+        assert capsys.readouterr().err == ""
+        assert exchange(server, {"code": code})[0].status == 200
+
+    def test_the_tokens_own_value_is_no_code(self, server) -> None:
+        server.issue_code()
+        response, data = exchange(server, {"code": server.token})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
+
+    def test_a_code_to_a_server_that_issued_none_is_refused_without_a_word(
+        self, server, capsys
+    ) -> None:
+        response, data = exchange(server, {"code": "anything"})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
+        assert capsys.readouterr().err == ""
+
+    def test_an_expired_code_is_refused_without_a_word(self, project_file, pages, capsys) -> None:
+        clock = FakeClock()
+        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
+            code = started.issue_code()
+            clock.now += CODE_SECONDS
+            response, data = exchange(started, {"code": code})
+            assert (response.status, json.loads(data)) == (403, REFUSED)
+            assert capsys.readouterr().err == ""
+
+    def test_a_code_still_signs_in_a_moment_before_its_60_seconds(
+        self, project_file, pages
+    ) -> None:
         clock = FakeClock()
         for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
             code = started.issue_code()
             clock.now += CODE_SECONDS - 1
-            response, _ = ask(started, "GET", f"/open?code={code}", signed_in=False)
-            assert response.status == 200
+            assert exchange(started, {"code": code})[0].status == 200
 
-    def test_the_api_without_the_cookie_is_unauthorised(self, server) -> None:
-        response, data = ask(server, "GET", "/api/session", signed_in=False)
-        assert response.status == 401
-        assert json.loads(data)["error"] == "unauthorised"
+    def test_a_wrong_token_is_refused(self, server) -> None:
+        response, data = exchange(server, {"token": "wrong"})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
 
-    def test_a_page_without_the_cookie_says_where_to_sign_in(self, server) -> None:
-        response, data = ask(server, "GET", "/", signed_in=False)
-        assert (response.status, b"Open the address" in data) == (401, True)
+    @pytest.mark.parametrize(
+        "given",
+        [
+            {},
+            {"code": "a", "token": "b"},
+            {"code": 1},
+            {"other": "x"},
+            ["code"],
+            [["code", "x"]],
+            "code",
+            None,
+        ],
+        ids=[
+            "empty",
+            "both",
+            "a-number",
+            "a-stray-key",
+            "a-list",
+            "a-pair-in-a-list",
+            "a-string",
+            "null",
+        ],
+    )
+    def test_anything_but_one_secret_is_refused(self, server, given) -> None:
+        response, data = exchange(server, given)
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+
+    def test_the_refusal_says_what_open_takes(self, server) -> None:
+        """Pinned by its literal text: comparing against the imported ``_OPEN_TAKES`` instead
+        would drift along with any rewording of it, and catch nothing."""
+        _, data = exchange(server, {})
+        assert json.loads(data) == {
+            "error": "bad-request",
+            "message": "/open takes json naming one of code and token, and nothing else",
+        }
+
+    @pytest.mark.parametrize(
+        "body",
+        [b"code=x", b"\xc3\x28", b"[" * 512 + b"]" * 512],
+        ids=["a-form", "not-utf-8", "nested-within-the-limit"],
+    )
+    def test_a_body_that_is_no_json_object_is_refused_not_failed(self, server, body) -> None:
+        """The parse refusal, pinned on a body within ``OPEN_BODY``: 512 nested arrays are 1024
+        bytes exactly, so they reach ``_secret_of``, parse to a list rather than an object, and
+        are refused 400. A body deep enough to trouble a parser is refused on its size first,
+        before any parser runs - that case is ``test_a_body_too_deep_to_parse_meets_the_cap``."""
+        response, data = ask(
+            server,
+            "POST",
+            "/open",
+            body=body,
+            origin=f"http://127.0.0.1:{server.port}",
+            signed_in=False,
+        )
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+
+    @pytest.mark.parametrize(
+        ("kind", "signed_in_once"),
+        [("token", False), ("code", False), ("code", True)],
+        ids=["the-token", "a-code-while-one-is-pending", "a-code-once-one-signed-in"],
+    )
+    def test_a_value_utf_8_cannot_encode_is_refused_not_failed(
+        self, server, kind, signed_in_once, capsys
+    ) -> None:
+        """A lone surrogate, which json spells as an escape and ``json.loads`` reads back as text
+        that UTF-8 cannot encode. Comparing it encoded it, which raised: a 500, and a traceback
+        on the terminal. A code is issued first, as in a real run, since with none pending or
+        redeemed a code is refused before anything encodes it."""
+        code = server.issue_code()
+        if signed_in_once:
+            assert exchange(server, {"code": code})[0].status == 200
+        response, data = exchange(server, {kind: chr(0xD800)})
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_a_name_given_twice_counts_twice(self, server) -> None:
+        """Read into a dict, the object kept the last of a repeated name and was exactly one
+        secret, so this one signed in. Sent as bytes: ``json.dumps`` cannot repeat a name."""
+        response, data = ask(
+            server,
+            "POST",
+            "/open",
+            body=f'{{"token": "x", "token": "{server.token}"}}'.encode("ascii"),
+            origin=f"http://127.0.0.1:{server.port}",
+            signed_in=False,
+        )
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+
+    def test_another_page_is_refused_at_the_gate(self, server) -> None:
+        """Refused as the gate refuses every path outside the API, with the sign-in page: the
+        gate is as it was, and ``/open`` is no ``/api/`` path."""
+        response, data = exchange(
+            server, {"token": server.token}, headers={"Sec-Fetch-Site": "same-site"}
+        )
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
         assert response.getheader("Content-Type") == "text/html; charset=utf-8"
 
-    def test_a_cookie_with_another_value_is_not_signed_in(self, server) -> None:
-        forged = {"Cookie": f"{cookie(server)}=forged"}
-        response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=forged)
-        assert response.status == 401
+    @pytest.mark.parametrize(
+        ("origin", "kind"),
+        [(None, "application/json"), ("own", "text/plain")],
+        ids=["no-origin", "not-json"],
+    )
+    def test_it_is_a_post_like_any_other(self, server, origin, kind) -> None:
+        response, data = ask(
+            server,
+            "POST",
+            "/open",
+            body=json.dumps({"token": server.token}).encode("utf-8"),
+            origin=None if origin is None else f"http://127.0.0.1:{server.port}",
+            content_type=kind,
+            signed_in=False,
+        )
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": _FORBIDDEN},
+        )
 
-    def test_a_second_server_signs_in_under_a_name_of_its_own(
-        self, server, project_file, pages
-    ) -> None:
-        """A browser sends every cookie of 127.0.0.1 to every port. Under one name, opening a
-        second ddd gui replaced the first one's cookie and signed its page out - and a second
-        server is how two projects are looked at side by side."""
-        for other in serving(Api(Session(project_file.parent)), pages):
-            both = {"Cookie": f"{cookie(other)}={other.token}; {cookie(server)}={server.token}"}
-            for asked in (server, other):
-                response, _ = ask(asked, "GET", "/api/session", signed_in=False, headers=both)
-                assert response.status == 200
-            theirs = {"Cookie": f"{cookie(other)}={other.token}"}
-            response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=theirs)
-            assert response.status == 401
+    def test_a_body_past_the_limit_is_refused_before_it_is_read(self, server) -> None:
+        """At most ``MAX_BODY``, as every ``POST`` here: refused on its length, and its
+        connection closed, since the body is left unread on it."""
+        response, data = exchange(
+            server, {"token": server.token}, headers={"Content-Length": str(MAX_BODY + 1)}
+        )
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
+        )
+        assert response.getheader("Connection") == "close"
 
-    @pytest.mark.parametrize("path", ["/api/session", "/project"])
-    @pytest.mark.parametrize("foreign", FOREIGN_COOKIES)
-    def test_a_cookie_another_app_set_does_not_get_in_the_way(self, server, path, foreign) -> None:
-        """The standard library's cookie parser stopped reading at the first two of these, in
-        silence, which signed the page out; it raised at the third, which left every request
-        unanswered."""
-        sent = {"Cookie": f"{foreign}; {cookie(server)}={server.token}"}
-        response, _ = ask(server, "GET", path, signed_in=False, headers=sent)
+    def _open(self, server, body: bytes) -> tuple[http.client.HTTPResponse, bytes]:
+        """``POST /open`` from this server's own page, as json, carrying ``body`` as it is -
+        not json-encoded the way :func:`exchange` would, since these bodies are raw."""
+        return ask(
+            server,
+            "POST",
+            "/open",
+            body=body,
+            origin=f"http://127.0.0.1:{server.port}",
+            signed_in=False,
+        )
+
+    def test_a_body_at_the_open_limit_is_read(self, server) -> None:
+        """``OPEN_BODY`` bytes exactly - a valid sign-in padded with the spaces json ignores -
+        is read and answered 200: the cap is the boundary, not below it."""
+        body = json.dumps({"token": server.token}).encode("utf-8")
+        body += b" " * (OPEN_BODY - len(body))
+        assert len(body) == OPEN_BODY
+        response, data = self._open(server, body)
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
+
+    def test_a_body_past_the_open_limit_is_refused_before_it_is_parsed(self, server) -> None:
+        """One byte past the cap, still a valid sign-in but for its length, is refused 413 - so
+        the token in it, which would otherwise sign in, never gets parsed."""
+        body = json.dumps({"token": server.token}).encode("utf-8")
+        body += b" " * (OPEN_BODY + 1 - len(body))
+        assert len(body) == OPEN_BODY + 1
+        response, data = self._open(server, body)
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": _OPEN_TOO_LARGE},
+        )
+
+    def test_a_body_too_deep_to_parse_meets_the_cap(self, server) -> None:
+        """A body nested far past any json parser's depth is refused on its size, before
+        ``_secret_of`` hands it to one: a C-stack overflow in the parser, which would end the
+        whole process rather than fail one request, cannot be reached here on any platform."""
+        response, data = self._open(server, b"[" * 100_000 + b"]" * 100_000)
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": _OPEN_TOO_LARGE},
+        )
+
+    def test_a_parser_out_of_its_depth_is_a_malformed_body(self, monkeypatch) -> None:
+        """``_secret_of``'s ``RecursionError`` catch, held although no body within ``OPEN_BODY``
+        nests deep enough to reach it on the pythons measured: the parser is stubbed to raise
+        what one out of its depth raises, which is no ``ValueError``."""
+
+        def out_of_depth(*_args: object, **_kwargs: object) -> object:
+            raise RecursionError("maximum recursion depth exceeded while decoding a JSON array")
+
+        monkeypatch.setattr(module.json, "loads", out_of_depth)
+        assert module._secret_of(b'{"token": "x"}') is None
+
+    def test_the_open_body_refusal_says_what_it_takes(self, server) -> None:
+        """Pinned by its literal text, ``OPEN_BODY``'s value among it: the tests above compare
+        against the imported ``_OPEN_TOO_LARGE``, which would drift along with any rewording of
+        it or any change to the limit, and catch neither."""
+        _, data = self._open(server, b"x" * (OPEN_BODY + 1))
+        assert json.loads(data) == {
+            "error": "too-large",
+            "message": "/open takes a body of at most 1024 bytes",
+        }
+
+
+class TestTheBearerHeader:
+    """The API takes the token as ``Authorization: Bearer``: the scheme in any case, as HTTP
+    has it, then one space, then the token, compared in constant time."""
+
+    @pytest.mark.parametrize("scheme", ["Bearer", "bearer", "BEARER"])
+    def test_the_token_as_a_bearer_signs_a_request_in(self, server, scheme) -> None:
+        response, _ = ask(
+            server,
+            "GET",
+            "/api/session",
+            signed_in=False,
+            headers={"Authorization": f"{scheme} {server.token}"},
+        )
         assert response.status == 200
 
-    def test_cookies_of_other_apps_alone_are_not_signed_in(self, server) -> None:
-        sent = {"Cookie": "; ".join(FOREIGN_COOKIES)}
-        response, data = ask(server, "GET", "/api/session", signed_in=False, headers=sent)
-        assert (response.status, json.loads(data)["error"]) == (401, "unauthorised")
+    @pytest.mark.parametrize(
+        "spelled",
+        ["Bearer wrong", "Bearer  {token}", "Basic {token}", "{token}", "Bearer"],
+        ids=["a-wrong-token", "two-spaces", "another-scheme", "no-scheme", "no-token"],
+    )
+    def test_anything_else_is_unauthorised(self, server, spelled) -> None:
+        response, data = ask(
+            server,
+            "GET",
+            "/api/session",
+            signed_in=False,
+            headers={"Authorization": spelled.format(token=server.token)},
+        )
+        assert (response.status, json.loads(data)) == (
+            401,
+            {"error": "unauthorised", "message": _SIGN_IN},
+        )
 
-    def test_a_stale_cookie_of_this_servers_name_beside_the_right_one_signs_in(
-        self, server
-    ) -> None:
-        sent = {"Cookie": f"{cookie(server)}={server.token}; {cookie(server)}=stale"}
-        response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=sent)
+    def test_no_cross_origin_preflight_is_answered(self, server) -> None:
+        """A page on another origin can send ``Authorization`` only past a CORS preflight,
+        which this server answers with nothing a browser accepts."""
+        response, _ = ask(
+            server,
+            "OPTIONS",
+            "/api/session",
+            signed_in=False,
+            headers={
+                "Origin": "http://127.0.0.1:9",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        assert response.status == 501
+        assert [
+            n for n, _ in response.getheaders() if n.lower().startswith("access-control-")
+        ] == []
+
+
+class TestACookie:
+    """A cookie is no credential: a browser sends every cookie of 127.0.0.1 to every port of
+    it, and so to every other server there (part 18b)."""
+
+    @pytest.mark.parametrize(
+        "cookie",
+        ["ddd-gui-{port}={token}", "ddd-gui={token}", "{foreign}; ddd-gui-{port}={token}"],
+        ids=["this-servers-old-name", "the-name-before-ports", "beside-others"],
+    )
+    def test_a_cookie_holding_the_token_is_no_credential(self, server, cookie) -> None:
+        response, data = ask(
+            server,
+            "GET",
+            "/api/session",
+            signed_in=False,
+            headers={
+                "Cookie": cookie.format(
+                    port=server.port, token=server.token, foreign='prefs={"lang":"en"}'
+                )
+            },
+        )
+        assert (response.status, json.loads(data)) == (
+            401,
+            {"error": "unauthorised", "message": _SIGN_IN},
+        )
+
+    def test_cookies_beside_the_header_are_passed_over(self, server) -> None:
+        response, _ = ask(
+            server, "GET", "/api/session", headers={"Cookie": "; ".join(FOREIGN_COOKIES)}
+        )
         assert response.status == 200
+
+
+class TestTheAddressPrinted:
+    """``GET /open`` answers the page itself, which signs itself in, and checks and spends
+    nothing: a browser's prefetch of the launch address spends no code."""
+
+    @pytest.mark.parametrize(
+        "query",
+        ["code={code}", "token={token}", "code=wrong", ""],
+        ids=["the-launch", "the-printed-address", "a-wrong-code", "nothing"],
+    )
+    def test_open_answers_the_page_and_spends_nothing(self, server, pages, query) -> None:
+        code = server.issue_code()
+        response, data = ask(
+            server,
+            "GET",
+            "/open?" + query.format(code=code, token=server.token),
+            signed_in=False,
+        )
+        assert response.status == 200
+        assert data == (pages / "index.html").read_bytes()
+        assert response.getheader("Cache-Control") == "no-store"
+        assert response.getheader("Set-Cookie") is None
+        assert exchange(server, {"code": code})[0].status == 200
+
+    @pytest.mark.parametrize("path", ["/", "/project", "/app.js"])
+    def test_a_page_needs_no_credential(self, server, pages, path) -> None:
+        response, _ = ask(server, "GET", path, signed_in=False)
+        assert response.status == 200
+
+    def test_no_answer_sets_a_cookie(self, server) -> None:
+        answers = [
+            ask(server, "GET", f"/open?token={server.token}", signed_in=False)[0],
+            exchange(server, {"token": server.token})[0],
+            ask(server, "GET", "/project", signed_in=False)[0],
+            ask(server, "GET", "/api/session")[0],
+        ]
+        assert [answer.getheader("Set-Cookie") for answer in answers] == [None] * 4
 
 
 class TestWhoMayAsk:
@@ -538,8 +758,9 @@ class TestWhoMayAsk:
     @pytest.mark.parametrize("path", ["/api/session", "/api/compare?baseline=x"])
     def test_an_api_request_from_another_page_is_refused(self, server, site, path) -> None:
         """A page served from another port of 127.0.0.1 is the same site to a browser, which
-        sends it this server's SameSite=Strict cookie: probed against a1da6ce, its GET of
-        /api/compare ran the comparison, plugins and all."""
+        sent it this server's SameSite=Strict cookie while the token was one: probed against
+        a1da6ce, its GET of /api/compare ran the comparison, plugins and all. Such a page has
+        no token any more, and the gate refuses it even carrying the token."""
         response, data = ask(server, "GET", path, headers={"Sec-Fetch-Site": site})
         assert (response.status, json.loads(data)) == (
             403,
@@ -560,6 +781,15 @@ class TestWhoMayAsk:
         assert (response.status, data) == (403, SIGN_IN_PAGE)
         assert response.getheader("Content-Type") == "text/html; charset=utf-8"
 
+    def test_the_sign_in_page_names_the_address_printed(self, server) -> None:
+        """Pinned by its literal text: the tests that meet it compare against the imported
+        ``SIGN_IN_PAGE``, which would drift along with any rewording of it."""
+        _, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
+        assert data == (
+            b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
+            b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
+        )
+
     @pytest.mark.parametrize("site", [None, "same-origin", "none"])
     @pytest.mark.parametrize("origin", ["http://127.0.0.1:1", "http://evil.example", "null"])
     def test_a_get_carrying_another_origin_is_refused(self, server, origin, site) -> None:
@@ -577,17 +807,17 @@ class TestWhoMayAsk:
         response, _ = ask(server, "GET", "/api/session", origin=f"http://{host}:{server.port}")
         assert response.status == 200
 
-    def test_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
+    def test_another_page_is_refused_before_the_token_is_read(self, server) -> None:
         response, _ = ask(
             server, "GET", "/api/session", signed_in=False, headers={"Sec-Fetch-Site": "same-site"}
         )
         assert response.status == 403
 
-    def test_a_post_from_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
-        """The POST sibling of test_another_page_is_refused_before_the_cookie_is_read: the gate
+    def test_a_post_from_another_page_is_refused_before_the_token_is_read(self, server) -> None:
+        """The POST sibling of test_another_page_is_refused_before_the_token_is_read: the gate
         runs before ``_signed_in`` and before the POST rule alike, so a POST marked same-site
         is refused by the gate's own sentence, not by ``_FORBIDDEN``, without ever reaching the
-        cookie."""
+        token."""
         response, data = ask(
             server,
             "POST",
@@ -602,10 +832,11 @@ class TestWhoMayAsk:
         )
 
     def test_signing_in_is_answered_wherever_the_address_was_opened_from(self, server) -> None:
-        """A sign-in is answered wherever the address was opened from, since the token or the
-        code is what ``/open`` checks - never ``Sec-Fetch-Site`` or ``Origin``. ``cross-site``
-        is kept as the value a browser marks least trustworthy; a real launch arrives marked
-        ``none`` instead (a navigation the opener started), which signs in just the same."""
+        """The address is answered wherever it was opened from: ``GET /open`` answers the
+        page, which signs itself in, and reads neither ``Sec-Fetch-Site`` nor ``Origin``.
+        ``cross-site`` is kept as the value a browser marks least trustworthy; a real launch
+        arrives marked ``none`` instead (a navigation the opener started), which is answered
+        just the same."""
         response, _ = ask(
             server,
             "GET",
@@ -618,8 +849,8 @@ class TestWhoMayAsk:
     def test_a_launch_code_is_answered_wherever_it_was_presented_from(self, server) -> None:
         """The sibling of test_signing_in_is_answered_wherever_the_address_was_opened_from, for
         a single-use launch code rather than the long-lived token: presented cross-site too,
-        since ``_route`` answers ``/open`` before the gate is ever reached, for a code exactly
-        as for the token - neither header is read there either."""
+        since ``_route`` answers ``GET /open`` before the gate is ever reached, for a code
+        exactly as for the token - neither header is read there either."""
         response, _ = ask(
             server,
             "GET",
@@ -714,7 +945,7 @@ class TestWhoMayAsk:
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         connection.putrequest("POST", "/api/edit", skip_host=True)
         connection.putheader("Host", f"127.0.0.1:{server.port}")
-        connection.putheader("Cookie", f"{cookie(server)}={server.token}")
+        connection.putheader("Authorization", f"Bearer {server.token}")
         connection.putheader("Origin", f"http://127.0.0.1:{server.port}")
         connection.putheader("Content-Type", "application/json")
         connection.putheader("Content-Length", "ten")
@@ -828,7 +1059,7 @@ class TestWhatIsServed:
         sent = (
             f"GET {path} HTTP/1.1\r\n"
             f"Host: 127.0.0.1:{server.port}\r\n"
-            f"Cookie: {cookie(server)}={server.token}\r\n"
+            f"Authorization: Bearer {server.token}\r\n"
             "Connection: close\r\n\r\n"
         ).encode("ascii")
         status, _ = raw_answer(server, sent)
@@ -1181,7 +1412,7 @@ class TestAMalformedAbsoluteFormTarget:
     ever read where the request claims to come from, and before anything answered it:
     ``_answer``'s catch-all split the same text again to print it, raised the same way, and
     socketserver printed a traceback and closed the connection with nothing written - no
-    token needed, since the gate and the cookie are both later than this."""
+    token needed, since the gate and the token's check are both later than this."""
 
     @pytest.mark.parametrize(
         "line",
@@ -1216,12 +1447,13 @@ class TestAMalformedAbsoluteFormTarget:
 
     def test_a_well_formed_absolute_form_target_reaches_the_gate_instead(self, server) -> None:
         """The control: an absolute-form target ``urlsplit`` can read goes on as any other
-        request would, past this check - here as far as the cookie, which it does not carry."""
+        request would, past this check - here as far as the page itself, which needs no
+        credential."""
         sent = (
             f"GET http://127.0.0.1:{server.port}/ HTTP/1.1\r\n"
             f"Host: 127.0.0.1:{server.port}\r\nConnection: close\r\n\r\n"
         ).encode("ascii")
-        assert status_of(server, sent) == 401
+        assert status_of(server, sent) == 200
 
 
 def every_answer(server: GuiServer, sent: bytes) -> bytes:
@@ -1243,7 +1475,7 @@ class TestABodyLeftUnread:
     """A ``POST`` refused before its body is read leaves that body on the connection, where the
     server read it as the next request and answered that too, keeping the connection open.
     Such a refusal closes the connection instead, and says so (``Connection: close``): one
-    answer, then nothing. The smuggled request carries no cookie, so this was never more than
+    answer, then nothing. The smuggled request carries no token, so this was never more than
     a confusion - but the body is anyone's text."""
 
     SMUGGLED: Final = b"GET /api/session HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
@@ -1259,9 +1491,9 @@ class TestABodyLeftUnread:
         ("target", "headers", "status"),
         [
             ("/api/edit", "", 401),
-            ("/api/edit", "COOKIE Sec-Fetch-Site: cross-site\r\n", 403),
-            ("/api/edit", "COOKIE OWN Content-Type: text/plain\r\n", 403),
-            ("/index.html", "COOKIE OWN Content-Type: application/json\r\n", 405),
+            ("/api/edit", "SIGNED Sec-Fetch-Site: cross-site\r\n", 403),
+            ("/api/edit", "SIGNED OWN Content-Type: text/plain\r\n", 403),
+            ("/index.html", "SIGNED OWN Content-Type: application/json\r\n", 405),
             ("http://[/api/edit", "", 400),
         ],
         ids=["unsigned", "from-elsewhere", "not-json", "to-a-page", "an-unsplittable-target"],
@@ -1269,9 +1501,9 @@ class TestABodyLeftUnread:
     def test_a_post_refused_before_its_body_is_read_is_answered_once_and_closed(
         self, server, target, headers, status
     ) -> None:
-        signed = f"Cookie: {cookie(server)}={server.token}\r\n"
+        signed = f"Authorization: Bearer {server.token}\r\n"
         own = f"Origin: http://127.0.0.1:{server.port}\r\n"
-        headers = headers.replace("COOKIE ", signed).replace("OWN ", own)
+        headers = headers.replace("SIGNED ", signed).replace("OWN ", own)
         sent = (
             f"POST {target} HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n{headers}"
             f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
@@ -1349,13 +1581,14 @@ class TestOneConnectionCarriesManyAsks:
         # /open answers a page, not a redirect: two of these are pages, bytes that are not
         # json, and two are the api's json - the shapes a connection read twice has to tell
         # apart, in the order a browser meets them. Each says how long it is, which is what
-        # lets it be told from the next.
-        signed_in = {"Cookie": f"{cookie(server)}={server.token}"}
+        # lets it be told from the next. The token goes with the api's asks alone, as the page
+        # sends it: a page needs no credential.
+        signed_in = {"Authorization": f"Bearer {server.token}"}
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         try:
             asked = [
                 self.again(connection, server, f"/open?token={server.token}"),
-                self.again(connection, server, "/", **signed_in),
+                self.again(connection, server, "/"),
                 self.again(connection, server, "/api/session", **signed_in),
                 self.again(connection, server, "/api/nothing", **signed_in),
             ]
@@ -1364,7 +1597,7 @@ class TestOneConnectionCarriesManyAsks:
         assert [response.status for response, _ in asked] == [200, 200, 200, 404]
         assert [response.version for response, _ in asked] == [11, 11, 11, 11]
         assert [response.will_close for response, _ in asked] == [False] * 4
-        assert asked[0][1] == SIGNED_IN_PAGE.format(target="/project").encode("utf-8")
+        assert asked[0][1] == b"stand-in"
         assert asked[1][1] == b"stand-in"
         assert json.loads(asked[2][1])["version"] == ddd.__version__
 
@@ -1372,7 +1605,7 @@ class TestOneConnectionCarriesManyAsks:
         # Its own deadline rather than IDLE_SECONDS: what is asserted is that the socket carries
         # one at all, and a test that waits half a minute to say so asserts nothing more.
         monkeypatch.setattr(module._Handler, "timeout", 0.05)
-        signed_in = {"Cookie": f"{cookie(server)}={server.token}"}
+        signed_in = {"Authorization": f"Bearer {server.token}"}
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         try:
             assert self.again(connection, server, "/api/session", **signed_in)[0].status == 200
@@ -1506,27 +1739,29 @@ def refused(server: GuiServer, sent: bytes) -> bytes:
 
 
 BROWSERS_REQUEST: Final = (
-    "GET /api/state?after=7 HTTP/1.1\r\n"
+    "GET /project HTTP/1.1\r\n"
     "Host: 127.0.0.1:8123\r\n"
     "Connection: keep-alive\r\n"
     'sec-ch-ua: "Chromium";v="153", "Not.A/Brand";v="99"\r\n'
     "sec-ch-ua-mobile: ?0\r\n"
     'sec-ch-ua-platform: "Linux"\r\n'
+    "Upgrade-Insecure-Requests: 1\r\n"
     "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/153.0.0.0 Safari/537.36\r\n"
-    "Accept: */*\r\n"
-    "Sec-Fetch-Site: same-origin\r\n"
-    "Sec-Fetch-Mode: cors\r\n"
-    "Sec-Fetch-Dest: empty\r\n"
+    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,"
+    "image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\n"
+    "Sec-Fetch-Site: none\r\n"
+    "Sec-Fetch-Mode: navigate\r\n"
+    "Sec-Fetch-User: ?1\r\n"
+    "Sec-Fetch-Dest: document\r\n"
     "Accept-Encoding: gzip, deflate, br, zstd\r\n"
     "Accept-Language: en-GB,en;q=0.9\r\n"
-    f"Cookie: ddd-gui-8123={'t' * 43}; "
-    + "; ".join(f"app-{n}-session={'s' * 120}" for n in range(32))
-    + "\r\n\r\n"
+    "Cookie: " + "; ".join(f"app-{n}-session={'s' * 120}" for n in range(32)) + "\r\n\r\n"
 ).encode("ascii")
-"""A request the size a browser sends this server, about 5 KB: its usual headers, and a cookie
-header carrying, beside this server's own, what other apps on 127.0.0.1 have set - a browser
-sends every one of them to every port."""
+"""A request the size a browser sends this server, about 5 KB: a page asked for by its address,
+with a browser's usual headers and a cookie header carrying what other apps on 127.0.0.1 have
+set - a browser sends every one of them to every port. This server sets no cookie of its own,
+and its page asks the API with none at all."""
 
 
 class TestTheCap:
@@ -1732,7 +1967,7 @@ class TestTheCap:
             try:
                 signed_in = {
                     "Host": f"127.0.0.1:{server.port}",
-                    "Cookie": f"{cookie(server)}={server.token}",
+                    "Authorization": f"Bearer {server.token}",
                 }
                 idle.request("GET", "/api/session", headers=signed_in)
                 response = idle.getresponse()
@@ -2516,11 +2751,8 @@ class TestTheLaunch:
         assert launched(server, opened.append) is None
         (address,) = opened
         code = code_from(f"ddd gui (preview) serving {server.address}", address)
-        response, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
-        assert (response.status, data) == (
-            200,
-            SIGNED_IN_PAGE.format(target="/project").encode("utf-8"),
-        )
+        response, data = exchange(server, {"code": code})
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
 
 
 def test_the_windows_server_does_not_share_a_port() -> None:

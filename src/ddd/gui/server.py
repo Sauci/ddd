@@ -3,20 +3,23 @@
 Any web page open in the same browser can send requests to a server on the loopback address, so
 this one trusts nothing it did not hand out itself:
 
-* the address the command prints carries a token, which ``/open`` swaps for a cookie every other
-  request has to present - ``SameSite=Strict``, so a request another site makes does not carry
-  it; the browser ``ddd gui`` opens for the reader is launched on a one-time code instead, so
-  the token itself never sits on a command line for another local process to read;
+* the address the command prints carries a token; the page trades it, or the launch's
+  one-time code, at ``/open`` for the token it keeps, and sends it as
+  ``Authorization: Bearer`` on every request to the API; no cookie is set or read, since a
+  browser sends a cookie to every port of 127.0.0.1. The browser ``ddd gui`` opens for the
+  reader is launched on that one-time code rather than the token itself, so the token
+  never sits on a command line for another local process to read;
 * a request has to name this server's own host and port, which refuses a page whose domain was
   re-pointed at the loopback address;
 * in a browser that sends ``Sec-Fetch-Site`` (Chrome 76, Firefox 90, Safari 16.4 and later),
   every request has to say, with it, that it came from this page or from no page at all, and,
-  if it names an ``Origin``, that the ``Origin`` is this server's - checked before the cookie,
-  so a page on another port of this address is refused however it asks, ``/open`` excepted,
-  which is routed before this check ever runs. An older browser sends neither header on a
-  plain request, so this does not catch it there;
+  if it names an ``Origin``, that the ``Origin`` is this server's, so a page on another port
+  of this address is refused however it asks, ``GET /open`` excepted, which is routed before
+  this check ever runs. An older browser sends neither header on a plain request, so this
+  does not catch it there;
 * a request that changes anything has to come from this server's own origin, as json;
-* no page of it can be framed, and only its own scripts run;
+* no page of it can be framed, and only a script served from this origin runs (a server that
+  used the same port earlier could have served this origin; see ``docs/gui_security.rst``);
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
   connections refuses the next itself, so no flood of connections can exhaust the machine's
   threads.
@@ -54,11 +57,6 @@ from ddd.file_names import device_named
 from ddd.gui.api import Api
 from ddd.gui.session import Session
 
-COOKIE: Final = "ddd-gui"
-"""What the cookie a server signs a page in with is called, followed by ``-`` and the server's
-port: a browser sends every cookie of 127.0.0.1 to every port, so under one name a second
-``ddd gui`` replaced the first one's cookie and signed its page out."""
-
 TOKEN_BYTES: Final = 32
 """Random bytes in the long-lived token, and in each single-use launch code: the same
 strength, since either one alone signs a browser in."""
@@ -70,6 +68,12 @@ for long."""
 
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
+
+OPEN_BODY: Final = 1024
+"""The largest body ``POST /open`` accepts, far tighter than :data:`MAX_BODY`: a sign-in body
+naming a code or the token is about sixty bytes, and anyone who reaches the port can post one,
+no token needed. A longer body is refused before it is parsed, so no json parser ever runs on
+a body big or deep enough to matter (:func:`_secret_of`)."""
 
 IDLE_SECONDS: Final = 30
 """How long a connection that carries nothing is kept open before it is closed.
@@ -122,19 +126,6 @@ SIGN_IN_PAGE: Final = (
     b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
     b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
 )
-
-SIGNED_IN_PAGE: Final = (
-    '<!doctype html><html lang="en"><meta charset="utf-8">'
-    '<meta http-equiv="refresh" content="0; url={target}"><title>ddd gui</title>'
-    '<p><a href="{target}">Open ddd gui</a></p></html>'
-)
-"""What ``/open`` answers once it has set the cookie: a page that refreshes to the project, or
-to the start page. Not a redirect: ``/open`` is reached however the token or a launch code got
-there - pasted, clicked from somewhere else, or a browser opened straight on it - and a
-``SameSite=Strict`` cookie does not reliably follow a redirect chain that began cross-site,
-where a refresh this page makes itself is a fresh, same-origin navigation, which the cookie
-does follow. A meta refresh rather than a script: no script is needed, so none is written, and
-the fallback link below it is for a browser that blocks the refresh itself."""
 
 
 def static_directory() -> Path:
@@ -277,7 +268,7 @@ class GuiServer(ThreadingHTTPServer):
 
     @property
     def address(self) -> str:
-        """The address to open; the token in it is what the cookie is given for.
+        """The address to open; the token in it is what the page signs in with.
 
         Always ``127.0.0.1``, whatever ``host`` this server binds: pasted into a browser on
         this computer, it reaches the process when ``host`` is ``127.0.0.1`` itself or
@@ -286,11 +277,6 @@ class GuiServer(ThreadingHTTPServer):
         this computer is also on: that interface alone answers, and this is a different one.
         """
         return f"http://127.0.0.1:{self.port}/open?token={self.token}"
-
-    @property
-    def cookie(self) -> str:
-        """The name of the cookie this server signs a page in with."""
-        return f"{COOKIE}-{self.port}"
 
     def process_request(self, request: Any, client_address: Any) -> None:
         """Answer on a thread of its own if a slot is free; else refuse from this thread.
@@ -396,11 +382,15 @@ class _Handler(BaseHTTPRequestHandler):
             # The absolute form of a target names its host before its path, and a malformed
             # one - a bracket opened for an IPv6 address and never closed, say - makes urlsplit
             # itself raise, before anything here has read where the request claims to come
-            # from or whether it carries this server's cookie.
+            # from or whether it carries this server's token.
             self._send_json(400, {"error": "bad-request", "message": _NOT_A_TARGET})
             return
         if method == "GET" and url.path == "/open":
-            self._sign_in(parse_qs(url.query))
+            # The page itself, which signs itself in: it reads the code or the token from this
+            # address, posts it to /open, and keeps the token it is answered. Nothing is checked
+            # or spent on a GET, so a browser's prefetch of the launch address spends no code.
+            # The address holds a secret, so the answer is never stored.
+            self._page("/", {"Cache-Control": "no-store"})
             return
         api = url.path.startswith("/api/")
         if self._from_elsewhere():
@@ -409,20 +399,36 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
             return
-        if not self._signed_in():
-            if api:
-                self._send_json(401, {"error": "unauthorised", "message": _SIGN_IN})
-            else:
-                self._send(401, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
-            return
-        if method == "POST" and not self._from_this_page():
-            self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
+        if url.path == "/open":
+            # A POST alone: GET /open was answered above, before the gate. The sign-in needs
+            # no credential, being where the page gets one, but it is a POST like any other:
+            # this server's own page, as json.
+            if not self._from_this_page():
+                self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
+                return
+            body = self._body()
+            if body is None:
+                return
+            # Drained by _body() (part 18's P18-31), then refused on its length before _exchange
+            # hands it to a parser: a body past OPEN_BODY never reaches json.loads, so no parser
+            # runs on one big or deep enough to overflow a C stack and end the process. Anyone
+            # who reaches the port can post here, no token needed, and a sign-in is sixty bytes.
+            if len(body) > OPEN_BODY:
+                self._send_json(413, {"error": "too-large", "message": _OPEN_TOO_LARGE})
+                return
+            self._exchange(body)
             return
         if not api:
             if method == "GET":
                 self._page(url.path)
             else:
                 self._send_json(405, {"error": "method-not-allowed", "message": _PAGES_ARE_READ})
+            return
+        if not self._signed_in():
+            self._send_json(401, {"error": "unauthorised", "message": _SIGN_IN})
+            return
+        if method == "POST" and not self._from_this_page():
+            self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
             return
         body = None
         if method == "POST":
@@ -438,58 +444,37 @@ class _Handler(BaseHTTPRequestHandler):
         reply = self._gui.api.handle(method, url.path, query, body)
         self._send_json(reply.status, reply.body)
 
-    def _sign_in(self, query: dict[str, list[str]]) -> None:
-        given_token = (query.get("token") or [""])[0]
-        given_code = (query.get("code") or [""])[0]
-        just_signed_in = hmac.compare_digest(
-            given_token.encode("utf-8"), self._gui.token.encode("utf-8")
-        )
-        if not just_signed_in and given_code:
-            just_signed_in = self._gui.redeem_code(given_code)
-        # Its URL holds a secret - the token, or the code - so neither this page nor a
-        # refusal of it may be cached and replayed from a shared cache or browser history.
-        headers = {"Cache-Control": "no-store"}
-        if just_signed_in:
-            headers["Set-Cookie"] = (
-                f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
-            )
-        elif not (given_code and self._signed_in()):
-            # Exactly which requests get the signed-in page instead of this refusal: one
-            # naming a code that did not redeem - wrong, spent or expired alike - that
-            # already carries this server's valid cookie, as a browser's own prefetch of
-            # the /open?code= address does, or its navigating there a second time after the
-            # first already won the cookie, whatever token it names besides. A request naming
-            # no code - a wrong token, or nothing at all - refuses here regardless of the
-            # cookie.
-            if given_code and self._gui.code_redeemed(given_code):
-                # It signed a browser in once already, and this request carries none of the
-                # cookie that browser was given: so it is not the browser that won it.
-                print(_CODE_REUSED, file=sys.stderr)
-            self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], headers)
+    def _exchange(self, body: bytes) -> None:
+        """``POST /open``: a launch code, or the token itself, traded for the token the page
+        keeps and sends as ``Authorization: Bearer``. A code is spent the moment its value
+        matches. One that already signed a browser in prints the terminal's warning when it is
+        presented again, since the page that won it cleans it from its address and never
+        presents it twice."""
+        secret = _secret_of(body)
+        if secret is None:
+            self._send_json(400, {"error": "bad-request", "message": _OPEN_TAKES})
             return
-        # A project open goes to its page, analysed yet or not: the page says it is being
-        # analysed until its first analysis lands.
-        target = "/project" if self._gui.api.session.project is not None else "/"
-        page = SIGNED_IN_PAGE.format(target=target).encode("utf-8")
-        self._send(200, page, CONTENT_TYPES[".html"], headers)
+        kind, given = secret
+        if kind == "token":
+            signed_in = hmac.compare_digest(given.encode("utf-8"), self._gui.token.encode("utf-8"))
+        else:
+            signed_in = self._gui.redeem_code(given)
+            if not signed_in and self._gui.code_redeemed(given):
+                print(_CODE_REUSED, file=sys.stderr)
+        if signed_in:
+            self._send_json(200, {"token": self._gui.token})
+        else:
+            self._send_json(403, {"error": "forbidden", "message": _SIGN_IN})
 
     def _signed_in(self) -> bool:
-        """Whether the request carries this server's cookie with the token in it.
-
-        The header is read by hand: the browser sends this server every cookie any app on
-        127.0.0.1 has set, and ``http.cookies.SimpleCookie`` gives up on many of them. It stopped
-        reading at ``prefs={"lang":"en"}`` or ``arr[0]=1`` without a word, which signed the page
-        out behind a cookie that came first, and raised at ``user@site=1``, which left every
-        request unanswered. A pair is split at its first ``=``; one not named for this server is
-        passed over whatever it holds, and every one that is gets its value compared.
-        """
-        name = self._gui.cookie
-        token = self._gui.token.encode("utf-8")
-        for pair in self.headers.get("Cookie", "").split(";"):
-            key, _, value = pair.strip().partition("=")
-            if key == name and hmac.compare_digest(value.encode("utf-8"), token):
-                return True
-        return False
+        """Whether the request carries this server's token as ``Authorization: Bearer``: the
+        scheme in any case, as HTTP has it, then one space, then the token, compared in
+        constant time. A cookie is no credential: a browser sends every cookie of 127.0.0.1 to
+        every port of it, and so to every other server there."""
+        scheme, _, given = self.headers.get("Authorization", "").partition(" ")
+        return scheme.lower() == "bearer" and hmac.compare_digest(
+            given.encode("utf-8"), self._gui.token.encode("utf-8")
+        )
 
     def _own_origins(self) -> tuple[str, str]:
         """This server's own origin, spelled the two ways a browser may carry it: by
@@ -504,12 +489,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         A browser marks every request it sends with ``Sec-Fetch-Site``: ``same-origin`` from
         this server's own page, ``none`` for an address typed or a bookmark, and ``same-site``
-        from a page served on another port of this address - which also carries this server's
-        ``SameSite=Strict`` cookie, a cookie belonging to an address and not to a port. Every
-        browser sends it since 2023 (Chrome 76, Firefox 90, Safari 16.4). An ``Origin`` other
-        than this server's is refused too, for a browser older than those. A client that sends
-        neither - a script, ``curl``, these tests - goes on to the cookie, so the token still
-        decides.
+        from a page served on another port of this address, which a browser counts as the same
+        site, ports aside. Every browser sends the header since 2023 (Chrome 76, Firefox 90,
+        Safari 16.4). An ``Origin`` other than this server's is refused too, for a browser older
+        than those. A client that sends neither - a script, ``curl``, these tests - is let past
+        this check: a page needs no credential, and the API needs the token.
+
+        For the API this is a second defence. The first is that a page elsewhere has no token
+        to send: no cookie holds it, and that page cannot send ``Authorization`` without a CORS
+        preflight, which this server never grants.
         """
         site = self.headers.get("Sec-Fetch-Site")
         if site is not None and site not in ("same-origin", "none"):
@@ -543,7 +531,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._body_read = True
         return body
 
-    def _page(self, path: str) -> None:
+    def _page(self, path: str, headers: dict[str, str] | None = None) -> None:
         """Answer the file of the compiled pages a path names, or ``index.html``, whose router
         makes a screen of any other path.
 
@@ -580,7 +568,7 @@ class _Handler(BaseHTTPRequestHandler):
             if os.path.isfile(found):  # noqa: PTH113
                 target = found
         kind = CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")
-        self._send(200, target.read_bytes(), kind)
+        self._send(200, target.read_bytes(), kind, headers)
 
     def _send(
         self, status: int, data: bytes, kind: str, headers: dict[str, str] | None = None
@@ -605,6 +593,8 @@ class _Handler(BaseHTTPRequestHandler):
 
 _ELSEWHERE: Final = "ddd gui answers its own page alone, opened from the address it printed"
 _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
+_OPEN_TAKES: Final = "/open takes json naming one of code and token, and nothing else"
+_OPEN_TOO_LARGE: Final = f"/open takes a body of at most {OPEN_BODY} bytes"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"
 _NOT_A_TARGET: Final = "the request's target cannot be read"
@@ -615,6 +605,39 @@ _CODE_REUSED: Final = (
     "first and now holds the token itself, so restart ddd gui rather than open the address it "
     "printed"
 )
+
+
+def _secret_of(body: bytes) -> tuple[str, str] | None:
+    """What ``POST /open`` was given: ``("code", <code>)`` or ``("token", <token>)``, or
+    ``None`` for anything but a json object of exactly one of the two, its value text that
+    UTF-8 can encode.
+
+    Each object is read as the tuple of its pairs, and json reads an array as a list, so a
+    tuple is an object, and a name given twice is two pairs. Read into a dict, an object kept
+    the last of a repeated name, and ``{"token": "x", "token": <the token>}`` signed in.
+
+    A lone surrogate is text UTF-8 cannot encode, which json spells as an escape, or as the
+    bytes it decodes anyway. Comparing a secret encodes it, so one raised there, and was
+    answered 500. A body nested deeper than python's own parser goes raises
+    ``RecursionError``, which is no ``ValueError``, and is refused as any other malformed body.
+
+    ``POST /open`` caps the body at :data:`OPEN_BODY` bytes before this runs (:meth:`_route`),
+    far below any nesting that could exhaust the C stack, so the ``RecursionError`` catch is
+    defence in depth rather than what holds that line."""
+    try:
+        given = json.loads(body, object_pairs_hook=tuple)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(given, tuple) or len(given) != 1:
+        return None
+    ((kind, value),) = given
+    if kind not in ("code", "token") or not isinstance(value, str):
+        return None
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return None
+    return kind, value
 
 
 def _shown(text: str) -> str:

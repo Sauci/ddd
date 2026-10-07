@@ -10,26 +10,39 @@ What it defends against
 -----------------------
 
 * **Another page open in the same browser,** even one served from a different port of
-  ``127.0.0.1``. A browser treats every port of one address as the same site, and sends
-  such a page this server's own cookie regardless. In a browser that marks every request
-  with ``Sec-Fetch-Site`` - Chrome 76, Firefox 90, Safari 16.4 and later - that is checked
-  before the cookie is even read: a request marked anything but ``same-origin`` or ``none``,
-  or naming an ``Origin`` that is not this server's own, is refused before it reaches a
-  handler - ``GET /open`` excepted, which trades the token or a code for the cookie before
-  this check runs. An older browser sends neither header on a plain request; see *The
-  browsers it protects*, below, for what still holds there and what does not. The server of
-  a page on another port of ``127.0.0.1`` is another matter: it receives the cookie itself
-  (*Another server on* ``127.0.0.1``, below).
+  ``127.0.0.1``. A browser treats every port of one address as the same site, but the
+  token is no cookie: the page keeps it in ``localStorage`` for its own origin, port
+  included, and sends it as ``Authorization: Bearer`` itself, rather than a browser
+  attaching it unasked. For a request to the API, a page elsewhere has no token to send,
+  and cannot send ``Authorization`` at all without a CORS preflight, which this server
+  never grants - the first defence, in any browser; the gate is the second, refusing a
+  request marked, with ``Sec-Fetch-Site``, anything but ``same-origin`` or ``none``, or
+  naming an ``Origin`` that is not this server's own, before it reaches a handler -
+  ``GET /open`` excepted, which answers the page itself, needing no credential. For a
+  navigation to a page, which likewise needs no credential, the gate above is the only
+  defence: see *The browsers it protects*, below, for what the one kind of request that
+  still reaches a handler with neither header can do there. A refused sign-in, or any
+  answer to ``POST /open`` but ``200``, leaves a token the page already holds as it was;
+  only a ``401`` from the API clears it, and the page then says it is signed out, other
+  tabs on their next request. So no page can sign the reader out by sending a tab to
+  ``/open`` with a wrong code. And no page of ``ddd gui`` can be shown inside another: the
+  content security policy's ``frame-ancestors 'none'`` refuses every attempt to frame it, so
+  another page cannot embed it and act through it.
 
-* **Any other local process or user that reaches the port without the token** - short of
-  one running a server on ``127.0.0.1`` that the reader's browser is pointed at, which
-  receives the token in the cookie (*Another server on* ``127.0.0.1``, below). Past the
-  check above, every request still needs the cookie ``/open`` traded the token for, and
-  one that changes anything needs this server's own ``Origin`` and a json body besides.
-  The token is minted fresh each run and compared in constant time; it is never placed on
-  a command line, where any local user could read it - the browser ``ddd gui`` opens for
-  the reader is launched on a one-time code instead, good for sixty seconds or one use,
-  whichever comes first.
+* **Another server on another port of** ``127.0.0.1`` that the reader's browser is pointed
+  at - on an address typed or bookmarked there, or on whatever a page served there asks of
+  its own server, a page any site can send the browser to. It is sent nothing: no cookie
+  exists to carry the token there, and it cannot read this page's own ``localStorage``, which
+  another origin never reaches. A server that used the *same* port before is a different
+  case, under *What it does not defend against*: the browser counts it as this very origin.
+
+* **Any other local process or user that reaches the port without the token.** Past the
+  check above, every request to the API still needs the token as ``Authorization: Bearer``,
+  which no cookie carries any more, and one that changes anything needs this server's own
+  ``Origin`` and a json body besides. The token is minted fresh each run and compared in
+  constant time; it is never placed on a command line, where any local user could read
+  it - the browser ``ddd gui`` opens for the reader is launched on a one-time code
+  instead, good for sixty seconds or one use, whichever comes first.
 
 * **Malformed input, from anyone, including the reader's own browser.** No malformed
   input - in a route's query, in a request's body, or in a page's own path - is answered
@@ -68,8 +81,11 @@ What it defends against
   levels deep, or 98 among the project's own settings. Any other answer too deep is refused
   without naming one. A ``POST`` whose ``Content-Length`` is no length is refused ``400``,
   and one promising more than 1,048,576 bytes ``413``, however many digits it is written
-  with, short of a header line too long to be read at all (below). A page's own path is
-  never resolved: it is read as plain names under the compiled pages, and a name holding a
+  with, short of a header line too long to be read at all (below). ``POST /open``, which
+  anyone who reaches the port may send without the token, takes at most 1,024 bytes - a
+  sign-in body is a few dozen - and a longer one is refused ``413`` before it is parsed, so
+  no json parser ever runs on a body large or deep enough to trouble one. A page's own path
+  is never resolved: it is read as plain names under the compiled pages, and a name holding a
   NUL character, a backslash or a colon, or a dot segment, names no file and is never
   looked up, so neither a network path nor a ``\\.\`` device path can be spelled in one. A
   name Windows keeps for a device names no file either, on any system, and is never looked
@@ -99,6 +115,11 @@ What it trusts
   own address bar; clicked in the terminal instead, it is handed to an opener such as
   ``xdg-open`` on its command line, which any local user can read while it runs.
 
+* **The page's own origin.** The token is kept in its ``localStorage``, readable only by
+  script running in this origin; the content security policy's ``default-src 'self'`` runs no
+  script but one served from this origin. What may have served this origin before ``ddd gui``
+  did - a server on the same port, earlier - is *What it does not defend against*, below.
+
 The table of every route, below, marks which ones may run a project's or a baseline's
 plugins: opening a project, comparing against one, an edit or an undo - each re-analysed
 afterwards - and a plan whose judgement re-analyses the project with its includes changed.
@@ -106,21 +127,29 @@ afterwards - and a plan whose judgement re-analyses the project with its include
 The browsers it protects
 ------------------------
 
-The gate above - the check of ``Sec-Fetch-Site`` and ``Origin`` that runs before the
-cookie - depends on the browser sending ``Sec-Fetch-Site``. Chrome 76, Firefox 90, Safari
-16.4 and every later release do, on every request; the last of them, Safari 16.4, shipped
-in March 2023.
+The gate above - the check of ``Sec-Fetch-Site`` and ``Origin`` - depends on the browser
+sending ``Sec-Fetch-Site``. Chrome 76, Firefox 90, Safari 16.4 and every later release do,
+on every request; the last of them, Safari 16.4, shipped in March 2023.
 
-An older browser sends neither header on a plain request, so the gate lets it through; the
-browser still attaches the cookie - to a request from a page on another port of
-``127.0.0.1``, which is one site to it, and, in a browser older than ``SameSite`` itself
-(Chrome 51, Firefox 60, Safari 12), to a request from a page of any site at all - so the
-request is answered as if it came from this server's own page. What still holds there:
-that page cannot read the answer, and it cannot ``POST``, which needs this server's own
-``Origin`` and a json body, neither of which it can forge. What does not: a ``GET`` that
-runs plugin code is still answered - ``/api/compare``, for a baseline under the directory
-``ddd gui`` was started in, and ``/api/files-plan`` - so its side effect happens whether or
-not the page ever reads the reply. Use one of the browsers above.
+An older browser sends neither header on a plain request - a navigation, or a request
+with no ``Origin``, such as an image - so the gate lets it through. Sent to the API, it
+carries no credential either: the token is in this page's own ``localStorage``, which a
+page on another port cannot read, and such a page cannot send ``Authorization`` without a
+CORS preflight, which this server never grants - and it is answered ``401``, like any
+other refusal. Sent to a page, it is answered the page itself, which signs itself in from
+its own storage and asks for whatever its address names: a site that knows the port - the
+system picks a fresh one each run, unless ``--port`` names one - and the path of a file
+the project includes can so open a Files row's Remove panel, whose plan re-analyses the
+project, running its plugins. Nothing is written without the reader's own click. Use one
+of the browsers above.
+
+In every browser, the gate lets through by design a navigation marked
+``Sec-Fetch-Site: none``, which a browser sends for a navigation it begins itself - an
+address typed, or chosen from a bookmark - and an older browser marks such a navigation
+with nothing. Either way it lands, signed in, on the page its address names, just as above,
+as it did when the token was a cookie: a ``SameSite=Strict`` cookie rode the same
+navigations. Open ``ddd gui``'s pages from the address it prints, or from the page itself,
+rather than from a link someone else wrote.
 
 Running it in a container
 -------------------------
@@ -135,17 +164,6 @@ listen beyond loopback.
 What it does not defend against
 -------------------------------
 
-* **Another server on** ``127.0.0.1``. A browser keeps no cookie apart by port, so the
-  reader's browser sends ``ddd gui``'s cookie to any other server on ``127.0.0.1`` it is
-  pointed at: on an address typed or bookmarked there, and on whatever a page served there
-  asks of its own server - a page any site can send the browser to. The cookie's value is
-  the token, so whoever runs such a server - another user of this computer, a container or
-  a virtual machine with a port on this computer's loopback, a sandboxed application -
-  receives the token, and can then do whatever the reader can do with ``ddd gui``: run code
-  as the reader among it, since an edit can name a plugin of theirs, which the next
-  analysis runs. So keep ``ddd gui`` in a browser profile of its own, browse nothing else
-  on ``127.0.0.1`` in that profile, and stop ``ddd gui`` when done with it.
-
 * **A local denial of service.** ``ddd gui`` answers at most sixty-four connections at
   once, each on a thread of its own; the sixty-fifth is refused before a thread is even
   started for it, ``503``. That keeps the machine's threads from being exhausted, not the
@@ -156,16 +174,40 @@ What it does not defend against
   one host, across every tab - so this is a risk from another local process or user, not
   from ordinary use.
 
-* **The moment of launch.** The browser is handed a one-time code instead of the
-  long-lived token, so the token itself never sits on a command line. But a local process
-  reading the launcher's command line - polling ``/proc``, on Linux - and presenting that
-  code before the reader's browser does is signed in with the token for as long as this
-  run of ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this
-  happened: the reader's own browser lands on the sign-in page instead of the project, and
-  presenting that same code again without the cookie its winner was given prints one line
-  on the terminal, saying so and to restart ``ddd gui`` rather than open the address it
-  printed - a restart takes the token from the winner, and the printed address would not.
-  A code that expired unused signed nobody in, and prints nothing.
+* **The moment of launch.** ``GET /open`` answers the page itself and spends nothing, so
+  a browser's prefetch of the launch address cannot spend the code; the page then posts
+  the code, or the token from a pasted address, to ``POST /open`` and keeps the token it
+  is answered. The browser is handed a one-time code instead of the long-lived token, so
+  the token itself never sits on a command line. But a local process reading the
+  launcher's command line - polling ``/proc``, on Linux - and presenting that code before
+  the reader's browser does is signed in with the token for as long as this run of
+  ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this happened:
+  the reader's own browser shows it is signed out instead of landing on the project, and
+  presenting that same code again prints one line on the terminal, saying so and to
+  restart ``ddd gui`` rather than open the address it printed - a restart takes the token
+  from the winner, and the printed address would not. A code that expired unused signed
+  nobody in, and prints nothing.
+
+* **A server that used the same port before.** The page's origin is its address and port,
+  and the browser keeps what a server on them left behind into any later run on that port.
+  Unless ``--port`` names one, the system picks a port that is free when ``ddd gui``
+  starts, which an earlier server may still have used; a fixed ``--port``, as a container
+  needs, is the same origin every run. A service worker an earlier server registered there
+  survives it, and nothing ``ddd gui`` answers removes it: it sees the launch's code, the
+  token the page is answered, and every request the page sends. So does a script an
+  earlier server answered one of the compiled pages' own hashed asset paths with, under a
+  long ``max-age``: the browser runs that cached script when a page ``ddd gui`` later
+  serves names that path, because the content security policy admits any script from this
+  origin and cannot tell one the browser cached from one ``ddd gui`` served. Either one can
+  take the token. Open ``ddd gui`` in a browser profile of its own, one nothing else is
+  browsed in, above all with a fixed ``--port``.
+
+* **The printed address, opened as something other than itself.** ``ddd gui`` listens on
+  IPv4 alone, never on ``[::1]``, and prints a ``127.0.0.1`` address. Rewritten by the
+  reader to ``localhost``, the address may reach a different program listening on
+  ``[::1]`` at the same port - a browser resolving ``localhost`` may try ``[::1]`` first -
+  and the token in a pasted address then goes to that program, which also owns the
+  ``localhost`` origin's storage. Open the address exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.
@@ -182,9 +224,10 @@ Every route
 Every request that reaches a handler has already passed the gate above. The table below
 adds, route by route, what each one does once it has: whether it writes a file of the open
 project, opens a project, may run a plugin's code, or may hold its answer open, waiting
-for something to change. It lists the api alone: ``GET /open`` trades the token or a code
-for the cookie, and is not checked by the gate; the pages need the cookie, as every route
-below does.
+for something to change. It lists the api alone: ``GET /open``, which the gate does not
+check, answers the page, and ``POST /open`` trades a code or the token for the token;
+neither needs a credential, and the ``POST`` passes the gate and a ``POST``'s rules. The
+pages need none either; every route below needs the token as a header.
 
 .. _gui-security-routes:
 

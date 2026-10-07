@@ -43,11 +43,13 @@ from ddd.gui.server import (
     _ELSEWHERE,
     _FORBIDDEN,
     _OPEN_TAKES,
+    _OPEN_TOO_LARGE,
     _SIGN_IN,
     BUSY,
     CODE_SECONDS,
     MAX_BODY,
     MAX_CONNECTIONS,
+    OPEN_BODY,
     REFUSAL_SECONDS,
     SECURITY_HEADERS,
     SIGN_IN_PAGE,
@@ -454,10 +456,14 @@ class TestTheSignInExchange:
 
     @pytest.mark.parametrize(
         "body",
-        [b"code=x", b"\xc3\x28", b"[" * 100_000 + b"]" * 100_000],
-        ids=["a-form", "not-utf-8", "nested-past-the-parser"],
+        [b"code=x", b"\xc3\x28", b"[" * 512 + b"]" * 512],
+        ids=["a-form", "not-utf-8", "nested-within-the-limit"],
     )
     def test_a_body_that_is_no_json_object_is_refused_not_failed(self, server, body) -> None:
+        """The parse refusal, pinned on a body within ``OPEN_BODY``: 512 nested arrays are 1024
+        bytes exactly, so they reach ``_secret_of``, parse to a list rather than an object, and
+        are refused 400. A body deep enough to trouble a parser is refused on its size first,
+        before any parser runs - that case is ``test_a_body_too_deep_to_parse_meets_the_cap``."""
         response, data = ask(
             server,
             "POST",
@@ -549,6 +555,59 @@ class TestTheSignInExchange:
             {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
         )
         assert response.getheader("Connection") == "close"
+
+    def _open(self, server, body: bytes) -> tuple[http.client.HTTPResponse, bytes]:
+        """``POST /open`` from this server's own page, as json, carrying ``body`` as it is -
+        not json-encoded the way :func:`exchange` would, since these bodies are raw."""
+        return ask(
+            server,
+            "POST",
+            "/open",
+            body=body,
+            origin=f"http://127.0.0.1:{server.port}",
+            signed_in=False,
+        )
+
+    def test_a_body_at_the_open_limit_is_read(self, server) -> None:
+        """``OPEN_BODY`` bytes exactly - a valid sign-in padded with the spaces json ignores -
+        is read and answered 200: the cap is the boundary, not below it."""
+        body = json.dumps({"token": server.token}).encode("utf-8")
+        body += b" " * (OPEN_BODY - len(body))
+        assert len(body) == OPEN_BODY
+        response, data = self._open(server, body)
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
+
+    def test_a_body_past_the_open_limit_is_refused_before_it_is_parsed(self, server) -> None:
+        """One byte past the cap, still a valid sign-in but for its length, is refused 413 - so
+        the token in it, which would otherwise sign in, never gets parsed."""
+        body = json.dumps({"token": server.token}).encode("utf-8")
+        body += b" " * (OPEN_BODY + 1 - len(body))
+        assert len(body) == OPEN_BODY + 1
+        response, data = self._open(server, body)
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": _OPEN_TOO_LARGE},
+        )
+
+    def test_a_body_too_deep_to_parse_meets_the_cap(self, server) -> None:
+        """A body nested far past any json parser's depth is refused on its size, before
+        ``_secret_of`` hands it to one: a C-stack overflow in the parser, which would end the
+        whole process rather than fail one request, cannot be reached here on any platform."""
+        response, data = self._open(server, b"[" * 100_000 + b"]" * 100_000)
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": _OPEN_TOO_LARGE},
+        )
+
+    def test_the_open_body_refusal_says_what_it_takes(self, server) -> None:
+        """Pinned by its literal text, ``OPEN_BODY``'s value among it: the tests above compare
+        against the imported ``_OPEN_TOO_LARGE``, which would drift along with any rewording of
+        it or any change to the limit, and catch neither."""
+        _, data = self._open(server, b"x" * (OPEN_BODY + 1))
+        assert json.loads(data) == {
+            "error": "too-large",
+            "message": "/open takes a body of at most 1024 bytes",
+        }
 
 
 class TestTheBearerHeader:

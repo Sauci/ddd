@@ -68,6 +68,12 @@ for long."""
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
 
+OPEN_BODY: Final = 1024
+"""The largest body ``POST /open`` accepts, far tighter than :data:`MAX_BODY`: a sign-in body
+naming a code or the token is about sixty bytes, and anyone who reaches the port can post one,
+no token needed. A longer body is refused before it is parsed, so no json parser ever runs on
+a body big or deep enough to matter (:func:`_secret_of`)."""
+
 IDLE_SECONDS: Final = 30
 """How long a connection that carries nothing is kept open before it is closed.
 
@@ -400,8 +406,16 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
                 return
             body = self._body()
-            if body is not None:
-                self._exchange(body)
+            if body is None:
+                return
+            # Drained by _body() (part 18's P18-31), then refused on its length before _exchange
+            # hands it to a parser: a body past OPEN_BODY never reaches json.loads, so no parser
+            # runs on one big or deep enough to overflow a C stack and end the process. Anyone
+            # who reaches the port can post here, no token needed, and a sign-in is sixty bytes.
+            if len(body) > OPEN_BODY:
+                self._send_json(413, {"error": "too-large", "message": _OPEN_TOO_LARGE})
+                return
+            self._exchange(body)
             return
         if not api:
             if method == "GET":
@@ -579,6 +593,7 @@ class _Handler(BaseHTTPRequestHandler):
 _ELSEWHERE: Final = "ddd gui answers its own page alone, opened from the address it printed"
 _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
 _OPEN_TAKES: Final = "/open takes json naming one of code and token, and nothing else"
+_OPEN_TOO_LARGE: Final = f"/open takes a body of at most {OPEN_BODY} bytes"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"
 _NOT_A_TARGET: Final = "the request's target cannot be read"
@@ -603,8 +618,11 @@ def _secret_of(body: bytes) -> tuple[str, str] | None:
     A lone surrogate is text UTF-8 cannot encode, which json spells as an escape, or as the
     bytes it decodes anyway. Comparing a secret encodes it, so one raised there, and was
     answered 500. A body nested deeper than python's own parser goes raises
-    ``RecursionError``, which is no ``ValueError``, and is refused as any other malformed
-    body."""
+    ``RecursionError``, which is no ``ValueError``, and is refused as any other malformed body.
+
+    ``POST /open`` caps the body at :data:`OPEN_BODY` bytes before this runs (:meth:`_route`),
+    far below any nesting that could exhaust the C stack, so the ``RecursionError`` catch is
+    defence in depth rather than what holds that line."""
     try:
         given = json.loads(body, object_pairs_hook=tuple)
     except (ValueError, RecursionError):

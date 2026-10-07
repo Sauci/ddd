@@ -436,6 +436,27 @@ describe("the token, as a header", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  test("a 401 keeps a token stored since the ask went out, and still signs the page out", async () => {
+    // Between this ask's send and its 401, another tab signed in and stored a newer token. The
+    // 401 is about the token this ask carried, which is stale; the newer one must survive it, or
+    // the tab that just signed in is signed straight back out (M-1).
+    const kept = remembering();
+    kept.set("stale");
+    const out = signedOutStore();
+    const fetchImpl = vi.fn(async () => {
+      kept.set("newer");
+      return new Response(
+        '{"error": "unauthorised", "message": "open the address ddd gui printed in its terminal"}',
+        { status: 401 },
+      );
+    });
+    await expect(request("/api/state", {}, fetchImpl, kept, out)).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(kept.get()).toBe("newer");
+    expect(out.current()).toBe(true);
+  });
+
   test("any other refusal leaves the page signed in", async () => {
     const kept = remembering();
     kept.set("t");

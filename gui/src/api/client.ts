@@ -109,10 +109,12 @@ export async function request<T>(
   const body: unknown = await response.json().catch(() => NOT_JSON);
   if (!response.ok) {
     if (response.status === 401) {
-      // Refused: the token kept is stale, or there is none. It is cleared, and the page says
-      // it is signed out. Nothing asks again on its own, and other tabs follow on their next
-      // ask, since they read the same storage.
-      kept.clear();
+      // Refused: the token this ask carried is stale, or there was none. Cleared only if the
+      // keeper still holds that same token - between the send and this answer another tab may
+      // have stored a newer one, which this ask's 401 says nothing about and must not clear
+      // (M-1). The page is marked signed out either way; nothing asks again on its own, and
+      // other tabs follow on their next ask, since they read the same storage.
+      if (kept.get() === held) kept.clear();
       out.mark();
     }
     const code =

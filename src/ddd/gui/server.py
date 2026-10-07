@@ -3,18 +3,20 @@
 Any web page open in the same browser can send requests to a server on the loopback address, so
 this one trusts nothing it did not hand out itself:
 
-* the address the command prints carries a token, which ``/open`` swaps for a cookie every other
-  request has to present - ``SameSite=Strict``, so a request another site makes does not carry
-  it; the browser ``ddd gui`` opens for the reader is launched on a one-time code instead, so
-  the token itself never sits on a command line for another local process to read;
+* the address the command prints carries a token; the page trades it, or the launch's
+  one-time code, at ``/open`` for the token it keeps, and sends it as
+  ``Authorization: Bearer`` on every request to the API; no cookie is set or read, since a
+  browser sends a cookie to every port of 127.0.0.1. The browser ``ddd gui`` opens for the
+  reader is launched on that one-time code rather than the token itself, so the token
+  never sits on a command line for another local process to read;
 * a request has to name this server's own host and port, which refuses a page whose domain was
   re-pointed at the loopback address;
 * in a browser that sends ``Sec-Fetch-Site`` (Chrome 76, Firefox 90, Safari 16.4 and later),
   every request has to say, with it, that it came from this page or from no page at all, and,
-  if it names an ``Origin``, that the ``Origin`` is this server's - checked before the cookie,
-  so a page on another port of this address is refused however it asks, ``/open`` excepted,
-  which is routed before this check ever runs. An older browser sends neither header on a
-  plain request, so this does not catch it there;
+  if it names an ``Origin``, that the ``Origin`` is this server's, so a page on another port
+  of this address is refused however it asks, ``GET /open`` excepted, which is routed before
+  this check ever runs. An older browser sends neither header on a plain request, so this
+  does not catch it there;
 * a request that changes anything has to come from this server's own origin, as json;
 * no page of it can be framed, and only its own scripts run;
 * no more than sixty-four connections are answered at once; past that, the thread that accepts

@@ -49,11 +49,16 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   both malformed and out of range for a symbol the a2l carries is now refused for the
   malformed entry, still exit 2.  No file format changes.
 
+* **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
+  `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
+  The page now keeps the token in the browser's storage for its own address, port included, and
+  sends it as a header; a page elsewhere cannot send that header at all, in any browser.  The
+  pages themselves need no credential, and a cookie is no credential any more.
+
 * **`ddd gui` refuses a request that says it came from somewhere else.**  In a browser that
   sends `Sec-Fetch-Site` (Chrome 76, Firefox 90, Safari 16.4 and later), every request says
-  through it, and through `Origin`, where it came from, checked before the cookie.  A page
-  served from another port of `127.0.0.1`, which such a browser still hands this server's
-  cookie, is refused rather than answered.
+  through it, and through `Origin`, where it came from, checked before the token.  A page
+  served from another port of `127.0.0.1` is refused rather than answered.
 
 * **Every route of `ddd gui` reads its query through one typed model.**  A hostile value - a
   path with a NUL character or a lone surrogate, a number thousands of digits long, json nested

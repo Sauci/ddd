@@ -116,25 +116,37 @@ than it is worth, and what is deliberately left open.</p>
 <h2>What it defends against<a class="headerlink" href="#what-it-defends-against" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p><strong>Another page open in the same browser,</strong> even one served from a different port of
-<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>. A browser treats every port of one address as the same site, and sends
-such a page this server’s own cookie regardless. In a browser that marks every request
-with <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site</span></code> - Chrome 76, Firefox 90, Safari 16.4 and later - that is checked
-before the cookie is even read: a request marked anything but <code class="docutils literal notranslate"><span class="pre">same-origin</span></code> or <code class="docutils literal notranslate"><span class="pre">none</span></code>,
-or naming an <code class="docutils literal notranslate"><span class="pre">Origin</span></code> that is not this server’s own, is refused before it reaches a
-handler - <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/open</span></code> excepted, which trades the token or a code for the cookie before
-this check runs. An older browser sends neither header on a plain request; see <em>The
-browsers it protects</em>, below, for what still holds there and what does not. The server of
-a page on another port of <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> is another matter: it receives the cookie itself
-(<em>Another server on</em> <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, below).</p></li>
-<li><p><strong>Any other local process or user that reaches the port without the token</strong> - short of
-one running a server on <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> that the reader’s browser is pointed at, which
-receives the token in the cookie (<em>Another server on</em> <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, below). Past the
-check above, every request still needs the cookie <code class="docutils literal notranslate"><span class="pre">/open</span></code> traded the token for, and
-one that changes anything needs this server’s own <code class="docutils literal notranslate"><span class="pre">Origin</span></code> and a json body besides.
-The token is minted fresh each run and compared in constant time; it is never placed on
-a command line, where any local user could read it - the browser <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> opens for
-the reader is launched on a one-time code instead, good for sixty seconds or one use,
-whichever comes first.</p></li>
+<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>. A browser treats every port of one address as the same site, but the
+token is no cookie: the page keeps it in <code class="docutils literal notranslate"><span class="pre">localStorage</span></code> for its own origin, port
+included, and sends it as <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span></code> itself, rather than a browser
+attaching it unasked. For a request to the API, a page elsewhere has no token to send,
+and cannot send <code class="docutils literal notranslate"><span class="pre">Authorization</span></code> at all without a CORS preflight, which this server
+never grants - the first defence, in any browser; the gate is the second, refusing a
+request marked, with <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site</span></code>, anything but <code class="docutils literal notranslate"><span class="pre">same-origin</span></code> or <code class="docutils literal notranslate"><span class="pre">none</span></code>, or
+naming an <code class="docutils literal notranslate"><span class="pre">Origin</span></code> that is not this server’s own, before it reaches a handler -
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/open</span></code> excepted, which answers the page itself, needing no credential. For a
+navigation to a page, which likewise needs no credential, the gate above is the only
+defence: see <em>The browsers it protects</em>, below, for what the one kind of request that
+still reaches a handler with neither header can do there. A refused sign-in, or any
+answer to <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code> but <code class="docutils literal notranslate"><span class="pre">200</span></code>, leaves a token the page already holds as it was;
+only a <code class="docutils literal notranslate"><span class="pre">401</span></code> from the API clears it, and the page then says it is signed out, other
+tabs on their next request. So no page can sign the reader out by sending a tab to
+<code class="docutils literal notranslate"><span class="pre">/open</span></code> with a wrong code. And no page of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> can be shown inside another: the
+content security policy’s <code class="docutils literal notranslate"><span class="pre">frame-ancestors</span> <span class="pre">'none'</span></code> refuses every attempt to frame it, so
+another page cannot embed it and act through it.</p></li>
+<li><p><strong>Another server on another port of</strong> <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> that the reader’s browser is pointed
+at - on an address typed or bookmarked there, or on whatever a page served there asks of
+its own server, a page any site can send the browser to. It is sent nothing: no cookie
+exists to carry the token there, and it cannot read this page’s own <code class="docutils literal notranslate"><span class="pre">localStorage</span></code>, which
+another origin never reaches. A server that used the <em>same</em> port before is a different
+case, under <em>What it does not defend against</em>: the browser counts it as this very origin.</p></li>
+<li><p><strong>Any other local process or user that reaches the port without the token.</strong> Past the
+check above, every request to the API still needs the token as <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span></code>,
+which no cookie carries any more, and one that changes anything needs this server’s own
+<code class="docutils literal notranslate"><span class="pre">Origin</span></code> and a json body besides. The token is minted fresh each run and compared in
+constant time; it is never placed on a command line, where any local user could read
+it - the browser <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> opens for the reader is launched on a one-time code
+instead, good for sixty seconds or one use, whichever comes first.</p></li>
 <li><p><strong>Malformed input, from anyone, including the reader’s own browser.</strong> No malformed
 input - in a route’s query, in a request’s body, or in a page’s own path - is answered
 <code class="docutils literal notranslate"><span class="pre">500</span></code>, and no request this server reads in full is left hanging: each is answered with
@@ -172,8 +184,11 @@ to blame: <code class="docutils literal notranslate"><span class="pre">GET</span
 levels deep, or 98 among the project’s own settings. Any other answer too deep is refused
 without naming one. A <code class="docutils literal notranslate"><span class="pre">POST</span></code> whose <code class="docutils literal notranslate"><span class="pre">Content-Length</span></code> is no length is refused <code class="docutils literal notranslate"><span class="pre">400</span></code>,
 and one promising more than 1,048,576 bytes <code class="docutils literal notranslate"><span class="pre">413</span></code>, however many digits it is written
-with, short of a header line too long to be read at all (below). A page’s own path is
-never resolved: it is read as plain names under the compiled pages, and a name holding a
+with, short of a header line too long to be read at all (below). <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code>, which
+anyone who reaches the port may send without the token, takes at most 1,024 bytes - a
+sign-in body is a few dozen - and a longer one is refused <code class="docutils literal notranslate"><span class="pre">413</span></code> before it is parsed, so
+no json parser ever runs on a body large or deep enough to trouble one. A page’s own path
+is never resolved: it is read as plain names under the compiled pages, and a name holding a
 NUL character, a backslash or a colon, or a dot segment, names no file and is never
 looked up, so neither a network path nor a <code class="docutils literal notranslate"><span class="pre">\\.\</span></code> device path can be spelled in one. A
 name Windows keeps for a device names no file either, on any system, and is never looked
@@ -200,6 +215,10 @@ above that directory, and <code class="docutils literal notranslate"><span class
 does anyone its terminal shows it to. The printed address is for pasting into a browser’s
 own address bar; clicked in the terminal instead, it is handed to an opener such as
 <code class="docutils literal notranslate"><span class="pre">xdg-open</span></code> on its command line, which any local user can read while it runs.</p></li>
+<li><p><strong>The page’s own origin.</strong> The token is kept in its <code class="docutils literal notranslate"><span class="pre">localStorage</span></code>, readable only by
+script running in this origin; the content security policy’s <code class="docutils literal notranslate"><span class="pre">default-src</span> <span class="pre">'self'</span></code> runs no
+script but one served from this origin. What may have served this origin before <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>
+did - a server on the same port, earlier - is <em>What it does not defend against</em>, below.</p></li>
 </ul>
 <p>The table of every route, below, marks which ones may run a project’s or a baseline’s
 plugins: opening a project, comparing against one, an edit or an undo - each re-analysed
@@ -207,20 +226,27 @@ afterwards - and a plan whose judgement re-analyses the project with its include
 </section>
 <section id="the-browsers-it-protects">
 <h2>The browsers it protects<a class="headerlink" href="#the-browsers-it-protects" title="Link to this heading"></a></h2>
-<p>The gate above - the check of <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site</span></code> and <code class="docutils literal notranslate"><span class="pre">Origin</span></code> that runs before the
-cookie - depends on the browser sending <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site</span></code>. Chrome 76, Firefox 90, Safari
-16.4 and every later release do, on every request; the last of them, Safari 16.4, shipped
-in March 2023.</p>
-<p>An older browser sends neither header on a plain request, so the gate lets it through; the
-browser still attaches the cookie - to a request from a page on another port of
-<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, which is one site to it, and, in a browser older than <code class="docutils literal notranslate"><span class="pre">SameSite</span></code> itself
-(Chrome 51, Firefox 60, Safari 12), to a request from a page of any site at all - so the
-request is answered as if it came from this server’s own page. What still holds there:
-that page cannot read the answer, and it cannot <code class="docutils literal notranslate"><span class="pre">POST</span></code>, which needs this server’s own
-<code class="docutils literal notranslate"><span class="pre">Origin</span></code> and a json body, neither of which it can forge. What does not: a <code class="docutils literal notranslate"><span class="pre">GET</span></code> that
-runs plugin code is still answered - <code class="docutils literal notranslate"><span class="pre">/api/compare</span></code>, for a baseline under the directory
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> was started in, and <code class="docutils literal notranslate"><span class="pre">/api/files-plan</span></code> - so its side effect happens whether or
-not the page ever reads the reply. Use one of the browsers above.</p>
+<p>The gate above - the check of <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site</span></code> and <code class="docutils literal notranslate"><span class="pre">Origin</span></code> - depends on the browser
+sending <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site</span></code>. Chrome 76, Firefox 90, Safari 16.4 and every later release do,
+on every request; the last of them, Safari 16.4, shipped in March 2023.</p>
+<p>An older browser sends neither header on a plain request - a navigation, or a request
+with no <code class="docutils literal notranslate"><span class="pre">Origin</span></code>, such as an image - so the gate lets it through. Sent to the API, it
+carries no credential either: the token is in this page’s own <code class="docutils literal notranslate"><span class="pre">localStorage</span></code>, which a
+page on another port cannot read, and such a page cannot send <code class="docutils literal notranslate"><span class="pre">Authorization</span></code> without a
+CORS preflight, which this server never grants - and it is answered <code class="docutils literal notranslate"><span class="pre">401</span></code>, like any
+other refusal. Sent to a page, it is answered the page itself, which signs itself in from
+its own storage and asks for whatever its address names: a site that knows the port - the
+system picks a fresh one each run, unless <code class="docutils literal notranslate"><span class="pre">--port</span></code> names one - and the path of a file
+the project includes can so open a Files row’s Remove panel, whose plan re-analyses the
+project, running its plugins. Nothing is written without the reader’s own click. Use one
+of the browsers above.</p>
+<p>In every browser, the gate lets through by design a navigation marked
+<code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site:</span> <span class="pre">none</span></code>, which a browser sends for a navigation it begins itself - an
+address typed, or chosen from a bookmark - and an older browser marks such a navigation
+with nothing. Either way it lands, signed in, on the page its address names, just as above,
+as it did when the token was a cookie: a <code class="docutils literal notranslate"><span class="pre">SameSite=Strict</span></code> cookie rode the same
+navigations. Open <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>’s pages from the address it prints, or from the page itself,
+rather than from a link someone else wrote.</p>
 </section>
 <section id="running-it-in-a-container">
 <h2>Running it in a container<a class="headerlink" href="#running-it-in-a-container" title="Link to this heading"></a></h2>
@@ -234,16 +260,6 @@ listen beyond loopback.</p>
 <section id="what-it-does-not-defend-against">
 <h2>What it does not defend against<a class="headerlink" href="#what-it-does-not-defend-against" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><strong>Another server on</strong> <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>. A browser keeps no cookie apart by port, so the
-reader’s browser sends <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>’s cookie to any other server on <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> it is
-pointed at: on an address typed or bookmarked there, and on whatever a page served there
-asks of its own server - a page any site can send the browser to. The cookie’s value is
-the token, so whoever runs such a server - another user of this computer, a container or
-a virtual machine with a port on this computer’s loopback, a sandboxed application -
-receives the token, and can then do whatever the reader can do with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>: run code
-as the reader among it, since an edit can name a plugin of theirs, which the next
-analysis runs. So keep <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> in a browser profile of its own, browse nothing else
-on <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> in that profile, and stop <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> when done with it.</p></li>
 <li><p><strong>A local denial of service.</strong> <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> answers at most sixty-four connections at
 once, each on a thread of its own; the sixty-fifth is refused before a thread is even
 started for it, <code class="docutils literal notranslate"><span class="pre">503</span></code>. That keeps the machine’s threads from being exhausted, not the
@@ -253,16 +269,38 @@ thirty seconds is closed and gives its slot back, so holding one takes writing t
 least that often. A browser never comes near that limit by itself - six connections to
 one host, across every tab - so this is a risk from another local process or user, not
 from ordinary use.</p></li>
-<li><p><strong>The moment of launch.</strong> The browser is handed a one-time code instead of the
-long-lived token, so the token itself never sits on a command line. But a local process
-reading the launcher’s command line - polling <code class="docutils literal notranslate"><span class="pre">/proc</span></code>, on Linux - and presenting that
-code before the reader’s browser does is signed in with the token for as long as this
-run of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> lasts - not merely ahead of the reader once. Two things show this
-happened: the reader’s own browser lands on the sign-in page instead of the project, and
-presenting that same code again without the cookie its winner was given prints one line
-on the terminal, saying so and to restart <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> rather than open the address it
-printed - a restart takes the token from the winner, and the printed address would not.
-A code that expired unused signed nobody in, and prints nothing.</p></li>
+<li><p><strong>The moment of launch.</strong> <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/open</span></code> answers the page itself and spends nothing, so
+a browser’s prefetch of the launch address cannot spend the code; the page then posts
+the code, or the token from a pasted address, to <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code> and keeps the token it
+is answered. The browser is handed a one-time code instead of the long-lived token, so
+the token itself never sits on a command line. But a local process reading the
+launcher’s command line - polling <code class="docutils literal notranslate"><span class="pre">/proc</span></code>, on Linux - and presenting that code before
+the reader’s browser does is signed in with the token for as long as this run of
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> lasts - not merely ahead of the reader once. Two things show this happened:
+the reader’s own browser shows it is signed out instead of landing on the project, and
+presenting that same code again prints one line on the terminal, saying so and to
+restart <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> rather than open the address it printed - a restart takes the token
+from the winner, and the printed address would not. A code that expired unused signed
+nobody in, and prints nothing.</p></li>
+<li><p><strong>A server that used the same port before.</strong> The page’s origin is its address and port,
+and the browser keeps what a server on them left behind into any later run on that port.
+Unless <code class="docutils literal notranslate"><span class="pre">--port</span></code> names one, the system picks a port that is free when <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>
+starts, which an earlier server may still have used; a fixed <code class="docutils literal notranslate"><span class="pre">--port</span></code>, as a container
+needs, is the same origin every run. A service worker an earlier server registered there
+survives it, and nothing <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> answers removes it: it sees the launch’s code, the
+token the page is answered, and every request the page sends. So does a script an
+earlier server answered one of the compiled pages’ own hashed asset paths with, under a
+long <code class="docutils literal notranslate"><span class="pre">max-age</span></code>: the browser runs that cached script when a page <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> later
+serves names that path, because the content security policy admits any script from this
+origin and cannot tell one the browser cached from one <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> served. Either one can
+take the token. Open <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> in a browser profile of its own, one nothing else is
+browsed in, above all with a fixed <code class="docutils literal notranslate"><span class="pre">--port</span></code>.</p></li>
+<li><p><strong>The printed address, opened as something other than itself.</strong> <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> listens on
+IPv4 alone, never on <code class="docutils literal notranslate"><span class="pre">[::1]</span></code>, and prints a <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> address. Rewritten by the
+reader to <code class="docutils literal notranslate"><span class="pre">localhost</span></code>, the address may reach a different program listening on
+<code class="docutils literal notranslate"><span class="pre">[::1]</span></code> at the same port - a browser resolving <code class="docutils literal notranslate"><span class="pre">localhost</span></code> may try <code class="docutils literal notranslate"><span class="pre">[::1]</span></code> first -
+and the token in a pasted address then goes to that program, which also owns the
+<code class="docutils literal notranslate"><span class="pre">localhost</span></code> origin’s storage. Open the address exactly as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> prints it.</p></li>
 <li><p><strong>Transport security.</strong> <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> speaks plain HTTP, trusting the loopback interface
 or, in a container, the host’s own. Nothing here signs or encrypts what crosses it.</p></li>
 </ul>
@@ -277,9 +315,10 @@ the repository, to report a vulnerability privately.</p>
 <p>Every request that reaches a handler has already passed the gate above. The table below
 adds, route by route, what each one does once it has: whether it writes a file of the open
 project, opens a project, may run a plugin’s code, or may hold its answer open, waiting
-for something to change. It lists the api alone: <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/open</span></code> trades the token or a code
-for the cookie, and is not checked by the gate; the pages need the cookie, as every route
-below does.</p>
+for something to change. It lists the api alone: <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/open</span></code>, which the gate does not
+check, answers the page, and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code> trades a code or the token for the token;
+neither needs a credential, and the <code class="docutils literal notranslate"><span class="pre">POST</span></code> passes the gate and a <code class="docutils literal notranslate"><span class="pre">POST</span></code>’s rules. The
+pages need none either; every route below needs the token as a header.</p>
 <table class="docutils align-default" id="gui-security-routes">
 <colgroup>
 <col style="width: 10.0%" />

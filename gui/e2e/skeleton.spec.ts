@@ -142,6 +142,12 @@ test("without a project the start page lists the ones found and opens the one ch
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
 });
 
+/** The demo's arrows, read once off its served canvas (Chrome on the Linux development PC, at
+ * 13e805f) and pinned literally, as values.spec.ts pins its points: Controller to UserInterface
+ * and to EventLogger; SensorHub to Controller, to UserInterface and to EventLogger; UserInterface
+ * to EventLogger; and EventLogger to UserInterface. */
+const DEMO_ARROWS = 7;
+
 test("the demo opens on a canvas of its four modules", async ({ page, gui }) => {
   await page.goto(gui.address);
   const canvas = page.getByRole("region", { name: "Modules" });
@@ -150,10 +156,14 @@ test("the demo opens on a canvas of its four modules", async ({ page, gui }) => 
     await expect(canvas.getByRole("button", { name, exact: true })).toBeVisible();
   }
   // Every arrow is its own focusable group, named by the sentence a reader hears; the demo's
-  // components all agree with each other until a journey below changes one.
-  const arrows = await canvas.getByRole("group").all();
-  expect(arrows.length).toBeGreaterThan(0);
-  for (const arrow of arrows) {
+  // components all agree with each other until a journey below changes one. Counted with
+  // `toHaveCount`, which waits for every one of them, not read once with `.all()`, which counts
+  // whatever is drawn when it asks: today the arrows come in the same frame as the module
+  // buttons (measured), because `nodesOf` (lib/canvas.ts) hands React Flow every node already
+  // measured - but nothing this journey waited for said so.
+  const arrows = canvas.getByRole("group");
+  await expect(arrows).toHaveCount(DEMO_ARROWS);
+  for (const arrow of await arrows.all()) {
     await expect(arrow).toHaveAccessibleName(/agreed$/);
   }
 });

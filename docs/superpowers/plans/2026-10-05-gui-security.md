@@ -17,6 +17,33 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-05-gui-security-design.md`. Read it before any task. Where this plan departs from it, the departure is a ruling in *Rulings taken* at the end, with its reason.
 
+> **As built** (executed 2026-10-05 to 2026-10-07; the departures from the task texts, each a ruling under *Rulings taken*):
+> - **The launch is a single-use code over http, not a `file://` page** (P18-8 to P18-10). A snap- or Flatpak-packaged browser, Ubuntu's default among them, has a private `/tmp` and could not read a launch file there. `launched` hands the opener `http://127.0.0.1:<port>/open?code=<code>`, good for one sign-in within 60 s. The printed address keeps the token, for pasting. A code presented again after it signed a browser in prints a warning on the terminal. The Architecture's fourth bullet describes the first design.
+> - **A network path is refused unless it lies under a directory `ddd gui` serves** (P18-12), matched as text before anything resolves it, so a project on a mapped drive keeps working.
+> - **`runs_plugins` marks five routes:** open, compare, edit, undo's `POST` and files-plan (P18-13).
+> - **Task 4's departures** stand (P18-16).
+> - **Task 6's tests depart from the brief's** in four ways, each in its report. `REFUSAL_SECONDS` is named. Spec §6's "100 headers" is 99: the standard library counts the blank line that ends them.
+> - **A page's path is read as plain names and never resolved** (P18-18 to P18-22). Three reviews in a row each found another way `resolve()` raised, or reached outside the pages, on some Python or OS.
+> - **One task was added, 7b** (P18-23 to P18-28). It made the hostile walk of the `POST` bodies honest: each case now starts from the file as found. It then fixed what that walk, a survey of deep files, and its reviews found:
+>   - a value too deep to lay out;
+>   - a file nested deeper than its reply can carry, now caught by a net over every reply at Windows' serializer limit of 99 (`ddd.gui.depth`);
+>   - a pointer index past 19 digits;
+>   - a grid an init cannot fill;
+>   - Windows' device names;
+>   - a created name too long to stage, or looked up before it was judged.
+> - **The page promises spec §5's own guarantee** (P18-25): no malformed input, in a query, a body or a page's path, is answered 500. It does not promise "never a 500" for every file a project holds.
+> - **The final review's one wave** (P18-30, P18-31):
+>   - the security page names the other server on `127.0.0.1`;
+>   - every request path is resolved through one guard, which catches what Python 3.12 raises;
+>   - Windows' device names and reserved characters are refused;
+>   - P18-10 is built;
+>   - the single-use spend is pinned;
+>   - a non-finite value an edit would write is refused;
+>   - a `POST` answered before its body is read closes its connection;
+>   - a failure's traceback is printed escaped;
+>   - the name rules live in `ddd.file_names`.
+> - **Task 9 ran after that wave** (P18-29), so its gate ran once, on what is pushed.
+
 ## Global Constraints
 
 Every task's requirements include this section.
@@ -1288,23 +1315,111 @@ These are spec §2's, on the Linux development PC, against master `a1da6ce`, on 
 
 ### Probes, after
 
-Filled in by Task 9.
+`after.py`, kept in the session's scratchpad, asked spec §2's probes again, and some the reviews found beside them:
+- **machine:** the Linux development PC, an Intel Core i9-14900HX with Python 3.14.4;
+- **commit:** `d32212f`, on 2026-10-07;
+- **setup:** `ddd gui demo-after/demo.ddd.json --no-browser` over a fresh copy of `examples/demo`, signed in through the address it printed.
+
+"Before" is spec §2's measurement at `a1da6ce`. A dash marks a probe spec §2 did not ask. "By reading" marks an answer a review found in code that is unchanged since `a1da6ce`, but that no run at `a1da6ce` measured.
+
+| asked | before | after |
+| --- | --- | --- |
+| `GET /api/compare?baseline=<the demo's description>`, with `Sec-Fetch-Site: same-site` | 200, the baseline analysed | 403, "ddd gui answers its own page alone, opened from the address it printed" |
+| the same without Fetch Metadata, as `curl` asks it | — | 200 |
+| `GET /api/state`, with `Origin: http://127.0.0.1:9999` | 200 | 403, the same sentence |
+| `GET /api/findings?file=%00` | 500 | 400, "findings takes ?file= as a file's path" |
+| `?offset=` or `?limit=` of 4,301 digits | 500 | 400, "findings takes ?offset= as a whole number from 0", and `?limit=`'s own |
+| `GET /api/state?after=` of 4,301 digits | 500 | 200 at once: never refused, by design |
+| `GET /api/settle?...&raw=` holding 3,000 nested arrays | 500 | 400, the value refused for its depth |
+| a lone surrogate, `%ED%A0%80`, in `?file=` | 200 | 400 |
+| `raw=1e999` | 400 | 400, "'1e999' is not one json value: '1e999' is not a finite number; DDD has no representation for it" |
+| 20,000 nested arrays, percent-encoded (120 KB) | 414 | 414 |
+| 20,000 nested arrays as bare brackets (40 KB) | — | 400 |
+| `?file=//server/share/x` | — | 400 |
+| a page path holding a NUL (`/%00`, `/a%00b.js`), a name of 300 characters, `/%5C%5Chost%5Cshare%5Cx` | — (`/%00` 500, by reading) | 200, the page itself |
+| `GET http://[/` and `GET http://[x]/` | — (unanswered, with a traceback, by reading) | 400, "the request's target cannot be read" |
+| `POST /api/open` with a `Content-Length` of 4,301 nines, then of 4,301 zeros | — (500, by reading) | 413, then 400 for an empty body |
+| 300 long polls at once, each client giving up after 20 s | threads 31 → 221 while open → 293 after | 3 → 67 at the peak (3 of its own, plus 64) → 3 eight seconds later; 236 answered 503 at once, 64 held |
+| `ddd gui` started with `BROWSER` naming a stub | the token in the stub's arguments, and in its `/proc/<pid>/cmdline` | `/open?code=<code>` alone; the code signed in once (200), and was refused (403) when presented again, with the terminal's warning |
+
+The server's own threads before the polls were 31 in spec §2's run, 4 in Task 6's at `7d7aaed`, and 3 here. Spec §2's run did not record why.
 
 ### Dependency audit
 
-Filled in by Task 7.
+Task 7 ran the audit once, on 2026-10-06, at `5c81b4e`.
+
+**pip-audit**, over the development environment frozen. urllib3 2.7.0 is pulled in by sphinx through requests; nothing in `ddd` imports it. Three findings, all fixed in 2.8.0:
+
+| Advisory | What | Severity |
+| --- | --- | --- |
+| GHSA-vxq7-64xx-v4gw (CVE-2026-97689) | unbounded buffering of an unterminated chunk-size line | High, CVSS v4 8.9 |
+| GHSA-8988-9cw3-xx77 (CVE-2026-97687) | target-server TLS settings can leak onto an HTTPS proxy connection | High, CVSS v4 7.6 |
+| GHSA-gh4c-6fx4-qh6g (CVE-2026-97688) | infinite loop decoding a chunked and deflated response with trailing bytes | Moderate, CVSS v4 6.9 |
+
+urllib3 was upgraded in the local `.venv` only. No requirements file names it, so a fresh install resolves 2.8.0 itself.
+
+**npm audit**, over `gui/package-lock.json`:
+
+| Package | Advisory | Severity | Outcome |
+| --- | --- | --- | --- |
+| source-map-js 1.2.1 | GHSA-68fv-2mgg-jv7q, an event-loop denial of service | High, CVSS v3.1 7.5 (v4 8.7) | fixed: `npm audit fix` raised it to 1.2.2, pinned in the lockfile |
+| braces 3.0.3 | GHSA-vfj7-8cjw-p6xm, stack exhaustion through deeply nested patterns | High | left open: no fix exists. It reaches the tree through micromatch 4.0.8, fast-glob 3.3.3 and globby 14.1.0 from `@ladle/react` 5.1.1, a development dependency; npm counts the chain as five findings |
+
+The raw outputs went with the task's cleanup. The review re-checked every advisory against GitHub's advisory database (`gh api /advisories/<id>`) the same day: package, affected range, fix and severity all match.
 
 ## Progress log
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
+| 1 | `ec41a5c`, `5a4dfed`, `16e7b97` | opus; two fix rounds | the launch code (P18-8, P18-9), not the `file://` page; P18-7 |
+| 2 | `6b9a818`, `8d70e74` | opus; one round | the gate; P18-2, P18-11 |
+| 3 | `f4b8f69`, `0030799` | opus; one round | the route table and value types; P18-12 to P18-14 |
+| 4 | `02610a6` | opus; approved | the plan routes; P18-15, P18-16 |
+| 5 | `aad09e0`, `7d7aaed` | sonnet; one round | the walk: 1,331 cases, none 500 |
+| 6 | `8210dbf`, `5c81b4e` | opus; approved, one round | the cap; P18-17 |
+| 7 | `b05a258`, `7649ec5`, `ebcd7f8`, `be4d6d0`, `695a2c9` | opus; four rounds, the fourth by a fresh implementer | SECURITY.md, the page, the audit; four server fixes; P18-18 to P18-22 |
+| 7b (added) | `03348ef`, `932dd44`, `04b03cc`, `3fa37a0`, `9a73f8c` | opus; three rounds | the honest walk and what it found; P18-23 to P18-28 |
+| 8 | `8f28ca0` | sonnet; approved | the journey: a page on another port; red with the gate out |
+| final review | `61d09d3` to `13f8b2c` (14), `d32212f` | opus; one wave, one re-review | P18-30, P18-31 |
+| 9 | this close-out | — | the probes, the gate; P18-29 |
 
 ## What was left open
 
-Filled in as the work goes. Known before execution:
-- **Untrusted projects** (spec §10): no gate before a project's plugins run.
-- **A browser older than Chrome 76, Firefox 90 or Safari 16.4** sends neither `Sec-Fetch-Site` nor, on a plain `GET`, `Origin`. A page on another port can still make such a browser ask one `GET`.
+- **Untrusted projects** (spec §10). Nothing stands before a project's plugins run.
+- **Another server on `127.0.0.1` receives the cookie, and so the token** (the final review's I1).
+  - **Why it gets the cookie.** Cookies are not isolated by port. A page the reader's browser lands on at another port of `127.0.0.1` can fetch itself, and the `SameSite=Strict` cookie rides along.
+  - **What that gives whoever runs it.** They can then run code as the reader, through an edit naming a plugin of theirs.
+  - **Where it stands.** The security page says so, and what to do about it. Closing it needs a credential carried by a header from origin-scoped storage, not a cookie: a later part.
+- **Older browsers.**
+  - A browser older than Chrome 76, Firefox 90 or Safari 16.4 sends no `Sec-Fetch-Site`. A page on another port can still make it ask a `GET`, which is answered but cannot be read.
+  - A browser older than SameSite itself (Chrome 51, Firefox 60, Safari 12) sends the cookie for any site.
+- **The launch-code race** (P18-9). A local process that reads the opener's command line, and presents the code before the browser does, is signed in with the token. The terminal's warning is how it shows.
 - **A local process can fill the 64 connections,** and so deny the page its server.
+- **Nothing of this part ran on Windows.**
+  - CI's windows legs are the first run of these tests:
+    - the socketpair cap tests;
+    - the long-name tests, which need `LongPathsEnabled` (the runner images set it);
+    - the junction-loop tests;
+    - the device rules.
+  - P18-12's mapped-drive case still needs a check by hand on Windows: part 19's Windows run, or before merge.
+- **A refused `POST` on Windows or macOS** (P18-31). A `POST` answered before its body is read closes its connection. With body bytes still unread, the reset can destroy the `401` before the browser reads it, and the page then says `ddd gui` is not answering until its next poll. Draining the declared body is part 19's, tested against Edge.
+- **An existing file named 244 to 255 bytes long** answers `500 unwritable` when edited (P18-27), because its staged name is too long.
+- **The standard library's own error answers.**
+  - Its `400`, `414`, `431`, `501` and `505` carry neither the security headers nor `no-store`, and the `421` carries no `no-store`.
+  - Spec §2's "every response carries a content security policy" was already inexact at `a1da6ce`.
+- **The listen backlog** stays socketserver's 5.
+- **A malformed description file** may still fail a view with a `500`. The project's files are trusted (spec §1). Those found were fixed: deep files and inits, and grids an init cannot fill.
+- **The route table** carries four flags, not spec §7's "what it reads" (P18-30).
+- **The dependency audit's leftovers.**
+  - The `braces` chain under `@ladle/react` has no fix: dev only.
+  - urllib3 2.8.0 is the local `.venv`'s alone.
+- **A chunked `POST`'s body** is never read, though it counts as read. It is harmless: it has already passed the gate and the cookie.
+- **Minor items the final review triaged to leave,** each with its reason in its report. Among them:
+  - `Sec-Fetch-Site` and `Origin` untested together;
+  - compare echoing a baseline's backslashes;
+  - `held()` dropping every null;
+  - `depth.py` doing file I/O beside its counting;
+  - the repeated `_error(409 if ... else 500, ...)`.
 
 ## Rulings taken
 
@@ -1320,6 +1435,41 @@ Taken while planning; execution adds its own below them.
 8. **The routes are 35, not the 34 the inventory counted.** `_ROUTES` has 35 paths, and `/api/undo` takes both `GET` and `POST`.
 
 ### Taken during execution
+
+Each with what it costs if wrong; the commits that carry them say why.
+
+- **P18-1.** The baseline gate ran before Task 1, alone on the machine — cost if wrong: twenty minutes.
+- **P18-2.** One helper names this server's own origins, for both `_from_this_page` and `_from_elsewhere` — cost if wrong: none.
+- **P18-3.** An action route's query model is a `RootModel` over its discriminated union, so every `Route.query` is a model the dispatcher validates the same way — cost if wrong: a wrapper class per action route.
+- **P18-4.** `Route.answer` is typed `Callable[[Api, Any, Any], Reply]`, since a tuple of differently parameterised routes erases a generic `Route[Q, B]` — cost if wrong: mypy cannot catch a handler paired with another route's model; the per-route tests do.
+- **P18-5.** Findings' `file` and `check` keep the blank, filtering to nothing, as `a1da6ce` answers — cost if wrong: one wrapper.
+- **P18-6.** Ruling 4 changes one pinned test, not two — cost if wrong: none.
+- **P18-7.** Every dispatch deletes only the paths it created, each by its exact path, never by a glob outside the scratchpad, after a glob in /tmp took a file this work never made — cost if wrong: none.
+- **P18-8.** The browser is launched on a single-use code over http (`/open?code=`, one use, 60 s), not on a `file://` page, which Ubuntu's snap and Flatpak browsers cannot read from a private /tmp; the printed address keeps the token, for pasting — cost if wrong: a process that reads the opener's command line can race the browser for the code.
+- **P18-9.** P18-8's cost restated: the race's winner holds the token for the server's life, so the terminal says when a code is presented again — cost if wrong: one line nobody reads.
+- **P18-10.** The warning prints only for a code that already signed a browser in, and says to restart `ddd gui` (built in the final wave) — cost if wrong: an expired code goes unremarked.
+- **P18-11.** Task 2's fix round took its Important and five Minors together — cost if wrong: a slightly larger round.
+- **P18-12.** A network or device form is refused only when it names no path under a directory `ddd gui` serves, matched as text before anything resolves it, so a project on a mapped drive keeps working — cost if wrong: a mapped-drive project refused, or a network path under the served directories resolved; to be checked by hand on Windows.
+- **P18-13.** `runs_plugins` is true for open, compare, edit, undo's `POST` and files-plan — cost if wrong: none; a broader yes on the page.
+- **P18-14.** Task 3's fix round took its Important, five Minors, P18-12 and P18-13 together — cost if wrong: a larger round.
+- **P18-15.** Three items of Task 3's re-review (dot segments in a network form, a served directory ending in a separator, `lower()` for case) went into Task 4 — cost if wrong: Task 4 slightly larger.
+- **P18-16.** Task 4's departures stand: `1e999` in a plan's json answers the query's 400, the shared plans' request types are `Held<…>`, and three refusals' orders — cost if wrong: a reader typing `1e999` sees parse_raw's sentence where the plan's stood.
+- **P18-17.** Task 6 took one fix round though approved, to pin that the accepting thread never waits and that the drain takes a browser's whole request — cost if wrong: one round's time.
+- **P18-18.** `GET /%00` answering 500 was fixed in `_page`, keeping the page's promise — cost if wrong: one guard.
+- **P18-19.** Task 7's fix round took its six Importants and ten Minors; the audit was not re-run, the review having re-checked every advisory — cost if wrong: the raw audit outputs are not on disk.
+- **P18-20.** A long page name (500 on 3.12/3.13) and a malformed absolute-form target (unanswered, with a traceback, no token needed) were fixed in the server — cost if wrong: two guards.
+- **P18-21.** `Content-Length` is bounded before `int()` sees it — cost if wrong: one more guard.
+- **P18-22.** `_page` reads a path as plain names and resolves nothing it names, after three reviews each found another way `resolve()` raised or reached outside — cost if wrong: a page asset whose name holds a colon or a backslash is answered the page (the compiled pages hold none).
+- **P18-23.** Task 7b was added after Task 7: the honest body walk, and what it finds — cost if wrong: Task 7 closed with one sentence true only after 7b.
+- **P18-23a.** A value too deep to lay out is refused in the edit engine, the edit's own 409, so no refusal the page shows moves — cost if wrong: a 409 where a model would say 400.
+- **P18-24.** A file nested deeper than its reply can carry is refused 409 naming it, and an edit's value past 64 levels is refused — cost if wrong: a description past ~250 levels, which `ddd check` reads, refused by the page.
+- **P18-25.** The depth bounds are Windows' 99 on every OS, with a net over every reply; a long pointer index and a misfit grid are refused; the page's promise is spec §5's own, not "never a 500" for every file a project holds — cost if wrong: a description past 99 levels refused on Linux too.
+- **P18-26.** The misfit refusal narrowed to what a grid cannot carry; the net's pin reads api.py's syntax tree; a created name too long to stage is refused — cost if wrong: a 244-255-character name refused rather than attempted.
+- **P18-27.** The stricter pin stands, and an existing file named too long to stage stays a 500 — cost if wrong: a future api.py dumps only through `written()`.
+- **P18-28.** A created file's name is judged before anything looks it up, and Windows' device names are refused for it, by one rule — cost if wrong: one more round on 7b.
+- **P18-29.** Task 9's gate and this close-out ran after the final review's wave, so the gate ran once, on what is pushed — cost if wrong: figures one or more commits older than the head, cited with their commit.
+- **P18-30.** The final wave took the review's brief in order; the route table's "what it reads" column (spec §7) stays out — cost if wrong: a reader cannot see on the page what each route reads.
+- **P18-31.** The wave's two load-bearing residuals (a test's colon in a drive's place; the device rule missing `COM1:`) were fixed by the controller in one commit; draining a refused `POST`'s body is part 19's, where Windows shows the reset — cost if wrong: on Windows or macOS one `POST` after a restart reads "not answering" until the next poll.
 
 ## Appendix A: every route's query, as `a1da6ce` reads it
 

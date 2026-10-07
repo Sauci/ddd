@@ -409,6 +409,17 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
             return
+        if url.path == "/open":
+            # A POST alone: GET /open was answered above, before the gate. The sign-in needs
+            # no credential, being where the page gets one, but it is a POST like any other:
+            # this server's own page, as json.
+            if not self._from_this_page():
+                self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
+                return
+            body = self._body()
+            if body is not None:
+                self._exchange(body)
+            return
         if not self._signed_in():
             if api:
                 self._send_json(401, {"error": "unauthorised", "message": _SIGN_IN})
@@ -473,7 +484,44 @@ class _Handler(BaseHTTPRequestHandler):
         page = SIGNED_IN_PAGE.format(target=target).encode("utf-8")
         self._send(200, page, CONTENT_TYPES[".html"], headers)
 
+    def _exchange(self, body: bytes) -> None:
+        """``POST /open``: a launch code, or the token itself, traded for the token the page
+        keeps and sends as ``Authorization: Bearer``. A code is spent the moment its value
+        matches. One that already signed a browser in prints the terminal's warning when it is
+        presented again, since the page that won it cleans it from its address and never
+        presents it twice."""
+        secret = _secret_of(body)
+        if secret is None:
+            self._send_json(400, {"error": "bad-request", "message": _OPEN_TAKES})
+            return
+        kind, given = secret
+        if kind == "token":
+            signed_in = hmac.compare_digest(given.encode("utf-8"), self._gui.token.encode("utf-8"))
+        else:
+            signed_in = self._gui.redeem_code(given)
+            if not signed_in and self._gui.code_redeemed(given):
+                print(_CODE_REUSED, file=sys.stderr)
+        if signed_in:
+            self._send_json(200, {"token": self._gui.token})
+        else:
+            self._send_json(403, {"error": "forbidden", "message": _SIGN_IN})
+
     def _signed_in(self) -> bool:
+        """Whether the request carries the token: as ``Authorization: Bearer``, which the page
+        is to send, or in this server's cookie, which ``/open`` still sets until the page sends
+        the header."""
+        return self._bearer() or self._cookie_holds_token()
+
+    def _bearer(self) -> bool:
+        """Whether the request carries this server's token as ``Authorization: Bearer``: the
+        scheme in any case, as HTTP has it, then one space, then the token, compared in
+        constant time."""
+        scheme, _, given = self.headers.get("Authorization", "").partition(" ")
+        return scheme.lower() == "bearer" and hmac.compare_digest(
+            given.encode("utf-8"), self._gui.token.encode("utf-8")
+        )
+
+    def _cookie_holds_token(self) -> bool:
         """Whether the request carries this server's cookie with the token in it.
 
         The header is read by hand: the browser sends this server every cookie any app on
@@ -605,6 +653,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 _ELSEWHERE: Final = "ddd gui answers its own page alone, opened from the address it printed"
 _SIGN_IN: Final = "open the address ddd gui printed in its terminal"
+_OPEN_TAKES: Final = "/open takes json naming one of code and token, and nothing else"
 _FORBIDDEN: Final = "only this server's own page may change anything, and only as json"
 _PAGES_ARE_READ: Final = "pages are read with GET"
 _NOT_A_TARGET: Final = "the request's target cannot be read"
@@ -615,6 +664,23 @@ _CODE_REUSED: Final = (
     "first and now holds the token itself, so restart ddd gui rather than open the address it "
     "printed"
 )
+
+
+def _secret_of(body: bytes) -> tuple[str, str] | None:
+    """What ``POST /open`` was given: ``("code", <code>)`` or ``("token", <token>)``, or
+    ``None`` for anything but a json object of exactly one of the two, its value text. A body
+    nested deeper than python's own parser goes raises ``RecursionError``, which is no
+    ``ValueError``, and is refused as any other malformed body."""
+    try:
+        given = json.loads(body)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(given, dict) or len(given) != 1:
+        return None
+    ((kind, value),) = given.items()
+    if kind not in ("code", "token") or not isinstance(value, str):
+        return None
+    return kind, value
 
 
 def _shown(text: str) -> str:

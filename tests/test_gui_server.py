@@ -43,6 +43,8 @@ from ddd.gui.server import (
     _CODE_REUSED,
     _ELSEWHERE,
     _FORBIDDEN,
+    _OPEN_TAKES,
+    _SIGN_IN,
     BUSY,
     CODE_SECONDS,
     MAX_BODY,
@@ -165,6 +167,26 @@ def ask(
     data = response.read()
     connection.close()
     return response, data
+
+
+def exchange(
+    server: GuiServer, given: object, **keywords: Any
+) -> tuple[http.client.HTTPResponse, bytes]:
+    """``POST /open`` as the page posts it: from this server's own origin, as json, with no
+    credential, since the sign-in is where the page gets one."""
+    return ask(
+        server,
+        "POST",
+        "/open",
+        body=json.dumps(given).encode("utf-8"),
+        origin=f"http://127.0.0.1:{server.port}",
+        signed_in=False,
+        **keywords,
+    )
+
+
+REFUSED: Final = {"error": "forbidden", "message": _SIGN_IN}
+"""What ``POST /open`` answers a secret that signs nothing in."""
 
 
 def raw_answer(server: GuiServer, sent: bytes) -> tuple[int, bytes]:
@@ -523,6 +545,201 @@ class TestSigningIn:
         sent = {"Cookie": f"{cookie(server)}={server.token}; {cookie(server)}=stale"}
         response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=sent)
         assert response.status == 200
+
+
+class TestTheSignInExchange:
+    """``POST /open``: the token, or a launch code, traded for the token the page then keeps
+    and sends as ``Authorization: Bearer``."""
+
+    def test_the_token_is_answered_with_itself(self, server) -> None:
+        response, data = exchange(server, {"token": server.token})
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
+        assert response.getheader("Cache-Control") == "no-store"
+        assert response.getheader("Set-Cookie") is None
+
+    def test_a_launch_code_is_traded_for_the_token_once(self, server, capsys) -> None:
+        code = server.issue_code()
+        response, data = exchange(server, {"code": code})
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
+        assert capsys.readouterr().err == ""
+        again, data = exchange(server, {"code": code})
+        assert (again.status, json.loads(data)) == (403, REFUSED)
+        assert capsys.readouterr().err == f"{_CODE_REUSED}\n"
+
+    def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
+        code = server.issue_code()
+        response, data = exchange(server, {"code": "wrong"})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
+        assert capsys.readouterr().err == ""
+        assert exchange(server, {"code": code})[0].status == 200
+
+    def test_the_tokens_own_value_is_no_code(self, server) -> None:
+        server.issue_code()
+        response, data = exchange(server, {"code": server.token})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
+
+    def test_a_code_to_a_server_that_issued_none_is_refused_without_a_word(
+        self, server, capsys
+    ) -> None:
+        response, data = exchange(server, {"code": "anything"})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
+        assert capsys.readouterr().err == ""
+
+    def test_an_expired_code_is_refused_without_a_word(self, project_file, pages, capsys) -> None:
+        clock = FakeClock()
+        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
+            code = started.issue_code()
+            clock.now += CODE_SECONDS
+            response, data = exchange(started, {"code": code})
+            assert (response.status, json.loads(data)) == (403, REFUSED)
+            assert capsys.readouterr().err == ""
+
+    def test_a_code_still_signs_in_a_moment_before_its_60_seconds(
+        self, project_file, pages
+    ) -> None:
+        clock = FakeClock()
+        for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
+            code = started.issue_code()
+            clock.now += CODE_SECONDS - 1
+            assert exchange(started, {"code": code})[0].status == 200
+
+    def test_a_wrong_token_is_refused(self, server) -> None:
+        response, data = exchange(server, {"token": "wrong"})
+        assert (response.status, json.loads(data)) == (403, REFUSED)
+
+    @pytest.mark.parametrize(
+        "given",
+        [{}, {"code": "a", "token": "b"}, {"code": 1}, {"other": "x"}, ["code"], "code", None],
+        ids=["empty", "both", "a-number", "a-stray-key", "a-list", "a-string", "null"],
+    )
+    def test_anything_but_one_secret_is_refused(self, server, given) -> None:
+        response, data = exchange(server, given)
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+
+    def test_the_refusal_says_what_open_takes(self, server) -> None:
+        """Pinned by its literal text: comparing against the imported ``_OPEN_TAKES`` instead
+        would drift along with any rewording of it, and catch nothing."""
+        _, data = exchange(server, {})
+        assert json.loads(data) == {
+            "error": "bad-request",
+            "message": "/open takes json naming one of code and token, and nothing else",
+        }
+
+    @pytest.mark.parametrize(
+        "body",
+        [b"code=x", b"\xc3\x28", b"[" * 100_000 + b"]" * 100_000],
+        ids=["a-form", "not-utf-8", "nested-past-the-parser"],
+    )
+    def test_a_body_that_is_no_json_object_is_refused_not_failed(self, server, body) -> None:
+        response, data = ask(
+            server,
+            "POST",
+            "/open",
+            body=body,
+            origin=f"http://127.0.0.1:{server.port}",
+            signed_in=False,
+        )
+        assert (response.status, json.loads(data)) == (
+            400,
+            {"error": "bad-request", "message": _OPEN_TAKES},
+        )
+
+    def test_another_page_is_refused_at_the_gate(self, server) -> None:
+        """Refused as the gate refuses every path outside the API, with the sign-in page: the
+        gate is as it was, and ``/open`` is no ``/api/`` path."""
+        response, data = exchange(
+            server, {"token": server.token}, headers={"Sec-Fetch-Site": "same-site"}
+        )
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
+        assert response.getheader("Content-Type") == "text/html; charset=utf-8"
+
+    @pytest.mark.parametrize(
+        ("origin", "kind"),
+        [(None, "application/json"), ("own", "text/plain")],
+        ids=["no-origin", "not-json"],
+    )
+    def test_it_is_a_post_like_any_other(self, server, origin, kind) -> None:
+        response, data = ask(
+            server,
+            "POST",
+            "/open",
+            body=json.dumps({"token": server.token}).encode("utf-8"),
+            origin=None if origin is None else f"http://127.0.0.1:{server.port}",
+            content_type=kind,
+            signed_in=False,
+        )
+        assert (response.status, json.loads(data)) == (
+            403,
+            {"error": "forbidden", "message": _FORBIDDEN},
+        )
+
+    def test_a_body_past_the_limit_is_refused_before_it_is_read(self, server) -> None:
+        """At most ``MAX_BODY``, as every ``POST`` here: refused on its length, and its
+        connection closed, since the body is left unread on it."""
+        response, data = exchange(
+            server, {"token": server.token}, headers={"Content-Length": str(MAX_BODY + 1)}
+        )
+        assert (response.status, json.loads(data)) == (
+            413,
+            {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"},
+        )
+        assert response.getheader("Connection") == "close"
+
+
+class TestTheBearerHeader:
+    """The API takes the token as ``Authorization: Bearer``: the scheme in any case, as HTTP
+    has it, then one space, then the token, compared in constant time."""
+
+    @pytest.mark.parametrize("scheme", ["Bearer", "bearer", "BEARER"])
+    def test_the_token_as_a_bearer_signs_a_request_in(self, server, scheme) -> None:
+        response, _ = ask(
+            server,
+            "GET",
+            "/api/session",
+            signed_in=False,
+            headers={"Authorization": f"{scheme} {server.token}"},
+        )
+        assert response.status == 200
+
+    @pytest.mark.parametrize(
+        "spelled",
+        ["Bearer wrong", "Bearer  {token}", "Basic {token}", "{token}", "Bearer"],
+        ids=["a-wrong-token", "two-spaces", "another-scheme", "no-scheme", "no-token"],
+    )
+    def test_anything_else_is_unauthorised(self, server, spelled) -> None:
+        response, data = ask(
+            server,
+            "GET",
+            "/api/session",
+            signed_in=False,
+            headers={"Authorization": spelled.format(token=server.token)},
+        )
+        assert (response.status, json.loads(data)) == (
+            401,
+            {"error": "unauthorised", "message": _SIGN_IN},
+        )
+
+    def test_no_cross_origin_preflight_is_answered(self, server) -> None:
+        """A page on another origin can send ``Authorization`` only past a CORS preflight,
+        which this server answers with nothing a browser accepts."""
+        response, _ = ask(
+            server,
+            "OPTIONS",
+            "/api/session",
+            signed_in=False,
+            headers={
+                "Origin": "http://127.0.0.1:9",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        assert response.status == 501
+        assert [
+            n for n, _ in response.getheaders() if n.lower().startswith("access-control-")
+        ] == []
 
 
 class TestWhoMayAsk:

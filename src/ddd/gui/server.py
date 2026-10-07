@@ -339,6 +339,11 @@ class _Handler(BaseHTTPRequestHandler):
     timeout = IDLE_SECONDS
     """Applied to the socket, so a connection nobody is using does not hold its thread."""
 
+    _body_read = False
+    """Whether the request being answered has had its body read. A ``POST`` answered before it
+    has - refused at the gate, too long, of no length - is answered ``Connection: close`` and
+    its connection closed: the body left on it would be read as the next request."""
+
     def do_GET(self) -> None:  # the name the base class dispatches GET to
         self._answer("GET")
 
@@ -362,6 +367,7 @@ class _Handler(BaseHTTPRequestHandler):
         mid-answer is let go as before: there is nobody left to answer, and nothing worth
         printing, whether it closed the connection or only stopped reading it.
         """
+        self._body_read = False
         try:
             self._route(method)
         except (ConnectionError, TimeoutError):
@@ -529,7 +535,9 @@ class _Handler(BaseHTTPRequestHandler):
             message = f"a request body is at most {MAX_BODY} bytes"
             self._send_json(413, {"error": "too-large", "message": message})
             return None
-        return self.rfile.read(int(significant))
+        body = self.rfile.read(int(significant))
+        self._body_read = True
+        return body
 
     def _page(self, path: str) -> None:
         """Answer the file of the compiled pages a path names, or ``index.html``, whose router
@@ -573,8 +581,13 @@ class _Handler(BaseHTTPRequestHandler):
     def _send(
         self, status: int, data: bytes, kind: str, headers: dict[str, str] | None = None
     ) -> None:
+        own = dict(headers or {})
+        if self.command == "POST" and not self._body_read:
+            # Sent as a header, which also has the base class close the connection once this is
+            # written.
+            own["Connection"] = "close"
         self.send_response(status)
-        for name, value in _head(kind, len(data), headers).items():
+        for name, value in _head(kind, len(data), own).items():
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)

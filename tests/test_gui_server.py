@@ -1202,6 +1202,112 @@ class TestAMalformedAbsoluteFormTarget:
         assert status_of(server, sent) == 401
 
 
+def every_answer(server: GuiServer, sent: bytes) -> bytes:
+    """Everything ``server`` writes back to ``sent``, on a connection of its own that asks to be
+    kept open, read until the server closes it - or until five seconds pass with nothing more,
+    the server holding it open for another request."""
+    received = b""
+    with socket.create_connection(("127.0.0.1", server.port), timeout=5) as connection:
+        connection.sendall(sent)
+        try:
+            while chunk := connection.recv(65536):
+                received += chunk
+        except TimeoutError:
+            pass
+    return received
+
+
+class TestABodyLeftUnread:
+    """A ``POST`` refused before its body is read leaves that body on the connection, where the
+    server read it as the next request and answered that too, keeping the connection open.
+    Such a refusal closes the connection instead, and says so (``Connection: close``): one
+    answer, then nothing. The smuggled request carries no cookie, so this was never more than
+    a confusion - but the body is anyone's text."""
+
+    SMUGGLED: Final = b"GET /api/session HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+
+    @pytest.fixture(autouse=True)
+    def briefly_idle(self, monkeypatch) -> None:
+        """A connection left open closes after half a second idle, rather than thirty, so that
+        reading one to its end - kept open, or held for a request that never comes - ends
+        soon either way."""
+        monkeypatch.setattr(module._Handler, "timeout", 0.5)
+
+    @pytest.mark.parametrize(
+        ("target", "headers", "status"),
+        [
+            ("/api/edit", "", 401),
+            ("/api/edit", "COOKIE Sec-Fetch-Site: cross-site\r\n", 403),
+            ("/api/edit", "COOKIE OWN Content-Type: text/plain\r\n", 403),
+            ("/index.html", "COOKIE OWN Content-Type: application/json\r\n", 405),
+            ("http://[/api/edit", "", 400),
+        ],
+        ids=["unsigned", "from-elsewhere", "not-json", "to-a-page", "an-unsplittable-target"],
+    )
+    def test_a_post_refused_before_its_body_is_read_is_answered_once_and_closed(
+        self, server, target, headers, status
+    ) -> None:
+        signed = f"Cookie: {cookie(server)}={server.token}\r\n"
+        own = f"Origin: http://127.0.0.1:{server.port}\r\n"
+        headers = headers.replace("COOKIE ", signed).replace("OWN ", own)
+        sent = (
+            f"POST {target} HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n{headers}"
+            f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
+        ).encode("ascii") + self.SMUGGLED
+        answered = every_answer(server, sent)
+        assert answered.count(b"HTTP/1.1 ") == 1
+        assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
+        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+
+    @pytest.mark.parametrize(
+        ("length", "status"),
+        [(str(MAX_BODY + 1), 413), ("ten", 400)],
+        ids=["too-long", "no-length"],
+    )
+    def test_a_post_whose_length_is_refused_is_answered_once_and_closed(
+        self, server, length, status
+    ) -> None:
+        """Its body is never read, whatever follows: too long to read, or of no length to read
+        by."""
+        sent = posted(server, length).replace(b"Connection: close\r\n", b"") + self.SMUGGLED
+        answered = every_answer(server, sent)
+        assert answered.count(b"HTTP/1.1 ") == 1
+        assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
+        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+
+    def test_a_misdirected_post_is_answered_once_and_closed(self, server) -> None:
+        sent = (
+            f"POST /api/edit HTTP/1.1\r\nHost: example.com:{server.port}\r\n"
+            f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
+        ).encode("ascii") + self.SMUGGLED
+        answered = every_answer(server, sent)
+        assert answered.count(b"HTTP/1.1 ") == 1
+        assert answered.startswith(b"HTTP/1.1 421 ")
+        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+
+    def test_a_post_whose_body_was_read_keeps_its_connection(self, server) -> None:
+        """Answered whatever its body says, as one request, and the connection kept for the
+        next, which here follows it at once: a refusal of what the body holds reads the body
+        first."""
+        body = b"{}"
+        sent = posted(server, str(len(body)), body).replace(b"Connection: close\r\n", b"")
+        answered = every_answer(server, sent + self.SMUGGLED)
+        assert answered.count(b"HTTP/1.1 ") == 2
+        assert b"\r\nConnection: close\r\n" not in answered
+
+    def test_a_post_refused_after_one_whose_body_was_read_is_closed_too(self, server) -> None:
+        """Down one connection: whether a body was read is each request's own."""
+        body = b"{}"
+        read = posted(server, str(len(body)), body).replace(b"Connection: close\r\n", b"")
+        refused = (
+            f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+            f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
+        ).encode("ascii") + self.SMUGGLED
+        answered = every_answer(server, read + refused)
+        assert answered.count(b"HTTP/1.1 ") == 2
+        assert answered.partition(b"HTTP/1.1 401 ")[2].count(b"\r\nConnection: close\r\n") == 1
+
+
 class TestOneConnectionCarriesManyAsks:
     """Opening a panel asks this server twenty-odd times. Under HTTP/1.0 each ask cost a
     connection of its own, and a suite of browser journeys against 127.0.0.1 ran a windows

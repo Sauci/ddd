@@ -39,6 +39,7 @@ from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
 from ddd.gui.server import (
+    _CODE_REUSED,
     _ELSEWHERE,
     _FORBIDDEN,
     BUSY,
@@ -346,6 +347,28 @@ class TestSigningIn:
         assert server.redeem_code(code) is True
         assert locked_during_compare == [True]
 
+    def test_redeem_code_spends_the_code_before_it_lets_the_lock_go(
+        self, server, monkeypatch
+    ) -> None:
+        """The spend is the single use itself: cleared once the lock was let go, two concurrent
+        presentations of the same code could both find it pending and both sign in. What the
+        code stands at, as the lock is let go, recorded by a lock that records it."""
+        code = server.issue_code()
+        lock = server._code_lock
+        at_release: list[object] = []
+
+        class Recording:
+            def __enter__(self) -> None:
+                lock.acquire()
+
+            def __exit__(self, *raised: object) -> None:
+                at_release.append(server._code)
+                lock.release()
+
+        monkeypatch.setattr(server, "_code_lock", Recording())
+        assert server.redeem_code(code) is True
+        assert at_release == [None]
+
     def test_a_code_signs_a_browser_in_exactly_as_the_token_does(self, server) -> None:
         code = server.issue_code()
         response, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
@@ -365,12 +388,7 @@ class TestSigningIn:
         second, data = ask(server, "GET", f"/open?code={code}", signed_in=False)
         assert second.status == 403
         assert b"Open the address" in data
-        assert capsys.readouterr().err == (
-            "ddd gui: a launch code arrived that was already spent, or had simply expired; "
-            "if your browser did not just sign in on its own, something else on this "
-            "computer may have used it instead, so restart ddd gui if your browser is not "
-            "signed in\n"
-        )
+        assert capsys.readouterr().err == f"{_CODE_REUSED}\n"
 
     def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
         """A guess that is not the one outstanding code is refused on its own, and does not
@@ -409,20 +427,41 @@ class TestSigningIn:
         assert b"Open the address" in data
 
     def test_an_unused_code_expires_after_60_seconds(self, project_file, pages, capsys) -> None:
+        """Refused, and nothing printed, however often it is presented: a code nobody signed in
+        with is no sign of anyone, and the terminal's warning is for a code somebody did."""
         assert CODE_SECONDS == 60
         clock = FakeClock()
         for started in serving(Api(Session(project_file.parent)), pages, clock=clock):
             code = started.issue_code()
             clock.now += CODE_SECONDS
-            response, data = ask(started, "GET", f"/open?code={code}", signed_in=False)
-            assert response.status == 403
-            assert b"Open the address" in data
-            assert capsys.readouterr().err == (
-                "ddd gui: a launch code arrived that was already spent, or had simply "
-                "expired; if your browser did not just sign in on its own, something else "
-                "on this computer may have used it instead, so restart ddd gui if your "
-                "browser is not signed in\n"
-            )
+            for _ in range(2):
+                response, data = ask(started, "GET", f"/open?code={code}", signed_in=False)
+                assert response.status == 403
+                assert b"Open the address" in data
+                assert capsys.readouterr().err == ""
+
+    def test_a_code_to_a_server_that_never_issued_one_is_refused_without_a_word(
+        self, server, capsys
+    ) -> None:
+        response, data = ask(server, "GET", "/open?code=anything", signed_in=False)
+        assert response.status == 403
+        assert b"Open the address" in data
+        assert capsys.readouterr().err == ""
+
+    def test_a_code_that_signed_a_browser_in_says_why_to_restart_when_presented_again(
+        self, server, capsys
+    ) -> None:
+        """Its winner holds the token itself, which a restart takes from it and the printed
+        address does not: printed once a presentation, without the cookie the winner was given."""
+        code = server.issue_code()
+        assert ask(server, "GET", f"/open?code={code}", signed_in=False)[0].status == 200
+        ask(server, "GET", f"/open?code={code}&token=wrong", signed_in=False)
+        assert capsys.readouterr().err == (
+            "ddd gui: a launch code that already signed a browser in was presented again; if "
+            "your browser is not signed in, another process on this computer may have signed "
+            "in with it first and now holds the token itself, so restart ddd gui rather than "
+            "open the address it printed\n"
+        )
 
     def test_a_code_still_signs_in_a_moment_before_60_seconds(self, project_file, pages) -> None:
         clock = FakeClock()

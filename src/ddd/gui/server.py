@@ -223,7 +223,7 @@ class GuiServer(ThreadingHTTPServer):
         self.token = secrets.token_urlsafe(TOKEN_BYTES)
         self._clock = clock
         self._code: tuple[str, float] | None = None
-        self._last_code: str | None = None
+        self._redeemed: str | None = None
         self._code_lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(connections)
         """One for each connection being answered. Bounded: a slot given back when every slot
@@ -241,15 +241,15 @@ class GuiServer(ThreadingHTTPServer):
         code = secrets.token_urlsafe(TOKEN_BYTES)
         with self._code_lock:
             self._code = (code, self._clock() + CODE_SECONDS)
-            self._last_code = code
         return code
 
     def redeem_code(self, given: str) -> bool:
         """Whether ``given`` is the one outstanding launch code, presented before it expired.
 
         Spends it the moment its value matches - whether or not it had already expired - so
-        a second presentation, even of the right value, never succeeds again. Compared in
-        constant time, like the token.
+        a second presentation, even of the right value, never succeeds again; and remembers it
+        only where it signs a browser in (:meth:`code_redeemed`). Compared in constant time,
+        like the token.
         """
         with self._code_lock:
             pending = self._code
@@ -259,16 +259,20 @@ class GuiServer(ThreadingHTTPServer):
             if not hmac.compare_digest(given.encode("utf-8"), code.encode("utf-8")):
                 return False
             self._code = None
-            return self._clock() < expires
+            if self._clock() >= expires:
+                return False
+            self._redeemed = code
+            return True
 
-    def code_known(self, given: str) -> bool:
-        """Whether ``given`` is the value of the launch code most recently issued, whether or
-        not it has since been redeemed or has expired. Used only to decide what a refusal to
-        sign in prints - never whether to sign in, which is :meth:`redeem_code` alone."""
+    def code_redeemed(self, given: str) -> bool:
+        """Whether ``given`` is the launch code that signed a browser in. Used only to decide
+        what a refusal to sign in prints - never whether to sign in, which is
+        :meth:`redeem_code` alone. A code that expired unused signed nobody in, and is no sign
+        of anyone."""
         with self._code_lock:
-            known = self._last_code
-        return known is not None and hmac.compare_digest(
-            given.encode("utf-8"), known.encode("utf-8")
+            redeemed = self._redeemed
+        return redeemed is not None and hmac.compare_digest(
+            given.encode("utf-8"), redeemed.encode("utf-8")
         )
 
     @property
@@ -444,12 +448,12 @@ class _Handler(BaseHTTPRequestHandler):
             # naming a code that did not redeem - wrong, spent or expired alike - that
             # already carries this server's valid cookie, as a browser's own prefetch of
             # the /open?code= address does, or its navigating there a second time after the
-            # first already won the cookie. A request with no code at all, or a wrong
-            # token, refuses here regardless of the cookie.
-            if given_code and self._gui.code_known(given_code):
-                # Known, so it did redeem once, or was still waiting to and has now timed
-                # out - either way, this request carries none of the cookie that would have
-                # meant it was the browser that won it.
+            # first already won the cookie, whatever token it names besides. A request naming
+            # no code - a wrong token, or nothing at all - refuses here regardless of the
+            # cookie.
+            if given_code and self._gui.code_redeemed(given_code):
+                # It signed a browser in once already, and this request carries none of the
+                # cookie that browser was given: so it is not the browser that won it.
                 print(_CODE_REUSED, file=sys.stderr)
             self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], headers)
             return
@@ -589,9 +593,10 @@ _PAGES_ARE_READ: Final = "pages are read with GET"
 _NOT_A_TARGET: Final = "the request's target cannot be read"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
 _CODE_REUSED: Final = (
-    "ddd gui: a launch code arrived that was already spent, or had simply expired; if your "
-    "browser did not just sign in on its own, something else on this computer may have used "
-    "it instead, so restart ddd gui if your browser is not signed in"
+    "ddd gui: a launch code that already signed a browser in was presented again; if your "
+    "browser is not signed in, another process on this computer may have signed in with it "
+    "first and now holds the token itself, so restart ddd gui rather than open the address it "
+    "printed"
 )
 
 

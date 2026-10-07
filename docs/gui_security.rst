@@ -159,7 +159,9 @@ What it does not defend against
   run of ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this
   happened: the reader's own browser lands on the sign-in page instead of the project, and
   presenting that same code again without the cookie its winner was given prints one line
-  on the terminal, saying so.
+  on the terminal, saying so and to restart ``ddd gui`` rather than open the address it
+  printed - a restart takes the token from the winner, and the printed address would not.
+  A code that expired unused signed nobody in, and prints nothing.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { keeperOver, signedOutStore, TOKEN_KEY } from "./token";
+import { keeperOver, signedOutStore, TOKEN_KEY, token } from "./token";
 
 /** A Storage keeping what it is given, as the browser's does. */
 function memoryStorage(): Storage {
@@ -42,6 +42,21 @@ describe("where the token is kept", () => {
     expect(kept.get()).toBe("t");
     kept.clear();
     expect(kept.get()).toBeNull();
+  });
+
+  test("the page's own keeper uses localStorage, which every tab of its origin reads", () => {
+    // The maintainer's choice (spec, section 10): the token is kept for every tab, for the run,
+    // and not per tab in sessionStorage. Vitest runs in node, where there is no window, so the
+    // page's own keeper is handed one here, and the token it kept is cleared before it goes.
+    const storage = memoryStorage();
+    vi.stubGlobal("window", { localStorage: storage });
+    try {
+      token.set("t");
+      expect(storage.getItem(TOKEN_KEY)).toBe("t");
+    } finally {
+      token.clear();
+      vi.unstubAllGlobals();
+    }
   });
 
   test("the key is ddd-gui-token", () => {

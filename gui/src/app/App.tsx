@@ -142,7 +142,12 @@ export function App() {
     [navigate],
   );
 
-  if (out) return <SignedOutView />;
+  if (out)
+    return (
+      <div className="app">
+        <SignedOutView />
+      </div>
+    );
   let page: ReactNode;
   if (session.isPending) {
     page = <p className="quiet">Connecting…</p>;

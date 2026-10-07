@@ -15,8 +15,9 @@ const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 
-// Signed in before anything is rendered, so that no ask goes out without the token.
-void signInFrom(window.location, (path) => window.history.replaceState(null, "", path)).then(() => {
+// Signed in before anything is rendered, so that no ask goes out without the token; rendered
+// however the sign-in ends, so that one that throws still draws the page.
+void signInFrom(window.location, window.history).finally(() => {
   createRoot(root).render(
     <StrictMode>
       <QueryClientProvider client={client}>

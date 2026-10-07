@@ -34,18 +34,23 @@ function isTokenReply(body: unknown): body is { token: string } {
 /** Sign the page in from its own address, before it asks the server anything else.
  *
  * An address at /open loses its secret the moment it is read, before the secret is sent
- * anywhere, so that it stays in no history. The secret is posted to /open, and the token
- * answered is kept. A refusal clears any token kept: the page then asks as it is, is answered
- * 401, and says it is signed out. */
+ * anywhere: the tab's history entry is replaced, never pushed, so that the secret stays in no
+ * history. The secret is posted to /open, and the token answered is kept.
+ *
+ * Any other answer, a refusal or the connection cap's 503 among them, leaves a token already
+ * kept as it was. Cleared, it would let any page sign the reader out of every tab, by sending
+ * this one to /open with a wrong code; a stale token is cleared by the first 401 it meets
+ * anyway (ruling P18b-6). With none kept, the page then asks as it is, is answered 401, and
+ * says it is signed out. */
 export async function signInFrom(
   address: { pathname: string; search: string },
-  replace: (path: string) => void,
+  history: Pick<History, "replaceState">,
   kept: Keeper = token,
   fetchImpl: Fetch = fetch,
 ): Promise<void> {
   if (address.pathname !== "/open") return;
   const secret = secretOf(address.pathname, address.search);
-  replace("/");
+  history.replaceState(null, "", "/");
   if (secret === null) return;
   let response: Response;
   try {
@@ -60,13 +65,11 @@ export async function signInFrom(
     return;
   }
   const body: unknown = await response.json().catch(() => null);
-  if (!response.ok || !isTokenReply(body)) {
-    kept.clear();
-    return;
-  }
+  if (!response.ok || !isTokenReply(body)) return;
   kept.set(body.token);
   try {
-    replace(landingOf(await request<SessionInfo>("/api/session", {}, fetchImpl, kept)));
+    const session = await request<SessionInfo>("/api/session", {}, fetchImpl, kept);
+    history.replaceState(null, "", landingOf(session));
   } catch {
     // The page's own first ask meets the same failure, and says so.
   }

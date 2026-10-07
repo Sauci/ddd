@@ -2696,6 +2696,44 @@ class TestEdit:
         assert asked == []
         assert contents(root) == before
 
+    @pytest.mark.parametrize(
+        ("name", "why"),
+        [
+            *[
+                pytest.param(f"a{c}b.ddd.json", f"its name holds '{c}'", id=f"holding-{c}")
+                for c in '<>:"|?*'
+            ],
+            pytest.param(
+                "a\x01b.ddd.json", "its name holds the control character U+0001", id="a-control"
+            ),
+            pytest.param("units.ddd.json.", "its name ends in a dot", id="a-dot-last"),
+            pytest.param("units.ddd.json ", "its name ends in a space", id="a-space-last"),
+        ],
+    )
+    def test_a_name_windows_could_not_create_is_refused_before_anything_is_written(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, name: str, why: str
+    ) -> None:
+        """On every system, as a device's name is: on Windows the staged write of such a name
+        failed, answered ``500``, a colon naming a stream of another file instead, and a dot or
+        a space it ends in would be dropped, creating the file under another name than the one
+        the includes give it. The separators are no part of a name a path gives."""
+        request = creating(root, name)
+        before = contents(root)
+        asked = asked_about(monkeypatch, name)
+        if why.startswith("its name holds"):
+            said = f"{why}, which Windows keeps out of a file's name"
+        else:
+            said = f"{why}, which Windows drops from a file's name"
+        assert post(api, "/api/edit", request) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{root.resolve() / name} cannot be created: {said}",
+            },
+        )
+        assert asked == []
+        assert contents(root) == before
+
     def test_a_file_the_edit_does_not_include_is_not_created(self, api: Api, root: Path) -> None:
         edit = {
             "changes": [

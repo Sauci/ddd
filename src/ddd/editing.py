@@ -87,6 +87,11 @@ device rather than a file (:func:`device_named`); python's own ``ntpath.isreserv
 server, and of the name of every file an edit or the plan of a new file creates
 (:func:`uncreatable`)."""
 
+RESERVED_CHARACTERS: Final = '<>:"/\\|?*'
+"""The characters Windows keeps out of a file's name, besides the control characters below
+U+0020 (:func:`uncreatable`): every one a part of a path's own syntax there, and a colon what
+names a stream of the file before it."""
+
 REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
 """How many times a file is renamed into place, or taken away, before a refusal stands.
 
@@ -942,8 +947,11 @@ def _created(pending: FileChange) -> bytes:
 
 def uncreatable(name: str) -> str | None:
     """Why no file can be created under ``name``, on any system, or ``None`` where one can: a
-    name Windows reads as a device (:func:`device_named`), or one longer than
-    :data:`CREATED_NAME_MAX` bytes. Either is the request's to answer for, not a failure to write.
+    name Windows reads as a device (:func:`device_named`); one holding a character Windows keeps
+    out of a file's name - a control character, or one of :data:`RESERVED_CHARACTERS` - or ending
+    in a dot or a space, which Windows drops from a file's name, creating the file under another
+    than the one the includes give it; or one longer than :data:`CREATED_NAME_MAX` bytes. Each is
+    the request's to answer for, not a failure to write.
 
     Asked before anything looks the name up: by ``ddd gui`` of every file an edit creates before
     it confines any change of the edit (``ddd.gui.session``), and by the plan of a new file
@@ -952,7 +960,8 @@ def uncreatable(name: str) -> str | None:
     was staged regardless before, the file system refused it, and the edit was answered as a
     write that failed, ``500``, with the files already written put back; on Linux python 3.12's
     own ``Path.exists`` raised on a name past :data:`NAME_MAX` first. A file staged under a
-    device's name on Windows would have opened the device. Refused on every system alike, as a
+    device's name on Windows would have opened the device, and one under a character Windows
+    keeps out failed there as the staged write did, ``500``. Refused on every system alike, as a
     page's path is, since a project is checked out on more than one.
     """
     device = device_named(name)
@@ -960,6 +969,13 @@ def uncreatable(name: str) -> str | None:
         return (
             f"Windows reads its name as the device {device}, which it would open instead of a file"
         )
+    kept_out = _kept_out(name)
+    if kept_out is not None:
+        return f"its name holds {kept_out}, which Windows keeps out of a file's name"
+    if name.endswith("."):
+        return "its name ends in a dot, which Windows drops from a file's name"
+    if name.endswith(" "):
+        return "its name ends in a space, which Windows drops from a file's name"
     length = len(name.encode("utf-8", "surrogatepass"))
     if length > CREATED_NAME_MAX:
         return (
@@ -967,6 +983,18 @@ def uncreatable(name: str) -> str | None:
             f"file is staged under the name and '{STAGING_SUFFIX}' first, and a file system takes "
             f"{NAME_MAX} bytes"
         )
+    return None
+
+
+def _kept_out(name: str) -> str | None:
+    """The first character of ``name`` Windows keeps out of a file's name, as a refusal names it
+    - a control character by its code point, never as itself, any other in quotes - or ``None``
+    where it holds none."""
+    for character in name:
+        if ord(character) < 0x20:
+            return f"the control character U+{ord(character):04X}"
+        if character in RESERVED_CHARACTERS:
+            return f"'{character}'"
     return None
 
 

@@ -3155,6 +3155,23 @@ class TestTheCiRun:
         ]
         assert unskipped == [], f"these jobs would run during a hunt: {unskipped}"
 
+    def test_the_job_s_name_carries_its_browser(self) -> None:
+        """Two of the three legs share windows-latest, chromium and msedge: without the
+        browser in its name, a run's job list would show two legs both called
+        "gui (windows-latest)", and a reader - or a later task reading a run's jobs by name -
+        could not tell which is which (spec §4: "gui (windows-latest, msedge)")."""
+        assert "name: gui (${{ matrix.os }}, ${{ matrix.browser }})" in job(CI_WORKFLOW, "gui")
+
+    def test_the_failure_report_s_name_carries_the_browser_too(self) -> None:
+        """The same two legs, chromium and msedge on windows-latest: with the pre-existing
+        playwright-report-${{ matrix.os }} alone, both would upload their report under that
+        one name, and overwrite: true lets whichever leg finishes last silently discard the
+        other's diagnostic report."""
+        gui = job(CI_WORKFLOW, "gui")
+        assert "- if: failure()\n" in gui, "the gui job no longer uploads a report on failure"
+        upload = gui.split("- if: failure()\n", 1)[1]
+        assert "name: playwright-report-${{ matrix.os }}-${{ matrix.browser }}" in upload
+
 
 class TestPreCommitHook:
     """The hook definition this repository publishes for projects that use ddd.

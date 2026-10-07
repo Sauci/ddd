@@ -3102,6 +3102,60 @@ class TestTheDevelopmentBuild:
         assert f"``{environment.group(1)}``" in PAGES["docs/developer_documentation.rst"]
 
 
+class TestTheCiRun:
+    """What part 19a asked of ci.yml (spec §4): the journeys on three legs, a timeout on every
+    job, and a manual run that repeats the journeys and runs nothing else."""
+
+    @staticmethod
+    def names() -> list[str]:
+        return re.findall(r"^  ([a-z][\w-]*):\n", CI_WORKFLOW.split("\njobs:\n", 1)[1], re.M)
+
+    def test_every_job_has_a_timeout(self) -> None:
+        """GitHub's own default is 360 minutes: a gui job once hung 24 of them installing a
+        browser, and would have held the run, and any re-run of its failed jobs, for the rest."""
+        untimed = [
+            name for name in self.names() if "\n    timeout-minutes: " not in job(CI_WORKFLOW, name)
+        ]
+        assert untimed == [], f"these jobs of ci.yml can run for 360 minutes: {untimed}"
+
+    def test_the_journeys_run_on_three_legs(self) -> None:
+        legs = re.findall(r"- os: (\S+)\n\s+browser: (\S+)", uncommented(job(CI_WORKFLOW, "gui")))
+        assert sorted(legs) == [
+            ("ubuntu-latest", "chromium"),
+            ("windows-latest", "chromium"),
+            ("windows-latest", "msedge"),
+        ]
+
+    def test_edge_is_the_runner_s_own_and_the_install_is_bounded(self) -> None:
+        install = step(job(CI_WORKFLOW, "gui"), "Install Playwright's Chromium")
+        assert "if: matrix.browser == 'chromium'" in install
+        assert "timeout-minutes: 5" in install
+        journeys = step(job(CI_WORKFLOW, "gui"), "Run the journeys")
+        assert "PLAYWRIGHT_CHANNEL: ${{ matrix.browser == 'msedge' && 'msedge' || '' }}" in journeys
+
+    def test_the_manual_run_asks_how_many_times(self) -> None:
+        dispatch = CI_WORKFLOW.split("\n  workflow_dispatch:", 1)[1].split("\npermissions:", 1)[0]
+        assert "repeat:" in dispatch
+        assert "type: number" in dispatch
+        assert "default: 1" in dispatch
+
+    def test_a_hunt_repeats_every_journey(self) -> None:
+        journeys = step(job(CI_WORKFLOW, "gui"), "Run the journeys")
+        assert "npm run e2e -- --repeat-each=${{ inputs.repeat || 1 }}" in journeys
+
+    def test_a_hunt_runs_the_journeys_alone(self) -> None:
+        """Every job but the gui legs is skipped by a hunt; the development build already
+        publishes nothing on a manual run (``test_only_this_repository_publishes_one``)."""
+        alone = {"gui", "dev-build", "dev-publish"}
+        unskipped = [
+            name
+            for name in self.names()
+            if name not in alone
+            and "\n    if: ${{ !(inputs.repeat > 1) }}\n" not in job(CI_WORKFLOW, name)
+        ]
+        assert unskipped == [], f"these jobs would run during a hunt: {unskipped}"
+
+
 class TestPreCommitHook:
     """The hook definition this repository publishes for projects that use ddd.
 

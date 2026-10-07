@@ -1488,9 +1488,10 @@ def resolve_path(path: Path) -> Path:
     handler in :func:`_read_text`, so the run ends with one located finding on both. So is a
     path ``resolve()`` cannot resolve for any other reason it raises: on Windows an error its
     walk does not list, and on python 3.12 a loop of links, ``RuntimeError``, or a chain of
-    about a thousand, ``RecursionError``, both of which 3.13's walks past - on 3.12 an include
-    through such a loop ended ``ddd check`` in a traceback, and every route of ``ddd gui``
-    that resolves a path a request names, all through here, answered it ``500``.
+    about a thousand, ``RecursionError``, both of which 3.13's walks past. On 3.12 an include
+    through such a loop ended ``ddd check`` in a traceback, and a request of ``ddd gui`` naming
+    a path through one was answered ``500``; every route of it resolves a path a request names
+    through here.
 
     A leading ``~`` is left where it stands: expansion is the shell's, and a root named
     ``~x.ddd.json`` was being looked for in user ``x``'s home directory, a path its author

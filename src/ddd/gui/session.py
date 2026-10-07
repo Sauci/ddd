@@ -842,9 +842,10 @@ def _served(revision: Revision, resolved: Path) -> Path:
 def _creatable(changes: Sequence[FileChange]) -> None:
     """Refuse an edit creating a file under a name no file can be created under
     (:func:`ddd.file_names.uncreatable`), before any change of it is confined: a name Windows keeps
-    for a device, or one too long to stage, is refused on every system alike, whatever an
-    operating system would answer about it - Windows' answer about a name too long for NTFS is
-    not one ``Path.resolve`` is sure to walk past.
+    for a device, one holding a character it keeps out of a name or ending in a dot or a space,
+    or one too long to stage, is refused on every system alike, whatever an operating system
+    would answer about it - Windows' answer about a name too long for NTFS is not one
+    ``Path.resolve`` is sure to walk past.
 
     Every one before any is confined: confining a file to be created looks up each name the
     project description's includes give (:func:`_included`), another created file's among them,

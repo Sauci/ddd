@@ -341,8 +341,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     _body_read = False
     """Whether the request being answered has had its body read. A ``POST`` answered before it
-    has - refused at the gate, too long, of no length - is answered ``Connection: close`` and
-    its connection closed: the body left on it would be read as the next request."""
+    has, whatever the answer - misdirected, refused at the gate, sent to a page, its body too
+    long or of no length - is answered ``Connection: close`` and its connection closed: the body
+    left on it would be read as the next request."""
 
     def do_GET(self) -> None:  # the name the base class dispatches GET to
         self._answer("GET")

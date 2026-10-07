@@ -36,7 +36,9 @@ from ddd.names import (
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
+    from ddd.addresses import Placed
     from ddd.backends import Backend, GeneratedFile, WriteStatus
+    from ddd.elf import Image
     from ddd.ir import Comparable, DataDictionary
     from ddd.plugins import Plugin
 
@@ -72,8 +74,28 @@ _PYELFTOOLS_MISSING = (
     "reading an ELF image needs pyelftools, which is not installed: "
     "pip install 'pyelftools>=0.32,<1'"
 )
-"""The usage error ``ddd tool from-elf`` answers without pyelftools. It is a dependency, so only
-a broken installation lacks it, and the command says how to mend one rather than raising."""
+"""The usage error a command reading an image answers without pyelftools: ``ddd tool from-elf``,
+and ``ddd generate`` given ``--image``. It is a dependency, so only a broken installation lacks
+it, and the command says how to mend one rather than raising."""
+
+
+def _image_reader() -> Callable[[Path], Image]:
+    """:func:`ddd.elf.open_image`, for a command about to read an image.
+
+    The one place a missing pyelftools becomes the usage error :data:`_PYELFTOOLS_MISSING`
+    rather than a traceback: ``ddd tool from-elf`` asks for it, and ``ddd generate`` given
+    ``--image``. Imported on that call and not before, like everything else this module needs,
+    so that no other run pays for pyelftools or needs it.
+    """
+    try:
+        from ddd.elf import open_image
+    except ModuleNotFoundError as error:
+        # The name is the module the import stopped at - `elftools.common` as often as
+        # `elftools` - so the package decides, not the whole name.
+        if (error.name or "").partition(".")[0] != "elftools":
+            raise
+        raise ValueError(_PYELFTOOLS_MISSING) from None
+    return open_image
 
 
 def cmake_module_directory() -> Path | None:
@@ -217,9 +239,9 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "dictionary. The artefact is part of the command, so every run states what it "
             "produces and carries only the options of that artefact: only a run that "
             "renders c takes a template directory, only one that writes the a2l takes an "
-            "address map. 'all' produces both, and the artefact of every plugin the project "
-            "names that provides one, and takes --without to leave one of the built-in "
-            "artefacts out of that; 'a2l' is the run a build repeats "
+            "address map or an image. 'all' produces both, and the artefact of every plugin "
+            "the project names that provides one, and takes --without to leave one of the "
+            "built-in artefacts out of that; 'a2l' is the run a build repeats "
             "after linking, when the addresses are known but the c must not change."
         ),
     )
@@ -231,7 +253,13 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     )
     for name, description, with_c, with_a2l, with_plugins in (
         ("c", "render the c sources from the project's jinja2 templates", True, False, False),
-        ("a2l", "write the a2l file, with the addresses --address-map carries", False, True, False),
+        (
+            "a2l",
+            "write the a2l file, with the addresses --address-map or --image gives",
+            False,
+            True,
+            False,
+        ),
         (
             "all",
             "render the c sources, write the a2l file and produce the plugins' artefacts",
@@ -651,12 +679,23 @@ def _add_generate_arguments(
             # No default here: the handler resolves it, so that a run which subtracted the a2l
             # can tell an option it must refuse from one the parser filled in.
             default=None,
-            help=f"byte order reported in the a2l file, default: {BYTE_ORDERS[0]}",
+            help=(
+                f"byte order reported in the a2l file, default: {BYTE_ORDERS[0]}, or the "
+                "image's with --image"
+            ),
         )
         parser.add_argument(
             "--address-map",
             type=Path,
             help="json file mapping variable names to their address in the target",
+        )
+        parser.add_argument(
+            "--image",
+            type=Path,
+            help=(
+                "linked ELF image whose DWARF debug information gives every address the a2l "
+                "carries, and its byte order"
+            ),
         )
     if with_exclusions:
         parser.add_argument(
@@ -914,7 +953,7 @@ def _check_address_coverage(
     they are usually the other half of the same mistake - the old spelling of the symbol that
     has just gone missing - and reading them together is what identifies a rename. The
     symbols the recipe of the build page sweeps up along the way are in that note too,
-    including any whose address no ``ECU_ADDRESS`` could hold: the map reader weighs an
+    including any whose address no ``ECU_ADDRESS`` could hold: ``weigh_addresses`` weighs an
     address only for a symbol this list carries, because no other one is ever formatted into
     anything, and this note is where the rest are accounted for.
     """
@@ -933,11 +972,42 @@ def _check_address_coverage(
         notes.append((f"the map also carries {_listed(unused)}, which the a2l does not", None))
     bag.add(
         "address-missing",
-        f"the address map has no entry for {_listed(missing)}; "
-        f"{'it reaches' if len(missing) == 1 else 'they reach'} the a2l at address 0",
+        f"the address map has no entry for {_at_address_0(missing)}",
         where(path),
         notes=notes,
     )
+
+
+def _check_image_coverage(
+    carried: tuple[str, ...], placed: Placed, path: Path, bag: DiagnosticBag
+) -> None:
+    """Report the objects an image does not place, and why, as a map's missing ones are.
+
+    The finding is the map's, ``address-missing``, for the same harm - a symbol of the a2l at
+    address 0, which a calibration tool reads and writes as readily as any other - without the
+    map's early return: an image is never the run a build makes before it has linked. Each
+    reason is a note, said once however many symbols share it - every member of a variable the
+    image lacks does - for the symbols the finding names; the rest are counted, as a map's are,
+    so that an image whose definition file was compiled without ``-g``, every symbol of the
+    project missing from its debug information, still gives a finding a few lines long.
+    """
+    missing = [symbol for symbol in carried if symbol in placed.reasons]
+    if not missing:
+        return
+    reasons = dict.fromkeys(placed.reasons[symbol] for symbol in missing[:_LISTED_LIMIT])
+    bag.add(
+        "address-missing",
+        f"the image has no address for {_at_address_0(missing)}",
+        where(path),
+        notes=[(reason, None) for reason in reasons],
+    )
+
+
+def _at_address_0(missing: list[str]) -> str:
+    """``'A', 'B' and 3 others; they reach the a2l at address 0``: how ``address-missing`` ends,
+    whichever source left the symbols out."""
+    reach = "it reaches" if len(missing) == 1 else "they reach"
+    return f"{_listed(missing)}; {reach} the a2l at address 0"
 
 
 _LISTED_LIMIT = 5
@@ -958,7 +1028,8 @@ def _selected(args: argparse.Namespace) -> None:
     render flag is the whole of it; a plugin's artefact has no such flag and is therefore
     untouched, which is the point. What the subparsers can no longer check for themselves is
     checked here instead: an artefact that is gone must not be given its options, and one that
-    stayed must still have them.
+    stayed must still have them. The a2l's addresses come from one source, a map or an image,
+    which is refused here too, before anything is read.
     """
     for artefact in getattr(args, "without", ()):
         setattr(args, f"render_{artefact}", False)
@@ -972,10 +1043,14 @@ def _selected(args: argparse.Namespace) -> None:
         ("--const-inputs", getattr(args, "const_inputs", False), "c"),
         ("--byte-order", getattr(args, "byte_order", None) is not None, "a2l"),
         ("--address-map", getattr(args, "address_map", None) is not None, "a2l"),
+        ("--image", getattr(args, "image", None) is not None, "a2l"),
     ):
         if given and not getattr(args, f"render_{artefact}"):
             msg = f"{option} belongs to the {artefact} artefact, left out by --without"
             raise ValueError(msg)
+    if getattr(args, "address_map", None) is not None and getattr(args, "image", None) is not None:
+        msg = "--image and --address-map are two sources of the a2l's addresses; give one of them"
+        raise ValueError(msg)
 
 
 def _displayed_path(path: Path, output_dir: Path) -> str:
@@ -1052,6 +1127,7 @@ def _dictionary_file(
 
 
 def _command_generate(args: argparse.Namespace) -> int:
+    from ddd.addresses import addresses_from_image, load_address_map
     from ddd.backends import (
         DICTIONARY_ARTEFACT,
         A2lBackend,
@@ -1063,8 +1139,8 @@ def _command_generate(args: argparse.Namespace) -> int:
         RemovalError,
         addressed_symbols,
         describe_write_failure,
-        load_address_map,
         render,
+        weigh_addresses,
         write,
     )
     from ddd.plugins import backend_of
@@ -1102,12 +1178,33 @@ def _command_generate(args: argparse.Namespace) -> int:
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
         addresses: dict[str, int] = {}
-        if wants_addresses:
+        byte_order: str | None = getattr(args, "byte_order", None)
+        image_path: Path | None = getattr(args, "image", None)
+        if image_path is not None:
+            # Only a run writing the a2l gets here with an image: _selected refused it to the
+            # others, as it refuses them the map. The symbols are the a2l's, as for a map.
+            carried = addressed_symbols(dictionary)
+            image = _image_reader()(image_path)
+            # The image states its byte order, so an option saying the other one is a mistake
+            # about the target, which an a2l of the wrong order would only hide.
+            if byte_order not in (None, image.byte_order):
+                msg = (
+                    f"--byte-order {byte_order} contradicts '{image_path.as_posix()}', which "
+                    f"is {image.byte_order} endian"
+                )
+                raise ValueError(msg)
+            byte_order = image.byte_order
+            placed = addresses_from_image(image, carried)
+            addresses = placed.addresses
+            weigh_addresses(addresses, carried, image_path.as_posix())
+            _check_image_coverage(carried, placed, image_path, bag)
+        elif wants_addresses:
             # The symbols the a2l of this run will state an address for, read once: they
             # decide both which entries of the map are held to what an ECU_ADDRESS can hold
             # and which objects the map leaves uncovered.
             carried = addressed_symbols(dictionary)
-            addresses = load_address_map(args.address_map, carried=carried)
+            addresses = load_address_map(args.address_map)
+            weigh_addresses(addresses, carried, args.address_map.as_posix())
             # Before the gate below, so that a --strict build stops rather than writing a
             # file whose addresses it has just been told are incomplete.
             _check_address_coverage(carried, addresses, args.address_map, bag)
@@ -1124,7 +1221,7 @@ def _command_generate(args: argparse.Namespace) -> int:
             backends.append(
                 A2lBackend(
                     A2lOptions(
-                        byte_order=ByteOrder(args.byte_order or BYTE_ORDERS[0]),
+                        byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
                         addresses=addresses,
                     ),
                     GENERATOR,
@@ -1277,14 +1374,7 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
     ``-o`` naming the image is a usage error however large the image, and whatever the image
     would have been found to hold.
     """
-    try:
-        from ddd.elf import open_image
-    except ModuleNotFoundError as error:
-        # The name is the module the import stopped at - `elftools.common` as often as
-        # `elftools` - so the package decides, not the whole name.
-        if (error.name or "").partition(".")[0] != "elftools":
-            raise
-        raise ValueError(_PYELFTOOLS_MISSING) from None
+    open_image = _image_reader()
     from ddd.loading import resolve_path
     from ddd.models.common import C_IDENTIFIER_PATTERN, IDENTIFIER_MAX_LENGTH
     from ddd.toolbox.from_elf import describe, document_text

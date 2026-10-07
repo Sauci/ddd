@@ -50,6 +50,9 @@ Layers
    * - ``src/ddd/elf.py``
      - ELF images, DWARF 2 to 5, C types, the variables of static storage
      - DDD: it imports no ``ddd`` module
+   * - ``src/ddd/addresses.py``
+     - a build's addresses: the map a build writes, and where an image places each symbol
+     - any output format: what an ``ECU_ADDRESS`` holds is the a2l backend's to weigh
    * - ``src/ddd/toolbox/``
      - turning what a project already has into DDD descriptions, once
      - where its output goes, any output format
@@ -103,7 +106,8 @@ The split is enforced by a test
 A layering that lives only in the documentation rots the first time somebody is in a hurry,
 so DDD asserts it. ``tests/test_backends.py`` parses the layered modules - ``loading.py``,
 ``analysis.py``, ``ir.py``, ``diagnostics.py``, everything under ``backends/``,
-``plugins.py``, ``elf.py`` and everything under ``toolbox/`` - with ``ast``, collects the
+``plugins.py``, ``elf.py``, ``addresses.py`` and everything under ``toolbox/`` - with
+``ast``, collects the
 ``ddd.*`` modules each one imports, and fails if the import graph disagrees with the table
 above:
 
@@ -117,8 +121,10 @@ above:
 * ``plugins.py`` imports no loader, analysis or backend at runtime, so a plugin sees exactly
   what a backend sees, and the ``Backend`` protocol it names is only imported there under
   ``TYPE_CHECKING``,
-* ``elf.py`` imports no ``ddd`` module at all, so that reading an address map straight out of
-  an image can use it without the toolbox, and
+* ``elf.py`` imports no ``ddd`` module at all, so that ``addresses.py`` reads images with it
+  without the toolbox,
+* ``addresses.py`` imports no backend and not ``ddd.cli``: reading a build's addresses is
+  core, and the range an ``ECU_ADDRESS`` holds is the a2l backend's to weigh, and
 * nothing under ``toolbox/`` imports a backend or ``ddd.cli``.
 
 A second test in the same file reads the text of ``src/ddd/models/`` and fails if a spelling
@@ -356,6 +362,32 @@ the manifest records the compiler that built each image instead:
 The manifest holds a hash of every file the images are built from, and
 ``tests/test_elf_fixtures.py`` fails, naming that command, when one of them changed without a
 rebuild. Commit what the rebuild writes.
+
+The address fixtures
+--------------------
+
+``ddd generate a2l --image`` is held to five images of one DDD project, which
+``tests/fixtures/addresses/`` holds: scalars, a structure nesting another, arrays of structures
+in one and two dimensions, and structures mixing bitfields with the value members after them.
+The project's c is what ``ddd generate c`` writes for it, committed beside it, and five rows
+of the matrix above compile and link it - little and big endian, 32 and 64 bit, gcc and clang,
+and ``i686``, whose ``uint64_t`` aligns to 4 and so lays the project out otherwise. The
+manifest beside them is the toolchain's word, never the reader's: each variable's address
+from ``nm``, and each member's offset from the compiler's own ``offsetof``, compiled into the
+image and read back with ``readelf``.
+
+Two steps rebuild them, because DDD and the toolchains live in different places:
+
+.. code-block:: text
+
+   $ python docker/build_address_fixtures.py --generate  # on the host: the c, the symbols, the oracle
+   $ docker compose run --rm address-fixtures  # in docker: the five images and the manifest
+
+``tests/test_address_fixtures.py`` regenerates the c with the current DDD and fails, naming
+the first command, when DDD has come to generate other c for the project, and, naming the
+second, when what the images are built from changed without a rebuild. A release needs
+neither: the one line it changes in every generated file, the banner naming DDD's version,
+is read as naming the version the committed files record.
 
 Running the checks
 ------------------

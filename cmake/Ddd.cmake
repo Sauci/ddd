@@ -6,7 +6,8 @@
 #   creates the on-demand <target>.ddd target checking that component on its own.
 # * ddd_generate(<image> ...): collects the descriptions of all components in the link closure of the given image,
 #   generates the global definition file, the per-component interface headers and the a2l, writes the resolved data
-#   dictionary beside them, and links the result into the image.
+#   dictionary beside them, and links the result into the image. With ADDRESSES_FROM_IMAGE the a2l is written after
+#   the link instead, every address it carries read out of the linked image.
 #
 # The collection relies on the custom transitive property DDD_JSON, introduced with the TRANSITIVE_LINK_PROPERTIES
 # feature of CMake 3.30: the description files travel through the link graph like usage requirements, so an image
@@ -401,6 +402,7 @@ endfunction()
 #              [SCHEMA_DIRECTORY <dir>]      # write the json schemas here, for editor validation
 #              [PLUGINS <spec>...]           # the collected project's plugins: a .py path or a module name
 #              [ADDRESS_MAP <file>]          # symbol to address map filling in the a2l addresses
+#              [ADDRESSES_FROM_IMAGE]        # write the a2l after the link, its addresses read out of the image
 #              [BYTE_ORDER little|big]       # byte order reported in the a2l
 #              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
 #              [LINK_LIBRARIES <target>...]  # usage requirements for compiling the generated definition file
@@ -424,6 +426,8 @@ endfunction()
 #                          without the artefacts
 # * <stem>_ddd_list        custom target printing the table of the image's variables - producer, consumers,
 #                          datatype, unit - for a developer asking who writes what, without generating anything
+# * <stem>_ddd_a2l         with ADDRESSES_FROM_IMAGE, custom target writing the a2l once the image is linked, out of
+#                          the image's debug information; built by default
 #
 # <stem> is the image name without its extension, so an image named firmware.elf yields firmware_ddd_headers. The
 # path of the generated a2l is available as the DDD_A2L property of the image, and that of the dictionary written beside
@@ -435,13 +439,23 @@ endfunction()
 # generation step, not on an individual header path.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
-                          "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS"
+                          "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
                           "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
                           "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
     _ddd_refuse_empty_keywords("ddd_generate" "${arg_KEYWORDS_MISSING_VALUES}")
+    # The a2l takes its addresses from one place, and ADDRESSES_FROM_IMAGE is that place being the image: beside a map
+    # the call would name two, and beside NO_A2L it would read addresses for a file nobody writes.
+    if(arg_ADDRESSES_FROM_IMAGE AND arg_ADDRESS_MAP)
+        message(FATAL_ERROR "ddd_generate: ADDRESSES_FROM_IMAGE cannot be given together with ADDRESS_MAP: the a2l "
+                            "takes its addresses from one of the two.")
+    endif()
+    if(arg_ADDRESSES_FROM_IMAGE AND arg_NO_A2L)
+        message(FATAL_ERROR "ddd_generate: ADDRESSES_FROM_IMAGE cannot be given together with NO_A2L: the addresses "
+                            "it reads out of the image are the a2l's.")
+    endif()
     # A hand written project names its own plugins, so a second list here would be a second source of truth.
     if(arg_PLUGINS AND arg_PROJECT)
         message(FATAL_ERROR "ddd_generate: PLUGINS cannot be given together with PROJECT: the project description "
@@ -553,14 +567,15 @@ function(ddd_generate image)
     # plugins' artefacts, so selecting c would silently drop them along with the a2l.
     set(artefact all)
     set(generate_options ${common_options})
-    if(arg_NO_A2L)
+    # ADDRESSES_FROM_IMAGE subtracts the a2l as well: it is written after the link, below.
+    if(arg_NO_A2L OR arg_ADDRESSES_FROM_IMAGE)
         list(APPEND generate_options --without a2l)
     endif()
     if(arg_CONST_INPUTS)
         list(APPEND generate_options --const-inputs)
     endif()
     # Both options belong to the a2l, so a run that subtracts it has no use for either.
-    if(arg_BYTE_ORDER AND NOT arg_NO_A2L)
+    if(arg_BYTE_ORDER AND NOT arg_NO_A2L AND NOT arg_ADDRESSES_FROM_IMAGE)
         list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
     endif()
     if(arg_ADDRESS_MAP AND NOT arg_NO_A2L)
@@ -608,7 +623,10 @@ function(ddd_generate image)
 
     if(NOT arg_NO_A2L)
         set(a2l_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.a2l")
-        list(APPEND generated_outputs "${a2l_file}")
+        # Written before the link, or after it by the step below; the property names it either way.
+        if(NOT arg_ADDRESSES_FROM_IMAGE)
+            list(APPEND generated_outputs "${a2l_file}")
+        endif()
         set_property(TARGET ${image} PROPERTY DDD_A2L "${a2l_file}")
     endif()
 
@@ -636,6 +654,31 @@ function(ddd_generate image)
                        COMMAND_EXPAND_LISTS
                        VERBATIM)
     add_custom_target(${image_stem}_ddd_generation DEPENDS ${generated_outputs})
+
+    # ADDRESSES_FROM_IMAGE: the a2l is written once the image is linked, by a second run reading every address it
+    # carries out of the image's debug information, so that one build gives the complete a2l - no map to extract,
+    # and no second build to read it. The run depends on the image and on what the project is read from - not on the
+    # templates or DEPENDS, which are the c's inputs, not the a2l's - so it runs again whenever the image relinks or a
+    # description changes, and under Ninja never otherwise; under Make also at every build that follows a run of it
+    # leaving the a2l unchanged. It writes into the directory the run before the link wrote, whose manifest keeps
+    # each run from taking back the files of the other. STRICT and SEVERITY apply to it as to that run, so that under
+    # STRICT a symbol the image cannot place stops the build rather than shipping an a2l with an address of 0; and
+    # BYTE_ORDER is its alone, held to the byte order the image states.
+    if(arg_ADDRESSES_FROM_IMAGE)
+        set(a2l_options ${common_options})
+        if(arg_BYTE_ORDER)
+            list(APPEND a2l_options --byte-order ${arg_BYTE_ORDER})
+        endif()
+        add_custom_command(OUTPUT "${a2l_file}"
+                           COMMAND ${DDD_EXECUTABLE} generate a2l "${project_file}"
+                                   --output-dir "${arg_OUTPUT_DIRECTORY}"
+                                   --image "$<TARGET_FILE:${image}>" ${a2l_options}
+                           DEPENDS ${image} "${project_file}" ${descriptions} ${plugin_files} "${DDD_EXECUTABLE}"
+                           COMMENT "Reading the addresses of the a2l out of ${image}"
+                           COMMAND_EXPAND_LISTS
+                           VERBATIM)
+        add_custom_target(${image_stem}_ddd_a2l ALL DEPENDS "${a2l_file}")
+    endif()
 
     # The generated headers are exposed through an interface library, so that a component can include its interface
     # header without knowing where the image put it. The custom target bridges the build order across directories: a

@@ -223,7 +223,13 @@ The commands
        artefact takes only its own options - ``-t`` names the directory of jinja2
        templates the c sources are rendered from, required wherever c is rendered and with no
        default, because which files the project wants and what they look like is not
-       something DDD can guess; ``--address-map`` and ``--byte-order`` belong to the a2l.
+       something DDD can guess; ``--address-map``, ``--image`` and ``--byte-order`` belong to
+       the a2l. ``--image`` reads every address the a2l carries out of a linked ELF image's
+       DWARF - an object by its name, a structure member by its access path - and the a2l takes
+       the image's byte order, so a ``--byte-order`` contradicting it is refused, as is
+       ``--image`` beside ``--address-map``; what the image cannot place keeps address 0 and is
+       reported as ``address-missing``, each reason a note. It reads the images ``ddd tool
+       from-elf`` reads, and refuses the others in the same words.
        ``all`` alone takes ``--without c`` or ``--without a2l``, repeatable, which leaves that
        built-in artefact out while still producing the plugins' - the run a build wants when
        the a2l is written later, once the addresses are known. Naming ``c`` instead is not the

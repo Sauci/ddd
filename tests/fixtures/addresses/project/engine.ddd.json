@@ -1,0 +1,256 @@
+{
+  "$schema": "../../../../schemas/ddd_component.schema.json",
+  "component": {
+    "name": "Engine",
+    "description": "Owns one variable of every shape the address fixtures place",
+    "interface": [
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Speed",
+          "id": "bfat9q1g4y8q",
+          "kind": "measurement",
+          "description": "Shaft speed",
+          "datatype": "uint16",
+          "unit": "rpm",
+          "conversion": {
+            "factor": 0.25
+          },
+          "volatile": true
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Torque",
+          "id": "p84fyq945ckp",
+          "kind": "measurement",
+          "description": "Shaft torque, initialised so that it lands in .data",
+          "datatype": "sint32",
+          "unit": "Nm",
+          "conversion": {
+            "kind": "identity"
+          },
+          "init": 7,
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Ratio",
+          "id": "rtkepdw8cpra",
+          "kind": "measurement",
+          "description": "Gear ratio",
+          "datatype": "float32",
+          "conversion": {
+            "kind": "identity"
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Energy",
+          "id": "dnbmba1zk0zy",
+          "kind": "measurement",
+          "description": "Energy spent since the last reset",
+          "datatype": "float64",
+          "unit": "J",
+          "conversion": {
+            "kind": "identity"
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Ticks",
+          "id": "nd6qrjg7hgn7",
+          "kind": "measurement",
+          "description": "Timer ticks since the last reset",
+          "datatype": "uint64",
+          "conversion": {
+            "kind": "identity"
+          },
+          "volatile": true
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Gear",
+          "id": "p5fzcaheqtwe",
+          "kind": "measurement",
+          "description": "Engaged gear, negative in reverse",
+          "datatype": "sint8",
+          "conversion": {
+            "kind": "identity"
+          },
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Samples",
+          "id": "6acmvbvxk2th",
+          "kind": "measurement",
+          "description": "The last eight raw samples, an array of values",
+          "datatype": "uint8",
+          "conversion": {
+            "kind": "identity"
+          },
+          "dimensions": [
+            8
+          ],
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Enabled",
+          "id": "n9ma3hy5nxk5",
+          "kind": "parameter",
+          "description": "Whether the engine may start",
+          "datatype": "boolean",
+          "conversion": {
+            "kind": "identity"
+          },
+          "init": 1,
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Gain",
+          "id": "ftpmn0admvst",
+          "kind": "parameter",
+          "description": "Speed loop gain",
+          "datatype": "float32",
+          "conversion": {
+            "kind": "identity"
+          },
+          "init": 1.5,
+          "volatile": true
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Limit",
+          "id": "93dn9m9f7mcq",
+          "kind": "parameter",
+          "description": "Torque limit",
+          "datatype": "sint16",
+          "unit": "Nm",
+          "conversion": {
+            "kind": "identity"
+          },
+          "init": -100,
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Table",
+          "id": "2ercpfv47pdm",
+          "kind": "value_block",
+          "description": "Four calibratable thresholds",
+          "datatype": "uint16",
+          "conversion": {
+            "kind": "identity"
+          },
+          "dimensions": [
+            4
+          ],
+          "init": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Inlet",
+          "id": "etdr67q3vvcj",
+          "kind": "measurement",
+          "description": "The inlet sensor: a structure nesting another, with arrays inside",
+          "typename": "Sensor_t",
+          "volatile": true
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Cells",
+          "id": "psbkecghsm2d",
+          "kind": "measurement",
+          "description": "An array of structures in one dimension",
+          "typename": "Cell_t",
+          "dimensions": [
+            3
+          ],
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Grid",
+          "id": "w7zx1jpxhwfg",
+          "kind": "measurement",
+          "description": "An array of structures in two dimensions",
+          "typename": "Cell_t",
+          "dimensions": [
+            2,
+            3
+          ],
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Status",
+          "id": "39c5pyjmhysh",
+          "kind": "measurement",
+          "description": "Bitfields of one, two and four bytes between values",
+          "typename": "Status_t",
+          "volatile": true
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Mixed",
+          "id": "cettvg2rwnnb",
+          "kind": "measurement",
+          "description": "Values inside a bitfield's unit, and an eight byte unit",
+          "typename": "Mixed_t",
+          "volatile": false
+        }
+      },
+      {
+        "scope": "local",
+        "definition": {
+          "name": "Tuning",
+          "id": "0pfcysc07am4",
+          "kind": "parameter",
+          "description": "The calibration of the speed loop, bitfields among its values",
+          "typename": "Tuning_t",
+          "volatile": true
+        }
+      }
+    ]
+  }
+}

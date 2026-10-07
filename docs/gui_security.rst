@@ -16,9 +16,13 @@ What it defends against
   before the cookie is even read: a request marked anything but ``same-origin`` or ``none``,
   or naming an ``Origin`` that is not this server's own, is refused before it reaches a
   handler. An older browser sends neither header on a plain request; see *The browsers it
-  protects*, below, for what still holds there and what does not.
+  protects*, below, for what still holds there and what does not. The server of a page on
+  another port of ``127.0.0.1`` is another matter: it receives the cookie itself
+  (*Another server on* ``127.0.0.1``, below).
 
-* **Any other local process or user that reaches the port without the token.** Past the
+* **Any other local process or user that reaches the port without the token** - short of
+  one running a server on ``127.0.0.1`` that the reader's browser is pointed at, which
+  receives the token in the cookie (*Another server on* ``127.0.0.1``, below). Past the
   check above, every request still needs the cookie ``/open`` traded the token for, and
   one that changes anything needs this server's own ``Origin`` and a json body besides.
   The token is minted fresh each run and compared in constant time; it is never placed on
@@ -119,6 +123,17 @@ listen beyond loopback.
 
 What it does not defend against
 -------------------------------
+
+* **Another server on** ``127.0.0.1``. A browser keeps no cookie apart by port, so the
+  reader's browser sends ``ddd gui``'s cookie to any other server on ``127.0.0.1`` it is
+  pointed at: on an address typed or bookmarked there, and on whatever a page served there
+  asks of its own server - a page any site can send the browser to. The cookie's value is
+  the token, so whoever runs such a server - another user of this computer, a container or
+  a virtual machine with a port on this computer's loopback, a sandboxed application -
+  receives the token, and can then do whatever the reader can do with ``ddd gui``: run code
+  as the reader among it, since an edit can name a plugin of theirs, which the next
+  analysis runs. So keep ``ddd gui`` in a browser profile of its own, browse nothing else
+  on ``127.0.0.1`` in that profile, and stop ``ddd gui`` when done with it.
 
 * **A local denial of service.** ``ddd gui`` answers at most sixty-four connections at
   once, each on a thread of its own; the sixty-fifth is refused before a thread is even

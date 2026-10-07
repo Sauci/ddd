@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, chooseUnit, SENSOR_HUB, withUnitOfValueA } from "./demo";
+import { CONTROLLER, chooseUnit, drift, SENSOR_HUB, withUnitOfValueA } from "./demo";
 import { expect, test } from "./fixtures";
 
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
@@ -219,7 +219,6 @@ test("a dragged module stays where it was put after a revision, and Tidy puts it
   page,
   gui,
 }) => {
-  const file = join(gui.directory, SENSOR_HUB);
   await page.goto(gui.address);
   const controller = page
     .locator(".react-flow__node")
@@ -236,17 +235,11 @@ test("a dragged module stays where it was put after a revision, and Tidy puts it
   const dragged = await controller.evaluate((node) => (node as HTMLElement).style.transform);
   expect(dragged).not.toBe(original);
 
-  // Saved from outside the page, as milestone 1's own "a change saved by another editor" journey
-  // does, so a new revision arrives while the canvas is still open.
-  const redrawn = page.waitForResponse("**/api/graph");
-  writeFileSync(
-    file,
-    readFileSync(file, "utf8").replace(
-      "Produces the raw input values of the device",
-      "Produces the raw input values of the device, revised",
-    ),
-  );
-  await redrawn;
+  // Saved from outside the page, so that a new revision arrives while the canvas is open - and
+  // waited for by what it changes on the canvas, the arrow it colours, rather than by a
+  // response the page may or may not have asked for yet.
+  drift(gui.directory);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
   await expect
     .poll(() => controller.evaluate((node) => (node as HTMLElement).style.transform))
     .toBe(dragged);

@@ -23,6 +23,7 @@ test("a project on a mapped drive is served by its network path, and edited thro
   const state = (await (
     await fetch(new URL("/api/state", mappedGui.address), { headers })
   ).json()) as {
+    project: string;
     files: { path: string }[];
   };
   expect(state.files.length).toBeGreaterThan(0);
@@ -58,9 +59,20 @@ test("a project on a mapped drive is served by its network path, and edited thro
   await expect(page.getByRole("row", { name: "valve.ddd.json" })).toContainText("component");
   expect(existsSync(join(mappedGui.directory, "valve.ddd.json"))).toBe(true);
 
-  // A network path beside the directory served is refused, in the server's own words.
+  // The route a component's page reads its file by answers the project's own description by the
+  // network path the state names it by, under the directory served - the one ddd gui was started
+  // in, the description's own - and the answer names it the same way. A network path beside that
+  // directory, its name begun alike, is refused in the server's own words before anything
+  // resolves it, where a prefix compared with no separator after it, or a confinement widened to
+  // the whole share, would let it in.
+  const served = state.project.slice(0, state.project.lastIndexOf("/"));
+  const own = new URL("/api/file", mappedGui.address);
+  own.searchParams.set("path", state.project);
+  const answered = await fetch(own, { headers });
+  expect(answered.status).toBe(200);
+  expect(await answered.json()).toMatchObject({ path: state.project, error: null });
   const beside = new URL("/api/file", mappedGui.address);
-  beside.searchParams.set("path", "//localhost/ddd-mapped-other/a.ddd.json");
+  beside.searchParams.set("path", `${served}-other/a.ddd.json`);
   const refused = await fetch(beside, { headers });
   expect(refused.status).toBe(400);
   expect(await refused.json()).toEqual({

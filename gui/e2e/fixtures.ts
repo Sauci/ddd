@@ -23,7 +23,9 @@ const STRUCTURES: Example = { directory: "structures", project: "project.ddd.jso
 export interface Gui {
   /** The address ddd gui printed, token included. */
   address: string;
-  /** The copy of the example the server edits, under this test's own output directory. */
+  /** The directory the server is started in and edits: a copy of an example, or the project
+   * `generatedGui` generates, under this test's own output directory - or, for `mappedGui`, a
+   * copy of the demo in a fresh directory on the drive `DDD_MAPPED_DRIVE` names. */
   directory: string;
   /** Stops the server; stopping twice is harmless. */
   stop: () => Promise<void>;

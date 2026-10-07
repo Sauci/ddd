@@ -3127,9 +3127,13 @@ class TestTheCiRun:
         ]
 
     def test_edge_is_the_runner_s_own_and_the_install_is_bounded(self) -> None:
+        """Ten minutes (ruling P19a-6): a stalled download still fails in minutes, and a healthy
+        install on the windows chromium leg took 2 m 54 s in run 37688993981 and 3 m 36 s in run
+        37695365124, 3 m 19 s of it --with-deps installing Media Foundation - five would fail a
+        slow day's."""
         install = step(job(CI_WORKFLOW, "gui"), "Install Playwright's Chromium")
         assert "if: matrix.browser == 'chromium'" in install
-        assert "timeout-minutes: 5" in install
+        assert "timeout-minutes: 10" in install
         journeys = step(job(CI_WORKFLOW, "gui"), "Run the journeys")
         assert "PLAYWRIGHT_CHANNEL: ${{ matrix.browser == 'msedge' && 'msedge' || '' }}" in journeys
 
@@ -3178,11 +3182,11 @@ class TestTheCiRun:
         assert "New-SmbShare" in mapped and "net use M:" in mapped
         assert "DDD_MAPPED_DRIVE=M:" in mapped
         # A PowerShell script, and a share the journey can write to: it edits the copy it serves,
-        # and finds every file named under this network path (mapped.spec.ts). The directory
-        # shared is made first, in the runner's own temporary directory.
+        # and finds every file named under this network path (mapped.spec.ts), mapped for this
+        # logon alone. The directory shared is made first, in the runner's own temporary one.
         assert "shell: pwsh" in mapped
         assert "-FullAccess" in mapped
-        assert r"net use M: \\localhost\ddd-mapped" in mapped
+        assert r"net use M: \\localhost\ddd-mapped /persistent:no" in mapped
         assert '$shared = Join-Path $env:RUNNER_TEMP "ddd-mapped"' in mapped
         assert "New-Item -ItemType Directory -Path $shared" in mapped
 

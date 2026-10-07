@@ -219,11 +219,13 @@ jobs:
           New-SmbShare -Name ddd-mapped -Path $shared -FullAccess "$env:USERDOMAIN\$env:USERNAME" | Out-Null
           net use M: \\localhost\ddd-mapped /persistent:no
           "DDD_MAPPED_DRIVE=M:" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      # Edge is the windows runner's own, and needs no download. A stalled download fails in
-      # minutes rather than holding the job: it once hung for 24.
+      # Edge is the windows runner's own, and needs no download. A stalled download still fails
+      # in minutes rather than holding the job, as it once did for 24; ten of them, because a
+      # healthy install on windows was measured at over three, 3 m 19 s of it --with-deps
+      # installing Media Foundation.
       - name: Install Playwright's Chromium
         if: matrix.browser == 'chromium'
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: npx playwright install --with-deps chromium
       - name: Run the journeys
         run: npm run e2e -- --repeat-each=${{ inputs.repeat || 1 }}

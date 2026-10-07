@@ -495,7 +495,7 @@ def unit_edit(
 
 LONGEST_NAME: Final = 243
 """The longest name a file can be created under, in bytes: staged under it and ``.ddd-staging``
-first, 255 bytes, the most a file system takes."""
+first, 255 bytes, the most ext4 takes - and never more than the 255 UTF-16 units NTFS takes."""
 
 
 def too_long(name: str, length: int) -> str:
@@ -503,8 +503,9 @@ def too_long(name: str, length: int) -> str:
     as the edit names the file, or its name, as the plan of a new file does."""
     return (
         f"{name} cannot be created: its name is {length} bytes long, and a name is at most "
-        f"{LONGEST_NAME} - the file is staged under the name and '.ddd-staging' first, and a file "
-        "system takes 255 bytes"
+        f"{LONGEST_NAME} - the file is staged under the name and '.ddd-staging' first, and ext4 "
+        "takes a name of at most 255 bytes, NTFS one of at most 255 UTF-16 units, which 255 bytes "
+        "never exceed"
     )
 
 
@@ -518,10 +519,12 @@ def a_device(name: str, device: str) -> str:
 
 
 def asked_about(monkeypatch: pytest.MonkeyPatch, name: str) -> list[str]:
-    """Every question the file system is asked from here on about a path ending in ``name``, by
-    the function it is asked through: ``os``'s and ``os.path``'s own, and ``io.open``, which
-    ``pathlib`` opens a file by - each swapped for one recording the path before it answers.
-    ``os.path.realpath`` among them, which ``Path.resolve`` asks on every system."""
+    """The questions the file system is asked from here on about a path ending in ``name``, by
+    the function it is asked through: six of ``os``'s - ``stat``, ``lstat``, ``open``, ``readlink``,
+    ``scandir`` and ``listdir`` - six of ``os.path``'s, ``realpath`` among them, which
+    ``Path.resolve`` asks on every system, and ``io.open``, which ``pathlib`` opens a file by -
+    each swapped for one recording the path before it answers. Not every way there is to ask:
+    the ways an edit and the plan of a new file take."""
     asked: list[str] = []
 
     def record(where: Any, function: str) -> None:
@@ -2662,8 +2665,9 @@ class TestEdit:
         the name - which python 3.12's own ``Path.exists`` raises on past 255 bytes on Linux, and
         which Windows answers with an error ``Path.resolve`` may not walk past. Counted in the
         bytes utf-8 spells it with - what ext4 counts, and never fewer than the utf-16 units NTFS
-        counts - so that a name ``é`` spells in 127 characters is refused at 245 bytes. The path
-        the refusal names is the directory's, resolved, and the name as given."""
+        counts - so that a name ``é`` spells in 127 characters is refused at 245 bytes. The
+        refusal names the file's path as the edit gives it, which here is the directory's
+        resolved already - pytest's own temporary directory is - and the name."""
         request = creating(root, name)
         before = contents(root)
         asked = asked_about(monkeypatch, name)
@@ -6088,21 +6092,24 @@ class TestSection:
         )
 
     @pytest.mark.parametrize(
-        ("query", "whose"),
+        ("query", "said"),
         [
-            ({"action": "set", "name": ".calib", "key": "alignment", "raw": "not json"}, "raw"),
+            (
+                {"action": "set", "name": ".calib", "key": "alignment", "raw": "not json"},
+                "'not json' is not one json value: Expecting value: line 1 column 1 (char 0)",
+            ),
             (
                 {"action": "add", "name": ".nvm", "access": "read-write", "alignment": "4"},
-                "access",
+                "'read-write' is not one json value: Expecting value: line 1 column 1 (char 0)",
             ),
             (
                 {"action": "add", "name": ".nvm", "access": '"read-write"', "alignment": "4 8"},
-                "alignment",
+                "'4 8' is not one json value: Extra data: line 1 column 3 (char 2)",
             ),
         ],
     )
     def test_a_value_that_is_not_json_is_bad_before_any_refusal_about_the_project(
-        self, tmp_path: Path, query: dict[str, str], whose: str
+        self, tmp_path: Path, query: dict[str, str], said: str
     ) -> None:
         """`?access=read-write` is the mistake this guard is really for. Left to the model, it
         would meet *"read-write is not an access a section may state ... : read-write or
@@ -6110,8 +6117,7 @@ class TestSection:
         what is wrong with it is the missing quotes and not the word."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/section-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        assert f"{query[whose]!r} is not one json value" in reply.body["message"]
+        assert reply == Reply(400, {"error": "bad-request", "message": said})
 
     def test_two_values_that_are_not_json_are_refused_in_a_fixed_order(
         self, tmp_path: Path
@@ -6667,24 +6673,27 @@ class TestRaster:
         )
 
     @pytest.mark.parametrize(
-        ("query", "whose"),
+        ("query", "said"),
         [
-            ({"action": "set", "name": "10ms", "key": "cycle", "raw": "not json"}, "raw"),
-            ({"action": "add", "name": "50ms", "event": "3 4"}, "event"),
+            (
+                {"action": "set", "name": "10ms", "key": "cycle", "raw": "not json"},
+                "'not json' is not one json value: Expecting value: line 1 column 1 (char 0)",
+            ),
+            (
+                {"action": "add", "name": "50ms", "event": "3 4"},
+                "'3 4' is not one json value: Extra data: line 1 column 3 (char 2)",
+            ),
         ],
     )
     def test_a_value_that_is_not_json_is_bad_before_any_refusal_about_the_project(
-        self, tmp_path: Path, query: dict[str, str], whose: str
+        self, tmp_path: Path, query: dict[str, str], said: str
     ) -> None:
+        """The whole sentence, as the section pair's own
+        ``test_two_values_that_are_not_json_are_refused_in_a_fixed_order`` asserts it: the
+        clause ``parse_raw`` writes, and after it python's json decoder's own words."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
         reply = get(api, "/api/raster-plan", **query)
-        assert (reply.status, reply.body["error"]) == (400, "bad-request")
-        # `startswith` and not `in`, matching the section pair's own
-        # `test_two_values_that_are_not_json_are_refused_in_a_fixed_order`: what follows the
-        # clause is python's json decoder's own text (`: Expecting value: line 1 column 1`),
-        # which this suite has no business pinning - but `in` would leave the prefix free too,
-        # and the prefix is the sentence `parse_raw` writes.
-        assert reply.body["message"].startswith(f"{query[whose]!r} is not one json value")
+        assert reply == Reply(400, {"error": "bad-request", "message": said})
 
     @pytest.mark.parametrize(
         ("query", "sentence"),

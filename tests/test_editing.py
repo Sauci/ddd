@@ -879,8 +879,8 @@ class TestCreatingAFile:
         assert refused.value.code == INVALID
         assert str(refused.value) == (
             f"{path} cannot be created: its name is 244 bytes long, and a name is at most 243 - "
-            "the file is staged under the name and '.ddd-staging' first, and a file system takes "
-            "255 bytes"
+            "the file is staged under the name and '.ddd-staging' first, and ext4 takes a name of "
+            "at most 255 bytes, NTFS one of at most 255 UTF-16 units, which 255 bytes never exceed"
         )
         assert list(tmp_path.iterdir()) == []
 

@@ -80,8 +80,9 @@ def uncreatable(name: str) -> str | None:
     if length > CREATED_NAME_MAX:
         return (
             f"its name is {length} bytes long, and a name is at most {CREATED_NAME_MAX} - the "
-            f"file is staged under the name and '{STAGING_SUFFIX}' first, and a file system takes "
-            f"{NAME_MAX} bytes"
+            f"file is staged under the name and '{STAGING_SUFFIX}' first, and ext4 takes a name of "
+            f"at most {NAME_MAX} bytes, NTFS one of at most {NAME_MAX} UTF-16 units, which "
+            f"{NAME_MAX} bytes never exceed"
         )
     return None
 

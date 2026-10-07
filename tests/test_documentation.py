@@ -3172,6 +3172,34 @@ class TestTheCiRun:
         upload = gui.split("- if: failure()\n", 1)[1]
         assert "name: playwright-report-${{ matrix.os }}-${{ matrix.browser }}" in upload
 
+    def test_the_windows_chromium_leg_maps_a_drive_for_its_journey(self) -> None:
+        mapped = step(job(CI_WORKFLOW, "gui"), "Map a drive for the mapped-drive journey")
+        assert "if: runner.os == 'Windows' && matrix.browser == 'chromium'" in mapped
+        assert "New-SmbShare" in mapped and "net use M:" in mapped
+        assert "DDD_MAPPED_DRIVE=M:" in mapped
+        # A PowerShell script, and a share the journey can write to: it edits the copy it serves,
+        # and finds every file named under this network path (mapped.spec.ts). The directory
+        # shared is made first, in the runner's own temporary directory.
+        assert "shell: pwsh" in mapped
+        assert "-FullAccess" in mapped
+        assert r"net use M: \\localhost\ddd-mapped" in mapped
+        assert '$shared = Join-Path $env:RUNNER_TEMP "ddd-mapped"' in mapped
+        assert "New-Item -ItemType Directory -Path $shared" in mapped
+
+    def test_the_drive_is_named_to_the_journeys_that_follow(self) -> None:
+        """Broken any of these ways, mapped.spec.ts is left out where it was to run, and the leg
+        passes without it: the drive named to the mapping step alone rather than to the steps
+        after it, or named only once the journeys have run, or under another name than the one
+        playwright.config.ts chooses the journey by."""
+        gui = job(CI_WORKFLOW, "gui")
+        mapped = step(gui, "Map a drive for the mapped-drive journey")
+        assert '"DDD_MAPPED_DRIVE=M:" | Out-File -FilePath $env:GITHUB_ENV -Append' in mapped
+        assert gui.index("- name: Map a drive for the mapped-drive journey") < gui.index(
+            "- name: Run the journeys"
+        )
+        config = (ROOT / "gui" / "playwright.config.ts").read_text(encoding="utf-8")
+        assert 'testIgnore: process.env.DDD_MAPPED_DRIVE ? [] : ["**/mapped.spec.ts"]' in config
+
 
 class TestPreCommitHook:
     """The hook definition this repository publishes for projects that use ddd.

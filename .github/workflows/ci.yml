@@ -207,6 +207,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # P18-12: a project on a mapped drive, which Windows names by its network path. The runner
+      # shares a directory with itself and maps it as M:, and the windows chromium leg runs
+      # mapped.spec.ts there; one leg is enough, the server's paths being what is tested.
+      - name: Map a drive for the mapped-drive journey
+        if: runner.os == 'Windows' && matrix.browser == 'chromium'
+        shell: pwsh
+        run: |
+          $shared = Join-Path $env:RUNNER_TEMP "ddd-mapped"
+          New-Item -ItemType Directory -Path $shared | Out-Null
+          New-SmbShare -Name ddd-mapped -Path $shared -FullAccess "$env:USERDOMAIN\$env:USERNAME" | Out-Null
+          net use M: \\localhost\ddd-mapped /persistent:no
+          "DDD_MAPPED_DRIVE=M:" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       # Edge is the windows runner's own, and needs no download. A stalled download fails in
       # minutes rather than holding the job: it once hung for 24.
       - name: Install Playwright's Chromium

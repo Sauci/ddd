@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { signInFrom } from "./api/signIn";
 import { App } from "./app/App";
 import "@xyflow/react/dist/style.css";
 import "./styles/tokens.css";
@@ -14,10 +15,13 @@ const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 
-createRoot(root).render(
-  <StrictMode>
-    <QueryClientProvider client={client}>
-      <App />
-    </QueryClientProvider>
-  </StrictMode>,
-);
+// Signed in before anything is rendered, so that no ask goes out without the token.
+void signInFrom(window.location, (path) => window.history.replaceState(null, "", path)).then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <App />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});

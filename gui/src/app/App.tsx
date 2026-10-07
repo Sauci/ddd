@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback } from "react";
+import { type ReactNode, useCallback, useSyncExternalStore } from "react";
 import { getSession } from "../api/client";
+import { signedOut } from "../api/token";
+import { SignedOutView } from "../components/SignedOutView";
 import { hrefOf, type ProjectView, type Route } from "../lib/route";
 import type { SharedKind } from "../lib/shared";
 import { ComparePage } from "../screens/ComparePage";
@@ -62,6 +64,7 @@ const BARE_ROUTES: Record<ProjectView, Route> = {
 export function App() {
   const queries = useQueryClient();
   const [route, navigate] = useRoute();
+  const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
   const { state, updating, stopped, failure } = useProjectState(opened !== null);
@@ -139,6 +142,7 @@ export function App() {
     [navigate],
   );
 
+  if (out) return <SignedOutView />;
   let page: ReactNode;
   if (session.isPending) {
     page = <p className="quiet">Connecting…</p>;

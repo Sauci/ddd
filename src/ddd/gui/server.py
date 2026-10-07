@@ -123,19 +123,6 @@ SIGN_IN_PAGE: Final = (
     b"<p>Open the address <code>ddd gui</code> printed in its terminal.</p></html>"
 )
 
-SIGNED_IN_PAGE: Final = (
-    '<!doctype html><html lang="en"><meta charset="utf-8">'
-    '<meta http-equiv="refresh" content="0; url={target}"><title>ddd gui</title>'
-    '<p><a href="{target}">Open ddd gui</a></p></html>'
-)
-"""What ``/open`` answers once it has set the cookie: a page that refreshes to the project, or
-to the start page. Not a redirect: ``/open`` is reached however the token or a launch code got
-there - pasted, clicked from somewhere else, or a browser opened straight on it - and a
-``SameSite=Strict`` cookie does not reliably follow a redirect chain that began cross-site,
-where a refresh this page makes itself is a fresh, same-origin navigation, which the cookie
-does follow. A meta refresh rather than a script: no script is needed, so none is written, and
-the fallback link below it is for a browser that blocks the refresh itself."""
-
 
 def static_directory() -> Path:
     """Where the compiled pages are installed: ``static`` beside this module."""
@@ -400,7 +387,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "bad-request", "message": _NOT_A_TARGET})
             return
         if method == "GET" and url.path == "/open":
-            self._sign_in(parse_qs(url.query))
+            # The page itself, which signs itself in: it reads the code or the token from this
+            # address, posts it to /open, and keeps the token it is answered. Nothing is checked
+            # or spent on a GET, so a browser's prefetch of the launch address spends no code.
+            # The address holds a secret, so the answer is never stored.
+            self._page("/", {"Cache-Control": "no-store"})
             return
         api = url.path.startswith("/api/")
         if self._from_elsewhere():
@@ -420,20 +411,17 @@ class _Handler(BaseHTTPRequestHandler):
             if body is not None:
                 self._exchange(body)
             return
-        if not self._signed_in():
-            if api:
-                self._send_json(401, {"error": "unauthorised", "message": _SIGN_IN})
-            else:
-                self._send(401, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
-            return
-        if method == "POST" and not self._from_this_page():
-            self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
-            return
         if not api:
             if method == "GET":
                 self._page(url.path)
             else:
                 self._send_json(405, {"error": "method-not-allowed", "message": _PAGES_ARE_READ})
+            return
+        if not self._signed_in():
+            self._send_json(401, {"error": "unauthorised", "message": _SIGN_IN})
+            return
+        if method == "POST" and not self._from_this_page():
+            self._send_json(403, {"error": "forbidden", "message": _FORBIDDEN})
             return
         body = None
         if method == "POST":
@@ -448,41 +436,6 @@ class _Handler(BaseHTTPRequestHandler):
         query = parse_qs(url.query, keep_blank_values=True)
         reply = self._gui.api.handle(method, url.path, query, body)
         self._send_json(reply.status, reply.body)
-
-    def _sign_in(self, query: dict[str, list[str]]) -> None:
-        given_token = (query.get("token") or [""])[0]
-        given_code = (query.get("code") or [""])[0]
-        just_signed_in = hmac.compare_digest(
-            given_token.encode("utf-8"), self._gui.token.encode("utf-8")
-        )
-        if not just_signed_in and given_code:
-            just_signed_in = self._gui.redeem_code(given_code)
-        # Its URL holds a secret - the token, or the code - so neither this page nor a
-        # refusal of it may be cached and replayed from a shared cache or browser history.
-        headers = {"Cache-Control": "no-store"}
-        if just_signed_in:
-            headers["Set-Cookie"] = (
-                f"{self._gui.cookie}={self._gui.token}; HttpOnly; SameSite=Strict; Path=/"
-            )
-        elif not (given_code and self._signed_in()):
-            # Exactly which requests get the signed-in page instead of this refusal: one
-            # naming a code that did not redeem - wrong, spent or expired alike - that
-            # already carries this server's valid cookie, as a browser's own prefetch of
-            # the /open?code= address does, or its navigating there a second time after the
-            # first already won the cookie, whatever token it names besides. A request naming
-            # no code - a wrong token, or nothing at all - refuses here regardless of the
-            # cookie.
-            if given_code and self._gui.code_redeemed(given_code):
-                # It signed a browser in once already, and this request carries none of the
-                # cookie that browser was given: so it is not the browser that won it.
-                print(_CODE_REUSED, file=sys.stderr)
-            self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], headers)
-            return
-        # A project open goes to its page, analysed yet or not: the page says it is being
-        # analysed until its first analysis lands.
-        target = "/project" if self._gui.api.session.project is not None else "/"
-        page = SIGNED_IN_PAGE.format(target=target).encode("utf-8")
-        self._send(200, page, CONTENT_TYPES[".html"], headers)
 
     def _exchange(self, body: bytes) -> None:
         """``POST /open``: a launch code, or the token itself, traded for the token the page
@@ -591,7 +544,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._body_read = True
         return body
 
-    def _page(self, path: str) -> None:
+    def _page(self, path: str, headers: dict[str, str] | None = None) -> None:
         """Answer the file of the compiled pages a path names, or ``index.html``, whose router
         makes a screen of any other path.
 
@@ -628,7 +581,7 @@ class _Handler(BaseHTTPRequestHandler):
             if os.path.isfile(found):  # noqa: PTH113
                 target = found
         kind = CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")
-        self._send(200, target.read_bytes(), kind)
+        self._send(200, target.read_bytes(), kind, headers)
 
     def _send(
         self, status: int, data: bytes, kind: str, headers: dict[str, str] | None = None

@@ -1,4 +1,5 @@
 import { type OwnEdits, ownEdits } from "../state/edits";
+import { type Keeper, type SignedOut, signedOut, token } from "./token";
 import type {
   Changes,
   CompareQuery,
@@ -78,20 +79,42 @@ export class ServerUnreachable extends Error {
 /** What a body that does not parse reads as, told apart from a body that is json's own `null`. */
 const NOT_JSON = Symbol("not json");
 
+/** What `request` is asked with: a `RequestInit` whose headers are a plain record, as every
+ * caller here builds them, so that the token's header is added beside them. */
+export type Ask = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
+
 export async function request<T>(
   path: string,
-  init: RequestInit = {},
+  init: Ask = {},
   fetchImpl: Fetch = fetch,
+  kept: Keeper = token,
+  out: SignedOut = signedOut,
 ): Promise<T> {
+  // The token goes as a header, and no cookie goes at all: a browser sends a cookie to every
+  // port of 127.0.0.1, so to every other server there too (part 18b).
+  const held = kept.get();
+  const headers =
+    held === null ? init.headers : { ...init.headers, Authorization: `Bearer ${held}` };
   let response: Response;
   try {
-    response = await fetchImpl(path, { credentials: "same-origin", ...init });
+    response = await fetchImpl(path, {
+      ...init,
+      credentials: "omit",
+      ...(headers === undefined ? {} : { headers }),
+    });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ServerUnreachable(error);
   }
   const body: unknown = await response.json().catch(() => NOT_JSON);
   if (!response.ok) {
+    if (response.status === 401) {
+      // Refused: the token kept is stale, or there is none. It is cleared, and the page says
+      // it is signed out. Nothing asks again on its own, and other tabs follow on their next
+      // ask, since they read the same storage.
+      kept.clear();
+      out.mark();
+    }
     const code =
       isRecord(body) && typeof body.error === "string" ? body.error : `http-${response.status}`;
     const message =
@@ -373,7 +396,7 @@ function queryOf<Q extends object>(query: Q): string {
   return parts.length === 0 ? "" : `?${parts.join("&")}`;
 }
 
-function post(body: unknown): RequestInit {
+function post(body: unknown): Ask {
   return {
     method: "POST",
     headers: { "Content-Type": "application/json" },

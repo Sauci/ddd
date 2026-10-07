@@ -19,6 +19,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-07-gui-token-out-of-cookie-design.md`. Read it before any task. Where this plan departs from it, the departure is a ruling in *Rulings taken* at the end, with its reason.
 
+> **As built** (executed 2026-10-07; the departures from the task texts, each a ruling under *Rulings taken*):
+> - **A refused sign-in leaves a held token** (P18b-6). Spec §5 had it cleared, which let any page sign the reader out of every tab by sending one to `/open?code=x`. Only a `401` from the API clears the token, and only the token that ask carried (P18b-13).
+> - **`POST /open` refuses more than spec §4 names.** A value UTF-8 cannot encode, and a name given twice, answer `400` (P18b-5). A body over 1024 bytes answers `413` before anything parses it (P18b-13). Refused at the gate, it answers the gate's own `403` page, not json (P18b-4).
+> - **`signInFrom` takes the history and replaces the address itself,** and `main.tsx` renders in `.finally` (P18b-8). No fixture waits for the landing (P18b-7).
+> - **Task 3's minors took a round of their own** (P18b-9). The loopback journey records every request line and header on four paths, and fails for a cookie at `Path=/` and at `Path=/api`. The hostile journey pins the gate's `403` in a browser again.
+> - **The security page says what this part leaves open** (P18b-10, P18b-13, P18b-17): a navigation to a page from elsewhere, a server that used the same port before, and `localhost` reaching a program on `[::1]`. Closing the first is the maintainer's choice (P18b-14).
+
 ## Global Constraints
 
 Every task's requirements include this section.
@@ -1426,31 +1433,82 @@ Before any push, scan the branch's commit messages and changed files for bidi ch
 
 ### Probes, before and after
 
-Asked against a scratch `ddd gui demo/demo.ddd.json --no-browser` over a copy of `examples/demo`, signed in as each commit signs in, on the Linux development PC. "Before" is master `ee8a7eb`; "after" is the branch's head. Filled in by Task 5.
+Two scripts kept in the session's scratchpad asked them:
+- `p18b_probe.py` serves a fresh copy of `examples/demo` in-process, as the server tests do, and asks it over a socket;
+- `p18b_stub.py` starts `ddd gui demo/demo.ddd.json` over a fresh copy, with `BROWSER` naming a stub that records what it is handed, asks the server as the browser would, and stops it.
+
+The setting:
+- **machine:** the Linux development PC, an Intel Core i9-14900HX with Python 3.14.4 and Chrome 153;
+- **before:** master `ee8a7eb`'s `src`, from a scratch worktree, on 2026-10-07. Its compiled pages were copied from the head's build, since no probe reads a page;
+- **after:** the branch at `02903d2`, on 2026-10-07, and again at `e71bb07`, with the same answers;
+- **the journey's red:** `loopback.spec.ts` at `02903d2` against a scratch worktree of `02903d2` with master's own `Set-Cookie` line put back on `GET /open`, as ruling 9 has it.
 
 | asked | before | after |
 | --- | --- | --- |
-| `GET /open?token=<token>`: does its answer set a cookie holding the token? | | |
-| `GET /api/session` with that cookie alone | | |
-| An older browser's cross-site `GET /api/compare?baseline=<the demo's description>`: the cookie, no `Sec-Fetch-Site`, no `Origin` | | |
-| A prefetch of the launch address, then the browser's own sign-in with the same code | | |
-| `loopback.spec.ts`: another server on `127.0.0.1` sent the token | | |
-| `ddd gui` started with `BROWSER` naming a stub: what the stub is handed | | |
+| `GET /open?token=<token>`: does its answer set a cookie holding the token? | yes: 200, `Set-Cookie: ddd-gui-<port>=<token>; HttpOnly; SameSite=Strict; Path=/` | no: 200, the page, with no `Set-Cookie` |
+| `GET /api/session` with that cookie alone | 200 | 401 |
+| An older browser's cross-site `GET /api/compare?baseline=<the demo's description>`: the cookie, no `Sec-Fetch-Site`, no `Origin` | 200, the baseline analysed, its plugins run | 401, "open the address ddd gui printed in its terminal" |
+| A prefetch of the launch address, then the browser's own sign-in with the same code | the prefetch signed in (200, the cookie) and spent the code. The browser's own `GET` was refused (403), with the terminal's warning | the prefetch was answered the page (200, no cookie) and spent nothing. The browser's `POST /open` with the code was answered 200 with the token. Nothing was printed |
+| `loopback.spec.ts`: another server on `127.0.0.1` sent the token | yes: the typed navigation to its `/` carried `Cookie: ddd-gui-<port>=<token>`, and the journey failed | no: the journey passed, at `02903d2` and in the milestone gate at `e71bb07` |
+| `ddd gui` started with `BROWSER` naming a stub: what the stub is handed | `http://127.0.0.1:<port>/open?code=<code>` alone, in its arguments and its `/proc/<pid>/cmdline`. Its `GET` signed in (200, the cookie). The code presented again was refused (403), with the terminal's warning | the same address alone. Its `GET` was answered the page (200, `no-store`, no cookie) and spent nothing. `POST /open` with the code was answered 200 with the token, and 403 with the terminal's warning when it came again. `/api/session` with the bearer: 200 |
+
+Both runs printed `ddd gui (preview) serving http://127.0.0.1:<port>/open?token=<token>`, the address kept for pasting.
+
+### The milestone gate
+
+At `e71bb07`, on the Linux development PC, each exit status captured on its own line, every one 0:
+- **pytest:** 6,969 passed, at 100 % line and branch.
+- **ruff, format, mypy:** clean.
+- **The page:** the schemas, lint, typecheck and build are clean, and Vitest passed 880 at 100 % on all four metrics.
+- **Ladle and screenshots:** the Ladle build is clean, and all 160 screenshots pass: Task 2 added one reference, and none moved.
+- **Docs:** built under `-W`, with no warning.
+- **Journeys:** 89 passed in Chrome 153, the loopback and hostile journeys among them.
+
+The close-out commit after it changes only this plan.
 
 ## Progress log
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
+| 1 | `1b17ab3`, `ca94a40` | opus; one round | `POST /open`, and the bearer beside the cookie; a lone surrogate answered `500` until the round; P18b-4, P18b-5 |
+| 2 | `41b93d8`, `d6331ac` | opus; one round | the page signs itself in; the signed-out view and its reference; P18b-2, P18b-3, P18b-6 to P18b-8 |
+| 3 | `4224ccd`, `7bf8fd1` | opus; approved, its minors in one round | a cookie is no credential; the loopback journey; P18b-9 |
+| 4 | `1694e21`, `02903d2`, `c2cc3cd` | opus; one round | the security page, the CHANGELOG, the docstring; P18b-10, P18b-11 |
+| final review | `e56af1a`, `eb4c96c`, `b20406c`, `997ecbe`, then `e71bb07` | opus; one wave, one re-review, the residuals by the controller | the same-port residual measured and documented, the `401`'s compare-and-clear, `POST /open`'s 1024 bytes; P18b-13 to P18b-15, P18b-17 |
+| 5 | this close-out | — | the probes, the gate; P18b-12, P18b-16 |
 
 ## What was left open
 
-Filled in as the work goes. Known before execution:
+- **A navigation to a page from elsewhere** (P18b-10, P18b-14; the Task 4 review's Important 2, the final review's risk 4).
+  - **What passes.** The pages need no credential. A browser older than Chrome 76, Firefox 90 or Safari 16.4 sends no `Sec-Fetch-Site`, so the gate passes its plain navigation from any site. In every browser, a navigation the browser marks `none` passes too: an address typed or bookmarked, and, by the final review's reasoning, not measured, a link opened from another program.
+  - **What it allows.** Given the port and the path of a file the project includes, such a navigation opens the reader's signed-in page at that address. A Files row's Remove panel asks its plan at once, which re-analyses the project with its own plugins. Nothing is written without the reader's click, nothing is read by whoever sent it, and framing is refused. The final review rates it Low.
+  - **What changed.** At `ee8a7eb`, an older browser that supports SameSite sent no `Strict` cookie on a cross-site navigation, so only a page on another port of `127.0.0.1` could do this from a site. Now any site can, in such a browser. The `none` case is unchanged: the `Strict` cookie rode those navigations.
+  - **Where it stands.** The security page and the CHANGELOG say so. Closing it is the maintainer's choice. The final review recommends C:
+    - **A:** refuse a request for a page that carries no `Sec-Fetch-Site`. This drops older browsers, and changes every page request in the server's tests. It leaves the `none` case.
+    - **B:** put a `SameSite=Strict` cookie holding no secret in front of the pages again. This restores master's level, and brings a cookie back.
+    - **C:** ask the Remove panel's plan only on the reader's own press when the selection came from the address. This closes the effect in every browser and from every entry point, at the cost of one click after a reload or a link.
+- **A server that used the same port before** (P18b-11, P18b-13; the final review's I-1).
+  - The page's origin comes round again whenever its port does: every run with a fixed `--port`, as a container needs, and by chance with the free port the system picks.
+  - A service worker an earlier server registered there persists. In Chrome 153, measured by the final review, it saw the next run's launch code, `POST /open`'s answer and every `Authorization` header. `ddd gui` answering its script with the page (`text/html`) does not remove it. So does a script an earlier server had the browser cache under one of the page's own hashed asset paths with a long `max-age`: measured in the final wave, Chrome 153 ran it in place of `ddd gui`'s own, which `script-src 'self'` allows, the origin being the same.
+  - Not new: the cookie design was as exposed. The security page now says so, and advises a browser profile nothing else is browsed in. Clearing the browser's own data was never measured, so the page does not offer it.
+  - **Mitigations measured, not taken.**
+    - `Clear-Site-Data: "cache", "storage"` on `GET /open` limits a planted worker to one launch. It does not protect that launch, and it clears the run's other tabs' token.
+    - A fresh origin each run, such as a random `*.localhost` name, is the structural fix. It is close to the spec's rejected approach C.
+    - Subresource Integrity on the page's scripts would refuse a cached script whose bytes differ. It is untested here, the page's own module imports would need it too, and it does nothing against a service worker, which answers the page itself.
+- **`localhost` can reach another program** (the final review's I-2; not new).
+  - `ddd gui` listens on IPv4 alone, never on `[::1]`. A program listening on `[::1]` at the same port received `http://localhost:<port>/open?token=<token>` in Chrome 153, three times out of three.
+  - The security page says to open the printed address as printed. Binding `[::1]` too would close it: part 19's or 20's.
+- **Two tabs presenting one launch code** (the final review's M-4). Both end signed in: the loser lands on `/` with the winner's token. The terminal prints the reused-code warning, which says "if your browser is not signed in".
+- **Every sign-in asks `/api/session` twice:** once for its landing, and again for the page's own query (M-7).
 - **The launch-code race** (part 18's P18-9). A local process that reads the opener's command line and presents the code before the browser does is signed in. The terminal's warning is how it shows.
 - **A local process can hold the 64 connections,** and so deny the page its server.
 - **Transport security.** `ddd gui` speaks plain HTTP over loopback.
-- **The token in `localStorage` can be read by any script of the page's own origin.** That would take an injected script, which the content security policy's `default-src 'self'` keeps out.
+- **The token in `localStorage` can be read by any script of the page's own origin.** That takes an injected script, which the content security policy's `default-src 'self'` keeps out, or one an earlier server on the same port left in the browser's cache (above).
 - **Two origins.** `localhost:<port>` and `127.0.0.1:<port>` have separate storage. A reader who visits the one they did not sign in at is signed out there.
+- **A refused sign-in with a token held** (Task 2's review) leaves the tab on the start page rather than landing it by the session. A sign-in that ever threw would log an uncaught rejection; none can today.
+- **Old cookies are not cleared** (planning ruling 7). An earlier run's `ddd-gui-<port>` cookie still rides along to every port of `127.0.0.1` until the browser closes. It holds a dead token.
 - **Part 18's Windows leftovers, part 19's:** draining a refused `POST`'s body (P18-31), and the check of a project on a mapped drive by hand (P18-12).
+- **Nothing of this part has run on Windows or in Edge yet.** CI runs the Python suite, Vitest and the journeys on windows-latest too, with Playwright's own Chromium. This PR's CI is their first run there, the loopback journey's included. The plan's *Review Focus* said the journeys ran on Linux alone (P18b-16).
 
 ## Rulings taken
 
@@ -1468,3 +1526,23 @@ Taken while planning; execution adds its own below them.
 10. **The keeper and the signed-out flag live in `gui/src/api/token.ts`, beside `signIn.ts`,** not in `signIn.ts` alone as the spec's §5 has it. `client.ts` needs them for every request, and `signIn.ts` needs `client.ts`, so one module would import itself in a loop — cost if wrong: two modules where the spec named one.
 
 ### Taken during execution
+
+Each with what it costs if wrong; the commits that carry them say why.
+
+- **P18b-1.** The baseline gate ran at `8c4f07e` before Task 1, alone on the machine — cost if wrong: twenty minutes.
+- **P18b-2.** Task 2 kept `test_a_code_is_as_strong_as_the_token`. It pins `TOKEN_BYTES` and the 43-character code and token, and asks no `GET` of `/open`; the plan's deletion list was wrong to name it — cost if wrong: one test more.
+- **P18b-3.** Task 2 deleted the listed names from `TestSigningIn` alone. `TestTheSignInExchange` holds a test of the same name, which stays — cost if wrong: none.
+- **P18b-4.** `POST /open` refused at the gate answers the gate's own `403` page, not json. The gate answers by path alone, and the page treats any answer but `200` to its sign-in as a refusal — cost if wrong: a script posting to `/open` from elsewhere reads html.
+- **P18b-5.** `POST /open` refuses a value UTF-8 cannot encode, and counts a repeated name twice: both `400`. The first answered `500`, and the second let `{"token": "x", "token": "<token>"}` through — cost if wrong: a body repeating a name is refused where it was let through.
+- **P18b-6.** A refused sign-in, or any answer to `POST /open` but `200`, leaves a held token as it was; only a `401` from the API clears it. This departs from spec §5, under which any page could send a tab to `/open?code=x` and sign the reader out of every tab — cost if wrong: a held token outlives a refused sign-in until the API's `401`.
+- **P18b-7.** Spec §6's "the fixture waits for the landing" is met by every journey's first auto-waiting locator; no fixture wait was added — cost if wrong: a later journey that reads the address right after `goto` races the landing.
+- **P18b-8.** Task 2's fix round took its two Importants and two of its Minors: `signInFrom` takes a history and calls `replaceState` itself, and `main.tsx` renders in `.finally`. The cookie prose went to Task 3 — cost if wrong: a slightly larger round.
+- **P18b-9.** Task 3 took one fix round though approved. The loopback journey is this part's proof, and a `Path=/api` variant of the leak passed it — cost if wrong: one round's time on an approved task.
+- **P18b-10.** The older browser's navigation to a page is fixed in the prose, not in code. Closing it departs from the approved design, under which the pages need no credential, so it is the maintainer's choice — cost if wrong: in a browser older than Chrome 76, Firefox 90 or Safari 16.4, any site knowing the port and an included file's path can make the page re-run the project's plugins, until a fix lands.
+- **P18b-11.** The service worker on a fixed `--port` went to the final review, not onto the security page in Task 4's round: it was unverified in a browser, and not new to this part. The final review measured it, and P18b-13 put it on the page — cost if wrong: none in the end; for one round, the page omitted it.
+- **P18b-12.** Task 5's close-out of this plan was written after the final review and its wave, so that it records them once. Its probes and the milestone gate ran before the review — cost if wrong: none; one commit later.
+- **P18b-13.** The final wave took the review's I-1 (three sentences scoped, and a bullet on a server that used the same port before), I-2's docs (open the printed address as printed), M-3 (framing refused), the `none` case, M-1 (a 401 clears only the token its ask carried), M-2 (`POST /open`'s body at most 1024 bytes, refused 413 before parsing) and M-7's polish. Each is docs, or a few lines with a red test, and M-2 also takes the deep body off CI's untested windows legs — cost if wrong: a larger wave than the minimum.
+- **P18b-14.** Left to the maintainer: closing P18b-10 (the review recommends C), `Clear-Site-Data` on `GET /open`, binding `[::1]` too, the two-tab warning and the second `/api/session` ask. None is a regression of this part, and each changes behaviour beyond its spec — cost if wrong: the maintainer asks for one before merge.
+- **P18b-15.** The commit trailers were not rewritten. `1694e21` and `02903d2` name Sonnet 5, which wrote them. `c2cc3cd` names Opus 5.5 because the controller's fix-round dispatch said so, though Sonnet 5 wrote it — cost if wrong: one docs commit's trailer misattributes it.
+- **P18b-16.** The *Review Focus*'s "the journeys run on Linux" was wrong: CI runs them on windows-latest too. Corrected here rather than in the plan's body — cost if wrong: none.
+- **P18b-17.** The final wave's re-review found two sentences false and four saying more than was measured. The controller fixed them in one commit, `e71bb07`, without another review round: the one wave and its re-review were spent. Each sentence was checked against the re-review's evidence and the code, and a stubbed parser now holds `_secret_of`'s `RecursionError` catch — cost if wrong: an unreviewed docs sentence, which the maintainer reads in the PR.

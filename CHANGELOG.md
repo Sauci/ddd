@@ -53,7 +53,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and
   sends it as a header; a page elsewhere cannot send that header at all, in any browser.  The
-  pages themselves need no credential, and a cookie is no credential any more.
+  pages themselves need no credential, and a cookie is no credential any more.  A browser too
+  old to send `Sec-Fetch-Site` lets any site open the page itself at an address it chooses;
+  the security page says what that allows.
 
 * **`ddd gui` refuses a request that says it came from somewhere else.**  In a browser that
   sends `Sec-Fetch-Site` (Chrome 76, Firefox 90, Safari 16.4 and later), every request says

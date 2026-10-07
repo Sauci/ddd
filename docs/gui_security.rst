@@ -13,14 +13,19 @@ What it defends against
   ``127.0.0.1``. A browser treats every port of one address as the same site, but the
   token is no cookie: the page keeps it in ``localStorage`` for its own origin, port
   included, and sends it as ``Authorization: Bearer`` itself, rather than a browser
-  attaching it unasked. A page elsewhere has no token to send, and cannot send
-  ``Authorization`` at all without a CORS preflight, which this server never grants - the
-  first defence, in any browser. The gate is the second: a request marked, with
-  ``Sec-Fetch-Site``, anything but ``same-origin`` or ``none``, or naming an ``Origin``
-  that is not this server's own, is refused before it reaches a handler - ``GET /open``
-  excepted, which answers the page itself, needing no credential. See *The browsers it
-  protects*, below, for the one kind of request that reaches a handler with neither
-  header, and what still catches it there.
+  attaching it unasked. For a request to the API, a page elsewhere has no token to send,
+  and cannot send ``Authorization`` at all without a CORS preflight, which this server
+  never grants - the first defence, in any browser; the gate is the second, refusing a
+  request marked, with ``Sec-Fetch-Site``, anything but ``same-origin`` or ``none``, or
+  naming an ``Origin`` that is not this server's own, before it reaches a handler -
+  ``GET /open`` excepted, which answers the page itself, needing no credential. For a
+  navigation to a page, which likewise needs no credential, the gate above is the only
+  defence: see *The browsers it protects*, below, for what the one kind of request that
+  still reaches a handler with neither header can do there. A refused sign-in, or any
+  answer to ``POST /open`` but ``200``, leaves a token the page already holds as it was;
+  only a ``401`` from the API clears it, and the page then says it is signed out, other
+  tabs on their next request. So no page can sign the reader out by sending a tab to
+  ``/open`` with a wrong code.
 
 * **Another server on** ``127.0.0.1`` that the reader's browser is pointed at - on an
   address typed or bookmarked there, or on whatever a page served there asks of its own
@@ -29,12 +34,12 @@ What it defends against
   another origin never reaches.
 
 * **Any other local process or user that reaches the port without the token.** Past the
-  check above, every request still needs the token as ``Authorization: Bearer``, which no
-  cookie carries any more, and one that changes anything needs this server's own
+  check above, every request to the API still needs the token as ``Authorization: Bearer``,
+  which no cookie carries any more, and one that changes anything needs this server's own
   ``Origin`` and a json body besides. The token is minted fresh each run and compared in
-  constant time; it is never placed on a command line, where any local user could read it
-  - the browser ``ddd gui`` opens for the reader is launched on a one-time code instead,
-  good for sixty seconds or one use, whichever comes first.
+  constant time; it is never placed on a command line, where any local user could read
+  it - the browser ``ddd gui`` opens for the reader is launched on a one-time code
+  instead, good for sixty seconds or one use, whichever comes first.
 
 * **Malformed input, from anyone, including the reader's own browser.** No malformed
   input - in a route's query, in a request's body, or in a page's own path - is answered
@@ -119,11 +124,17 @@ The gate above - the check of ``Sec-Fetch-Site`` and ``Origin`` - depends on the
 sending ``Sec-Fetch-Site``. Chrome 76, Firefox 90, Safari 16.4 and every later release do,
 on every request; the last of them, Safari 16.4, shipped in March 2023.
 
-An older browser sends neither header on a plain request, so the gate lets such a request
-through. That no longer matters: the token is in this page's own ``localStorage``, which a
+An older browser sends neither header on a plain request - a navigation, or a request
+with no ``Origin``, such as an image - so the gate lets it through. Sent to the API, it
+carries no credential either: the token is in this page's own ``localStorage``, which a
 page on another port cannot read, and such a page cannot send ``Authorization`` without a
-CORS preflight, which this server never grants. Such a request therefore carries no
-credential either, and is answered ``401`` like any other.
+CORS preflight, which this server never grants - and it is answered ``401``, like any
+other refusal. Sent to a page, it is answered the page itself, which signs itself in from
+its own storage and asks for whatever its address names: a site that knows the port - the
+system picks a fresh one each run, unless ``--port`` names one - and the path of a file
+the project includes can so open a Files row's Remove panel, whose plan re-analyses the
+project, running its plugins. Nothing is written without the reader's own click. Use one
+of the browsers above.
 
 Running it in a container
 -------------------------
@@ -157,10 +168,10 @@ What it does not defend against
   the reader's browser does is signed in with the token for as long as this run of
   ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this happened:
   the reader's own browser shows it is signed out instead of landing on the project, and
-  presenting that same code again, without the token its winner was given, prints one
-  line on the terminal, saying so and to restart ``ddd gui`` rather than open the address
-  it printed - a restart takes the token from the winner, and the printed address would
-  not. A code that expired unused signed nobody in, and prints nothing.
+  presenting that same code again prints one line on the terminal, saying so and to
+  restart ``ddd gui`` rather than open the address it printed - a restart takes the token
+  from the winner, and the printed address would not. A code that expired unused signed
+  nobody in, and prints nothing.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.
@@ -177,10 +188,10 @@ Every route
 Every request that reaches a handler has already passed the gate above. The table below
 adds, route by route, what each one does once it has: whether it writes a file of the open
 project, opens a project, may run a plugin's code, or may hold its answer open, waiting
-for something to change. It lists the api alone: ``GET /open`` answers the page, and
-``POST /open`` trades a code or the token for the token; neither needs a credential, and
-the ``POST`` passes the gate and a ``POST``'s rules. The pages need none either; every
-route below needs the token as a header.
+for something to change. It lists the api alone: ``GET /open``, which the gate does not
+check, answers the page, and ``POST /open`` trades a code or the token for the token;
+neither needs a credential, and the ``POST`` passes the gate and a ``POST``'s rules. The
+pages need none either; every route below needs the token as a header.
 
 .. _gui-security-routes:
 

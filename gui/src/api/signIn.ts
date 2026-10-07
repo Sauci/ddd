@@ -1,8 +1,6 @@
-import { request } from "./client";
+import { type Fetch, request } from "./client";
 import { type Keeper, token } from "./token";
 import type { SessionInfo } from "./types";
-
-type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 /** What an address at /open signs the page in with. */
 export type Secret = { code: string } | { token: string };

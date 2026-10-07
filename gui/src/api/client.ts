@@ -53,7 +53,9 @@ import type {
   VariableReply,
 } from "./types";
 
-type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
+/** The `fetch` a request is sent through: the global by default, a stub in the tests. Declared
+ * here and imported where else it is needed (`signIn.ts`), so the two cannot drift apart. */
+export type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 /** A refusal or a failure the server answered with, carrying its code for the page to act on. */
 export class ApiError extends Error {

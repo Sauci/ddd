@@ -363,7 +363,8 @@ class _Handler(BaseHTTPRequestHandler):
         Left to the base class, a failure printed its traceback and dropped the connection, and
         the page then said the server was not answering - or, waiting for the state to change,
         that it had stopped - about a server that was running. The traceback still goes to the
-        terminal, where whoever reads the page's message is sent. A page that went away
+        terminal, where whoever reads the page's message is sent, every character a terminal
+        does not print as itself escaped (:func:`_shown`). A page that went away
         mid-answer is let go as before: there is nobody left to answer, and nothing worth
         printing, whether it closed the connection or only stopped reading it.
         """
@@ -378,7 +379,7 @@ class _Handler(BaseHTTPRequestHandler):
             # regardless - an escape sequence in it would otherwise reach the terminal raw,
             # this one read for exactly that.
             print(f"ddd gui: {method} {self.path!r} failed:", file=sys.stderr)
-            traceback.print_exc()
+            print(_shown(traceback.format_exc()), end="", file=sys.stderr)
             self._send_json(500, {"error": "internal", "message": _INTERNAL})
 
     def _route(self, method: str) -> None:
@@ -611,6 +612,20 @@ _CODE_REUSED: Final = (
     "first and now holds the token itself, so restart ddd gui rather than open the address it "
     "printed"
 )
+
+
+def _shown(text: str) -> str:
+    """``text`` as it may reach a terminal: every character that does not print as itself - a
+    control character, the ``ESC`` an escape sequence begins with among them, or one that turns
+    the text after it around - written as its escape, ``\\x1b``, and every line break kept. What a
+    failure's traceback is printed through: an exception's own message is anyone's text once it
+    carries a request's."""
+    return "".join(
+        character
+        if character == "\n" or character.isprintable()
+        else character.encode("unicode_escape").decode("ascii")
+        for character in text
+    )
 
 
 def _refused(value: str, port: int, error: Exception) -> int:

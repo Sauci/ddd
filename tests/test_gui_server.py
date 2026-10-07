@@ -836,6 +836,25 @@ class TestWhatIsServed:
         assert f"GET {path!r}" in printed
         assert "\x1b" not in printed
 
+    def test_a_failure_is_printed_with_its_traceback_escaped(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """An exception's own message is printed as it stands, and one that carried request
+        text into it through ``str()`` - none does today, each formats it with ``%r`` - would
+        put an escape sequence on the terminal raw: the title's, the screen cleared, the text
+        that follows turned around. Every character a terminal does not print as itself is
+        written as its escape instead, but the line breaks a traceback is made of."""
+
+        def failing(api: Api, query: object, body: object) -> None:
+            raise RuntimeError("a defect \x1b]0;owned\x07 \x1b[2J\u202e\r\tend")
+
+        answering_session(monkeypatch, failing)
+        response, _ = ask(server, "GET", "/api/session")
+        assert response.status == 500
+        printed = capsys.readouterr().err
+        assert "RuntimeError: a defect \\x1b]0;owned\\x07 \\x1b[2J\\u202e\\r\\tend\n" in printed
+        assert [c for c in printed if not (c == "\n" or c.isprintable())] == []
+
     def test_an_answer_json_cannot_spell_is_a_failure_rather_than_a_body_no_page_reads(
         self, server, monkeypatch, capsys
     ) -> None:

@@ -143,12 +143,13 @@ the project includes can so open a Files row's Remove panel, whose plan re-analy
 project, running its plugins. Nothing is written without the reader's own click. Use one
 of the browsers above.
 
-One kind of request reaches a page this way in every browser, new or old: a navigation the
-browser begins itself - an address typed or chosen from a bookmark, or a link opened from
-another program - is marked ``Sec-Fetch-Site: none``, and the gate lets ``none`` through by
-design, so it lands on the page its address names just as above. So this is not closed by a
-modern browser; it was so at master too, where a ``SameSite=Strict`` cookie rode these same
-browser-begun navigations.
+In every browser, the gate lets through by design a navigation marked
+``Sec-Fetch-Site: none``, which a browser sends for a navigation it begins itself - an
+address typed, or chosen from a bookmark - and an older browser marks such a navigation
+with nothing. Either way it lands, signed in, on the page its address names, just as above,
+as it did when the token was a cookie: a ``SameSite=Strict`` cookie rode the same
+navigations. Open ``ddd gui``'s pages from the address it prints, or from the page itself,
+rather than from a link someone else wrote.
 
 Running it in a container
 -------------------------
@@ -189,23 +190,24 @@ What it does not defend against
 
 * **A server that used the same port before.** The page's origin is its address and port,
   and the browser keeps what a server on them left behind into any later run on that port.
-  The system picks a fresh port each run unless ``--port`` names one, so this is the
-  fixed-port case. A service worker an earlier server registered there survives it - nothing
-  ``ddd gui`` answers removes it - and sees the launch's code, the token the page is answered,
-  and every request the page sends. So does a script an earlier server answered one of the
-  compiled pages' own hashed asset paths with, under a long ``max-age``: the browser runs
-  that cached script when ``ddd gui`` later serves the path the build names, because the
-  content security policy admits any script from this origin and cannot tell one the browser
-  cached from one ``ddd gui`` served. Either one runs as the page and can take the token.
-  With a fixed ``--port``, as a container needs, open ``ddd gui`` in a browser profile of its
-  own, or clear the browser's data for that address before opening it.
+  Unless ``--port`` names one, the system picks a port that is free when ``ddd gui``
+  starts, which an earlier server may still have used; a fixed ``--port``, as a container
+  needs, is the same origin every run. A service worker an earlier server registered there
+  survives it, and nothing ``ddd gui`` answers removes it: it sees the launch's code, the
+  token the page is answered, and every request the page sends. So does a script an
+  earlier server answered one of the compiled pages' own hashed asset paths with, under a
+  long ``max-age``: the browser runs that cached script when a page ``ddd gui`` later
+  serves names that path, because the content security policy admits any script from this
+  origin and cannot tell one the browser cached from one ``ddd gui`` served. Either one can
+  take the token. Open ``ddd gui`` in a browser profile of its own, one nothing else is
+  browsed in, above all with a fixed ``--port``.
 
 * **The printed address, opened as something other than itself.** ``ddd gui`` listens on
-  ``127.0.0.1`` alone and prints that address. Rewritten by the reader to ``localhost``, the
-  address may reach a different program listening on ``[::1]`` at the same port - a browser
-  resolving ``localhost`` may try ``[::1]`` first - and the token in a pasted address then
-  goes to that program, which also owns the ``localhost`` origin's storage. Open the address
-  exactly as ``ddd gui`` prints it.
+  IPv4 alone, never on ``[::1]``, and prints a ``127.0.0.1`` address. Rewritten by the
+  reader to ``localhost``, the address may reach a different program listening on
+  ``[::1]`` at the same port - a browser resolving ``localhost`` may try ``[::1]`` first -
+  and the token in a pasted address then goes to that program, which also owns the
+  ``localhost`` origin's storage. Open the address exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

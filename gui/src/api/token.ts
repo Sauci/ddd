@@ -16,8 +16,8 @@ export interface Keeper {
 
 /** A keeper over `storage()`, which moves to the tab's own memory the first time storage
  * throws: in a private window, under a policy, or with its quota full. The tab then stays
- * signed in until it reloads or closes, since a token kept only in memory does not outlive the
- * page. */
+ * signed in until the server refuses its token, or until it reloads or closes, since a token
+ * kept only in memory does not outlive the page. */
 export function keeperOver(storage: () => Storage): Keeper {
   let usable = true;
   let memory: string | null = null;

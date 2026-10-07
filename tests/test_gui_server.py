@@ -599,6 +599,17 @@ class TestTheSignInExchange:
             {"error": "too-large", "message": _OPEN_TOO_LARGE},
         )
 
+    def test_a_parser_out_of_its_depth_is_a_malformed_body(self, monkeypatch) -> None:
+        """``_secret_of``'s ``RecursionError`` catch, held although no body within ``OPEN_BODY``
+        nests deep enough to reach it on the pythons measured: the parser is stubbed to raise
+        what one out of its depth raises, which is no ``ValueError``."""
+
+        def out_of_depth(*_args: object, **_kwargs: object) -> object:
+            raise RecursionError("maximum recursion depth exceeded while decoding a JSON array")
+
+        monkeypatch.setattr(module.json, "loads", out_of_depth)
+        assert module._secret_of(b'{"token": "x"}') is None
+
     def test_the_open_body_refusal_says_what_it_takes(self, server) -> None:
         """Pinned by its literal text, ``OPEN_BODY``'s value among it: the tests above compare
         against the imported ``_OPEN_TOO_LARGE``, which would drift along with any rewording of

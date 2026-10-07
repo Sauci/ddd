@@ -809,8 +809,12 @@ def _source(revision: Revision, path: Path) -> Path:
     ``includes`` and ``GET /api/file`` reading it back was the page widening its own reach - and
     checked here rather than at that one route, because this is where every route that takes a
     path from the page resolves it, and where an edit resolves the file it writes.
+
+    Resolved as the loader resolves a path (:func:`ddd.loading.resolve_path`), which hands one it
+    cannot resolve back as given, to be no file of the project: on python 3.12 a loop of links
+    made ``Path.resolve`` raise, which answered the request ``500``.
     """
-    resolved = path.resolve()
+    resolved = resolve_path(path)
     if not any(file.path == resolved and file.kind != "plugin" for file in revision.files):
         raise NotInProjectError(f"{path.as_posix()} is not a description file of the open project")
     return _served(revision, resolved)
@@ -843,8 +847,9 @@ def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileCha
     to stage, is refused on every system alike, whatever an operating system would answer about
     it - Windows' answer about a name too long for NTFS is not one ``Path.resolve`` is sure to
     walk past. Its path is then resolved as the loader resolves one
-    (:func:`ddd.loading.resolve_path`), which hands back a path the system refuses to look at
-    rather than raise."""
+    (:func:`ddd.loading.resolve_path`), and so is each other change's, to find the project
+    description among them: a path the system will not resolve is handed back as given rather
+    than raised on."""
     if pending.fingerprint is not None:
         return FileChange(_source(revision, pending.path), pending.fingerprint, pending.operations)
     refused = uncreatable(pending.path.name)
@@ -853,7 +858,7 @@ def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileCha
     target = resolve_path(pending.path)
     project = revision.project
     described = next(
-        (c for c in changes if c.fingerprint is not None and c.path.resolve() == project), None
+        (c for c in changes if c.fingerprint is not None and resolve_path(c.path) == project), None
     )
     if (
         target.parent != project.parent

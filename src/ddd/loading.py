@@ -1485,7 +1485,12 @@ def resolve_path(path: Path) -> Path:
     is handed back unresolved rather than raising. Where that refusal surfaces is otherwise
     a property of the platform: linux rejects such a path in ``resolve()`` while Windows
     carries it as far as the read. Degrading here puts every one of them through the same
-    handler in :func:`_read_text`, so the run ends with one located finding on both.
+    handler in :func:`_read_text`, so the run ends with one located finding on both. So is a
+    path ``resolve()`` cannot resolve for any other reason it raises: on Windows an error its
+    walk does not list, and on python 3.12 a loop of links, ``RuntimeError``, or a chain of
+    about a thousand, ``RecursionError``, both of which 3.13's walks past - on 3.12 an include
+    through such a loop ended ``ddd check`` in a traceback, and every route of ``ddd gui``
+    that resolves a path a request names, all through here, answered it ``500``.
 
     A leading ``~`` is left where it stands: expansion is the shell's, and a root named
     ``~x.ddd.json`` was being looked for in user ``x``'s home directory, a path its author
@@ -1493,7 +1498,9 @@ def resolve_path(path: Path) -> Path:
     """
     try:
         return Path(path).resolve()
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError, RecursionError):
+        # One clause, so that every python's NUL test enters it; RecursionError is a
+        # RuntimeError already, and named for the chain of links 3.12 raises it on.
         return Path(path)
 
 

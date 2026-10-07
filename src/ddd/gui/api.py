@@ -348,7 +348,7 @@ class Api:
         )
 
     def _open(self, query: NoQuery, body: contract.OpenRequest) -> Reply:
-        wanted = Path(body.path).resolve()
+        wanted = resolve_path(Path(body.path))
         found = find_projects(self.session.root, self.session.build_directories)
         allowed = {p.path for p in found.projects} | ({self.project} if self.project else set())
         if wanted not in allowed:
@@ -1249,7 +1249,7 @@ class Api:
     def _fix(self, query: FixQuery, body: None) -> Reply:
         revision = self._opened()
         file, pointer, check = query.file, query.pointer, query.check
-        wanted = Path(file).resolve()
+        wanted = resolve_path(Path(file))
         derived = self._derive(revision)
         source = next((f for f in revision.files if derived.resolve(f.path) == wanted), None)
         if source is None:

@@ -25,6 +25,7 @@ from conftest import (
     declare,
     directory_link,
     landed,
+    looped,
     project,
     scalar_type,
     stopped,
@@ -860,6 +861,161 @@ class TestNoMalformedValueIsA500:
                 "message": "Invalid JSON: recursion limit exceeded at line 1 column 213",
             },
         )
+
+
+@pytest.fixture(params=["a-loop-of-links", "a-resolve-that-raises"])
+def unresolvable(
+    request: pytest.FixtureRequest, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A directory under ``root`` no path through which resolves: two links naming each other,
+    which python 3.12's ``Path.resolve`` raises ``RuntimeError`` on and 3.13's walks past; or a
+    ``resolve`` raising that error for every path through it, on every python, as one through a
+    loop raised on 3.12 - and as Windows raises ``OSError`` for an error its walk does not list."""
+    directory = root / "loop"
+    if request.param == "a-loop-of-links":
+        looped(directory, root / "pool")
+        return directory
+    resolve = Path.resolve
+
+    def refusing(path: Path, strict: bool = False) -> Path:
+        if directory.name in path.parts:
+            raise RuntimeError(f"Symlink loop from {str(path)!r}")
+        return resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", refusing)
+    return directory
+
+
+def unreadable_baseline(baseline: str) -> str:
+    """``GET /api/compare``'s refusal of ``baseline``, a path through :func:`unresolvable`'s
+    directory, in the words this python gives it: where ``resolve`` raises, the path as given
+    and the error; where it walks past the loop, the path it resolved to and the error opening
+    it raises - the operating system's own words, which this suite has no business spelling."""
+    path = Path(baseline)
+    try:
+        resolved = path.resolve()
+    except RuntimeError as error:
+        return f"the baseline '{path.as_posix()}' is unreadable: {error}"
+    with pytest.raises(OSError) as refused:
+        resolved.open("rb")
+    return f"the baseline '{resolved.as_posix()}' is unreadable: {refused.value}"
+
+
+class TestAPathThatWillNotResolve:
+    """Every route that takes a path, given one through a loop of links: answered as a path that
+    names nothing of the project, never ``500``. Each resolves it as the loader does
+    (:func:`ddd.loading.resolve_path`), which hands back a path it cannot resolve as given; on
+    python 3.12 ``Path.resolve`` itself raised ``RuntimeError`` there, and every one of these
+    answered ``500`` with a traceback. On 3.13 and later the loop is walked past and these pass
+    either way - the raising ``resolve`` is what holds each route to it on every python."""
+
+    def test_a_file_is_not_one_of_the_project(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/file", path=looping) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} is not a description file of the open project",
+            },
+        )
+
+    def test_its_findings_are_none(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/findings", file=looping) == Reply(
+            200, {"revision": 1, "total": 0, "offset": 0, "findings": []}
+        )
+
+    def test_a_fix_is_of_no_file_of_the_project(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        reply = get(api, "/api/fix", file=looping, pointer="", check="unknown-unit")
+        assert reply == Reply(
+            404, {"error": "not-found", "message": f"{looping} is not a file of the open project"}
+        )
+
+    @pytest.mark.parametrize(
+        ("route", "query"),
+        [
+            ("/api/declarable", {}),
+            ("/api/declaration-plan", {"action": "read", "name": "Speed", "scope": "local"}),
+        ],
+        ids=["declarable", "declaration-plan"],
+    )
+    def test_a_component_is_not_one_of_the_project(
+        self, api: Api, unresolvable: Path, route: str, query: dict[str, str]
+    ) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, route, file=looping, **query) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} is not a description file of the open project",
+            },
+        )
+
+    def test_a_file_to_add_names_no_file(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/files-plan", action="add", path=looping) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} names no file; a file not there yet is created, not added",
+            },
+        )
+
+    def test_a_file_to_remove_is_no_row(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/files-plan", action="remove", path=looping) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": "no entry of p.ddd.json's includes names p.ddd.json, and none of its "
+                "patterns matches it",
+            },
+        )
+
+    def test_a_baseline_is_unreadable(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert get(api, "/api/compare", baseline=looping) == Reply(
+            400, {"error": "bad-request", "message": unreadable_baseline(looping)}
+        )
+
+    def test_a_project_to_open_is_not_one_found_here(self, api: Api, unresolvable: Path) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        assert post(api, "/api/open", {"path": looping}) == Reply(
+            404, {"error": "not-found", "message": f"{looping} is not a project found here"}
+        )
+
+    def test_a_file_to_edit_is_not_one_of_the_project(
+        self, api: Api, root: Path, unresolvable: Path
+    ) -> None:
+        looping = (unresolvable / "p.ddd.json").as_posix()
+        edit = creating(root, "units.ddd.json")
+        changed = edit["changes"][1]
+        changed["file"] = looping
+        assert post(api, "/api/edit", {"changes": [changed], "label": "x"}) == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{looping} is not a description file of the open project",
+            },
+        )
+
+    def test_a_file_to_create_beside_it_is_created_beside_no_description_the_edit_changes(
+        self, api: Api, root: Path, unresolvable: Path
+    ) -> None:
+        """The created file confined first, its fellow changes each resolved to find the
+        description that includes it: the one through the loop is that description nowhere."""
+        edit = creating(root, "units.ddd.json")
+        edit["changes"][1]["file"] = (unresolvable / "p.ddd.json").as_posix()
+        assert post(api, "/api/edit", edit) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{root / 'units.ddd.json'} can be created only beside p.ddd.json, "
+                "by an edit that adds it to the includes there",
+            },
+        )
+        assert not (root / "units.ddd.json").exists()
 
 
 DIGITS: Final = "1" * 4301
@@ -3829,6 +3985,33 @@ class TestCompare:
         reply = get(api, "/api/compare", baseline="whatever.json")
         assert (reply.status, reply.body["error"]) == (400, "bad-request")
         assert "whatever.json' is unreadable" in reply.body["message"]
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            RuntimeError("Symlink loop from 'whatever.json'"),
+            RecursionError("maximum recursion depth exceeded"),
+        ],
+        ids=["a-loop-on-python-3.12", "a-chain-of-links-on-python-3.12"],
+    )
+    def test_a_baseline_whose_resolve_raises_as_python_3_12_does_is_refused(
+        self, api: Api, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        """The two python 3.12's ``Path.resolve`` raises besides those, which 3.13's never does:
+        ``RuntimeError`` for a loop of links and ``RecursionError`` for a chain of about a
+        thousand. Forced, one test each, for the reason the two above are."""
+
+        def refuse(self: Path, *args: object, **kwargs: object) -> Path:
+            raise error
+
+        monkeypatch.setattr(Path, "resolve", refuse)
+        assert get(api, "/api/compare", baseline="whatever.json") == Reply(
+            400,
+            {
+                "error": "bad-request",
+                "message": f"the baseline 'whatever.json' is unreadable: {error}",
+            },
+        )
 
     def test_a_baseline_that_is_not_json_is_refused(self, api: Api, root: Path) -> None:
         (root / "bad.json").write_text("{not json at all")

@@ -43,7 +43,9 @@ What it defends against
   writes - except a number this server's own long poll reads as "wait for a later version":
   there, anything that is not a clean number is treated as none given, and answered at once
   rather than refused. Such a network or device path is refused before anything resolves
-  it, and so is one holding a dot segment. A file an edit would create is refused ``409``
+  it, and so is one holding a dot segment. A path through a loop of links, which python
+  3.12 cannot resolve, is answered as one naming no file ``ddd gui`` can read, on every
+  python. A file an edit would create is refused ``409``
   before anything looks its name up, let alone writes the file, and so is
   ``GET /api/files-plan``'s plan of one, where the name is longer than 243 bytes or is one
   Windows keeps for a device (below), on every system: the file is staged under its name

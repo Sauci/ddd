@@ -51,6 +51,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   is refused `409` rather than sent: naming the file, for a file that deep or one stating an
   extension block too deep, and no file otherwise.
 
+* **An include through a loop of links is a finding on python 3.12 too.**  `ddd check` ended
+  there in a traceback, where 3.13 and later report the file it cannot read, at the entry
+  naming it; and `ddd gui` answered a request naming a path through such a loop with a `500`,
+  where it now answers it as one naming no file it can read.
+
 * **`ddd gui` answers at most sixty-four connections at once.**  The sixty-fifth is refused
   immediately, `503`, rather than given a thread of its own: a local process that floods the
   port can no longer exhaust the machine's threads.

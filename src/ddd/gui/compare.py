@@ -343,13 +343,15 @@ def _resolved_baseline(
     """
     try:
         resolved = path.resolve()
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError, RecursionError) as error:
         # Resolving is not total, and it is the first thing reader input meets: a NUL inside the
         # path raises `ValueError` out of the stat behind it - and `parse_qs` decodes `%00` into
         # a real one, so it arrives over the wire - while a path the filesystem refuses outright
-        # raises `OSError`. Neither is one of the three below, and unanswered here both left a
-        # traceback in the terminal and a 500 telling the reader to go and read it. Named as
-        # typed, because there is no resolved spelling of a path that would not resolve.
+        # raises `OSError`, and on python 3.12 a loop of links `RuntimeError` and a chain of
+        # about a thousand `RecursionError` (a `RuntimeError` already, named for the reader).
+        # None is one of the three below, and unanswered here each left a traceback in the
+        # terminal and a 500 telling the reader to go and read it. Named as typed, because
+        # there is no resolved spelling of a path that would not resolve.
         raise BaselineRefusedError(
             f"the baseline '{path.as_posix()}' is unreadable: {error}"
         ) from error

@@ -163,6 +163,20 @@ def directory_link(link: Path, target: Path) -> None:
         link.symlink_to(target, target_is_directory=True)
 
 
+def looped(first: Path, second: Path) -> None:
+    """Two links naming each other, so that nothing is ever found through either. Made with
+    :func:`directory_link`, which is a junction on Windows - where no link can name itself, a
+    junction's target having to exist when it is made, and its own name not to.
+
+    A path through them is one python 3.12's ``Path.resolve`` raises ``RuntimeError`` on, on
+    POSIX and on Windows alike, where 3.13's walks past it: the loop a local user can make
+    anywhere they can write, and hand to ``ddd gui`` or ``ddd check`` as a path."""
+    second.mkdir()
+    directory_link(first, second)
+    second.rmdir()
+    directory_link(second, first)
+
+
 def run_analysis(
     base: Path,
     files: Mapping[str, Any],

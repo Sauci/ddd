@@ -18,6 +18,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 
 from ddd.diagnostics import Diagnostic
+from ddd.loading import resolve_path
 
 type Pair = tuple[Path, Diagnostic]
 """A finding and the file it is shown on."""
@@ -58,13 +59,16 @@ class FindingsByFile:
         return iter(self._pairs)
 
     def resolve(self, path: Path) -> Path:
-        """``path`` resolved: as ``resolved`` has it where it names it, else resolved now. Public
-        for what compares the places a finding is filed at with places of its own - a unit's, a
-        type's, a constant's - which asks it of both, rather than resolving either again."""
+        """``path`` resolved: as ``resolved`` has it where it names it, else resolved now, as the
+        loader resolves a path (:func:`ddd.loading.resolve_path`) - so that a path the system will
+        not resolve, a file the page asks the findings of through a loop of links, is one with no
+        findings rather than an error. Public for what compares the places a finding is filed at
+        with places of its own - a unit's, a type's, a constant's - which asks it of both, rather
+        than resolving either again."""
         known = self._known.get(path)
         if known is not None:
             return known
-        return path.resolve()
+        return resolve_path(path)
 
     def on(self, path: Path) -> tuple[Pair, ...]:
         """The findings shown on ``path``, however it is spelled, in the order given."""

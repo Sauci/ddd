@@ -28,6 +28,7 @@ from conftest import (
     component,
     declare,
     directory_link,
+    looped,
     project,
     stopped,
     write_tree,
@@ -903,16 +904,6 @@ def looked_up(monkeypatch: pytest.MonkeyPatch, links: Collection[Path] = ()) -> 
     path = types.SimpleNamespace(**questions)
     monkeypatch.setattr(module, "os", types.SimpleNamespace(path=path))
     return asked
-
-
-def looped(first: Path, second: Path) -> None:
-    """Two links naming each other, so that nothing is ever found through either. Made with
-    :func:`directory_link`, which is a junction on Windows - where no link can name itself, a
-    junction's target having to exist when it is made, and its own name not to."""
-    second.mkdir()
-    directory_link(first, second)
-    second.rmdir()
-    directory_link(second, first)
 
 
 class TestAPagePath:

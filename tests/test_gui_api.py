@@ -16,6 +16,7 @@ from typing import Any, Final
 import pytest
 
 import ddd.gui.api as api_module
+import ddd.gui.queries as queries_module
 from conftest import (
     EXAMPLES,
     Gated,
@@ -1016,6 +1017,91 @@ class TestAPathThatWillNotResolve:
             },
         )
         assert not (root / "units.ddd.json").exists()
+
+
+class TestAPathNamingADevice:
+    """Where a device is opened for its name - on Windows, in whatever directory the name is
+    written - a path a request names holding one, in any of its names, is refused ``400`` in its
+    route's own words before anything looks it up: resolving it asks the system about each
+    directory along the way, and opening a serial port can reset the board on it. Read here
+    where a device is opened (``ddd.gui.queries._OPENS_DEVICES``), on every system; elsewhere
+    such a name is a file or a directory like any other."""
+
+    @pytest.fixture(autouse=True)
+    def opening(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(queries_module, "_OPENS_DEVICES", True)
+
+    @pytest.mark.parametrize(
+        ("route", "key", "query", "said"),
+        [
+            ("/api/file", "path", {}, "file takes ?path= as a file's path"),
+            ("/api/findings", "file", {}, "findings takes ?file= as a file's path"),
+            (
+                "/api/fix",
+                "file",
+                {"pointer": "", "check": "unknown-unit"},
+                "fix takes ?file= as a file's path",
+            ),
+            ("/api/declarable", "file", {}, "declarable takes ?file= as a file's path"),
+            (
+                "/api/declaration-plan",
+                "file",
+                {"action": "read", "name": "Speed", "scope": "local"},
+                "read takes ?file= as a file's path",
+            ),
+            ("/api/files-plan", "path", {"action": "add"}, "add takes ?path= as a file's path"),
+            ("/api/files-plan", "path", {"action": "remove"}, "remove takes ?path= as a row's key"),
+            ("/api/compare", "baseline", {}, "compare takes ?baseline= as a file's path"),
+        ],
+        ids=[
+            "file",
+            "findings",
+            "fix",
+            "declarable",
+            "declaration-plan",
+            "files-plan-add",
+            "files-plan-remove",
+            "compare",
+        ],
+    )
+    def test_a_query_naming_one_is_refused_before_it_is_looked_up(
+        self,
+        api: Api,
+        root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        route: str,
+        key: str,
+        query: dict[str, str],
+        said: str,
+    ) -> None:
+        asked = asked_about(monkeypatch, "COM1")
+        reply = get(api, route, **{key: (root / "COM1" / "a.ddd.json").as_posix()}, **query)
+        assert reply == Reply(400, {"error": "bad-request", "message": said})
+        assert asked == []
+
+    def test_a_project_to_open_naming_one_is_refused_before_it_is_looked_up(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        asked = asked_about(monkeypatch, "COM1")
+        reply = post(api, "/api/open", {"path": (root / "COM1" / "p.ddd.json").as_posix()})
+        assert reply == Reply(
+            400, {"error": "bad-request", "message": "path: open takes a project's path"}
+        )
+        assert asked == []
+
+    def test_a_file_to_create_under_a_devices_name_is_refused_before_it_is_looked_up(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Before the session judges the name it would create (``uncreatable``), which answers
+        such a name ``409`` where no device is opened for it."""
+        request = creating(root, "COM1.ddd.json")
+        before = contents(root)
+        asked = asked_about(monkeypatch, "COM1.ddd.json")
+        assert post(api, "/api/edit", request) == Reply(
+            400, {"error": "bad-request", "message": "changes[0].file: edit takes a file's path"}
+        )
+        assert asked == []
+        assert contents(root) == before
 
 
 DIGITS: Final = "1" * 4301
@@ -2561,7 +2647,10 @@ class TestEdit:
     ) -> None:
         """On every system, a project being as much Windows' as its own: there, staging the file
         or renaming it into place opens the device rather than a file. Refused as the page path
-        is (``ddd.gui.server``), before anything looks the name up."""
+        is (``ddd.gui.server``), before anything looks the name up. The session's own rule, read
+        where no device is opened for a name in a path: where one is, the path is refused
+        before the session sees it (:class:`TestAPathNamingADevice`)."""
+        monkeypatch.setattr(queries_module, "_OPENS_DEVICES", False)
         request = creating(root, name)
         before = contents(root)
         asked = asked_about(monkeypatch, name)
@@ -2590,7 +2679,9 @@ class TestEdit:
     ) -> None:
         """Every name an edit creates is judged before any change of it is confined: confining
         the first file looks up each name the project description's includes give, the second's
-        among them, and on Windows looking up a device's name opens the device."""
+        among them, and on Windows looking up a device's name opens the device. Read where no
+        device is opened for a name in a path, as the session's own rule is above."""
+        monkeypatch.setattr(queries_module, "_OPENS_DEVICES", False)
         request = creating(root, "units.ddd.json")
         second = {**request["changes"][0], "file": (root / name).as_posix()}
         request["changes"].insert(1, second)

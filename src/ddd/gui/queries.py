@@ -44,7 +44,7 @@ from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
 from ddd.diagnostics import Severity
-from ddd.editing import EditError, not_one_value, parse_raw
+from ddd.editing import EditError, device_named, not_one_value, parse_raw
 from ddd.gui.depth import MAX_DEPTH, text_depth
 from ddd.loading import NESTED_TOO_DEEPLY
 from ddd.lsp.edits import PROPAGATED_KEYS
@@ -74,6 +74,15 @@ Windows, which treats ``/`` as a separator as well."""
 _CASELESS: Final = sys.platform == "win32"
 """Whether a path is compared with another without its case: on Windows, which finds a file's
 name so."""
+
+_OPENS_DEVICES: Final = sys.platform == "win32"
+"""Whether the system opens a device for a name it keeps for one (:func:`ddd.editing.device_named`)
+in whatever directory the name is written: Windows does, and resolving a path asks it about every
+directory along the way - so a path holding such a name, in any of its names, is no path to read
+there. Linux keeps a file or a directory of such a name like any other."""
+
+_SEPARATORS: Final = re.compile(r"[\\/]")
+"""Either separator, as Windows reads both: what splits a path into its names."""
 
 _REFUSED: Final = object()
 """What a blank value of a type is read as where the route lets none through: refused, with the
@@ -203,8 +212,9 @@ def file_path(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
     and a network or device form naming no path under a directory served (:class:`Serving`),
     which Windows would open for the asking - a ``.`` or ``..`` segment in one included. One
     under such a directory is the network path a mapped drive resolves to there, and is read
-    like any other. Whether the path is a file of the project is the handler's question, as
-    before.
+    like any other. Refused on Windows alone (:data:`_OPENS_DEVICES`): a path holding a name it
+    keeps for a device, in any of its names. Whether the path is a file of the project is the
+    handler's question, as before.
     """
 
     def read(value: object, info: ValidationInfo) -> str:
@@ -217,7 +227,8 @@ def file_path(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
 
 def _readable(text: str) -> bool:
     """Whether ``text`` can be a path at all: not empty, at most :data:`MAX_PATH` characters,
-    holding no NUL and no lone surrogate. A statement a rule, rather than one condition, so that
+    holding no NUL and no lone surrogate - and where the system opens a device for its name
+    (:data:`_OPENS_DEVICES`), no such name. A statement a rule, rather than one condition, so that
     the coverage gate sees each rule decide."""
     if not text:
         return False
@@ -225,7 +236,18 @@ def _readable(text: str) -> bool:
         return False
     if "\x00" in text:
         return False
+    if _names_a_device(text):
+        return False
     return _encodable(text)
+
+
+def _names_a_device(text: str) -> bool:
+    """Whether a name of ``text``, at either separator, is one the system opens a device for
+    (:data:`_OPENS_DEVICES`): never where it opens none. Judged as text, before anything looks the
+    path up - looking it up is what opens the device."""
+    if not _OPENS_DEVICES:
+        return False
+    return any(device_named(name) is not None for name in _SEPARATORS.split(text))
 
 
 def _absolute(text: str, served: Iterable[str]) -> bool:
@@ -543,11 +565,14 @@ _BASELINE: Final = "compare takes ?baseline= as a file's path"
 
 def _baseline(value: object, info: ValidationInfo) -> str:
     """A baseline as the reader typed it, for :mod:`ddd.gui.compare` to read, refused here only
-    where it must not reach compare.py: nothing at all; a lone surrogate; and a network or device
-    form naming no path under a directory served, which resolving would open on Windows. That
-    one lies outside the root as written, and is refused in the words compare.py refuses a path
-    outside it with, before anything resolves it."""
+    where it must not reach compare.py: nothing at all; a lone surrogate; where the system opens
+    a device for its name (:data:`_OPENS_DEVICES`), a path holding such a name, which resolving
+    would open; and a network or device form naming no path under a directory served, which
+    resolving would open on Windows. That one lies outside the root as written, and is refused
+    in the words compare.py refuses a path outside it with, before anything resolves it."""
     if not isinstance(value, str) or not value or not _encodable(value):
+        raise refusal(_BASELINE)
+    if _names_a_device(value):
         raise refusal(_BASELINE)
     serving = _serving(info)
     if _NETWORK.match(value) and not _under(value, serving.served):

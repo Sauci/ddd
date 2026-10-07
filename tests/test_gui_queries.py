@@ -238,6 +238,65 @@ def test_case_is_folded_on_windows_alone() -> None:
     assert queries_module._CASELESS is (sys.platform == "win32")
 
 
+DEVICE_PATHS = [
+    pytest.param("C:/x/COM1", id="a-port-last"),
+    pytest.param("C:/proj/COM1/units.ddd.json", id="a-port-a-directory-along-the-way"),
+    pytest.param("/x/aux.ddd.json", id="the-auxiliary-port-with-an-extension"),
+    pytest.param("c:\\x\\nul .ddd.json", id="the-null-device-a-space-before-its-dot"),
+    pytest.param("//server/share/p/CON/a.ddd.json", id="the-console-under-a-directory-served"),
+]
+
+
+@pytest.mark.parametrize("text", DEVICE_PATHS)
+@pytest.mark.parametrize("opens", [True, False], ids=["where-a-device-is-opened", "elsewhere"])
+def test_a_path_naming_a_device_is_no_path_where_the_platform_opens_one(
+    monkeypatch, text, opens
+) -> None:
+    """Windows opens the device for such a name in whatever directory it is written, and
+    resolving a path asks it about every directory along the way: a serial port opened can
+    reset the board on it. Linux keeps a file or a directory of such a name like any other.
+    Both readings, on every platform."""
+    monkeypatch.setattr(queries_module, "_OPENS_DEVICES", opens)
+    if opens:
+        with pytest.raises(ValidationError) as refused:
+            Pathed.model_validate({"it": text}, context=SERVED)
+        assert refused.value.errors()[0]["msg"] == SAID
+    else:
+        assert Pathed.model_validate({"it": text}, context=SERVED).it == text
+
+
+@pytest.mark.parametrize("baseline", ["COM1", "sub/lpt9.json", "C:/x/CONIN$/b.json"])
+@pytest.mark.parametrize("opens", [True, False], ids=["where-a-device-is-opened", "elsewhere"])
+def test_a_baseline_naming_a_device_is_no_path_where_the_platform_opens_one(
+    monkeypatch, baseline, opens
+) -> None:
+    """The one path read as the reader typed it, relative or absolute: refused in the route's
+    own sentence where a device is opened for a name in it, and handed to compare.py as typed
+    elsewhere."""
+    monkeypatch.setattr(queries_module, "_OPENS_DEVICES", opens)
+    if opens:
+        with pytest.raises(ValidationError) as refused:
+            CompareQuery.model_validate({"baseline": baseline})
+        assert refused.value.errors()[0]["msg"] == "compare takes ?baseline= as a file's path"
+    else:
+        assert CompareQuery.model_validate({"baseline": baseline}).baseline == baseline
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["C:/x/COM10", "C:/x/console.ddd.json", "C:/x/aux_1.ddd.json", "C:/COM1x/a.ddd.json"],
+)
+def test_a_name_merely_like_a_devices_is_a_path_wherever_a_device_is_opened(
+    monkeypatch, text
+) -> None:
+    monkeypatch.setattr(queries_module, "_OPENS_DEVICES", True)
+    assert Pathed.model_validate({"it": text}).it == text
+
+
+def test_a_device_is_opened_for_its_name_on_windows_alone() -> None:
+    assert queries_module._OPENS_DEVICES is (sys.platform == "win32")
+
+
 @pytest.mark.parametrize(
     ("served", "asked"),
     [

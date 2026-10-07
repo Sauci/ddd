@@ -334,7 +334,7 @@ def _json(value: object) -> str:
     return value
 
 
-def actions_of(model: type[BaseModel]) -> dict[str, type[_Query]]:
+def actions_of(model: type[BaseModel]) -> dict[str, type[QueryModel]]:
     """The model of each action a query of one model per action takes, by its action: the
     members of a ``RootModel`` over a union discriminated by ``action``. None for the query of a
     route that has one model."""
@@ -344,7 +344,7 @@ def actions_of(model: type[BaseModel]) -> dict[str, type[_Query]]:
     return {get_args(member.model_fields["action"].annotation)[0]: member for member in members}
 
 
-class _Query(BaseModel):
+class QueryModel(BaseModel):
     """A route's query: the keys it takes, each read as its type; closed, frozen and strict, as
     a request's body is. Every value arrives as text, and its type's validator reads it into
     what it is: strict, a value no validator read is never coerced, ``1.0`` into a number or
@@ -358,7 +358,7 @@ class _Query(BaseModel):
     """What the route answers when a key it requires is left out or blank."""
 
 
-class NoQuery(_Query):
+class NoQuery(QueryModel):
     """The query of a route that takes none."""
 
 
@@ -390,7 +390,7 @@ class _Actions[T](RootModel[T]):
         raise refusal(f"{cls.route} takes ?action= one of {', '.join(taken)}")
 
 
-class StateQuery(_Query):
+class StateQuery(QueryModel):
     """What ``GET /api/state`` takes."""
 
     after: Annotated[int | SkipJsonSchema[None], BeforeValidator(_digits)] = None
@@ -405,7 +405,7 @@ def _severity(value: object) -> str:
     raise refusal("findings takes ?severity= as error, warning or info")
 
 
-class FindingsQuery(_Query):
+class FindingsQuery(QueryModel):
     """What ``GET /api/findings`` takes: which of the newest revision's findings to answer."""
 
     offset: Annotated[int, whole("findings takes ?offset= as a whole number from 0")] = 0
@@ -431,7 +431,7 @@ class FindingsQuery(_Query):
     """Only the findings this check reported; blank, none."""
 
 
-class FileQuery(_Query):
+class FileQuery(QueryModel):
     """What ``GET /api/file`` takes."""
 
     missing: ClassVar[str] = "file takes ?path="
@@ -440,7 +440,7 @@ class FileQuery(_Query):
     """The description file to read, a file of the open project."""
 
 
-class VariableQuery(_Query):
+class VariableQuery(QueryModel):
     """What ``GET /api/variable`` takes."""
 
     missing: ClassVar[str] = "variable takes ?name="
@@ -449,7 +449,7 @@ class VariableQuery(_Query):
     """The variable whose declarations to answer."""
 
 
-class UnitQuery(_Query):
+class UnitQuery(QueryModel):
     """What ``GET /api/unit`` takes."""
 
     missing: ClassVar[str] = "unit takes ?name="
@@ -458,7 +458,7 @@ class UnitQuery(_Query):
     """The unit to answer, stated or listed."""
 
 
-class TypeQuery(_Query):
+class TypeQuery(QueryModel):
     """What ``GET /api/type`` takes."""
 
     missing: ClassVar[str] = "type takes ?name="
@@ -467,7 +467,7 @@ class TypeQuery(_Query):
     """The type to answer."""
 
 
-class ConstantQuery(_Query):
+class ConstantQuery(QueryModel):
     """What ``GET /api/constant`` takes."""
 
     missing: ClassVar[str] = "constant takes ?name="
@@ -476,7 +476,7 @@ class ConstantQuery(_Query):
     """The constant to answer."""
 
 
-class SectionQuery(_Query):
+class SectionQuery(QueryModel):
     """What ``GET /api/section`` takes."""
 
     missing: ClassVar[str] = "section takes ?name="
@@ -485,7 +485,7 @@ class SectionQuery(_Query):
     """The section to answer."""
 
 
-class RasterQuery(_Query):
+class RasterQuery(QueryModel):
     """What ``GET /api/raster`` takes."""
 
     missing: ClassVar[str] = "raster takes ?name="
@@ -494,7 +494,7 @@ class RasterQuery(_Query):
     """The raster to answer."""
 
 
-class ValuesQuery(_Query):
+class ValuesQuery(QueryModel):
     """What ``GET /api/values`` takes."""
 
     missing: ClassVar[str] = "values takes ?name="
@@ -509,7 +509,7 @@ def _shared_key(value: object) -> str:
     raise refusal(f"'{value}' is not a key the declarations of a variable share")
 
 
-class SettleQuery(_Query):
+class SettleQuery(QueryModel):
     """What ``GET /api/settle`` takes: one key every declaration of a variable is to state."""
 
     missing: ClassVar[str] = "settle takes ?name= and ?key=, and ?raw= unless the key goes"
@@ -525,7 +525,7 @@ class SettleQuery(_Query):
     from every declaration."""
 
 
-class FixQuery(_Query):
+class FixQuery(QueryModel):
     """What ``GET /api/fix`` takes: the finding whose fixes to answer."""
 
     missing: ClassVar[str] = "fix takes ?file=, ?pointer= and ?check="
@@ -540,7 +540,7 @@ class FixQuery(_Query):
     """The check that reported the finding."""
 
 
-class DeclarableQuery(_Query):
+class DeclarableQuery(QueryModel):
     """What ``GET /api/declarable`` takes."""
 
     missing: ClassVar[str] = "declarable takes ?file="
@@ -569,7 +569,7 @@ def _baseline(value: object, info: ValidationInfo) -> str:
     return value
 
 
-class CompareQuery(_Query):
+class CompareQuery(QueryModel):
     """What ``GET /api/compare`` takes."""
 
     missing: ClassVar[str] = "compare takes ?baseline="
@@ -580,7 +580,7 @@ class CompareQuery(_Query):
     absolute."""
 
 
-class RenameUnit(_Query):
+class RenameUnit(QueryModel):
     """A unit spelled anew wherever it is stated or listed: ``GET /api/unit-plan``'s
     ``rename``."""
 
@@ -595,7 +595,7 @@ class RenameUnit(_Query):
     """Its new spelling; blank, the empty unit, which the plan refuses as no unit."""
 
 
-class AddUnit(_Query):
+class AddUnit(QueryModel):
     """A unit added to the vocabulary: ``GET /api/unit-plan``'s ``add``."""
 
     missing: ClassVar[str] = "add takes ?unit="
@@ -606,7 +606,7 @@ class AddUnit(_Query):
     """The unit, as it is to be spelled."""
 
 
-class DescribeUnit(_Query):
+class DescribeUnit(QueryModel):
     """The vocabulary's description of a unit set: ``GET /api/unit-plan``'s ``describe``."""
 
     missing: ClassVar[str] = "describe takes ?unit= and ?description="
@@ -620,7 +620,7 @@ class DescribeUnit(_Query):
     """Its description; blank, the empty text, which is how one is cleared."""
 
 
-class RemoveUnit(_Query):
+class RemoveUnit(QueryModel):
     """A unit nothing states taken out of the vocabulary: ``GET /api/unit-plan``'s
     ``remove``."""
 
@@ -632,7 +632,7 @@ class RemoveUnit(_Query):
     """The unit to take out."""
 
 
-class AdoptUnits(_Query):
+class AdoptUnits(QueryModel):
     """A vocabulary for a project whose units files list no unit, of every unit it states:
     ``GET /api/unit-plan``'s ``adopt``."""
 
@@ -652,7 +652,7 @@ class UnitPlanQuery(
     route: ClassVar[str] = "unit-plan"
 
 
-class SetTypeKey(_Query):
+class SetTypeKey(QueryModel):
     """One key of a type set, or taken away: ``GET /api/type-plan``'s ``set``."""
 
     missing: ClassVar[str] = "set takes ?name= and ?key="
@@ -669,7 +669,7 @@ class SetTypeKey(_Query):
     """The value to set it to, as json text; left out or blank, the key is taken away."""
 
 
-class RenameType(_Query):
+class RenameType(QueryModel):
     """A type renamed, and every ``typename`` reaching it: ``GET /api/type-plan``'s
     ``rename``."""
 
@@ -690,7 +690,7 @@ class TypePlanQuery(_Actions[Annotated[SetTypeKey | RenameType, Field(discrimina
     route: ClassVar[str] = "type-plan"
 
 
-class SetConstantKey(_Query):
+class SetConstantKey(QueryModel):
     """One key of a constant set, or taken away: ``GET /api/constant-plan``'s ``set``."""
 
     missing: ClassVar[str] = "set takes ?name= and ?key="
@@ -707,7 +707,7 @@ class SetConstantKey(_Query):
     """The value to set it to, as json text; left out or blank, the key is taken away."""
 
 
-class RenameConstant(_Query):
+class RenameConstant(QueryModel):
     """A constant renamed, and every shape spelling it: ``GET /api/constant-plan``'s
     ``rename``."""
 
@@ -722,7 +722,7 @@ class RenameConstant(_Query):
     """Its new name; whether it may be used is the plan's question, a blank one included."""
 
 
-class AddConstant(_Query):
+class AddConstant(QueryModel):
     """A constant declared: ``GET /api/constant-plan``'s ``add``."""
 
     missing: ClassVar[str] = "add takes ?name= and ?raw="
@@ -737,7 +737,7 @@ class AddConstant(_Query):
     with no value is not what ``add`` means."""
 
 
-class RemoveConstant(_Query):
+class RemoveConstant(QueryModel):
     """A constant nothing names taken out: ``GET /api/constant-plan``'s ``remove``."""
 
     missing: ClassVar[str] = "remove takes ?name="
@@ -761,7 +761,7 @@ class ConstantPlanQuery(
     route: ClassVar[str] = "constant-plan"
 
 
-class SetSectionKey(_Query):
+class SetSectionKey(QueryModel):
     """One key of a section set, or taken away: ``GET /api/section-plan``'s ``set``."""
 
     missing: ClassVar[str] = "set takes ?name= and ?key="
@@ -778,7 +778,7 @@ class SetSectionKey(_Query):
     """The value to set it to, as json text; left out or blank, the key is taken away."""
 
 
-class RenameSection(_Query):
+class RenameSection(QueryModel):
     """A section renamed, and every shape spelling it: ``GET /api/section-plan``'s
     ``rename``."""
 
@@ -793,7 +793,7 @@ class RenameSection(_Query):
     """Its new name; whether it may be used is the plan's question, a blank one included."""
 
 
-class AddSection(_Query):
+class AddSection(QueryModel):
     """A section declared: ``GET /api/section-plan``'s ``add``.
 
     One part per key of :attr:`ddd.project_shared.SECTIONS.required`, in the order the panel
@@ -816,7 +816,7 @@ class AddSection(_Query):
     """Its alignment, as json text."""
 
 
-class RemoveSection(_Query):
+class RemoveSection(QueryModel):
     """A section nothing names taken out: ``GET /api/section-plan``'s ``remove``."""
 
     missing: ClassVar[str] = "remove takes ?name="
@@ -840,7 +840,7 @@ class SectionPlanQuery(
     route: ClassVar[str] = "section-plan"
 
 
-class SetRasterKey(_Query):
+class SetRasterKey(QueryModel):
     """One key of a raster set, or taken away: ``GET /api/raster-plan``'s ``set``."""
 
     missing: ClassVar[str] = "set takes ?name= and ?key="
@@ -857,7 +857,7 @@ class SetRasterKey(_Query):
     """The value to set it to, as json text; left out or blank, the key is taken away."""
 
 
-class RenameRaster(_Query):
+class RenameRaster(QueryModel):
     """A raster renamed, and every shape spelling it: ``GET /api/raster-plan``'s
     ``rename``."""
 
@@ -872,7 +872,7 @@ class RenameRaster(_Query):
     """Its new name; whether it may be used is the plan's question, a blank one included."""
 
 
-class AddRaster(_Query):
+class AddRaster(QueryModel):
     """A raster declared: ``GET /api/raster-plan``'s ``add``.
 
     One part per key of :attr:`ddd.project_shared.RASTERS.required`, which is ``event`` alone:
@@ -891,7 +891,7 @@ class AddRaster(_Query):
     """Its event, as json text: a whole number."""
 
 
-class RemoveRaster(_Query):
+class RemoveRaster(QueryModel):
     """A raster nothing names taken out: ``GET /api/raster-plan``'s ``remove``."""
 
     missing: ClassVar[str] = "remove takes ?name="
@@ -958,7 +958,7 @@ def _row_key(value: object, info: ValidationInfo) -> str:
     raise refusal(_ROW_KEY)
 
 
-class CreateFile(_Query):
+class CreateFile(QueryModel):
     """A new description file, and the entry that includes it: ``GET /api/files-plan``'s
     ``create``."""
 
@@ -980,7 +980,7 @@ class CreateFile(_Query):
     refuses without one, and ignored for every other. Left out or blank, none."""
 
 
-class AddFile(_Query):
+class AddFile(QueryModel):
     """A file there already appended to the includes, and the errors it is counted to bring:
     ``GET /api/files-plan``'s ``add``."""
 
@@ -993,7 +993,7 @@ class AddFile(_Query):
     or absolute."""
 
 
-class RemoveFile(_Query):
+class RemoveFile(QueryModel):
     """Every entry of the includes reaching a file taken out: ``GET /api/files-plan``'s
     ``remove``."""
 
@@ -1015,7 +1015,7 @@ class FilesPlanQuery(
     route: ClassVar[str] = "files-plan"
 
 
-class ReadDeclaration(_Query):
+class ReadDeclaration(QueryModel):
     """An object the project has declared in one more component, its definition the producer's:
     ``GET /api/declaration-plan``'s ``read``. Every part is read by its handler, a blank one
     included, as it always was."""
@@ -1034,7 +1034,7 @@ class ReadDeclaration(_Query):
     """The scope to declare it with: ``output``, ``input`` or ``local``."""
 
 
-class DeclareObject(_Query):
+class DeclareObject(QueryModel):
     """A new object declared in a component: ``GET /api/declaration-plan``'s ``declare``.
     Every part is read by its handler, a blank one included, as it always was."""
 
@@ -1053,7 +1053,7 @@ class DeclareObject(_Query):
     not one json object read by :func:`json_value`."""
 
 
-class RemoveDeclaration(_Query):
+class RemoveDeclaration(QueryModel):
     """A declaration taken out of a component: ``GET /api/declaration-plan``'s ``remove``.
     Every part is read by its handler, a blank one included, as it always was."""
 
@@ -1081,7 +1081,7 @@ class DeclarationPlanQuery(
     route: ClassVar[str] = "declaration-plan"
 
 
-class ValuePlanQuery(_Query):
+class ValuePlanQuery(QueryModel):
     """What ``GET /api/value-plan`` takes: one element of an object's values set."""
 
     missing: ClassVar[str] = "value-plan takes ?name= and ?at= and ?raw="
@@ -1099,7 +1099,7 @@ class ValuePlanQuery(_Query):
     refusal of the count."""
 
 
-class ValuesPlanQuery(_Query):
+class ValuesPlanQuery(QueryModel):
     """What ``GET /api/values-plan`` takes: every value of an object set at once."""
 
     missing: ClassVar[str] = "values-plan takes ?name= and ?raw="

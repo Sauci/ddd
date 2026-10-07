@@ -28,6 +28,7 @@ from ddd.gui.queries import (
     FindingsQuery,
     FixQuery,
     NoQuery,
+    QueryModel,
     RasterPlanQuery,
     ReadDeclaration,
     RemoveDeclaration,
@@ -40,7 +41,6 @@ from ddd.gui.queries import (
     UnitPlanQuery,
     ValuePlanQuery,
     ValuesPlanQuery,
-    _Query,
     actions_of,
     any_text,
     file_path,
@@ -538,7 +538,7 @@ def test_a_blank_is_what_the_route_says_it_is_where_the_route_lets_it_through() 
     assert (given.file, given.raw) == ("/a.ddd.json", "1")
 
 
-class Strictly(_Query):
+class Strictly(QueryModel):
     """A query of two plain-typed keys, as a model of a later route may have."""
 
     count: int = 0
@@ -550,9 +550,9 @@ class TestTheModels:
     has always read it, and a key left out as its default."""
 
     def test_a_query_is_closed_frozen_and_strict(self) -> None:
-        assert _Query.model_config["extra"] == "forbid"
-        assert _Query.model_config["frozen"] is True
-        assert _Query.model_config["strict"] is True
+        assert QueryModel.model_config["extra"] == "forbid"
+        assert QueryModel.model_config["frozen"] is True
+        assert QueryModel.model_config["strict"] is True
         query = FindingsQuery.model_validate({})
         with pytest.raises(ValidationError):
             query.offset = 1
@@ -1232,14 +1232,14 @@ def test_a_route_that_takes_a_body_takes_no_query(tmp_path: Path, route: str, bo
     assert reply == Reply(400, {"error": "bad-request", "message": f"{named} takes no ?x="})
 
 
-class Rename(_Query):
+class Rename(QueryModel):
     missing: ClassVar[str] = "rename takes ?unit= and ?to="
     action: Literal["rename"]
     unit: Annotated[str, named("rename takes ?unit= as a unit's name")]
     to: str
 
 
-class Add(_Query):
+class Add(QueryModel):
     missing: ClassVar[str] = "add takes ?unit="
     action: Literal["add"]
     unit: Annotated[str, named("add takes ?unit= as a unit's name")]
@@ -1472,7 +1472,7 @@ class TestThePlanRoutesQueries:
         ],
     )
     def test_counts_are_any_text_their_handler_reads(
-        self, model: type[_Query], query: dict[str, object], sentence: str
+        self, model: type[QueryModel], query: dict[str, object], sentence: str
     ) -> None:
         """Whether a count is a number is the handler's question, answered as its own refusal of
         the count: the query takes any text, a lone surrogate included, and refuses only what is

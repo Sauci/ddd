@@ -89,6 +89,7 @@ from ddd.gui.queries import (
     FindingsQuery,
     FixQuery,
     NoQuery,
+    QueryModel,
     RasterPlanQuery,
     RasterQuery,
     ReadDeclaration,
@@ -120,7 +121,6 @@ from ddd.gui.queries import (
     ValuesPlanQuery,
     ValuesQuery,
     VariableQuery,
-    _Query,
     actions_of,
     json_value,
     outside_served,
@@ -2467,12 +2467,12 @@ def _query_message(route: Route, error: ValidationError) -> str:
         model, where = actions[named], where[1:]
     if first["type"] == "extra_forbidden":
         return f"{named} takes no ?{where[0]}="
-    if where and issubclass(model, _Query) and _left_out(model, str(where[0]), first):
+    if where and issubclass(model, QueryModel) and _left_out(model, str(where[0]), first):
         return model.missing
     return first["msg"]
 
 
-def _left_out(model: type[_Query], key: str, problem: ErrorDetails) -> bool:
+def _left_out(model: type[QueryModel], key: str, problem: ErrorDetails) -> bool:
     """Whether ``problem`` is a key ``model`` requires being left out or given blank."""
     if problem["type"] == "missing":
         return True

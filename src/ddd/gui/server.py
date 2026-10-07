@@ -18,7 +18,8 @@ this one trusts nothing it did not hand out itself:
   this check ever runs. An older browser sends neither header on a plain request, so this
   does not catch it there;
 * a request that changes anything has to come from this server's own origin, as json;
-* no page of it can be framed, and only its own scripts run;
+* no page of it can be framed, and only a script served from this origin runs (a server that
+  used the same port earlier could have served this origin; see ``docs/gui_security.rst``);
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
   connections refuses the next itself, so no flood of connections can exhaust the machine's
   threads.

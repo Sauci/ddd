@@ -25,13 +25,16 @@ What it defends against
   answer to ``POST /open`` but ``200``, leaves a token the page already holds as it was;
   only a ``401`` from the API clears it, and the page then says it is signed out, other
   tabs on their next request. So no page can sign the reader out by sending a tab to
-  ``/open`` with a wrong code.
+  ``/open`` with a wrong code. And no page of ``ddd gui`` can be shown inside another: the
+  content security policy's ``frame-ancestors 'none'`` refuses every attempt to frame it, so
+  another page cannot embed it and act through it.
 
-* **Another server on** ``127.0.0.1`` that the reader's browser is pointed at - on an
-  address typed or bookmarked there, or on whatever a page served there asks of its own
-  server, a page any site can send the browser to. It is sent nothing: no cookie exists
-  to carry the token there, and it cannot read this page's own ``localStorage``, which
-  another origin never reaches.
+* **Another server on another port of** ``127.0.0.1`` that the reader's browser is pointed
+  at - on an address typed or bookmarked there, or on whatever a page served there asks of
+  its own server, a page any site can send the browser to. It is sent nothing: no cookie
+  exists to carry the token there, and it cannot read this page's own ``localStorage``, which
+  another origin never reaches. A server that used the *same* port before is a different
+  case, under *What it does not defend against*: the browser counts it as this very origin.
 
 * **Any other local process or user that reaches the port without the token.** Past the
   check above, every request to the API still needs the token as ``Authorization: Bearer``,
@@ -78,8 +81,11 @@ What it defends against
   levels deep, or 98 among the project's own settings. Any other answer too deep is refused
   without naming one. A ``POST`` whose ``Content-Length`` is no length is refused ``400``,
   and one promising more than 1,048,576 bytes ``413``, however many digits it is written
-  with, short of a header line too long to be read at all (below). A page's own path is
-  never resolved: it is read as plain names under the compiled pages, and a name holding a
+  with, short of a header line too long to be read at all (below). ``POST /open``, which
+  anyone who reaches the port may send without the token, takes at most 1,024 bytes - a
+  sign-in body is a few dozen - and a longer one is refused ``413`` before it is parsed, so
+  no json parser ever runs on a body large or deep enough to trouble one. A page's own path
+  is never resolved: it is read as plain names under the compiled pages, and a name holding a
   NUL character, a backslash or a colon, or a dot segment, names no file and is never
   looked up, so neither a network path nor a ``\\.\`` device path can be spelled in one. A
   name Windows keeps for a device names no file either, on any system, and is never looked
@@ -109,9 +115,10 @@ What it trusts
   own address bar; clicked in the terminal instead, it is handed to an opener such as
   ``xdg-open`` on its command line, which any local user can read while it runs.
 
-* **The page's own origin.** The token is kept in its ``localStorage``, readable by its
-  own scripts alone; the content security policy's ``default-src 'self'`` runs no script
-  but ``ddd gui``'s own there.
+* **The page's own origin.** The token is kept in its ``localStorage``, readable only by
+  script running in this origin; the content security policy's ``default-src 'self'`` runs no
+  script but one served from this origin. What may have served this origin before ``ddd gui``
+  did - a server on the same port, earlier - is *What it does not defend against*, below.
 
 The table of every route, below, marks which ones may run a project's or a baseline's
 plugins: opening a project, comparing against one, an edit or an undo - each re-analysed
@@ -135,6 +142,13 @@ system picks a fresh one each run, unless ``--port`` names one - and the path of
 the project includes can so open a Files row's Remove panel, whose plan re-analyses the
 project, running its plugins. Nothing is written without the reader's own click. Use one
 of the browsers above.
+
+One kind of request reaches a page this way in every browser, new or old: a navigation the
+browser begins itself - an address typed or chosen from a bookmark, or a link opened from
+another program - is marked ``Sec-Fetch-Site: none``, and the gate lets ``none`` through by
+design, so it lands on the page its address names just as above. So this is not closed by a
+modern browser; it was so at master too, where a ``SameSite=Strict`` cookie rode these same
+browser-begun navigations.
 
 Running it in a container
 -------------------------
@@ -172,6 +186,26 @@ What it does not defend against
   restart ``ddd gui`` rather than open the address it printed - a restart takes the token
   from the winner, and the printed address would not. A code that expired unused signed
   nobody in, and prints nothing.
+
+* **A server that used the same port before.** The page's origin is its address and port,
+  and the browser keeps what a server on them left behind into any later run on that port.
+  The system picks a fresh port each run unless ``--port`` names one, so this is the
+  fixed-port case. A service worker an earlier server registered there survives it - nothing
+  ``ddd gui`` answers removes it - and sees the launch's code, the token the page is answered,
+  and every request the page sends. So does a script an earlier server answered one of the
+  compiled pages' own hashed asset paths with, under a long ``max-age``: the browser runs
+  that cached script when ``ddd gui`` later serves the path the build names, because the
+  content security policy admits any script from this origin and cannot tell one the browser
+  cached from one ``ddd gui`` served. Either one runs as the page and can take the token.
+  With a fixed ``--port``, as a container needs, open ``ddd gui`` in a browser profile of its
+  own, or clear the browser's data for that address before opening it.
+
+* **The printed address, opened as something other than itself.** ``ddd gui`` listens on
+  ``127.0.0.1`` alone and prints that address. Rewritten by the reader to ``localhost``, the
+  address may reach a different program listening on ``[::1]`` at the same port - a browser
+  resolving ``localhost`` may try ``[::1]`` first - and the token in a pasted address then
+  goes to that program, which also owns the ``localhost`` origin's storage. Open the address
+  exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

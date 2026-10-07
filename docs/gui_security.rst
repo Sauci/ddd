@@ -39,32 +39,35 @@ What it defends against
   writes - except a number this server's own long poll reads as "wait for a later version":
   there, anything that is not a clean number is treated as none given, and answered at once
   rather than refused. Such a network or device path is refused before anything resolves
-  it, and so is one holding a dot segment. A file an edit would create under a name longer
-  than 243 bytes is refused ``409`` before anything is written, and so is
-  ``GET /api/files-plan``'s plan of one: the file is staged under its name and
-  ``.ddd-staging`` first, and a file system takes a name of at most 255 bytes. An answer
-  carrying json nested more than 99 levels deep - a file's contents, or a part of the
-  project's dictionary, each array, object and value in it counted - is refused ``409``
-  instead of sent, by whatever route would send it: 99 levels are the most its serializer
-  writes on Windows, and so the bound on every system. Two of these refusals name the file
-  to blame: ``GET /api/file``'s, of a file nested more than 99 levels deep, and
-  ``GET /api/dictionary``'s, of the file stating an extension block nested more than 96
-  levels deep, or 98 among the project's own settings. Any other answer too deep is refused
-  without naming one. A ``POST`` whose ``Content-Length`` is no length is refused ``400``,
-  and one promising more than 1,048,576 bytes ``413``, however many digits it is written
-  with, short of a header line too long to be read at all (below). A page's own path is
-  never resolved: it is read as plain names under the compiled pages, and a name holding a
-  NUL character, a backslash or a colon, or a dot segment, names no file and is never
-  looked up, so neither a network path nor a ``\\.\`` device path can be spelled in one. A
-  name Windows keeps for a device names no file either, on any system, and is never looked
-  up: ``CON``, ``PRN``, ``AUX`` or ``NUL``, or ``COM`` or ``LPT`` followed by a digit from
-  ``0`` to ``9`` or a superscript ``¹``, ``²`` or ``³``, in any case and whatever extension
-  it carries. So are ``CONIN$`` and ``CONOUT$``, the console's own input and output. A path
-  naming no file is answered the page itself, as any other unknown page address is. The
-  standard library itself refuses three shapes before this server sees them at all: a
-  request line over 65,536 bytes answers ``414``, and a header line over 65,536 bytes, or a
-  request carrying 100 header lines or more - the blank line that ends them counted -
-  answers ``431``; ninety-nine is the most ``ddd gui`` ever reads.
+  it, and so is one holding a dot segment. A file an edit would create is refused ``409``
+  before anything looks its name up, let alone writes the file, and so is
+  ``GET /api/files-plan``'s plan of one, where the name is longer than 243 bytes or is one
+  Windows keeps for a device (below), on every system: the file is staged under its name
+  and ``.ddd-staging`` first, ext4 takes a name of at most 255 bytes and NTFS one of at
+  most 255 UTF-16 units, which a name of 255 bytes never exceeds, and Windows opens the
+  device in the place of a file named like it. An answer carrying json nested more than 99
+  levels deep - a file's contents, or a part of the project's dictionary, each array,
+  object and value in it counted - is refused ``409`` instead of sent, by whatever route
+  would send it: 99 levels are the most its serializer writes on Windows, and so the bound
+  on every system. Two of these refusals name the file to blame: ``GET /api/file``'s, of a
+  file nested more than 99 levels deep, and ``GET /api/dictionary``'s, of the file stating
+  an extension block nested more than 96 levels deep, or 98 among the project's own
+  settings. Any other answer too deep is refused without naming one. A ``POST`` whose
+  ``Content-Length`` is no length is refused ``400``, and one promising more than 1,048,576
+  bytes ``413``, however many digits it is written with, short of a header line too long to
+  be read at all (below). A page's own path is never resolved: it is read as plain names
+  under the compiled pages, and a name holding a NUL character, a backslash or a colon, or
+  a dot segment, names no file and is never looked up, so neither a network path nor a
+  ``\\.\`` device path can be spelled in one. A name Windows keeps for a device names no
+  file either, on any system, and is never looked up: ``CON``, ``PRN``, ``AUX`` or ``NUL``,
+  or ``COM`` or ``LPT`` followed by a digit from ``0`` to ``9`` or a superscript ``¹``,
+  ``²`` or ``³``, in any case and whatever extension it carries. So are ``CONIN$`` and
+  ``CONOUT$``, the console's own input and output. A path naming no file is answered the
+  page itself, as any other unknown page address is. The standard library itself refuses
+  three shapes before this server sees them at all: a request line over 65,536 bytes
+  answers ``414``, and a header line over 65,536 bytes, or a request carrying 100 header
+  lines or more - the blank line that ends them counted - answers ``431``; ninety-nine is
+  the most ``ddd gui`` ever reads.
 
 What it trusts
 --------------

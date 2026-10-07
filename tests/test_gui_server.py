@@ -33,7 +33,7 @@ from conftest import (
     write_tree,
 )
 from ddd.cli import EXIT_OK, EXIT_USAGE
-from ddd.editing import fingerprint
+from ddd.editing import device_named, fingerprint
 from ddd.gui import api as api_module
 from ddd.gui import server as module
 from ddd.gui.api import Api, Reply
@@ -50,7 +50,6 @@ from ddd.gui.server import (
     SIGNED_IN_PAGE,
     TOKEN_BYTES,
     GuiServer,
-    _names_a_device,
     is_loopback,
     launched,
     run,
@@ -1087,7 +1086,7 @@ class TestAPagePath:
             f"{device} ",
             f"{device} .js",
         ]
-        assert [name for name in spellings if not _names_a_device(name)] == []
+        assert {device_named(name) for name in spellings} == {device}
 
     @pytest.mark.parametrize(
         "name",
@@ -1108,7 +1107,7 @@ class TestAPagePath:
         ],
     )
     def test_a_name_merely_like_one_is_none(self, name) -> None:
-        assert not _names_a_device(name)
+        assert device_named(name) is None
 
     def test_a_path_is_looked_up_no_deeper_than_the_pages_go(
         self, server, monkeypatch, capsys

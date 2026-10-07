@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import json
+import os
 import re
 import shutil
 import threading
@@ -502,6 +504,41 @@ def too_long(name: str, length: int) -> str:
         f"{LONGEST_NAME} - the file is staged under the name and '.ddd-staging' first, and a file "
         "system takes 255 bytes"
     )
+
+
+def a_device(name: str, device: str) -> str:
+    """The whole refusal of a name Windows reads as ``device``, opening with ``name``, as
+    :func:`too_long` opens."""
+    return (
+        f"{name} cannot be created: Windows reads its name as the device {device}, which it would "
+        "open instead of a file"
+    )
+
+
+def asked_about(monkeypatch: pytest.MonkeyPatch, name: str) -> list[str]:
+    """Every question the file system is asked from here on about a path ending in ``name``, by
+    the function it is asked through: ``os``'s and ``os.path``'s own, and ``io.open``, which
+    ``pathlib`` opens a file by - each swapped for one recording the path before it answers.
+    ``os.path.realpath`` among them, which ``Path.resolve`` asks on every system."""
+    asked: list[str] = []
+
+    def record(where: Any, function: str) -> None:
+        answer = getattr(where, function)
+
+        def recorded(place: Any, *args: Any, **kwargs: Any) -> Any:
+            spelled = isinstance(place, str | bytes | os.PathLike)
+            if spelled and os.fsdecode(os.fspath(place)).endswith(name):
+                asked.append(f"{where.__name__}.{function}")
+            return answer(place, *args, **kwargs)
+
+        monkeypatch.setattr(where, function, recorded)
+
+    for function in ("stat", "lstat", "open", "readlink", "scandir", "listdir"):
+        record(os, function)
+    for function in ("realpath", "exists", "lexists", "isfile", "isdir", "islink"):
+        record(os.path, function)
+    record(io, "open")
+    return asked
 
 
 def creating(root: Path, name: str) -> dict[str, Any]:
@@ -2336,17 +2373,46 @@ class TestEdit:
         ],
     )
     def test_a_longer_name_is_refused_before_anything_is_written(
-        self, api: Api, root: Path, name: str, length: int
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, name: str, length: int
     ) -> None:
         """Input, not a failure to write: refused before the file system is asked anything about
-        the name, which python 3.12's own ``Path.exists`` raises on past 255 bytes on Linux.
-        Counted in the bytes utf-8 spells it with - what ext4 counts, and never fewer than the
-        utf-16 units NTFS counts - so that a name ``é`` spells in 127 characters is refused at 245
-        bytes."""
+        the name - which python 3.12's own ``Path.exists`` raises on past 255 bytes on Linux, and
+        which Windows answers with an error ``Path.resolve`` may not walk past. Counted in the
+        bytes utf-8 spells it with - what ext4 counts, and never fewer than the utf-16 units NTFS
+        counts - so that a name ``é`` spells in 127 characters is refused at 245 bytes. The path
+        the refusal names is the directory's, resolved, and the name as given."""
+        request = creating(root, name)
         before = contents(root)
-        assert post(api, "/api/edit", creating(root, name)) == Reply(
-            409, {"error": "invalid", "message": too_long(str((root / name).resolve()), length)}
+        asked = asked_about(monkeypatch, name)
+        assert post(api, "/api/edit", request) == Reply(
+            409, {"error": "invalid", "message": too_long(str(root.resolve() / name), length)}
         )
+        assert asked == []
+        assert contents(root) == before
+
+    @pytest.mark.parametrize(
+        ("name", "device"),
+        [
+            pytest.param("COM1.ddd.json", "COM1", id="a-port"),
+            pytest.param("con.ddd.json", "CON", id="the-console-in-lower-case"),
+            pytest.param("nul .ddd.json", "NUL", id="a-space-before-the-dot"),
+            pytest.param("CONIN$.ddd.json", "CONIN$", id="the-console-s-input"),
+            pytest.param("LPT\u00b9.ddd.json", "LPT\u00b9", id="a-superscript"),
+        ],
+    )
+    def test_a_name_windows_keeps_for_a_device_is_refused_before_anything_is_written(
+        self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch, name: str, device: str
+    ) -> None:
+        """On every system, a project being as much Windows' as its own: there, staging the file
+        or renaming it into place opens the device rather than a file. Refused as the page path
+        is (``ddd.gui.server``), before anything looks the name up."""
+        request = creating(root, name)
+        before = contents(root)
+        asked = asked_about(monkeypatch, name)
+        assert post(api, "/api/edit", request) == Reply(
+            409, {"error": "invalid", "message": a_device(str(root.resolve() / name), device)}
+        )
+        assert asked == []
         assert contents(root) == before
 
     def test_a_file_the_edit_does_not_include_is_not_created(self, api: Api, root: Path) -> None:
@@ -8061,17 +8127,37 @@ class TestCreatingAFile:
         "letters", [235, 300], ids=["a-byte-longer", "longer-than-a-file-system-takes"]
     )
     def test_a_longer_name_is_refused_before_the_disk_is_asked_about_it(
-        self, tmp_path: Path, letters: int
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, letters: int
     ) -> None:
         """The plan's own refusal, in the edit's words: a name of 247 letters or more, past what
         a file system takes once ``.ddd.json`` is added, made python 3.12's own ``Path.exists``
         raise on Linux, answered ``500``."""
         api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        asked = asked_about(monkeypatch, f"{'n' * letters}.ddd.json")
         assert refused(files_plan(api, "create", kind="constants", name="n" * letters)) == (
             409,
             "invalid",
             too_long(f"{'n' * letters}.ddd.json", letters + len(".ddd.json")),
         )
+        assert asked == []
+
+    @pytest.mark.parametrize(
+        ("name", "device"),
+        [("COM1", "COM1"), ("con", "CON"), ("Nul", "NUL"), ("lpt9", "LPT9"), ("prn", "PRN")],
+    )
+    def test_a_name_windows_keeps_for_a_device_is_refused_before_the_disk_is_asked_about_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, device: str
+    ) -> None:
+        """The edit's own refusal, on every system: :data:`~ddd.file_plans.FILE_NAME` takes
+        ``COM1`` and the rest, letters and digits, and Windows opens the device for them."""
+        api, _ = copied(tmp_path, "vocabulary", "project.ddd.json")
+        asked = asked_about(monkeypatch, f"{name}.ddd.json")
+        assert refused(files_plan(api, "create", kind="constants", name=name)) == (
+            409,
+            "invalid",
+            a_device(f"{name}.ddd.json", device),
+        )
+        assert asked == []
 
     def test_a_first_units_file_is_refused_while_a_file_did_not_load(self, tmp_path: Path) -> None:
         api = opened(tmp_path, HALF_SAVED)

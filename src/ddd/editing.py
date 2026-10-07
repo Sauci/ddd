@@ -74,6 +74,19 @@ CREATED_NAME_MAX: Final = NAME_MAX - len(STAGING_SUFFIX)
 """The longest name a file can be created under: staged first under the name and
 :data:`STAGING_SUFFIX`, it must fit :data:`NAME_MAX`."""
 
+DEVICE_NAMES: Final = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    | {f"{port}{digit}" for port in ("COM", "LPT") for digit in "0123456789¹²³"}
+)
+"""The names Windows keeps for its devices: the console, the printer, the auxiliary port and
+the null device, the console's own input and output, and the serial and parallel ports, ``COM``
+and ``LPT`` followed by a digit, the superscripts one, two and three among them. Windows reads
+such a name as the device in whatever directory it is written, so that opening it opens the
+device rather than a file (:func:`device_named`); python's own ``ntpath.isreserved``, from
+3.13, counts ``CONIN$`` and ``CONOUT$`` among them too. Asked of a page's path by ``ddd gui``'s
+server, and of the name of every file an edit or the plan of a new file creates
+(:func:`uncreatable`)."""
+
 REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
 """How many times a file is renamed into place, or taken away, before a refusal stands.
 
@@ -908,8 +921,8 @@ def _created(pending: FileChange) -> bytes:
 
     As given, because there is no file yet whose layout an edit could follow - whoever plans the
     change lays the document out - and still read by the loader's rule first, so that no file
-    ``ddd check`` would refuse to read is ever written. A name too long to create a file under
-    is refused next (:func:`name_too_long`), before the file system is asked anything about it.
+    ``ddd check`` would refuse to read is ever written. A name no file can be created under is
+    refused next (:func:`uncreatable`), before the engine asks the file system anything about it.
     A file already there is somebody's, and the change was computed without it: refused as
     stale, whatever it holds.
     """
@@ -919,24 +932,34 @@ def _created(pending: FileChange) -> bytes:
             INVALID, f"{pending.path} is created whole, by one set at the top of the file"
         )
     _read(only.raw, INVALID, f"{pending.path} would be created holding what DDD does not read")
-    long = name_too_long(pending.path.name)
-    if long is not None:
-        raise EditError(INVALID, f"{pending.path} cannot be created: {long}")
+    refused = uncreatable(pending.path.name)
+    if refused is not None:
+        raise EditError(INVALID, f"{pending.path} cannot be created: {refused}")
     if pending.path.exists():
         raise EditError(STALE, f"{pending.path} exists already")
     return only.raw.encode("utf-8")
 
 
-def name_too_long(name: str) -> str | None:
-    """Why no file can be created under ``name``, or ``None`` where one can: a name longer than
-    :data:`CREATED_NAME_MAX` bytes is no name to create a file under, the request's to answer for.
+def uncreatable(name: str) -> str | None:
+    """Why no file can be created under ``name``, on any system, or ``None`` where one can: a
+    name Windows reads as a device (:func:`device_named`), or one longer than
+    :data:`CREATED_NAME_MAX` bytes. Either is the request's to answer for, not a failure to write.
 
-    Asked before the file system is asked anything about the name. Staged regardless, the file
-    system refused it and the edit was answered as a write that failed, ``500``, with the files
-    already written put back; and on Linux python 3.12's own ``Path.exists`` raises on a name
-    past :data:`NAME_MAX` rather than answer that nothing is there. Public for the plan of a new
-    file, which refuses its name by the same rule, in the same words.
+    Asked before anything looks the name up: by ``ddd gui`` before it resolves the path of a
+    file an edit creates (``ddd.gui.session``), and by the plan of a new file before it asks
+    whether one is there (``ddd.file_plans``); :func:`_created` asks it again before the engine
+    looks for the file, for any caller that has not. A name too long to stage was staged
+    regardless before, the file system refused it, and the edit was answered as a write that
+    failed, ``500``, with the files already written put back; on Linux python 3.12's own
+    ``Path.exists`` raised on a name past :data:`NAME_MAX` first. A file staged under a device's
+    name on Windows would have opened the device. Refused on every system alike, as a page's
+    path is, since a project is checked out on more than one.
     """
+    device = device_named(name)
+    if device is not None:
+        return (
+            f"Windows reads its name as the device {device}, which it would open instead of a file"
+        )
     length = len(name.encode("utf-8", "surrogatepass"))
     if length > CREATED_NAME_MAX:
         return (
@@ -944,6 +967,17 @@ def name_too_long(name: str) -> str | None:
             f"file is staged under the name and '{STAGING_SUFFIX}' first, and a file system takes "
             f"{NAME_MAX} bytes"
         )
+    return None
+
+
+def device_named(name: str) -> str | None:
+    """The device of :data:`DEVICE_NAMES` Windows reads ``name`` as, or ``None``: such a name
+    before the name's first dot, in any case, less any spaces it ends in. ``nul.js``,
+    ``Lpt9.txt``, ``aux.`` and ``con .x`` each name a device there, and ``console`` and ``com10``
+    do not. Asked on every system, so that a name is answered alike on all of them."""
+    device = name.partition(".")[0].rstrip(" ").upper()
+    if device in DEVICE_NAMES:
+        return device
     return None
 
 

@@ -34,7 +34,13 @@ API: Final = Path(__file__).parents[1] / "src" / "ddd" / "gui" / "api.py"
 DUMPS: Final = ("model_dump", "model_dump_json", "dump_python", "dump_json")
 """The dumps of pydantic's own models and adapters - a model's ``model_dump`` and
 ``model_dump_json``, an adapter's ``dump_python`` and ``dump_json`` - each running the serializer
-the net counts for."""
+the net counts for: read in api.py wherever they are named, an attribute called or not, a name,
+or a string."""
+
+RETIRED: Final = ("dict", "json")
+"""pydantic 1's dumps, which a model of pydantic 2 still answers: read as an attribute alone. As a
+name or a string each is python's own as well - its type and its module, and the json mode of
+every dump - and is not read."""
 
 PLAN_READS: Final = [
     ("_raster_plan_of", "asked.model_dump"),
@@ -220,9 +226,20 @@ class _Reader(ast.NodeVisitor):
             body = node.args[1]
             if not self._answered(body):
                 self.found.append((self.function, f"Reply body {_shown(body)}"))
-        if _called(node) in DUMPS:
-            self.found.append((self.function, ast.unparse(node.func)))
         self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr in (*DUMPS, *RETIRED):
+            self.found.append((self.function, ast.unparse(node)))
+        self.generic_visit(node)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if node.id in DUMPS:
+            self.found.append((self.function, node.id))
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if node.value in DUMPS:
+            self.found.append((self.function, repr(node.value)))
 
     def _answered(self, body: ast.expr) -> bool:
         """Whether a ``Reply``'s body is one the net wrote: a ``written(...)`` call, the session's
@@ -237,17 +254,10 @@ class _Reader(ast.NodeVisitor):
 
 
 def _through_the_net(node: ast.expr | None) -> bool:
-    return isinstance(node, ast.Call) and _called(node) == "written"
-
-
-def _called(node: ast.Call) -> str:
-    """The name a call is made by: ``written`` of ``written(...)``, ``model_dump`` of
-    ``x.model_dump(...)``, whatever ``x`` is."""
-    if isinstance(node.func, ast.Attribute):
-        return node.func.attr
-    if isinstance(node.func, ast.Name):
-        return node.func.id
-    return ""
+    """Whether ``node`` is a call of the net itself, ``written(...)``."""
+    return (
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "written"
+    )
 
 
 def _shown(node: ast.expr | None) -> str:
@@ -261,9 +271,12 @@ def unwritten(source: str) -> list[tuple[str, str]]:
     """Every place ``source`` - api.py's text - answers, or dumps, other than through the net,
     each with the function it lies in, sorted: a ``Reply`` whose body is not a ``written(...)``
     call, the session's own answer or ``_error``'s own dict; a return of the session's own
-    answer that is not a ``written(...)`` call; and every call of :data:`DUMPS`, whatever it is
-    called on and wherever it lies - inside a ``written(...)`` call's argument as much as
-    anywhere, since a dump there runs before the net counts anything."""
+    answer that is not a ``written(...)`` call; and every naming of a dump - an attribute of
+    :data:`DUMPS` or :data:`RETIRED`, whatever it is an attribute of and whether it is called or
+    not, and a name or a string of :data:`DUMPS` - wherever it lies, inside a ``written(...)``
+    call's argument as much as anywhere, since a dump there runs before the net counts anything.
+    Not read: pydantic-core's own functions, a model's ``__pydantic_serializer__``,
+    :data:`RETIRED` asked for as a string, and a dump's name put together at run time."""
     reader = _Reader()
     reader.visit(ast.parse(source))
     return sorted(reader.found)
@@ -272,24 +285,30 @@ def unwritten(source: str) -> list[tuple[str, str]]:
 def test_every_answer_of_the_api_is_written_through_the_net() -> None:
     """Every ``Reply`` of api.py answers a body :func:`~ddd.gui.depth.written` wrote, which
     counts an answer before writing it - a ``written(...)`` call, the session's own answer,
-    itself one, or ``_error``'s dict of two strings - and no dump of :data:`DUMPS` runs there,
-    whatever it is called on, but the two reading a plan's own query (:data:`PLAN_READS`). Read
-    off api.py's syntax tree, so that a route added later is held to the net as every route there
-    is, in whichever of these ways it would dump its answer
+    itself one, or ``_error``'s dict of two strings - and no dump of :data:`DUMPS` or
+    :data:`RETIRED` is named there but the two reading a plan's own query (:data:`PLAN_READS`).
+    Read off api.py's syntax tree, so that a route added later is held to the net as every route
+    there is, in whichever of these ways it would dump its answer
     (:func:`test_an_answer_written_any_other_way_is_found`)."""
     assert unwritten(API.read_text(encoding="utf-8")) == PLAN_READS
 
 
 UNDO: Final = "return Reply(200, written(contract.UndoReply(edit=number)))"
-"""How ``_apply_undo`` answers: the route each spelling below is tried in."""
+"""How ``_apply_undo`` answers: the route most spellings below are tried in."""
+
+INNER: Final = "dictionary=None if dictionary is None else written(dictionary),"
+"""How ``_dictionary`` writes the dictionary it answers, inside the answer's own ``written(...)``:
+the place a dump runs before the net counts anything, where the rest are tried."""
+
+READ: Final = "        dictionary = revision.dictionary\n"
+"""Where ``_dictionary`` reads the dictionary, for a spelling that names something first."""
 
 
 @pytest.mark.parametrize(
-    ("answered", "spelled", "found"),
+    ("swaps", "found"),
     [
         pytest.param(
-            UNDO,
-            'return Reply(200, contract.UndoReply(edit=number).model_dump(mode="json"))',
+            [(UNDO, 'return Reply(200, contract.UndoReply(edit=number).model_dump(mode="json"))')],
             [
                 ("_apply_undo", "Reply body contract.UndoReply(edit=number).model_dump(...)"),
                 ("_apply_undo", "contract.UndoReply(edit=number).model_dump"),
@@ -297,8 +316,13 @@ UNDO: Final = "return Reply(200, written(contract.UndoReply(edit=number)))"
             id="the-old-spelling",
         ),
         pytest.param(
-            UNDO,
-            "return Reply(200, json.loads(contract.UndoReply(edit=number).model_dump_json()))",
+            [
+                (
+                    UNDO,
+                    "return Reply(200, json.loads(contract.UndoReply(edit=number)"
+                    ".model_dump_json()))",
+                )
+            ],
             [
                 ("_apply_undo", "Reply body json.loads(...)"),
                 ("_apply_undo", "contract.UndoReply(edit=number).model_dump_json"),
@@ -306,8 +330,13 @@ UNDO: Final = "return Reply(200, written(contract.UndoReply(edit=number)))"
             id="as-json-text",
         ),
         pytest.param(
-            UNDO,
-            'return Reply(200, UNDONE.dump_python(contract.UndoReply(edit=number), mode="json"))',
+            [
+                (
+                    UNDO,
+                    "return Reply(200, UNDONE.dump_python(contract.UndoReply(edit=number), "
+                    'mode="json"))',
+                )
+            ],
             [
                 ("_apply_undo", "Reply body UNDONE.dump_python(...)"),
                 ("_apply_undo", "UNDONE.dump_python"),
@@ -315,8 +344,13 @@ UNDO: Final = "return Reply(200, written(contract.UndoReply(edit=number)))"
             id="through-an-adapter",
         ),
         pytest.param(
-            UNDO,
-            "return Reply(200, json.loads(UNDONE.dump_json(contract.UndoReply(edit=number))))",
+            [
+                (
+                    UNDO,
+                    "return Reply(200, json.loads(UNDONE.dump_json("
+                    "contract.UndoReply(edit=number))))",
+                )
+            ],
             [
                 ("_apply_undo", "Reply body json.loads(...)"),
                 ("_apply_undo", "UNDONE.dump_json"),
@@ -324,46 +358,95 @@ UNDO: Final = "return Reply(200, written(contract.UndoReply(edit=number)))"
             id="through-an-adapter-as-json-text",
         ),
         pytest.param(
-            UNDO,
-            'return Reply(200, {"edit": number})',
+            [(UNDO, 'return Reply(200, {"edit": number})')],
             [("_apply_undo", "Reply body {'edit': number}")],
             id="a-body-of-its-own",
         ),
         pytest.param(
-            "dictionary=None if dictionary is None else written(dictionary),",
-            'dictionary=None if dictionary is None else dictionary.model_dump(mode="json"),',
+            [
+                (
+                    INNER,
+                    "dictionary=None if dictionary is None else "
+                    'dictionary.model_dump(mode="json"),',
+                )
+            ],
             [("_dictionary", "dictionary.model_dump")],
             id="a-dump-inside-the-net",
         ),
         pytest.param(
-            "        return written(\n            contract.SessionInfo(",
-            "        return dict(\n            contract.SessionInfo(",
+            [
+                (
+                    INNER,
+                    "dictionary=None if dictionary is None else "
+                    'getattr(dictionary, "model_dump")(mode="json"),',
+                )
+            ],
+            [("_dictionary", "'model_dump'")],
+            id="a-dump-asked-for-by-its-name",
+        ),
+        pytest.param(
+            [
+                (READ, f"{READ}        dump = dictionary.model_dump if dictionary else None\n"),
+                (INNER, 'dictionary=None if dump is None else dump(mode="json"),'),
+            ],
+            [("_dictionary", "dictionary.model_dump")],
+            id="a-bound-method-named-first",
+        ),
+        pytest.param(
+            [(INNER, "dictionary=None if dictionary is None else model_dump(dictionary),")],
+            [("_dictionary", "model_dump")],
+            id="a-dump-by-a-name-of-its-own",
+        ),
+        pytest.param(
+            [(INNER, "dictionary=None if dictionary is None else dictionary.dict(),")],
+            [("_dictionary", "dictionary.dict")],
+            id="pydantic-1-s-dict",
+        ),
+        pytest.param(
+            [(INNER, "dictionary=None if dictionary is None else json.loads(dictionary.json()),")],
+            [("_dictionary", "dictionary.json")],
+            id="pydantic-1-s-json",
+        ),
+        pytest.param(
+            [
+                (
+                    "        return written(\n            contract.SessionInfo(",
+                    "        return dict(\n            contract.SessionInfo(",
+                )
+            ],
             [("_session_body", "return dict(...)")],
             id="the-session-s-own-answer",
         ),
         pytest.param(
-            'return Reply(status, {"error": code, "message": message})',
-            'return Reply(status, {"error": code, "message": message, "at": where})',
+            [
+                (
+                    'return Reply(status, {"error": code, "message": message})',
+                    'return Reply(status, {"error": code, "message": message, "at": where})',
+                )
+            ],
             [("_error", "Reply body {'error': code, 'message': message, 'at': where}")],
             id="an-error-carrying-more",
         ),
         pytest.param(
-            UNDO,
-            'return Reply(409, {"error": code, "message": message})',
+            [(UNDO, 'return Reply(409, {"error": code, "message": message})')],
             [("_apply_undo", "Reply body {'error': code, 'message': message}")],
             id="an-error-of-its-own",
         ),
     ],
 )
 def test_an_answer_written_any_other_way_is_found(
-    answered: str, spelled: str, found: list[tuple[str, str]]
+    swaps: list[tuple[str, str]], found: list[tuple[str, str]]
 ) -> None:
     """api.py with one answer written another way - the first as every answer was written before
     the net, ``.model_dump(`` after a call - is found wherever it differs from the net, with the
-    function it lies in. ``UNDONE`` would be a ``TypeAdapter``, ``where`` anything at all."""
+    function it lies in: a dump called, named first, or asked for by its name as a string, as an
+    answer or inside one. ``UNDONE`` would be a ``TypeAdapter``, ``model_dump`` a function of
+    that name, ``where`` anything at all."""
     source = API.read_text(encoding="utf-8")
-    assert source.count(answered) == 1
-    assert unwritten(source.replace(answered, spelled)) == sorted([*PLAN_READS, *found])
+    for answered, spelled in swaps:
+        assert source.count(answered) == 1
+        source = source.replace(answered, spelled)
+    assert unwritten(source) == sorted([*PLAN_READS, *found])
 
 
 def shared(model: type[BaseModel]) -> set[str]:

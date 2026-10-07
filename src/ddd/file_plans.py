@@ -35,7 +35,7 @@ from typing import Any, Final, Literal
 from pydantic import TypeAdapter, ValidationError
 
 from ddd.diagnostics import Diagnostic, Location, Severity
-from ddd.editing import Operation, name_too_long
+from ddd.editing import Operation, uncreatable
 from ddd.findings_by_file import Pair
 from ddd.loading import included_files, resolve_path
 from ddd.lsp.diagnostics import finding_identity
@@ -369,13 +369,13 @@ def create_plan(
     ``ddd check`` passes.
 
     Refused ``invalid``, in this order, before anything is built: a kind not in
-    :data:`CREATABLE`; a name :data:`FILE_NAME` does not take; a name too long to create a file
-    under, in the edit's own words (:func:`ddd.editing.name_too_long`) - asked before the disk
-    is asked anything about it; a file of that name beside the description already; and for a
-    component, no name for it, or a name a check of the project would reject - one the model's
-    own :data:`~ddd.models.common.Identifier` does not take, one reserved, or one of ``taken``,
-    the names the project's components have, or of them but for its case
-    (:func:`_component_name`).
+    :data:`CREATABLE`; a name :data:`FILE_NAME` does not take; a name no file can be created
+    under - one Windows keeps for a device, or one too long to stage - in the edit's own words
+    (:func:`ddd.editing.uncreatable`), asked before the disk is asked anything about it; a file
+    of that name beside the description already; and for a component, no name for it, or a name
+    a check of the project would reject - one the model's own
+    :data:`~ddd.models.common.Identifier` does not take, one reserved, or one of ``taken``, the
+    names the project's components have, or of them but for its case (:func:`_component_name`).
 
     A vocabulary file declares nothing, and a component has its name and an empty
     ``interface``. A units file is the exception: where ``checks_units`` is false, it lists
@@ -410,9 +410,9 @@ def create_plan(
             f"A to Z, the digits 0 to 9, '_' and '-', and {_SUFFIX} is added to it",
         )
     filename = f"{name}{_SUFFIX}"
-    long = name_too_long(filename)
-    if long is not None:
-        raise FileRefusalError("invalid", f"{filename} cannot be created: {long}")
+    refused = uncreatable(filename)
+    if refused is not None:
+        raise FileRefusalError("invalid", f"{filename} cannot be created: {refused}")
     if (described.parent / filename).exists():
         raise FileRefusalError("invalid", f"{filename} is there already, beside {described.name}")
     content = _content(described, kind, component, taken, units, built, checks_units=checks_units)

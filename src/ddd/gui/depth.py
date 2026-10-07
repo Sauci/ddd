@@ -10,11 +10,14 @@ reference detected (depth exceeded)`` - which was answered ``500``.
 
 Every answer is written through :func:`written`, which counts it first and refuses one deeper than
 that. A test reads ``api.py``'s syntax tree, and fails on a ``Reply`` there whose body is neither
-one the net wrote nor ``_error``'s two strings, and on any of pydantic's dumps there -
-``model_dump``, ``model_dump_json``, ``dump_python`` or ``dump_json``, whatever it is called on -
-but two reading a plan's own query: so a route added later is held to the net as every route
-there is, in whichever of these ways it would dump its answer. Where a description file is to
-blame, its own route refuses it first, naming the file: ``GET /api/file`` past :data:`FILE_DEPTH`
+one the net wrote nor ``_error``'s two strings, and on any naming there of pydantic's dumps -
+``model_dump``, ``model_dump_json``, ``dump_python`` or ``dump_json`` as an attribute of
+anything, called or not, as a name or as a string, and pydantic 1's ``dict`` and ``json`` as an
+attribute - but two reading a plan's own query: so a route added later is held to the net as
+every route there is, in whichever of these ways it would dump its answer. It does not read
+pydantic-core's own functions, a model's ``__pydantic_serializer__``, pydantic 1's dumps asked for
+by a string, or a dump's name put together at run time. Where a description file is to blame, its
+own route refuses it first, naming the file: ``GET /api/file`` past :data:`FILE_DEPTH`
 (:func:`file_too_deep`), and ``GET /api/dictionary`` for an extension block past
 :data:`PROJECT_BLOCK_DEPTH` or :data:`OBJECT_BLOCK_DEPTH` (:func:`block_too_deep`).
 """

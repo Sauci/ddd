@@ -869,6 +869,33 @@ class TestCreatingAFile:
         assert refused.value.code == INVALID
         assert not path.exists()
 
+    def test_a_file_is_never_created_under_a_name_too_long_to_stage(self, tmp_path):
+        """244 bytes, 256 once staged: past the 255 a file system takes. ``ddd gui`` refuses the
+        name before this is asked (``ddd.gui.session``); this is the engine's own rule, for any
+        other caller."""
+        path = tmp_path / ("n" * 235 + ".ddd.json")
+        with pytest.raises(EditError) as refused:
+            apply_changes([created(path, UNITS_FILE)])
+        assert refused.value.code == INVALID
+        assert str(refused.value) == (
+            f"{path} cannot be created: its name is 244 bytes long, and a name is at most 243 - "
+            "the file is staged under the name and '.ddd-staging' first, and a file system takes "
+            "255 bytes"
+        )
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_file_is_never_created_under_a_name_windows_keeps_for_a_device(self, tmp_path):
+        """On every system: Windows reads ``com1.ddd.json`` as its first serial port."""
+        path = tmp_path / "com1.ddd.json"
+        with pytest.raises(EditError) as refused:
+            apply_changes([created(path, UNITS_FILE)])
+        assert refused.value.code == INVALID
+        assert str(refused.value) == (
+            f"{path} cannot be created: Windows reads its name as the device COM1, which it would "
+            "open instead of a file"
+        )
+        assert list(tmp_path.iterdir()) == []
+
     def test_a_file_that_exists_by_the_time_of_the_edit_is_stale(self, tmp_path):
         path = tmp_path / "units.ddd.json"
         path.write_bytes(b'{"units": ["Nm"]}')

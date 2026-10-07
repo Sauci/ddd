@@ -1723,6 +1723,30 @@ class TestCreatingAFile:
         assert refused.value.code == STALE
         assert not (shared.parent / "units.ddd.json").exists()
 
+    def test_a_created_path_the_system_will_not_resolve_is_confined_as_given(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Resolved as the loader resolves a path (``ddd.loading.resolve_path``), which hands back
+        one the system will not look at rather than raise: Windows may answer a lookup with an
+        error ``Path.resolve`` does not walk past, and resolved directly it failed the edit,
+        ``500``. Its name was judged before, so nothing is left to the answer."""
+        session = Session(shared.parent)
+        session.open(shared)
+        revision = session.revision
+        assert revision is not None
+        created, described = adoption(shared)
+        resolve = Path.resolve
+
+        def refusing(path: Path, strict: bool = False) -> Path:
+            if path.name == "units.ddd.json":
+                raise OSError("the system will not look this name up")
+            return resolve(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", refusing)
+        assert module._confined(revision, created, [created, described]) == FileChange(
+            created.path, None, created.operations, like=revision.project
+        )
+
 
 class TestUndoing:
     """One stack per open project: what each edit replaced, walked back one edit at a time."""

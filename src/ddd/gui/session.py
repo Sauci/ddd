@@ -46,6 +46,7 @@ from ddd.editing import (
     edited,
     fingerprint,
     restore,
+    uncreatable,
 )
 from ddd.ir import DataDictionary
 from ddd.loading import included_files, parse_json_text, resolve_path
@@ -835,10 +836,21 @@ def _served(revision: Revision, resolved: Path) -> Path:
 
 def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileChange]) -> FileChange:
     """One change of an edit, its file resolved and allowed: a description file of the open
-    project, or a file the edit may create, which takes the access of the project description."""
+    project, or a file the edit may create, which takes the access of the project description.
+
+    A file to be created is judged by its name before anything resolves its path or looks the
+    name up (:func:`ddd.editing.uncreatable`): a name Windows keeps for a device, or one too long
+    to stage, is refused on every system alike, whatever an operating system would answer about
+    it - Windows' answer about a name too long for NTFS is not one ``Path.resolve`` is sure to
+    walk past. Its path is then resolved as the loader resolves one
+    (:func:`ddd.loading.resolve_path`), which hands back a path the system refuses to look at
+    rather than raise."""
     if pending.fingerprint is not None:
         return FileChange(_source(revision, pending.path), pending.fingerprint, pending.operations)
-    target = pending.path.resolve()
+    refused = uncreatable(pending.path.name)
+    if refused is not None:
+        raise EditError(INVALID, f"{pending.path} cannot be created: {refused}")
+    target = resolve_path(pending.path)
     project = revision.project
     described = next(
         (c for c in changes if c.fingerprint is not None and c.path.resolve() == project), None

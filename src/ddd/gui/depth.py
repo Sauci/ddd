@@ -24,6 +24,8 @@ own route refuses it first, naming the file: ``GET /api/file`` past :data:`FILE_
 
 from __future__ import annotations
 
+import json
+import math
 import types
 import typing
 from collections.abc import Iterable, Sequence
@@ -35,7 +37,7 @@ from typing import TYPE_CHECKING, Any, Final
 from pydantic import BaseModel
 
 from ddd.editing import INVALID, EditError, not_one_value
-from ddd.loading import NESTED_TOO_DEEPLY, read_json_document
+from ddd.loading import NESTED_TOO_DEEPLY, parse_json_text, read_json_document
 
 if TYPE_CHECKING:
     from ddd.gui import contract
@@ -229,18 +231,54 @@ def block_too_deep(revision: Revision) -> str | None:
 
 
 def within_depth(changes: Sequence[contract.Change]) -> None:
-    """Refuse an edit writing a value nested more than :data:`MAX_DEPTH` deep, the deepest json a
-    query carries, in the words the engine refuses a value it cannot lay out with, the file first.
+    """Refuse an edit writing a value a query would refuse as json text: one nested more than
+    :data:`MAX_DEPTH` deep, the deepest json a query carries, or one holding a number too large
+    to be finite (:func:`finite`) - in the words the engine refuses a value it cannot read with,
+    the file first. A value that is not json at all is left to the engine, which refuses it in
+    those words itself.
 
-    So every value the page writes stays within what a query carries. It bounds a value, not a
+    So every value the page writes is one a query would carry. The depth bounds a value, not a
     file: values written one inside another can still nest a file deeper than its answer carries,
     which ``GET /api/file`` then refuses when it is read (:data:`FILE_DEPTH`). The engine's own
-    bound, python's stack, lies hundreds of levels deeper, and stays for its other callers."""
+    bound, python's stack, lies hundreds of levels deeper, and stays for its other callers. A
+    number too large to be finite was written as the text it was given, ``1e999``, and shown back
+    as ``null``, how pydantic writes infinity."""
     for change in changes:
         for operation in change.operations:
-            if operation.raw is not None and text_depth(operation.raw) > MAX_DEPTH:
-                refused = not_one_value(operation.raw, NESTED_TOO_DEEPLY)
+            if operation.raw is None:
+                continue
+            refused = _unwritable(operation.raw)
+            if refused is not None:
                 raise EditError(INVALID, f"{Path(change.file)}: {refused}")
+
+
+def _unwritable(raw: str) -> EditError | None:
+    """The refusal of ``raw`` as a value :func:`within_depth` does not let an edit write, or
+    ``None``: counted before anything parses it, then read by the loader's rule, and only a value
+    that rule reads judged for its numbers."""
+    if text_depth(raw) > MAX_DEPTH:
+        return not_one_value(raw, NESTED_TOO_DEEPLY)
+    try:
+        parse_json_text(raw)
+    except ValueError:
+        return None
+    try:
+        json.loads(raw, parse_float=finite)
+    except ValueError as error:
+        return not_one_value(raw, error)
+    return None
+
+
+def finite(number: str) -> float:
+    """A json number with a fraction or an exponent, read as python reads it, and refused where
+    that is not finite: ``1e999`` reads as infinity, which DDD can no more carry through to its
+    outputs than ``Infinity`` itself, which the loader refuses. ``json.loads``' ``parse_float`` for
+    every value ``ddd gui`` takes as json text: a query's (:func:`ddd.gui.queries.json_text`) and
+    an edit's (:func:`within_depth`)."""
+    read = float(number)
+    if not math.isfinite(read):
+        raise ValueError(f"'{number}' is not a finite number; DDD has no representation for it")
+    return read
 
 
 def _stating(revision: Revision, plugin: str) -> Path | None:

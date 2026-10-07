@@ -24,7 +24,6 @@ NUL in it, a path outside that directory, a file it cannot read.
 from __future__ import annotations
 
 import json
-import math
 import re
 import sys
 from collections.abc import Callable, Iterable
@@ -45,7 +44,7 @@ from pydantic_core import PydanticCustomError
 
 from ddd.diagnostics import Severity
 from ddd.editing import EditError, device_named, not_one_value, parse_raw
-from ddd.gui.depth import MAX_DEPTH, text_depth
+from ddd.gui.depth import MAX_DEPTH, finite, text_depth
 from ddd.loading import NESTED_TOO_DEEPLY
 from ddd.lsp.edits import PROPAGATED_KEYS
 
@@ -329,20 +328,10 @@ def _json(value: object) -> str:
     parse_raw(value)
     assert isinstance(value, str)  # parse_raw refuses anything that is not text
     try:
-        json.loads(value, parse_float=_finite)
+        json.loads(value, parse_float=finite)
     except ValueError as error:
         raise not_one_value(value, error) from None
     return value
-
-
-def _finite(number: str) -> float:
-    """A json number with a fraction or an exponent, read as python reads it, and refused where
-    that is not finite: ``1e999`` reads as infinity, which DDD can no more carry through to its
-    outputs than ``Infinity`` itself, which the loader refuses."""
-    read = float(number)
-    if not math.isfinite(read):
-        raise ValueError(f"'{number}' is not a finite number; DDD has no representation for it")
-    return read
 
 
 def actions_of(model: type[BaseModel]) -> dict[str, type[_Query]]:

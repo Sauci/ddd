@@ -2398,6 +2398,47 @@ class TestEdit:
         )
         assert target.read_bytes() == before
 
+    @pytest.mark.parametrize(
+        ("raw", "number"),
+        [("1e999", "1e999"), ('{"max": -1e999}', "-1e999"), ("[1, 2.5e400]", "2.5e400")],
+        ids=["alone", "in-an-object", "in-an-array"],
+    )
+    def test_a_value_holding_a_number_too_large_to_be_finite_is_refused(
+        self, api: Api, root: Path, raw: str, number: str
+    ) -> None:
+        """As the same text in a query is (``ddd.gui.queries.json_text``): ``1e999`` reads as
+        infinity, which DDD has no representation for. Written, it was shown back as ``null``,
+        which is how pydantic writes infinity, and the analysis filed a finding of the file it
+        made. Refused before the engine is asked, in its own words."""
+        target = root / "a.ddd.json"
+        before = target.read_bytes()
+        assert post(api, "/api/edit", self.described(target, raw)) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": f"{target}: {raw!r} is not one json value: '{number}' is not a "
+                "finite number; DDD has no representation for it",
+            },
+        )
+        assert target.read_bytes() == before
+
+    def test_a_value_json_cannot_read_is_the_engines_to_refuse_in_its_own_order(
+        self, api: Api, root: Path
+    ) -> None:
+        """Only a value json reads is judged before the engine is asked, as it was: one it
+        cannot read at all is refused by the engine, after what the engine refuses first - here,
+        a file changed since the edit was computed."""
+        edit = unit_edit(api, root, "Hz")
+        edit["changes"][0]["operations"][0]["raw"] = "not json"
+        (root / "b.ddd.json").write_text("{}", encoding="utf-8")
+        assert post(api, "/api/edit", edit) == Reply(
+            409,
+            {
+                "error": "stale",
+                "message": f"{root / 'b.ddd.json'} changed on disk since it was read",
+            },
+        )
+
     def test_a_stale_edit_is_a_refusal_the_page_can_act_on(self, api: Api, root: Path) -> None:
         edit = unit_edit(api, root, "Hz")
         (root / "b.ddd.json").write_text("{}", encoding="utf-8")

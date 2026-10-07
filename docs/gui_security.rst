@@ -39,30 +39,31 @@ What it defends against
   holding a NUL character or a lone surrogate, a number many thousands of digits long, and
   a network or device path such as ``\\server\share`` that does not name a path under a
   directory ``ddd gui`` serves are each refused with a plain ``400``, ``404`` or ``409``,
-  and so is json nested more than 64 levels deep, in a query or as the value an edit
-  writes - except a number this server's own long poll reads as "wait for a later version":
-  there, anything that is not a clean number is treated as none given, and answered at once
-  rather than refused. Such a network or device path is refused before anything resolves
-  it, and so is one holding a dot segment. On Windows, so is a path holding a name Windows
-  keeps for a device (below) as any of its names, refused ``400``: resolving it would ask
-  Windows about every directory along it, and Windows opens the device for such a name in
-  whatever directory it is written. A path through a loop of links, which python 3.12
-  cannot resolve, is answered as one naming no file ``ddd gui`` can read, on every python.
-  A file an edit would create is refused ``409`` before anything looks its name up, let
-  alone writes the file, and so is ``GET /api/files-plan``'s plan of one, where the name is
-  longer than 243 bytes, holds a character Windows keeps out of a file's name - a control
-  character, or one of ``< > : " / \ | ? *`` - ends in a dot or a space, which Windows
-  drops from a file's name, or is one Windows keeps for a device (below), on every system -
-  on Windows, an edit naming a device's file is refused ``400`` before that, as any path
-  naming a device is: the file is staged under its name and ``.ddd-staging`` first, ext4
-  takes a name of at most 255 bytes and NTFS one of at most 255 UTF-16 units, which a name
-  of 255 bytes never exceeds, and Windows opens the device in the place of a file named
-  like it. An answer carrying json nested more than 99 levels deep - a file's contents, or
-  a part of the project's dictionary, each array, object and value in it counted - is
-  refused ``409`` instead of sent, by whatever route would send it: 99 levels are the most
-  its serializer writes on Windows, and so the bound on every system. Two of these refusals
-  name the file to blame: ``GET /api/file``'s, of a file nested more than 99 levels deep,
-  and ``GET /api/dictionary``'s, of the file stating an extension block nested more than 96
+  and so is json nested more than 64 levels deep or holding a number too large to be
+  finite, such as ``1e999``, in a query or as the value an edit writes - except a number
+  this server's own long poll reads as "wait for a later version": there, anything that is
+  not a clean number is treated as none given, and answered at once rather than refused.
+  Such a network or device path is refused before anything resolves it, and so is one
+  holding a dot segment. On Windows, so is a path holding a name Windows keeps for a device
+  (below) as any of its names, refused ``400``: resolving it would ask Windows about every
+  directory along it, and Windows opens the device for such a name in whatever directory it
+  is written. A path through a loop of links, which python 3.12 cannot resolve, is answered
+  as one naming no file ``ddd gui`` can read, on every python. A file an edit would create
+  is refused ``409`` before anything looks its name up, let alone writes the file, and so
+  is ``GET /api/files-plan``'s plan of one, where the name is longer than 243 bytes, holds
+  a character Windows keeps out of a file's name - a control character, or one of
+  ``< > : " / \ | ? *`` - ends in a dot or a space, which Windows drops from a file's name,
+  or is one Windows keeps for a device (below), on every system - on Windows, an edit
+  naming a device's file is refused ``400`` before that, as any path naming a device is:
+  the file is staged under its name and ``.ddd-staging`` first, ext4 takes a name of at
+  most 255 bytes and NTFS one of at most 255 UTF-16 units, which a name of 255 bytes never
+  exceeds, and Windows opens the device in the place of a file named like it. An answer
+  carrying json nested more than 99 levels deep - a file's contents, or a part of the
+  project's dictionary, each array, object and value in it counted - is refused ``409``
+  instead of sent, by whatever route would send it: 99 levels are the most its serializer
+  writes on Windows, and so the bound on every system. Two of these refusals name the file
+  to blame: ``GET /api/file``'s, of a file nested more than 99 levels deep, and
+  ``GET /api/dictionary``'s, of the file stating an extension block nested more than 96
   levels deep, or 98 among the project's own settings. Any other answer too deep is refused
   without naming one. A ``POST`` whose ``Content-Length`` is no length is refused ``400``,
   and one promising more than 1,048,576 bytes ``413``, however many digits it is written

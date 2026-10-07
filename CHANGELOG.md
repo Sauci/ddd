@@ -42,15 +42,16 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 * **Every route of `ddd gui` reads its query through one typed model.**  A hostile value - a
   path with a NUL character or a lone surrogate, a number thousands of digits long, json nested
-  more than 64 levels deep (an edit's own value among it), a network path outside what `ddd gui`
-  serves, on Windows a path holding a name Windows keeps for a device, a file to create under a
-  name longer than 243 bytes, holding a character Windows keeps out of a file's name, ending in
-  a dot or a space, or one Windows keeps for a device - is refused with a plain `400`, `404` or
-  `409`, the long poll's `?after=` excepted, which answers at once whatever else it is given.  No
-  malformed input - in a query, a body or a page's path - is answered with a `500` any more, and
-  an answer carrying json nested more than 99 levels deep - a file's contents, or a part of the
-  project's dictionary - is refused `409` rather than sent: naming the file, for a file that
-  deep or one stating an extension block too deep, and no file otherwise.
+  more than 64 levels deep or holding a number too large to be finite (an edit's own value among
+  it), a network path outside what `ddd gui` serves, on Windows a path holding a name Windows
+  keeps for a device, a file to create under a name longer than 243 bytes, holding a character
+  Windows keeps out of a file's name, ending in a dot or a space, or one Windows keeps for a
+  device - is refused with a plain `400`, `404` or `409`, the long poll's `?after=` excepted,
+  which answers at once whatever else it is given.  No malformed input - in a query, a body or a
+  page's path - is answered with a `500` any more, and an answer carrying json nested more than
+  99 levels deep - a file's contents, or a part of the project's dictionary - is refused `409`
+  rather than sent: naming the file, for a file that deep or one stating an extension block too
+  deep, and no file otherwise.
 
 * **An include through a loop of links is a finding on python 3.12 too.**  `ddd check` ended
   there in a traceback, where 3.13 and later report the file it cannot read, at the entry

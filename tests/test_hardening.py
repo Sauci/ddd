@@ -31,7 +31,7 @@ from ddd.backends.c.literals import c_literal
 from ddd.cli import EXIT_FINDINGS, main
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity, index_order
 from ddd.ir import DICTIONARY_FORMAT, DataDictionary
-from ddd.loading import load_dictionary, load_workspace
+from ddd.loading import load_dictionary, load_workspace, resolve_path
 from ddd.models import Datatype
 
 
@@ -1223,7 +1223,10 @@ class TestTheRestOfTheEdges:
         """``ddd check`` ended here in a traceback on python 3.12, whose ``Path.resolve`` raises
         ``RuntimeError`` on a loop of links where 3.13's walks past it to a read that fails, a
         finding at the entry. Now the entry is resolved as far as it can be on every python, and
-        the read's failure is that finding on all of them - its reason the system's own words."""
+        the read's failure is that finding on all of them - its reason the system's own words.
+        How far is the platform's: linux leaves the loop where it was written, and Windows walks
+        one junction into it before giving up, so the finding names the entry as resolve_path
+        reads it there."""
         write_tree(
             tree,
             {
@@ -1242,7 +1245,8 @@ class TestTheRestOfTheEdges:
                 "file-not-found",
                 Severity.ERROR,
                 Location(tree / "p.ddd.json", "project.includes[1]"),
-                f"cannot read '{through.as_posix()}': {refused.value.strerror or refused.value}",
+                f"cannot read '{resolve_path(through).as_posix()}': "
+                f"{refused.value.strerror or refused.value}",
             )
         ]
 

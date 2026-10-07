@@ -945,15 +945,15 @@ def uncreatable(name: str) -> str | None:
     name Windows reads as a device (:func:`device_named`), or one longer than
     :data:`CREATED_NAME_MAX` bytes. Either is the request's to answer for, not a failure to write.
 
-    Asked before anything looks the name up: by ``ddd gui`` before it resolves the path of a
-    file an edit creates (``ddd.gui.session``), and by the plan of a new file before it asks
-    whether one is there (``ddd.file_plans``); :func:`_created` asks it again before the engine
-    looks for the file, for any caller that has not. A name too long to stage was staged
-    regardless before, the file system refused it, and the edit was answered as a write that
-    failed, ``500``, with the files already written put back; on Linux python 3.12's own
-    ``Path.exists`` raised on a name past :data:`NAME_MAX` first. A file staged under a device's
-    name on Windows would have opened the device. Refused on every system alike, as a page's
-    path is, since a project is checked out on more than one.
+    Asked before anything looks the name up: by ``ddd gui`` of every file an edit creates before
+    it confines any change of the edit (``ddd.gui.session``), and by the plan of a new file
+    before it asks whether one is there (``ddd.file_plans``); :func:`_created` asks it again
+    before the engine looks for the file, for any caller that has not. A name too long to stage
+    was staged regardless before, the file system refused it, and the edit was answered as a
+    write that failed, ``500``, with the files already written put back; on Linux python 3.12's
+    own ``Path.exists`` raised on a name past :data:`NAME_MAX` first. A file staged under a
+    device's name on Windows would have opened the device. Refused on every system alike, as a
+    page's path is, since a project is checked out on more than one.
     """
     device = device_named(name)
     if device is not None:

@@ -2571,6 +2571,40 @@ class TestEdit:
         assert asked == []
         assert contents(root) == before
 
+    @pytest.mark.parametrize(
+        ("name", "said"),
+        [
+            pytest.param("COM1.ddd.json", lambda path: a_device(path, "COM1"), id="a-device"),
+            pytest.param(
+                "n" * 235 + ".ddd.json", lambda path: too_long(path, 244), id="a-byte-too-long"
+            ),
+        ],
+    )
+    def test_a_second_file_to_create_is_judged_before_the_first_is_looked_up(
+        self,
+        api: Api,
+        root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        name: str,
+        said: Callable[[str], str],
+    ) -> None:
+        """Every name an edit creates is judged before any change of it is confined: confining
+        the first file looks up each name the project description's includes give, the second's
+        among them, and on Windows looking up a device's name opens the device."""
+        request = creating(root, "units.ddd.json")
+        second = {**request["changes"][0], "file": (root / name).as_posix()}
+        request["changes"].insert(1, second)
+        request["changes"][2]["operations"].append(
+            {"op": "insert", "pointer": "project.includes[3]", "raw": json.dumps(name)}
+        )
+        before = contents(root)
+        asked = asked_about(monkeypatch, name)
+        assert post(api, "/api/edit", request) == Reply(
+            409, {"error": "invalid", "message": said(str(root.resolve() / name))}
+        )
+        assert asked == []
+        assert contents(root) == before
+
     def test_a_file_the_edit_does_not_include_is_not_created(self, api: Api, root: Path) -> None:
         edit = {
             "changes": [

@@ -54,11 +54,6 @@ from ddd.file_names import device_named
 from ddd.gui.api import Api
 from ddd.gui.session import Session
 
-COOKIE: Final = "ddd-gui"
-"""What the cookie a server signs a page in with is called, followed by ``-`` and the server's
-port: a browser sends every cookie of 127.0.0.1 to every port, so under one name a second
-``ddd gui`` replaced the first one's cookie and signed its page out."""
-
 TOKEN_BYTES: Final = 32
 """Random bytes in the long-lived token, and in each single-use launch code: the same
 strength, since either one alone signs a browser in."""
@@ -264,7 +259,7 @@ class GuiServer(ThreadingHTTPServer):
 
     @property
     def address(self) -> str:
-        """The address to open; the token in it is what the cookie is given for.
+        """The address to open; the token in it is what the page signs in with.
 
         Always ``127.0.0.1``, whatever ``host`` this server binds: pasted into a browser on
         this computer, it reaches the process when ``host`` is ``127.0.0.1`` itself or
@@ -273,11 +268,6 @@ class GuiServer(ThreadingHTTPServer):
         this computer is also on: that interface alone answers, and this is a different one.
         """
         return f"http://127.0.0.1:{self.port}/open?token={self.token}"
-
-    @property
-    def cookie(self) -> str:
-        """The name of the cookie this server signs a page in with."""
-        return f"{COOKIE}-{self.port}"
 
     def process_request(self, request: Any, client_address: Any) -> None:
         """Answer on a thread of its own if a slot is free; else refuse from this thread.
@@ -383,7 +373,7 @@ class _Handler(BaseHTTPRequestHandler):
             # The absolute form of a target names its host before its path, and a malformed
             # one - a bracket opened for an IPv6 address and never closed, say - makes urlsplit
             # itself raise, before anything here has read where the request claims to come
-            # from or whether it carries this server's cookie.
+            # from or whether it carries this server's token.
             self._send_json(400, {"error": "bad-request", "message": _NOT_A_TARGET})
             return
         if method == "GET" and url.path == "/open":
@@ -460,37 +450,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(403, {"error": "forbidden", "message": _SIGN_IN})
 
     def _signed_in(self) -> bool:
-        """Whether the request carries the token: as ``Authorization: Bearer``, which the page
-        is to send, or in this server's cookie, which ``/open`` still sets until the page sends
-        the header."""
-        return self._bearer() or self._cookie_holds_token()
-
-    def _bearer(self) -> bool:
         """Whether the request carries this server's token as ``Authorization: Bearer``: the
         scheme in any case, as HTTP has it, then one space, then the token, compared in
-        constant time."""
+        constant time. A cookie is no credential: a browser sends every cookie of 127.0.0.1 to
+        every port of it, and so to every other server there."""
         scheme, _, given = self.headers.get("Authorization", "").partition(" ")
         return scheme.lower() == "bearer" and hmac.compare_digest(
             given.encode("utf-8"), self._gui.token.encode("utf-8")
         )
-
-    def _cookie_holds_token(self) -> bool:
-        """Whether the request carries this server's cookie with the token in it.
-
-        The header is read by hand: the browser sends this server every cookie any app on
-        127.0.0.1 has set, and ``http.cookies.SimpleCookie`` gives up on many of them. It stopped
-        reading at ``prefs={"lang":"en"}`` or ``arr[0]=1`` without a word, which signed the page
-        out behind a cookie that came first, and raised at ``user@site=1``, which left every
-        request unanswered. A pair is split at its first ``=``; one not named for this server is
-        passed over whatever it holds, and every one that is gets its value compared.
-        """
-        name = self._gui.cookie
-        token = self._gui.token.encode("utf-8")
-        for pair in self.headers.get("Cookie", "").split(";"):
-            key, _, value = pair.strip().partition("=")
-            if key == name and hmac.compare_digest(value.encode("utf-8"), token):
-                return True
-        return False
 
     def _own_origins(self) -> tuple[str, str]:
         """This server's own origin, spelled the two ways a browser may carry it: by
@@ -505,12 +472,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         A browser marks every request it sends with ``Sec-Fetch-Site``: ``same-origin`` from
         this server's own page, ``none`` for an address typed or a bookmark, and ``same-site``
-        from a page served on another port of this address - which also carries this server's
-        ``SameSite=Strict`` cookie, a cookie belonging to an address and not to a port. Every
-        browser sends it since 2023 (Chrome 76, Firefox 90, Safari 16.4). An ``Origin`` other
-        than this server's is refused too, for a browser older than those. A client that sends
-        neither - a script, ``curl``, these tests - goes on to the cookie, so the token still
-        decides.
+        from a page served on another port of this address, which a browser counts as the same
+        site, ports aside. Every browser sends the header since 2023 (Chrome 76, Firefox 90,
+        Safari 16.4). An ``Origin`` other than this server's is refused too, for a browser older
+        than those. A client that sends neither - a script, ``curl``, these tests - is let past
+        this check: a page needs no credential, and the API needs the token.
+
+        For the API this is a second defence. The first is that a page elsewhere has no token
+        to send: no cookie holds it, and that page cannot send ``Authorization`` without a CORS
+        preflight, which this server never grants.
         """
         site = self.headers.get("Sec-Fetch-Site")
         if site is not None and site not in ("same-origin", "none"):

@@ -64,11 +64,6 @@ FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
 """Cookies other apps on 127.0.0.1 leave in a browser, which sends them to every port."""
 
 
-def cookie(server: GuiServer) -> str:
-    """The name a server signs a page in under, which carries its port."""
-    return f"ddd-gui-{server.port}"
-
-
 @pytest.fixture
 def pages(tmp_path: Path) -> Path:
     static = tmp_path / "static"
@@ -206,7 +201,7 @@ def posted(server: GuiServer, length: str, body: bytes = b"") -> bytes:
     return (
         b"POST /api/edit HTTP/1.1\r\n"
         + f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
-        + f"Cookie: {cookie(server)}={server.token}\r\n".encode("ascii")
+        + f"Authorization: Bearer {server.token}\r\n".encode("ascii")
         + f"Origin: http://127.0.0.1:{server.port}\r\n".encode("ascii")
         + b"Content-Type: application/json\r\n"
         + f"Content-Length: {length}\r\nConnection: close\r\n\r\n".encode("ascii")
@@ -330,52 +325,10 @@ class TestSigningIn:
         assert server.redeem_code(code) is True
         assert at_release == [None]
 
-    def test_the_api_without_the_cookie_is_unauthorised(self, server) -> None:
+    def test_the_api_without_the_token_is_unauthorised(self, server) -> None:
         response, data = ask(server, "GET", "/api/session", signed_in=False)
         assert response.status == 401
         assert json.loads(data)["error"] == "unauthorised"
-
-    def test_a_cookie_with_another_value_is_not_signed_in(self, server) -> None:
-        forged = {"Cookie": f"{cookie(server)}=forged"}
-        response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=forged)
-        assert response.status == 401
-
-    def test_a_second_server_signs_in_under_a_name_of_its_own(
-        self, server, project_file, pages
-    ) -> None:
-        """A browser sends every cookie of 127.0.0.1 to every port. Under one name, opening a
-        second ddd gui replaced the first one's cookie and signed its page out - and a second
-        server is how two projects are looked at side by side."""
-        for other in serving(Api(Session(project_file.parent)), pages):
-            both = {"Cookie": f"{cookie(other)}={other.token}; {cookie(server)}={server.token}"}
-            for asked in (server, other):
-                response, _ = ask(asked, "GET", "/api/session", signed_in=False, headers=both)
-                assert response.status == 200
-            theirs = {"Cookie": f"{cookie(other)}={other.token}"}
-            response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=theirs)
-            assert response.status == 401
-
-    @pytest.mark.parametrize("path", ["/api/session", "/project"])
-    @pytest.mark.parametrize("foreign", FOREIGN_COOKIES)
-    def test_a_cookie_another_app_set_does_not_get_in_the_way(self, server, path, foreign) -> None:
-        """The standard library's cookie parser stopped reading at the first two of these, in
-        silence, which signed the page out; it raised at the third, which left every request
-        unanswered."""
-        sent = {"Cookie": f"{foreign}; {cookie(server)}={server.token}"}
-        response, _ = ask(server, "GET", path, signed_in=False, headers=sent)
-        assert response.status == 200
-
-    def test_cookies_of_other_apps_alone_are_not_signed_in(self, server) -> None:
-        sent = {"Cookie": "; ".join(FOREIGN_COOKIES)}
-        response, data = ask(server, "GET", "/api/session", signed_in=False, headers=sent)
-        assert (response.status, json.loads(data)["error"]) == (401, "unauthorised")
-
-    def test_a_stale_cookie_of_this_servers_name_beside_the_right_one_signs_in(
-        self, server
-    ) -> None:
-        sent = {"Cookie": f"{cookie(server)}={server.token}; {cookie(server)}=stale"}
-        response, _ = ask(server, "GET", "/api/session", signed_in=False, headers=sent)
-        assert response.status == 200
 
 
 class TestTheSignInExchange:
@@ -643,6 +596,39 @@ class TestTheBearerHeader:
         ] == []
 
 
+class TestACookie:
+    """A cookie is no credential: a browser sends every cookie of 127.0.0.1 to every port of
+    it, and so to every other server there (part 18b)."""
+
+    @pytest.mark.parametrize(
+        "cookie",
+        ["ddd-gui-{port}={token}", "ddd-gui={token}", "{foreign}; ddd-gui-{port}={token}"],
+        ids=["this-servers-old-name", "the-name-before-ports", "beside-others"],
+    )
+    def test_a_cookie_holding_the_token_is_no_credential(self, server, cookie) -> None:
+        response, data = ask(
+            server,
+            "GET",
+            "/api/session",
+            signed_in=False,
+            headers={
+                "Cookie": cookie.format(
+                    port=server.port, token=server.token, foreign='prefs={"lang":"en"}'
+                )
+            },
+        )
+        assert (response.status, json.loads(data)) == (
+            401,
+            {"error": "unauthorised", "message": _SIGN_IN},
+        )
+
+    def test_cookies_beside_the_header_are_passed_over(self, server) -> None:
+        response, _ = ask(
+            server, "GET", "/api/session", headers={"Cookie": "; ".join(FOREIGN_COOKIES)}
+        )
+        assert response.status == 200
+
+
 class TestTheAddressPrinted:
     """``GET /open`` answers the page itself, which signs itself in, and checks and spends
     nothing: a browser's prefetch of the launch address spends no code."""
@@ -694,8 +680,9 @@ class TestWhoMayAsk:
     @pytest.mark.parametrize("path", ["/api/session", "/api/compare?baseline=x"])
     def test_an_api_request_from_another_page_is_refused(self, server, site, path) -> None:
         """A page served from another port of 127.0.0.1 is the same site to a browser, which
-        sends it this server's SameSite=Strict cookie: probed against a1da6ce, its GET of
-        /api/compare ran the comparison, plugins and all."""
+        sent it this server's SameSite=Strict cookie while the token was one: probed against
+        a1da6ce, its GET of /api/compare ran the comparison, plugins and all. Such a page has
+        no token any more, and the gate refuses it even carrying the token."""
         response, data = ask(server, "GET", path, headers={"Sec-Fetch-Site": site})
         assert (response.status, json.loads(data)) == (
             403,
@@ -742,17 +729,17 @@ class TestWhoMayAsk:
         response, _ = ask(server, "GET", "/api/session", origin=f"http://{host}:{server.port}")
         assert response.status == 200
 
-    def test_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
+    def test_another_page_is_refused_before_the_token_is_read(self, server) -> None:
         response, _ = ask(
             server, "GET", "/api/session", signed_in=False, headers={"Sec-Fetch-Site": "same-site"}
         )
         assert response.status == 403
 
-    def test_a_post_from_another_page_is_refused_before_the_cookie_is_read(self, server) -> None:
-        """The POST sibling of test_another_page_is_refused_before_the_cookie_is_read: the gate
+    def test_a_post_from_another_page_is_refused_before_the_token_is_read(self, server) -> None:
+        """The POST sibling of test_another_page_is_refused_before_the_token_is_read: the gate
         runs before ``_signed_in`` and before the POST rule alike, so a POST marked same-site
         is refused by the gate's own sentence, not by ``_FORBIDDEN``, without ever reaching the
-        cookie."""
+        token."""
         response, data = ask(
             server,
             "POST",
@@ -880,7 +867,7 @@ class TestWhoMayAsk:
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         connection.putrequest("POST", "/api/edit", skip_host=True)
         connection.putheader("Host", f"127.0.0.1:{server.port}")
-        connection.putheader("Cookie", f"{cookie(server)}={server.token}")
+        connection.putheader("Authorization", f"Bearer {server.token}")
         connection.putheader("Origin", f"http://127.0.0.1:{server.port}")
         connection.putheader("Content-Type", "application/json")
         connection.putheader("Content-Length", "ten")
@@ -994,7 +981,7 @@ class TestWhatIsServed:
         sent = (
             f"GET {path} HTTP/1.1\r\n"
             f"Host: 127.0.0.1:{server.port}\r\n"
-            f"Cookie: {cookie(server)}={server.token}\r\n"
+            f"Authorization: Bearer {server.token}\r\n"
             "Connection: close\r\n\r\n"
         ).encode("ascii")
         status, _ = raw_answer(server, sent)
@@ -1347,7 +1334,7 @@ class TestAMalformedAbsoluteFormTarget:
     ever read where the request claims to come from, and before anything answered it:
     ``_answer``'s catch-all split the same text again to print it, raised the same way, and
     socketserver printed a traceback and closed the connection with nothing written - no
-    token needed, since the gate and the cookie are both later than this."""
+    token needed, since the gate and the token's check are both later than this."""
 
     @pytest.mark.parametrize(
         "line",
@@ -1410,7 +1397,7 @@ class TestABodyLeftUnread:
     """A ``POST`` refused before its body is read leaves that body on the connection, where the
     server read it as the next request and answered that too, keeping the connection open.
     Such a refusal closes the connection instead, and says so (``Connection: close``): one
-    answer, then nothing. The smuggled request carries no cookie, so this was never more than
+    answer, then nothing. The smuggled request carries no token, so this was never more than
     a confusion - but the body is anyone's text."""
 
     SMUGGLED: Final = b"GET /api/session HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
@@ -1426,9 +1413,9 @@ class TestABodyLeftUnread:
         ("target", "headers", "status"),
         [
             ("/api/edit", "", 401),
-            ("/api/edit", "COOKIE Sec-Fetch-Site: cross-site\r\n", 403),
-            ("/api/edit", "COOKIE OWN Content-Type: text/plain\r\n", 403),
-            ("/index.html", "COOKIE OWN Content-Type: application/json\r\n", 405),
+            ("/api/edit", "SIGNED Sec-Fetch-Site: cross-site\r\n", 403),
+            ("/api/edit", "SIGNED OWN Content-Type: text/plain\r\n", 403),
+            ("/index.html", "SIGNED OWN Content-Type: application/json\r\n", 405),
             ("http://[/api/edit", "", 400),
         ],
         ids=["unsigned", "from-elsewhere", "not-json", "to-a-page", "an-unsplittable-target"],
@@ -1436,9 +1423,9 @@ class TestABodyLeftUnread:
     def test_a_post_refused_before_its_body_is_read_is_answered_once_and_closed(
         self, server, target, headers, status
     ) -> None:
-        signed = f"Cookie: {cookie(server)}={server.token}\r\n"
+        signed = f"Authorization: Bearer {server.token}\r\n"
         own = f"Origin: http://127.0.0.1:{server.port}\r\n"
-        headers = headers.replace("COOKIE ", signed).replace("OWN ", own)
+        headers = headers.replace("SIGNED ", signed).replace("OWN ", own)
         sent = (
             f"POST {target} HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n{headers}"
             f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
@@ -1517,7 +1504,7 @@ class TestOneConnectionCarriesManyAsks:
         # json, and two are the api's json - the shapes a connection read twice has to tell
         # apart, in the order a browser meets them. Each says how long it is, which is what
         # lets it be told from the next.
-        signed_in = {"Cookie": f"{cookie(server)}={server.token}"}
+        signed_in = {"Authorization": f"Bearer {server.token}"}
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         try:
             asked = [
@@ -1539,7 +1526,7 @@ class TestOneConnectionCarriesManyAsks:
         # Its own deadline rather than IDLE_SECONDS: what is asserted is that the socket carries
         # one at all, and a test that waits half a minute to say so asserts nothing more.
         monkeypatch.setattr(module._Handler, "timeout", 0.05)
-        signed_in = {"Cookie": f"{cookie(server)}={server.token}"}
+        signed_in = {"Authorization": f"Bearer {server.token}"}
         connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
         try:
             assert self.again(connection, server, "/api/session", **signed_in)[0].status == 200
@@ -1673,27 +1660,29 @@ def refused(server: GuiServer, sent: bytes) -> bytes:
 
 
 BROWSERS_REQUEST: Final = (
-    "GET /api/state?after=7 HTTP/1.1\r\n"
+    "GET /project HTTP/1.1\r\n"
     "Host: 127.0.0.1:8123\r\n"
     "Connection: keep-alive\r\n"
     'sec-ch-ua: "Chromium";v="153", "Not.A/Brand";v="99"\r\n'
     "sec-ch-ua-mobile: ?0\r\n"
     'sec-ch-ua-platform: "Linux"\r\n'
+    "Upgrade-Insecure-Requests: 1\r\n"
     "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/153.0.0.0 Safari/537.36\r\n"
-    "Accept: */*\r\n"
-    "Sec-Fetch-Site: same-origin\r\n"
-    "Sec-Fetch-Mode: cors\r\n"
-    "Sec-Fetch-Dest: empty\r\n"
+    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,"
+    "image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\n"
+    "Sec-Fetch-Site: none\r\n"
+    "Sec-Fetch-Mode: navigate\r\n"
+    "Sec-Fetch-User: ?1\r\n"
+    "Sec-Fetch-Dest: document\r\n"
     "Accept-Encoding: gzip, deflate, br, zstd\r\n"
     "Accept-Language: en-GB,en;q=0.9\r\n"
-    f"Cookie: ddd-gui-8123={'t' * 43}; "
-    + "; ".join(f"app-{n}-session={'s' * 120}" for n in range(32))
-    + "\r\n\r\n"
+    "Cookie: " + "; ".join(f"app-{n}-session={'s' * 120}" for n in range(32)) + "\r\n\r\n"
 ).encode("ascii")
-"""A request the size a browser sends this server, about 5 KB: its usual headers, and a cookie
-header carrying, beside this server's own, what other apps on 127.0.0.1 have set - a browser
-sends every one of them to every port."""
+"""A request the size a browser sends this server, about 5 KB: a page asked for by its address,
+with a browser's usual headers and a cookie header carrying what other apps on 127.0.0.1 have
+set - a browser sends every one of them to every port. This server sets no cookie of its own,
+and its page asks the API with none at all."""
 
 
 class TestTheCap:
@@ -1899,7 +1888,7 @@ class TestTheCap:
             try:
                 signed_in = {
                     "Host": f"127.0.0.1:{server.port}",
-                    "Cookie": f"{cookie(server)}={server.token}",
+                    "Authorization": f"Bearer {server.token}",
                 }
                 idle.request("GET", "/api/session", headers=signed_in)
                 response = idle.getresponse()

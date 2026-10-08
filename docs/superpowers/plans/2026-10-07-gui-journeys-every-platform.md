@@ -1184,6 +1184,23 @@ Run 37776288181, at `8156a42` (P19a-28), `repeat=5`: no failure on any leg. Ever
 
 skeleton.spec.ts:81 passed all 15 of its runs (P19a-23).
 
+### The full run at the head
+
+Run 37785720619, at `db101fd` (the final review's fix wave), `repeat=1`: every job succeeded. The development build and publish were skipped, as on any dispatch. It is the first full run since 37760106344, and the first run of Task 3b's fix on Windows.
+
+| job | result |
+| --- | --- |
+| test (ubuntu-latest, 3.12) | 7025 passed in 4 min 28 s, at 100 % |
+| test (ubuntu-latest, 3.13) | 7025 passed in 6 min 9 s, at 100 % |
+| test (ubuntu-latest, 3.14) | 7025 passed in 4 min 10 s, at 100 % |
+| test (windows-latest, 3.12) | 7025 passed in 8 min 47 s, at 100 % |
+| test (windows-latest, 3.13) | 7025 passed in 8 min 24 s, at 100 % |
+| test (windows-latest, 3.14) | 7025 passed in 6 min 55 s, at 100 % |
+| gui (ubuntu-latest, chromium) | Vitest 910 passed; journeys 93 passed in 3.3 min |
+| gui (windows-latest, chromium) | Vitest 910 passed; journeys 94 passed in 3.8 min, mapped.spec.ts included |
+| gui (windows-latest, msedge) | Vitest 910 passed; journeys 93 passed in 4.0 min |
+| lint, container, extension, gui-screenshots | success |
+
 ### Probes, before and after
 
 Filled in by Tasks 4, 5 and 8.
@@ -1209,6 +1226,7 @@ Filled in by Tasks 4, 5 and 8.
 | 7 | `6f6d3a5`, `f675934`, `81b8159`, `8156a42`, then `0cd4172` | opus; two rounds, the last line the controller's | the security page, the CHANGELOG, the developer documentation; P19a-16 to P19a-18, P19a-24 to P19a-27, P19a-29 |
 | 3b | `0c66e47` | sonnet; approved | the bench test's sleeps; P19a-22 |
 | 8 | this close-out | | the final hunt, the probes, the milestone gate at `0cd4172`; P19a-23, P19a-28 |
+| final review | `db101fd` | opus; one wave, one re-review, all addressed | the held port's refusal names the port, `job_names()`, the timeouts pinned, the CHANGELOG's loopback and both drain paths; the full run 37785720619 green on every job; P19a-30, P19a-31 |
 
 ## What was left open
 

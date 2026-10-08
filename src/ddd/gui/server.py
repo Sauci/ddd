@@ -24,15 +24,15 @@ this one trusts nothing it did not hand out itself:
   connections refuses the next itself, so no flood of connections can exhaust the machine's
   threads;
 * on loopback, an IPv6 address is held beside the IPv4 socket, on the very same port, and never
-  listened on - ``[::1]`` on Linux and macOS, or on Windows the wildcard ``[::]`` in its place -
-  so no other program can listen on ``localhost`` there, and a browser trying ``[::1]`` first
-  falls back to 127.0.0.1, measured on Linux and Windows and never on macOS, rather than reaching
-  a stranger;
+  listened on - ``[::1]`` on Linux and macOS, or on Windows the wildcard ``[::]`` in its place.
+  So no other program can listen on ``localhost`` there, and a browser trying ``[::1]`` first
+  falls back to 127.0.0.1 - each measured on Linux and Windows, never on macOS - rather than
+  reaching a stranger;
 * a ``POST`` refused before its body is read has that body read and thrown away, at most
   1,048,576 bytes of it, rather than left unread; where its length cannot be read this way, the
-  connection closes behind the answer instead, draining for at most two seconds or until the
-  sender stops, whichever is first. Closing one with bytes still unread resets it on Windows,
-  which can lose the refusal before it reaches the browser.
+  connection closes behind the answer instead, draining until the client closes, two seconds
+  pass, or 1,048,576 bytes are read, whichever is first. Closing one with bytes still unread
+  resets it on Windows, which can lose the refusal before it reaches the browser.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a

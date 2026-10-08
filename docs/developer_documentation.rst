@@ -974,9 +974,8 @@ in Git Bash or a similar shell:
    DDD_MAPPED_DRIVE=M: npm run e2e -- mapped.spec.ts
 
 The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
-BSD-3-Clause or 0BSD. The project screen's canvas is drawn
-with ``@xyflow/react`` and laid out with ``@dagrejs/dagre``, both MIT like every other bundled
-package.
+BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out
+with ``@dagrejs/dagre``, both MIT like every other bundled package.
 
 ``.venv/bin/python tools/generate_project.py DIRECTORY --declarations N`` writes a project of
 ``N`` declarations, rounded down to even components and refused under 120, to measure ``ddd

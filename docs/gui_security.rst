@@ -81,29 +81,29 @@ What it defends against
   levels deep, or 98 among the project's own settings. Any other answer too deep is refused
   without naming one. A ``POST`` whose ``Content-Length`` is no length is refused
   ``400``, and one promising more than 1,048,576 bytes ``413``, however many digits it
-  is written with, short of a header line too long to be read at all (below). A refusal
-  to such a ``POST`` reads its own body and throws it away, at most 1,048,576 bytes of
-  it, instead of leaving it unread: closing a connection with bytes still unread resets
-  it on Windows, which can erase the refusal before the browser reads it. Where its
-  length cannot be read this way, the connection closes behind the answer instead,
-  draining for at most two seconds, or until the client stops sending, whichever is
-  first - a close that follows an answer already given, unlike the thirty seconds above,
-  which follows none at all. ``POST /open``, which anyone who reaches the port may send
-  without the token, takes at most 1,024 bytes - a sign-in body is a few dozen - and a
-  longer one is refused ``413`` before it is parsed, so no json parser ever runs on a
-  body large or deep enough to trouble one. A page's own path
-  is never resolved: it is read as plain names under the compiled pages, and a name holding a
-  NUL character, a backslash or a colon, or a dot segment, names no file and is never
-  looked up, so neither a network path nor a ``\\.\`` device path can be spelled in one. A
-  name Windows keeps for a device names no file either, on any system, and is never looked
-  up: ``CON``, ``PRN``, ``AUX`` or ``NUL``, or ``COM`` or ``LPT`` followed by a digit from
-  ``0`` to ``9`` or a superscript ``¹``, ``²`` or ``³``, in any case and whatever extension
-  it carries, or a colon and what follows it. So are ``CONIN$`` and ``CONOUT$``, the console's own input and output. A path
-  naming no file is answered the page itself, as any other unknown page address is. The
-  standard library itself refuses three shapes before this server sees them at all: a
-  request line over 65,536 bytes answers ``414``, and a header line over 65,536 bytes, or a
-  request carrying 100 header lines or more - the blank line that ends them counted -
-  answers ``431``; ninety-nine is the most ``ddd gui`` ever reads.
+  is written with, short of a header line too long to be read at all (below). Such a
+  refusal closes its connection behind the answer, reading and throwing away what still
+  arrives until the client closes, two seconds pass, or 1,048,576 bytes are read,
+  whichever is first: closing with bytes still unread resets a connection on Windows,
+  which can erase the refusal before the browser reads it. That close follows an answer
+  already given, unlike the thirty seconds above, which follows none at all.
+  ``POST /open``, which anyone who reaches the port may send without the token, takes at
+  most 1,024 bytes - a sign-in body is a few dozen - and a longer one is refused ``413``
+  before it is parsed, so no json parser ever runs on a body large or deep enough to
+  trouble one. A page's own path is never resolved: it is read as plain names under the
+  compiled pages, and a name holding a NUL character, a backslash or a colon, or a dot
+  segment, names no file and is never looked up, so neither a network path nor a
+  ``\\.\`` device path can be spelled in one. A name Windows keeps for a device names no
+  file either, on any system, and is never looked up: ``CON``, ``PRN``, ``AUX`` or
+  ``NUL``, or ``COM`` or ``LPT`` followed by a digit from ``0`` to ``9`` or a
+  superscript ``¹``, ``²`` or ``³``, in any case and whatever extension it carries, or a
+  colon and what follows it. So are ``CONIN$`` and ``CONOUT$``, the console's own input
+  and output. A path naming no file is answered the page itself, as any other unknown
+  page address is. The standard library itself refuses three shapes before this server
+  sees them at all: a request line over 65,536 bytes answers ``414``, and a header line
+  over 65,536 bytes, or a request carrying 100 header lines or more - the blank line
+  that ends them counted - answers ``431``; ninety-nine is the most ``ddd gui`` ever
+  reads.
 
 * **The address printed, opened as ``localhost``.** When it listens on loopback, as it
   does by default, ``ddd gui`` binds an IPv6 address beside its IPv4 socket, on the very
@@ -232,9 +232,9 @@ What it does not defend against
 
 * **Beyond loopback, as in a container.** There ``ddd gui`` listens on
   ``--host 0.0.0.0``, published on the host's ``127.0.0.1`` alone, as *Running it in a
-  container* above describes - and the IPv6 hold, being loopback's alone, holds nothing.
-  So nothing keeps the host's ``[::1]`` at that port from a program already listening
-  there, which would receive ``localhost:<port>/open?token=<the token>`` in the
+  container* above describes, and the IPv6 hold, being loopback's alone, holds nothing
+  there. The host's ``[::1]`` at that port is open all the same, to a program already
+  listening on it, which may receive ``localhost:<port>/open?token=<the token>`` in the
   container's place. Open the address exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface

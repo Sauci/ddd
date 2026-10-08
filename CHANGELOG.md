@@ -58,29 +58,30 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 * **`ddd gui` now holds `localhost`'s other address too.**  Besides the usual `127.0.0.1`, it
   binds `[::1]` on its own port without listening there - the wildcard `[::]` in its place on
-  Windows - so no other program can take `localhost` at that port.  A browser trying `[::1]`
-  first, which resolving `localhost` may do, is refused and falls back to `127.0.0.1`,
-  measured on Linux and Windows, rather than reaching a stranger there - the program that an
-  address rewritten from `127.0.0.1` to `localhost` would otherwise have handed the token to.
-  A fixed `--port` already held there is refused at startup, naming the address; `--port 0`
-  tries another port instead.
+  Windows.  So no other program can take `localhost` at that port, and a browser trying
+  `[::1]` first, which resolving `localhost` may do, is refused and falls back to
+  `127.0.0.1` - each measured on Linux and Windows, never on macOS - rather than reaching a
+  stranger there, the program that an address rewritten from `127.0.0.1` to `localhost` would
+  otherwise have handed the token to.  A fixed `--port` already held there is refused at
+  startup, naming the address; `--port 0` tries another port instead.
 
 * **A refusal to a `POST` drains its body instead of risking a reset.**  Windows resets a
   connection it closes while part of a request's body is still arriving, which can erase the
   answer already written there before it is read.  `ddd gui` now reads and discards what
-  still arrives - up to 1,048,576 bytes, for up to two seconds, or until the sender stops,
+  still arrives - up to 1,048,576 bytes, for up to two seconds, or until the client closes,
   whichever is first - before closing such a connection, rather than leave it to a reset.
-  Measured on CI's Windows legs: a script sending past the answer read it whole on all three
+  Measured in CI on Windows: a script sending past the answer read it whole on all three
   Python versions after this fix, where two of three had lost it before.
 
 * **A sign-in that gets no answer at all is retried once.**  Opening the address `ddd gui`
   printed, or a launch's one-time address, could still land on the signed-out page: the first
-  request behind the scenes sometimes failed before any answer came back at all - measured on
-  Windows' Edge leg, briefly refused a socket with `net::ERR_NO_BUFFER_SPACE`.  The page now
-  sends that request once more, at once, rather than telling the reader to open the very
-  address they had just opened.  An answer that did arrive, a refusal included, is never
-  retried.  A launch code whose first answer was lost is already spent, though, so that one
-  case still ends signed out, with the terminal's reused-code line printed as a false alarm.
+  request behind the scenes sometimes failed before any answer came back at all - measured in
+  CI, in Edge on Windows, where the browser was briefly refused a socket
+  (`net::ERR_NO_BUFFER_SPACE`).  The page now sends that request once more, at once, rather
+  than telling the reader to open the very address they had just opened.  An answer that did
+  arrive, a refusal included, is never retried.  A launch code whose first answer was lost is
+  already spent, though, so that one case still ends signed out, with the terminal's
+  reused-code line printed as a false alarm.
 
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.

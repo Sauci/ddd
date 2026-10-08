@@ -208,6 +208,8 @@ export interface RemoveFileViewProps {
   removal: FileRemoval;
   /** `FilesReply.project`: what the file a pattern keeps in is named relative to. */
   project: string;
+  /** The press that asks the plan, present while it waits (`removalAsked`, `lib/files.ts`). */
+  waiting?: (() => void) | undefined;
   offer: FileOffer;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
@@ -218,10 +220,13 @@ export interface RemoveFileViewProps {
 
 /**
  * A row's own panel (design §3's Remove): the plan the server makes of taking its entry out of
- * the includes, asked for as soon as the row is selected, or the server's refusal in its own
- * words - a file whose declarations something uses, naming the first error it would leave; a
- * file only a pattern brings in, naming the pattern. The page never decides on its own whether
- * Remove is possible: the button is drawn under a plan the server made, and nowhere else.
+ * the includes, asked for as soon as the row is selected within the page, or the server's refusal
+ * in its own words - a file whose declarations something uses, naming the first error it would
+ * leave; a file only a pattern brings in, naming the pattern. The page never decides on its own
+ * whether Remove is possible: the button is drawn under a plan the server made, and nowhere else.
+ *
+ * The row the page was loaded with waits instead (`waiting`, P18b-10): its plan re-analyses the
+ * project, running its plugins, so the panel says so and offers the press that asks it.
  *
  * An allowed removal carries, where there is one, the server's sentence saying it was not judged,
  * and the pattern that keeps the file in the project all the same - of the three values only a
@@ -231,16 +236,27 @@ export function RemoveFileView(props: RemoveFileViewProps) {
   return (
     <Panel title={props.removal.title} onClose={props.onClose}>
       <section className="panel-offer" aria-label="Remove from the includes">
-        <Preview
-          offer={props.offer}
-          project={props.project}
-          removing={props.removal.request.path}
-          variant="secondary"
-          changesShown={props.changesShown}
-          onChangesShown={props.onChangesShown}
-          onApply={props.onApply}
-          busy={props.busy}
-        />
+        {props.waiting !== undefined ? (
+          <>
+            <p className="quiet">
+              Opened from an address: what removing it would change is planned when you ask.
+            </p>
+            <Button variant="secondary" onPress={props.waiting}>
+              Plan its removal
+            </Button>
+          </>
+        ) : (
+          <Preview
+            offer={props.offer}
+            project={props.project}
+            removing={props.removal.request.path}
+            variant="secondary"
+            changesShown={props.changesShown}
+            onChangesShown={props.onChangesShown}
+            onApply={props.onApply}
+            busy={props.busy}
+          />
+        )}
       </section>
     </Panel>
   );

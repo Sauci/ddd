@@ -179,3 +179,83 @@ test("the row a Remove takes out goes before the tab's next list of entries answ
     .click();
   await expect(unitsRow).toBeVisible();
 });
+
+/**
+ * The row the page was loaded with waits for the reader (P18b-10, spec §7): a Remove plan
+ * re-analyses the project, running its plugins, so the panel of a row an address chose - a link
+ * from elsewhere, a bookmark, a typed address, a reload - asks for none until the reader presses
+ * for it. A row the reader selects within the page is planned at once, as before.
+ */
+test("the row the page was opened on waits for the reader before its removal is planned", async ({
+  page,
+  vocabularyGui,
+}) => {
+  // Signed in at the address ddd gui printed, whose token the page keeps for the next address
+  // this tab opens.
+  await page.goto(vocabularyGui.address);
+  await expect(page.getByRole("button", { name: "Pump", exact: true })).toBeVisible();
+  const planned: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/files-plan") planned.push(request.url());
+  });
+
+  // Loaded at the row's own address, as a link from elsewhere would load it: nothing that runs
+  // a plugin is asked until the reader asks (P18b-10). The row's key is the file's absolute,
+  // posix-separated path (`IncludedEntryReply.key`).
+  const key = `${vocabularyGui.directory.replaceAll("\\", "/")}/${UNITS}`;
+  const origin = new URL(vocabularyGui.address).origin;
+  await page.goto(`${origin}/project?view=files&path=${encodeURIComponent(key)}`);
+  const unitsRemoving = page
+    .getByRole("complementary", { name: UNITS })
+    .getByRole("region", { name: "Remove from the includes" });
+  const ask = unitsRemoving.getByRole("button", { name: "Plan its removal" });
+  await expect(ask).toBeVisible();
+  expect(planned).toEqual([]);
+
+  await ask.click();
+  await expect(unitsRemoving.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  expect(planned).toHaveLength(1);
+
+  // A row the reader selects in the table is planned at once, as before.
+  await page.getByRole("row", { name: "constants.ddd.json" }).click();
+  await expect.poll(() => planned.length).toBe(2);
+  await expect(page.getByRole("button", { name: "Plan its removal" })).toHaveCount(0);
+});
+
+/**
+ * Back and forward within the page are the reader's own moves (spec §7), so a row reached by Back
+ * is planned at once - even in a page reloaded since. There Back is the first move the reloaded
+ * page makes, the address it was loaded with being the Findings tab's: Chrome goes back to the
+ * row's entry within that same page, firing `popstate` with no load of its own (a value set on
+ * `window` before Back was still there after it, in Chrome 153 on the Linux development PC).
+ */
+test("a row reached by going back within the page is planned at once, even after a reload", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: "constants.ddd.json" }).click();
+  // Refused, as the first journey's own constants.ddd.json is: the refusal is the plan answered.
+  const refused = page
+    .getByRole("complementary", { name: "constants.ddd.json" })
+    .getByRole("region", { name: "Remove from the includes" })
+    .getByRole("status");
+  await expect(refused).toBeVisible();
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings$/);
+  await page.reload();
+  await expect(page.getByRole("link", { name: "Findings", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  const planned: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/files-plan") planned.push(request.url());
+  });
+
+  await page.goBack();
+  await expect(refused).toBeVisible();
+  expect(planned).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Plan its removal" })).toHaveCount(0);
+});

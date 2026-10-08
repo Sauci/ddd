@@ -493,14 +493,20 @@ runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and
 python package as well as compiling typescript, and packaging the extension there proves that
 the artefact a customer is handed can be produced at all.
 
-``gui`` builds and tests the browser interface on ubuntu and windows: it installs the package and
+``gui`` builds and tests the browser interface, on three legs: ubuntu with Playwright's own
+Chromium, windows with the same Chromium, and windows with the windows runner's own Edge, driven
+through ``PLAYWRIGHT_CHANNEL=msedge``, which needs no download. Each leg installs the package and
 node, generates the TypeScript types from ``ddd schema``, runs Biome, the type check and Vitest
-with its coverage gate, compiles the pages, and drives them in Chromium against a real
-``ddd gui`` with Playwright. On ubuntu it then builds the wheel and the sdist with the pages it
-compiled, checks that the wheel carries them the way the release build checks its own, and
-uploads both as ``ddd-tool-<commit>``: what installs a branch without node. The release build
-still compiles the pages again, into the wheel it publishes - an artifact expires, and needs a
-GitHub account to reach.
+with its coverage gate, compiles the pages, and drives them against a real ``ddd gui`` with
+Playwright. On the ubuntu leg it then builds the wheel and the sdist with the pages it compiled,
+checks that the wheel carries them the way the release build checks its own, and uploads both as
+``ddd-tool-<commit>``: what installs a branch without node. The release build still compiles the
+pages again, into the wheel it publishes - an artifact expires, and needs a GitHub account to
+reach.
+
+A manual run of the workflow (``workflow_dispatch``) takes a ``repeat`` input, one by default;
+above that it is a hunt, and only these three legs run, each journey repeated that many times
+(``--repeat-each``) while every other job is skipped.
 
 ``container`` builds the image behind ``docker compose``, checks that the package installed in
 it carries the pages of ``ddd gui`` and that neither node nor npm reached it, and runs the
@@ -937,7 +943,24 @@ runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``
 generates and serves the same way - ``gui/e2e/fixtures.ts``'s own ``vocabularyGui``,
 ``structuresGui`` and ``generatedGui`` - each started with the interpreter ``DDD_PYTHON``
 names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without
-Playwright's own Chromium. The build refuses a bundled package whose licence is not
+Playwright's own Chromium. ``mapped.spec.ts`` is left out of that run wherever ``DDD_MAPPED_DRIVE``
+names no drive, rather than skipped: its own fixture, ``mappedGui``, copies the demo onto a fresh
+directory of the drive that variable names and serves it there, so a project on a mapped drive -
+named by its network path, as Windows names one - is exercised too. ci's windows chromium leg maps
+one before the journeys run, over SMB, as ``M:``; run the journey by hand the same way, on a
+Windows machine with a drive already mapped:
+
+.. code-block:: text
+
+   DDD_MAPPED_DRIVE=M: npm run e2e -- mapped.spec.ts
+
+or, in PowerShell:
+
+.. code-block:: text
+
+   $env:DDD_MAPPED_DRIVE = "M:"; npm run e2e -- mapped.spec.ts
+
+The build refuses a bundled package whose licence is not
 MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn
 with ``@xyflow/react`` and laid out with ``@dagrejs/dagre``, both MIT like every other bundled
 package.

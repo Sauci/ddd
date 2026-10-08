@@ -49,6 +49,37 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   both malformed and out of range for a symbol the a2l carries is now refused for the
   malformed entry, still exit 2.  No file format changes.
 
+* **The Files tab's Remove panel waits when a row arrives from elsewhere.**  Selecting a row
+  still asks its removal plan at once, as does one reached by the page's own links; a row the
+  page was loaded with instead - from a link, a bookmark, a typed address, a reload, or a new
+  tab - no longer does.  Its panel instead says what removing it would change is planned once
+  asked, behind a button, so an address someone else sent the reader to can no longer run the
+  project's plugins without their own press.
+
+* **`ddd gui` now holds `localhost`'s other address too.**  Besides the usual `127.0.0.1`, it
+  binds `[::1]` on its own port without listening there - the wildcard `[::]` in its place on
+  Windows - so no other program can take `localhost` at that port.  A browser trying `[::1]`
+  first, which resolving `localhost` may do, is refused and falls back to `127.0.0.1`, rather
+  than reaching a stranger there - the program that an address rewritten from `127.0.0.1` to
+  `localhost` would otherwise have handed the token to.  A fixed `--port` already held there
+  is refused at startup, naming the address; `--port 0` tries another port instead.
+
+* **A refusal to a `POST` no longer risks losing its answer to a reset.**  Windows resets a
+  connection it closes while part of a request's body is still arriving, which can erase the
+  answer already written there before the browser reads it.  `ddd gui` now reads and discards
+  what still arrives - up to 1,048,576 bytes - before closing such a connection, so a refused
+  `POST`'s answer, a `413` for one too large among them, reaches the browser whole.  Measured
+  in CI on Windows: before this fix, two of the three Python versions aborted the answer this
+  way; after it, all three read it whole.
+
+* **A sign-in that gets no answer at all is retried once.**  Opening the address `ddd gui`
+  printed, or a launch's one-time address, could still land on the signed-out page: the first
+  request behind the scenes sometimes failed before any answer came back at all - measured on
+  Windows, as a Chromium socket briefly refused with `net::ERR_NO_BUFFER_SPACE`.  The page now
+  sends that request once more, at once, rather than telling the reader to open the very
+  address they had just opened.  An answer that did arrive, a refusal included, is never
+  retried.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

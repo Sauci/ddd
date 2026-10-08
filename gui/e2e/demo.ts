@@ -140,7 +140,7 @@ export async function openValues(
  * lands on it. React Aria's own ScrollView sets `pointer-events: none` on a long table's content,
  * which `target` inherits, from a scroll until a timer runs out: 300 ms from the scroll that armed
  * it, re-armed only by a scroll in its last 50 ms (`private/virtualizer/ScrollView.mjs`).
- * Measured in Chrome on the Linux development PC, the pointer came back 310 ms after a lone
+ * Measured in Chrome on the Linux development PC, the pointer came back 310 to 313 ms after a lone
  * scroll, and anything from 65 to 316 ms after the last of a burst of scrolls a frame apart, by
  * where the burst ended against that timer. Settled on `scrollTop` alone, this returned inside
  * that window every time: the wheel's one scroll event came at about 30 ms, `scrollTop` settled

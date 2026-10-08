@@ -79,12 +79,16 @@ What it defends against
   to blame: ``GET /api/file``'s, of a file nested more than 99 levels deep, and
   ``GET /api/dictionary``'s, of the file stating an extension block nested more than 96
   levels deep, or 98 among the project's own settings. Any other answer too deep is refused
-  without naming one. A ``POST`` whose ``Content-Length`` is no length is refused ``400``,
-  and one promising more than 1,048,576 bytes ``413``, however many digits it is written
-  with, short of a header line too long to be read at all (below). ``POST /open``, which
-  anyone who reaches the port may send without the token, takes at most 1,024 bytes - a
-  sign-in body is a few dozen - and a longer one is refused ``413`` before it is parsed, so
-  no json parser ever runs on a body large or deep enough to trouble one. A page's own path
+  without naming one. A ``POST`` whose ``Content-Length`` is no length is refused
+  ``400``, and one promising more than 1,048,576 bytes ``413``, however many digits it
+  is written with, short of a header line too long to be read at all (below). A refusal
+  to such a ``POST`` reads its own body and throws it away, at most 1,048,576 bytes of
+  it, instead of leaving it unread: closing a connection with bytes still unread resets
+  it on Windows, which can erase the refusal before the browser reads it.
+  ``POST /open``, which anyone who reaches the port may send without the token, takes at
+  most 1,024 bytes - a sign-in body is a few dozen - and a longer one is refused ``413``
+  before it is parsed, so no json parser ever runs on a body large or deep enough to
+  trouble one. A page's own path
   is never resolved: it is read as plain names under the compiled pages, and a name holding a
   NUL character, a backslash or a colon, or a dot segment, names no file and is never
   looked up, so neither a network path nor a ``\\.\`` device path can be spelled in one. A
@@ -97,6 +101,18 @@ What it defends against
   request line over 65,536 bytes answers ``414``, and a header line over 65,536 bytes, or a
   request carrying 100 header lines or more - the blank line that ends them counted -
   answers ``431``; ninety-nine is the most ``ddd gui`` ever reads.
+
+* **The address printed, opened as anything but itself.** ``ddd gui`` binds an IPv6
+  address beside its IPv4 socket, on the very same port, and never listens on it:
+  ``[::1]`` on Linux and macOS, or, on Windows, the wildcard ``[::]`` alone in its place
+  - bound there exclusively (``SO_EXCLUSIVEADDRUSE``), as its IPv4 socket is too. So no
+  other program can listen on ``localhost`` at that port: a browser trying ``[::1]``
+  first, which resolving ``localhost`` may do, is refused and falls back to
+  ``127.0.0.1``, rather than reaching a stranger there - the program that an address
+  rewritten from ``127.0.0.1`` to ``localhost`` would otherwise have handed the token
+  to, and that owns the ``localhost`` origin's storage besides. A fixed ``--port``
+  already held by another program is refused before ``ddd gui`` starts, naming the
+  address it holds; left to the system, ``--port 0`` tries another port instead.
 
 What it trusts
 --------------
@@ -139,9 +155,10 @@ CORS preflight, which this server never grants - and it is answered ``401``, lik
 other refusal. Sent to a page, it is answered the page itself, which signs itself in from
 its own storage and asks for whatever its address names: a site that knows the port - the
 system picks a fresh one each run, unless ``--port`` names one - and the path of a file
-the project includes can so open a Files row's Remove panel, whose plan re-analyses the
-project, running its plugins. Nothing is written without the reader's own click. Use one
-of the browsers above.
+the project includes can so open a Files row's Remove panel. There it waits, saying only
+that removing the file is planned when asked, until the reader presses for the plan,
+which then re-analyses the project, running its plugins. Nothing is written, or even
+planned, without the reader's own click. Use one of the browsers above.
 
 In every browser, the gate lets through by design a navigation marked
 ``Sec-Fetch-Site: none``, which a browser sends for a navigation it begins itself - an
@@ -201,13 +218,6 @@ What it does not defend against
   origin and cannot tell one the browser cached from one ``ddd gui`` served. Either one can
   take the token. Open ``ddd gui`` in a browser profile of its own, one nothing else is
   browsed in, above all with a fixed ``--port``.
-
-* **The printed address, opened as something other than itself.** ``ddd gui`` listens on
-  IPv4 alone, never on ``[::1]``, and prints a ``127.0.0.1`` address. Rewritten by the
-  reader to ``localhost``, the address may reach a different program listening on
-  ``[::1]`` at the same port - a browser resolving ``localhost`` may try ``[::1]`` first -
-  and the token in a pasted address then goes to that program, which also owns the
-  ``localhost`` origin's storage. Open the address exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

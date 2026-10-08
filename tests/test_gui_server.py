@@ -3091,10 +3091,12 @@ def holding(port: int, address: str | None = None) -> socket.socket:
 
 
 class TestIPv6Held:
-    """Spec §6.2: on loopback, ``ddd gui`` binds ``[::1]`` on its port beside its IPv4 socket, and
-    never listens there. A browser opening ``localhost:<port>`` tries ``[::1]`` first: part 18b's
-    final review measured a program listening there receive the pasted address, token and all,
-    in Chrome 153, three times of three. Real sockets, except where a test says otherwise."""
+    """Spec §6.2: on loopback, ``ddd gui`` holds an IPv6 address on its port beside its IPv4
+    socket, and never listens there - ``[::1]``, or on Windows the wildcard ``[::]`` alone in
+    its place (ruling P19a-14). A browser opening ``localhost:<port>`` tries ``[::1]`` first:
+    part 18b's final review measured a program listening there receive the pasted address,
+    token and all, in Chrome 153, three times of three. Real sockets, except where a test says
+    otherwise."""
 
     @pytest.fixture
     def started(self, tmp_path: Path, pages: Path) -> Iterator[GuiServer]:
@@ -3133,7 +3135,8 @@ class TestIPv6Held:
         without ``SO_REUSEADDR``, and run 37741191678 the server's own exclusive ``[::]``
         refused beside its own exclusive ``[::1]``: so Windows holds the wildcard ``[::]`` alone
         (``_WILDCARD``, ruling P19a-14). That it refuses a stranger's ``[::1]`` too is what
-        Microsoft documents of an exclusive wildcard, and what this test measures there.
+        Microsoft documents of an exclusive wildcard; run 37744112657 measured this test
+        passing on Windows 3.12, 3.13 and 3.14.
 
         The hold reads ``IPV6_V6ONLY``. Linux turns that on itself for any socket bound to
         ``::1`` (a fresh socket there reads 0, and 1 once bound), so the option's own call is
@@ -3420,10 +3423,11 @@ class TestIPv6Held:
     def test_a_hold_refused_for_another_reason_refuses_the_start(
         self, pages, monkeypatch, capsys
     ) -> None:
-        """P19a-12: only a port another socket holds is held. A bind of ``::1`` refused for any
-        other reason - here ``EPERM``, as a security module or a cgroup's bind hook answers - is
-        no proof of another program: it refuses the start in the system's own words, naming
-        ``[::1]``, and is not retried on ``--port 0``."""
+        """P19a-12: only a port another socket holds is held. A bind of the IPv6 hold's own
+        address - ``[::1]``, or ``[::]`` where the wildcard is held (ruling P19a-14) - refused
+        for any other reason, here ``EPERM`` as a security module or a cgroup's bind hook
+        answers, is no proof of another program: it refuses the start in the system's own
+        words, naming the address held, and is not retried on ``--port 0``."""
         asked: list[int] = []
 
         class NotPermitted(socket.socket):

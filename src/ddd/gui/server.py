@@ -22,7 +22,14 @@ this one trusts nothing it did not hand out itself:
   used the same port earlier could have served this origin; see ``docs/gui_security.rst``);
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
   connections refuses the next itself, so no flood of connections can exhaust the machine's
-  threads.
+  threads;
+* on loopback, an IPv6 address is held beside the IPv4 socket, on the very same port, and never
+  listened on - ``[::1]``, or on Windows the wildcard ``[::]`` in its place - so no other program
+  can listen on ``localhost`` there, and a browser trying ``[::1]`` first falls back to 127.0.0.1
+  rather than reaching a stranger;
+* a ``POST`` refused before its body is read has that body read and thrown away, at most
+  1,048,576 bytes of it, rather than left unread: closing a connection with bytes still unread
+  resets it on Windows, which can lose the refusal before it reaches the browser.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a
@@ -117,11 +124,11 @@ Windows. There run 37737377854 measured a stranger's ``[::]`` binding beside an 
 ``[::1]`` hold - and a program listening on ``[::]`` would take the connections the hold never
 accepts - and run 37741191678 the server's own exclusive ``[::]`` refused beside its own
 exclusive ``[::1]``, so the two cannot both be held. An exclusive wildcard is what Microsoft
-documents refusing every other bind of its port, specific addresses included: that it refuses a
-stranger's ``[::1]`` is for the Windows run to measure. Linux holds ``[::1]``, which refuses a
-stranger's ``[::]`` as well. A flag of its own rather than :data:`_EXCLUSIVE`, which Windows sets
-too: the two rest on different measurements, and the suite flips this one alone to hold the
-wildcard on Linux, where Windows' exclusive option is refused."""
+documents refusing every other bind of its port, specific addresses included; run 37744112657
+measured it refusing a stranger's ``[::1]`` too, on Windows 3.12, 3.13 and 3.14. Linux holds
+``[::1]``, which refuses a stranger's ``[::]`` as well. A flag of its own rather than
+:data:`_EXCLUSIVE`, which Windows sets too: the two rest on different measurements, and the suite
+flips this one alone to hold the wildcard on Linux, where Windows' exclusive option is refused."""
 
 PORT_TRIES: Final = 5
 """How many ports ``--port 0`` is tried on before the IPv6 hold refused on each of them is a

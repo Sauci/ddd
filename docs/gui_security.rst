@@ -202,8 +202,12 @@ What it does not defend against
   the reader's own browser shows it is signed out instead of landing on the project, and
   presenting that same code again prints one line on the terminal, saying so and to
   restart ``ddd gui`` rather than open the address it printed - a restart takes the token
-  from the winner, and the printed address would not. A code that expired unused signed
-  nobody in, and prints nothing.
+  from the winner, and the printed address would not. The same two signs also follow an
+  innocent cause: the first ``POST /open`` reaches the server and spends the code, but
+  its answer is lost on the way back, so the page sends the same code once more; the
+  server refuses it as already spent, and the terminal prints the very same line - no
+  other process involved. Either way, its advice is the same: restart ``ddd gui``. A code
+  that expired unused signed nobody in, and prints nothing.
 
 * **A server that used the same port before.** The page's origin is its address and port,
   and the browser keeps what a server on them left behind into any later run on that port.

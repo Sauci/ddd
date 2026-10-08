@@ -78,7 +78,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   Windows, as a Chromium socket briefly refused with `net::ERR_NO_BUFFER_SPACE`.  The page now
   sends that request once more, at once, rather than telling the reader to open the very
   address they had just opened.  An answer that did arrive, a refusal included, is never
-  retried.
+  retried.  A launch code whose first answer was lost is already spent, though, so that one
+  case still ends signed out, with the terminal's reused-code line printed as a false alarm.
 
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.

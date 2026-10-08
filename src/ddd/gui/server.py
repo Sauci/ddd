@@ -69,6 +69,11 @@ for long."""
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
 
+LINGER_SECONDS: Final = 2.0
+"""How long a connection closed with a body still arriving is drained before its close (P18-31):
+long enough for the client to read the answer it was written first, short enough that a sender
+who never stops holds its thread no longer than that."""
+
 OPEN_BODY: Final = 1024
 """The largest body ``POST /open`` accepts, far tighter than :data:`MAX_BODY`: a sign-in body
 naming a code or the token is about sixty bytes, and anyone who reaches the port can post one,
@@ -187,6 +192,29 @@ def _refuse(request: socket.socket) -> None:
             request.recv(65536)
         request.settimeout(REFUSAL_SECONDS)
         request.sendall(f"HTTP/1.1 503 Service Unavailable\r\n{lines}\r\n".encode("latin-1") + data)
+
+
+def _linger(connection: socket.socket) -> None:
+    """Shut the writing side of a connection closed with a body still arriving, and drain what
+    arrives before the close - until the client closes, :data:`LINGER_SECONDS` pass, or more
+    than :data:`MAX_BODY` bytes have come, whichever is first - so that the close is no reset
+    that could throw the answer away before the client reads it (P18-31). Run on the
+    connection's own thread (:meth:`_Handler.finish`), never on the one that accepts
+    (:func:`_refuse`), which every other connection waits behind. A client already gone is let
+    go without a word."""
+    with contextlib.suppress(OSError):
+        connection.shutdown(socket.SHUT_WR)
+        deadline = time.monotonic() + LINGER_SECONDS
+        drained = 0
+        while drained <= MAX_BODY:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return
+            connection.settimeout(left)
+            chunk = connection.recv(65536)
+            if not chunk:
+                return
+            drained += len(chunk)
 
 
 class GuiServer(ThreadingHTTPServer):
@@ -327,11 +355,46 @@ class _Handler(BaseHTTPRequestHandler):
 
     _body_read = False
     """Whether the request being answered has had its body read. A ``POST`` answered before it
-    has, whatever the answer - misdirected, refused at the gate, sent to a page, its body too
-    long or of no length - is answered ``Connection: close`` and its connection closed: the body
-    left on it would be read as the next request. A body sent ``Transfer-Encoding: chunked`` is
-    never read, though it counts as read: it has no ``Content-Length``, which this server takes for
-    none."""
+    has, whatever the answer - misdirected, refused at the gate, sent to a page - has its body
+    read then, and thrown away (:meth:`_send`): left on the connection, it would be read as the
+    next request. One too long to read, of no length to read by, or sent with a
+    ``Transfer-Encoding`` is answered ``Connection: close`` instead, and its connection drained
+    as it closes (:meth:`finish`). A body sent ``Transfer-Encoding: chunked`` that reaches
+    :meth:`_body` is never read, though it counts as read: it has no ``Content-Length``, which
+    this server takes for a body of none, so what it sends is read as the next request."""
+
+    _linger = False
+    """Whether this connection is closed with a request's body unread - too long to read, of no
+    length to read by, or sent with a ``Transfer-Encoding``. Its answer is written, its writing
+    side shut, and what still arrives drained before the close (:meth:`finish`), so that the
+    close is no reset."""
+
+    def _declared(self) -> int | None:
+        """The length a body refused before it is read is drained by (:meth:`_send`): its
+        ``Content-Length`` (:meth:`_content_length`). ``None`` - its connection closed after the
+        answer instead - for one that is no length, one past :data:`MAX_BODY`, or any
+        ``Transfer-Encoding`` (P19a-10): a chunked body has no ``Content-Length``, and drained as
+        a length of none, it would be left on the connection, to be read as the next request."""
+        if "Transfer-Encoding" in self.headers:
+            return None
+        return self._content_length()
+
+    def _content_length(self) -> int | None:
+        """The length the request's ``Content-Length`` spells, if it is one this server reads: a
+        length, of at most :data:`MAX_BODY` - and ``0`` with no ``Content-Length`` at all.
+        ``None`` for one that is no length, or one past :data:`MAX_BODY`."""
+        length = self.headers.get("Content-Length", "0")
+        if not (length.isascii() and length.isdecimal()):
+            return None
+        # Leading zeros are stripped before int() reads anything: int() refuses a string of more
+        # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
+        # how many. What is left is past MAX_BODY if it has more digits than MAX_BODY's seven,
+        # which settles it without converting it, and is read as its value otherwise: zeros
+        # alone, however many, are a length of 0.
+        significant = length.lstrip("0") or "0"
+        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
+            return None
+        return int(significant)
 
     def do_GET(self) -> None:  # the name the base class dispatches GET to
         self._answer("GET")
@@ -517,17 +580,14 @@ class _Handler(BaseHTTPRequestHandler):
         if not (length.isascii() and length.isdecimal()):
             self._send_json(400, {"error": "bad-request", "message": "Content-Length is no length"})
             return None
-        # Leading zeros are stripped before int() reads anything: int() refuses a string of more
-        # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
-        # how many. What is left is answered 413 if it is more than MAX_BODY, which its having
-        # more digits than MAX_BODY's seven settles without converting it, and is read as its
-        # value otherwise: zeros alone, however many, are a length of 0.
-        significant = length.lstrip("0") or "0"
-        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
+        # By its Content-Length alone, not _declared: a body sent with a Transfer-Encoding that
+        # comes this far is read as one of none, as it always was (P19a-10 left it so).
+        size = self._content_length()
+        if size is None:
             message = f"a request body is at most {MAX_BODY} bytes"
             self._send_json(413, {"error": "too-large", "message": message})
             return None
-        body = self.rfile.read(int(significant))
+        body = self.rfile.read(size)
         self._body_read = True
         return body
 
@@ -575,14 +635,32 @@ class _Handler(BaseHTTPRequestHandler):
     ) -> None:
         own = dict(headers or {})
         if self.command == "POST" and not self._body_read:
-            # Sent as a header, which also has the base class close the connection once this is
-            # written.
-            own["Connection"] = "close"
+            # Refused before its body was read. A body this server would have read is read now
+            # and thrown away: nothing of it is then read as the next request, and nothing is
+            # left unread to make closing the connection a reset (P18-31). One it would not - too
+            # long, of no length to read by, or sent with a Transfer-Encoding - is left: the
+            # answer says Connection: close, sent as a header, which also has the base class
+            # close the connection once this is written, and what still arrives is drained
+            # before the close (finish).
+            declared = self._declared()
+            if declared is None:
+                own["Connection"] = "close"
+                self._linger = True
+            else:
+                self.rfile.read(declared)
+                self._body_read = True
         self.send_response(status)
         for name, value in _head(kind, len(data), own).items():
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
+
+    def finish(self) -> None:
+        """Close the files the connection was read and written through, then - if its last
+        answer left a body unread - drain it before the server closes it (:func:`_linger`)."""
+        super().finish()
+        if self._linger:
+            _linger(self.request)
 
     def _send_json(self, status: int, body: dict[str, Any]) -> None:
         # Python writes NaN and Infinity unless told not to, and no browser's parser reads them:

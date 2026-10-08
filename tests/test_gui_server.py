@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import http.client
 import json
@@ -48,6 +47,7 @@ from ddd.gui.server import (
     _SIGN_IN,
     BUSY,
     CODE_SECONDS,
+    LINGER_SECONDS,
     MAX_BODY,
     MAX_CONNECTIONS,
     OPEN_BODY,
@@ -1473,11 +1473,15 @@ def every_answer(server: GuiServer, sent: bytes) -> bytes:
 
 
 class TestABodyLeftUnread:
-    """A ``POST`` refused before its body is read leaves that body on the connection, where the
-    server read it as the next request and answered that too, keeping the connection open.
-    Such a refusal closes the connection instead, and says so (``Connection: close``): one
-    answer, then nothing. The smuggled request carries no token, so this was never more than
-    a confusion - but the body is anyone's text."""
+    """A ``POST`` refused before its body is read left that body on the connection, where the
+    server read it as the next request and answered that too. Such a refusal now reads the body
+    its ``Content-Length`` declares first, and throws it away: nothing of it is ever read as a
+    request, and nothing is left unread to reset the connection (P18-31) - a reset that can
+    throw the answer away before the client reads it. A body this server would not read - too
+    long, of no length to read by, or sent chunked - is left: the answer says
+    ``Connection: close``, and what still arrives is drained before the close. The smuggled
+    request carries no token, so this was never more than a confusion - but the body is anyone's
+    text."""
 
     SMUGGLED: Final = b"GET /api/session HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
 
@@ -1487,6 +1491,15 @@ class TestABodyLeftUnread:
         reading one to its end - kept open, or held for a request that never comes - ends
         soon either way."""
         monkeypatch.setattr(module._Handler, "timeout", 0.5)
+
+    @staticmethod
+    def following(server: GuiServer) -> bytes:
+        """A signed-in ``GET`` of the session, sent down the same connection after a refused
+        ``POST``: answered ``200`` only if it is read as a request of its own."""
+        return (
+            f"GET /api/session HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+            f"Authorization: Bearer {server.token}\r\n\r\n"
+        ).encode("ascii")
 
     @pytest.mark.parametrize(
         ("target", "headers", "status"),
@@ -1499,20 +1512,23 @@ class TestABodyLeftUnread:
         ],
         ids=["unsigned", "from-elsewhere", "not-json", "to-a-page", "an-unsplittable-target"],
     )
-    def test_a_post_refused_before_its_body_is_read_is_answered_once_and_closed(
+    def test_a_post_refused_before_its_body_is_read_drains_it_and_keeps_its_connection(
         self, server, target, headers, status
     ) -> None:
+        """The body - here a request smuggled inside it - is read as body and thrown away:
+        answered once, the connection kept, and the next request on it answered as itself."""
         signed = f"Authorization: Bearer {server.token}\r\n"
         own = f"Origin: http://127.0.0.1:{server.port}\r\n"
         headers = headers.replace("SIGNED ", signed).replace("OWN ", own)
-        sent = (
+        refused = (
             f"POST {target} HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n{headers}"
             f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
         ).encode("ascii") + self.SMUGGLED
-        answered = every_answer(server, sent)
-        assert answered.count(b"HTTP/1.1 ") == 1
+        answered = every_answer(server, refused + self.following(server))
+        assert answered.count(b"HTTP/1.1 ") == 2
         assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
-        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+        assert b"\r\nConnection: close\r\n" not in answered
+        assert b"HTTP/1.1 200 " in answered.partition(b"\r\n\r\n")[2]
 
     @pytest.mark.parametrize(
         ("length", "status"),
@@ -1530,54 +1546,60 @@ class TestABodyLeftUnread:
         assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
         assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
 
-    def test_a_post_too_long_to_read_is_answered_whole_while_its_body_still_arrives(
-        self, server
-    ) -> None:
-        """Refused before a byte of it is read, its body still arriving: the answer is written,
-        the writing side shut, and what arrives drained before the close, so that the close is
-        no reset that throws the answer away before it is read (P18-31)."""
-        head = posted(server, str(MAX_BODY + 1)).replace(b"Connection: close\r\n", b"")
-        with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
-            connection.sendall(head)
+    def test_a_refused_chunked_post_is_answered_once_and_closed(self, server) -> None:
+        """A body sent ``Transfer-Encoding: chunked`` has no ``Content-Length`` to be read by:
+        refused before it is read, it is left, and the connection closed after the answer, as
+        one too long is (P19a-10). Drained as a length of none instead, the connection would be
+        kept and what follows read as the next request - its first chunk's size line, here,
+        answered with the base class's bare 400 page. Nothing follows the one answer's body."""
+        chunked = f"{len(self.SMUGGLED):x}\r\n".encode("ascii") + self.SMUGGLED + b"\r\n0\r\n\r\n"
+        refused = (
+            f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+            "Transfer-Encoding: chunked\r\n\r\n"
+        ).encode("ascii") + chunked
+        head, _, rest = every_answer(server, refused).partition(b"\r\n\r\n")
+        assert head.startswith(b"HTTP/1.1 401 ")
+        assert b"\r\nConnection: close\r\n" in head
+        assert rest == json.dumps({"error": "unauthorised", "message": _SIGN_IN}).encode()
 
-            def send_the_body() -> None:
-                # Still sending when the answer comes, as a browser posting a large body is: the
-                # server stops reading, and whatever it does with what arrives decides whether
-                # this side gets its answer or a reset.
-                with contextlib.suppress(OSError):
-                    connection.sendall(b"x" * (4 * MAX_BODY))
-
-            sending = threading.Thread(target=send_the_body, daemon=True)
-            sending.start()
-            answered = b""
-            while not answered.endswith(b"}"):
-                chunk = connection.recv(65536)
-                if not chunk:
-                    break
-                answered += chunk
-        assert answered.startswith(b"HTTP/1.1 413 ")
-        assert answered.endswith(
-            json.dumps(
-                {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"}
-            ).encode()
-        )
+    def test_a_chunked_post_let_through_to_its_body_reads_it_as_one_of_none(self, server) -> None:
+        """P19a-10 leaves it so: let through to :meth:`_body`, it has its body read by its
+        ``Content-Length``, of which it has none - answered by the api as an edit of nothing,
+        and its connection kept - rather than refused for the length it does not declare."""
+        sent = (
+            f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+            f"Authorization: Bearer {server.token}\r\n"
+            f"Origin: http://127.0.0.1:{server.port}\r\nContent-Type: application/json\r\n"
+            "Transfer-Encoding: chunked\r\n\r\n"
+        ).encode("ascii")
+        head, _, rest = every_answer(server, sent).partition(b"\r\n\r\n")
+        assert head.startswith(b"HTTP/1.1 400 ")
+        assert b"\r\nConnection: close\r\n" not in head
+        # The api's own refusal of an empty body, not this server's 413: its sentence is the
+        # json parser's, and not this project's to pin.
+        assert json.loads(rest)["error"] == "bad-request"
 
     def test_a_post_too_long_to_read_keeps_its_answer_while_more_of_its_body_arrives(
         self, server
     ) -> None:
-        """The same, in an order no thread decides: the answer has arrived, unread, when the
-        body's next 64 KiB are sent, and only then is it read. A connection closed with its body
-        still arriving is reset (P18-31): linux delivers what it holds before the reset, but
-        windows can throw the answer away unread."""
+        """Refused before a byte of its body is read, its answer arrived but not yet read when 64
+        KiB of that body are sent: what arrives is taken - drained before the close
+        (``finish``), not refused with a reset - and the answer is read whole after it (P18-31).
+
+        Before the drain (``b4ee603``, run 37720964591), this read is where windows lost the
+        answer: on python 3.12 and 3.14 it raised ``ConnectionAbortedError`` (WinError 10053)
+        without a byte of it, and 3.13 read it whole. Linux read it whole on all three, since it
+        delivers what it holds before a reset, and shows the reset at the sender instead: one of
+        these sends fails (``BrokenPipeError``), which pins the lingering close there. A thread
+        still sending 4 MiB while the answer is read, as a browser posting a large body would,
+        never lost the answer on any of the six legs: hence this order, which no thread's timing
+        decides."""
         head = posted(server, str(MAX_BODY + 1)).replace(b"Connection: close\r\n", b"")
         with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
             connection.sendall(head)
             arrived(connection)  # the answer, written before a byte of the body was read
-            # Taken or refused with a reset: which of the two decides whether the answer is
-            # still there to be read.
-            with contextlib.suppress(OSError):
-                for _ in range(64):
-                    connection.sendall(b"x" * 1024)
+            for _ in range(64):
+                connection.sendall(b"x" * 1024)  # taken, where a reset fails it
             answered = read_to_the_end(connection)
         assert answered.startswith(b"HTTP/1.1 413 ")
         assert answered.endswith(
@@ -1586,15 +1608,18 @@ class TestABodyLeftUnread:
             ).encode()
         )
 
-    def test_a_misdirected_post_is_answered_once_and_closed(self, server) -> None:
-        sent = (
+    def test_a_misdirected_post_drains_its_body_and_keeps_its_connection(self, server) -> None:
+        """Refused before anything else is read of it, its ``Host`` being another's: drained,
+        answered once, and the connection kept for the next request."""
+        refused = (
             f"POST /api/edit HTTP/1.1\r\nHost: example.com:{server.port}\r\n"
             f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
         ).encode("ascii") + self.SMUGGLED
-        answered = every_answer(server, sent)
-        assert answered.count(b"HTTP/1.1 ") == 1
+        answered = every_answer(server, refused + self.following(server))
+        assert answered.count(b"HTTP/1.1 ") == 2
         assert answered.startswith(b"HTTP/1.1 421 ")
-        assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+        assert b"\r\nConnection: close\r\n" not in answered
+        assert b"HTTP/1.1 200 " in answered.partition(b"\r\n\r\n")[2]
 
     def test_a_post_whose_body_was_read_keeps_its_connection(self, server) -> None:
         """Answered whatever its body says, as one request, and the connection kept for the
@@ -1606,8 +1631,10 @@ class TestABodyLeftUnread:
         assert answered.count(b"HTTP/1.1 ") == 2
         assert b"\r\nConnection: close\r\n" not in answered
 
-    def test_a_post_refused_after_one_whose_body_was_read_is_closed_too(self, server) -> None:
-        """Down one connection: whether a body was read is each request's own."""
+    def test_a_post_refused_after_one_whose_body_was_read_is_drained_too(self, server) -> None:
+        """Down one connection: whether a body was read is each request's own, so the second
+        ``POST``'s body is drained, not taken for read because the first one's was - which
+        would leave the request smuggled in it to be answered as a third."""
         body = b"{}"
         read = posted(server, str(len(body)), body).replace(b"Connection: close\r\n", b"")
         refused = (
@@ -1616,7 +1643,133 @@ class TestABodyLeftUnread:
         ).encode("ascii") + self.SMUGGLED
         answered = every_answer(server, read + refused)
         assert answered.count(b"HTTP/1.1 ") == 2
-        assert answered.partition(b"HTTP/1.1 401 ")[2].count(b"\r\nConnection: close\r\n") == 1
+        assert answered.partition(b"\r\n\r\n")[2].count(b"HTTP/1.1 401 ") == 1
+        assert b"\r\nConnection: close\r\n" not in answered
+
+    def test_a_refused_post_whose_answer_fails_is_drained_once(
+        self, server, monkeypatch, capsys
+    ) -> None:
+        """Its body drained, then its answer failing: answered ``500``, as any failure is, and
+        that answer drains nothing more. The body counts as read once it is drained, so the next
+        request on the connection is read as itself, not as more of this one's body."""
+        send_response = module._Handler.send_response
+        failed: list[int] = []
+
+        def failing_once(handler: Any, status: int, message: str | None = None) -> None:
+            if not failed:
+                failed.append(status)
+                raise RuntimeError("an answer that failed")
+            send_response(handler, status, message)
+
+        monkeypatch.setattr(module._Handler, "send_response", failing_once)
+        refused = (
+            f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+            f"Content-Length: {len(self.SMUGGLED)}\r\n\r\n"
+        ).encode("ascii") + self.SMUGGLED
+        answered = every_answer(server, refused + self.following(server))
+        assert failed == [401]
+        assert answered.count(b"HTTP/1.1 ") == 2
+        assert answered.startswith(b"HTTP/1.1 500 ")
+        assert b"HTTP/1.1 200 " in answered.partition(b"\r\n\r\n")[2]
+        assert "RuntimeError: an answer that failed" in capsys.readouterr().err
+
+    def test_a_refused_post_whose_body_never_comes_is_closed_after_the_idle_time(
+        self, project_file, pages
+    ) -> None:
+        """Declared 100 bytes, sent 10: the drain waits for the rest no longer than any
+        connection waits, then closes it unanswered - no answer was written - and gives its
+        slot back. On a server of one slot, so that the slot taken here is free again only
+        once that connection's thread has let it go."""
+        api = Held(Session(project_file.parent))
+        api.release.set()  # never asked: the request is refused before the api is
+        for server in serving(api, pages, connections=1):
+            sent = (
+                f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+                "Content-Length: 100\r\n\r\n"
+            ).encode("ascii") + b"x" * 10
+            with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+                connection.sendall(sent)
+                assert connection.recv(65536) == b""
+            assert server.slots.acquire(timeout=10)
+            server.slots.release()
+
+    @staticmethod
+    def lingered(end: socket.socket) -> None:
+        """``_linger`` on ``end``, on a thread of its own given ten seconds to return, and what
+        it raised raised again here: a lingering close that never ends fails the test rather than
+        hanging the suite, and one that raises fails it rather than warning."""
+        raised: list[BaseException] = []
+
+        def lingering() -> None:
+            try:
+                module._linger(end)
+            except BaseException as error:  # handed to the test's own thread, which raises it
+                raised.append(error)
+
+        thread = threading.Thread(target=lingering, daemon=True)
+        thread.start()
+        thread.join(10)
+        assert not thread.is_alive(), "the lingering close did not end"
+        if raised:
+            raise raised[0]
+
+    def test_the_lingering_close_ends_at_the_clients_end_of_file(self, monkeypatch) -> None:
+        """It shuts the writing side first, so that the client reads the end of the answer while
+        the connection is still open, then drains what arrives up to the client's own end of
+        file - which ends it at once, long before its time is up."""
+        monkeypatch.setattr(module, "LINGER_SECONDS", 60)
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            theirs.sendall(b"x" * 10)
+            theirs.shutdown(socket.SHUT_WR)
+            self.lingered(ours)
+            theirs.settimeout(10)
+            assert theirs.recv(1) == b""  # its writing side, shut
+            ours.settimeout(10)
+            assert ours.recv(1) == b""  # everything before the end of file, drained
+
+    def test_the_lingering_close_waits_no_longer_than_its_time(self, monkeypatch) -> None:
+        """Two seconds, shortened here: what a client sent is drained, and a client that then
+        sends nothing more, and never closes, is let go when the time is up."""
+        assert LINGER_SECONDS == 2.0
+        monkeypatch.setattr(module, "LINGER_SECONDS", 0.05)
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            theirs.sendall(b"x" * 10)
+            arrived_in_full(ours, b"x" * 10)
+            self.lingered(ours)
+            ours.setblocking(False)
+            with pytest.raises(BlockingIOError):
+                ours.recv(1)  # drained, and no end of file either: the client never closed
+
+    def test_the_lingering_close_reads_nothing_once_its_time_is_up(self, monkeypatch) -> None:
+        """A client still sending when the time is up is read no further - here the time is up
+        before anything is read, and what arrived is left for the close - its writing side
+        shut all the same."""
+        monkeypatch.setattr(module, "LINGER_SECONDS", 0)
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            theirs.sendall(b"x" * 10)
+            arrived_in_full(ours, b"x" * 10)
+            self.lingered(ours)
+            ours.settimeout(10)
+            assert ours.recv(65536) == b"x" * 10
+            theirs.settimeout(10)
+            assert theirs.recv(1) == b""
+
+    def test_the_lingering_close_drains_no_more_than_max_body(self, monkeypatch) -> None:
+        """A client that has sent more than ``MAX_BODY`` bytes - four here - is read no further,
+        though its time is not up and it never closed."""
+        monkeypatch.setattr(module, "MAX_BODY", 4)
+        monkeypatch.setattr(module, "LINGER_SECONDS", 60)
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            theirs.sendall(b"x" * 10)
+            arrived_in_full(ours, b"x" * 10)
+            self.lingered(ours)
+            ours.setblocking(False)
+            with pytest.raises(BlockingIOError):
+                ours.recv(1)  # what had come, drained before it stopped
 
 
 class TestOneConnectionCarriesManyAsks:

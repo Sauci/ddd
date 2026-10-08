@@ -943,25 +943,38 @@ runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``
 generates and serves the same way - ``gui/e2e/fixtures.ts``'s own ``vocabularyGui``,
 ``structuresGui`` and ``generatedGui`` - each started with the interpreter ``DDD_PYTHON``
 names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without
-Playwright's own Chromium. ``mapped.spec.ts`` is left out of that run wherever ``DDD_MAPPED_DRIVE``
-names no drive, rather than skipped: its own fixture, ``mappedGui``, copies the demo onto a fresh
-directory of the drive that variable names and serves it there, so a project on a mapped drive -
-named by its network path, as Windows names one - is exercised too. ci's windows chromium leg maps
-one before the journeys run, over SMB, as ``M:``; run the journey by hand the same way, on a
-Windows machine with a drive already mapped:
+Playwright's own Chromium. ``mapped.spec.ts`` is left out of that run unless ``DDD_MAPPED_DRIVE``
+is set, rather than skipped: its own fixture, ``mappedGui``, copies the demo onto a fresh directory
+of the drive that variable names and serves it there, so a project on a mapped drive - named by its
+network path, as Windows names one - is exercised too. ci's windows chromium leg maps one before
+the journeys run: its own "Map a drive for the mapped-drive journey" step shares a local directory
+as ``New-SmbShare -Name ddd-mapped`` and maps it with ``net use M: \\localhost\ddd-mapped``.
+``mapped.spec.ts`` itself requires every path to begin ``//localhost/ddd-mapped/``, so only a drive
+mapped to that very share passes it. Run the journey by hand the same way, on a Windows machine
+with such a share and drive already mapped:
+
+in cmd:
+
+.. code-block:: text
+
+   set DDD_MAPPED_DRIVE=M:
+   npm run e2e -- mapped.spec.ts
+
+in PowerShell:
+
+.. code-block:: text
+
+   $env:DDD_MAPPED_DRIVE = "M:"
+   npm run e2e -- mapped.spec.ts
+
+in Git Bash or a similar shell:
 
 .. code-block:: text
 
    DDD_MAPPED_DRIVE=M: npm run e2e -- mapped.spec.ts
 
-or, in PowerShell:
-
-.. code-block:: text
-
-   $env:DDD_MAPPED_DRIVE = "M:"; npm run e2e -- mapped.spec.ts
-
-The build refuses a bundled package whose licence is not
-MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen's canvas is drawn
+The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
+BSD-3-Clause or 0BSD. The project screen's canvas is drawn
 with ``@xyflow/react`` and laid out with ``@dagrejs/dagre``, both MIT like every other bundled
 package.
 

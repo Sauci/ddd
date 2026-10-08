@@ -22,9 +22,10 @@ test("localhost reaches ddd gui, and nothing else can listen on [::1] at its por
   expect(["EADDRINUSE", "EACCES"]).toContain(await listenRefusal(port, "::1"));
 
   // Part 18b's review saw Chrome 153 send localhost to a program listening on [::1], three
-  // times of three. Held, [::1] refuses the connection, and ddd gui answers through 127.0.0.1:
-  // on the windows legs of run 37734013306 in 1.1 s and 1.2 s, about what loopback.spec.ts
-  // took beside it.
+  // times of three. On windows the wildcard [::] is held instead (part 19a, P19a-14), and
+  // nothing listens on IPv6, so [::1] is refused there too, and ddd gui answers through
+  // 127.0.0.1: chromium took 1.1 s in run 37752340092 and 1.0 s in run 37760106344, and
+  // msedge 1.2 s and 845 ms in those same two runs.
   const token = address.searchParams.get("token");
   await page.goto(`http://localhost:${port}/open?token=${token}`);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();

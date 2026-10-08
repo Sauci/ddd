@@ -21,6 +21,15 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-07-gui-journeys-every-platform-design.md`. Read it before any task. Where this plan departs from it, the departure is a ruling in *Rulings taken* at the end, with its reason.
 
+> **As built** (executed 2026-10-07 and 2026-10-08; the departures from the task texts, each a ruling under *Rulings taken*):
+> - **Task 3 found five causes, not the five known spots** (P19a-4, P19a-7, P19a-9). A click after `scrolledIntoView` could land in React Aria's `pointer-events: none` window and open nothing; the helper now waits for the target to take the pointer again. Two timing assumptions went (the arrow count, the drag's `waitForResponse`). skeleton.spec.ts:105's own outside write is made unseen. The sign-in's `POST /open` is sent once more when the network fails it: a product fix, not a retry of a journey. keys.spec.ts's stale change was part 17's, and stays.
+> - **The drain is bounded** (P19a-10, P19a-11). A `Transfer-Encoding` is no length to drain; the lingering close reads at most `MAX_BODY` bytes, for at most two seconds.
+> - **On Windows the hold is the wildcard `[::]` alone** (P19a-12 to P19a-14). Windows let a stranger bind `[::]` beside an exclusive `[::1]`, and refused the server's own pair; Linux and macOS hold `[::1]`. A hold that fails for any reason but a missing IPv6 loopback refuses the start. `IPv6Held` is `IPv6HeldError` (ruff N818).
+> - **Option C survives a fragment navigation** (P19a-19), keeps the keyboard's focus in its panel (P19a-20, P19a-21), and a press on the arrived row itself deselects it (P19a-15).
+> - **The docs say what was measured where** (P19a-24 to P19a-27): macOS unmeasured, nothing held beyond loopback, the retried sign-in's false alarm.
+> - **Added: Task 3b** (P19a-22). A part 17 bench test counted another module's sleep as its own; a full run showed it on Windows.
+> - **One flake stays open** (P19a-23): skeleton.spec.ts:81, once on the Windows Edge leg.
+
 ## Global Constraints
 
 Every task's requirements include this section.
@@ -1142,17 +1151,38 @@ Before any push, scan the branch's commit messages and changed files for bidi ch
 
 ### The baseline hunt
 
-Filled in after Task 1: the run, its commit, and each leg's runs and failures by journey.
+Run 37688993981, at `c05bf2b` (the journeys as master has them, on Task 1's legs), `repeat=5`.
 
 | leg | runs | failures | by journey (error, cause) |
 | --- | --- | --- | --- |
+| gui (ubuntu-latest, chromium) | 445 | 1 | values.spec.ts:393 "a pasted table is put back", its third repeat: the click on "Apply to 1 file" timed out at 60 s. The click on "Show the values of CurveA" had opened nothing (cause 1, the swallowed click) |
+| gui (windows-latest, chromium) | 445 | 0 | |
+| gui (windows-latest, msedge) | 445 | 0 | |
+
+The same swallowed click explains values.spec.ts:217 on Windows (run 37665957824, 2026-10-07) and values.spec.ts:76 (2026-10-05), and full run 37697917866's two Edge failures (units.spec.ts:262, values.spec.ts:130).
+
+### The hunts between
+
+| run | commit | ubuntu chromium | windows chromium | windows msedge |
+| --- | --- | --- | --- | --- |
+| 37705627501 | `0b3b254` (Task 3) | 445 passed | 450 passed | 444 passed, 1 failed: skeleton.spec.ts:105, the journey's own write seen by the watcher (cause 4) |
+| 37710529902 | `80b6172` (Task 3, round 1) | 445 passed | 450 passed | 444 passed, 1 failed: declarations.spec.ts:42, the sign-in's `POST` failed `net::ERR_NO_BUFFER_SPACE` (cause 5) |
+| 37714506942 | `2a2c4b5` (Task 3, round 2) | 445 passed | 450 passed | 445 passed |
+| 37761574078 | `f66d4d8` (Task 6) | 465 passed | 470 passed | 465 passed |
+
+The windows chromium leg runs mapped.spec.ts too, five more a hunt.
 
 ### The final hunt
 
-Filled in by Task 8.
+Run 37776288181, at `8156a42` (P19a-28), `repeat=5`: no failure on any leg. Every other job was skipped, the development build included.
 
 | leg | runs | failures |
 | --- | --- | --- |
+| gui (ubuntu-latest, chromium) | 465, in 17.5 min | 0 |
+| gui (windows-latest, chromium) | 470, in 18.5 min (mapped.spec.ts five times) | 0 |
+| gui (windows-latest, msedge) | 465, in 20.3 min | 0 |
+
+skeleton.spec.ts:81 passed all 15 of its runs (P19a-23).
 
 ### Probes, before and after
 
@@ -1160,15 +1190,25 @@ Filled in by Tasks 4, 5 and 8.
 
 | asked | before | after |
 | --- | --- | --- |
-| a refused `POST` past `MAX_BODY`, its body still arriving, on the Windows legs: the answer read whole? | | |
-| a stranger listening on `[::1]` at `ddd gui`'s port, `localhost:<port>/open?token=` opened in Chrome | | |
-| a Files row opened by its address: `/api/files-plan` asked before any press | | |
-| the mapped drive on the Windows chromium leg | | |
+| a refused `POST` past `MAX_BODY`, its body still arriving, on the Windows legs: the answer read whole? | `b4ee603`, run 37720964591: aborted on 3.12 and 3.14 (`ConnectionAbortedError: [WinError 10053]`), whole on 3.13 | `0002261` and `d3d40e8`, runs 37724001208 and 37729520651: whole on all three |
+| a stranger listening on `[::1]` at `ddd gui`'s port, `localhost:<port>/open?token=` opened in Chrome | `290fd9a`, the Linux development PC, Chrome 153.0.8010.52: the stranger listened; Chrome reached it on `[::1]`, and it logged `GET /open?token=<token>` | `8156a42`, the same machine: the stranger's bind refused `EADDRINUSE`; Chrome reached `ddd gui` through `127.0.0.1` and signed in. On Windows, localhost.spec.ts: the stranger refused, `ddd gui` reached in 1.1 s and 1.0 s (Chromium), 1.2 s and 845 ms (Edge), runs 37752340092 and 37760106344 |
+| a Files row opened by its address: `/api/files-plan` asked before any press | `290fd9a`, the same machine, examples/vocabulary: 1 on arrival, the plan shown, no button | `8156a42`: none 3 s after arrival, one "Plan its removal" button, 1 after the press. A fragment navigation asks none (files.spec.ts) |
+| the mapped drive on the Windows chromium leg | not tried | mapped.spec.ts passed in run 37695365124 (3.9 s), in 37697917866 (3.1 s), and in every full run and hunt since |
 
 ## Progress log
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
+| 1 | `c05bf2b`, `26b43c7` | sonnet; one round | three gui legs, timeouts, `repeat`; the job's and the report's names pinned |
+| baseline | | | hunt 37688993981: one failure, the swallowed click |
+| 2 | `f4532ec`, `13e805f` | opus; one round | the mapped drive in CI; Review Focus 5's neighbour; P19a-5, P19a-6 |
+| 3 | `eaa93e4`, `f156ad8`, `0b3b254`, `b173ce7`, `80b6172`, `2a2c4b5` | opus; approved, then two rounds for the causes later hunts named | five causes; P19a-4, P19a-7 to P19a-9 |
+| 4 | `b4ee603`, `0002261`, `d3d40e8` | opus; one round | the drain, red on Windows first; P19a-10, P19a-11 |
+| 5 | `fc1fb55`, `29e8471`, `ea35c18`, `9f4ee32`, `db51bf0` | opus; three rounds | the hold, by platform; P19a-12 to P19a-14 |
+| 6 | `6ffd540`, `c90a22b`, `f66d4d8` | opus; one round | option C, the fragment navigation, the focus; P19a-15, P19a-19 to P19a-21 |
+| 7 | `6f6d3a5`, `f675934`, `81b8159`, `8156a42`, then `0cd4172` | opus; two rounds, the last line the controller's | the security page, the CHANGELOG, the developer documentation; P19a-16 to P19a-18, P19a-24 to P19a-27, P19a-29 |
+| 3b | `0c66e47` | sonnet; approved | the bench test's sleeps; P19a-22 |
+| 8 | this close-out | | the final hunt, the probes, the milestone gate at `0cd4172`; P19a-23, P19a-28 |
 
 ## What was left open
 
@@ -1181,6 +1221,15 @@ Filled in as the work goes. Known before execution:
   - `Clear-Site-Data`;
   - a fresh origin each run;
   - Subresource Integrity.
+- **skeleton.spec.ts:81 on Windows with Edge** (P19a-23). It failed once in about 120 runs in CI: run 37760106344, ValueB's unit button absent for 5 s after the reader typed in ValueA's picker. 500 runs on the Linux development PC passed, one worker and eight. The run's report is a single pass's, outside the downloads the maintainer allowed, and was not read. It keeps GitHub's default retention, for the maintainer to allow.
+- **macOS** (P19a-25). It holds `[::1]` by the code's own branch; what it refuses beside the hold, and the browser's fallback there, were never measured.
+- **Beyond loopback nothing is held** (P19a-26). In the container the page describes, the host's `[::1]` at the port is open to a program already listening there. Documented under *What it does not defend against*.
+- **The retried sign-in's false alarm** (P19a-9, P19a-24). A launch code whose first answer was lost is refused on the retry, and the terminal's reused-code line says a racer may have won. Documented.
+- **How long a stale refusal shows** (P19a-7). Part 17 shows "A file changed on disk" until the watcher catches up; whether a reader should see it longer is the maintainer's question.
+- **A plan's lines are in no live region** (P19a-20). Every Files row's, before this part.
+- **Measured, not acted on.** `IPV6_V6ONLY` is redundant on Linux, and kept per the spec. The Windows red of `SO_EXCLUSIVEADDRUSE` on the IPv4 socket was never shown: one run with `_EXCLUSIVE` forced off would show it.
+- **settled()'s `waitForTimeout(16)`** (P19a-8). A recorded exception to "never `waitForTimeout`".
+- **For the final review:** files.spec.ts:165's and hostile.spec.ts:62's `waitForResponse`; `TestTheCiRun.names()` repeating a regex; `_IPV6_HELD` naming `[::]` as another program's on Windows even when it bound `[::1]`.
 
 ## Rulings taken
 
@@ -1198,3 +1247,35 @@ Taken while planning; execution adds its own below them.
 10. **Only the controller pushes,** and only this branch. An implementer's Windows proof is a run the controller starts and hands back — cost if wrong: a slower loop.
 
 ### Taken during execution
+
+Each with what it costs if wrong; the commits that carry them say why.
+
+- **P19a-1.** The baseline gate is part 18b's at `e71bb07`, and pytest at `73bfeb6`, not a new run: master's tree is `73bfeb6`'s, and this plan adds only Markdown no gate reads — cost if wrong: a red misattributed, which the first task's gate would show.
+- **P19a-2.** The maintainer's "approve once finished and continue by following your recommendations" approves the plan and its execution, and lets the controller push this branch alone, for 19a's runs and hunts: never master, never force — cost if wrong: a branch on the remote before the maintainer saw it, carrying only this part's commits.
+- **P19a-3.** Models as the plan weighs them: Task 1 and Task 7 sonnet, Tasks 2 to 6 opus, their reviews opus — cost if wrong: a cheaper reviewer missing what opus would catch. Task 7's review went to opus (P19a-17).
+- **P19a-4.** Task 3 is one task: the swallowed click, the arrow count and the drag's `waitForResponse`. keys.spec.ts's stale change, fixed in part 17, stays — cost if wrong: a flake 1335 runs did not show stays.
+- **P19a-5.** The mapped journey adds a file under the drive, as spec §8 says and the plan's journey did not — cost if wrong: one block more in a journey one leg runs.
+- **P19a-6.** The Playwright install step's limit is 10 minutes, not 5: two Windows installs took 2 m 54 s and 3 m 36 s — cost if wrong: a stalled install holds its leg five minutes longer.
+- **P19a-7.** skeleton.spec.ts:105 is fixed in the journey, whose own outside write is made unseen, not in the page — cost if wrong: a reader may see "A file changed on disk" for well under a second.
+- **P19a-8.** settled()'s `waitForTimeout(16)` stays, between `scrollTop` reads that no longer gate a click — cost if wrong: one wheel more on a misread scroll.
+- **P19a-9.** A network failure of the sign-in's `POST /open` is no sign-out: the page sends it once more when `fetch` itself fails, never after an HTTP answer — cost if wrong: a code whose first answer was lost is refused on the retry, and the terminal's line is a false alarm.
+- **P19a-10.** A request with `Transfer-Encoding` declares no length to drain: a refused chunked `POST` takes the lingering close — cost if wrong: a script's refused chunked `POST` is closed rather than kept.
+- **P19a-11.** The lingering close reads at most `MAX_BODY` bytes, no read past what is left — cost if wrong: a few reads more of a client sending past a megabyte.
+- **P19a-12.** The hold is silent only where the system says there is no IPv6 loopback (`EAFNOSUPPORT`, `EADDRNOTAVAIL`). `EADDRINUSE` and `EACCES` are another program's, tried again on `--port 0`. Any other error refuses the start — cost if wrong: a computer whose IPv6 loopback fails otherwise refuses to start.
+- **P19a-13.** Windows to hold `[::]` beside `[::1]`. Superseded: run 37741191678 refused the server's own pair.
+- **P19a-14.** Windows holds the wildcard `[::]` alone, exclusive, in place of `[::1]`; elsewhere `[::1]`. Run 37744112657 measured it refusing strangers on `::1` and `::` — cost if wrong: were a stranger's `[::1]` let in beside it, the fix would be to serve on `[::1]` too.
+- **P19a-15.** Pressing the arrived row itself deselects it, as any selected row; the next press asks at once — cost if wrong: one press more.
+- **P19a-16.** The CHANGELOG has four entries, the retried sign-in among them — cost if wrong: one entry the maintainer may cut.
+- **P19a-17.** Task 7's review ran on opus, as its brief says — cost if wrong: an opus review's price on a docs diff.
+- **P19a-18.** Task 7 takes the prose minors deferred to it; the code minors go to the final review — cost if wrong: none.
+- **P19a-19.** A `popstate` keeps `arrived` when its route equals the one held. A fragment navigation, which another window can make, changes no route — cost if wrong: Back or Forward between two entries of one route keeps a row waiting for a press.
+- **P19a-20.** Pressing "Plan its removal" keeps the keyboard's focus in its panel — cost if wrong: one effect more.
+- **P19a-21.** The focused region takes the house's ring, through a class of its own — cost if wrong: one CSS rule.
+- **P19a-22.** Run 37760106344's two failures are this part's, fixed at their causes; the bench test counts only the bench's own sleeps (Task 3b) — cost if wrong: a test outside this part's files changed.
+- **P19a-23.** skeleton.spec.ts:81's one failure had no trace within the maintainer's leave. It was sought by 500 local runs and the final hunt — cost if wrong: a rare flake left open, and visible.
+- **P19a-24.** The security page's moment of launch says its two signs also follow the retried sign-in — cost if wrong: two sentences more.
+- **P19a-25.** The docs say what is held where from the code, and that the refusal and the fallback were measured on Linux and Windows only — cost if wrong: a caveat a macOS measurement could lift.
+- **P19a-26.** The hold is stated with its condition, loopback; beyond it the residual stays under *What it does not defend against* — cost if wrong: a bullet a later host-side hold could remove.
+- **P19a-27.** Every minor of Task 7's review is fixed in its round, localhost.spec.ts's times taken from the `[::]` runs — cost if wrong: none.
+- **P19a-28.** The final hunt ran at `8156a42`, one prose commit short of the head — cost if wrong: a hunt one commit short.
+- **P19a-29.** The hold title's literal nested in bold is the controller's one-line fix — cost if wrong: none.

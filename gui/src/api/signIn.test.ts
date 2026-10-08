@@ -160,6 +160,47 @@ describe("signing in from the page's own address", () => {
     expect(kept.get()).toBeNull();
   });
 
+  test("a POST that got no answer at all is sent once more, at once, and signs in", async () => {
+    // Windows refused Chromium a socket once (net::ERR_NO_BUFFER_SPACE, CI run 37710529902):
+    // the fetch itself rejected, and without a second try the page went on with no token.
+    const kept = remembering();
+    const history = tab();
+    let posted = 0;
+    const fetchImpl = vi.fn(async (path: string) => {
+      if (path !== "/open") return json(200, OPENED);
+      posted += 1;
+      if (posted === 1) throw new TypeError("Failed to fetch");
+      return json(200, { token: "t" });
+    });
+    await signInFrom({ pathname: "/open", search: "?token=t" }, history, kept, fetchImpl);
+    expect(kept.get()).toBe("t");
+    expect(fetchImpl.mock.calls.map(([path]) => path)).toEqual(["/open", "/open", "/api/session"]);
+    expect(history.replaceState.mock.calls).toEqual([
+      [null, "", "/"],
+      [null, "", "/project"],
+    ]);
+  });
+
+  test("a POST that got no answer twice goes on without a token, as before", async () => {
+    const kept = remembering();
+    const fetchImpl = vi.fn(async (path: string): Promise<Response> => {
+      throw new TypeError(`Failed to fetch ${path}`);
+    });
+    await signInFrom({ pathname: "/open", search: "?code=c" }, tab(), kept, fetchImpl);
+    expect(kept.get()).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.map(([path]) => path)).toEqual(["/open", "/open"]);
+  });
+
+  test.each([200, 400, 403, 500, 503])(
+    "an answer of %i is never asked for again: only a POST with no answer at all is",
+    async (status) => {
+      const fetchImpl = vi.fn(async () => json(status, { error: "x", message: "y" }));
+      await signInFrom({ pathname: "/open", search: "?code=c" }, tab(), remembering(), fetchImpl);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test("a server not answering leaves what was kept as it was", async () => {
     const kept = remembering();
     kept.set("t");

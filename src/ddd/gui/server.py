@@ -111,19 +111,32 @@ _EXCLUSIVE: Final = sys.platform == "win32"
 can be shared by another that sets ``SO_REUSEADDR``. A flag, so that the suite takes both
 branches on every platform (``test_nothing_in_the_suite_skips``)."""
 
+_WILDCARD: Final = sys.platform == "win32"
+"""Whether the IPv6 wildcard ``[::]`` is held too, beside ``[::1]`` (ruling P19a-13): on Windows,
+which let a socket bind ``[::]`` beside the exclusive ``[::1]`` hold, with and without
+``SO_REUSEADDR`` (run 37737377854) - and a program listening there would take the connections
+the ``[::1]`` hold never accepts. Linux refuses that bind beside the ``[::1]`` hold, and would
+refuse the server's own ``[::]`` beside it the same way, so it holds ``[::1]`` alone. A flag of
+its own rather than :data:`_EXCLUSIVE`, which Windows sets too: the two rest on different
+measurements, and the suite flips this one alone to take the wildcard's branches on Linux, where
+Windows' exclusive option is refused."""
+
 PORT_TRIES: Final = 5
-"""How many ports ``--port 0`` is tried on before ``[::1]`` held on each of them is a refusal."""
+"""How many ports ``--port 0`` is tried on before a hold refused on each of them - ``[::1]``, or
+``[::]`` where that is held too - is a refusal."""
 
 _SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
 """Windows' own option, which typeshed declares on win32 alone, so read rather than named for mypy
 on every platform; -5 is its value there, ``~SO_REUSEADDR``. Used only where :data:`_EXCLUSIVE`."""
 
 _IPV6_HELD: Final = (
-    "another program holds [::1]:{port}, where a browser opening localhost:{port} would reach it"
+    "another program holds [{address}]:{port}, where a browser opening localhost:{port} would "
+    "reach it"
 )
-"""What :class:`IPv6HeldError` says: ``[::1]`` refused as a port another socket holds."""
+"""What :class:`IPv6HeldError` says: ``[::1]``, or ``[::]``, refused as a port another socket
+holds."""
 
-_IPV6_UNHELD: Final = "cannot hold [::1]:{port} beside it: {error}"
+_IPV6_UNHELD: Final = "cannot hold [{address}]:{port} beside it: {error}"
 """What a hold that failed for any other reason says, the system's own words after it
 (P19a-12): no proof of another program, and no server without its hold either."""
 
@@ -242,19 +255,21 @@ def _linger(connection: socket.socket) -> None:
 
 
 class IPv6HeldError(OSError):
-    """``[::1]`` held by another program on the port ``ddd gui`` was to serve on."""
+    """``[::1]``, or ``[::]`` where it is held too, held by another program on the port
+    ``ddd gui`` was to serve on."""
 
 
-def _held_beside(host: str, port: int) -> socket.socket | None:
-    """``[::1]`` bound on ``port`` beside a loopback ``host``, and never listened on (spec §6.2):
-    no other program can then take ``localhost`` there, and a browser trying ``[::1]`` first is
-    refused, and falls back to ``127.0.0.1``.
+def _held_beside(host: str, port: int, address: str = "::1") -> socket.socket | None:
+    """``address`` bound on ``port`` beside a loopback ``host``, and never listened on (spec
+    §6.2): ``[::1]``, so that no other program can take ``localhost`` there, and a browser trying
+    ``[::1]`` first is refused, and falls back to ``127.0.0.1``; and where :data:`_WILDCARD`,
+    ``[::]`` beside it, whose listener would otherwise take what ``[::1]`` never accepts.
 
     ``None`` where nothing need or can be held: a host beyond loopback, or where the system says
     there is no IPv6 loopback - ``EAFNOSUPPORT`` making the socket, ``EADDRNOTAVAIL`` binding
-    ``::1``. Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
+    it. Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
     ``EACCES``, the errno CPython gives Windows' ``WSAEACCES``. Any other error is proof of
-    neither, and raises an ``OSError`` naming ``[::1]``, the system's own words after it
+    neither, and raises an ``OSError`` naming ``address``, the system's own words after it
     (P19a-12): a server that cannot make its hold does not start without it. Each refusal's
     message is the same on every system; the error the system raised is its cause.
 
@@ -269,19 +284,19 @@ def _held_beside(host: str, port: int) -> socket.socket | None:
     except OSError as error:
         if error.errno == errno.EAFNOSUPPORT:
             return None
-        raise OSError(_IPV6_UNHELD.format(port=port, error=error)) from error
+        raise OSError(_IPV6_UNHELD.format(address=address, port=port, error=error)) from error
     try:
         held.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         if _EXCLUSIVE:
             held.setsockopt(socket.SOL_SOCKET, _SO_EXCLUSIVEADDRUSE, 1)
-        held.bind(("::1", port))
+        held.bind((address, port))
     except OSError as error:
         held.close()
         if error.errno == errno.EADDRNOTAVAIL:
             return None
         if error.errno in (errno.EADDRINUSE, errno.EACCES):
-            raise IPv6HeldError(_IPV6_HELD.format(port=port)) from error
-        raise OSError(_IPV6_UNHELD.format(port=port, error=error)) from error
+            raise IPv6HeldError(_IPV6_HELD.format(address=address, port=port)) from error
+        raise OSError(_IPV6_UNHELD.format(address=address, port=port, error=error)) from error
     return held
 
 
@@ -299,6 +314,11 @@ class GuiServer(ThreadingHTTPServer):
     with the server; ``None`` where nothing is held - beyond loopback, or with no IPv6 loopback,
     and before the hold is made."""
 
+    held_wildcard: socket.socket | None = None
+    """``[::]`` bound on this server's port beside :attr:`held`, never listened on, where
+    :data:`_WILDCARD` (ruling P19a-13); closed with the server. ``None`` elsewhere, wherever
+    :attr:`held` is, and before the hold is made."""
+
     def __init__(
         self,
         api: Api,
@@ -312,9 +332,11 @@ class GuiServer(ThreadingHTTPServer):
         super().__init__((host, port), _Handler)
         try:
             self.held = _held_beside(host, self.port)
+            if _WILDCARD and self.held is not None:
+                self.held_wildcard = _held_beside(host, self.port, "::")
         except BaseException:
-            # Whatever the hold raises, as TCPServer.__init__ does around its own bind: the
-            # IPv4 socket is closed here, never left to the collector.
+            # Whatever either hold raises, as TCPServer.__init__ does around its own bind: the
+            # IPv4 socket, and a hold already made, are closed here, never left to the collector.
             self.server_close()
             raise
         self.api = api
@@ -337,13 +359,17 @@ class GuiServer(ThreadingHTTPServer):
         super().server_bind()
 
     def server_close(self) -> None:
-        """Close the socket served on, and the ``[::1]`` held beside it - that one even where
-        closing the first raises."""
+        """Close the socket served on, then ``[::1]`` held beside it, then ``[::]`` - each even
+        where closing one before it raises."""
         try:
             super().server_close()
         finally:
-            if self.held is not None:
-                self.held.close()
+            try:
+                if self.held is not None:
+                    self.held.close()
+            finally:
+                if self.held_wildcard is not None:
+                    self.held_wildcard.close()
 
     @property
     def port(self) -> int:
@@ -915,8 +941,9 @@ def run(
                 server = GuiServer(Api(session, project), pages, port, address)
                 break
             except IPv6HeldError as error:
-                # --port 0 picked a port whose [::1] another program holds: another pick is
-                # another port. A port given is that port, or nothing.
+                # --port 0 picked a port whose [::1] - or [::], where that is held too - another
+                # program holds: another pick is another port. A port given is that port, or
+                # nothing.
                 if port != 0 or attempt == PORT_TRIES:
                     return _refused(address, port, error)
                 attempt += 1

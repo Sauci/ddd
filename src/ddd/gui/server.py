@@ -112,18 +112,20 @@ can be shared by another that sets ``SO_REUSEADDR``. A flag, so that the suite t
 branches on every platform (``test_nothing_in_the_suite_skips``)."""
 
 _WILDCARD: Final = sys.platform == "win32"
-"""Whether the IPv6 wildcard ``[::]`` is held too, beside ``[::1]`` (ruling P19a-13): on Windows,
-which let a socket bind ``[::]`` beside the exclusive ``[::1]`` hold, with and without
-``SO_REUSEADDR`` (run 37737377854) - and a program listening there would take the connections
-the ``[::1]`` hold never accepts. Linux refuses that bind beside the ``[::1]`` hold, and would
-refuse the server's own ``[::]`` beside it the same way, so it holds ``[::1]`` alone. A flag of
-its own rather than :data:`_EXCLUSIVE`, which Windows sets too: the two rest on different
-measurements, and the suite flips this one alone to take the wildcard's branches on Linux, where
-Windows' exclusive option is refused."""
+"""Whether the IPv6 hold is the wildcard ``[::]``, in place of ``[::1]`` (ruling P19a-14): on
+Windows. There run 37737377854 measured a stranger's ``[::]`` binding beside an exclusive
+``[::1]`` hold - and a program listening on ``[::]`` would take the connections the hold never
+accepts - and run 37741191678 the server's own exclusive ``[::]`` refused beside its own
+exclusive ``[::1]``, so the two cannot both be held. An exclusive wildcard is what Microsoft
+documents refusing every other bind of its port, specific addresses included: that it refuses a
+stranger's ``[::1]`` is for the Windows run to measure. Linux holds ``[::1]``, which refuses a
+stranger's ``[::]`` as well. A flag of its own rather than :data:`_EXCLUSIVE`, which Windows sets
+too: the two rest on different measurements, and the suite flips this one alone to hold the
+wildcard on Linux, where Windows' exclusive option is refused."""
 
 PORT_TRIES: Final = 5
-"""How many ports ``--port 0`` is tried on before a hold refused on each of them - ``[::1]``, or
-``[::]`` where that is held too - is a refusal."""
+"""How many ports ``--port 0`` is tried on before the IPv6 hold refused on each of them is a
+refusal."""
 
 _SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
 """Windows' own option, which typeshed declares on win32 alone, so read rather than named for mypy
@@ -178,7 +180,7 @@ def is_loopback(address: str) -> bool:
 
     ``run`` below reads this, once, to decide what answering beyond the default,
     ``127.0.0.1``, changes: whether a browser is opened, and what the one warning it prints
-    says; :func:`_held_beside` reads it for whether ``[::1]`` is held beside the port. Neither
+    says; :func:`_held_beside` reads it for whether IPv6 is held beside the port. Neither
     sees a name: ``run`` resolves ``--host`` with ``socket.getaddrinfo`` before either asks
     this, so a hosts file that redefines ``localhost`` is judged by what it resolves
     to and not by its spelling, and ``LOCALHOST`` or ``localhost.`` are judged the same way as
@@ -255,21 +257,23 @@ def _linger(connection: socket.socket) -> None:
 
 
 class IPv6HeldError(OSError):
-    """``[::1]``, or ``[::]`` where it is held too, held by another program on the port
-    ``ddd gui`` was to serve on."""
+    """The IPv6 address ``ddd gui`` holds on its port - ``[::1]``, or ``[::]`` on Windows - held
+    by another program."""
 
 
-def _held_beside(host: str, port: int, address: str = "::1") -> socket.socket | None:
-    """``address`` bound on ``port`` beside a loopback ``host``, and never listened on (spec
-    §6.2): ``[::1]``, so that no other program can take ``localhost`` there, and a browser trying
-    ``[::1]`` first is refused, and falls back to ``127.0.0.1``; and where :data:`_WILDCARD`,
-    ``[::]`` beside it, whose listener would otherwise take what ``[::1]`` never accepts.
+def _held_beside(host: str, port: int) -> socket.socket | None:
+    """The IPv6 hold, bound on ``port`` beside a loopback ``host`` and never listened on (spec
+    §6.2): ``[::1]``, or where :data:`_WILDCARD` the wildcard ``[::]`` in its place. No other
+    program can then take ``localhost`` there, and a browser trying ``[::1]`` first is refused,
+    and falls back to ``127.0.0.1``.
 
     ``None`` where nothing need or can be held: a host beyond loopback, or where the system says
     there is no IPv6 loopback - ``EAFNOSUPPORT`` making the socket, ``EADDRNOTAVAIL`` binding
-    it. Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
+    ``[::1]``. A wildcard is not refused for a missing address: in a network namespace with no
+    IPv6 address at all, ``[::1]`` was refused ``EADDRNOTAVAIL`` and ``[::]`` bound (Linux,
+    measured). Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
     ``EACCES``, the errno CPython gives Windows' ``WSAEACCES``. Any other error is proof of
-    neither, and raises an ``OSError`` naming ``address``, the system's own words after it
+    neither, and raises an ``OSError`` naming the address, the system's own words after it
     (P19a-12): a server that cannot make its hold does not start without it. Each refusal's
     message is the same on every system; the error the system raised is its cause.
 
@@ -279,6 +283,9 @@ def _held_beside(host: str, port: int, address: str = "::1") -> socket.socket | 
     it can be shared by any that sets ``SO_REUSEADDR``."""
     if not is_loopback(host):
         return None
+    address = "::1"
+    if _WILDCARD:
+        address = "::"
     try:
         held = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     except OSError as error:
@@ -310,14 +317,9 @@ class GuiServer(ThreadingHTTPServer):
     listens on, so a taken ``--port`` would be shared instead of refused."""
 
     held: socket.socket | None = None
-    """``[::1]`` bound on this server's port and never listened on (:func:`_held_beside`), closed
-    with the server; ``None`` where nothing is held - beyond loopback, or with no IPv6 loopback,
-    and before the hold is made."""
-
-    held_wildcard: socket.socket | None = None
-    """``[::]`` bound on this server's port beside :attr:`held`, never listened on, where
-    :data:`_WILDCARD` (ruling P19a-13); closed with the server. ``None`` elsewhere, wherever
-    :attr:`held` is, and before the hold is made."""
+    """The IPv6 hold, ``[::1]`` or on Windows ``[::]``, bound on this server's port and never
+    listened on (:func:`_held_beside`), closed with the server; ``None`` where nothing is held -
+    beyond loopback, or with no IPv6 loopback, and before the hold is made."""
 
     def __init__(
         self,
@@ -332,11 +334,9 @@ class GuiServer(ThreadingHTTPServer):
         super().__init__((host, port), _Handler)
         try:
             self.held = _held_beside(host, self.port)
-            if _WILDCARD and self.held is not None:
-                self.held_wildcard = _held_beside(host, self.port, "::")
         except BaseException:
-            # Whatever either hold raises, as TCPServer.__init__ does around its own bind: the
-            # IPv4 socket, and a hold already made, are closed here, never left to the collector.
+            # Whatever the hold raises, as TCPServer.__init__ does around its own bind: the
+            # IPv4 socket is closed here, never left to the collector.
             self.server_close()
             raise
         self.api = api
@@ -359,17 +359,13 @@ class GuiServer(ThreadingHTTPServer):
         super().server_bind()
 
     def server_close(self) -> None:
-        """Close the socket served on, then ``[::1]`` held beside it, then ``[::]`` - each even
-        where closing one before it raises."""
+        """Close the socket served on, and the IPv6 hold beside it - that one even where closing
+        the first raises."""
         try:
             super().server_close()
         finally:
-            try:
-                if self.held is not None:
-                    self.held.close()
-            finally:
-                if self.held_wildcard is not None:
-                    self.held_wildcard.close()
+            if self.held is not None:
+                self.held.close()
 
     @property
     def port(self) -> int:
@@ -941,7 +937,7 @@ def run(
                 server = GuiServer(Api(session, project), pages, port, address)
                 break
             except IPv6HeldError as error:
-                # --port 0 picked a port whose [::1] - or [::], where that is held too - another
+                # --port 0 picked a port whose IPv6 hold - [::1], or [::] on Windows - another
                 # program holds: another pick is another port. A port given is that port, or
                 # nothing.
                 if port != 0 or attempt == PORT_TRIES:

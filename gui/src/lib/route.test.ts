@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { hrefOf, parseRoute } from "./route";
+import { arrivedAfter, hrefOf, parseRoute } from "./route";
 
 test.each([
   ["/", "", { page: "start" }],
@@ -211,4 +211,62 @@ test.each([
   ],
 ] as const)("%o is at %s", (route, href) => {
   expect(hrefOf(route)).toBe(href);
+});
+
+// Every kind of route, as `parseRoute` reads its address: `hrefOf` writes each back as an address
+// that reads as the very same route, so two routes `parseRoute` read compare as their addresses
+// (`arrivedAfter`) exactly when they are one route.
+test.each([
+  ["/", ""],
+  ["/project", ""],
+  ["/project", "?variable=Value%20A"],
+  ["/project", "?view=table"],
+  ["/project", "?view=units"],
+  ["/project", "?view=units&unit=%C2%B0C"],
+  ["/project", "?view=types&type=m%2Fs_t"],
+  ["/project", "?view=shared"],
+  ["/project", "?view=shared&kind=raster&name=10ms"],
+  ["/project", "?view=files"],
+  ["/project", "?view=files&path=C%3A%2Fp%2Fa%20b.ddd.json"],
+  ["/project", "?view=findings"],
+  ["/project", "?view=compare"],
+  ["/component", "?file=C%3A%2Fp%2Fa.ddd.json"],
+  ["/component", "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA"],
+  ["/component", "?file=C%3A%2Fp%2Fa.ddd.json&variable=CurveA&view=values"],
+] as const)("%s%s is written back as an address of the same route", (pathname, search) => {
+  const route = parseRoute(pathname, search);
+  const written = new URL(hrefOf(route), "http://127.0.0.1");
+  expect(parseRoute(written.pathname, written.search)).toEqual(route);
+});
+
+/** A Files row's route, as the page was loaded with it. */
+const ROW = parseRoute("/project", "?view=files&path=C%3A%2Fp%2Fa.ddd.json");
+
+test("a move through history that leaves the route as it was keeps the page's arrival", () => {
+  // A fragment navigation fires `popstate` with the path and the query as they were, and any window
+  // holding a handle on this one - a cross-origin opener among them - can make one (ruling P19a-19).
+  expect(
+    arrivedAfter(true, ROW, parseRoute("/project", "?view=files&path=C%3A%2Fp%2Fa.ddd.json")),
+  ).toBe(true);
+});
+
+test("one route keeps it however its address is spelled", () => {
+  expect(
+    arrivedAfter(
+      true,
+      ROW,
+      parseRoute("/project", "?path=C%3A%2Fp%2Fa.ddd.json&view=files&from=x"),
+    ),
+  ).toBe(true);
+});
+
+test("a move through history to another route turns it false", () => {
+  expect(arrivedAfter(true, ROW, parseRoute("/project", "?view=findings"))).toBe(false);
+  expect(
+    arrivedAfter(true, ROW, parseRoute("/project", "?view=files&path=C%3A%2Fp%2Fb.ddd.json")),
+  ).toBe(false);
+});
+
+test("once false it stays false, on the route the page was loaded with too", () => {
+  expect(arrivedAfter(false, ROW, ROW)).toBe(false);
 });

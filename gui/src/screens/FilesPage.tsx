@@ -16,7 +16,14 @@ import {
   RemoveFileView,
 } from "../components/FileActionsView";
 import { FilesTableView } from "../components/FilesTableView";
-import { type FileRemoval, fileAdd, fileCreate, fileRemoval, rowsOf } from "../lib/files";
+import {
+  type FileRemoval,
+  fileAdd,
+  fileCreate,
+  fileRemoval,
+  removalAsked,
+  rowsOf,
+} from "../lib/files";
 import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/filesHold";
 import { isStale, type Refused, refusalShown } from "../lib/refusals";
 import { planEdit } from "../lib/shared";
@@ -31,6 +38,10 @@ interface Props {
   /** The row whose key the address names, as the route's own `path` - `undefined` for the bare
    * tab. A row it names opens that row's Remove panel beside the table (`fileRemoval`). */
   path: string | undefined;
+  /** Whether the route is still the one the page was loaded with (`useRoute`'s third value): the
+   * Remove panel of the row it names then waits for the reader's press before asking its plan
+   * (`removalAsked`, P18b-10). */
+  arrived: boolean;
   onPath: (path: string | undefined) => void;
   /** The server stopped: nothing can be applied. */
   stopped: boolean;
@@ -47,7 +58,7 @@ interface Props {
  * changed (`filesHoldOf`) and draws the answer with it (`filesShown`) until an answer shows it,
  * the page's own undo puts it back, or an answer of a revision including the edit comes
  * (`filesHoldAfter`). An edit refused holds nothing, and its row stays as it was. */
-export function FilesPage({ state, path, onPath, stopped }: Props) {
+export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
   const revision = state?.revision;
   const files = useQuery({
     queryKey: ["files", revision],
@@ -101,6 +112,7 @@ export function FilesPage({ state, path, onPath, stopped }: Props) {
           <RemoveFile
             key={removal.request.path}
             removal={removal}
+            arrived={arrived}
             project={reply.project}
             revision={revision}
             stopped={stopped}
@@ -168,8 +180,8 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
 function useFilesApply(
   request: FilesPlanRequest | null,
   // The debounced request actually behind `plan`'s own key - `request` itself where a form is
-  // never debounced (`RemoveFile`'s, never typed into), so its one call site below passes the
-  // same value twice.
+  // never debounced (`RemoveFile`'s, never typed into), once its plan is asked, and `null` while
+  // it waits for the reader's press.
   asked: FilesPlanRequest | null,
   project: string,
   plan: UseQueryResult<FilesPlanReply>,
@@ -357,9 +369,13 @@ function AddFile({
   );
 }
 
-/** The selected row's Remove panel; its plan is asked for as soon as the row is selected. */
+/** The selected row's Remove panel. Its plan is asked for as soon as the row is selected within
+ * the page, and on the reader's press for the row the page was loaded with (`removalAsked`,
+ * P18b-10): that plan re-analyses the project, running its plugins, and the address the page was
+ * loaded with may have been chosen by a link from elsewhere. */
 function RemoveFile({
   removal,
+  arrived,
   project,
   revision,
   stopped,
@@ -367,6 +383,8 @@ function RemoveFile({
   onHeld,
 }: {
   removal: FileRemoval;
+  /** Whether the route is still the one the page was loaded with (`FilesPage`'s own `arrived`). */
+  arrived: boolean;
   project: string;
   revision: number | undefined;
   stopped: boolean;
@@ -375,22 +393,28 @@ function RemoveFile({
   onHeld: (hold: FilesHold | null) => void;
 }) {
   const [changesShown, setChangesShown] = useState(false);
-  const plan = useFilesPlan(removal.request, revision);
+  // Whether the reader pressed for the plan of the row the page was loaded with. Kept for as long
+  // as the panel is: another row selected is a panel of its own (`FilesPage`'s `key`).
+  const [pressed, setPressed] = useState(false);
+  const asked = removalAsked(arrived, pressed);
+  const requested = asked ? removal.request : null;
+  const plan = useFilesPlan(requested, revision);
   // Removed, the panel closes, the address going bare: the row is gone at once, the tab holding
   // the key taken out until its entries leave it out too - and where a pattern keeps the file in
   // all the same, the row left is the pattern's child, whose own Remove the server would refuse,
-  // naming the pattern, the moment it was selected again. Never debounced - `asked` and
-  // `request` are the same value - so `planShown` inside `useFilesApply` is always trusted the
-  // moment the query itself settles.
+  // naming the pattern, the moment it was selected again. Never debounced - once asked, the
+  // request behind the plan's key is `request` itself - so `planShown` inside `useFilesApply` is
+  // always trusted the moment the query itself settles; while the panel waits, it offers nothing.
   const {
     apply,
     plan: offerPlan,
     refusal,
-  } = useFilesApply(removal.request, removal.request, project, plan, revision, onClose, onHeld);
+  } = useFilesApply(removal.request, requested, project, plan, revision, onClose, onHeld);
   return (
     <RemoveFileView
       removal={removal}
       project={project}
+      waiting={asked ? undefined : () => setPressed(true)}
       offer={{ plan: offerPlan, refusal }}
       changesShown={changesShown}
       onChangesShown={setChangesShown}

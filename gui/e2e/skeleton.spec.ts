@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, chooseUnit, SENSOR_HUB, withUnitOfValueA } from "./demo";
+import { CONTROLLER, chooseUnit, drift, SENSOR_HUB, withUnitOfValueA, writeUnseen } from "./demo";
 import { expect, test } from "./fixtures";
 
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
@@ -112,12 +112,21 @@ test("an edit made from a page that is out of date is refused, and the file relo
   await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("V");
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
   await chooseUnit(page, "rpm");
+  // ValueB's unit changed on disk as the Apply goes out, unseen by the session's own watcher
+  // (`writeUnseen`): seen, it brought a revision of its own about a poll later, and the page
+  // holds a stale refusal only until the next revision (`shownRefusal`, lib/refusals.ts) - once
+  // gone before this journey read it (CI run 37705627501, windows msedge). Unseen, no revision
+  // can come, so the refusal stays for as long as it is looked for. `"unit":"mV"` is as many
+  // bytes as `"unit": "V"`, and reads the same.
   await page.route("**/api/edit", async (route) => {
-    writeFileSync(file, readFileSync(file, "utf8").replace('"unit": "V"', '"unit": "mV"'));
+    const changed = readFileSync(file, "utf8").replace('"unit": "V"', '"unit":"mV"');
+    writeUnseen(gui.directory, CONTROLLER, changed);
     await route.continue();
   });
   await page.getByRole("button", { name: "Apply to 2 files" }).click();
   await expect(page.getByRole("status").filter({ hasText: "changed on disk" })).toBeVisible();
+  // The file reloaded by the page itself, as the refusal says: with no revision to bring the
+  // change, its own reading of the file again is all that can show ValueB in mV.
   await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("mV");
   expect(readFileSync(file, "utf8")).toMatch(/"name": "ValueA"[\s\S]*?"unit": "%"/);
 });
@@ -142,6 +151,12 @@ test("without a project the start page lists the ones found and opens the one ch
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
 });
 
+/** The demo's arrows, read once off its served canvas (Chrome on the Linux development PC, at
+ * 13e805f) and pinned literally, as values.spec.ts pins its points: Controller to UserInterface
+ * and to EventLogger; SensorHub to Controller, to UserInterface and to EventLogger; UserInterface
+ * to EventLogger; and EventLogger to UserInterface. */
+const DEMO_ARROWS = 7;
+
 test("the demo opens on a canvas of its four modules", async ({ page, gui }) => {
   await page.goto(gui.address);
   const canvas = page.getByRole("region", { name: "Modules" });
@@ -150,10 +165,14 @@ test("the demo opens on a canvas of its four modules", async ({ page, gui }) => 
     await expect(canvas.getByRole("button", { name, exact: true })).toBeVisible();
   }
   // Every arrow is its own focusable group, named by the sentence a reader hears; the demo's
-  // components all agree with each other until a journey below changes one.
-  const arrows = await canvas.getByRole("group").all();
-  expect(arrows.length).toBeGreaterThan(0);
-  for (const arrow of arrows) {
+  // components all agree with each other until a journey below changes one. Counted with
+  // `toHaveCount`, which waits for every one of them, not read once with `.all()`, which counts
+  // whatever is drawn when it asks: today the arrows come in the same frame as the module
+  // buttons (measured), because `nodesOf` (lib/canvas.ts) hands React Flow every node already
+  // measured - but nothing this journey waited for said so.
+  const arrows = canvas.getByRole("group");
+  await expect(arrows).toHaveCount(DEMO_ARROWS);
+  for (const arrow of await arrows.all()) {
     await expect(arrow).toHaveAccessibleName(/agreed$/);
   }
 });
@@ -209,7 +228,6 @@ test("a dragged module stays where it was put after a revision, and Tidy puts it
   page,
   gui,
 }) => {
-  const file = join(gui.directory, SENSOR_HUB);
   await page.goto(gui.address);
   const controller = page
     .locator(".react-flow__node")
@@ -226,17 +244,11 @@ test("a dragged module stays where it was put after a revision, and Tidy puts it
   const dragged = await controller.evaluate((node) => (node as HTMLElement).style.transform);
   expect(dragged).not.toBe(original);
 
-  // Saved from outside the page, as milestone 1's own "a change saved by another editor" journey
-  // does, so a new revision arrives while the canvas is still open.
-  const redrawn = page.waitForResponse("**/api/graph");
-  writeFileSync(
-    file,
-    readFileSync(file, "utf8").replace(
-      "Produces the raw input values of the device",
-      "Produces the raw input values of the device, revised",
-    ),
-  );
-  await redrawn;
+  // Saved from outside the page, so that a new revision arrives while the canvas is open - and
+  // waited for by what it changes on the canvas, the arrow it colours, rather than by a
+  // response the page may or may not have asked for yet.
+  drift(gui.directory);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
   await expect
     .poll(() => controller.evaluate((node) => (node as HTMLElement).style.transform))
     .toBe(dragged);

@@ -15,7 +15,14 @@ on:
   push:
     branches: [master]
   pull_request:
+  # A manual run of any branch. With repeat above 1 it is a hunt: the journeys run that many
+  # times on all three legs, and every other job is skipped (part 19a).
   workflow_dispatch:
+    inputs:
+      repeat:
+        description: "How many times each journey runs; above 1, only the journeys run"
+        type: number
+        default: 1
 
 permissions:
   contents: read
@@ -26,6 +33,9 @@ concurrency:
 
 jobs:
   test:
+    # Skipped by a hunt, which is the journeys' alone.
+    if: ${{ !(inputs.repeat > 1) }}
+    timeout-minutes: 25
     # The package claims python 3.12, 3.13 and 3.14, and claims to be os independent. This is
     # what turns both into tested claims: a path handling bug that appeared only on linux has
     # already reached a user of this project once, having passed everything on windows.
@@ -52,6 +62,9 @@ jobs:
       - run: pytest
 
   lint:
+    # Skipped by a hunt, which is the journeys' alone.
+    if: ${{ !(inputs.repeat > 1) }}
+    timeout-minutes: 10
     # Style and types do not vary by platform or interpreter, so once is enough. mypy runs the
     # pydantic plugin and type checks against the real contracts, hence the same install.
     runs-on: ubuntu-latest
@@ -68,6 +81,9 @@ jobs:
       - run: mypy
 
   container:
+    # Skipped by a hunt, which is the journeys' alone.
+    if: ${{ !(inputs.repeat > 1) }}
+    timeout-minutes: 20
     # The image behind `docker compose` is the local equivalent of every job in this file, and
     # it was the one thing no job built: a `COPY` of a directory removed three releases earlier
     # failed `docker compose build` on its first line, and every service with it, while ci
@@ -101,6 +117,9 @@ jobs:
       - run: docker compose run --rm generate
 
   extension:
+    # Skipped by a hunt, which is the journeys' alone.
+    if: ${{ !(inputs.repeat > 1) }}
+    timeout-minutes: 15
     # The VS Code extension is a launcher for the language server, so what is worth testing is
     # that the command it builds really starts one - which needs both toolchains here, and is
     # why the tests install the package rather than only compiling typescript. Node 24 rather
@@ -148,11 +167,24 @@ jobs:
     # on a machine or in a container that only runs ddd, where node has no business. A release
     # is still what anyone outside this repository installs, or the development build below for
     # a commit not released yet: an artifact expires, and needs a GitHub account to reach.
+    #
+    # Three legs: Playwright's own Chromium on both systems, and the windows runner's own Edge,
+    # which a reader on windows most likely has (part 19a).
+    name: gui (${{ matrix.os }}, ${{ matrix.browser }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            browser: chromium
+          - os: windows-latest
+            browser: chromium
+          - os: windows-latest
+            browser: msedge
     runs-on: ${{ matrix.os }}
+    # A hunt runs every journey five times or more: an ordinary run's half hour is too short
+    # for it.
+    timeout-minutes: ${{ inputs.repeat > 1 && 150 || 30 }}
     defaults:
       run:
         working-directory: gui
@@ -175,8 +207,30 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run e2e
+      # P18-12: a project on a mapped drive, which Windows names by its network path. The runner
+      # shares a directory with itself and maps it as M:, and the windows chromium leg runs
+      # mapped.spec.ts there; one leg is enough, the server's paths being what is tested.
+      - name: Map a drive for the mapped-drive journey
+        if: runner.os == 'Windows' && matrix.browser == 'chromium'
+        shell: pwsh
+        run: |
+          $shared = Join-Path $env:RUNNER_TEMP "ddd-mapped"
+          New-Item -ItemType Directory -Path $shared | Out-Null
+          New-SmbShare -Name ddd-mapped -Path $shared -FullAccess "$env:USERDOMAIN\$env:USERNAME" | Out-Null
+          net use M: \\localhost\ddd-mapped /persistent:no
+          "DDD_MAPPED_DRIVE=M:" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # Edge is the windows runner's own, and needs no download. A stalled download still fails
+      # in minutes rather than holding the job, as it once did for 24; ten of them, because a
+      # healthy install on windows was measured at over three, 3 m 19 s of it --with-deps
+      # installing Media Foundation.
+      - name: Install Playwright's Chromium
+        if: matrix.browser == 'chromium'
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium
+      - name: Run the journeys
+        run: npm run e2e -- --repeat-each=${{ inputs.repeat || 1 }}
+        env:
+          PLAYWRIGHT_CHANNEL: ${{ matrix.browser == 'msedge' && 'msedge' || '' }}
       # Built at the root, where pyproject.toml is, once the pages have passed in the browser,
       # and checked the way the release checks its own. One system is enough: the wheel is pure
       # python, the same wherever it is built.
@@ -204,11 +258,14 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-${{ matrix.os }}
+          name: playwright-report-${{ matrix.os }}-${{ matrix.browser }}
           path: gui/playwright-report
           overwrite: true # a name is unique within a run, and re-running the run uploads it again
 
   gui-screenshots:
+    # Skipped by a hunt, which is the journeys' alone.
+    if: ${{ !(inputs.repeat > 1) }}
+    timeout-minutes: 20
     # Every story of gui/ photographed and compared with the reference image committed beside
     # the stories, in the Linux image of the very Playwright version the page pins: the one place
     # those images are made (docker compose run --rm gui-screenshots makes them locally), so a
@@ -259,6 +316,7 @@ jobs:
         (github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     outputs:
       version: ${{ steps.stamp.outputs.version }}
     env:
@@ -320,6 +378,7 @@ jobs:
   dev-publish:
     needs: dev-build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # The trusted publisher registered on test.pypi.org names this workflow and this
     # environment; the developer documentation's page on continuous integration lists what to
     # register. The environment's url is the page of the version being published.

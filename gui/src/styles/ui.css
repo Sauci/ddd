@@ -905,3 +905,8 @@ tr.changing td {
   color: var(--warning);
   font-size: var(--text-small);
 }
+/* Where Plan its removal leaves the focus, ringed as app.css rings a button (ruling P19a-21). */
+.file-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

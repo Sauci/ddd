@@ -1,7 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Page } from "@playwright/test";
 import { UNITS } from "./demo";
-import { expect, test } from "./fixtures";
+import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
  * `vocabularyGui` hands this journey before the page opens, the way `sections.spec.ts`'s own
@@ -178,4 +179,153 @@ test("the row a Remove takes out goes before the tab's next list of entries answ
     .getByRole("button", { name: "Put back 1 file" })
     .click();
   await expect(unitsRow).toBeVisible();
+});
+
+/** Every plan the Files tab asks (`GET /api/files-plan`) from here on, counted as it is asked,
+ * before any answer. */
+function plansAsked(page: Page): string[] {
+  const planned: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/files-plan") planned.push(request.url());
+  });
+  return planned;
+}
+
+/**
+ * The page loaded at `file`'s own row of the Files tab, as a link from elsewhere would load it
+ * (P18b-10), and every plan asked from that load on. Signed in first at the address ddd gui
+ * printed, whose token the page keeps for the next address this tab opens. The row's key is the
+ * file's absolute, posix-separated path (`IncludedEntryReply.key`).
+ */
+async function openedAtRow(page: Page, gui: Gui, file: string): Promise<string[]> {
+  await page.goto(gui.address);
+  await expect(page.getByRole("link", { name: "Files", exact: true })).toBeVisible();
+  const planned = plansAsked(page);
+  const key = `${gui.directory.replaceAll("\\", "/")}/${file}`;
+  const origin = new URL(gui.address).origin;
+  await page.goto(`${origin}/project?view=files&path=${encodeURIComponent(key)}`);
+  return planned;
+}
+
+/**
+ * The row the page was loaded with waits for the reader (P18b-10, spec §7): a Remove plan
+ * re-analyses the project, running its plugins, so the panel of a row an address chose - a link
+ * from elsewhere, a bookmark, a typed address, a reload - asks for none until the reader presses
+ * for it. A fragment navigation, which another window can make, leaves it waiting (ruling
+ * P19a-19); the reader's press asks it, and keeps the keyboard's focus in the panel (ruling
+ * P19a-20). A row the reader selects within the page is planned at once, as before.
+ */
+test("the row the page was opened on waits for the reader before its removal is planned", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const planned = await openedAtRow(page, vocabularyGui, UNITS);
+  const unitsRemoving = page
+    .getByRole("complementary", { name: UNITS })
+    .getByRole("region", { name: "Remove from the includes" });
+  const ask = unitsRemoving.getByRole("button", { name: "Plan its removal" });
+  await expect(ask).toBeVisible();
+  expect(planned).toEqual([]);
+
+  // The address set to itself with a fragment, as any window holding a handle on this one can set
+  // it - a cross-origin opener among them: a navigation within the page that fires `popstate` and
+  // leaves the route as it was, so the row still waits. Waited on by two frames inside the page:
+  // whatever that `popstate` changed is drawn by then, so a button still there is one the page
+  // kept, not one it has yet to take away.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        window.location.hash = "x";
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  await expect(page).toHaveURL(/#x$/);
+  await expect(ask).toBeVisible();
+  expect(planned).toEqual([]);
+
+  // Pressed from the keyboard: the plan is asked, and the focus stays in the panel, on the region
+  // the button was in, rather than falling to the page's body as the button goes.
+  await ask.press("Enter");
+  await expect(unitsRemoving.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  await expect(unitsRemoving).toBeFocused();
+  // Ringed as app.css rings a focused button (ruling P19a-21): tokens.css's --accent, 2px off.
+  await expect(unitsRemoving).toHaveCSS("outline-style", "solid");
+  await expect(unitsRemoving).toHaveCSS("outline-width", "2px");
+  await expect(unitsRemoving).toHaveCSS("outline-color", "rgb(14, 107, 124)");
+  await expect(unitsRemoving).toHaveCSS("outline-offset", "2px");
+  expect(planned).toHaveLength(1);
+
+  // A row the reader selects in the table is planned at once, as before.
+  await page.getByRole("row", { name: "constants.ddd.json" }).click();
+  await expect.poll(() => planned.length).toBe(2);
+  await expect(page.getByRole("button", { name: "Plan its removal" })).toHaveCount(0);
+});
+
+/**
+ * The row the page was opened on, pressed in the table rather than by its button (ruling
+ * P19a-15): the table presses a selected row off, so its panel closes and nothing is asked;
+ * pressed again, the row is the reader's own selection, planned at once with no button - though
+ * its route is the very one the page was loaded with.
+ */
+test("the row the page was opened on, pressed off and on again in the table, is planned at once", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const planned = await openedAtRow(page, vocabularyGui, UNITS);
+  const unitsPanel = page.getByRole("complementary", { name: UNITS });
+  const ask = page.getByRole("button", { name: "Plan its removal" });
+  await expect(unitsPanel.getByRole("button", { name: "Plan its removal" })).toBeVisible();
+  expect(planned).toEqual([]);
+
+  const unitsRow = page.getByRole("row", { name: UNITS });
+  await unitsRow.click();
+  await expect(unitsPanel).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project\?view=files$/);
+  await expect(ask).toHaveCount(0);
+  expect(planned).toEqual([]);
+
+  await unitsRow.click();
+  await expect(
+    unitsPanel
+      .getByRole("region", { name: "Remove from the includes" })
+      .getByText("Changes 1 file: project.ddd.json"),
+  ).toBeVisible();
+  expect(planned).toHaveLength(1);
+  await expect(ask).toHaveCount(0);
+});
+
+/**
+ * A move back or forward within the page to another route is the reader's own (spec §7,
+ * `arrivedAfter` in lib/route.ts), so a row reached by Back is planned at once - even in a page
+ * reloaded since. There Back is the first move the reloaded page makes, the address it was loaded
+ * with being the Findings tab's: Chrome goes back to the row's entry within that same page, firing
+ * `popstate` with no load of its own (a value set on `window` before Back was still there after
+ * it, in Chrome 153 on the Linux development PC).
+ */
+test("a row reached by going back within the page is planned at once, even after a reload", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: "constants.ddd.json" }).click();
+  // Refused, as the first journey's own constants.ddd.json is: the refusal is the plan answered.
+  const refused = page
+    .getByRole("complementary", { name: "constants.ddd.json" })
+    .getByRole("region", { name: "Remove from the includes" })
+    .getByRole("status");
+  await expect(refused).toBeVisible();
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await expect(page).toHaveURL(/\/project\?view=findings$/);
+  await page.reload();
+  await expect(page.getByRole("link", { name: "Findings", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  const planned = plansAsked(page);
+
+  await page.goBack();
+  await expect(refused).toBeVisible();
+  expect(planned).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Plan its removal" })).toHaveCount(0);
 });

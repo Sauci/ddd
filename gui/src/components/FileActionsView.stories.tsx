@@ -147,7 +147,8 @@ function AddFile({
 }
 
 /** A row's Remove panel over one scenario: the row the address selects, found by `fileRemoval`
- * exactly as FilesPage.tsx finds it. */
+ * exactly as FilesPage.tsx finds it - waiting for the reader's press where `waiting` is given, as
+ * FilesPage.tsx's `RemoveFile` waits on the row the page was loaded with. */
 function Remove({
   reply = PROJECT_FILES,
   files = PROJECT_SOURCE_FILES,
@@ -155,7 +156,8 @@ function Remove({
   plan,
   refusal,
   shown = false,
-}: Scene & { selected: string }) {
+  waiting,
+}: Scene & { selected: string; waiting?: () => void }) {
   const [changesShown, setChangesShown] = useState(shown);
   const removal = fileRemoval(rowsOf(reply, files), selected, reply.project);
   return (
@@ -164,6 +166,7 @@ function Remove({
         <RemoveFileView
           removal={removal}
           project={reply.project}
+          waiting={waiting}
           offer={{ plan: plan ?? null, refusal: refusal ?? null }}
           changesShown={changesShown}
           onChangesShown={setChangesShown}
@@ -251,6 +254,14 @@ export const AddRefusedAsAPatternsFile = () => (
  * PressureTrend is dimensioned by. No button: there is no plan to apply. */
 export const RemoveRefusedForTheErrorItWouldLeave = () => (
   <Remove selected={VOCABULARY_CONSTANTS} refusal={REMOVE_LEAVES_AN_ERROR} />
+);
+
+/** Remove waiting, over examples/vocabulary: constants.ddd.json's row is the one the page was
+ * loaded with - a link from elsewhere, a bookmark, a typed address or a reload chose it - so its
+ * plan, which re-analyses the project with its plugins, is not asked until the reader presses
+ * Plan its removal (P18b-10). Nothing asked, nothing refused: no plan, and no Remove button. */
+export const RemoveWaiting = () => (
+  <Remove selected={VOCABULARY_CONSTANTS} waiting={() => undefined} />
 );
 
 /** Remove unjudged (constructed: READER_OF_A_BROKEN_WRITER): the half-saved lib/b.ddd.json did not

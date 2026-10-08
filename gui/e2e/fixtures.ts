@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { cpSync } from "node:fs";
+import { cpSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,9 @@ const STRUCTURES: Example = { directory: "structures", project: "project.ddd.jso
 export interface Gui {
   /** The address ddd gui printed, token included. */
   address: string;
-  /** The copy of the example the server edits, under this test's own output directory. */
+  /** The directory the server is started in and edits: a copy of an example, or the project
+   * `generatedGui` generates, under this test's own output directory - or, for `mappedGui`, a
+   * copy of the demo in a fresh directory on the drive `DDD_MAPPED_DRIVE` names. */
   directory: string;
   /** Stops the server; stopping twice is harmless. */
   stop: () => Promise<void>;
@@ -214,6 +216,7 @@ export const test = base.extend<{
   vocabularyGui: Gui;
   structuresGui: Gui;
   generatedGui: Gui;
+  mappedGui: Gui;
 }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   gui: async ({}, use, testInfo) => started(DEMO, true, use, testInfo),
@@ -228,6 +231,23 @@ export const test = base.extend<{
     const directory = testInfo.outputPath("generated");
     generated(directory);
     await serving(directory, [join(directory, "project.ddd.json")], use);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  mappedGui: async ({}, use, testInfo) => {
+    const drive = process.env.DDD_MAPPED_DRIVE;
+    if (drive === undefined) {
+      throw new Error("mappedGui serves a mapped drive, which DDD_MAPPED_DRIVE must name");
+    }
+    // A directory of the test's own on the drive, as `started` makes one under test-results -
+    // but a fresh one each run: nothing empties the drive as Playwright empties test-results, and
+    // the test's id is the same from one run to the next, so a run by hand on a drive kept
+    // would otherwise find the file an earlier run created there.
+    const directory = join(
+      mkdtempSync(join(`${drive}\\`, `ddd-${testInfo.testId}-`)),
+      DEMO.directory,
+    );
+    cpSync(join(EXAMPLES, DEMO.directory), directory, { recursive: true });
+    await serving(directory, [join(directory, DEMO.project)], use);
   },
 });
 

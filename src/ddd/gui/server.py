@@ -22,7 +22,17 @@ this one trusts nothing it did not hand out itself:
   used the same port earlier could have served this origin; see ``docs/gui_security.rst``);
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
   connections refuses the next itself, so no flood of connections can exhaust the machine's
-  threads.
+  threads;
+* on loopback, an IPv6 address is held beside the IPv4 socket, on the very same port, and never
+  listened on - ``[::1]`` on Linux and macOS, or on Windows the wildcard ``[::]`` in its place.
+  So no other program can listen on ``localhost`` there, and a browser trying ``[::1]`` first
+  falls back to 127.0.0.1 - each measured on Linux and Windows, never on macOS - rather than
+  reaching a stranger;
+* a ``POST`` refused before its body is read has that body read and thrown away, at most
+  1,048,576 bytes of it, rather than left unread; where its length cannot be read this way, the
+  connection closes behind the answer instead, draining until the client closes, two seconds
+  pass, or 1,048,576 bytes are read, whichever is first. Closing one with bytes still unread
+  resets it on Windows, which can lose the refusal before it reaches the browser.
 
 The pages are served with an explicit content type per extension. The platform's guess is not
 used: on Windows ``mimetypes`` reads the registry, which can map ``.js`` to ``text/plain``, and a
@@ -34,6 +44,7 @@ See ``docs/gui_security.rst`` for the threat model this is reviewed against.
 from __future__ import annotations
 
 import contextlib
+import errno
 import hmac
 import ipaddress
 import json
@@ -69,6 +80,11 @@ for long."""
 MAX_BODY: Final = 1024 * 1024
 """The largest request body accepted; an edit of a description file is a few hundred bytes."""
 
+LINGER_SECONDS: Final = 2.0
+"""How long a connection closed with a body still arriving is drained before its close (P18-31):
+long enough for the client to read the answer it was written first, short enough that a sender
+who never stops holds its thread no longer than that."""
+
 OPEN_BODY: Final = 1024
 """The largest body ``POST /open`` accepts, far tighter than :data:`MAX_BODY`: a sign-in body
 naming a code or the token is about sixty bytes, and anyone who reaches the port can post one,
@@ -99,6 +115,45 @@ REFUSAL_SECONDS: Final = 1
 will not take it, before giving that connection up: every other connection waits behind that
 thread meanwhile. A connection just accepted takes the refusal's few hundred bytes at once, so
 in practice it never waits at all."""
+
+_EXCLUSIVE: Final = sys.platform == "win32"
+"""Whether a socket is bound with ``SO_EXCLUSIVEADDRUSE``: on Windows, where one bound without it
+can be shared by another that sets ``SO_REUSEADDR``. A flag, so that the suite takes both
+branches on every platform (``test_nothing_in_the_suite_skips``)."""
+
+_WILDCARD: Final = sys.platform == "win32"
+"""Whether the IPv6 hold is the wildcard ``[::]``, in place of ``[::1]`` (ruling P19a-14): on
+Windows. There run 37737377854 measured a stranger's ``[::]`` binding beside an exclusive
+``[::1]`` hold - and a program listening on ``[::]`` would take the connections the hold never
+accepts - and run 37741191678 the server's own exclusive ``[::]`` refused beside its own
+exclusive ``[::1]``, so the two cannot both be held. An exclusive wildcard is what Microsoft
+documents refusing every other bind of its port, specific addresses included; run 37744112657
+measured it refusing a stranger's ``[::1]`` too, on Windows 3.12, 3.13 and 3.14. Linux holds
+``[::1]``, which refuses a stranger's ``[::]`` as well. A flag of its own rather than
+:data:`_EXCLUSIVE`, which Windows sets too: the two rest on different measurements, and the suite
+flips this one alone to hold the wildcard on Linux, where Windows' exclusive option is refused."""
+
+PORT_TRIES: Final = 5
+"""How many ports ``--port 0`` is tried on before the IPv6 hold refused on each of them is a
+refusal."""
+
+_SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
+"""Windows' own option, which typeshed declares on win32 alone, so read rather than named for mypy
+on every platform; -5 is its value there, ``~SO_REUSEADDR``. Used only where :data:`_EXCLUSIVE`."""
+
+_IPV6_HELD: Final = (
+    "another program holds port {port} on IPv6, where a browser opening localhost:{port} may "
+    "reach it"
+)
+"""What :class:`IPv6HeldError` says: the port on IPv6, never an address (ruling P19a-30). The
+other program's socket need not be on the address the hold tried - on Linux one on ``[::]``
+refuses the ``[::1]`` hold, on Windows one on ``[::1]`` the ``[::]`` hold - and a browser
+opening ``localhost`` reaches that program only if it listens on ``[::1]`` or ``[::]``, hence
+"may"."""
+
+_IPV6_UNHELD: Final = "cannot hold [{address}]:{port} beside it: {error}"
+"""What a hold that failed for any other reason says, the system's own words after it
+(P19a-12): no proof of another program, and no server without its hold either."""
 
 CONTENT_TYPES: Final = {
     ".css": "text/css; charset=utf-8",
@@ -138,8 +193,9 @@ def is_loopback(address: str) -> bool:
 
     ``run`` below reads this, once, to decide what answering beyond the default,
     ``127.0.0.1``, changes: whether a browser is opened, and what the one warning it prints
-    says. It never sees a name: ``run`` resolves ``--host`` with ``socket.getaddrinfo`` before
-    calling this, so a hosts file that redefines ``localhost`` is judged by what it resolves
+    says; :func:`_held_beside` reads it for whether IPv6 is held beside the port. Neither
+    sees a name: ``run`` resolves ``--host`` with ``socket.getaddrinfo`` before either asks
+    this, so a hosts file that redefines ``localhost`` is judged by what it resolves
     to and not by its spelling, and ``LOCALHOST`` or ``localhost.`` are judged the same way as
     ``localhost`` rather than by a spelling this function would have to special-case. Anything
     ``ipaddress`` cannot parse - a name, such as ``localhost`` itself, reaching this function
@@ -189,6 +245,82 @@ def _refuse(request: socket.socket) -> None:
         request.sendall(f"HTTP/1.1 503 Service Unavailable\r\n{lines}\r\n".encode("latin-1") + data)
 
 
+def _linger(connection: socket.socket) -> None:
+    """Shut the writing side of a connection closed with a body still arriving, and drain what
+    arrives before the close - until the client closes, :data:`LINGER_SECONDS` pass, or
+    :data:`MAX_BODY` bytes have been read, whichever is first - so that the close is no reset
+    that could throw the answer away before the client reads it (P18-31). The time is counted
+    once, from the start, and no read asks for more than what is left of :data:`MAX_BODY`
+    (P19a-11). Run on the connection's own thread (:meth:`_Handler.finish`), never on the one
+    that accepts (:func:`_refuse`), which every other connection waits behind. A client already
+    gone is let go without a word."""
+    with contextlib.suppress(OSError):
+        connection.shutdown(socket.SHUT_WR)
+        deadline = time.monotonic() + LINGER_SECONDS
+        drained = 0
+        while drained < MAX_BODY:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return
+            connection.settimeout(left)
+            chunk = connection.recv(min(65536, MAX_BODY - drained))
+            if not chunk:
+                return
+            drained += len(chunk)
+
+
+class IPv6HeldError(OSError):
+    """The IPv6 hold - ``[::1]``, or ``[::]`` on Windows - refused on its port by another
+    program's socket on IPv6, on that address or on one that collides with it
+    (:data:`_IPV6_HELD`)."""
+
+
+def _held_beside(host: str, port: int) -> socket.socket | None:
+    """The IPv6 hold, bound on ``port`` beside a loopback ``host`` and never listened on (spec
+    §6.2): ``[::1]``, or where :data:`_WILDCARD` the wildcard ``[::]`` in its place. No other
+    program can then take ``localhost`` there, and a browser trying ``[::1]`` first is refused,
+    and falls back to ``127.0.0.1`` - measured on Linux and Windows, never on macOS.
+
+    ``None`` where nothing need or can be held: a host beyond loopback, or where the system says
+    there is no IPv6 loopback - ``EAFNOSUPPORT`` making the socket, ``EADDRNOTAVAIL`` binding
+    ``[::1]``. A wildcard is not refused for a missing address: in a network namespace with no
+    IPv6 address at all, ``[::1]`` was refused ``EADDRNOTAVAIL`` and ``[::]`` bound (Linux,
+    measured). Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
+    ``EACCES``, the errno CPython gives Windows' ``WSAEACCES``. Any other error is proof of
+    neither, and raises an ``OSError`` naming the address, the system's own words after it
+    (P19a-12): a server that cannot make its hold does not start without it. Each refusal's
+    message is the same on every system; the error the system raised is its cause.
+
+    ``IPV6_V6ONLY``, so that it never touches IPv4. Never ``SO_REUSEADDR``: Linux lets two
+    sockets share a port nobody listens on when both set it, and the other could then listen
+    there. ``SO_EXCLUSIVEADDRUSE`` on Windows (:data:`_EXCLUSIVE`), where a socket bound without
+    it can be shared by any that sets ``SO_REUSEADDR``."""
+    if not is_loopback(host):
+        return None
+    address = "::1"
+    if _WILDCARD:
+        address = "::"
+    try:
+        held = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    except OSError as error:
+        if error.errno == errno.EAFNOSUPPORT:
+            return None
+        raise OSError(_IPV6_UNHELD.format(address=address, port=port, error=error)) from error
+    try:
+        held.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        if _EXCLUSIVE:
+            held.setsockopt(socket.SOL_SOCKET, _SO_EXCLUSIVEADDRUSE, 1)
+        held.bind((address, port))
+    except OSError as error:
+        held.close()
+        if error.errno == errno.EADDRNOTAVAIL:
+            return None
+        if error.errno in (errno.EADDRINUSE, errno.EACCES):
+            raise IPv6HeldError(_IPV6_HELD.format(port=port)) from error
+        raise OSError(_IPV6_UNHELD.format(address=address, port=port, error=error)) from error
+    return held
+
+
 class GuiServer(ThreadingHTTPServer):
     """The server one run of ``ddd gui`` answers on."""
 
@@ -197,6 +329,11 @@ class GuiServer(ThreadingHTTPServer):
     allow_reuse_address = sys.platform != "win32"
     """Not on Windows, where the socket option lets a second server bind a port the first still
     listens on, so a taken ``--port`` would be shared instead of refused."""
+
+    held: socket.socket | None = None
+    """The IPv6 hold, ``[::1]`` or on Windows ``[::]``, bound on this server's port and never
+    listened on (:func:`_held_beside`), closed with the server; ``None`` where nothing is held -
+    beyond loopback, or with no IPv6 loopback, and before the hold is made."""
 
     def __init__(
         self,
@@ -209,6 +346,13 @@ class GuiServer(ThreadingHTTPServer):
         connections: int = MAX_CONNECTIONS,
     ) -> None:
         super().__init__((host, port), _Handler)
+        try:
+            self.held = _held_beside(host, self.port)
+        except BaseException:
+            # Whatever the hold raises, as TCPServer.__init__ does around its own bind: the
+            # IPv4 socket is closed here, never left to the collector.
+            self.server_close()
+            raise
         self.api = api
         self.static = static.resolve()
         self.token = secrets.token_urlsafe(TOKEN_BYTES)
@@ -219,6 +363,23 @@ class GuiServer(ThreadingHTTPServer):
         self.slots = threading.BoundedSemaphore(connections)
         """One for each connection being answered. Bounded: a slot given back when every slot
         is already free raises, rather than raising the cap."""
+
+    def server_bind(self) -> None:
+        """Bind as ``http.server`` does - exclusively on Windows (:data:`_EXCLUSIVE`), so that no
+        program can share the port by setting ``SO_REUSEADDR``. Set before the bind, as Windows
+        requires."""
+        if _EXCLUSIVE:
+            self.socket.setsockopt(socket.SOL_SOCKET, _SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+    def server_close(self) -> None:
+        """Close the socket served on, and the IPv6 hold beside it - that one even where closing
+        the first raises."""
+        try:
+            super().server_close()
+        finally:
+            if self.held is not None:
+                self.held.close()
 
     @property
     def port(self) -> int:
@@ -327,11 +488,46 @@ class _Handler(BaseHTTPRequestHandler):
 
     _body_read = False
     """Whether the request being answered has had its body read. A ``POST`` answered before it
-    has, whatever the answer - misdirected, refused at the gate, sent to a page, its body too
-    long or of no length - is answered ``Connection: close`` and its connection closed: the body
-    left on it would be read as the next request. A body sent ``Transfer-Encoding: chunked`` is
-    never read, though it counts as read: it has no ``Content-Length``, which this server takes for
-    none."""
+    has, whatever the answer - misdirected, refused at the gate, sent to a page - has its body
+    read then, and thrown away (:meth:`_send`): left on the connection, it would be read as the
+    next request. One too long to read, of no length to read by, or sent with a
+    ``Transfer-Encoding`` is answered ``Connection: close`` instead, and its connection drained
+    as it closes (:meth:`finish`). A body sent ``Transfer-Encoding: chunked`` that reaches
+    :meth:`_body` is never read, though it counts as read: it has no ``Content-Length``, which
+    this server takes for a body of none, so what it sends is read as the next request."""
+
+    _linger = False
+    """Whether this connection is closed with a request's body unread - too long to read, of no
+    length to read by, or sent with a ``Transfer-Encoding``. Its answer is written, its writing
+    side shut, and what still arrives drained before the close (:meth:`finish`), so that the
+    close is no reset."""
+
+    def _declared(self) -> int | None:
+        """The length a body refused before it is read is drained by (:meth:`_send`): its
+        ``Content-Length`` (:meth:`_content_length`). ``None`` - its connection closed after the
+        answer instead - for one that is no length, one past :data:`MAX_BODY`, or any
+        ``Transfer-Encoding`` (P19a-10): a chunked body has no ``Content-Length``, and drained as
+        a length of none, it would be left on the connection, to be read as the next request."""
+        if "Transfer-Encoding" in self.headers:
+            return None
+        return self._content_length()
+
+    def _content_length(self) -> int | None:
+        """The length the request's ``Content-Length`` spells, if it is one this server reads: a
+        length, of at most :data:`MAX_BODY` - and ``0`` with no ``Content-Length`` at all.
+        ``None`` for one that is no length, or one past :data:`MAX_BODY`."""
+        length = self.headers.get("Content-Length", "0")
+        if not (length.isascii() and length.isdecimal()):
+            return None
+        # Leading zeros are stripped before int() reads anything: int() refuses a string of more
+        # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
+        # how many. What is left is past MAX_BODY if it has more digits than MAX_BODY's seven,
+        # which settles it without converting it, and is read as its value otherwise: zeros
+        # alone, however many, are a length of 0.
+        significant = length.lstrip("0") or "0"
+        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
+            return None
+        return int(significant)
 
     def do_GET(self) -> None:  # the name the base class dispatches GET to
         self._answer("GET")
@@ -517,17 +713,14 @@ class _Handler(BaseHTTPRequestHandler):
         if not (length.isascii() and length.isdecimal()):
             self._send_json(400, {"error": "bad-request", "message": "Content-Length is no length"})
             return None
-        # Leading zeros are stripped before int() reads anything: int() refuses a string of more
-        # than 4,300 digits whatever their value - by default; sys.get_int_max_str_digits() says
-        # how many. What is left is answered 413 if it is more than MAX_BODY, which its having
-        # more digits than MAX_BODY's seven settles without converting it, and is read as its
-        # value otherwise: zeros alone, however many, are a length of 0.
-        significant = length.lstrip("0") or "0"
-        if len(significant) > len(str(MAX_BODY)) or int(significant) > MAX_BODY:
+        # By its Content-Length alone, not _declared: a body sent with a Transfer-Encoding that
+        # comes this far is read as one of none, as it always was (P19a-10 left it so).
+        size = self._content_length()
+        if size is None:
             message = f"a request body is at most {MAX_BODY} bytes"
             self._send_json(413, {"error": "too-large", "message": message})
             return None
-        body = self.rfile.read(int(significant))
+        body = self.rfile.read(size)
         self._body_read = True
         return body
 
@@ -575,14 +768,32 @@ class _Handler(BaseHTTPRequestHandler):
     ) -> None:
         own = dict(headers or {})
         if self.command == "POST" and not self._body_read:
-            # Sent as a header, which also has the base class close the connection once this is
-            # written.
-            own["Connection"] = "close"
+            # Refused before its body was read. A body this server would have read is read now
+            # and thrown away: nothing of it is then read as the next request, and nothing is
+            # left unread to make closing the connection a reset (P18-31). One it would not - too
+            # long, of no length to read by, or sent with a Transfer-Encoding - is left: the
+            # answer says Connection: close, sent as a header, which also has the base class
+            # close the connection once this is written, and what still arrives is drained
+            # before the close (finish).
+            declared = self._declared()
+            if declared is None:
+                own["Connection"] = "close"
+                self._linger = True
+            else:
+                self.rfile.read(declared)
+                self._body_read = True
         self.send_response(status)
         for name, value in _head(kind, len(data), own).items():
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
+
+    def finish(self) -> None:
+        """Close the files the connection was read and written through, then - if its last
+        answer left a body unread - drain it before the server closes it (:func:`_linger`)."""
+        super().finish()
+        if self._linger:
+            _linger(self.request)
 
     def _send_json(self, status: int, body: dict[str, Any]) -> None:
         # Python writes NaN and Infinity unless told not to, and no browser's parser reads them:
@@ -732,10 +943,22 @@ def run(
             except ValueError as error:
                 print(f"ddd: {error}", file=sys.stderr)
                 return EXIT_USAGE
-        try:
-            server = GuiServer(Api(session, project), pages, port, address)
-        except OSError as error:
-            return _refused(address, port, error)
+        # A loop that never ends but by its break or a return: one over range(PORT_TRIES) would
+        # end its last pass at one of them too, and leave its exhaustion a branch nothing takes.
+        attempt = 1
+        while True:
+            try:
+                server = GuiServer(Api(session, project), pages, port, address)
+                break
+            except IPv6HeldError as error:
+                # --port 0 picked a port whose IPv6 hold - [::1], or [::] on Windows - another
+                # program's socket on IPv6 refused: another pick is another port. A port given is
+                # that port, or nothing.
+                if port != 0 or attempt == PORT_TRIES:
+                    return _refused(address, port, error)
+                attempt += 1
+            except OSError as error:
+                return _refused(address, port, error)
         print(f"ddd gui (preview) serving {server.address}", flush=True)
         if beyond_loopback:
             # No browser to open in a container, and nothing left to protect this with either:

@@ -2608,6 +2608,15 @@ def job(workflow: str, name: str) -> str:
     return re.split(r"\n  [a-z][\w-]*:\n", body, maxsplit=1)[0]
 
 
+def job_names(workflow: str) -> list[str]:
+    """The key of every job of a workflow, in order. The pattern is checked against three jobs
+    ``ci.yml`` has, so that one missing any of them fails every test reading this list, rather
+    than leaving that job out of it in silence."""
+    names = re.findall(r"^  ([a-z][\w-]*):\n", workflow.split("\njobs:\n", 1)[1], re.M)
+    assert {"test", "lint", "gui"} <= set(names), f"the jobs of the workflow are read as {names}"
+    return names
+
+
 def uncommented(text: str) -> str:
     """What a workflow or a script runs, its comments left out."""
     return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
@@ -2943,8 +2952,7 @@ class TestTheDevelopmentBuild:
     def test_it_waits_for_every_other_job_of_the_run(self) -> None:
         """The maintainer was told a development build waits for the whole of ci: a commit any
         job fails is no build to point anybody at, and a job added to ci.yml joins the wait."""
-        names = re.findall(r"^  ([a-z][\w-]*):\n", CI_WORKFLOW.split("\njobs:\n", 1)[1], re.M)
-        assert {"test", "lint", "gui"} <= set(names), f"the jobs of ci.yml are read as {names}"
+        names = job_names(CI_WORKFLOW)
         waited = re.search(r"^    needs: \[([^]\n]*)\]$", job(CI_WORKFLOW, "dev-build"), re.M)
         assert waited is not None, "dev-build no longer lists the jobs it waits for"
         assert sorted(waited.group(1).split(", ")) == sorted(
@@ -3100,6 +3108,118 @@ class TestTheDevelopmentBuild:
         assert environment is not None, "dev-publish names no environment for the publisher"
         assert environment.group(1) == "testpypi-dev"
         assert f"``{environment.group(1)}``" in PAGES["docs/developer_documentation.rst"]
+
+
+class TestTheCiRun:
+    """What part 19a asked of ci.yml (spec §4): the journeys on three legs, a timeout on every
+    job, and a manual run that repeats the journeys and runs nothing else."""
+
+    def test_every_job_has_a_timeout(self) -> None:
+        """GitHub's own default is 360 minutes: a gui job once hung 24 of them installing a
+        browser, and would have held the run, and any re-run of its failed jobs, for the rest.
+        Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
+        gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
+        1)."""
+        limits = {}
+        for name in job_names(CI_WORKFLOW):
+            limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)
+            limits[name] = None if limit is None else limit.group(1)
+        assert limits == {
+            "test": "25",
+            "lint": "10",
+            "container": "20",
+            "extension": "15",
+            "gui": "${{ inputs.repeat > 1 && 150 || 30 }}",
+            "gui-screenshots": "20",
+            "dev-build": "25",
+            "dev-publish": "10",
+        }
+
+    def test_the_journeys_run_on_three_legs(self) -> None:
+        legs = re.findall(r"- os: (\S+)\n\s+browser: (\S+)", uncommented(job(CI_WORKFLOW, "gui")))
+        assert sorted(legs) == [
+            ("ubuntu-latest", "chromium"),
+            ("windows-latest", "chromium"),
+            ("windows-latest", "msedge"),
+        ]
+
+    def test_edge_is_the_runner_s_own_and_the_install_is_bounded(self) -> None:
+        """Ten minutes (ruling P19a-6): a stalled download still fails in minutes, and a healthy
+        install on the windows chromium leg took 2 m 54 s in run 37688993981 and 3 m 36 s in run
+        37695365124, 3 m 19 s of it --with-deps installing Media Foundation - five would fail a
+        slow day's."""
+        install = step(job(CI_WORKFLOW, "gui"), "Install Playwright's Chromium")
+        assert "if: matrix.browser == 'chromium'" in install
+        assert re.findall(r"^ +timeout-minutes: (.+)$", install, re.M) == ["10"]
+        journeys = step(job(CI_WORKFLOW, "gui"), "Run the journeys")
+        assert "PLAYWRIGHT_CHANNEL: ${{ matrix.browser == 'msedge' && 'msedge' || '' }}" in journeys
+
+    def test_the_manual_run_asks_how_many_times(self) -> None:
+        dispatch = CI_WORKFLOW.split("\n  workflow_dispatch:", 1)[1].split("\npermissions:", 1)[0]
+        assert "repeat:" in dispatch
+        assert "type: number" in dispatch
+        assert "default: 1" in dispatch
+
+    def test_a_hunt_repeats_every_journey(self) -> None:
+        journeys = step(job(CI_WORKFLOW, "gui"), "Run the journeys")
+        assert "npm run e2e -- --repeat-each=${{ inputs.repeat || 1 }}" in journeys
+
+    def test_a_hunt_runs_the_journeys_alone(self) -> None:
+        """Every job but the gui legs is skipped by a hunt; the development build already
+        publishes nothing on a manual run (``test_only_this_repository_publishes_one``)."""
+        alone = {"gui", "dev-build", "dev-publish"}
+        unskipped = [
+            name
+            for name in job_names(CI_WORKFLOW)
+            if name not in alone
+            and "\n    if: ${{ !(inputs.repeat > 1) }}\n" not in job(CI_WORKFLOW, name)
+        ]
+        assert unskipped == [], f"these jobs would run during a hunt: {unskipped}"
+
+    def test_the_job_s_name_carries_its_browser(self) -> None:
+        """Two of the three legs share windows-latest, chromium and msedge: without the
+        browser in its name, a run's job list would show two legs both called
+        "gui (windows-latest)", and a reader - or a later task reading a run's jobs by name -
+        could not tell which is which (spec §4: "gui (windows-latest, msedge)")."""
+        assert "name: gui (${{ matrix.os }}, ${{ matrix.browser }})" in job(CI_WORKFLOW, "gui")
+
+    def test_the_failure_report_s_name_carries_the_browser_too(self) -> None:
+        """The same two legs, chromium and msedge on windows-latest: with the pre-existing
+        playwright-report-${{ matrix.os }} alone, both would upload their report under that
+        one name, and overwrite: true lets whichever leg finishes last silently discard the
+        other's diagnostic report."""
+        gui = job(CI_WORKFLOW, "gui")
+        assert "- if: failure()\n" in gui, "the gui job no longer uploads a report on failure"
+        upload = gui.split("- if: failure()\n", 1)[1]
+        assert "name: playwright-report-${{ matrix.os }}-${{ matrix.browser }}" in upload
+
+    def test_the_windows_chromium_leg_maps_a_drive_for_its_journey(self) -> None:
+        mapped = step(job(CI_WORKFLOW, "gui"), "Map a drive for the mapped-drive journey")
+        assert "if: runner.os == 'Windows' && matrix.browser == 'chromium'" in mapped
+        assert "New-SmbShare" in mapped and "net use M:" in mapped
+        assert "DDD_MAPPED_DRIVE=M:" in mapped
+        # A PowerShell script, and a share the journey can write to: it edits the copy it serves,
+        # and finds every file named under this network path (mapped.spec.ts), mapped for this
+        # logon alone. The directory shared is made first, in the runner's own temporary one.
+        assert "shell: pwsh" in mapped
+        assert "-FullAccess" in mapped
+        assert r"net use M: \\localhost\ddd-mapped /persistent:no" in mapped
+        assert '$shared = Join-Path $env:RUNNER_TEMP "ddd-mapped"' in mapped
+        assert "New-Item -ItemType Directory -Path $shared" in mapped
+
+    def test_the_drive_is_named_to_the_journeys_that_follow(self) -> None:
+        """Broken any of these ways, mapped.spec.ts is left out where it was to run, and the leg
+        passes without it: the drive named to the mapping step alone rather than to the steps
+        after it, or named only once the journeys have run, or under another name than the one
+        playwright.config.ts chooses the journey by."""
+        gui = job(CI_WORKFLOW, "gui")
+        mapped = step(gui, "Map a drive for the mapped-drive journey")
+        assert '"DDD_MAPPED_DRIVE=M:" | Out-File -FilePath $env:GITHUB_ENV -Append' in mapped
+        assert gui.index("- name: Map a drive for the mapped-drive journey") < gui.index(
+            "- name: Run the journeys"
+        )
+        config = (ROOT / "gui" / "playwright.config.ts").read_text(encoding="utf-8")
+        assert 'testIgnore: process.env.DDD_MAPPED_DRIVE ? [] : ["**/mapped.spec.ts"]' in config
 
 
 class TestPreCommitHook:

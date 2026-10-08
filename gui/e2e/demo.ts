@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
@@ -105,15 +105,11 @@ export async function openPanel(
  * Shape cell's own button - CurveA's and MapA's own among Controller's fourteen declarations,
  * past the box's edge at this viewport (part 17's task 9: the declarations table is virtualised).
  * Wheeled into view first, the mouse over the table, rather than left to the click's own
- * auto-scroll: React Aria's own ScrollView sets `pointer-events: none` on a long table's content
- * while it scrolls and for 300 ms after (`private/virtualizer/ScrollView.mjs`), and Playwright's
- * own actionability check hit-tests only a click's first event - so a click sent mid-scroll can
- * pass that check against a target already back under the pointer, and still open nothing,
- * `usePress` itself cancelling a press made while `pointer-events` read `none` partway through
- * (measured: `Show the values of CurveA` clicked at the box's own reported, visible position
- * still opened nothing, the page left on Controller's own heading - and the same click, the box
- * already wheeled to rest first, opened CurveA's grid every time). Never enlarges the box: this
- * is the wheel a reader's own hand would turn over it. */
+ * auto-scroll, and clicked once it takes the pointer again: a click that scrolls the box itself
+ * aims its press before the page has caught up with that scroll, and React Aria's own ScrollView
+ * then takes the pointer from the table's content under it (`scrolledIntoView`'s own doc says
+ * what was measured). Never enlarges the box: this is the wheel a reader's own hand would turn
+ * over it. */
 export async function openValues(
   page: Page,
   address: string,
@@ -138,7 +134,22 @@ export async function openValues(
  * a row a reader could not actually see (measured: true before any wheel at all, for a row the
  * overscan had already drawn past the box's own last visible one). Bounded at forty steps: a
  * target that never comes within the box's own bounds fails here, in words that say why, rather
- * than at whatever assertion happens to be next. */
+ * than at whatever assertion happens to be next.
+ *
+ * Then waits for `target` to take the pointer again, so that the click its caller sends next
+ * lands on it. React Aria's own ScrollView sets `pointer-events: none` on a long table's content,
+ * which `target` inherits, from a scroll until a timer runs out: 300 ms from the scroll that armed
+ * it, re-armed only by a scroll in its last 50 ms (`private/virtualizer/ScrollView.mjs`).
+ * Measured in Chrome on the Linux development PC, the pointer came back 310 to 313 ms after a lone
+ * scroll, and anything from 65 to 316 ms after the last of a burst of scrolls a frame apart, by
+ * where the burst ended against that timer. Settled on `scrollTop` alone, this returned inside
+ * that window every time: the wheel's one scroll event came at about 30 ms, `scrollTop` settled
+ * by 65 to 98 ms, and the window closed at about 345 ms. Every click after it found the table in
+ * the way of its hit-test three or four times, and Playwright retried it with the box scrolled
+ * to other alignments (end, center, start), each of those scrolls opening the window again; a
+ * retry aimed before the page had caught up with its own scroll lost its press to the table, and
+ * the grid never opened (CI: run 37688993981 on ubuntu chromium, run 37697917866 on windows
+ * msedge). Waited for, the click's first attempt scrolls nothing, and lands. */
 export async function scrolledIntoView(page: Page, label: string, target: Locator): Promise<void> {
   const box = page.getByRole("grid", { name: label });
   const container = await box.boundingBox();
@@ -163,6 +174,12 @@ export async function scrolledIntoView(page: Page, label: string, target: Locato
   if (!(await withinBox(page, label, target))) {
     throw new Error(`scrolling "${label}" never brought its target row within the box`);
   }
+  // Read off the target itself, which inherits what the ScrollView sets on the content above it:
+  // a reader's click lands on it once this reads anything but `none`, and not before.
+  await expect(target, `"${label}" never gave its target row the pointer back`).not.toHaveCSS(
+    "pointer-events",
+    "none",
+  );
 }
 
 /** Whether `target` sits whole inside the box of the long table labelled `label`, top to bottom:
@@ -236,12 +253,28 @@ function drifted(text: Buffer, variable: string, key: string, value: number): st
     .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
 }
 
-/** One variable's greatest limit drifted as `driftMax` drifts it, but unseen by the session's own
- * file watcher - which decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
- * `session.py`), never by reading it - while a different file to anyone who reads it fresh,
- * which is what an Apply's own staleness check does. Used where a test means the second and not
- * the first, the way `keys.spec.ts`'s "a change refused as stale..." does; `max` must be as wide
- * as the number it replaces, so that the size does not move either. Answers the file as it was.
+/** One variable's greatest limit drifted as `driftMax` drifts it, but written unseen by the
+ * session's own file watcher (`writeUnseen`), the way `keys.spec.ts`'s "a change refused as
+ * stale..." needs it; `max` must be as wide as the number it replaces, so that the size does not
+ * move either. Answers the file as it was. */
+export function driftMaxUnseen(
+  directory: string,
+  file: string,
+  variable: string,
+  max: number,
+): Buffer {
+  const before = readFileSync(join(directory, file));
+  writeUnseen(directory, file, drifted(before, variable, "max", max));
+  return before;
+}
+
+/** `text` written over a file of a copy, unseen by the session's own file watcher - which decides
+ * a file changed by `(st_mtime_ns, st_size)` alone (`stamped`, `session.py`), never by reading it
+ * - while a different file to anyone who reads it fresh, which is what an Apply's own staleness
+ * check does. Used where a test means the second and not the first: a change the watcher saw
+ * would bring a revision of its own, racing whatever the test means to read before one comes.
+ * `text` must be exactly as many bytes as the file, since a size of its own would show the
+ * watcher the write: refused here, before anything is written, rather than left to race.
  *
  * The new bytes are written beside the file, given the file's own times through python's
  * `os.utime(path, ns=(...))` - exact to the nanosecond, where `fs.utimesSync` takes a JS `number`
@@ -250,16 +283,18 @@ function drifted(text: Buffer, variable: string, key: string, value: number): st
  * by a python started for it, the write stood visible for that start-up, and a poll landing then
  * re-analysed the project and left nothing stale to refuse (CI, PR #77, on ubuntu and windows).
  * The rename is tried again while windows refuses it access, as `ddd.editing` does. */
-export function driftMaxUnseen(
-  directory: string,
-  file: string,
-  variable: string,
-  max: number,
-): Buffer {
+export function writeUnseen(directory: string, file: string, text: string): void {
   const path = join(directory, file);
-  const before = readFileSync(path);
+  const bytes = Buffer.from(text, "utf8");
+  const size = statSync(path).size;
+  if (bytes.length !== size) {
+    throw new Error(
+      `writing ${path} unseen takes ${size} bytes, not ${bytes.length}: ` +
+        `a size of their own would show the watcher the write`,
+    );
+  }
   const result = spawnSync(process.env.DDD_PYTHON ?? "python", ["-c", UNSEEN, path], {
-    input: drifted(before, variable, "max", max),
+    input: bytes,
   });
   if (result.status !== 0) {
     throw new Error(
@@ -267,10 +302,9 @@ export function driftMaxUnseen(
         `${result.stderr.toString("utf8")}`,
     );
   }
-  return before;
 }
 
-/** `driftMaxUnseen`'s python: stdin's bytes beside `argv[1]`, under its times, then renamed over
+/** `writeUnseen`'s python: stdin's bytes beside `argv[1]`, under its times, then renamed over
  * it. */
 const UNSEEN = [
   "import os, sys, time",

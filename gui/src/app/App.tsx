@@ -63,7 +63,7 @@ const BARE_ROUTES: Record<ProjectView, Route> = {
 
 export function App() {
   const queries = useQueryClient();
-  const [route, navigate] = useRoute();
+  const [route, navigate, arrived] = useRoute();
   const out = useSyncExternalStore(signedOut.subscribe, signedOut.current);
   const session = useQuery({ queryKey: ["session"], queryFn: () => getSession() });
   const opened = session.data?.project ?? null;
@@ -217,7 +217,13 @@ export function App() {
             onOpen={navigate}
           />
         ) : route.view === "files" ? (
-          <FilesPage state={state} path={route.path} onPath={openFiles} stopped={stopped} />
+          <FilesPage
+            state={state}
+            path={route.path}
+            arrived={arrived}
+            onPath={openFiles}
+            stopped={stopped}
+          />
         ) : route.view === "findings" ? (
           <FindingsPage state={state} stopped={stopped} onOpen={navigate} />
         ) : route.view === "compare" ? (

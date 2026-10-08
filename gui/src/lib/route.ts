@@ -130,3 +130,18 @@ export function hrefOf(route: Route): string {
     }
   }
 }
+
+/** Whether the page still holds the route it was loaded with (`useRoute`'s third value) once a move
+ * through its history (`popstate`) has led to `followed`, from `held` (P18b-10, ruling P19a-19).
+ *
+ * A move that leaves the route as it was keeps it. A fragment navigation fires `popstate` with the
+ * path and the query as they were, and any window holding a handle on this one can make one - a
+ * cross-origin opener setting its address to the same one with a fragment - so it is never taken
+ * for the reader's. A move to another route is the reader's own Back or Forward, between entries
+ * the page itself pushed, and turns it false, as every `navigate` does. Once false it stays false,
+ * on the route the page was loaded with too: a row pressed off and on again in the table is the
+ * reader's own. Compared as the addresses `hrefOf` writes, so one route keeps it however its
+ * address is spelled. */
+export function arrivedAfter(arrived: boolean, held: Route, followed: Route): boolean {
+  return arrived && hrefOf(followed) === hrefOf(held);
+}

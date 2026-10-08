@@ -6,6 +6,8 @@ import inspect
 import json
 import re
 import threading
+import time
+import types
 from pathlib import Path
 
 import bench_gui
@@ -14,6 +16,7 @@ from bench_gui import NAMES, main, measure
 from generate_project import UNITS, generate
 
 from conftest import landed, stopped
+from ddd import editing
 from ddd.gui.api import Api, Reply
 from ddd.gui.session import Revision, Session
 from ddd.variables import declarations_of
@@ -734,16 +737,62 @@ def test_the_command_line_writes_a_refused_figure_as_its_sentence(
     )
 
 
+def watching_bench_waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Patch ``bench_gui``'s own reference to the ``time`` module with a stand-in holding just
+    the two functions it reads from one - :func:`time.perf_counter` itself, and a ``sleep`` that
+    records into the returned list before sleeping the real, unpatched ``time.sleep(0)``. Never
+    the shared module's own attribute: another module's sleep, made through its own ``import
+    time`` - an edit's retried rename refused on Windows (``ddd.editing._patiently``) among
+    them - is then never recorded as the bench's."""
+    waited: list[float] = []
+
+    def recording(seconds: float) -> None:
+        waited.append(seconds)
+        time.sleep(0)
+
+    monkeypatch.setattr(
+        bench_gui, "time", types.SimpleNamespace(perf_counter=time.perf_counter, sleep=recording)
+    )
+    return waited
+
+
 def test_each_measure_under_load_is_asked_halfway_through_its_analysis(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Each waited for once its analysis has begun for half of what the run's own ``analysis``
     took: asked at the analysis's first moment, at 100,000 declarations the analysis was still
     reading files and the poller's next round had not begun, which is not where a reader's
-    requests meet it. The wait is the clock's (``time.sleep``), nothing the session locks."""
+    requests meet it. The wait is the clock's (``time.sleep``), nothing the session locks.
+    Patched on the bench's own reference to the module alone, so that another module's sleep - an
+    edit's retried rename refused on Windows (Ruling P19a-22) among them - is never counted as
+    the bench's own wait."""
     made = generate(tmp_path / "p", 120, "many")
-    waited: list[float] = []
-    real = bench_gui.time.sleep
-    monkeypatch.setattr(bench_gui.time, "sleep", lambda seconds: waited.append(seconds) or real(0))
+    waited = watching_bench_waits(monkeypatch)
+    taken = {each.name: each for each in measure(made.project)}
+    assert waited == [taken["analysis"].milliseconds / 2_000] * 3
+
+
+def test_a_sleep_outside_the_bench_is_not_counted_as_its_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ddd.editing._patiently`` wrapped to sleep ``REPLACE_PAUSE`` once by hand before calling
+    the real one, as Windows' refusal of an edit's rename into place makes it retry once an
+    analysis has let the file go: a sleep made outside the bench while it measures under load.
+    The three measures under load still record exactly their halves of the analysis - this sleep
+    is never one of them (Ruling P19a-22; CI run 37760106344 counted it as a fourth)."""
+    made = generate(tmp_path / "p", 120, "many")
+    waited = watching_bench_waits(monkeypatch)
+    real_patiently = editing._patiently
+    retried = False
+
+    def patiently_once_slow(act):
+        nonlocal retried
+        if not retried:
+            retried = True
+            time.sleep(editing.REPLACE_PAUSE)
+        real_patiently(act)
+
+    monkeypatch.setattr(editing, "_patiently", patiently_once_slow)
+
     taken = {each.name: each for each in measure(made.project)}
     assert waited == [taken["analysis"].milliseconds / 2_000] * 3

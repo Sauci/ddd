@@ -13,6 +13,7 @@ import {
   fileCreate,
   fileRemoval,
   previewOf,
+  removalAsked,
   rowsOf,
   selectedIndices,
 } from "./files";
@@ -499,6 +500,18 @@ describe("fileRemoval", () => {
       title: "a.ddd.json",
       request: { action: "remove", path: A },
     });
+  });
+});
+
+describe("removalAsked", () => {
+  test("asks at once for a row the reader reached within the page", () => {
+    expect(removalAsked(false, false)).toBe(true);
+  });
+  test("waits for the press on the row the page was loaded with", () => {
+    expect(removalAsked(true, false)).toBe(false);
+  });
+  test("asks once the reader presses for it", () => {
+    expect(removalAsked(true, true)).toBe(true);
   });
 });
 

@@ -249,6 +249,15 @@ export function fileRemoval(
   return { title: cellsOf(row, project).entry, request: { action: "remove", path: row.key } };
 }
 
+/** Whether the Remove panel asks its plan now (P18b-10, spec §7). Its plan re-analyses the
+ * project, running its plugins, so the row the page was loaded with - one a link from elsewhere
+ * can name, or a bookmark, a typed address or a reload - waits for the reader's press; a row the
+ * reader reached within the page, by the table, a link of its own, or a move back or forward from
+ * another route (`arrivedAfter`, `lib/route.ts`), asks at once. */
+export function removalAsked(arrived: boolean, pressed: boolean): boolean {
+  return !arrived || pressed;
+}
+
 /** What a preview of one of the three actions draws beside the plan's own lines - decided here,
  * so that `FileActionsView` only draws it. */
 export interface FilePreview {

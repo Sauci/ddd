@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { FilesPlanReply } from "../api/types";
 import { asksComponentName, type FileRemoval, previewOf } from "../lib/files";
 import { shownChanges } from "../lib/units";
@@ -208,6 +209,8 @@ export interface RemoveFileViewProps {
   removal: FileRemoval;
   /** `FilesReply.project`: what the file a pattern keeps in is named relative to. */
   project: string;
+  /** The press that asks the plan, present while it waits (`removalAsked`, `lib/files.ts`). */
+  waiting?: (() => void) | undefined;
   offer: FileOffer;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
@@ -218,29 +221,64 @@ export interface RemoveFileViewProps {
 
 /**
  * A row's own panel (design §3's Remove): the plan the server makes of taking its entry out of
- * the includes, asked for as soon as the row is selected, or the server's refusal in its own
- * words - a file whose declarations something uses, naming the first error it would leave; a
- * file only a pattern brings in, naming the pattern. The page never decides on its own whether
- * Remove is possible: the button is drawn under a plan the server made, and nowhere else.
+ * the includes, asked for as soon as the row is selected within the page, or the server's refusal
+ * in its own words - a file whose declarations something uses, naming the first error it would
+ * leave; a file only a pattern brings in, naming the pattern. The page never decides on its own
+ * whether Remove is possible: the button is drawn under a plan the server made, and nowhere else.
+ *
+ * The row the page was loaded with waits instead (`waiting`, P18b-10): its plan re-analyses the
+ * project, running its plugins, so the panel waits - saying only that what removing the row would
+ * change is planned when the reader asks - and offers the press that asks it. The press leaves the
+ * keyboard's focus on the region it was in (ruling P19a-20).
  *
  * An allowed removal carries, where there is one, the server's sentence saying it was not judged,
  * and the pattern that keeps the file in the project all the same - of the three values only a
  * files plan carries, `kept_by` is the one the page puts into words of its own (`previewOf`).
  */
 export function RemoveFileView(props: RemoveFileViewProps) {
+  // Where the press that asks the plan puts the keyboard's focus: the button pressed goes as the
+  // plan is asked, and focus left on it would fall to the page's body, a keyboard's place lost.
+  // Moved by hand, as ComboBox's own `autoFocus` moves it.
+  const region = useRef<HTMLElement>(null);
+  const waiting = props.waiting;
   return (
     <Panel title={props.removal.title} onClose={props.onClose}>
-      <section className="panel-offer" aria-label="Remove from the includes">
-        <Preview
-          offer={props.offer}
-          project={props.project}
-          removing={props.removal.request.path}
-          variant="secondary"
-          changesShown={props.changesShown}
-          onChangesShown={props.onChangesShown}
-          onApply={props.onApply}
-          busy={props.busy}
-        />
+      {/* Focusable by the page alone (`tabIndex` -1), never a stop of Tab's own: kept so once the
+          plan is drawn, since focus on an element that stops being focusable falls to the body.
+          `file-remove` is its focus ring (ui.css), and names this region alone. */}
+      <section
+        ref={region}
+        tabIndex={-1}
+        className="panel-offer file-remove"
+        aria-label="Remove from the includes"
+      >
+        {waiting !== undefined ? (
+          <>
+            <p className="quiet">
+              Opened from an address: what removing it would change is planned when you ask.
+            </p>
+            <Button
+              variant="secondary"
+              onPress={() => {
+                region.current?.focus();
+                waiting();
+              }}
+            >
+              Plan its removal
+            </Button>
+          </>
+        ) : (
+          <Preview
+            offer={props.offer}
+            project={props.project}
+            removing={props.removal.request.path}
+            variant="secondary"
+            changesShown={props.changesShown}
+            onChangesShown={props.onChangesShown}
+            onApply={props.onApply}
+            busy={props.busy}
+          />
+        )}
       </section>
     </Panel>
   );

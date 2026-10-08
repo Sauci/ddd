@@ -35,6 +35,15 @@ function isTokenReply(body: unknown): body is { token: string } {
  * anywhere: the tab's history entry is replaced, never pushed, so that the secret stays in no
  * history. The secret is posted to /open, and the token answered is kept.
  *
+ * A POST that got no answer at all - the fetch itself rejecting, as it did when Windows refused
+ * Chromium a socket (net::ERR_NO_BUFFER_SPACE, WSAENOBUFS, in CI run 37710529902) - is sent once
+ * more, at once: without it, the page went on with no token and told the reader to open the very
+ * address they had just opened. An answered POST never is. The second try costs this much: a
+ * launch code whose first POST reached the server, and only its answer was lost, is spent
+ * already, so the second is refused 403 and the terminal prints its warning of a code presented
+ * again - a false alarm, the reader signed out as they would have been without the second try.
+ * The token, pasted, is no single-use secret, and is answered again.
+ *
  * Any other answer, a refusal or the connection cap's 503 among them, leaves a token already
  * kept as it was. Cleared, it would let any page sign the reader out of every tab, by sending
  * this one to /open with a wrong code; a stale token is cleared by the first 401 it meets
@@ -50,16 +59,20 @@ export async function signInFrom(
   const secret = secretOf(address.pathname, address.search);
   history.replaceState(null, "", "/");
   if (secret === null) return;
-  let response: Response;
-  try {
-    response = await fetchImpl("/open", {
+  const post = () =>
+    fetchImpl("/open", {
       method: "POST",
       credentials: "omit",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(secret),
     });
+  let response: Response;
+  try {
+    // Once more only where the first got no answer at all: `catch` sees a rejected fetch, never
+    // an HTTP answer, whatever its status.
+    response = await post().catch(post);
   } catch {
-    // Not answering: the page's first ask says so.
+    // Not answering, twice: the page's first ask says so.
     return;
   }
   const body: unknown = await response.json().catch(() => null);

@@ -137,16 +137,19 @@ export async function openValues(
  * than at whatever assertion happens to be next.
  *
  * Then waits for `target` to take the pointer again, so that the click its caller sends next
- * lands on it. React Aria's own ScrollView sets `pointer-events: none` on a long table's content
- * from a scroll until 300 ms after the last one (`private/virtualizer/ScrollView.mjs`), and
- * `target` inherits it. Settled on `scrollTop` alone, this returned inside that window every
- * time: in Chrome on the Linux development PC, the wheel's one scroll event came at about 30 ms,
- * `scrollTop` settled by 65 to 98 ms, and the window closed at about 345 ms. Every click after it
- * found the table in the way of its hit-test three or four times, and Playwright retried it with
- * the box scrolled to other alignments (end, center, start), each of those scrolls opening the
- * window again; a retry aimed before the page had caught up with its own scroll lost its press to
- * the table, and the grid never opened (CI: run 37688993981 on ubuntu chromium, run 37697917866
- * on windows msedge). Waited for, the click's first attempt scrolls nothing, and lands. */
+ * lands on it. React Aria's own ScrollView sets `pointer-events: none` on a long table's content,
+ * which `target` inherits, from a scroll until a timer runs out: 300 ms from the scroll that armed
+ * it, re-armed only by a scroll in its last 50 ms (`private/virtualizer/ScrollView.mjs`).
+ * Measured in Chrome on the Linux development PC, the pointer came back 310 ms after a lone
+ * scroll, and anything from 65 to 316 ms after the last of a burst of scrolls a frame apart, by
+ * where the burst ended against that timer. Settled on `scrollTop` alone, this returned inside
+ * that window every time: the wheel's one scroll event came at about 30 ms, `scrollTop` settled
+ * by 65 to 98 ms, and the window closed at about 345 ms. Every click after it found the table in
+ * the way of its hit-test three or four times, and Playwright retried it with the box scrolled
+ * to other alignments (end, center, start), each of those scrolls opening the window again; a
+ * retry aimed before the page had caught up with its own scroll lost its press to the table, and
+ * the grid never opened (CI: run 37688993981 on ubuntu chromium, run 37697917866 on windows
+ * msedge). Waited for, the click's first attempt scrolls nothing, and lands. */
 export async function scrolledIntoView(page: Page, label: string, target: Locator): Promise<void> {
   const box = page.getByRole("grid", { name: label });
   const container = await box.boundingBox();

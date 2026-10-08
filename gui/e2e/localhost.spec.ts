@@ -16,9 +16,9 @@ test("localhost reaches ddd gui, and nothing else can listen on [::1] at its por
 }) => {
   const address = new URL(gui.address);
   const port = Number(address.port);
-  // Held by ddd gui, never listened on (part 19a), so the bind is refused: EADDRINUSE on the
-  // linux development PC, as measured. Which of the two windows gives was not recorded, so
-  // either is taken.
+  // ddd gui holds [::1] on linux, and the wildcard [::] in its place on windows, listening on
+  // neither (part 19a), so the bind must be refused: EADDRINUSE on the linux development PC, as
+  // measured. Which of the two windows gives was not recorded, so either is taken.
   expect(["EADDRINUSE", "EACCES"]).toContain(await listenRefusal(port, "::1"));
 
   // Part 18b's review saw Chrome 153 send localhost to a program listening on [::1], three

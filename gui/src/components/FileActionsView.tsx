@@ -244,11 +244,12 @@ export function RemoveFileView(props: RemoveFileViewProps) {
   return (
     <Panel title={props.removal.title} onClose={props.onClose}>
       {/* Focusable by the page alone (`tabIndex` -1), never a stop of Tab's own: kept so once the
-          plan is drawn, since focus on an element that stops being focusable falls to the body. */}
+          plan is drawn, since focus on an element that stops being focusable falls to the body.
+          `file-remove` is its focus ring (ui.css), and names this region alone. */}
       <section
         ref={region}
         tabIndex={-1}
-        className="panel-offer"
+        className="panel-offer file-remove"
         aria-label="Remove from the includes"
       >
         {waiting !== undefined ? (

@@ -248,6 +248,11 @@ test("the row the page was opened on waits for the reader before its removal is 
   await ask.press("Enter");
   await expect(unitsRemoving.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
   await expect(unitsRemoving).toBeFocused();
+  // Ringed as app.css rings a focused button (ruling P19a-21): tokens.css's --accent, 2px off.
+  await expect(unitsRemoving).toHaveCSS("outline-style", "solid");
+  await expect(unitsRemoving).toHaveCSS("outline-width", "2px");
+  await expect(unitsRemoving).toHaveCSS("outline-color", "rgb(14, 107, 124)");
+  await expect(unitsRemoving).toHaveCSS("outline-offset", "2px");
   expect(planned).toHaveLength(1);
 
   // A row the reader selects in the table is planned at once, as before.

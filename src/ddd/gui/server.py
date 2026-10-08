@@ -121,6 +121,11 @@ on every platform; -5 is its value there, ``~SO_REUSEADDR``. Used only where :da
 _IPV6_HELD: Final = (
     "another program holds [::1]:{port}, where a browser opening localhost:{port} would reach it"
 )
+"""What :class:`IPv6HeldError` says: ``[::1]`` refused as a port another socket holds."""
+
+_IPV6_UNHELD: Final = "cannot hold [::1]:{port} beside it: {error}"
+"""What a hold that failed for any other reason says, the system's own words after it
+(P19a-12): no proof of another program, and no server without its hold either."""
 
 CONTENT_TYPES: Final = {
     ".css": "text/css; charset=utf-8",
@@ -243,21 +248,28 @@ class IPv6HeldError(OSError):
 def _held_beside(host: str, port: int) -> socket.socket | None:
     """``[::1]`` bound on ``port`` beside a loopback ``host``, and never listened on (spec §6.2):
     no other program can then take ``localhost`` there, and a browser trying ``[::1]`` first is
-    refused, and falls back to ``127.0.0.1``. ``None`` where nothing need or can be held - a
-    host beyond loopback, or a computer with no IPv6 loopback. Raises :class:`IPv6HeldError`
-    where another program holds it.
+    refused, and falls back to ``127.0.0.1``.
+
+    ``None`` where nothing need or can be held: a host beyond loopback, or where the system says
+    there is no IPv6 loopback - ``EAFNOSUPPORT`` making the socket, ``EADDRNOTAVAIL`` binding
+    ``::1``. Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
+    ``EACCES``, the errno CPython gives Windows' ``WSAEACCES``. Any other error is proof of
+    neither, and raises an ``OSError`` naming ``[::1]``, the system's own words after it
+    (P19a-12): a server that cannot make its hold does not start without it. Each refusal's
+    message is the same on every system; the error the system raised is its cause.
 
     ``IPV6_V6ONLY``, so that it never touches IPv4. Never ``SO_REUSEADDR``: Linux lets two
     sockets share a port nobody listens on when both set it, and the other could then listen
     there. ``SO_EXCLUSIVEADDRUSE`` on Windows (:data:`_EXCLUSIVE`), where a socket bound without
-    it can be shared by any that sets ``SO_REUSEADDR``. The refusal's message is the sentence
-    alone, the same on every system; the error the bind raised is its cause."""
+    it can be shared by any that sets ``SO_REUSEADDR``."""
     if not is_loopback(host):
         return None
     try:
         held = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    except OSError:
-        return None
+    except OSError as error:
+        if error.errno == errno.EAFNOSUPPORT:
+            return None
+        raise OSError(_IPV6_UNHELD.format(port=port, error=error)) from error
     try:
         held.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         if _EXCLUSIVE:
@@ -267,7 +279,9 @@ def _held_beside(host: str, port: int) -> socket.socket | None:
         held.close()
         if error.errno == errno.EADDRNOTAVAIL:
             return None
-        raise IPv6HeldError(_IPV6_HELD.format(port=port)) from error
+        if error.errno in (errno.EADDRINUSE, errno.EACCES):
+            raise IPv6HeldError(_IPV6_HELD.format(port=port)) from error
+        raise OSError(_IPV6_UNHELD.format(port=port, error=error)) from error
     return held
 
 
@@ -298,7 +312,9 @@ class GuiServer(ThreadingHTTPServer):
         super().__init__((host, port), _Handler)
         try:
             self.held = _held_beside(host, self.port)
-        except IPv6HeldError:
+        except BaseException:
+            # Whatever the hold raises, as TCPServer.__init__ does around its own bind: the
+            # IPv4 socket is closed here, never left to the collector.
             self.server_close()
             raise
         self.api = api
@@ -321,10 +337,13 @@ class GuiServer(ThreadingHTTPServer):
         super().server_bind()
 
     def server_close(self) -> None:
-        """Close the socket served on, and the ``[::1]`` held beside it."""
-        super().server_close()
-        if self.held is not None:
-            self.held.close()
+        """Close the socket served on, and the ``[::1]`` held beside it - that one even where
+        closing the first raises."""
+        try:
+            super().server_close()
+        finally:
+            if self.held is not None:
+                self.held.close()
 
     @property
     def port(self) -> int:

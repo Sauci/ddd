@@ -3094,19 +3094,33 @@ class TestIPv6Held:
         finally:
             server.server_close()
 
+    @staticmethod
+    def binds(address: str, reusing: bool, port: int) -> bool:
+        """Whether a stranger's ``IPV6_V6ONLY`` socket binds ``address`` at ``port``, with
+        ``SO_REUSEADDR`` set or not."""
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as stranger:
+            stranger.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            if reusing:
+                stranger.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                stranger.bind((address, port))
+            except OSError:
+                return False
+            return True
+
     def test_ipv6_is_held_beside_the_port(self, started) -> None:
         """A stranger cannot bind ``[::1]`` there, not even with ``SO_REUSEADDR`` - which Linux
         honours for a port nobody listens on only when both sockets set it, and which Windows
-        honours over any socket not bound with ``SO_EXCLUSIVEADDRUSE`` - and a connection there
-        is refused: bound, and never listened on. The hold reads ``IPV6_V6ONLY``, but Linux turns
-        that on itself for any socket bound to ``::1`` (a fresh socket there reads 0, and 1 once
-        bound), so the option's own call is pinned by the tests that note each option set."""
-        for reusing in (False, True):
-            with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as stranger:
-                if reusing:
-                    stranger.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                with pytest.raises(OSError):
-                    stranger.bind(("::1", started.port))
+        honours over any socket not bound with ``SO_EXCLUSIVEADDRUSE`` - nor ``[::]``, whose
+        listener would take the connections the hold never accepts: Microsoft documents that
+        an exclusive bind of a specific address shuts a wildcard bind out, where Windows'
+        default lets the two share the port. A connection there is refused: bound, and never
+        listened on. The hold reads ``IPV6_V6ONLY``, but Linux turns that on itself for any
+        socket bound to ``::1`` (a fresh socket there reads 0, and 1 once bound), so the
+        option's own call is pinned by the tests that note each option set."""
+        strangers = [(address, reusing) for address in ("::1", "::") for reusing in (False, True)]
+        let_in = [stranger for stranger in strangers if self.binds(*stranger, started.port)]
+        assert let_in == []
         # Refused at once on Linux, and after about two seconds of retries on Windows.
         with pytest.raises(ConnectionRefusedError):
             socket.create_connection(("::1", started.port), timeout=10).close()
@@ -3261,19 +3275,131 @@ class TestIPv6Held:
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
         assert captured.err == ""
 
-    def test_a_socket_refused_its_bind_is_closed(self, monkeypatch) -> None:
-        """Through a socket whose bind is refused as a held port's is."""
+    @pytest.mark.parametrize(
+        ("refusal", "held"),
+        [(errno.EADDRINUSE, True), (errno.EACCES, True), (errno.EPERM, False)],
+        ids=["in-use", "access", "not-permitted"],
+    )
+    def test_a_socket_refused_its_bind_is_closed(self, monkeypatch, refusal, held) -> None:
+        """Through a socket whose bind is refused. ``EADDRINUSE`` and ``EACCES`` - the errno
+        CPython gives Windows' ``WSAEACCES`` - are a port another socket holds; any other refusal
+        says nothing of a program, and is raised as an ``OSError`` naming ``[::1]`` (P19a-12).
+        Either way the socket is closed, and the system's own refusal is the cause."""
         made: list[socket.socket] = []
 
         class Refused(socket.socket):
             def bind(self, address: Any) -> None:
                 made.append(self)
-                raise OSError(errno.EADDRINUSE, "Address already in use")
+                raise OSError(refusal, os.strerror(refusal))
 
         monkeypatch.setattr(socket, "socket", Refused)
-        with pytest.raises(module.IPv6HeldError):
+        with pytest.raises(OSError) as raised:
             module._held_beside("127.0.0.1", 8123)
+        assert isinstance(raised.value, module.IPv6HeldError) is held
+        assert isinstance(raised.value.__cause__, OSError)
+        assert raised.value.__cause__.errno == refusal
         assert [one.fileno() for one in made] == [-1]
+
+    def test_a_hold_that_cannot_be_made_refuses_the_start(self, pages, monkeypatch, capsys) -> None:
+        """P19a-12: nothing is held in silence only where the system says there is no IPv6
+        loopback. Any other error making the hold's socket - here too many files open - refuses
+        the start in the system's own words, naming ``[::1]``, and is not retried on ``--port 0``,
+        where another pick would meet it again. The IPv4 port is let go before the refusal is
+        printed, while the error still holds the server it was raised in."""
+        real_socket = socket.socket
+        made: list[int] = []
+        bound: list[int] = []
+
+        class TooManyFiles(socket.socket):
+            def __init__(self, family: int = -1, *rest: Any, **keywords: Any) -> None:
+                made.append(family)
+                if family == socket.AF_INET6:
+                    raise OSError(errno.EMFILE, "Too many open files")
+                super().__init__(family, *rest, **keywords)
+
+            def bind(self, address: Any) -> None:
+                super().bind(address)
+                bound.append(self.getsockname()[1])
+
+        refused = module._refused
+
+        def bound_again_first(value: str, port: int, error: Exception) -> int:
+            with real_socket() as again:
+                again.bind(("127.0.0.1", bound[-1]))
+            return refused(value, port, error)
+
+        monkeypatch.setattr(socket, "socket", TooManyFiles)
+        monkeypatch.setattr(module, "_refused", bound_again_first)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        assert bounded_run(None, (), 0, open_browser=False, static=pages) == EXIT_USAGE
+        assert made == [socket.AF_INET, socket.AF_INET6]
+        (port,) = bound
+        assert capsys.readouterr().err == (
+            f"ddd: cannot serve 127.0.0.1 on port 0: cannot hold [::1]:{port} beside it: "
+            "[Errno 24] Too many open files\n"
+        )
+
+    def test_a_socket_that_cannot_be_made_is_raised_as_the_cause(self, monkeypatch) -> None:
+        """The refusal ``run`` prints for a hold that cannot be made keeps the system's error as
+        its cause, and is no held port, which ``--port 0`` would pick again for."""
+
+        class TooManyFiles(socket.socket):
+            def __init__(self, family: int = -1, *rest: Any, **keywords: Any) -> None:
+                if family == socket.AF_INET6:
+                    raise OSError(errno.EMFILE, "Too many open files")
+                super().__init__(family, *rest, **keywords)
+
+        monkeypatch.setattr(socket, "socket", TooManyFiles)
+        with pytest.raises(OSError) as raised:
+            module._held_beside("127.0.0.1", 8123)
+        assert not isinstance(raised.value, module.IPv6HeldError)
+        assert isinstance(raised.value.__cause__, OSError)
+        assert raised.value.__cause__.errno == errno.EMFILE
+
+    def test_a_hold_refused_for_another_reason_refuses_the_start(
+        self, pages, monkeypatch, capsys
+    ) -> None:
+        """P19a-12: only a port another socket holds is held. A bind of ``::1`` refused for any
+        other reason - here ``EPERM``, as a security module or a cgroup's bind hook answers - is
+        no proof of another program: it refuses the start in the system's own words, naming
+        ``[::1]``, and is not retried on ``--port 0``."""
+        asked: list[int] = []
+
+        class NotPermitted(socket.socket):
+            def bind(self, address: Any) -> None:
+                if self.family == socket.AF_INET6:
+                    asked.append(address[1])
+                    raise OSError(errno.EPERM, "Operation not permitted")
+                super().bind(address)
+
+        monkeypatch.setattr(socket, "socket", NotPermitted)
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        assert bounded_run(None, (), 0, open_browser=False, static=pages) == EXIT_USAGE
+        (port,) = asked
+        assert capsys.readouterr().err == (
+            f"ddd: cannot serve 127.0.0.1 on port 0: cannot hold [::1]:{port} beside it: "
+            "[Errno 1] Operation not permitted\n"
+        )
+
+    def test_the_hold_is_closed_though_the_ipv4_socket_will_not_close(
+        self, tmp_path, pages
+    ) -> None:
+        """Closed with the server on every path, a failing close of the IPv4 socket included."""
+        server = GuiServer(Api(Session(tmp_path)), pages)
+        served_on = server.socket
+
+        class Unclosable:
+            def close(self) -> None:
+                raise OSError(errno.EBADF, "Bad file descriptor")
+
+        server.socket = Unclosable()
+        try:
+            with pytest.raises(OSError, match="Bad file descriptor"):
+                server.server_close()
+            assert server.held is not None
+            assert server.held.fileno() == -1
+        finally:
+            served_on.close()
 
     def test_beyond_loopback_holds_nothing(self) -> None:
         """``--host`` beyond loopback, as in a container: the browser is on the host, and the

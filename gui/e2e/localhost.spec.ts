@@ -16,12 +16,15 @@ test("localhost reaches ddd gui, and nothing else can listen on [::1] at its por
 }) => {
   const address = new URL(gui.address);
   const port = Number(address.port);
-  // Held by ddd gui, never listened on (part 19a): the bind is refused - EADDRINUSE, or
-  // EACCES where windows binds the port exclusively.
+  // Held by ddd gui, never listened on (part 19a), so the bind is refused: EADDRINUSE on the
+  // linux development PC, as measured. Which of the two windows gives was not recorded, so
+  // either is taken.
   expect(["EADDRINUSE", "EACCES"]).toContain(await listenRefusal(port, "::1"));
 
-  // The browser tries [::1] first, is refused, and falls back to 127.0.0.1, where ddd gui
-  // answers - on windows only after its own retries, which is what this journey's legs time.
+  // Part 18b's review saw Chrome 153 send localhost to a program listening on [::1], three
+  // times of three. Held, [::1] refuses the connection, and ddd gui answers through 127.0.0.1:
+  // on the windows legs of run 37734013306 in 1.1 s and 1.2 s, about what loopback.spec.ts
+  // took beside it.
   const token = address.searchParams.get("token");
   await page.goto(`http://localhost:${port}/open?token=${token}`);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();

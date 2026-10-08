@@ -34,6 +34,7 @@ See ``docs/gui_security.rst`` for the threat model this is reviewed against.
 from __future__ import annotations
 
 import contextlib
+import errno
 import hmac
 import ipaddress
 import json
@@ -105,6 +106,22 @@ will not take it, before giving that connection up: every other connection waits
 thread meanwhile. A connection just accepted takes the refusal's few hundred bytes at once, so
 in practice it never waits at all."""
 
+_EXCLUSIVE: Final = sys.platform == "win32"
+"""Whether a socket is bound with ``SO_EXCLUSIVEADDRUSE``: on Windows, where one bound without it
+can be shared by another that sets ``SO_REUSEADDR``. A flag, so that the suite takes both
+branches on every platform (``test_nothing_in_the_suite_skips``)."""
+
+PORT_TRIES: Final = 5
+"""How many ports ``--port 0`` is tried on before ``[::1]`` held on each of them is a refusal."""
+
+_SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
+"""Windows' own option, which typeshed declares on win32 alone, so read rather than named for mypy
+on every platform; -5 is its value there, ``~SO_REUSEADDR``. Used only where :data:`_EXCLUSIVE`."""
+
+_IPV6_HELD: Final = (
+    "another program holds [::1]:{port}, where a browser opening localhost:{port} would reach it"
+)
+
 CONTENT_TYPES: Final = {
     ".css": "text/css; charset=utf-8",
     ".html": "text/html; charset=utf-8",
@@ -143,8 +160,9 @@ def is_loopback(address: str) -> bool:
 
     ``run`` below reads this, once, to decide what answering beyond the default,
     ``127.0.0.1``, changes: whether a browser is opened, and what the one warning it prints
-    says. It never sees a name: ``run`` resolves ``--host`` with ``socket.getaddrinfo`` before
-    calling this, so a hosts file that redefines ``localhost`` is judged by what it resolves
+    says; :func:`_held_beside` reads it for whether ``[::1]`` is held beside the port. Neither
+    sees a name: ``run`` resolves ``--host`` with ``socket.getaddrinfo`` before either asks
+    this, so a hosts file that redefines ``localhost`` is judged by what it resolves
     to and not by its spelling, and ``LOCALHOST`` or ``localhost.`` are judged the same way as
     ``localhost`` rather than by a spelling this function would have to special-case. Anything
     ``ipaddress`` cannot parse - a name, such as ``localhost`` itself, reaching this function
@@ -218,6 +236,41 @@ def _linger(connection: socket.socket) -> None:
             drained += len(chunk)
 
 
+class IPv6HeldError(OSError):
+    """``[::1]`` held by another program on the port ``ddd gui`` was to serve on."""
+
+
+def _held_beside(host: str, port: int) -> socket.socket | None:
+    """``[::1]`` bound on ``port`` beside a loopback ``host``, and never listened on (spec §6.2):
+    no other program can then take ``localhost`` there, and a browser trying ``[::1]`` first is
+    refused, and falls back to ``127.0.0.1``. ``None`` where nothing need or can be held - a
+    host beyond loopback, or a computer with no IPv6 loopback. Raises :class:`IPv6HeldError`
+    where another program holds it.
+
+    ``IPV6_V6ONLY``, so that it never touches IPv4. Never ``SO_REUSEADDR``: Linux lets two
+    sockets share a port nobody listens on when both set it, and the other could then listen
+    there. ``SO_EXCLUSIVEADDRUSE`` on Windows (:data:`_EXCLUSIVE`), where a socket bound without
+    it can be shared by any that sets ``SO_REUSEADDR``. The refusal's message is the sentence
+    alone, the same on every system; the error the bind raised is its cause."""
+    if not is_loopback(host):
+        return None
+    try:
+        held = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    except OSError:
+        return None
+    try:
+        held.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        if _EXCLUSIVE:
+            held.setsockopt(socket.SOL_SOCKET, _SO_EXCLUSIVEADDRUSE, 1)
+        held.bind(("::1", port))
+    except OSError as error:
+        held.close()
+        if error.errno == errno.EADDRNOTAVAIL:
+            return None
+        raise IPv6HeldError(_IPV6_HELD.format(port=port)) from error
+    return held
+
+
 class GuiServer(ThreadingHTTPServer):
     """The server one run of ``ddd gui`` answers on."""
 
@@ -226,6 +279,11 @@ class GuiServer(ThreadingHTTPServer):
     allow_reuse_address = sys.platform != "win32"
     """Not on Windows, where the socket option lets a second server bind a port the first still
     listens on, so a taken ``--port`` would be shared instead of refused."""
+
+    held: socket.socket | None = None
+    """``[::1]`` bound on this server's port and never listened on (:func:`_held_beside`), closed
+    with the server; ``None`` where nothing is held - beyond loopback, or with no IPv6 loopback,
+    and before the hold is made."""
 
     def __init__(
         self,
@@ -238,6 +296,11 @@ class GuiServer(ThreadingHTTPServer):
         connections: int = MAX_CONNECTIONS,
     ) -> None:
         super().__init__((host, port), _Handler)
+        try:
+            self.held = _held_beside(host, self.port)
+        except IPv6HeldError:
+            self.server_close()
+            raise
         self.api = api
         self.static = static.resolve()
         self.token = secrets.token_urlsafe(TOKEN_BYTES)
@@ -248,6 +311,20 @@ class GuiServer(ThreadingHTTPServer):
         self.slots = threading.BoundedSemaphore(connections)
         """One for each connection being answered. Bounded: a slot given back when every slot
         is already free raises, rather than raising the cap."""
+
+    def server_bind(self) -> None:
+        """Bind as ``http.server`` does - exclusively on Windows (:data:`_EXCLUSIVE`), so that no
+        program can share the port by setting ``SO_REUSEADDR``. Set before the bind, as Windows
+        requires."""
+        if _EXCLUSIVE:
+            self.socket.setsockopt(socket.SOL_SOCKET, _SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+    def server_close(self) -> None:
+        """Close the socket served on, and the ``[::1]`` held beside it."""
+        super().server_close()
+        if self.held is not None:
+            self.held.close()
 
     @property
     def port(self) -> int:
@@ -811,10 +888,21 @@ def run(
             except ValueError as error:
                 print(f"ddd: {error}", file=sys.stderr)
                 return EXIT_USAGE
-        try:
-            server = GuiServer(Api(session, project), pages, port, address)
-        except OSError as error:
-            return _refused(address, port, error)
+        # A loop that never ends but by its break or a return: one over range(PORT_TRIES) would
+        # end its last pass at one of them too, and leave its exhaustion a branch nothing takes.
+        attempt = 1
+        while True:
+            try:
+                server = GuiServer(Api(session, project), pages, port, address)
+                break
+            except IPv6HeldError as error:
+                # --port 0 picked a port whose [::1] another program holds: another pick is
+                # another port. A port given is that port, or nothing.
+                if port != 0 or attempt == PORT_TRIES:
+                    return _refused(address, port, error)
+                attempt += 1
+            except OSError as error:
+                return _refused(address, port, error)
         print(f"ddd gui (preview) serving {server.address}", flush=True)
         if beyond_loopback:
             # No browser to open in a container, and nothing left to protect this with either:

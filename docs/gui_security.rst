@@ -105,7 +105,7 @@ What it defends against
   that ends them counted - answers ``431``; ninety-nine is the most ``ddd gui`` ever
   reads.
 
-* **The address printed, opened as ``localhost``.** When it listens on loopback, as it
+* **The address printed, opened as** ``localhost``. When it listens on loopback, as it
   does by default, ``ddd gui`` binds an IPv6 address beside its IPv4 socket, on the very
   same port, and never listens on it: ``[::1]`` on Linux and macOS, or, on Windows, the
   wildcard ``[::]`` alone in its place - bound there exclusively

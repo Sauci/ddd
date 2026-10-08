@@ -182,24 +182,45 @@ writes on Windows, and so the bound on every system. Two of these refusals name 
 to blame: <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/file</span></code>’s, of a file nested more than 99 levels deep, and
 <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/dictionary</span></code>’s, of the file stating an extension block nested more than 96
 levels deep, or 98 among the project’s own settings. Any other answer too deep is refused
-without naming one. A <code class="docutils literal notranslate"><span class="pre">POST</span></code> whose <code class="docutils literal notranslate"><span class="pre">Content-Length</span></code> is no length is refused <code class="docutils literal notranslate"><span class="pre">400</span></code>,
-and one promising more than 1,048,576 bytes <code class="docutils literal notranslate"><span class="pre">413</span></code>, however many digits it is written
-with, short of a header line too long to be read at all (below). <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code>, which
-anyone who reaches the port may send without the token, takes at most 1,024 bytes - a
-sign-in body is a few dozen - and a longer one is refused <code class="docutils literal notranslate"><span class="pre">413</span></code> before it is parsed, so
-no json parser ever runs on a body large or deep enough to trouble one. A page’s own path
-is never resolved: it is read as plain names under the compiled pages, and a name holding a
-NUL character, a backslash or a colon, or a dot segment, names no file and is never
-looked up, so neither a network path nor a <code class="docutils literal notranslate"><span class="pre">\\.\</span></code> device path can be spelled in one. A
-name Windows keeps for a device names no file either, on any system, and is never looked
-up: <code class="docutils literal notranslate"><span class="pre">CON</span></code>, <code class="docutils literal notranslate"><span class="pre">PRN</span></code>, <code class="docutils literal notranslate"><span class="pre">AUX</span></code> or <code class="docutils literal notranslate"><span class="pre">NUL</span></code>, or <code class="docutils literal notranslate"><span class="pre">COM</span></code> or <code class="docutils literal notranslate"><span class="pre">LPT</span></code> followed by a digit from
-<code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">9</span></code> or a superscript <code class="docutils literal notranslate"><span class="pre">¹</span></code>, <code class="docutils literal notranslate"><span class="pre">²</span></code> or <code class="docutils literal notranslate"><span class="pre">³</span></code>, in any case and whatever extension
-it carries, or a colon and what follows it. So are <code class="docutils literal notranslate"><span class="pre">CONIN$</span></code> and <code class="docutils literal notranslate"><span class="pre">CONOUT$</span></code>, the console’s own input and output. A path
-naming no file is answered the page itself, as any other unknown page address is. The
-standard library itself refuses three shapes before this server sees them at all: a
-request line over 65,536 bytes answers <code class="docutils literal notranslate"><span class="pre">414</span></code>, and a header line over 65,536 bytes, or a
-request carrying 100 header lines or more - the blank line that ends them counted -
-answers <code class="docutils literal notranslate"><span class="pre">431</span></code>; ninety-nine is the most <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> ever reads.</p></li>
+without naming one. A <code class="docutils literal notranslate"><span class="pre">POST</span></code> whose <code class="docutils literal notranslate"><span class="pre">Content-Length</span></code> is no length is refused
+<code class="docutils literal notranslate"><span class="pre">400</span></code>, and one promising more than 1,048,576 bytes <code class="docutils literal notranslate"><span class="pre">413</span></code>, however many digits it
+is written with, short of a header line too long to be read at all (below). Such a
+refusal closes its connection behind the answer, reading and throwing away what still
+arrives until the client closes, two seconds pass, or 1,048,576 bytes are read,
+whichever is first: closing with bytes still unread resets a connection on Windows,
+which can erase the refusal before the browser reads it. That close follows an answer
+already given, unlike the thirty seconds above, which follows none at all.
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code>, which anyone who reaches the port may send without the token, takes at
+most 1,024 bytes - a sign-in body is a few dozen - and a longer one is refused <code class="docutils literal notranslate"><span class="pre">413</span></code>
+before it is parsed, so no json parser ever runs on a body large or deep enough to
+trouble one. A page’s own path is never resolved: it is read as plain names under the
+compiled pages, and a name holding a NUL character, a backslash or a colon, or a dot
+segment, names no file and is never looked up, so neither a network path nor a
+<code class="docutils literal notranslate"><span class="pre">\\.\</span></code> device path can be spelled in one. A name Windows keeps for a device names no
+file either, on any system, and is never looked up: <code class="docutils literal notranslate"><span class="pre">CON</span></code>, <code class="docutils literal notranslate"><span class="pre">PRN</span></code>, <code class="docutils literal notranslate"><span class="pre">AUX</span></code> or
+<code class="docutils literal notranslate"><span class="pre">NUL</span></code>, or <code class="docutils literal notranslate"><span class="pre">COM</span></code> or <code class="docutils literal notranslate"><span class="pre">LPT</span></code> followed by a digit from <code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">9</span></code> or a
+superscript <code class="docutils literal notranslate"><span class="pre">¹</span></code>, <code class="docutils literal notranslate"><span class="pre">²</span></code> or <code class="docutils literal notranslate"><span class="pre">³</span></code>, in any case and whatever extension it carries, or a
+colon and what follows it. So are <code class="docutils literal notranslate"><span class="pre">CONIN$</span></code> and <code class="docutils literal notranslate"><span class="pre">CONOUT$</span></code>, the console’s own input
+and output. A path naming no file is answered the page itself, as any other unknown
+page address is. The standard library itself refuses three shapes before this server
+sees them at all: a request line over 65,536 bytes answers <code class="docutils literal notranslate"><span class="pre">414</span></code>, and a header line
+over 65,536 bytes, or a request carrying 100 header lines or more - the blank line
+that ends them counted - answers <code class="docutils literal notranslate"><span class="pre">431</span></code>; ninety-nine is the most <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> ever
+reads.</p></li>
+<li><p><strong>The address printed, opened as</strong> <code class="docutils literal notranslate"><span class="pre">localhost</span></code>. When it listens on loopback, as it
+does by default, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> binds an IPv6 address beside its IPv4 socket, on the very
+same port, and never listens on it: <code class="docutils literal notranslate"><span class="pre">[::1]</span></code> on Linux and macOS, or, on Windows, the
+wildcard <code class="docutils literal notranslate"><span class="pre">[::]</span></code> alone in its place - bound there exclusively
+(<code class="docutils literal notranslate"><span class="pre">SO_EXCLUSIVEADDRUSE</span></code>), as its IPv4 socket is too. So no other program can listen on
+<code class="docutils literal notranslate"><span class="pre">localhost</span></code> at that port: a browser trying <code class="docutils literal notranslate"><span class="pre">[::1]</span></code> first, which resolving
+<code class="docutils literal notranslate"><span class="pre">localhost</span></code> may do, is refused and falls back to <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, rather than reaching
+a stranger there - the program that an address rewritten from <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> to
+<code class="docutils literal notranslate"><span class="pre">localhost</span></code> would otherwise have handed the token to, and that owns the <code class="docutils literal notranslate"><span class="pre">localhost</span></code>
+origin’s storage besides. Measured on Linux and Windows, in Chromium and Edge: what
+macOS refuses beside the hold was not. A fixed <code class="docutils literal notranslate"><span class="pre">--port</span></code> already held by another
+program is refused before <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> starts, naming the port on IPv6 rather than an
+address, since that program’s need not be the one <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> tried to hold; left to
+the system, <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">0</span></code> tries another port instead.</p></li>
 </ul>
 </section>
 <section id="what-it-trusts">
@@ -237,9 +258,11 @@ CORS preflight, which this server never grants - and it is answered <code class=
 other refusal. Sent to a page, it is answered the page itself, which signs itself in from
 its own storage and asks for whatever its address names: a site that knows the port - the
 system picks a fresh one each run, unless <code class="docutils literal notranslate"><span class="pre">--port</span></code> names one - and the path of a file
-the project includes can so open a Files row’s Remove panel, whose plan re-analyses the
-project, running its plugins. Nothing is written without the reader’s own click. Use one
-of the browsers above.</p>
+the project includes can so open a Files row’s Remove panel. There it waits, saying only
+that taking it out of the includes is planned when asked, until the reader presses for
+the plan, which then re-analyses the project, running its plugins. Nothing is written
+without the reader’s own click, and nothing that runs plugins is asked on arrival. Use
+one of the browsers above.</p>
 <p>In every browser, the gate lets through by design a navigation marked
 <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site:</span> <span class="pre">none</span></code>, which a browser sends for a navigation it begins itself - an
 address typed, or chosen from a bookmark - and an older browser marks such a navigation
@@ -280,8 +303,12 @@ the reader’s browser does is signed in with the token for as long as this run 
 the reader’s own browser shows it is signed out instead of landing on the project, and
 presenting that same code again prints one line on the terminal, saying so and to
 restart <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> rather than open the address it printed - a restart takes the token
-from the winner, and the printed address would not. A code that expired unused signed
-nobody in, and prints nothing.</p></li>
+from the winner, and the printed address would not. The same two signs also follow an
+innocent cause: the first <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/open</span></code> reaches the server and spends the code, but
+its answer is lost on the way back, so the page sends the same code once more; the
+server refuses it as already spent, and the terminal prints the very same line - no
+other process involved. Either way, its advice is the same: restart <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>. A code
+that expired unused signed nobody in, and prints nothing.</p></li>
 <li><p><strong>A server that used the same port before.</strong> The page’s origin is its address and port,
 and the browser keeps what a server on them left behind into any later run on that port.
 Unless <code class="docutils literal notranslate"><span class="pre">--port</span></code> names one, the system picks a port that is free when <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>
@@ -295,12 +322,12 @@ serves names that path, because the content security policy admits any script fr
 origin and cannot tell one the browser cached from one <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> served. Either one can
 take the token. Open <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> in a browser profile of its own, one nothing else is
 browsed in, above all with a fixed <code class="docutils literal notranslate"><span class="pre">--port</span></code>.</p></li>
-<li><p><strong>The printed address, opened as something other than itself.</strong> <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> listens on
-IPv4 alone, never on <code class="docutils literal notranslate"><span class="pre">[::1]</span></code>, and prints a <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> address. Rewritten by the
-reader to <code class="docutils literal notranslate"><span class="pre">localhost</span></code>, the address may reach a different program listening on
-<code class="docutils literal notranslate"><span class="pre">[::1]</span></code> at the same port - a browser resolving <code class="docutils literal notranslate"><span class="pre">localhost</span></code> may try <code class="docutils literal notranslate"><span class="pre">[::1]</span></code> first -
-and the token in a pasted address then goes to that program, which also owns the
-<code class="docutils literal notranslate"><span class="pre">localhost</span></code> origin’s storage. Open the address exactly as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> prints it.</p></li>
+<li><p><strong>Beyond loopback, as in a container.</strong> There <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> listens on
+<code class="docutils literal notranslate"><span class="pre">--host</span> <span class="pre">0.0.0.0</span></code>, published on the host’s <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> alone, as <em>Running it in a
+container</em> above describes, and the IPv6 hold, being loopback’s alone, holds nothing
+there. The host’s <code class="docutils literal notranslate"><span class="pre">[::1]</span></code> at that port is open all the same, to a program already
+listening on it, which may receive <code class="docutils literal notranslate"><span class="pre">localhost:&lt;port&gt;/open?token=&lt;the</span> <span class="pre">token&gt;</span></code> in the
+container’s place. Open the address exactly as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> prints it.</p></li>
 <li><p><strong>Transport security.</strong> <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> speaks plain HTTP, trusting the loopback interface
 or, in a container, the host’s own. Nothing here signs or encrypts what crosses it.</p></li>
 </ul>

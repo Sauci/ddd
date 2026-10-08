@@ -79,24 +79,46 @@ What it defends against
   to blame: ``GET /api/file``'s, of a file nested more than 99 levels deep, and
   ``GET /api/dictionary``'s, of the file stating an extension block nested more than 96
   levels deep, or 98 among the project's own settings. Any other answer too deep is refused
-  without naming one. A ``POST`` whose ``Content-Length`` is no length is refused ``400``,
-  and one promising more than 1,048,576 bytes ``413``, however many digits it is written
-  with, short of a header line too long to be read at all (below). ``POST /open``, which
-  anyone who reaches the port may send without the token, takes at most 1,024 bytes - a
-  sign-in body is a few dozen - and a longer one is refused ``413`` before it is parsed, so
-  no json parser ever runs on a body large or deep enough to trouble one. A page's own path
-  is never resolved: it is read as plain names under the compiled pages, and a name holding a
-  NUL character, a backslash or a colon, or a dot segment, names no file and is never
-  looked up, so neither a network path nor a ``\\.\`` device path can be spelled in one. A
-  name Windows keeps for a device names no file either, on any system, and is never looked
-  up: ``CON``, ``PRN``, ``AUX`` or ``NUL``, or ``COM`` or ``LPT`` followed by a digit from
-  ``0`` to ``9`` or a superscript ``¹``, ``²`` or ``³``, in any case and whatever extension
-  it carries, or a colon and what follows it. So are ``CONIN$`` and ``CONOUT$``, the console's own input and output. A path
-  naming no file is answered the page itself, as any other unknown page address is. The
-  standard library itself refuses three shapes before this server sees them at all: a
-  request line over 65,536 bytes answers ``414``, and a header line over 65,536 bytes, or a
-  request carrying 100 header lines or more - the blank line that ends them counted -
-  answers ``431``; ninety-nine is the most ``ddd gui`` ever reads.
+  without naming one. A ``POST`` whose ``Content-Length`` is no length is refused
+  ``400``, and one promising more than 1,048,576 bytes ``413``, however many digits it
+  is written with, short of a header line too long to be read at all (below). Such a
+  refusal closes its connection behind the answer, reading and throwing away what still
+  arrives until the client closes, two seconds pass, or 1,048,576 bytes are read,
+  whichever is first: closing with bytes still unread resets a connection on Windows,
+  which can erase the refusal before the browser reads it. That close follows an answer
+  already given, unlike the thirty seconds above, which follows none at all.
+  ``POST /open``, which anyone who reaches the port may send without the token, takes at
+  most 1,024 bytes - a sign-in body is a few dozen - and a longer one is refused ``413``
+  before it is parsed, so no json parser ever runs on a body large or deep enough to
+  trouble one. A page's own path is never resolved: it is read as plain names under the
+  compiled pages, and a name holding a NUL character, a backslash or a colon, or a dot
+  segment, names no file and is never looked up, so neither a network path nor a
+  ``\\.\`` device path can be spelled in one. A name Windows keeps for a device names no
+  file either, on any system, and is never looked up: ``CON``, ``PRN``, ``AUX`` or
+  ``NUL``, or ``COM`` or ``LPT`` followed by a digit from ``0`` to ``9`` or a
+  superscript ``¹``, ``²`` or ``³``, in any case and whatever extension it carries, or a
+  colon and what follows it. So are ``CONIN$`` and ``CONOUT$``, the console's own input
+  and output. A path naming no file is answered the page itself, as any other unknown
+  page address is. The standard library itself refuses three shapes before this server
+  sees them at all: a request line over 65,536 bytes answers ``414``, and a header line
+  over 65,536 bytes, or a request carrying 100 header lines or more - the blank line
+  that ends them counted - answers ``431``; ninety-nine is the most ``ddd gui`` ever
+  reads.
+
+* **The address printed, opened as** ``localhost``. When it listens on loopback, as it
+  does by default, ``ddd gui`` binds an IPv6 address beside its IPv4 socket, on the very
+  same port, and never listens on it: ``[::1]`` on Linux and macOS, or, on Windows, the
+  wildcard ``[::]`` alone in its place - bound there exclusively
+  (``SO_EXCLUSIVEADDRUSE``), as its IPv4 socket is too. So no other program can listen on
+  ``localhost`` at that port: a browser trying ``[::1]`` first, which resolving
+  ``localhost`` may do, is refused and falls back to ``127.0.0.1``, rather than reaching
+  a stranger there - the program that an address rewritten from ``127.0.0.1`` to
+  ``localhost`` would otherwise have handed the token to, and that owns the ``localhost``
+  origin's storage besides. Measured on Linux and Windows, in Chromium and Edge: what
+  macOS refuses beside the hold was not. A fixed ``--port`` already held by another
+  program is refused before ``ddd gui`` starts, naming the port on IPv6 rather than an
+  address, since that program's need not be the one ``ddd gui`` tried to hold; left to
+  the system, ``--port 0`` tries another port instead.
 
 What it trusts
 --------------
@@ -139,9 +161,11 @@ CORS preflight, which this server never grants - and it is answered ``401``, lik
 other refusal. Sent to a page, it is answered the page itself, which signs itself in from
 its own storage and asks for whatever its address names: a site that knows the port - the
 system picks a fresh one each run, unless ``--port`` names one - and the path of a file
-the project includes can so open a Files row's Remove panel, whose plan re-analyses the
-project, running its plugins. Nothing is written without the reader's own click. Use one
-of the browsers above.
+the project includes can so open a Files row's Remove panel. There it waits, saying only
+that taking it out of the includes is planned when asked, until the reader presses for
+the plan, which then re-analyses the project, running its plugins. Nothing is written
+without the reader's own click, and nothing that runs plugins is asked on arrival. Use
+one of the browsers above.
 
 In every browser, the gate lets through by design a navigation marked
 ``Sec-Fetch-Site: none``, which a browser sends for a navigation it begins itself - an
@@ -185,8 +209,12 @@ What it does not defend against
   the reader's own browser shows it is signed out instead of landing on the project, and
   presenting that same code again prints one line on the terminal, saying so and to
   restart ``ddd gui`` rather than open the address it printed - a restart takes the token
-  from the winner, and the printed address would not. A code that expired unused signed
-  nobody in, and prints nothing.
+  from the winner, and the printed address would not. The same two signs also follow an
+  innocent cause: the first ``POST /open`` reaches the server and spends the code, but
+  its answer is lost on the way back, so the page sends the same code once more; the
+  server refuses it as already spent, and the terminal prints the very same line - no
+  other process involved. Either way, its advice is the same: restart ``ddd gui``. A code
+  that expired unused signed nobody in, and prints nothing.
 
 * **A server that used the same port before.** The page's origin is its address and port,
   and the browser keeps what a server on them left behind into any later run on that port.
@@ -202,12 +230,12 @@ What it does not defend against
   take the token. Open ``ddd gui`` in a browser profile of its own, one nothing else is
   browsed in, above all with a fixed ``--port``.
 
-* **The printed address, opened as something other than itself.** ``ddd gui`` listens on
-  IPv4 alone, never on ``[::1]``, and prints a ``127.0.0.1`` address. Rewritten by the
-  reader to ``localhost``, the address may reach a different program listening on
-  ``[::1]`` at the same port - a browser resolving ``localhost`` may try ``[::1]`` first -
-  and the token in a pasted address then goes to that program, which also owns the
-  ``localhost`` origin's storage. Open the address exactly as ``ddd gui`` prints it.
+* **Beyond loopback, as in a container.** There ``ddd gui`` listens on
+  ``--host 0.0.0.0``, published on the host's ``127.0.0.1`` alone, as *Running it in a
+  container* above describes, and the IPv6 hold, being loopback's alone, holds nothing
+  there. The host's ``[::1]`` at that port is open all the same, to a program already
+  listening on it, which may receive ``localhost:<port>/open?token=<the token>`` in the
+  container's place. Open the address exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

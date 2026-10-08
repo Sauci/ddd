@@ -590,14 +590,19 @@ runs <code class="docutils literal notranslate"><span class="pre">npm</span> <sp
 <code class="docutils literal notranslate"><span class="pre">.vsix</span></code> it produced. Its tests start a real language server, which is why it installs the
 python package as well as compiling typescript, and packaging the extension there proves that
 the artefact a customer is handed can be produced at all.</p>
-<p><code class="docutils literal notranslate"><span class="pre">gui</span></code> builds and tests the browser interface on ubuntu and windows: it installs the package and
+<p><code class="docutils literal notranslate"><span class="pre">gui</span></code> builds and tests the browser interface, on three legs: ubuntu with Playwright’s own
+Chromium, windows with the same Chromium, and windows with the windows runner’s own Edge, driven
+through <code class="docutils literal notranslate"><span class="pre">PLAYWRIGHT_CHANNEL=msedge</span></code>, which needs no download. Each leg installs the package and
 node, generates the TypeScript types from <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">schema</span></code>, runs Biome, the type check and Vitest
-with its coverage gate, compiles the pages, and drives them in Chromium against a real
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> with Playwright. On ubuntu it then builds the wheel and the sdist with the pages it
-compiled, checks that the wheel carries them the way the release build checks its own, and
-uploads both as <code class="docutils literal notranslate"><span class="pre">ddd-tool-&lt;commit&gt;</span></code>: what installs a branch without node. The release build
-still compiles the pages again, into the wheel it publishes - an artifact expires, and needs a
-GitHub account to reach.</p>
+with its coverage gate, compiles the pages, and drives them against a real <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> with
+Playwright. On the ubuntu leg it then builds the wheel and the sdist with the pages it compiled,
+checks that the wheel carries them the way the release build checks its own, and uploads both as
+<code class="docutils literal notranslate"><span class="pre">ddd-tool-&lt;commit&gt;</span></code>: what installs a branch without node. The release build still compiles the
+pages again, into the wheel it publishes - an artifact expires, and needs a GitHub account to
+reach.</p>
+<p>A manual run of the workflow (<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>) takes a <code class="docutils literal notranslate"><span class="pre">repeat</span></code> input, one by default;
+above that it is a hunt, and only these three legs run, each journey repeated that many times
+(<code class="docutils literal notranslate"><span class="pre">--repeat-each</span></code>) while every other job is skipped.</p>
 <p><code class="docutils literal notranslate"><span class="pre">container</span></code> builds the image behind <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span></code>, checks that the package installed in
 it carries the pages of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> and that neither node nor npm reached it, and runs the
 <code class="docutils literal notranslate"><span class="pre">generate</span></code> service in it. Nothing built the image for a long time, and it is the local
@@ -994,10 +999,32 @@ runs Vitest with a 100 % gate over the modules that hold logic - <code class="do
 generates and serves the same way - <code class="docutils literal notranslate"><span class="pre">gui/e2e/fixtures.ts</span></code>’s own <code class="docutils literal notranslate"><span class="pre">vocabularyGui</span></code>,
 <code class="docutils literal notranslate"><span class="pre">structuresGui</span></code> and <code class="docutils literal notranslate"><span class="pre">generatedGui</span></code> - each started with the interpreter <code class="docutils literal notranslate"><span class="pre">DDD_PYTHON</span></code>
 names, and <code class="docutils literal notranslate"><span class="pre">PLAYWRIGHT_CHANNEL=msedge</span></code> drives the installed Edge on a machine without
-Playwright’s own Chromium. The build refuses a bundled package whose licence is not
-MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. The project screen’s canvas is drawn
-with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code> and laid out with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both MIT like every other bundled
-package.</p>
+Playwright’s own Chromium. <code class="docutils literal notranslate"><span class="pre">mapped.spec.ts</span></code> is left out of that run unless <code class="docutils literal notranslate"><span class="pre">DDD_MAPPED_DRIVE</span></code>
+is set, rather than skipped: its own fixture, <code class="docutils literal notranslate"><span class="pre">mappedGui</span></code>, copies the demo onto a fresh directory
+of the drive that variable names and serves it there, so a project on a mapped drive - named by its
+network path, as Windows names one - is exercised too. ci’s windows chromium leg maps one before
+the journeys run: its own “Map a drive for the mapped-drive journey” step shares a local directory
+as <code class="docutils literal notranslate"><span class="pre">New-SmbShare</span> <span class="pre">-Name</span> <span class="pre">ddd-mapped</span></code> and maps it with <code class="docutils literal notranslate"><span class="pre">net</span> <span class="pre">use</span> <span class="pre">M:</span> <span class="pre">\\localhost\ddd-mapped</span></code>.
+<code class="docutils literal notranslate"><span class="pre">mapped.spec.ts</span></code> itself requires every path to begin <code class="docutils literal notranslate"><span class="pre">//localhost/ddd-mapped/</span></code>, so only a drive
+mapped to that very share passes it. Run the journey by hand the same way, on a Windows machine
+with such a share and drive already mapped:</p>
+<p>in cmd:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>set DDD_MAPPED_DRIVE=M:
+npm run e2e -- mapped.spec.ts
+</pre></div>
+</div>
+<p>in PowerShell:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$env:DDD_MAPPED_DRIVE = "M:"
+npm run e2e -- mapped.spec.ts
+</pre></div>
+</div>
+<p>in Git Bash or a similar shell:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>DDD_MAPPED_DRIVE=M: npm run e2e -- mapped.spec.ts
+</pre></div>
+</div>
+<p>The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
+BSD-3-Clause or 0BSD. The project screen’s canvas is drawn with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code> and laid out
+with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both MIT like every other bundled package.</p>
 <p><code class="docutils literal notranslate"><span class="pre">.venv/bin/python</span> <span class="pre">tools/generate_project.py</span> <span class="pre">DIRECTORY</span> <span class="pre">--declarations</span> <span class="pre">N</span></code> writes a project of
 <code class="docutils literal notranslate"><span class="pre">N</span></code> declarations, rounded down to even components and refused under 120, to measure <code class="docutils literal notranslate"><span class="pre">ddd</span>
 <span class="pre">gui</span></code> on - large enough to matter in a way nothing under <code class="docutils literal notranslate"><span class="pre">examples/</span></code> is, the same bytes for

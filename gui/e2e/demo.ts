@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 
@@ -250,12 +250,28 @@ function drifted(text: Buffer, variable: string, key: string, value: number): st
     .replace(new RegExp(`("name": "${variable}"[\\s\\S]*?"${key}": )[0-9.]+`), `$1${value}`);
 }
 
-/** One variable's greatest limit drifted as `driftMax` drifts it, but unseen by the session's own
- * file watcher - which decides a file changed by `(st_mtime_ns, st_size)` alone (`stamped`,
- * `session.py`), never by reading it - while a different file to anyone who reads it fresh,
- * which is what an Apply's own staleness check does. Used where a test means the second and not
- * the first, the way `keys.spec.ts`'s "a change refused as stale..." does; `max` must be as wide
- * as the number it replaces, so that the size does not move either. Answers the file as it was.
+/** One variable's greatest limit drifted as `driftMax` drifts it, but written unseen by the
+ * session's own file watcher (`writeUnseen`), the way `keys.spec.ts`'s "a change refused as
+ * stale..." needs it; `max` must be as wide as the number it replaces, so that the size does not
+ * move either. Answers the file as it was. */
+export function driftMaxUnseen(
+  directory: string,
+  file: string,
+  variable: string,
+  max: number,
+): Buffer {
+  const before = readFileSync(join(directory, file));
+  writeUnseen(directory, file, drifted(before, variable, "max", max));
+  return before;
+}
+
+/** `text` written over a file of a copy, unseen by the session's own file watcher - which decides
+ * a file changed by `(st_mtime_ns, st_size)` alone (`stamped`, `session.py`), never by reading it
+ * - while a different file to anyone who reads it fresh, which is what an Apply's own staleness
+ * check does. Used where a test means the second and not the first: a change the watcher saw
+ * would bring a revision of its own, racing whatever the test means to read before one comes.
+ * `text` must be exactly as many bytes as the file, since a size of its own would show the
+ * watcher the write: refused here, before anything is written, rather than left to race.
  *
  * The new bytes are written beside the file, given the file's own times through python's
  * `os.utime(path, ns=(...))` - exact to the nanosecond, where `fs.utimesSync` takes a JS `number`
@@ -264,16 +280,18 @@ function drifted(text: Buffer, variable: string, key: string, value: number): st
  * by a python started for it, the write stood visible for that start-up, and a poll landing then
  * re-analysed the project and left nothing stale to refuse (CI, PR #77, on ubuntu and windows).
  * The rename is tried again while windows refuses it access, as `ddd.editing` does. */
-export function driftMaxUnseen(
-  directory: string,
-  file: string,
-  variable: string,
-  max: number,
-): Buffer {
+export function writeUnseen(directory: string, file: string, text: string): void {
   const path = join(directory, file);
-  const before = readFileSync(path);
+  const bytes = Buffer.from(text, "utf8");
+  const size = statSync(path).size;
+  if (bytes.length !== size) {
+    throw new Error(
+      `writing ${path} unseen takes ${size} bytes, not ${bytes.length}: ` +
+        `a size of their own would show the watcher the write`,
+    );
+  }
   const result = spawnSync(process.env.DDD_PYTHON ?? "python", ["-c", UNSEEN, path], {
-    input: drifted(before, variable, "max", max),
+    input: bytes,
   });
   if (result.status !== 0) {
     throw new Error(
@@ -281,10 +299,9 @@ export function driftMaxUnseen(
         `${result.stderr.toString("utf8")}`,
     );
   }
-  return before;
 }
 
-/** `driftMaxUnseen`'s python: stdin's bytes beside `argv[1]`, under its times, then renamed over
+/** `writeUnseen`'s python: stdin's bytes beside `argv[1]`, under its times, then renamed over
  * it. */
 const UNSEEN = [
   "import os, sys, time",

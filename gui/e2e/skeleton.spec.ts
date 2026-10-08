@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, chooseUnit, drift, SENSOR_HUB, withUnitOfValueA } from "./demo";
+import { CONTROLLER, chooseUnit, drift, SENSOR_HUB, withUnitOfValueA, writeUnseen } from "./demo";
 import { expect, test } from "./fixtures";
 
 const COMPONENTS = ["Controller", "SensorHub", "UserInterface", "EventLogger"];
@@ -112,12 +112,21 @@ test("an edit made from a page that is out of date is refused, and the file relo
   await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("V");
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
   await chooseUnit(page, "rpm");
+  // ValueB's unit changed on disk as the Apply goes out, unseen by the session's own watcher
+  // (`writeUnseen`): seen, it brought a revision of its own about a poll later, and the page
+  // holds a stale refusal only until the next revision (`shownRefusal`, lib/refusals.ts) - once
+  // gone before this journey read it (CI run 37705627501, windows msedge). Unseen, no revision
+  // can come, so the refusal stays for as long as it is looked for. `"unit":"mV"` is as many
+  // bytes as `"unit": "V"`, and reads the same.
   await page.route("**/api/edit", async (route) => {
-    writeFileSync(file, readFileSync(file, "utf8").replace('"unit": "V"', '"unit": "mV"'));
+    const changed = readFileSync(file, "utf8").replace('"unit": "V"', '"unit":"mV"');
+    writeUnseen(gui.directory, CONTROLLER, changed);
     await route.continue();
   });
   await page.getByRole("button", { name: "Apply to 2 files" }).click();
   await expect(page.getByRole("status").filter({ hasText: "changed on disk" })).toBeVisible();
+  // The file reloaded by the page itself, as the refusal says: with no revision to bring the
+  // change, its own reading of the file again is all that can show ValueB in mV.
   await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("mV");
   expect(readFileSync(file, "utf8")).toMatch(/"name": "ValueA"[\s\S]*?"unit": "%"/);
 });

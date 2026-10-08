@@ -116,9 +116,9 @@ What it defends against
   ``localhost`` would otherwise have handed the token to, and that owns the ``localhost``
   origin's storage besides. Measured on Linux and Windows, in Chromium and Edge: what
   macOS refuses beside the hold was not. A fixed ``--port`` already held by another
-  program is refused before ``ddd gui`` starts, naming the address ``ddd gui`` tried to
-  hold - ``[::1]``, or on Windows ``[::]``; left to the system, ``--port 0`` tries
-  another port instead.
+  program is refused before ``ddd gui`` starts, naming the port on IPv6 rather than an
+  address, since that program's need not be the one ``ddd gui`` tried to hold; left to
+  the system, ``--port 0`` tries another port instead.
 
 What it trusts
 --------------

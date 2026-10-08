@@ -142,11 +142,14 @@ _SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
 on every platform; -5 is its value there, ``~SO_REUSEADDR``. Used only where :data:`_EXCLUSIVE`."""
 
 _IPV6_HELD: Final = (
-    "another program holds [{address}]:{port}, where a browser opening localhost:{port} would "
+    "another program holds port {port} on IPv6, where a browser opening localhost:{port} may "
     "reach it"
 )
-"""What :class:`IPv6HeldError` says: ``[::1]``, or ``[::]``, refused as a port another socket
-holds."""
+"""What :class:`IPv6HeldError` says: the port on IPv6, never an address (ruling P19a-30). The
+other program's socket need not be on the address the hold tried - on Linux one on ``[::]``
+refuses the ``[::1]`` hold, on Windows one on ``[::1]`` the ``[::]`` hold - and a browser
+opening ``localhost`` reaches that program only if it listens on ``[::1]`` or ``[::]``, hence
+"may"."""
 
 _IPV6_UNHELD: Final = "cannot hold [{address}]:{port} beside it: {error}"
 """What a hold that failed for any other reason says, the system's own words after it
@@ -267,8 +270,9 @@ def _linger(connection: socket.socket) -> None:
 
 
 class IPv6HeldError(OSError):
-    """The IPv6 address ``ddd gui`` holds on its port - ``[::1]``, or ``[::]`` on Windows - held
-    by another program."""
+    """The IPv6 hold - ``[::1]``, or ``[::]`` on Windows - refused on its port by another
+    program's socket on IPv6, on that address or on one that collides with it
+    (:data:`_IPV6_HELD`)."""
 
 
 def _held_beside(host: str, port: int) -> socket.socket | None:
@@ -312,7 +316,7 @@ def _held_beside(host: str, port: int) -> socket.socket | None:
         if error.errno == errno.EADDRNOTAVAIL:
             return None
         if error.errno in (errno.EADDRINUSE, errno.EACCES):
-            raise IPv6HeldError(_IPV6_HELD.format(address=address, port=port)) from error
+            raise IPv6HeldError(_IPV6_HELD.format(port=port)) from error
         raise OSError(_IPV6_UNHELD.format(address=address, port=port, error=error)) from error
     return held
 
@@ -948,8 +952,8 @@ def run(
                 break
             except IPv6HeldError as error:
                 # --port 0 picked a port whose IPv6 hold - [::1], or [::] on Windows - another
-                # program holds: another pick is another port. A port given is that port, or
-                # nothing.
+                # program's socket on IPv6 refused: another pick is another port. A port given is
+                # that port, or nothing.
                 if port != 0 or attempt == PORT_TRIES:
                     return _refused(address, port, error)
                 attempt += 1

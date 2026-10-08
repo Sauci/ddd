@@ -56,22 +56,25 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   asked, behind a button, so an address someone else sent the reader to can no longer run the
   project's plugins without their own press.
 
-* **`ddd gui` now holds `localhost`'s other address too.**  Besides the usual `127.0.0.1`, it
-  binds `[::1]` on its own port without listening there - the wildcard `[::]` in its place on
-  Windows.  So no other program can take `localhost` at that port, and a browser trying
-  `[::1]` first, which resolving `localhost` may do, is refused and falls back to
-  `127.0.0.1` - each measured on Linux and Windows, never on macOS - rather than reaching a
-  stranger there, the program that an address rewritten from `127.0.0.1` to `localhost` would
-  otherwise have handed the token to.  A fixed `--port` already held there is refused at
-  startup, naming the address; `--port 0` tries another port instead.
+* **`ddd gui` now holds `localhost`'s other address too.**  When it listens on loopback, as it
+  does by default, it binds `[::1]` besides the usual `127.0.0.1`, on its own port without
+  listening there - the wildcard `[::]` in its place on Windows.  So no other program can
+  take `localhost` at that port, and a browser trying `[::1]` first, which resolving
+  `localhost` may do, is refused and falls back to `127.0.0.1` - each measured on Linux and
+  Windows, never on macOS - rather than reaching a stranger there, the program that an
+  address rewritten from `127.0.0.1` to `localhost` would otherwise have handed the token to.
+  A fixed `--port` already held there is refused at startup, naming the port; `--port 0`
+  tries another port instead.  Beyond loopback, as in a container, nothing is held.
 
 * **A refusal to a `POST` drains its body instead of risking a reset.**  Windows resets a
   connection it closes while part of a request's body is still arriving, which can erase the
-  answer already written there before it is read.  `ddd gui` now reads and discards what
-  still arrives - up to 1,048,576 bytes, for up to two seconds, or until the client closes,
-  whichever is first - before closing such a connection, rather than leave it to a reset.
-  Measured in CI on Windows: a script sending past the answer read it whole on all three
-  Python versions after this fix, where two of three had lost it before.
+  answer already written there before it is read.  `ddd gui` now reads and discards the body
+  of a `POST` it refuses unread.  Where the `POST` declares a length of at most 1,048,576
+  bytes, and no `Transfer-Encoding`, the body is read whole before the answer, and the
+  connection kept; otherwise it is read after the answer, until the client closes, two seconds
+  pass, or 1,048,576 bytes are read, whichever is first, and the connection then closed.
+  Measured in CI on Windows, on a longer body: a script sending past the answer read it whole
+  on all three Python versions after this fix, where two of three had lost it before.
 
 * **A sign-in that gets no answer at all is retried once.**  Opening the address `ddd gui`
   printed, or a launch's one-time address, could still land on the signed-out page: the first

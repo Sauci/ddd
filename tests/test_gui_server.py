@@ -3191,25 +3191,41 @@ class TestIPv6Held:
         connections to ``localhost``. Linux refuses the ``[::1]`` hold beside it. On Windows the
         exclusive ``[::]`` hold must be refused beside it too: run 37741191678 measured it
         refused beside the server's own exclusive ``[::1]``, and beside a stranger's ``[::1]``,
-        bound with no option, this test measures it. The refusal names the address the server
-        holds."""
+        bound with no option, this test measures it. The refusal names the port, and no address:
+        on Windows the program holds ``[::1]``, and the server tried ``[::]``."""
         port = free_port()
         with holding(port, "::1"), pytest.raises(module.IPv6HeldError) as refused:
             GuiServer(Api(Session(tmp_path)), pages, port)
         assert str(refused.value) == (
-            f"another program holds [{held_address()}]:{port}, where a browser opening "
-            f"localhost:{port} would reach it"
+            f"another program holds port {port} on IPv6, where a browser opening "
+            f"localhost:{port} may reach it"
+        )
+
+    def test_a_program_already_on_the_ipv6_wildcard_refuses_the_start(
+        self, tmp_path, pages
+    ) -> None:
+        """The other address: a program bound on ``[::]`` before the server starts on that port,
+        where it could listen and take the connections to ``[::1]`` as well. Linux refuses the
+        ``[::1]`` hold beside it, and Windows its ``[::]`` hold. The refusal names the port, and
+        no address: on Linux the program holds ``[::]``, and the server tried ``[::1]``."""
+        port = free_port()
+        with holding(port, "::"), pytest.raises(module.IPv6HeldError) as refused:
+            GuiServer(Api(Session(tmp_path)), pages, port)
+        assert str(refused.value) == (
+            f"another program holds port {port} on IPv6, where a browser opening "
+            f"localhost:{port} may reach it"
         )
 
     @pytest.mark.parametrize("wildcard", [False, True], ids=["loopback", "wildcard"])
     def test_a_fixed_port_held_on_ipv6_is_refused_naming_it(
         self, pages, monkeypatch, capsys, wildcard
     ) -> None:
-        """Spec §6.2: refused as a taken ``--port`` is, naming the address held - ``[::1]``, or
-        ``[::]`` where the wildcard is held (ruling P19a-14), each on every platform. A port
-        given is that port or nothing, so it is tried once. Each of these tests of the retry
-        runs ``run`` bounded, so that a loop that never ends fails it rather than hang the
-        suite."""
+        """Spec §6.2: refused as a taken ``--port`` is, naming the port on IPv6 rather than
+        ``[::1]`` as the spec has it (ruling P19a-30) - the same sentence whether the hold is
+        ``[::1]`` or, where the wildcard is held (ruling P19a-14), ``[::]``, each on every
+        platform. A port given is that port or nothing, so it is tried once. Each of these tests
+        of the retry runs ``run`` bounded, so that a loop that never ends fails it rather than
+        hang the suite."""
         monkeypatch.setattr(module, "_WILDCARD", wildcard)
         port = free_port()
         held_beside = module._held_beside
@@ -3223,10 +3239,9 @@ class TestIPv6Held:
         with holding(port):
             assert bounded_run(None, (), port, open_browser=False, static=pages) == EXIT_USAGE
         assert asked == [port]
-        held = held_address()
         assert capsys.readouterr().err == (
-            f"ddd: cannot serve 127.0.0.1 on port {port}: another program holds [{held}]:{port}, "
-            f"where a browser opening localhost:{port} would reach it\n"
+            f"ddd: cannot serve 127.0.0.1 on port {port}: another program holds port {port} on "
+            f"IPv6, where a browser opening localhost:{port} may reach it\n"
         )
 
     @pytest.mark.parametrize("wildcard", [False, True], ids=["loopback", "wildcard"])
@@ -3243,8 +3258,7 @@ class TestIPv6Held:
         def held_the_first_time(host: str, at: int) -> socket.socket | None:
             asked.append(at)
             if len(asked) == 1:
-                held = module._IPV6_HELD.format(address=held_address(), port=at)
-                raise module.IPv6HeldError(held)
+                raise module.IPv6HeldError(module._IPV6_HELD.format(port=at))
             return held_beside(host, at)
 
         served: list[tuple[int, tuple[str, int]]] = []
@@ -3283,10 +3297,10 @@ class TestIPv6Held:
             for stranger in strangers.values():
                 stranger.close()
         assert len(asked) == module.PORT_TRIES
-        last, held = asked[-1], held_address()
+        last = asked[-1]
         assert capsys.readouterr().err == (
-            f"ddd: cannot serve 127.0.0.1 on port 0: another program holds [{held}]:{last}, "
-            f"where a browser opening localhost:{last} would reach it\n"
+            f"ddd: cannot serve 127.0.0.1 on port 0: another program holds port {last} on IPv6, "
+            f"where a browser opening localhost:{last} may reach it\n"
         )
 
     @pytest.mark.parametrize(

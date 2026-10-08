@@ -24,7 +24,7 @@
 > **As built** (executed 2026-10-07 and 2026-10-08; the departures from the task texts, each a ruling under *Rulings taken*):
 > - **Task 3 found five causes, not the five known spots** (P19a-4, P19a-7, P19a-9). A click after `scrolledIntoView` could land in React Aria's `pointer-events: none` window and open nothing; the helper now waits for the target to take the pointer again. Two timing assumptions went (the arrow count, the drag's `waitForResponse`). skeleton.spec.ts:105's own outside write is made unseen. The sign-in's `POST /open` is sent once more when the network fails it: a product fix, not a retry of a journey. keys.spec.ts's stale change was part 17's, and stays.
 > - **The drain is bounded** (P19a-10, P19a-11). A `Transfer-Encoding` is no length to drain; the lingering close reads at most `MAX_BODY` bytes, for at most two seconds.
-> - **On Windows the hold is the wildcard `[::]` alone** (P19a-12 to P19a-14). Windows let a stranger bind `[::]` beside an exclusive `[::1]`, and refused the server's own pair; Linux and macOS hold `[::1]`. A hold that fails for any reason but a missing IPv6 loopback refuses the start. `IPv6Held` is `IPv6HeldError` (ruff N818).
+> - **On Windows the hold is the wildcard `[::]` alone** (P19a-12 to P19a-14). Windows let a stranger bind `[::]` beside an exclusive `[::1]`, and refused the server's own pair; Linux and macOS hold `[::1]`. A hold that fails for any reason but a missing IPv6 loopback refuses the start. `IPv6Held` is `IPv6HeldError` (ruff N818), and its refusal names the port on IPv6, not an address (P19a-30).
 > - **Option C survives a fragment navigation** (P19a-19), keeps the keyboard's focus in its panel (P19a-20, P19a-21), and a press on the arrived row itself deselects it (P19a-15).
 > - **The docs say what was measured where** (P19a-24 to P19a-27): macOS unmeasured, nothing held beyond loopback, the retried sign-in's false alarm.
 > - **Added: Task 3b** (P19a-22). A part 17 bench test counted another module's sleep as its own; a full run showed it on Windows.
@@ -1229,7 +1229,12 @@ Filled in as the work goes. Known before execution:
 - **A plan's lines are in no live region** (P19a-20). Every Files row's, before this part.
 - **Measured, not acted on.** `IPV6_V6ONLY` is redundant on Linux, and kept per the spec. The Windows red of `SO_EXCLUSIVEADDRUSE` on the IPv4 socket was never shown: one run with `_EXCLUSIVE` forced off would show it.
 - **settled()'s `waitForTimeout(16)`** (P19a-8). A recorded exception to "never `waitForTimeout`".
-- **For the final review:** files.spec.ts:165's and hostile.spec.ts:62's `waitForResponse`; `TestTheCiRun.names()` repeating a regex; `_IPV6_HELD` naming `[::]` as another program's on Windows even when it bound `[::1]`.
+- **hostile.spec.ts:62's `waitForResponse`** (the final review's D2). A recorded exception to "never `waitForResponse`": it is the measurement, not a wait. It reads the gate's `403` to an opaque `no-cors` request, which the network alone shows and nothing on the page can. It is registered before the navigation, and the wait on what the page shows, its title, follows it.
+- **files.spec.ts:166's `waitForResponse`, for 19b's Files journeys** (the final review's D1), in "the row a Remove takes out goes before the tab's next list of entries answers". Not a race: it is registered before the click, and the held route orders it. Its weakness is that it resolves when the list's headers arrive, before the page draws the list, so the `toHaveCount(0)` after it could pass early, and "the row stays gone" is unproven. It cannot flake. 19b's fix: in the route's handler, `route.fetch()`, assert the released list no longer carries the entry, then `route.fulfill()`, with no response wait.
+- **Unmeasured** (P19a-31):
+  - WSL 2, where the hold is the Linux VM's, while the browser's `localhost` is Windows';
+  - a fixed `--port` restarted at once on Windows while a browser still holds the last server's connections: `SO_EXCLUSIVEADDRUSE`, new on the IPv4 socket in 19a, may refuse the bind. Only `TIME_WAIT` was measured (`test_a_port_served_on_is_served_on_again_at_once`);
+  - `retry: false` on every query (`gui/src/main.tsx`), which predates 19a: one failed fetch of a page's file replaces its table with a banner until the next revision. It is the final review's first candidate for skeleton.spec.ts:81 (its D5).
 
 ## Rulings taken
 
@@ -1271,7 +1276,7 @@ Each with what it costs if wrong; the commits that carry them say why.
 - **P19a-19.** A `popstate` keeps `arrived` when its route equals the one held. A fragment navigation, which another window can make, changes no route — cost if wrong: Back or Forward between two entries of one route keeps a row waiting for a press.
 - **P19a-20.** Pressing "Plan its removal" keeps the keyboard's focus in its panel — cost if wrong: one effect more.
 - **P19a-21.** The focused region takes the house's ring, through a class of its own — cost if wrong: one CSS rule.
-- **P19a-22.** Run 37760106344's two failures are this part's, fixed at their causes; the bench test counts only the bench's own sleeps (Task 3b) — cost if wrong: a test outside this part's files changed.
+- **P19a-22.** Run 37760106344's two failures are this part's: the bench test's is fixed at its cause, the bench counting only its own sleeps (Task 3b); skeleton.spec.ts:81's is P19a-23's open flake — cost if wrong: a test outside this part's files changed.
 - **P19a-23.** skeleton.spec.ts:81's one failure had no trace within the maintainer's leave. It was sought by 500 local runs and the final hunt — cost if wrong: a rare flake left open, and visible.
 - **P19a-24.** The security page's moment of launch says its two signs also follow the retried sign-in — cost if wrong: two sentences more.
 - **P19a-25.** The docs say what is held where from the code, and that the refusal and the fallback were measured on Linux and Windows only — cost if wrong: a caveat a macOS measurement could lift.
@@ -1279,3 +1284,5 @@ Each with what it costs if wrong; the commits that carry them say why.
 - **P19a-27.** Every minor of Task 7's review is fixed in its round, localhost.spec.ts's times taken from the `[::]` runs — cost if wrong: none.
 - **P19a-28.** The final hunt ran at `8156a42`, one prose commit short of the head — cost if wrong: a hunt one commit short.
 - **P19a-29.** The hold title's literal nested in bold is the controller's one-line fix — cost if wrong: none.
+- **P19a-30.** The final review's fix wave takes its issues 2 to 7, D1's corrected record and D2's named exception in one dispatch, then a scoped re-review and one full run at its head, with no hunt: no fix touches a journey or the page. Among them, the held port's refusal names the port on IPv6, where spec §6.2 named `[::1]`: the program refusing the hold need not hold the address tried — cost if wrong: none beyond the wave.
+- **P19a-31.** The final review's declined-to-judge lines stay outside 19a. Three go to *What was left open*, unmeasured: WSL 2, a fixed `--port` restarted at once on Windows, and `retry: false`. The rest stay as the spec chose them or as existing patterns — cost if wrong: the Windows restart refusal, if real, is met by a reader who chose a fixed `--port`, with the port-in-use refusal saying so.

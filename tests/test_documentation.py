@@ -2608,6 +2608,15 @@ def job(workflow: str, name: str) -> str:
     return re.split(r"\n  [a-z][\w-]*:\n", body, maxsplit=1)[0]
 
 
+def job_names(workflow: str) -> list[str]:
+    """The key of every job of a workflow, in order. The pattern is checked against three jobs
+    ``ci.yml`` has, so that one missing any of them fails every test reading this list, rather
+    than leaving that job out of it in silence."""
+    names = re.findall(r"^  ([a-z][\w-]*):\n", workflow.split("\njobs:\n", 1)[1], re.M)
+    assert {"test", "lint", "gui"} <= set(names), f"the jobs of the workflow are read as {names}"
+    return names
+
+
 def uncommented(text: str) -> str:
     """What a workflow or a script runs, its comments left out."""
     return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
@@ -2943,8 +2952,7 @@ class TestTheDevelopmentBuild:
     def test_it_waits_for_every_other_job_of_the_run(self) -> None:
         """The maintainer was told a development build waits for the whole of ci: a commit any
         job fails is no build to point anybody at, and a job added to ci.yml joins the wait."""
-        names = re.findall(r"^  ([a-z][\w-]*):\n", CI_WORKFLOW.split("\njobs:\n", 1)[1], re.M)
-        assert {"test", "lint", "gui"} <= set(names), f"the jobs of ci.yml are read as {names}"
+        names = job_names(CI_WORKFLOW)
         waited = re.search(r"^    needs: \[([^]\n]*)\]$", job(CI_WORKFLOW, "dev-build"), re.M)
         assert waited is not None, "dev-build no longer lists the jobs it waits for"
         assert sorted(waited.group(1).split(", ")) == sorted(
@@ -3106,17 +3114,26 @@ class TestTheCiRun:
     """What part 19a asked of ci.yml (spec §4): the journeys on three legs, a timeout on every
     job, and a manual run that repeats the journeys and runs nothing else."""
 
-    @staticmethod
-    def names() -> list[str]:
-        return re.findall(r"^  ([a-z][\w-]*):\n", CI_WORKFLOW.split("\njobs:\n", 1)[1], re.M)
-
     def test_every_job_has_a_timeout(self) -> None:
         """GitHub's own default is 360 minutes: a gui job once hung 24 of them installing a
-        browser, and would have held the run, and any re-run of its failed jobs, for the rest."""
-        untimed = [
-            name for name in self.names() if "\n    timeout-minutes: " not in job(CI_WORKFLOW, name)
-        ]
-        assert untimed == [], f"these jobs of ci.yml can run for 360 minutes: {untimed}"
+        browser, and would have held the run, and any re-run of its failed jobs, for the rest.
+        Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
+        gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
+        1)."""
+        limits = {}
+        for name in job_names(CI_WORKFLOW):
+            limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)
+            limits[name] = None if limit is None else limit.group(1)
+        assert limits == {
+            "test": "25",
+            "lint": "10",
+            "container": "20",
+            "extension": "15",
+            "gui": "${{ inputs.repeat > 1 && 150 || 30 }}",
+            "gui-screenshots": "20",
+            "dev-build": "25",
+            "dev-publish": "10",
+        }
 
     def test_the_journeys_run_on_three_legs(self) -> None:
         legs = re.findall(r"- os: (\S+)\n\s+browser: (\S+)", uncommented(job(CI_WORKFLOW, "gui")))
@@ -3133,7 +3150,7 @@ class TestTheCiRun:
         slow day's."""
         install = step(job(CI_WORKFLOW, "gui"), "Install Playwright's Chromium")
         assert "if: matrix.browser == 'chromium'" in install
-        assert "timeout-minutes: 10" in install
+        assert re.findall(r"^ +timeout-minutes: (.+)$", install, re.M) == ["10"]
         journeys = step(job(CI_WORKFLOW, "gui"), "Run the journeys")
         assert "PLAYWRIGHT_CHANNEL: ${{ matrix.browser == 'msedge' && 'msedge' || '' }}" in journeys
 
@@ -3153,7 +3170,7 @@ class TestTheCiRun:
         alone = {"gui", "dev-build", "dev-publish"}
         unskipped = [
             name
-            for name in self.names()
+            for name in job_names(CI_WORKFLOW)
             if name not in alone
             and "\n    if: ${{ !(inputs.repeat > 1) }}\n" not in job(CI_WORKFLOW, name)
         ]

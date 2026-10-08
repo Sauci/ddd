@@ -1472,14 +1472,44 @@ def every_answer(server: GuiServer, sent: bytes) -> bytes:
     return received
 
 
+class Sending:
+    """A client end for ``_linger`` that never stops sending and never closes, on a clock of its
+    own: every read is answered at once, with as many bytes as it asks for up to ``each``, and
+    moves ``clock`` on by ``every`` seconds. It notes every deadline it is given and every size
+    it is asked for - and fails the test at its thousandth read, rather than send for ever to a
+    lingering close that never stops reading."""
+
+    READS: Final = 1000
+
+    def __init__(self, clock: FakeClock, each: int, every: float) -> None:
+        self.clock = clock
+        self.each = each
+        self.every = every
+        self.deadlines: list[float | None] = []
+        self.asked: list[int] = []
+
+    def shutdown(self, how: int) -> None:
+        """Nothing to shut: what is asserted is what is read, and for how long."""
+
+    def settimeout(self, value: float | None) -> None:
+        self.deadlines.append(value)
+
+    def recv(self, size: int) -> bytes:
+        self.asked.append(size)
+        # An AssertionError, which the lingering close lets through: it suppresses OSError.
+        assert len(self.asked) < self.READS, "the lingering close never stopped reading"
+        self.clock.now += self.every
+        return b"x" * min(size, self.each)
+
+
 class TestABodyLeftUnread:
     """A ``POST`` refused before its body is read left that body on the connection, where the
     server read it as the next request and answered that too. Such a refusal now reads the body
     its ``Content-Length`` declares first, and throws it away: nothing of it is ever read as a
     request, and nothing is left unread to reset the connection (P18-31) - a reset that can
     throw the answer away before the client reads it. A body this server would not read - too
-    long, of no length to read by, or sent chunked - is left: the answer says
-    ``Connection: close``, and what still arrives is drained before the close. The smuggled
+    long, of no length to read by, or sent with a ``Transfer-Encoding`` - is left: the answer
+    says ``Connection: close``, and what still arrives is drained before the close. The smuggled
     request carries no token, so this was never more than a confusion - but the body is anyone's
     text."""
 
@@ -1546,16 +1576,22 @@ class TestABodyLeftUnread:
         assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
         assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
 
-    def test_a_refused_chunked_post_is_answered_once_and_closed(self, server) -> None:
-        """A body sent ``Transfer-Encoding: chunked`` has no ``Content-Length`` to be read by:
-        refused before it is read, it is left, and the connection closed after the answer, as
-        one too long is (P19a-10). Drained as a length of none instead, the connection would be
-        kept and what follows read as the next request - its first chunk's size line, here,
-        answered with the base class's bare 400 page. Nothing follows the one answer's body."""
+    @pytest.mark.parametrize(
+        "encoding", ["chunked", "gzip, chunked", "gzip"], ids=["chunked", "gzip-chunked", "gzip"]
+    )
+    def test_a_refused_post_sent_with_a_transfer_encoding_is_answered_once_and_closed(
+        self, server, encoding
+    ) -> None:
+        """A body sent with any ``Transfer-Encoding`` - chunked, chunked after another coding,
+        or another coding alone - has no ``Content-Length`` to be read by: refused before it is
+        read, it is left, and the connection closed after the answer, as one too long is
+        (P19a-10). Drained as a length of none instead, the connection would be kept and what
+        follows read as the next request - its first chunk's size line, here, answered with the
+        base class's bare 400 page. Nothing follows the one answer's body."""
         chunked = f"{len(self.SMUGGLED):x}\r\n".encode("ascii") + self.SMUGGLED + b"\r\n0\r\n\r\n"
         refused = (
             f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
-            "Transfer-Encoding: chunked\r\n\r\n"
+            f"Transfer-Encoding: {encoding}\r\n\r\n"
         ).encode("ascii") + chunked
         head, _, rest = every_answer(server, refused).partition(b"\r\n\r\n")
         assert head.startswith(b"HTTP/1.1 401 ")
@@ -1575,9 +1611,10 @@ class TestABodyLeftUnread:
         head, _, rest = every_answer(server, sent).partition(b"\r\n\r\n")
         assert head.startswith(b"HTTP/1.1 400 ")
         assert b"\r\nConnection: close\r\n" not in head
-        # The api's own refusal of an empty body, not this server's 413: its sentence is the
-        # json parser's, and not this project's to pin.
-        assert json.loads(rest)["error"] == "bad-request"
+        assert json.loads(rest) == {
+            "error": "bad-request",
+            "message": "Invalid JSON: EOF while parsing a value at line 1 column 0",
+        }
 
     def test_a_post_too_long_to_read_keeps_its_answer_while_more_of_its_body_arrives(
         self, server
@@ -1618,6 +1655,19 @@ class TestABodyLeftUnread:
         answered = every_answer(server, refused + self.following(server))
         assert answered.count(b"HTTP/1.1 ") == 2
         assert answered.startswith(b"HTTP/1.1 421 ")
+        assert b"\r\nConnection: close\r\n" not in answered
+        assert b"HTTP/1.1 200 " in answered.partition(b"\r\n\r\n")[2]
+
+    def test_a_refused_post_without_a_content_length_keeps_its_connection(self, server) -> None:
+        """With neither a ``Content-Length`` nor a ``Transfer-Encoding``, a body is one of none,
+        up to ``MAX_BODY`` like any other: read at once, the refusal answered once, and the
+        connection kept for the next request - not closed as one of no length to read by is."""
+        refused = f"POST /api/edit HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n\r\n".encode(
+            "ascii"
+        )
+        answered = every_answer(server, refused + self.following(server))
+        assert answered.count(b"HTTP/1.1 ") == 2
+        assert answered.startswith(b"HTTP/1.1 401 ")
         assert b"\r\nConnection: close\r\n" not in answered
         assert b"HTTP/1.1 200 " in answered.partition(b"\r\n\r\n")[2]
 
@@ -1689,9 +1739,33 @@ class TestABodyLeftUnread:
             ).encode("ascii") + b"x" * 10
             with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
                 connection.sendall(sent)
+                # Closed once the idle time patched in has passed - within four times it - and
+                # not merely within the ten seconds this test would wait for anything.
+                connection.settimeout(4 * module._Handler.timeout)
                 assert connection.recv(65536) == b""
             assert server.slots.acquire(timeout=10)
             server.slots.release()
+
+    def test_only_a_connection_closed_with_a_body_unread_lingers(
+        self, project_file, pages, monkeypatch
+    ) -> None:
+        """Every other connection is closed at once when its last answer is done - here one its
+        client closed - and gives its slot back: a lingering close would hold that slot up to
+        two seconds more. One closed with a body unread lingers, once. On a server of one slot,
+        so that the slot back means that connection's thread has finished."""
+        lingered: list[object] = []
+        monkeypatch.setattr(module, "_linger", lingered.append)
+        api = Held(Session(project_file.parent))
+        api.release.set()
+        for server in serving(api, pages, connections=1):
+            assert ask(server, "GET", "/api/session")[0].status == 200
+            assert server.slots.acquire(timeout=10)
+            server.slots.release()
+            assert lingered == []
+            assert raw_answer(server, posted(server, str(MAX_BODY + 1)))[0] == 413
+            assert server.slots.acquire(timeout=10)
+            server.slots.release()
+            assert len(lingered) == 1
 
     @staticmethod
     def lingered(end: socket.socket) -> None:
@@ -1758,8 +1832,9 @@ class TestABodyLeftUnread:
             assert theirs.recv(1) == b""
 
     def test_the_lingering_close_drains_no_more_than_max_body(self, monkeypatch) -> None:
-        """A client that has sent more than ``MAX_BODY`` bytes - four here - is read no further,
-        though its time is not up and it never closed."""
+        """A client that has sent more than ``MAX_BODY`` bytes - four here - is read those four
+        and no more, though its time is not up and it never closed: the rest is left for the
+        close (P19a-11)."""
         monkeypatch.setattr(module, "MAX_BODY", 4)
         monkeypatch.setattr(module, "LINGER_SECONDS", 60)
         ours, theirs = socket.socketpair()
@@ -1768,8 +1843,35 @@ class TestABodyLeftUnread:
             arrived_in_full(ours, b"x" * 10)
             self.lingered(ours)
             ours.setblocking(False)
-            with pytest.raises(BlockingIOError):
-                ours.recv(1)  # what had come, drained before it stopped
+            assert ours.recv(65536) == b"x" * 6
+
+    def test_the_lingering_close_ends_when_its_time_is_up_however_the_client_keeps_sending(
+        self, monkeypatch
+    ) -> None:
+        """Its two seconds are counted once, from the start, and not afresh with every read: a
+        client sending a byte every half second, for ever, is read four times, each read given
+        what is left of the two seconds, and let go when they are up. A deadline set afresh on
+        each read would hold it as long as it trickled, and each read given the whole two
+        seconds, up to twice as long."""
+        clock = FakeClock()
+        monkeypatch.setattr(module, "time", types.SimpleNamespace(monotonic=clock))
+        monkeypatch.setattr(module, "MAX_BODY", 64)  # so that a deadline never kept still ends
+        trickling = Sending(clock, each=1, every=0.5)
+        module._linger(trickling)
+        assert trickling.deadlines == [2.0, 1.5, 1.0, 0.5]
+
+    def test_the_lingering_close_reads_64_kib_at_a_time_and_max_body_at_most(
+        self, monkeypatch
+    ) -> None:
+        """A client sending faster than it is read is read 64 KiB at a time, and never asked for
+        more than what is left of ``MAX_BODY`` - 100,000 bytes here - so that the lingering
+        close reads ``MAX_BODY`` bytes at most (P19a-11), its time never up meanwhile."""
+        clock = FakeClock()
+        monkeypatch.setattr(module, "time", types.SimpleNamespace(monotonic=clock))
+        monkeypatch.setattr(module, "MAX_BODY", 100_000)
+        flooding = Sending(clock, each=1 << 20, every=0)
+        module._linger(flooding)
+        assert flooding.asked == [65536, 100_000 - 65536]
 
 
 class TestOneConnectionCarriesManyAsks:

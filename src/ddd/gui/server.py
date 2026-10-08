@@ -196,22 +196,23 @@ def _refuse(request: socket.socket) -> None:
 
 def _linger(connection: socket.socket) -> None:
     """Shut the writing side of a connection closed with a body still arriving, and drain what
-    arrives before the close - until the client closes, :data:`LINGER_SECONDS` pass, or more
-    than :data:`MAX_BODY` bytes have come, whichever is first - so that the close is no reset
-    that could throw the answer away before the client reads it (P18-31). Run on the
-    connection's own thread (:meth:`_Handler.finish`), never on the one that accepts
-    (:func:`_refuse`), which every other connection waits behind. A client already gone is let
-    go without a word."""
+    arrives before the close - until the client closes, :data:`LINGER_SECONDS` pass, or
+    :data:`MAX_BODY` bytes have been read, whichever is first - so that the close is no reset
+    that could throw the answer away before the client reads it (P18-31). The time is counted
+    once, from the start, and no read asks for more than what is left of :data:`MAX_BODY`
+    (P19a-11). Run on the connection's own thread (:meth:`_Handler.finish`), never on the one
+    that accepts (:func:`_refuse`), which every other connection waits behind. A client already
+    gone is let go without a word."""
     with contextlib.suppress(OSError):
         connection.shutdown(socket.SHUT_WR)
         deadline = time.monotonic() + LINGER_SECONDS
         drained = 0
-        while drained <= MAX_BODY:
+        while drained < MAX_BODY:
             left = deadline - time.monotonic()
             if left <= 0:
                 return
             connection.settimeout(left)
-            chunk = connection.recv(65536)
+            chunk = connection.recv(min(65536, MAX_BODY - drained))
             if not chunk:
                 return
             drained += len(chunk)

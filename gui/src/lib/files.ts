@@ -252,8 +252,8 @@ export function fileRemoval(
 /** Whether the Remove panel asks its plan now (P18b-10, spec §7). Its plan re-analyses the
  * project, running its plugins, so the row the page was loaded with - one a link from elsewhere
  * can name, or a bookmark, a typed address or a reload - waits for the reader's press; a row the
- * reader reached within the page, by the table, a link of its own, or back and forward, asks at
- * once. */
+ * reader reached within the page, by the table, a link of its own, or a move back or forward from
+ * another route (`arrivedAfter`, `lib/route.ts`), asks at once. */
 export function removalAsked(arrived: boolean, pressed: boolean): boolean {
   return !arrived || pressed;
 }

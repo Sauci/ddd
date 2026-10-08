@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { FilesPlanReply } from "../api/types";
 import { asksComponentName, type FileRemoval, previewOf } from "../lib/files";
 import { shownChanges } from "../lib/units";
@@ -226,22 +227,42 @@ export interface RemoveFileViewProps {
  * whether Remove is possible: the button is drawn under a plan the server made, and nowhere else.
  *
  * The row the page was loaded with waits instead (`waiting`, P18b-10): its plan re-analyses the
- * project, running its plugins, so the panel says so and offers the press that asks it.
+ * project, running its plugins, so the panel waits - saying only that what removing the row would
+ * change is planned when the reader asks - and offers the press that asks it. The press leaves the
+ * keyboard's focus on the region it was in (ruling P19a-20).
  *
  * An allowed removal carries, where there is one, the server's sentence saying it was not judged,
  * and the pattern that keeps the file in the project all the same - of the three values only a
  * files plan carries, `kept_by` is the one the page puts into words of its own (`previewOf`).
  */
 export function RemoveFileView(props: RemoveFileViewProps) {
+  // Where the press that asks the plan puts the keyboard's focus: the button pressed goes as the
+  // plan is asked, and focus left on it would fall to the page's body, a keyboard's place lost.
+  // Moved by hand, as ComboBox's own `autoFocus` moves it.
+  const region = useRef<HTMLElement>(null);
+  const waiting = props.waiting;
   return (
     <Panel title={props.removal.title} onClose={props.onClose}>
-      <section className="panel-offer" aria-label="Remove from the includes">
-        {props.waiting !== undefined ? (
+      {/* Focusable by the page alone (`tabIndex` -1), never a stop of Tab's own: kept so once the
+          plan is drawn, since focus on an element that stops being focusable falls to the body. */}
+      <section
+        ref={region}
+        tabIndex={-1}
+        className="panel-offer"
+        aria-label="Remove from the includes"
+      >
+        {waiting !== undefined ? (
           <>
             <p className="quiet">
               Opened from an address: what removing it would change is planned when you ask.
             </p>
-            <Button variant="secondary" onPress={props.waiting}>
+            <Button
+              variant="secondary"
+              onPress={() => {
+                region.current?.focus();
+                waiting();
+              }}
+            >
               Plan its removal
             </Button>
           </>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import http.client
 import json
@@ -1528,6 +1529,62 @@ class TestABodyLeftUnread:
         assert answered.count(b"HTTP/1.1 ") == 1
         assert answered.startswith(f"HTTP/1.1 {status} ".encode("ascii"))
         assert b"\r\nConnection: close\r\n" in answered.partition(b"\r\n\r\n")[0]
+
+    def test_a_post_too_long_to_read_is_answered_whole_while_its_body_still_arrives(
+        self, server
+    ) -> None:
+        """Refused before a byte of it is read, its body still arriving: the answer is written,
+        the writing side shut, and what arrives drained before the close, so that the close is
+        no reset that throws the answer away before it is read (P18-31)."""
+        head = posted(server, str(MAX_BODY + 1)).replace(b"Connection: close\r\n", b"")
+        with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+            connection.sendall(head)
+
+            def send_the_body() -> None:
+                # Still sending when the answer comes, as a browser posting a large body is: the
+                # server stops reading, and whatever it does with what arrives decides whether
+                # this side gets its answer or a reset.
+                with contextlib.suppress(OSError):
+                    connection.sendall(b"x" * (4 * MAX_BODY))
+
+            sending = threading.Thread(target=send_the_body, daemon=True)
+            sending.start()
+            answered = b""
+            while not answered.endswith(b"}"):
+                chunk = connection.recv(65536)
+                if not chunk:
+                    break
+                answered += chunk
+        assert answered.startswith(b"HTTP/1.1 413 ")
+        assert answered.endswith(
+            json.dumps(
+                {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"}
+            ).encode()
+        )
+
+    def test_a_post_too_long_to_read_keeps_its_answer_while_more_of_its_body_arrives(
+        self, server
+    ) -> None:
+        """The same, in an order no thread decides: the answer has arrived, unread, when the
+        body's next 64 KiB are sent, and only then is it read. A connection closed with its body
+        still arriving is reset (P18-31): linux delivers what it holds before the reset, but
+        windows can throw the answer away unread."""
+        head = posted(server, str(MAX_BODY + 1)).replace(b"Connection: close\r\n", b"")
+        with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+            connection.sendall(head)
+            arrived(connection)  # the answer, written before a byte of the body was read
+            # Taken or refused with a reset: which of the two decides whether the answer is
+            # still there to be read.
+            with contextlib.suppress(OSError):
+                for _ in range(64):
+                    connection.sendall(b"x" * 1024)
+            answered = read_to_the_end(connection)
+        assert answered.startswith(b"HTTP/1.1 413 ")
+        assert answered.endswith(
+            json.dumps(
+                {"error": "too-large", "message": f"a request body is at most {MAX_BODY} bytes"}
+            ).encode()
+        )
 
     def test_a_misdirected_post_is_answered_once_and_closed(self, server) -> None:
         sent = (

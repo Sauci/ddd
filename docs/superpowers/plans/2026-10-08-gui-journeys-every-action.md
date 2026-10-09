@@ -1206,11 +1206,11 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The network | a GET failed once | 2 | `network.spec.ts:54`, "a GET the network failed once is sent again, and the page carries on" |
 | The network | a GET failing every time | 2 | `network.spec.ts:67`, "a GET the network fails every time reads as the server not answering" |
 | The start page | the projects found listed, and the one chosen opened | 3 | `skeleton.spec.ts:143`, "without a project the start page lists the ones found and opens the one chosen" |
-| The start page | no project found | 3 | none yet |
-| The start page | a build record not used | 3 | none yet |
-| The start page | looking for projects | 3 | none yet |
-| The start page | the projects list failing | 3 | none yet |
-| The start page | opening a project failing | 3 | none yet |
+| The start page | no project found | 3 | `start.spec.ts:30`, "an empty directory finds no project, and the start page says so" |
+| The start page | a build record not used | 3 | `start.spec.ts:43`, "a build record in a format too new is listed as not used, and its project still opens" |
+| The start page | looking for projects | 3 | `start.spec.ts:61`, "the start page says it is looking for projects, until the list answers" |
+| The start page | the projects list failing | 3 | `start.spec.ts:82`, "the projects list failing shows the server's own error, with no list drawn" |
+| The start page | opening a project failing | 3 | `start.spec.ts:93`, "opening a project that fails leaves the start page in place, with the server's own error" |
 | The start page | a project listed with the images its build records name | 19c | none yet |
 | The start page | a project whose description does not load, listed as an unnamed project | 19c | none yet |
 | The start page | a project opening, the list's buttons held until it has | 19c | none yet |
@@ -1221,8 +1221,8 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The app | the masthead's project name, back to the canvas | 3 | `units.spec.ts:6`, "a disagreement written from outside is resolved from the component page" |
 | The app | "Updating the findings…" while an edit's analysis runs | 3 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
 | The app | the server stopped, and the page saying so | 3 | `skeleton.spec.ts:134`, "the page says so when the server stops" |
-| The app | the signed-out view | 3 | none yet |
-| The app | the failure banner a broken answer raises | 3 | none yet |
+| The app | the signed-out view | 3 | `start.spec.ts:108`, "a page whose token the server no longer holds says how to sign in again" |
+| The app | the failure banner a broken answer raises | 3 | `start.spec.ts:124`, "an http failure of the long poll raises its own banner, and leaves the page drawn" |
 | The app | signed in by the one-time code `ddd gui` opens its own browser with | 19c | none yet |
 | The app | connecting, before the session answers | 19c | none yet |
 | The app | the session failing | 19c | none yet |

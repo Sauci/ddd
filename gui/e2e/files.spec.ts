@@ -162,14 +162,22 @@ test("the row a Remove takes out goes before the tab's next list of entries answ
   });
   // The server's next list, read here before the page is handed it: the entry Remove took out
   // is not in it, so the row the page drops at once (below) is not drawn again by that answer.
+  // Once only (`times: 1`): the teardown that follows this journey's last assertion stops the
+  // server, and the page then asks GET /api/files once more - a request this route must leave
+  // to the browser, as it did before Task 1, rather than meet with its own route.fetch() against
+  // a server already going away.
   let listed: string[] | null = null;
-  await page.route("**/api/files", async (route) => {
-    await released;
-    const response = await route.fetch();
-    const reply = (await response.json()) as { entries: { entry: string }[] };
-    listed = reply.entries.map((each) => each.entry);
-    await route.fulfill({ response });
-  });
+  await page.route(
+    "**/api/files",
+    async (route) => {
+      await released;
+      const response = await route.fetch();
+      const reply = (await response.json()) as { entries: { entry: string }[] };
+      listed = reply.entries.map((each) => each.entry);
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
   try {
     await remove.click();
     await expect(unitsRow).toHaveCount(0);

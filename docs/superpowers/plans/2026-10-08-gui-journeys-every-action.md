@@ -51,7 +51,7 @@ Every task's requirements include this section.
 **Windows, through CI alone**
 
 - **No Windows machine is at hand.** A change whose proof is a Windows leg is pushed to this branch and run there. Each attempt costs about ten minutes, so batch what can be batched.
-- **Only the controller pushes, and only this branch, and only with the maintainer's leave for this part.** Part 19a's leave was for its own branch. The controller asks before the first push of `feature/gui-journeys-every-action`. Never master, never `--force`. An implementer commits locally and reports; the controller pushes, starts the run, and hands the result back.
+- **Only the controller pushes, and only this branch.** The maintainer gave leave on 2026-10-09 to push `feature/gui-journeys-every-action` alone, for this part's CI runs and hunts. Never master, never `--force`. An implementer commits locally and reports; the controller pushes, starts the run, and hands the result back.
 - **Each task's Windows proof is a full run** (spec §8), started by the controller once the task's commits are pushed, and read before the task's review is closed. Only the final hunt must be clean on all three legs.
 - **Starting a run:**
   - a full run of every job: `gh workflow run ci.yml --ref feature/gui-journeys-every-action -f repeat=1`;
@@ -61,7 +61,7 @@ Every task's requirements include this section.
 - **Reading a run:**
   - its jobs: `gh run view <run> --json jobs`;
   - a job's log: `gh run view --job <job> --log`.
-- **A failed run's Playwright report** (`gh run download <run> -n playwright-report-<os>-<browser> -D <scratchpad>/<run>`) is downloaded only with the maintainer's leave. Part 19a had it for its own hunts, and part 19b asks for its own when it first needs it. Read each failed test's `error-context.md`, the page's accessibility snapshot at the failure, and the network entries in its trace.
+- **A failed run's Playwright report** (`gh run download <run> -n playwright-report-<os>-<browser> -D <scratchpad>/<run>`) may be downloaded without asking: the maintainer's leave of 2026-10-09, for any failed run of this part, hunt or single pass. Read each failed test's `error-context.md`, the page's accessibility snapshot at the failure, and the network entries in its trace. Nothing else is downloaded without asking.
 
 **Gates**
 
@@ -118,7 +118,7 @@ Every task's requirements include this section.
 1. **The branch.** The work is on `feature/gui-journeys-every-action`, made from master `ff9954e` (part 19a, PR #81). Its first commit is the spec, `205d5a6`. Work in the main checkout `/home/sauci/Documents/Github/ddd`: Docker cannot see the session scratchpad.
 2. **The baseline gate.** Run the milestone gate (below) once at this plan's commit, before Task 1, so that every later red is this part's own.
 3. **Read the spec,** whose §4 lists the starting rows and whose §5 says how each kind of state is reached.
-4. **The maintainer's leave to push this branch,** for this part's CI runs and hunts, is asked before the first push (Task 1's Windows run).
+4. **The maintainer's leave** to push this branch alone, and to download any failed run's report of this part, was given on 2026-10-09.
 
 ## Review Focus
 
@@ -1182,7 +1182,7 @@ test("a declaration made from a file that changed on disk is refused, and made o
 - [ ] **Step 1: The inventory complete.** Every row names a journey or a reason. Count them by screen for *Figures*.
 - [ ] **Step 2: Push,** after the bidi scan, and start the final hunt (`-f repeat=5`). It must pass with no failure on all three legs.
   - A failure is worked at its cause, as part 19a's Task 3 worked them, and never retried.
-  - Its report is downloaded only with the maintainer's leave (*Global Constraints*).
+  - Its report may be downloaded, by the maintainer's leave (*Global Constraints*).
 - [ ] **Step 3: A full run** (`-f repeat=1`) at the head, with every job green, its six Python legs and three gui legs recorded in *Figures* with the journeys' time per leg.
 - [ ] **Step 4: The milestone gate** at the head, each exit status captured.
 - [ ] **Step 5: Close the plan out:**
@@ -1336,6 +1336,6 @@ Taken while planning; execution adds its own below them.
 
    Cost if wrong: none; each was read from the code.
 7. **Models:** opus for Tasks 1, 2, 4 and 6, sonnet for 3, 5, 7, 8 and 9. Reviews on opus for 1, 2, 4 and 6, sonnet for the rest. The final whole-branch review on opus — cost if wrong: a cheaper reviewer missing a vacuous journey, which each journey's named ablation guards against.
-8. **Only the controller pushes, and only with the maintainer's leave for this part** — cost if wrong: a slower loop.
+8. **Only the controller pushes,** and only this branch, by the maintainer's leave of 2026-10-09 — cost if wrong: a slower loop.
 
 ### Taken during execution

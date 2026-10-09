@@ -16,9 +16,9 @@ const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 
-// Signed in, and every stylesheet that failed asked for once more, before anything is rendered:
-// no ask goes out without the token, and the page is not drawn unstyled for one lost request.
-// Rendered however either ends, so that one that throws still draws the page.
+// Signed in, and every stylesheet the network failed asked for once more, before anything is
+// rendered: no ask goes out without the token, and the page is not drawn unstyled for one lost
+// request. Rendered however either ends, so that one that throws still draws the page.
 void Promise.allSettled([
   signInFrom(window.location, window.history),
   askSheetsAgain(document),

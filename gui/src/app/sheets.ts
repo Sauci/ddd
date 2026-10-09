@@ -1,6 +1,6 @@
 import { sheetLoaded, sheetsToAskAgain } from "../lib/sheets";
 
-/** Asks once more for each of the page's stylesheets that failed to load, and resolves once each
+/** Asks once more for each of the page's stylesheets the network failed, and resolves once each
  * such ask has loaded or failed (spec 2026-10-08 §6). Run before the page draws: the module
  * script running this waits for the parser's own stylesheets to load or fail, so a link whose
  * sheet did not load here (`sheetLoaded`) is one that failed. A second failure leaves the page

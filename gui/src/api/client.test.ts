@@ -118,6 +118,20 @@ describe("requests to the server", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  test("a GET sent again carries the first send's very own init, signal included", async () => {
+    let sends = 0;
+    const fetchImpl = vi.fn(async (_path: string, _init?: RequestInit) => {
+      sends += 1;
+      if (sends === 1) throw new TypeError("fetch failed");
+      return new Response("{}", { status: 200 });
+    });
+    const controller = new AbortController();
+    const init = { headers: { "X-Test": "a" }, signal: controller.signal };
+    await expect(request("/api/state", init, fetchImpl)).resolves.toEqual({});
+    expect(fetchImpl.mock.calls[1]?.[1]).toEqual(fetchImpl.mock.calls[0]?.[1]);
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+  });
+
   test("a GET whose fetch got no answer twice is unreachable, after two sends", async () => {
     const fetchImpl = vi.fn(async () => {
       throw new TypeError("fetch failed");

@@ -124,7 +124,7 @@ Every task's requirements include this section.
 
 The five failure modes the spec implies but no row of the inventory would test on its own, most likely first. Each has its test in the task that owns the code.
 
-1. **A server really gone still reads as gone, at once.** With every GET sent once more, a stopped server must still show the page's stopped banner after the second rejection, never wait or loop. *(Task 2: `skeleton.spec.ts`'s "the page says so when the server stops" keeps passing, and a Vitest case pins two sends, then `ServerUnreachable`.)*
+1. **A server really gone still reads as gone, at once.** With every GET sent once more, a stopped server must still show the page's stopped banner, never wait or loop. *(Task 2: `skeleton.spec.ts`'s "the page says so when the server stops" keeps passing, and a Vitest case pins two sends, then `ServerUnreachable`.)* **Measured:** the banner now follows the fourth rejection, not the second as first written here - `followStates` already asks again 250 ms after an unanswered `getState`, and each `getState` is now sent twice. CI measured the server-stops journey at 1.2 s against 1.1 s (ubuntu chromium), 997 ms against 1.0 s (windows chromium), and 1.3 s against 913 ms (windows msedge): runs 37905686691 and 37913135127.
 2. **An abort is never resent.** The long poll aborts its own fetch when the page moves on. A resend would start a poll nobody reads. *(Task 2: a Vitest case: one send, then `AbortError`.)*
 3. **A `POST` is never resent,** even when its fetch is rejected, since an edit may have been written. *(Task 2: a Vitest case: one send, then `ServerUnreachable`.)*
 4. **A stylesheet that fails twice does not hang the page.** It draws as it does today, unstyled, and works. *(Task 2: a journey failing the stylesheet on every request.)*
@@ -139,7 +139,7 @@ The five failure modes the spec implies but no row of the inventory would test o
 | `gui/e2e/files.spec.ts` | 1, 7 | the Remove-ordering journey's `waitForResponse` replaced (1); the Files rows (7) |
 | `docs/developer_documentation.rst` | 1 | the two helpers, beside the fixtures it lists |
 | `gui/src/api/client.ts`, `client.test.ts` | 2 | `sentAgain`, and `request()` resending a GET once |
-| `gui/src/lib/sheets.ts`, `sheets.test.ts` | 2 | `sheetsToAskAgain`: which of the page's stylesheets failed |
+| `gui/src/lib/sheets.ts`, `sheets.test.ts` | 2 | `sheetsToAskAgain`: which of the page's stylesheets failed; `sheetLoaded`: whether one did |
 | `gui/src/app/sheets.ts` | 2 | `askSheetsAgain`: the glue asking for them once more |
 | `gui/src/main.tsx` | 2 | draws once the stylesheets are asked again, as it does once signed in |
 | `gui/e2e/network.spec.ts` | 2 | the network rows |
@@ -165,6 +165,7 @@ A screen's fix, where a journey finds a bug, is in that screen's own files, with
 - **Task 2 produces:**
   - `sentAgain(method: string | undefined, error: unknown): boolean`, in `gui/src/api/client.ts`;
   - `sheetsToAskAgain(sheets: readonly SheetLoad[]): string[]`, with `SheetLoad = { href: string; loaded: boolean }`, in `gui/src/lib/sheets.ts`;
+  - `sheetLoaded(sheet: { readonly cssRules: unknown } | null): boolean`, also in `gui/src/lib/sheets.ts`: whether the network answered a stylesheet's request;
   - `askSheetsAgain(document: Document): Promise<void>`, in `gui/src/app/sheets.ts`.
 
   From Task 2 on, a GET the network fails once is recovered. So a journey for a network banner fails its request at least twice (`failing(page, path, "network")`, every time), and the banner shows only then.
@@ -1515,6 +1516,7 @@ Filled in as the work goes. Known before execution:
 - **P19a-7's question,** how long a refusal held stale shows, unless the maintainer answers it.
 - **A fix that needs a design decision,** each recorded by the task that found it.
 - **The rows owned by 19c,** 85 of them, for part 19c: every row Task 1 added to *The inventory* that no journey drives (79), and the six ruling P19b-4 added (two Values rows, and a panel failing to read its entry for the variable, unit, type and entry panels). Part 19c takes them under its own later plan, on the same spec and helpers.
+- **That the page draws only after its stylesheets were asked again is pinned by no journey** (Task 2). A journey would need a negative wait, which the house rules forbid; `network.spec.ts`'s journeys 1 and 2 prove the stylesheet arrives, not that it arrived before the first draw.
 
 ## Rulings taken
 

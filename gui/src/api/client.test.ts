@@ -38,6 +38,7 @@ import {
   postUndo,
   request,
   ServerUnreachable,
+  sentAgain,
 } from "./client";
 import { keeperOver, signedOutStore } from "./token";
 import type { Changes } from "./types";
@@ -104,6 +105,51 @@ describe("requests to the server", () => {
     await expect(request("/api/state", {}, fetchImpl)).rejects.toMatchObject({
       name: "AbortError",
     });
+  });
+
+  test("a GET whose first fetch got no answer is sent once more, and answered", async () => {
+    let sends = 0;
+    const fetchImpl = vi.fn(async () => {
+      sends += 1;
+      if (sends === 1) throw new TypeError("fetch failed");
+      return new Response("{}", { status: 200 });
+    });
+    await expect(request("/api/state", {}, fetchImpl)).resolves.toEqual({});
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  test("a GET whose fetch got no answer twice is unreachable, after two sends", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(request("/api/state", {}, fetchImpl)).rejects.toBeInstanceOf(ServerUnreachable);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  test("a POST whose fetch got no answer is never sent again", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(
+      request("/api/edit", { method: "POST", body: "{}" }, fetchImpl),
+    ).rejects.toBeInstanceOf(ServerUnreachable);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("an aborted GET is never sent again", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new DOMException("aborted", "AbortError");
+    });
+    await expect(request("/api/state", {}, fetchImpl)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("a GET answered with an error is never sent again", async () => {
+    const fetchImpl = answering(500, JSON.stringify({ error: "internal", message: "failed" }));
+    await expect(request("/api/state", {}, fetchImpl)).rejects.toMatchObject({ status: 500 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   test("each call asks the path and method the api expects", async () => {
@@ -380,6 +426,21 @@ describe("requests to the server", () => {
         "of address, and ddd gui reads at most 65521",
     );
     expect(calls.urls).toEqual([]);
+  });
+});
+
+describe("sentAgain", () => {
+  test("a GET whose fetch got no answer is sent again, its method named or not", () => {
+    expect(sentAgain(undefined, new TypeError("x"))).toBe(true);
+    expect(sentAgain("get", new TypeError("x"))).toBe(true);
+  });
+
+  test("a POST whose fetch got no answer is not", () => {
+    expect(sentAgain("POST", new TypeError("x"))).toBe(false);
+  });
+
+  test("an abort is not, a GET's included", () => {
+    expect(sentAgain(undefined, new DOMException("aborted", "AbortError"))).toBe(false);
   });
 });
 

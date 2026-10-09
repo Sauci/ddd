@@ -85,6 +85,15 @@ const NOT_JSON = Symbol("not json");
  * caller here builds them, so that the token's header is added beside them. */
 export type Ask = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
 
+/** Whether a request whose fetch was rejected is sent once more (spec 2026-10-08 §6): a GET,
+ * which asks and changes nothing, whose fetch got no answer at all. Never an abort, which the
+ * page asked for itself, and never another method, whose effect may have happened before the
+ * connection failed. An HTTP answer, a refusal included, never comes here: `fetch` resolves it. */
+export function sentAgain(method: string | undefined, error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return false;
+  return (method ?? "GET").toUpperCase() === "GET";
+}
+
 export async function request<T>(
   path: string,
   init: Ask = {},
@@ -97,12 +106,20 @@ export async function request<T>(
   const held = kept.get();
   const headers =
     held === null ? init.headers : { ...init.headers, Authorization: `Bearer ${held}` };
-  let response: Response;
-  try {
-    response = await fetchImpl(path, {
+  const send = () =>
+    fetchImpl(path, {
       ...init,
       credentials: "omit",
       ...(headers === undefined ? {} : { headers }),
+    });
+  let response: Response;
+  try {
+    // Once more where the first got no answer at all (`sentAgain`): on Windows a request was seen
+    // refused a socket (`net::ERR_NO_BUFFER_SPACE`, part 19a) while the server answered every
+    // other, and a second rejection is the server gone.
+    response = await send().catch((error: unknown) => {
+      if (!sentAgain(init.method, error)) throw error;
+      return send();
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;

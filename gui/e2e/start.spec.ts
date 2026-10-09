@@ -1,6 +1,6 @@
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { failing, SERVER_FAILED } from "./demo";
+import { mkdirSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { CONTROLLER, failing, SERVER_FAILED } from "./demo";
 import { expect, test } from "./fixtures";
 
 // The start page's own states - no project found, a build record this DDD cannot read, the
@@ -34,7 +34,11 @@ test("an empty directory finds no project, and the start page says so", async ({
   const started = await copiedGui("demo", empty, { named: false });
   await page.goto(started.address);
   await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
-  await expect(page.getByText(`Found under ${resolve(started.directory)}`)).toBeVisible();
+  // The page shows the server's own `root.as_posix()` (session.py), forward-slashed even on
+  // Windows; `started.directory` is native-separated there, so only the separator is swapped,
+  // never `path.resolve()`'d, as `files.spec.ts`'s own `key` does for the same comparison.
+  const root = started.directory.replaceAll("\\", "/");
+  await expect(page.getByText(`Found under ${root}`)).toBeVisible();
   await expect(
     page.getByText("No project description was found here. Start ddd gui with the path of one."),
   ).toBeVisible();
@@ -49,7 +53,9 @@ test("a build record in a format too new is listed as not used, and its project 
   await expect(
     page.getByRole("heading", { name: "Build records not used", level: 2 }),
   ).toBeVisible();
-  const recordPath = resolve(join(started.directory, "build", "ddd-build.json"));
+  // Same posix-only comparison as "no project found" above: `entry.record` is the server's own
+  // `.as_posix()` (api.py's `_projects`), never native-separated.
+  const recordPath = `${started.directory.replaceAll("\\", "/")}/build/ddd-build.json`;
   await expect(
     page.getByText(
       `${recordPath}: written in format 2 by a newer DDD, and this one understands up to format 1`,
@@ -101,7 +107,10 @@ test("opening a project that fails leaves the start page in place, with the serv
   await button.click();
   await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
   await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
-  // A POST is never resent (Task 2's `sentAgain`), so one failure is enough.
+  // One failure is enough regardless of the method: `failing`'s "http" resolves the fetch with
+  // a 500, and `sentAgain` (client.ts) is only ever asked from the `.catch` of one that
+  // *rejected* - "An HTTP answer, a refusal included, never comes here: `fetch` resolves it",
+  // `sentAgain`'s own doc comment, client.ts.
   expect(failed()).toBe(1);
 });
 
@@ -129,11 +138,13 @@ test("an http failure of the long poll raises its own banner, and leaves the pag
   const canvas = page.getByRole("region", { name: "Modules" });
   await expect(canvas).toBeVisible();
   const failed = await failing(page, "/api/state", "http");
-  // The request already in flight when this registers is past the browser's own routing, and
-  // waits out the server's own long poll (`WAIT_SECONDS`, api.py) before answering unchanged;
-  // the one the page sends after it is what this fails, at once (spec 2026-10-08 §6, an HTTP
-  // answer unlike a dropped GET).
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED, { timeout: 30_000 });
+  // The ask already in flight when this registers is past the browser's own routing, and would
+  // otherwise wait out the server's own long poll (`WAIT_SECONDS`, 25.0, api.py) before
+  // answering unchanged - ruling P19b-9. Touching a project file's own stamp instead wakes it at
+  // once with a new version (`stamped`/`poll`, session.py, compare `(st_mtime_ns, st_size)`
+  // alone, so no byte need change): the ask the page sends *after* that is the one this fails.
+  utimesSync(join(gui.directory, CONTROLLER), new Date(), new Date());
+  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
   // The page stays drawn: the canvas is still the one up, not replaced by anything else.
   await expect(canvas).toBeVisible();
   // An HTTP answer is no stopped server: that banner is a different one, and does not show.

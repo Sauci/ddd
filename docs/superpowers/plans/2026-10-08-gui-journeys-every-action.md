@@ -1033,7 +1033,7 @@ test("a finding fixed from outside while its panel is open is no longer reported
 | --- | --- | --- | --- |
 | **A baseline refused, four ways** | `gui`; `shape.json` (`{"neither": true}`) written into the copy | The worked journey below: not found, not json, of the wrong shape, outside the root. | `CompareView.tsx`'s `{refusal !== null && <Banner …>}` removed |
 | **A row opens its finding** | `gui`; `dump(…, "baseline.json")`, then `driftDatatypeIn(gui.directory, SENSOR_HUB, "ValueA", "uint16")`, as the tab's existing journey does | Compare, then press the row "changed-interface" in the table "Findings": a panel opens beside it with the finding's message. | `CompareView.tsx`'s `row = rows.find(…)` never matching |
-| **That finding's route followed** | the same | In that panel, the link "Open ValueA" leads to the component page with ValueA's panel open. | `CompareView.tsx`'s `onOpen` made a no-op |
+| **That finding's route followed** | A copy of examples/layout with examples/plugins beside it: its description names `"plugins": ["../plugins/ddd_layout.py"]`, and `copiedGui` copies one example's directory alone, so Task 8 extends it to copy the plugins beside the copy if it needs to, or records the row's reason. Then `dump(…)` of the copy as the baseline, and one stamped object's layout key changed: EngineHours' `"key": 12` in storage.ddd.json. | The demo's comparison findings carry no route: `changed-interface` is filed on the project with no pointer (measured on the Linux development PC at `f891682`: route `None`), so its panel gives the reason "it is about the whole delivery being compared" and no link. A routed one comes from the layout plugin's comparison rule, which locates on a declaration: measured at `f090048` over such a copy, EngineHours moved from key 12 to 14, `layout/key-changed` is filed on storage.ddd.json at `component.interface[0]` with a route to the variable EngineHours. Compare, press that row, and its panel's link opens the component page with EngineHours' panel; read the link's words off the running page. | `CompareView.tsx`'s `onOpen` made a no-op |
 | **The renamed objects** | `gui`; `dump(…)`, then `renameValueA(gui.directory, "ValueZ")` | Compare: under the heading "Renamed objects", a row reading ValueA's id, "ValueA", "ValueZ" (columns "Id", "From", "To"). Before any rename, the heading's paragraph reads "Nothing was renamed." | `CompareView.tsx`'s `reply.renames.length === 0 ? …` inverted |
 | **The busy state** | `gui`; `dump(…)`; the `/api/compare` request held by a route | While held, "Baseline" and "Compare" are disabled and no verdict shows. Released, the verdict "This project can replace the baseline." shows and both are enabled again. | `ComparePage.tsx`'s `busy={stopped \|\| compare.isFetching}` made `busy={stopped}` |
 
@@ -1194,7 +1194,7 @@ test("a declaration made from a file that changed on disk is refused, and made o
 
 ## The inventory
 
-Every action a reader can take in `ddd gui`, and every state a reader can meet, with the journey that covers it or the reason none does (spec §4). Task 1 checked the starting rows, from part 19's survey and this plan's pre-flight at `205d5a6`, against the tree, and added every action and state they did not name: a row a journey already drives cites it by file, line and title; a row none drives reads "none yet". A line number is the one Task 1 read, and goes stale as journeys are added above it; the title is what names a journey. Each later task fills in its own rows' journeys, or their reasons.
+Every action a reader can take in `ddd gui`, and every state a reader can meet, with the journey that covers it or the reason none does (spec §4). Task 1 checked the starting rows, from part 19's survey and this plan's pre-flight at `205d5a6`, against the tree, and added the rows it and its review found that they did not name: a row a journey already drives cites it by file, line and title; a row none drives reads "none yet". By the maintainer's split, part 19b closes the starting rows alone, each owned by the task of its screen; every row added that no journey drives is owned by `19c`, for part 19c's own later plan on the same spec and helpers. A row that names a journey keeps it, whatever its owner. A line number is the one Task 1 read, and goes stale as journeys are added above it; the title is what names a journey. Each task of 19b fills in its own rows' journeys, or their reasons.
 
 | Screen | Row | Task | Journey |
 | --- | --- | --- | --- |
@@ -1210,9 +1210,9 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The start page | looking for projects | 3 | none yet |
 | The start page | the projects list failing | 3 | none yet |
 | The start page | opening a project failing | 3 | none yet |
-| The start page | a project listed with the images its build records name | 3 | none yet |
-| The start page | a project whose description does not load, listed as an unnamed project | 3 | none yet |
-| The start page | a project opening, the list's buttons held until it has | 3 | none yet |
+| The start page | a project listed with the images its build records name | 19c | none yet |
+| The start page | a project whose description does not load, listed as an unnamed project | 19c | none yet |
+| The start page | a project opening, the list's buttons held until it has | 19c | none yet |
 | The app | the address `ddd gui` printed, signing the page in on its project | 3 | `skeleton.spec.ts:16`, "the demo opens on its project page, with every component" |
 | The app | a tab of the project followed, and its address kept across a reload | 3 | `skeleton.spec.ts:216`, "the table is one tab away" |
 | The app | the browser's Back, within the page | 3 | `skeleton.spec.ts:205`, "clicking a module opens its component page, and the back button returns to the canvas" |
@@ -1220,27 +1220,24 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The app | the masthead's project name, back to the canvas | 3 | `units.spec.ts:6`, "a disagreement written from outside is resolved from the component page" |
 | The app | "Updating the findings…" while an edit's analysis runs | 3 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
 | The app | the server stopped, and the page saying so | 3 | `skeleton.spec.ts:134`, "the page says so when the server stops" |
-| The app | no page breaking its content security policy | 3 | `units.spec.ts:262`, "no page reports a violation of its content security policy" |
 | The app | the signed-out view | 3 | none yet |
 | The app | the failure banner a broken answer raises | 3 | none yet |
-| The app | signed in by the one-time code `ddd gui` opens its own browser with | 3 | none yet |
-| The app | connecting, before the session answers | 3 | none yet |
-| The app | the session failing | 3 | none yet |
-| The app | analysing the project, before its first analysis lands | 3 | none yet |
-| The app | the server answering again after it stopped | 3 | none yet |
-| The app | nothing written while the server is stopped: every Apply and every write's button disabled | 3 | none yet |
-| The app | an entry's panel just after a rename or a declaration, saying the findings are updating until the analysis lands | 3 | none yet |
-| The app | the changes a plan makes, shown and then hidden again | 3 | none yet |
+| The app | signed in by the one-time code `ddd gui` opens its own browser with | 19c | none yet |
+| The app | connecting, before the session answers | 19c | none yet |
+| The app | the session failing | 19c | none yet |
+| The app | analysing the project, before its first analysis lands | 19c | none yet |
+| The app | the server answering again after it stopped | 19c | none yet |
+| The app | nothing written while the server is stopped: every Apply and every write's button disabled | 19c | none yet |
+| The app | an entry's panel just after a rename or a declaration, saying the findings are updating until the analysis lands | 19c | none yet |
+| The app | the changes a plan makes, shown and then hidden again | 19c | none yet |
 | The undo strip | a unit's settlement undone, its changes shown, the file put back as it was | 3 | `undo.spec.ts:12`, "a unit settled from a panel is put back exactly as the file was" |
 | The undo strip | an adoption undone, file and include | 3 | `undo.spec.ts:44`, "an adopted vocabulary is taken away again, file and include" |
 | The undo strip | an undo refused, its file changed by hand | 3 | `undo.spec.ts:67`, "an undo of an edit whose file was changed by hand is refused, and keeps its place" |
 | The undo strip | the undo offered beside a component's name | 3 | `undo.spec.ts:95`, "the control stands beside a component's name too" |
-| The undo strip | the files an undo puts back, being read | 3 | none yet |
-| The undo strip | an undo the server fails on | 3 | none yet |
+| The undo strip | the files an undo puts back, being read | 19c | none yet |
+| The undo strip | an undo the server fails on | 19c | none yet |
 | The server | localhost reaching `ddd gui`, which nothing else may take at [::1] | 3 | `localhost.spec.ts:13`, "localhost reaches ddd gui, and nothing else can listen on [::1] at its port" |
 | The server | a project on a mapped drive, served by its network path and edited through it (CI's Windows Chromium leg alone) | 3 | `mapped.spec.ts:14`, "a project on a mapped drive is served by its network path, and edited through it" |
-| The server | a page on another port asking for a comparison, refused before any plugin runs | 3 | `hostile.spec.ts:7`, "a page on another port cannot make ddd gui run a baseline's plugin" |
-| The server | another server on 127.0.0.1, sent nothing of `ddd gui`'s | 3 | `loopback.spec.ts:18`, "another server on 127.0.0.1 is sent nothing of ddd gui's" |
 | The canvas | the project's modules and arrows drawn, every arrow agreed | 4 | `skeleton.spec.ts:160`, "the demo opens on a canvas of its four modules" |
 | The canvas | an arrow coloured by a disagreement, and plain again once it is put right | 4 | `skeleton.spec.ts:180`, "a disagreement colours its arrow" |
 | The canvas | hovering an arrow's label, which says what is wrong | 4 | `skeleton.spec.ts:192`, "an arrow says what is wrong" |
@@ -1258,18 +1255,18 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The canvas | drawing the project | 4 | none yet |
 | The canvas | laying the project out | 4 | none yet |
 | The canvas | the layout worker failing | 4 | none yet |
-| The canvas | the project's graph failing before anything is drawn | 4 | none yet |
-| The canvas | the project's graph failing once drawn, the canvas kept | 4 | none yet |
-| The canvas | a module whose file does not load, drawn as not loaded | 4 | none yet |
-| The canvas | a module's badge, counting its errors or its warnings | 4 | none yet |
-| The canvas | an arrow reached by the keyboard, saying what is wrong | 4 | none yet |
-| The canvas | zoomed in and out with the canvas's own buttons | 4 | none yet |
-| The canvas | laid out in ranks only, for a project too large for the full layout | 4 | none yet |
-| The canvas | a later layout failing, the canvas kept | 4 | none yet |
+| The canvas | the project's graph failing before anything is drawn | 19c | none yet |
+| The canvas | the project's graph failing once drawn, the canvas kept | 19c | none yet |
+| The canvas | a module whose file does not load, drawn as not loaded | 19c | none yet |
+| The canvas | a module's badge, counting its errors or its warnings | 19c | none yet |
+| The canvas | an arrow reached by the keyboard, saying what is wrong | 19c | none yet |
+| The canvas | zoomed in and out with the canvas's own buttons | 19c | none yet |
+| The canvas | laid out in ranks only, for a project too large for the full layout | 19c | none yet |
+| The canvas | a later layout failing, the canvas kept | 19c | none yet |
 | The components table | each component listed with its errors and its warnings | 4 | `skeleton.spec.ts:16`, "the demo opens on its project page, with every component" |
 | The components table | a component's name pressed, opening its page | 4 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
 | The components table | its summary while the findings update | 4 | none yet |
-| The components table | a row pressed beside its name, or Enter on it, opening its component | 4 | none yet |
+| The components table | a row pressed beside its name, or Enter on it, opening its component | 19c | none yet |
 | Units | the units in use listed, the tab's line counting them | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
 | Units | a project with no units file offered the adoption, previewed and adopted | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
 | Units | the adoption made straight from its banner | 5 | `undo.spec.ts:44`, "an adopted vocabulary is taken away again, file and include" |
@@ -1281,13 +1278,14 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Units | a unit no longer stated, its panel closed and the tab saying so, by a bookmark too | 5 | `project-units.spec.ts:226`, "a unit nothing states any longer closes its panel and the tab says so, but not while a file does not load" |
 | Units | the file stating a unit half-written, its panel kept and naming the file | 5 | `project-units.spec.ts:226`, "a unit nothing states any longer closes its panel and the tab says so, but not while a file does not load" |
 | Units | the adopt refused | 5 | none yet |
-| Units | reading the project's units | 5 | none yet |
-| Units | the units failing to load | 5 | none yet |
-| Units | the units failing once listed, the table kept | 5 | none yet |
-| Units | a unit's panel reading the unit | 5 | none yet |
-| Units | a units file listing no unit, the units in use adopted into it | 5 | none yet |
-| Units | a project stating no unit, with nothing to adopt | 5 | none yet |
-| Units | an Apply the server fails on | 5 | none yet |
+| Units | reading the project's units | 19c | none yet |
+| Units | the units failing to load | 19c | none yet |
+| Units | the units failing once listed, the table kept | 19c | none yet |
+| Units | a unit's panel reading the unit | 19c | none yet |
+| Units | a unit's panel failing to read the unit | 19c | none yet |
+| Units | a units file listing no unit, the units in use adopted into it | 19c | none yet |
+| Units | a project stating no unit, with nothing to adopt | 19c | none yet |
+| Units | an Apply the server fails on | 19c | none yet |
 | Types | a type's unit settled, written, then undone | 5 | `types.spec.ts:75`, "a type's unit settled from its panel is written, then undone" |
 | Types | a type renamed everywhere, and refused onto another type's name | 5 | `types.spec.ts:109`, "a type is renamed everywhere, and a rename onto another type's name is refused" |
 | Types | a type's range | 5 | none yet |
@@ -1297,16 +1295,17 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Types | a type gone | 5 | none yet |
 | Types | a type's file half-written | 5 | none yet |
 | Types | a type's Apply refused as out of date | 5 | none yet |
-| Types | reading the project's types | 5 | none yet |
-| Types | the types failing to load | 5 | none yet |
-| Types | the types failing once listed, the table kept | 5 | none yet |
-| Types | a type's panel reading the type | 5 | none yet |
-| Types | the untold banner | 5 | none yet |
-| Types | the unreadable banner | 5 | none yet |
-| Types | a type's "Where it is used" followed to the declaration | 5 | none yet |
-| Types | a structure's member followed to its type | 5 | none yet |
-| Types | a finding in a type's panel followed | 5 | none yet |
-| Types | an Apply the server fails on | 5 | none yet |
+| Types | reading the project's types | 19c | none yet |
+| Types | the types failing to load | 19c | none yet |
+| Types | the types failing once listed, the table kept | 19c | none yet |
+| Types | a type's panel reading the type | 19c | none yet |
+| Types | a type's panel failing to read the type | 19c | none yet |
+| Types | the untold banner | 19c | none yet |
+| Types | the unreadable banner | 19c | none yet |
+| Types | a type's "Where it is used" followed to the declaration | 19c | none yet |
+| Types | a structure's member followed to its type | 19c | none yet |
+| Types | a finding in a type's panel followed | 19c | none yet |
+| Types | an Apply the server fails on | 19c | none yet |
 | Shared files | a constant declared from a finding's route, its form filled in | 6 | `constants.spec.ts:19`, "a finding nobody could act on becomes a constant declared in two clicks" |
 | Shared files | a section declared from a finding's route, its access picked from the list | 6 | `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks" |
 | Shared files | a raster declared from a finding's route | 6 | `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
@@ -1331,13 +1330,14 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | an entry's file half-written | 6 | none yet |
 | Shared files | the untold banner | 6 | none yet |
 | Shared files | the unreadable banner | 6 | none yet |
-| Shared files | reading the project's shared files | 6 | none yet |
-| Shared files | the shared files failing to load | 6 | none yet |
-| Shared files | the shared files failing once listed, the table kept | 6 | none yet |
-| Shared files | an entry's panel reading the entry | 6 | none yet |
-| Shared files | a constant declared inside a component, its file followed | 6 | none yet |
-| Shared files | the add form's Apply refused as out of date | 6 | none yet |
-| Shared files | an Apply the server fails on | 6 | none yet |
+| Shared files | reading the project's shared files | 19c | none yet |
+| Shared files | the shared files failing to load | 19c | none yet |
+| Shared files | the shared files failing once listed, the table kept | 19c | none yet |
+| Shared files | an entry's panel reading the entry | 19c | none yet |
+| Shared files | an entry's panel failing to read the entry | 19c | none yet |
+| Shared files | a constant declared inside a component, its file followed | 19c | none yet |
+| Shared files | the add form's Apply refused as out of date | 19c | none yet |
+| Shared files | an Apply the server fails on | 19c | none yet |
 | Findings | a row pressed, opening its finding with its notes | 7 | `findings.spec.ts:30`, "a disagreement leads to its variable" |
 | Findings | a finding's route followed to its variable | 7 | `findings.spec.ts:30`, "a disagreement leads to its variable" |
 | Findings | a finding's route followed to a unit | 7 | `findings.spec.ts:100`, "an unknown unit leads to its unit" |
@@ -1354,8 +1354,8 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Findings | a fix's Apply refused as out of date | 7 | none yet |
 | Findings | the fixes a finding carries failing | 7 | none yet |
 | Findings | the page of findings failing | 7 | none yet |
-| Findings | a page of findings still being read | 7 | none yet |
-| Findings | a fix's Apply the server fails on | 7 | none yet |
+| Findings | a page of findings still being read | 19c | none yet |
+| Findings | a fix's Apply the server fails on | 19c | none yet |
 | Files | a component created by New file | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
 | Files | an existing file added | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
 | Files | a removal refused for the error it would leave | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
@@ -1369,25 +1369,25 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Files | the findings a file would bring | 7 | none yet |
 | Files | the list failing at first | 7 | none yet |
 | Files | the list failing later | 7 | none yet |
-| Files | reading the project's files | 7 | none yet |
-| Files | a New file of a vocabulary's own kind: types, units, constants, sections or rasters | 7 | none yet |
-| Files | New file refused | 7 | none yet |
-| Files | Add a file refused | 7 | none yet |
-| Files | an entry whose file did not load | 7 | none yet |
-| Files | an entry naming no file | 7 | none yet |
-| Files | an entry the last analysis did not read | 7 | none yet |
-| Files | a pattern entry, the files it matches listed under it | 7 | none yet |
-| Files | a removal refused for a file only a pattern brings in | 7 | none yet |
-| Files | an Apply the server fails on | 7 | none yet |
+| Files | reading the project's files | 19c | none yet |
+| Files | a New file of a vocabulary's own kind: types, units, constants, sections or rasters | 19c | none yet |
+| Files | New file refused | 19c | none yet |
+| Files | Add a file refused | 19c | none yet |
+| Files | an entry whose file did not load | 19c | none yet |
+| Files | an entry naming no file | 19c | none yet |
+| Files | an entry the last analysis did not read | 19c | none yet |
+| Files | a pattern entry, the files it matches listed under it | 19c | none yet |
+| Files | a removal refused for a file only a pattern brings in | 19c | none yet |
+| Files | an Apply the server fails on | 19c | none yet |
 | Compare | a baseline compared: the verdict, the line counting its findings, and a changed interface | 8 | `compare.spec.ts:4`, "a reader can ask whether this delivery replaces the last" |
 | Compare | a baseline refused: not found, not json, of the wrong shape, outside the root | 8 | none yet |
 | Compare | a row opens its finding | 8 | none yet |
 | Compare | a finding's route followed, which only a plugin's comparison rule files on a declaration | 8 | none yet |
 | Compare | the renamed objects | 8 | none yet |
 | Compare | the busy state | 8 | none yet |
-| Compare | a baseline asked for with Enter | 8 | none yet |
-| Compare | a finding about the whole delivery, saying why it leads nowhere | 8 | none yet |
-| Compare | the baseline's own findings, named as the baseline's and leading nowhere | 8 | none yet |
+| Compare | a baseline asked for with Enter | 19c | none yet |
+| Compare | a finding about the whole delivery, saying why it leads nowhere | 19c | none yet |
+| Compare | the baseline's own findings, named as the baseline's and leading nowhere | 19c | none yet |
 | A component | its declarations, and a change saved by another editor reaching them while a unit is being typed | 9 | `skeleton.spec.ts:81`, "a change saved by another editor reaches the page, and a unit being typed keeps its draft" |
 | A component | a row selected, opening its variable's panel, kept across a reload | 9 | `units.spec.ts:179`, "the address keeps the panel open across a reload" |
 | A component | a unit cell pressed, its picker focused, and focused again by a second press | 9 | `units.spec.ts:163`, "a unit cell pressed again, once focus has moved elsewhere, moves it back to the picker" |
@@ -1402,7 +1402,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | A component | a file half-written, the panel of a variable only it declares kept | 9 | `units.spec.ts:381`, "a file saved half-edited leaves open the panel of a variable only it declares" |
 | A component | a conversion carried back from the producer | 9 | `keys.spec.ts:23`, "a conversion drifted from outside is carried back from the producer" |
 | A component | a range typed into its two fields | 9 | `keys.spec.ts:57`, "a range typed into the two fields reaches every declaration" |
-| A component | a limits row the panel opens by itself, settled on the producer's range or on the other, picked | 9 | `keys.spec.ts:72`, "a limits row the panel opens by itself settles on the producer's range" |
+| A component | a limits row the panel opens by itself, settled on the producer's range, the other picked and previewed | 9 | `keys.spec.ts:72`, "a limits row the panel opens by itself settles on the producer's range" |
 | A component | a key's Apply refused as out of date, the file read again, then applied | 9 | `keys.spec.ts:130`, "a change refused as stale can be applied again once the analysis has caught up"; `skeleton.spec.ts:105`, "an edit made from a page that is out of date is refused, and the file reloaded" |
 | A component | a range the two fields do not make, offering no Apply | 9 | `keys.spec.ts:168`, "a range the two fields do not make offers no Apply, and changes nothing" |
 | A component | a truth value typed with Enter, never left unstated | 9 | `keys.spec.ts:206`, "a truth value is typed, confirmed with Enter, and cannot be left unstated" |
@@ -1427,17 +1427,18 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | A component | a component no longer in the project | 9 | none yet |
 | A component | a declaration refused as out of date | 9 | none yet |
 | A component | a declaration's removal refused as out of date | 9 | none yet |
-| A component | reading its file | 9 | none yet |
-| A component | reading its findings | 9 | none yet |
-| A component | its findings failing to load | 9 | none yet |
-| A component | no finding in it | 9 | none yet |
-| A component | a variable's panel reading the variable | 9 | none yet |
-| A component | a finding in a variable's panel, followed to what it names | 9 | none yet |
-| A component | a unit outside the project's vocabulary, said to be | 9 | none yet |
-| A component | the add panel reading what may be declared | 9 | none yet |
-| A component | the add panel failing to read it | 9 | none yet |
-| A component | a dimension picked from the project's constants | 9 | none yet |
-| A component | a key's Apply, a removal or a declaration the server fails on | 9 | none yet |
+| A component | reading its file | 19c | none yet |
+| A component | reading its findings | 19c | none yet |
+| A component | its findings failing to load | 19c | none yet |
+| A component | no finding in it | 19c | none yet |
+| A component | a variable's panel reading the variable | 19c | none yet |
+| A component | a variable's panel failing to read the variable | 19c | none yet |
+| A component | a finding in a variable's panel, followed to what it names | 19c | none yet |
+| A component | a unit outside the project's vocabulary, said to be | 19c | none yet |
+| A component | the add panel reading what may be declared | 19c | none yet |
+| A component | the add panel failing to read it | 19c | none yet |
+| A component | a dimension picked from the project's constants | 19c | none yet |
+| A component | a key's Apply, a removal or a declaration the server fails on | 19c | none yet |
 | Values | a curve read against its axis, raw and physical | 9 | `values.spec.ts:38`, "a curve is read against its axis, raw and physical" |
 | Values | a curve drawn from the numbers it holds | 9 | `values.spec.ts:76`, "a curve is drawn from the numbers it holds" |
 | Values | a cell changed, its changes shown, and written to the producer's file | 9 | `values.spec.ts:130`, "a cell changed is written to the producer's file" |
@@ -1457,13 +1458,15 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Values | a shape deeper than a grid, refused with a way back | 9 | `values.spec.ts:442`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
 | Values | a curve naming a scalar type, its grid as before | 9 | `values.spec.ts:470`, "a curve naming a scalar type keeps its button, and its grid" |
 | Values | an Apply refused as out of date | 9 | none yet |
-| Values | reading the values | 9 | none yet |
-| Values | a declaration with no cell, opened by its address | 9 | none yet |
-| Values | an object initialised with text | 9 | none yet |
-| Values | a grid that states nothing | 9 | none yet |
-| Values | a grid stated once for every cell | 9 | none yet |
-| Values | a grid nothing produces, or more than one place does, read only | 9 | none yet |
-| Values | a cell's Apply the server fails on | 9 | none yet |
+| Values | reading the values | 19c | none yet |
+| Values | the values failing to load | 19c | none yet |
+| Values | an object no longer declared, its page saying so, with the way back | 19c | none yet |
+| Values | a declaration with no cell, opened by its address | 19c | none yet |
+| Values | an object initialised with text | 19c | none yet |
+| Values | a grid that states nothing | 19c | none yet |
+| Values | a grid stated once for every cell | 19c | none yet |
+| Values | a grid nothing produces, or more than one place does, read only | 19c | none yet |
+| Values | a cell's Apply the server fails on | 19c | none yet |
 
 ## Milestone gate
 
@@ -1511,6 +1514,7 @@ Filled in as the work goes. Known before execution:
 - **The user guide,** part 20.
 - **P19a-7's question,** how long a refusal held stale shows, unless the maintainer answers it.
 - **A fix that needs a design decision,** each recorded by the task that found it.
+- **The rows owned by 19c,** 85 of them, for part 19c: every row Task 1 added to *The inventory* that no journey drives (79), and the six ruling P19b-4 added (two Values rows, and a panel failing to read its entry for the variable, unit, type and entry panels). Part 19c takes them under its own later plan, on the same spec and helpers.
 
 ## Rulings taken
 

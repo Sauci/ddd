@@ -160,7 +160,7 @@ A screen's fix, where a journey finds a bug, is in that screen's own files, with
 - **Task 1 produces:**
   - `failing(page: Page, path: string | RegExp, how: "http" | "network", times?: number): Promise<() => number>`, in `gui/e2e/demo.ts`. It fails the page's requests whose pathname is `path` (or matches it), the first `times` of them (every one if omitted), and answers how many it has failed so far. `"http"` answers `500` with the server's own error body; `"network"` aborts with no answer.
   - `SERVER_FAILED`: the sentence `"ddd gui failed on this request; the terminal it runs in shows why"` that `failing`'s `"http"` answers with, the server's own `_INTERNAL` (`src/ddd/gui/server.py`).
-  - The fixture `copiedGui: (example: "demo" | "vocabulary" | "structures", change: (directory: string) => void, options?: { named?: boolean }) => Promise<Gui>`, in `gui/e2e/fixtures.ts`. It copies the example under the test's own output directory, runs `change` on the copy, then starts `ddd gui` there, naming the project unless `named` is `false`. Every server it started is stopped when the test ends.
+  - The fixture `copiedGui: (example: "demo" | "vocabulary" | "structures", change: (directory: string) => void | Promise<void>, options?: { named?: boolean }) => Promise<Gui>`, in `gui/e2e/fixtures.ts`. It copies the example under the test's own output directory, runs `change` on the copy and awaits it, then starts `ddd gui` there, naming the project unless `named` is `false`. Every server it started is stopped when the test ends.
   - The inventory table, in this plan.
 - **Task 2 produces:**
   - `sentAgain(method: string | undefined, error: unknown): boolean`, in `gui/src/api/client.ts`;

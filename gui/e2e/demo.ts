@@ -496,6 +496,12 @@ export const SERVER_FAILED = "ddd gui failed on this request; the terminal it ru
  * `500` with its own error body; `"network"` answers nothing at all, as a dropped connection.
  * Playwright's own route, on this page alone: the server's code is never touched. Answers how
  * many it has failed so far.
+ *
+ * A pattern is matched afresh for every request, whatever its flags: a copy of it is tried from
+ * its start each time, so a `g` or `y` flag, which makes `test` go on from where it last stopped,
+ * never lets one request through and fails the next. A route on the same path registered after
+ * this one, and calling `route.continue()`, sends its request straight to the server, past
+ * `failing`; one calling `route.fallback()` hands it on to `failing`.
  */
 export async function failing(
   page: Page,
@@ -504,8 +510,17 @@ export async function failing(
   times = Number.POSITIVE_INFINITY,
 ): Promise<() => number> {
   let failed = 0;
-  const matches = (pathname: string) =>
-    typeof path === "string" ? pathname === path : path.test(pathname);
+  let matches: (pathname: string) => boolean;
+  if (typeof path === "string") {
+    matches = (pathname) => pathname === path;
+  } else {
+    // A copy, flags and all, so that setting where it starts leaves the caller's own untouched.
+    const pattern = new RegExp(path);
+    matches = (pathname) => {
+      pattern.lastIndex = 0;
+      return pattern.test(pathname);
+    };
+  }
   await page.route(
     (url) => matches(url.pathname),
     async (route) => {

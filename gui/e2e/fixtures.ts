@@ -35,12 +35,14 @@ export interface Gui {
 const EXAMPLES_BY_NAME = { demo: DEMO, vocabulary: VOCABULARY, structures: STRUCTURES } as const;
 
 /** Serves a copy of an example changed before `ddd gui` starts, for a state no example has as it
- * stands: no project at all, no dictionary, a build record not used (spec 2026-10-08 §5). The
- * copy is under the test's own output directory, as `started` makes one, numbered so that a
- * test can serve two; the project is named unless `named` is `false`. */
+ * stands: no project at all, no dictionary, a build record not used (spec 2026-10-08 §5).
+ * `change` is awaited before the server starts. The copy is under the test's own output
+ * directory, as `started` makes one, numbered as it is asked for, so that no two copies of one
+ * test share a directory; the project is named unless `named` is `false`. Every server it
+ * starts is stopped when the test ends, one still starting then included. */
 export type CopiedGui = (
   example: keyof typeof EXAMPLES_BY_NAME,
-  change: (directory: string) => void,
+  change: (directory: string) => void | Promise<void>,
   options?: { named?: boolean },
 ) => Promise<Gui>;
 
@@ -275,20 +277,31 @@ export const test = base.extend<{
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   copiedGui: async ({}, use, testInfo) => {
-    const running: Gui[] = [];
+    // Every start, kept as it begins: one still starting when the test ends is stopped too.
+    const starts: Promise<Gui>[] = [];
+    let copies = 0;
+    let ended = false;
     try {
       await use(async (name, change, options) => {
         const example = EXAMPLES_BY_NAME[name];
-        const directory = testInfo.outputPath(`${example.directory}-${running.length}`);
+        // Numbered before anything is awaited, so two calls in flight never share a directory.
+        const directory = testInfo.outputPath(`${example.directory}-${copies}`);
+        copies += 1;
         cpSync(join(EXAMPLES, example.directory), directory, { recursive: true });
-        change(directory);
+        await change(directory);
+        // A change still running when the test ended starts nothing: nothing would stop it.
+        if (ended) throw new Error(`the test ended before ${directory} was served`);
         const named = options?.named ?? true;
-        const gui = await start(directory, named ? [join(directory, example.project)] : []);
-        running.push(gui);
-        return gui;
+        const begun = start(directory, named ? [join(directory, example.project)] : []);
+        starts.push(begun);
+        return begun;
       });
     } finally {
-      for (const gui of running) await gui.stop();
+      ended = true;
+      // `start` stops a server whose start fails; every one that started is stopped here.
+      for (const outcome of await Promise.allSettled(starts)) {
+        if (outcome.status === "fulfilled") await outcome.value.stop();
+      }
     }
   },
 });

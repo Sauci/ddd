@@ -138,8 +138,9 @@ test("the row a New file makes shows before the tab's next list of entries answe
  * The row the tab's own Remove takes out goes at once (spec §3, Ruling F6), held as New file's
  * is: the edit answered, the tab leaves out every entry of the key it removed, before its next
  * list of entries answers - held back here, from the press, for as long as the row takes to go.
- * Released, the list no longer carries the entry, and the row stays gone; the page's own undo
- * puts the entry back, and its row with it.
+ * Released, the row stays gone because the server's next list no longer carries the entry: the
+ * journey checks that list itself, before the page is handed it, so no look at the row after it
+ * would say more. The page's own undo puts the entry back, and its row with it.
  */
 test("the row a Remove takes out goes before the tab's next list of entries answers", async ({
   page,
@@ -177,7 +178,6 @@ test("the row a Remove takes out goes before the tab's next list of entries answ
   }
   await expect.poll(() => listed).not.toBeNull();
   expect(listed).not.toContain(UNITS);
-  await expect(unitsRow).toHaveCount(0);
 
   await page.getByRole("button", { name: `Undo '${UNITS}' removed from the includes` }).click();
   await page

@@ -1198,7 +1198,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 
 | Screen | Row | Task | Journey |
 | --- | --- | --- | --- |
-| The journeys | `files.spec.ts`'s Remove-ordering wait, without `waitForResponse` | 1 | `files.spec.ts:144`, "the row a Remove takes out goes before the tab's next list of entries answers" |
+| The journeys | `files.spec.ts`'s Remove-ordering wait, without `waitForResponse` | 1 | `files.spec.ts:145`, "the row a Remove takes out goes before the tab's next list of entries answers" |
 | The network | the page's stylesheet failed once | 2 | none yet |
 | The network | the pressable rule's stylesheet failed once | 2 | none yet |
 | The network | a stylesheet failing every time | 2 | none yet |
@@ -1361,7 +1361,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Files | a removal refused for the error it would leave | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
 | Files | a file removed from the includes | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
 | Files | the row a New file makes, shown before the tab's next list answers | 7 | `files.spec.ts:104`, "the row a New file makes shows before the tab's next list of entries answers" |
-| Files | the row a Remove takes out, gone before the tab's next list answers, and put back by the undo | 7 | `files.spec.ts:144`, "the row a Remove takes out goes before the tab's next list of entries answers" |
+| Files | the row a Remove takes out, gone before the tab's next list answers, and put back by the undo | 7 | `files.spec.ts:145`, "the row a Remove takes out goes before the tab's next list of entries answers" |
 | Files | the row the page was opened on, waiting for the reader before its removal is planned, and planned from the keyboard | 7 | `files.spec.ts:224`, "the row the page was opened on waits for the reader before its removal is planned" |
 | Files | the row the page was opened on, pressed off and on again in the table | 7 | `files.spec.ts:276`, "the row the page was opened on, pressed off and on again in the table, is planned at once" |
 | Files | a row reached by Back within the page, planned at once, after a reload too | 7 | `files.spec.ts:311`, "a row reached by going back within the page is planned at once, even after a reload" |

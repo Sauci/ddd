@@ -31,6 +31,19 @@ export interface Gui {
   stop: () => Promise<void>;
 }
 
+/** The examples a copy can be made of, by the name `copiedGui` takes. */
+const EXAMPLES_BY_NAME = { demo: DEMO, vocabulary: VOCABULARY, structures: STRUCTURES } as const;
+
+/** Serves a copy of an example changed before `ddd gui` starts, for a state no example has as it
+ * stands: no project at all, no dictionary, a build record not used (spec 2026-10-08 §5). The
+ * copy is under the test's own output directory, as `started` makes one, numbered so that a
+ * test can serve two; the project is named unless `named` is `false`. */
+export type CopiedGui = (
+  example: keyof typeof EXAMPLES_BY_NAME,
+  change: (directory: string) => void,
+  options?: { named?: boolean },
+) => Promise<Gui>;
+
 /**
  * `tools/generate_project.py DIRECTORY --declarations 20000 --shape many --missing-ids 1
  * --unread 0.5` through `DDD_PYTHON`, into `directory`, which must not exist yet - the way
@@ -92,14 +105,9 @@ function generated(directory: string): void {
 }
 
 /** `ddd gui` over `directory`, already prepared, naming `project` on the command line or opening
- * on the start page where it is empty - the shared tail of `started` and `generatedGui`, which
- * prepare `directory` two different ways (a copied example; a generated project) and otherwise
- * start the very same server the very same way. */
-async function serving(
-  directory: string,
-  project: readonly string[],
-  use: (gui: Gui) => Promise<void>,
-): Promise<void> {
+ * on the start page where it is empty; stopped by the `Gui`'s own `stop`. The shared head of
+ * `serving` and `copiedGui`. */
+async function start(directory: string, project: readonly string[]): Promise<Gui> {
   // python -m ddd rather than the ddd launcher: on Windows the launcher starts python as a child
   // of its own, which killing the launcher leaves running, holding the port and the copy.
   const child = spawn(
@@ -120,9 +128,24 @@ async function serving(
   try {
     const address = await served(child);
     if (project.length > 0) await analysed(address);
-    await use({ address, directory, stop });
-  } finally {
+    return { address, directory, stop };
+  } catch (error) {
     await stop();
+    throw error;
+  }
+}
+
+/** `ddd gui` over `directory`, handed to `use` and stopped after it whatever it did. */
+async function serving(
+  directory: string,
+  project: readonly string[],
+  use: (gui: Gui) => Promise<void>,
+): Promise<void> {
+  const gui = await start(directory, project);
+  try {
+    await use(gui);
+  } finally {
+    await gui.stop();
   }
 }
 
@@ -217,6 +240,7 @@ export const test = base.extend<{
   structuresGui: Gui;
   generatedGui: Gui;
   mappedGui: Gui;
+  copiedGui: CopiedGui;
 }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   gui: async ({}, use, testInfo) => started(DEMO, true, use, testInfo),
@@ -248,6 +272,24 @@ export const test = base.extend<{
     );
     cpSync(join(EXAMPLES, DEMO.directory), directory, { recursive: true });
     await serving(directory, [join(directory, DEMO.project)], use);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  copiedGui: async ({}, use, testInfo) => {
+    const running: Gui[] = [];
+    try {
+      await use(async (name, change, options) => {
+        const example = EXAMPLES_BY_NAME[name];
+        const directory = testInfo.outputPath(`${example.directory}-${running.length}`);
+        cpSync(join(EXAMPLES, example.directory), directory, { recursive: true });
+        change(directory);
+        const named = options?.named ?? true;
+        const gui = await start(directory, named ? [join(directory, example.project)] : []);
+        running.push(gui);
+        return gui;
+      });
+    } finally {
+      for (const gui of running) await gui.stop();
+    }
   },
 });
 

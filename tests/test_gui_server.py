@@ -7,6 +7,7 @@ import errno
 import http.client
 import json
 import os
+import re
 import select
 import shutil
 import socket
@@ -66,6 +67,12 @@ from ddd.gui.session import Revision, Session
 
 FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
 """Cookies other apps on 127.0.0.1 leave in a browser, which sends them to every port."""
+
+JOURNEY_HELPERS: Final = EXAMPLES.parent / "gui" / "e2e" / "demo.ts"
+"""The journeys' own helpers, whose ``failing`` answers a request as this server fails one."""
+
+JS_STRING: Final = r'"(?:[^"\\]|\\.)*"'
+"""A double-quoted string literal of javascript, escapes and all: json reads it as it is."""
 
 
 @pytest.fixture
@@ -1042,6 +1049,39 @@ class TestWhatIsServed:
         printed = capsys.readouterr().err
         assert "GET '/api/session'" in printed
         assert "RuntimeError: a defect" in printed
+
+    def test_the_journeys_fail_a_request_as_this_server_fails_one(
+        self, server, monkeypatch
+    ) -> None:
+        """``failing`` in gui/e2e/demo.ts fails a request of the page by answering it as this
+        server answers one it failed on, so that a journey asserting the banner a failure raises
+        asserts this server's own words. Its ``SERVER_FAILED`` and the body it answers with are
+        copies of what is answered here, read out of the file: were ``_INTERNAL`` reworded and
+        the copy left behind, every such journey would go on passing on a sentence the server no
+        longer says."""
+
+        def failing(api: Api, query: object, body: object) -> None:
+            raise RuntimeError("a defect")
+
+        answering_session(monkeypatch, failing)
+        response, data = ask(server, "GET", "/api/session")
+        helpers = JOURNEY_HELPERS.read_text(encoding="utf-8")
+        sentence = re.search(rf"^export const SERVER_FAILED = ({JS_STRING});$", helpers, re.M)
+        assert sentence is not None, "gui/e2e/demo.ts no longer states SERVER_FAILED as one string"
+        assert json.loads(sentence.group(1)) == module._INTERNAL
+        fulfilled = re.search(
+            rf"route\.fulfill\(\{{\s*status: (\d+),\s*contentType: ({JS_STRING}),\s*"
+            rf"body: JSON\.stringify\(\{{ error: ({JS_STRING}), message: SERVER_FAILED \}}\),",
+            helpers,
+        )
+        assert fulfilled is not None, "gui/e2e/demo.ts's failing no longer answers as it did"
+        assert int(fulfilled.group(1)) == response.status
+        media_type = str(response.getheader("Content-Type")).partition(";")[0]
+        assert json.loads(fulfilled.group(2)) == media_type
+        assert json.loads(data) == {
+            "error": json.loads(fulfilled.group(3)),
+            "message": json.loads(sentence.group(1)),
+        }
 
     def test_a_failure_is_printed_with_its_target_escaped(
         self, server, monkeypatch, capsys

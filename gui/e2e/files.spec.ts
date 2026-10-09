@@ -159,18 +159,24 @@ test("the row a Remove takes out goes before the tab's next list of entries answ
   const released = new Promise<void>((resolve) => {
     release = resolve;
   });
+  // The server's next list, read here before the page is handed it: the entry Remove took out
+  // is not in it, so the row the page drops at once (below) is not drawn again by that answer.
+  let listed: string[] | null = null;
   await page.route("**/api/files", async (route) => {
     await released;
-    await route.continue();
+    const response = await route.fetch();
+    const reply = (await response.json()) as { entries: { entry: string }[] };
+    listed = reply.entries.map((each) => each.entry);
+    await route.fulfill({ response });
   });
-  const listed = page.waitForResponse((response) => response.url().endsWith("/api/files"));
   try {
     await remove.click();
     await expect(unitsRow).toHaveCount(0);
   } finally {
     release();
   }
-  await listed;
+  await expect.poll(() => listed).not.toBeNull();
+  expect(listed).not.toContain(UNITS);
   await expect(unitsRow).toHaveCount(0);
 
   await page.getByRole("button", { name: `Undo '${UNITS}' removed from the includes` }).click();

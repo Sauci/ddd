@@ -1199,11 +1199,11 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Screen | Row | Task | Journey |
 | --- | --- | --- | --- |
 | The journeys | `files.spec.ts`'s Remove-ordering wait, without `waitForResponse` | 1 | `files.spec.ts:145`, "the row a Remove takes out goes before the tab's next list of entries answers" |
-| The network | the page's stylesheet failed once | 2 | none yet |
-| The network | the pressable rule's stylesheet failed once | 2 | none yet |
-| The network | a stylesheet failing every time | 2 | none yet |
-| The network | a GET failed once | 2 | none yet |
-| The network | a GET failing every time | 2 | none yet |
+| The network | the page's stylesheet failed once | 2 | `network.spec.ts:11`, "a stylesheet the network failed once is asked for again, and the page is drawn styled" |
+| The network | the pressable rule's stylesheet failed once | 2 | `network.spec.ts:23`, "the pressable rule's stylesheet the network failed once is asked for again" |
+| The network | a stylesheet failing every time | 2 | `network.spec.ts:38`, "a stylesheet the network fails every time leaves the page drawn and working" |
+| The network | a GET failed once | 2 | `network.spec.ts:54`, "a GET the network failed once is sent again, and the page carries on" |
+| The network | a GET failing every time | 2 | `network.spec.ts:67`, "a GET the network fails every time reads as the server not answering" |
 | The start page | the projects found listed, and the one chosen opened | 3 | `skeleton.spec.ts:143`, "without a project the start page lists the ones found and opens the one chosen" |
 | The start page | no project found | 3 | none yet |
 | The start page | a build record not used | 3 | none yet |

@@ -86,6 +86,18 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   already spent, though, so that one case still ends signed out, with the terminal's
   reused-code line printed as a false alarm.
 
+* **A stylesheet or a request the network drops once is asked for again.**  The page could
+  come up unstyled, or say that `ddd gui` was not answering, when the network failed one of
+  its requests before any answer came back - measured in CI, in Edge on Windows, where the
+  browser was briefly refused a socket for the page's stylesheet (`net::ERR_NO_BUFFER_SPACE`).
+  The page now asks once more, before it is drawn, for any of its stylesheets that failed to
+  load, and sends a request that only reads once more, at once, when it got no answer at all:
+  one lost request goes unnoticed.  A request that changes something - an edit, an undo, a
+  project opened from the start page - is never sent again, since its change may already
+  have been made, and neither is one that got any answer, a refusal included.  A second
+  failure reads as one did before: the page drawn unstyled, or saying that `ddd gui` is not
+  answering.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

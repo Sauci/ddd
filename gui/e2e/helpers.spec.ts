@@ -103,3 +103,24 @@ test("two copies asked for at once are served from two directories, each with it
   await page.goto(second.address);
   await expect(page.getByRole("button", { name: "SecondDevice", exact: true })).toBeVisible();
 });
+
+test("a copy of the layout example is served with the plugin its project names beside it", async ({
+  page,
+  copiedGui,
+}) => {
+  // The project loads `../plugins/ddd_layout.py`. A key above the project's `max_key` is a finding
+  // only that plugin's own check files, `layout/key-out-of-range`: a copy served with no plugin
+  // beside it lists `plugin-not-found` and `unknown-extension` instead, and never this.
+  const gui = await copiedGui("layout", (directory) => {
+    const storage = join(directory, "storage.ddd.json");
+    writeFileSync(storage, readFileSync(storage, "utf8").replace('"key": 12', '"key": 5000'));
+  });
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings" }).click();
+  await expect(
+    page.getByRole("gridcell", {
+      name: "'EngineHours' claims key 5000, above the project's max_key of 4095",
+      exact: true,
+    }),
+  ).toBeVisible();
+});

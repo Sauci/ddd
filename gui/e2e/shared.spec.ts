@@ -238,3 +238,108 @@ test("a raster nothing declares any longer closes the panel an address opened, a
   await expect(panel).toHaveCount(0);
   await expect(page).toHaveURL(/\/project\?view=shared$/);
 });
+
+/** The add form for one vocabulary, opened as an address naming an entry nothing declares opens
+ * it, pre-filled with that name. */
+async function openForm(
+  page: Page,
+  gui: Gui,
+  kind: "constant" | "section" | "raster",
+  name: string,
+): Promise<Locator> {
+  await openAt(page, gui, kind, name);
+  const form = page.getByRole("complementary", { name: `Declare a ${kind}` });
+  await expect(form.getByRole("textbox", { name: "Name" })).toHaveValue(name);
+  return form;
+}
+
+test("a project declaring nothing offers a blank form, whose vocabulary brings its fields, and a constant declared from it is listed", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  await expect(
+    page.getByText("This project declares nothing in its shared files.", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Declare an entry" }).click();
+
+  // Blank: a chooser and nothing else, until a vocabulary is chosen.
+  const blank = page.getByRole("complementary", { name: "Declare an entry" });
+  const vocabulary = blank.getByRole("combobox", { name: "Vocabulary" });
+  await expect(vocabulary).toHaveValue("");
+  await expect(
+    blank.getByText("Choose a vocabulary, and the fields it is declared with follow.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(blank.getByRole("textbox")).toHaveCount(0);
+
+  await vocabulary.press("ArrowDown");
+  await page.getByRole("option", { name: "constants", exact: true }).click();
+  const form = page.getByRole("complementary", { name: "Declare a constant" });
+  await form.getByRole("textbox", { name: "Name" }).fill("SPARE_SLOTS");
+  await form.getByRole("textbox", { name: "Value" }).fill("4");
+  // The demo has no constants file: declaring one writes it, and the project's includes name it.
+  await expect(form.getByText("Changes 2 files: constants.ddd.json, demo.ddd.json")).toBeVisible();
+  await form.getByRole("button", { name: "Apply to 2 files" }).click();
+
+  await expect(page.getByRole("row", { name: "SPARE_SLOTS", exact: true })).toContainText("4");
+  await expect(page.getByRole("complementary", { name: "SPARE_SLOTS" })).toBeVisible();
+  await expect
+    .poll(() => entriesOf(gui.directory, "constants"))
+    .toEqual([{ name: "SPARE_SLOTS", value: 4, description: "" }]);
+  const project = JSON.parse(readFileSync(join(gui.directory, "demo.ddd.json"), "utf8"));
+  expect(project.project.includes).toContain("constants.ddd.json");
+});
+
+test("the add form refuses a section's name the project already declares, and offers no apply", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const form = await openForm(page, vocabularyGui, "section", ".spare");
+  await form.getByRole("combobox", { name: "Access" }).press("ArrowDown");
+  await page.getByRole("option", { name: "read-write", exact: true }).click();
+  await form.getByRole("textbox", { name: "Alignment" }).fill("4");
+  await expect(form.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+
+  await form.getByRole("textbox", { name: "Name" }).fill(".fast_ram");
+  await expect(form.getByRole("status")).toHaveText(
+    "'.fast_ram' is already a section this project declares",
+  );
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
+test("the add form refuses a value no constant may state, in the words of a constant's own model", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const form = await openForm(page, vocabularyGui, "constant", "SPARE");
+  const value = form.getByRole("textbox", { name: "Value" });
+  await value.fill("4");
+  await expect(form.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
+
+  // Json a constant's model takes no value from: a string. Typed bare, `oops` is not json at all,
+  // and the request is refused before any vocabulary is asked about it.
+  await value.fill('"oops"');
+  await expect(form.getByRole("status")).toHaveText(
+    "\"oops\" is not a value a constant may state, so 'SPARE' cannot take it in " +
+      "constants.ddd.json: a whole number a 64 bit target holds, of either sign, or a finite " +
+      "fractional one",
+  );
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
+test("the add form refuses an event another raster already claims", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const form = await openForm(page, vocabularyGui, "raster", "5ms");
+  const event = form.getByRole("textbox", { name: "Event" });
+  await event.fill("3");
+  await expect(form.getByText("Changes 1 file: rasters.ddd.json")).toBeVisible();
+
+  await event.fill("0");
+  await expect(form.getByRole("status")).toHaveText("event 0 is already claimed by raster '1ms'");
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});

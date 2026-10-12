@@ -1314,10 +1314,10 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | a raster declared from a finding's route | 6 | `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
 | Shared files | a section's "Used by" followed to the declaration | 6 | `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks" |
 | Shared files | a raster nothing uses, removed | 6 | `shared.spec.ts:51`, "a raster nothing measures in is removed, row and panel" |
-| Shared files | "Declare an entry", and the blank form | 6 | none yet |
-| Shared files | the add form refused: a name taken | 6 | none yet |
-| Shared files | the add form refused: a value no constant may state | 6 | none yet |
-| Shared files | the add form refused: an event taken | 6 | none yet |
+| Shared files | "Declare an entry", and the blank form | 6 | `shared.spec.ts:256`, "a project declaring nothing offers a blank form, whose vocabulary brings its fields, and a constant declared from it is listed" |
+| Shared files | the add form refused: a name taken | 6 | `shared.spec.ts:296`, "the add form refuses a section's name the project already declares, and offers no apply" |
+| Shared files | the add form refused: a value no constant may state | 6 | `shared.spec.ts:313`, "the add form refuses a value no constant may state, in the words of a constant's own model" |
+| Shared files | the add form refused: an event taken | 6 | `shared.spec.ts:333`, "the add form refuses an event another raster already claims" |
 | Shared files | a constant's value saved | 6 | none yet |
 | Shared files | a constant's description saved | 6 | none yet |
 | Shared files | a constant renamed, and refused onto a name taken | 6 | none yet |

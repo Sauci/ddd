@@ -1322,8 +1322,8 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | a constant's description saved | 6 | `shared.spec.ts:347`, "a constant's value and description are each saved from its panel" |
 | Shared files | a constant renamed, and refused onto a name taken | 6 | `shared.spec.ts:380`, "a constant is renamed everywhere, and a rename onto a name c already holds is refused" |
 | Shared files | a constant removed | 6 | `shared.spec.ts:430`, "a constant nothing names is removed, row and panel, where one in use says why it cannot be" |
-| Shared files | a section's access, alignment and description saved | 6 | none yet |
-| Shared files | a section renamed, and removed | 6 | none yet |
+| Shared files | a section's access, alignment and description saved | 6 | `shared.spec.ts:512`, "a section's access, alignment and description are each saved from its panel" |
+| Shared files | a section renamed, and removed | 6 | `shared.spec.ts:559`, "a section renamed onto another section's name is refused, and a section nothing places data in is removed" |
 | Shared files | a raster's event, cycle and description saved | 6 | `shared.spec.ts:76`, "a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused" |
 | Shared files | a raster renamed | 6 | `shared.spec.ts:148`, "a raster is renamed everywhere, its panel moving straight to the new name, and a rename onto another raster's name is refused" |
 | Shared files | a constant's "Used by" followed | 6 | none yet |

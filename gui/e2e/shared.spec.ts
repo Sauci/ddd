@@ -508,3 +508,81 @@ test("a constant whose file does not load keeps its panel, naming the file, unti
   await expect(panel.getByRole("alert")).toHaveCount(0);
   await expect(gone).toHaveCount(0);
 });
+
+test("a section's access, alignment and description are each saved from its panel", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const directory = vocabularyGui.directory;
+  const before = entryOf(directory, "sections", ".calib");
+  const panel = await openEntry(page, vocabularyGui, ".calib");
+
+  // Taken from the chooser, which offers the model's own two words.
+  const access = panel.getByRole("region", { name: "Access" });
+  const accessField = access.getByRole("combobox", { name: "Access" });
+  await expect(accessField).toHaveValue("read-only");
+  await accessField.press("ArrowDown");
+  await page.getByRole("option", { name: "read-write", exact: true }).click();
+  await expect(access.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+  await access.getByRole("button", { name: "Save" }).click();
+  await expect
+    .poll(() => entryOf(directory, "sections", ".calib"))
+    .toEqual({ ...before, access: "read-write" });
+  await expect(access.getByText("Changes 1 file")).toHaveCount(0);
+
+  const alignment = panel.getByRole("region", { name: "Alignment" });
+  const alignmentField = alignment.getByRole("textbox", { name: "Alignment" });
+  await expect(alignmentField).toHaveValue("4");
+  await alignmentField.fill("8");
+  await expect(alignment.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+  await alignment.getByRole("button", { name: "Save" }).click();
+  await expect
+    .poll(() => entryOf(directory, "sections", ".calib"))
+    .toEqual({ ...before, access: "read-write", alignment: 8 });
+  await expect(alignment.getByText("Changes 1 file")).toHaveCount(0);
+
+  const describing = panel.getByRole("region", { name: "Description" });
+  const description = describing.getByRole("textbox", { name: "Description" });
+  await expect(description).toHaveValue(String(before.description));
+  await description.fill("calibration flash");
+  await expect(describing.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+  await describing.getByRole("button", { name: "Save" }).click();
+  await expect
+    .poll(() => entryOf(directory, "sections", ".calib"))
+    .toEqual({ ...before, access: "read-write", alignment: 8, description: "calibration flash" });
+  await expect(describing.getByText("Changes 1 file")).toHaveCount(0);
+  await expect(page.getByRole("row", { name: ".calib", exact: true })).toContainText(
+    "read-write, align 8",
+  );
+});
+
+test("a section renamed onto another section's name is refused, and a section nothing places data in is removed", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const declared = entriesOf(vocabularyGui.directory, "sections");
+  const panel = await openEntry(page, vocabularyGui, ".fast_ram");
+  const renaming = panel.getByRole("region", { name: "Rename" });
+  await renaming.getByRole("textbox", { name: "Rename .fast_ram to" }).fill(".calib");
+  await expect(renaming.getByRole("status")).toHaveText(
+    "'.calib' is already a section this project declares",
+  );
+  await expect(renaming.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  // Both shipped sections hold data, so the one to remove is declared first, from the form.
+  const form = await openForm(page, vocabularyGui, "section", ".spare");
+  await form.getByRole("combobox", { name: "Access" }).press("ArrowDown");
+  await page.getByRole("option", { name: "read-write", exact: true }).click();
+  await form.getByRole("textbox", { name: "Alignment" }).fill("4");
+  await form.getByRole("button", { name: "Apply to 1 file" }).click();
+
+  const fresh = page.getByRole("complementary", { name: ".spare" });
+  await expect(fresh.getByText("Nothing in the project places its data in .spare.")).toBeVisible();
+  const removing = fresh.getByRole("region", { name: "Remove from the sections" });
+  await expect(removing.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+  await removing.getByRole("button", { name: "Remove from the sections" }).click();
+  await expect(page.getByRole("row", { name: ".spare", exact: true })).toHaveCount(0);
+  await expect(fresh).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project\?view=shared$/);
+  await expect.poll(() => entriesOf(vocabularyGui.directory, "sections")).toEqual(declared);
+});

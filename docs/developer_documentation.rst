@@ -974,10 +974,13 @@ in Git Bash or a similar shell:
    DDD_MAPPED_DRIVE=M: npm run e2e -- mapped.spec.ts
 
 ``copiedGui``, beside those fixtures in ``gui/e2e/fixtures.ts``, serves a copy of
-``examples/demo``, ``examples/vocabulary`` or ``examples/structures`` that the journey changes
-before ``ddd gui`` starts on it, for a state no example has as it stands - no project at all, a
-project with no dictionary, or a build record not used - naming its project unless the journey asks
-for the start page; a journey may serve several. ``failing``, in ``gui/e2e/demo.ts``, makes
+``examples/demo``, ``examples/vocabulary``, ``examples/structures`` or ``examples/layout`` that the
+journey changes before ``ddd gui`` starts on it, for a state no example has as it stands - no
+project at all, a project with no dictionary, or a build record not used - naming its project unless
+the journey asks for the start page; a journey may serve several. A copy of ``examples/layout`` is
+made with a copy of ``examples/plugins`` beside it, because its project loads
+``../plugins/ddd_layout.py``: it is the one example in which a plugin's own rules file findings, a
+comparison rule's among them. ``failing``, in ``gui/e2e/demo.ts``, makes
 the page's requests to one path, or to every path a pattern matches, fail - the first so many
 of them, or every one - and lets the rest through to the server: each is answered as the server
 answers a request it failed on, a ``500``, or not answered at all, as a dropped connection. It is

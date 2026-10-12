@@ -1278,7 +1278,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Units | an Apply refused as out of date, then applied | 5 | `project-units.spec.ts:181`, "an apply made from a panel that is out of date is refused, and the panel shows the files as they are" |
 | Units | a unit no longer stated, its panel closed and the tab saying so, by a bookmark too | 5 | `project-units.spec.ts:226`, "a unit nothing states any longer closes its panel and the tab says so, but not while a file does not load" |
 | Units | the file stating a unit half-written, its panel kept and naming the file | 5 | `project-units.spec.ts:226`, "a unit nothing states any longer closes its panel and the tab says so, but not while a file does not load" |
-| Units | the adopt refused | 5 | none yet |
+| Units | the adopt refused | 5 | `project-units.spec.ts:275`, "an adopt refused because its units file now exists says so in the banner, which goes once the units are read again" |
 | Units | reading the project's units | 19c | none yet |
 | Units | the units failing to load | 19c | none yet |
 | Units | the units failing once listed, the table kept | 19c | none yet |

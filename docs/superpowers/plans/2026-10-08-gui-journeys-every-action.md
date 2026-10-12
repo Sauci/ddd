@@ -1365,13 +1365,13 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Files | a file removed from the includes | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
 | Files | the row a New file makes, shown before the tab's next list answers | 7 | `files.spec.ts:104`, "the row a New file makes shows before the tab's next list of entries answers" |
 | Files | the row a Remove takes out, gone before the tab's next list answers, and put back by the undo | 7 | `files.spec.ts:145`, "the row a Remove takes out goes before the tab's next list of entries answers" |
-| Files | the row the page was opened on, waiting for the reader before its removal is planned, and planned from the keyboard | 7 | `files.spec.ts:224`, "the row the page was opened on waits for the reader before its removal is planned" |
-| Files | the row the page was opened on, pressed off and on again in the table | 7 | `files.spec.ts:276`, "the row the page was opened on, pressed off and on again in the table, is planned at once" |
-| Files | a row reached by Back within the page, planned at once, after a reload too | 7 | `files.spec.ts:311`, "a row reached by going back within the page is planned at once, even after a reload" |
-| Files | an action refused as out of date | 7 | none yet |
-| Files | the findings a file would bring | 7 | none yet |
-| Files | the list failing at first | 7 | none yet |
-| Files | the list failing later | 7 | none yet |
+| Files | the row the page was opened on, waiting for the reader before its removal is planned, and planned from the keyboard | 7 | `files.spec.ts:232`, "the row the page was opened on waits for the reader before its removal is planned" |
+| Files | the row the page was opened on, pressed off and on again in the table | 7 | `files.spec.ts:284`, "the row the page was opened on, pressed off and on again in the table, is planned at once" |
+| Files | a row reached by Back within the page, planned at once, after a reload too | 7 | `files.spec.ts:319`, "a row reached by going back within the page is planned at once, even after a reload" |
+| Files | an action refused as out of date | 7 | `files.spec.ts:354`, "a Remove applied while the description changed on disk is refused, and goes through once the analysis has caught up" |
+| Files | the findings a file would bring | 7 | `files.spec.ts:417`, "the errors a file would bring are listed in the Add a file preview, which still offers to add it" |
+| Files | the list failing at first | 7 | `files.spec.ts:462`, "the list failing at first leaves the server's own error, with no table and no way to add a file" |
+| Files | the list failing later | 7 | `files.spec.ts:476`, "the list failing once drawn leaves the table, with the server's own error over it" |
 | Files | reading the project's files | 19c | none yet |
 | Files | a New file of a vocabulary's own kind: types, units, constants, sections or rasters | 19c | none yet |
 | Files | New file refused | 19c | none yet |

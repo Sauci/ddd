@@ -1,7 +1,7 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { UNITS } from "./demo";
+import { failing, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
@@ -342,4 +342,162 @@ test("a row reached by going back within the page is planned at once, even after
   await expect(refused).toBeVisible();
   expect(planned).toHaveLength(1);
   await expect(page.getByRole("button", { name: "Plan its removal" })).toHaveCount(0);
+});
+
+/** The project description of examples/vocabulary, whose includes every Files action changes. */
+const PROJECT = "project.ddd.json";
+
+/** What the Files tab says when an Apply is refused because a file changed under its preview. */
+const STALE =
+  "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+test("a Remove applied while the description changed on disk is refused, and goes through once the analysis has caught up", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const project = join(vocabularyGui.directory, PROJECT);
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("row", { name: UNITS }).click();
+  const removing = page
+    .getByRole("complementary", { name: UNITS })
+    .getByRole("region", { name: "Remove from the includes" });
+  const remove = removing.getByRole("button", { name: "Remove from the includes" });
+  await expect(removing.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+
+  // The description gains its full stop as the Apply goes out, written where the session's own
+  // watcher does not see it (`writeUnseen`): seen, it brought a revision of its own, and the tab
+  // holds a stale refusal only until the next (`shownRefusal`, lib/refusals.ts) - once gone before
+  // skeleton.spec.ts's out-of-date edit read it (CI run 37705627501, windows msedge). A space
+  // taken out and a full stop put in keep the file as long as it was. Written once, then the
+  // request goes through to the server, which reads the bytes fresh.
+  const original = readFileSync(project, "utf8");
+  const changed = original
+    .replace('"name": "PumpDevice"', '"name":"PumpDevice"')
+    .replace('names its sizes"', 'names its sizes."');
+  expect(changed).not.toBe(original);
+  await page.route(
+    "**/api/edit",
+    async (route) => {
+      writeUnseen(vocabularyGui.directory, PROJECT, changed);
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  await remove.click();
+  const refused = removing.getByRole("status");
+  await expect(refused).toHaveText(STALE);
+  // Nothing was written: the file is as the change from outside left it, units.ddd.json still in
+  // its includes.
+  expect(readFileSync(project, "utf8")).toBe(changed);
+
+  // The refusal is held until the analysis has moved past the revision it was made at: no revision
+  // comes of a change the watcher did not see, so the file's stamp is moved, which it does see.
+  // The analysis reads the file as it now is, the refusal goes, and the plan asked for that
+  // revision carries the file's new fingerprint - which is what lets the same press go through.
+  utimesSync(project, new Date(), new Date());
+  await expect(refused).toHaveCount(0);
+  await remove.click();
+  await expect(page.getByRole("row", { name: UNITS })).toHaveCount(0);
+  const written = JSON.parse(readFileSync(project, "utf8")).project;
+  expect(written.includes).toEqual([
+    "sections.ddd.json",
+    "constants.ddd.json",
+    "rasters.ddd.json",
+    "pump.ddd.json",
+  ]);
+  expect(written.description).toMatch(/names its sizes\.$/);
+});
+
+/** A component the project does not include yet, reading a variable no component writes: adding
+ * it brings an error. Written into the copy `vocabularyGui` hands the journey, before the page
+ * opens, as `EXTRA` is - which brings none. */
+const READER = "reader.ddd.json";
+
+test("the errors a file would bring are listed in the Add a file preview, which still offers to add it", async ({
+  page,
+  vocabularyGui,
+}) => {
+  writeFileSync(
+    join(vocabularyGui.directory, READER),
+    JSON.stringify({
+      component: {
+        name: "Reader",
+        interface: [
+          {
+            scope: "input",
+            definition: {
+              name: "Torque",
+              kind: "measurement",
+              datatype: "uint16",
+              conversion: { kind: "identity" },
+              unit: "Nm",
+              volatile: false,
+            },
+          },
+        ],
+      },
+    }),
+    "utf8",
+  );
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  await page.getByRole("button", { name: "Add a file" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a file" });
+  await adding.getByRole("textbox", { name: "Path" }).fill(READER);
+
+  // The one error the file would bring, as the server counts it and words it (`analysis.py`'s
+  // own sentence): the check, the file it is filed on, then the message. Informed, not refused:
+  // the change is still offered (design §3).
+  const brought = adding.getByRole("listitem");
+  await expect(brought).toHaveCount(1);
+  await expect(brought.locator(".chip")).toHaveText("missing-producer");
+  await expect(brought.locator(".quiet")).toHaveText(READER);
+  await expect(brought.locator("p")).toHaveText(
+    "'Torque' is read by component 'Reader' but no component declares it as output",
+  );
+  await expect(adding.getByRole("button", { name: "Apply to 1 file" })).toBeVisible();
+});
+
+test("the list failing at first leaves the server's own error, with no table and no way to add a file", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await failing(page, "/api/files", "http");
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(page.getByRole("button", { name: "New file" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add a file" })).toHaveCount(0);
+  await expect(page.getByRole("grid")).toHaveCount(0);
+});
+
+test("the list failing once drawn leaves the table, with the server's own error over it", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+  const unitsRow = page.getByRole("row", { name: UNITS });
+  await expect(unitsRow).toBeVisible();
+
+  // The tab left, then returned to once the list fails: a tab mounting asks again for an answer it
+  // holds (stale from the start), and when that read fails the answer stays drawn, the error said
+  // over it. A change the watcher sees does not reach this state: the new revision's read has no
+  // answer to hold (`placeholderData` serves a read that is pending, not one that failed), so the
+  // tab shows the alert alone, as at first (measured on FilesPage.tsx at d76a61e).
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await expect(page.getByText("Nothing to report")).toBeVisible();
+  await failing(page, "/api/files", "http");
+  await page.getByRole("link", { name: "Files", exact: true }).click();
+
+  // The alert over the table (`:above()` is Playwright's layout selector: the alert's box lies over
+  // the grid's), and the table still drawn under it, with the two actions above it.
+  await expect(page.getByRole("alert").and(page.locator(':above([role="grid"])'))).toHaveText(
+    SERVER_FAILED,
+  );
+  await expect(unitsRow).toBeVisible();
+  await expect(page.getByRole("button", { name: "New file" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add a file" })).toBeVisible();
 });

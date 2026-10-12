@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getShared, postEdit } from "../api/client";
 import type { State } from "../api/types";
 import { useDebounced } from "../app/useDebounced";
@@ -9,10 +9,11 @@ import { unreadable } from "../lib/findings";
 import type { Route } from "../lib/route";
 import {
   constantAdd,
-  isDeclared,
   kindNamed,
+  opensPanel,
   planEdit,
   rasterAdd,
+  rowKey,
   SHARED_KINDS,
   type SharedKind,
   sectionAdd,
@@ -30,12 +31,13 @@ interface Props {
   state: State | null;
   /** The entry whose row is marked, as the address names it - `undefined` for the bare tab. A
    * name the table does not declare under that kind opens the add form pre-filled with it instead
-   * of the panel (`isDeclared` decides), which is also what a race resolves to: the entry declared
-   * elsewhere between the analysis and the click. */
+   * of the panel, which is also what a race resolves to: the entry declared elsewhere between the
+   * analysis and the click. Not where the tab already holds that entry's panel, which stays while
+   * its own answer says why the table lists it no longer (`opensPanel` decides both). */
   name: string | undefined;
   /** Which vocabulary the address says that name belongs to - `undefined` for the bare tab, and
    * for an address that named a kind this page has no vocabulary for (`route.ts` drops it). It is
-   * what chooses between the three panels and what `isDeclared` is asked with: read off the route,
+   * what chooses between the three panels and what `opensPanel` is asked with: read off the route,
    * never guessed from the name's spelling. */
   kind: SharedKind | undefined;
   onName: (name: string | undefined, kind: SharedKind | undefined) => void;
@@ -73,18 +75,34 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
   // Whether the add form is open with nothing pre-filled and no vocabulary chosen, because the
   // reader pressed Declare an entry rather than following a route that already names one.
   const [declaring, setDeclaring] = useState(false);
+  // The key (`rowKey`) of the entry whose panel the tab holds: the one it last drew a panel for,
+  // or the one a row, a rename or a declaration has just moved it onto - `null` while it holds
+  // none. What keeps that panel drawn while the table no longer lists its entry (`opensPanel`).
+  const [held, setHeld] = useState<string | null>(null);
   const missing = unreadable(state, SHARED_KINDS);
+  // The key of the entry whose panel this answer draws, or `null` where it draws the form or
+  // nothing - recorded as the panel held once drawn, so the next answer keeps it.
+  const drawn =
+    shared.data !== undefined &&
+    name !== undefined &&
+    kind !== undefined &&
+    opensPanel(shared.data, { kind, name }, held)
+      ? rowKey(kind, name)
+      : null;
+  useEffect(() => setHeld(drawn), [drawn]);
 
   if (shared.data === undefined) {
     if (shared.isError) return <Banner tone="error">{shared.error.message}</Banner>;
     return <p className="quiet">Reading the project's shared files…</p>;
   }
+  // The tab's own moves - a row selected, an entry renamed, removed or declared - hold the entry
+  // they move onto, so its panel is drawn at once, before the table's next answer lists it.
   const select = (next: string | undefined, nextKind: SharedKind | undefined) => {
     setGone(null);
     setDeclaring(false);
+    setHeld(next !== undefined && nextKind !== undefined ? rowKey(nextKind, next) : null);
     onName(next, nextKind);
   };
-  const declared = name !== undefined && kind !== undefined && isDeclared(shared.data, kind, name);
   // A route naming one nothing declares also opens the add form, pre-filled with that name and
   // with the chooser on the vocabulary the route named (spec: "the add form when the route names
   // one that is not declared"); pressing Declare an entry opens the same form blank, with the
@@ -120,7 +138,7 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
             }}
           />
         </div>
-        {declared && name !== undefined && kind !== undefined ? (
+        {drawn !== null && name !== undefined && kind !== undefined ? (
           // Each vocabulary's own panel, chosen on the route's kind: the three read different
           // replies and write different keys, and the kind is the fact that says which - the
           // entry's own word, answered by the server and carried by the address.
@@ -218,8 +236,8 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
 /**
  * The form that declares a new entry of any of the three vocabularies (design §4.3's `add`),
  * beside the table in the same place an entry's own panel opens: the table's own Declare an entry
- * button, or a route naming an entry nothing declares (`SharedPage`'s own `declared` check chooses
- * between the two). Modelled on `DeclarePanel.tsx`, the codebase's other "declare something new"
+ * button, or a route naming an entry nothing declares (`SharedPage` asks `opensPanel` which of
+ * the two it draws). Modelled on `DeclarePanel.tsx`, the codebase's other "declare something new"
  * form - this one never sees spec 5.4's "gone" state, since there is no existing entry for a poll
  * of `GET /api/constant`, `GET /api/section` or `GET /api/raster` to lose.
  */

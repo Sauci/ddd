@@ -1313,7 +1313,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | a section declared from a finding's route, its access picked from the list | 6 | `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks" |
 | Shared files | a raster declared from a finding's route | 6 | `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
 | Shared files | a section's "Used by" followed to the declaration | 6 | `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks" |
-| Shared files | a raster nothing uses, removed | 6 | none yet |
+| Shared files | a raster nothing uses, removed | 6 | `shared.spec.ts:51`, "a raster nothing measures in is removed, row and panel" |
 | Shared files | "Declare an entry", and the blank form | 6 | none yet |
 | Shared files | the add form refused: a name taken | 6 | none yet |
 | Shared files | the add form refused: a value no constant may state | 6 | none yet |
@@ -1324,12 +1324,12 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | a constant removed | 6 | none yet |
 | Shared files | a section's access, alignment and description saved | 6 | none yet |
 | Shared files | a section renamed, and removed | 6 | none yet |
-| Shared files | a raster's event, cycle and description saved | 6 | none yet |
-| Shared files | a raster renamed | 6 | none yet |
+| Shared files | a raster's event, cycle and description saved | 6 | `shared.spec.ts:76`, "a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused" |
+| Shared files | a raster renamed | 6 | `shared.spec.ts:148`, "a raster is renamed everywhere, its panel moving straight to the new name, and a rename onto another raster's name is refused" |
 | Shared files | a constant's "Used by" followed | 6 | none yet |
 | Shared files | a raster's "Used by" followed, to a component | 6 | none yet |
 | Shared files | an Apply refused as out of date | 6 | none yet |
-| Shared files | an entry gone | 6 | none yet |
+| Shared files | an entry gone | 6 | `shared.spec.ts:197`, "a raster nothing declares any longer closes the panel an address opened, and the tab says so, even when the table hears of it first" |
 | Shared files | an entry's file half-written | 6 | none yet |
 | Shared files | the untold banner | 6 | none yet |
 | Shared files | the unreadable banner | 6 | none yet |

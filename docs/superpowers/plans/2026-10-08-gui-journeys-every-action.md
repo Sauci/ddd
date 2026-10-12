@@ -1382,12 +1382,12 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Files | a pattern entry, the files it matches listed under it | 19c | none yet |
 | Files | a removal refused for a file only a pattern brings in | 19c | none yet |
 | Files | an Apply the server fails on | 19c | none yet |
-| Compare | a baseline compared: the verdict, the line counting its findings, and a changed interface | 8 | `compare.spec.ts:4`, "a reader can ask whether this delivery replaces the last" |
-| Compare | a baseline refused: not found, not json, of the wrong shape, outside the root | 8 | none yet |
-| Compare | a row opens its finding | 8 | none yet |
-| Compare | a finding's route followed, which only a plugin's comparison rule files on a declaration | 8 | none yet |
-| Compare | the renamed objects | 8 | none yet |
-| Compare | the busy state | 8 | none yet |
+| Compare | a baseline compared: the verdict, the line counting its findings, and a changed interface | 8 | `compare.spec.ts:6`, "a reader can ask whether this delivery replaces the last" |
+| Compare | a baseline refused: not found, not json, of the wrong shape, outside the root | 8 | `compare.spec.ts:53`, "a baseline missing, not json, of the wrong shape or outside the root is refused in words of its own" |
+| Compare | a row opens its finding | 8 | `compare.spec.ts:92`, "a row of the findings table opens its finding in a panel beside it" |
+| Compare | a finding's route followed, which only a plugin's comparison rule files on a declaration | 8 | `compare.spec.ts:118`, "a finding filed on a declaration leads to that declaration from its panel's link" |
+| Compare | the renamed objects | 8 | `compare.spec.ts:160`, "an object renamed since the baseline is listed with its id, where nothing was renamed before" |
+| Compare | the busy state | 8 | `compare.spec.ts:182`, "while a comparison is awaited the field and the button are disabled and the earlier verdict is gone" |
 | Compare | a baseline asked for with Enter | 19c | none yet |
 | Compare | a finding about the whole delivery, saying why it leads nowhere | 19c | none yet |
 | Compare | the baseline's own findings, named as the baseline's and leading nowhere | 19c | none yet |

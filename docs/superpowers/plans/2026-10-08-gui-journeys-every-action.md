@@ -1287,15 +1287,15 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Units | a units file listing no unit, the units in use adopted into it | 19c | none yet |
 | Units | a project stating no unit, with nothing to adopt | 19c | none yet |
 | Units | an Apply the server fails on | 19c | none yet |
-| Types | a type's unit settled, written, then undone | 5 | `types.spec.ts:75`, "a type's unit settled from its panel is written, then undone" |
-| Types | a type renamed everywhere, and refused onto another type's name | 5 | `types.spec.ts:109`, "a type is renamed everywhere, and a rename onto another type's name is refused" |
-| Types | a type's range | 5 | none yet |
-| Types | a type's datatype, picked from its list | 5 | none yet |
-| Types | no "state nothing" for a required key | 5 | none yet |
-| Types | a type's description | 5 | none yet |
-| Types | a type gone | 5 | none yet |
-| Types | a type's file half-written | 5 | none yet |
-| Types | a type's Apply refused as out of date | 5 | none yet |
+| Types | a type's unit settled, written, then undone | 5 | `types.spec.ts:76`, "a type's unit settled from its panel is written, then undone" |
+| Types | a type renamed everywhere, and refused onto another type's name | 5 | `types.spec.ts:110`, "a type is renamed everywhere, and a rename onto another type's name is refused" |
+| Types | a type's range | 5 | `types.spec.ts:165`, "a type's range is settled from its two fields, and written" |
+| Types | a type's datatype, picked from its list | 5 | `types.spec.ts:192`, "a type's datatype is picked from the list of datatypes, and written" |
+| Types | no "state nothing" for a required key | 5 | `types.spec.ts:224`, "a type's datatype and conversion offer no way to state nothing, where its unit and limits do" |
+| Types | a type's description | 5 | `types.spec.ts:266`, "a type's description is typed, and written" |
+| Types | a type gone | 5 | `types.spec.ts:293`, "a type nothing declares any longer closes its panel, and the tab says so" |
+| Types | a type's file half-written | 5 | `types.spec.ts:323`, "a type whose file does not load keeps its panel, naming the file, until the file loads again" |
+| Types | a type's Apply refused as out of date | 5 | `types.spec.ts:354`, "an apply made from a type's panel that is out of date is refused, and goes through once the page has caught up" |
 | Types | reading the project's types | 19c | none yet |
 | Types | the types failing to load | 19c | none yet |
 | Types | the types failing once listed, the table kept | 19c | none yet |

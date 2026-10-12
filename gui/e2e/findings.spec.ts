@@ -1,6 +1,17 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, drift, driftIn, EVENT_LOGGER, PUMP, USER_INTERFACE, unstamp } from "./demo";
+import {
+  CONTROLLER,
+  drift,
+  driftIn,
+  EVENT_LOGGER,
+  failing,
+  PUMP,
+  SERVER_FAILED,
+  USER_INTERFACE,
+  unstamp,
+  writeUnseen,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 /** ValueE's own `"unit"` in a file, read back from disk - its own declaration's and no other, so
@@ -166,4 +177,127 @@ test("the tab says when there is nothing to report", async ({ page, vocabularyGu
   await page.goto(vocabularyGui.address);
   await page.getByRole("link", { name: "Findings" }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
+});
+
+test("a finding fixed from outside while its panel is open is no longer reported, and the tab says so", async ({
+  page,
+  gui,
+}) => {
+  // Controller's own reading of ValueA drifted, as "a disagreement leads to its variable" drifts
+  // it: a definition-mismatch is filed on each file it concerns.
+  const before = drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page
+    .getByRole("row", { name: /definition-mismatch/ })
+    .first()
+    .click();
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await expect(panel).toBeVisible();
+
+  // Put back from outside, as somebody fixing it in their editor would: the watcher sees it, the
+  // analysis no longer reports the finding, and the tab says so where the panel was.
+  writeFileSync(join(gui.directory, CONTROLLER), before);
+  await expect(page.getByRole("status").filter({ hasText: "no longer reported" })).toHaveText(
+    "This finding is no longer reported.",
+  );
+  await expect(panel).toHaveCount(0);
+});
+
+/** What the Findings tab says when a fix's Apply is refused because a file changed under its
+ * preview: `FindingsPage.tsx`'s own sentence, held until a later revision. */
+const STALE =
+  "A file changed on disk, so nothing was written. The tab now shows the findings as they are.";
+
+test("a fix applied while its file changed on disk is refused, and nothing is written", async ({
+  page,
+  gui,
+}) => {
+  // ValueH's id taken away, as "a missing id is fixed" takes it: a fix that writes into
+  // Controller alone.
+  unstamp(gui.directory, CONTROLLER, "ValueH");
+  const file = join(gui.directory, CONTROLLER);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page.getByRole("row", { name: "missing-id" }).click();
+  const panel = page.getByRole("complementary", { name: "missing-id" });
+  await panel.getByRole("button", { name: "Give 'ValueH' an id" }).click();
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk .added").filter({ hasText: '"id":' })).toBeVisible();
+
+  // Controller's description gains its full stop as the Apply goes out, written where the
+  // session's own watcher does not see it (`writeUnseen`): seen, it brought a revision of its
+  // own, and the tab holds a stale refusal only until the next (`shownRefusal`, lib/refusals.ts),
+  // which a journey can miss, as skeleton.spec.ts's out-of-date edit once did. A space taken out
+  // and a full stop put in keep the file as long as it was. Written once, then the request goes
+  // through to the server, which reads the bytes fresh.
+  const original = readFileSync(file, "utf8");
+  const changed = original.replace(
+    '"description": "Consumes the raw values and produces the derived ones"',
+    '"description":"Consumes the raw values and produces the derived ones."',
+  );
+  expect(changed).not.toBe(original);
+  await page.route(
+    "**/api/edit",
+    async (route) => {
+      writeUnseen(gui.directory, CONTROLLER, changed);
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(panel.getByRole("status")).toHaveText(STALE);
+
+  // Nothing was written: the file is as the change from outside left it, ValueH still without
+  // its id.
+  expect(readFileSync(file, "utf8")).toBe(changed);
+  expect(valueH(gui.directory).id).toBeUndefined();
+});
+
+test("the fixes of a finding failing leave its panel without them, and an alert over it says so", async ({
+  page,
+  gui,
+}) => {
+  // The finding "a missing id is fixed" selects, whose panel offers a fix when it can be asked for.
+  unstamp(gui.directory, CONTROLLER, "ValueH");
+  await failing(page, "/api/fix", "http");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page.getByRole("row", { name: "missing-id" }).click();
+
+  // Said in the panel's column, over the panel (`:above()` is Playwright's layout selector: the
+  // alert's box lies over the panel's): it is the fixes that failed, and the finding itself is
+  // drawn all the same, with the route it leads by.
+  const panel = page.getByRole("complementary", { name: "missing-id" });
+  await expect(page.getByRole("alert").and(page.locator(":above(.panel)"))).toHaveText(
+    SERVER_FAILED,
+  );
+  await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
+  await expect(panel.getByRole("link", { name: "Open ValueH" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Give 'ValueH' an id" })).toHaveCount(0);
+});
+
+test("the page of findings failing leaves an alert over a table with nothing to open", async ({
+  page,
+  copiedGui,
+}) => {
+  // Drifted before the server starts, so that the first revision the page reads already holds the
+  // findings. Drifted after, the page can open on the clean revision, and keep drawing it
+  // ("Nothing to report") while the drifted one's page is asked for and fails (`drawnWindow`).
+  const gui = await copiedGui("demo", (directory) => {
+    drift(directory);
+  });
+  await failing(page, "/api/findings", "http");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+
+  // Over the table: `:above()` is Playwright's layout selector, true of the alert whose box lies
+  // over the grid's.
+  await expect(page.getByRole("alert").and(page.locator(':above([role="grid"])'))).toHaveText(
+    SERVER_FAILED,
+  );
+  // The state counted the findings all the same, so the line over the table says how many there
+  // are, and the table has none of them to open.
+  await expect(page.getByText("2 findings · 2 errors", { exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(0);
 });

@@ -1341,22 +1341,22 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | a constant declared inside a component, its file followed | 19c | none yet |
 | Shared files | the add form's Apply refused as out of date | 19c | none yet |
 | Shared files | an Apply the server fails on | 19c | none yet |
-| Findings | a row pressed, opening its finding with its notes | 7 | `findings.spec.ts:30`, "a disagreement leads to its variable" |
-| Findings | a finding's route followed to its variable | 7 | `findings.spec.ts:30`, "a disagreement leads to its variable" |
-| Findings | a finding's route followed to a unit | 7 | `findings.spec.ts:100`, "an unknown unit leads to its unit" |
+| Findings | a row pressed, opening its finding with its notes | 7 | `findings.spec.ts:41`, "a disagreement leads to its variable" |
+| Findings | a finding's route followed to its variable | 7 | `findings.spec.ts:41`, "a disagreement leads to its variable" |
+| Findings | a finding's route followed to a unit | 7 | `findings.spec.ts:111`, "an unknown unit leads to its unit" |
 | Findings | a finding's route followed to a type | 7 | `types.spec.ts:30`, "a finding inside a type leads to it" |
 | Findings | a finding's route followed to the add form of an entry not declared yet | 7 | `constants.spec.ts:19`, "a finding nobody could act on becomes a constant declared in two clicks"; `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks"; `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
-| Findings | a settlement chosen, reaching every file of the variable | 7 | `findings.spec.ts:59`, "a disagreement is settled from the finding that reports it" |
-| Findings | a fix chosen, its changes shown, and applied | 7 | `findings.spec.ts:118`, "a missing id is fixed" |
-| Findings | a finding that leads nowhere, saying why | 7 | `findings.spec.ts:144`, "a finding that leads nowhere says why" |
-| Findings | nothing to report | 7 | `findings.spec.ts:163`, "the tab says when there is nothing to report" |
+| Findings | a settlement chosen, reaching every file of the variable | 7 | `findings.spec.ts:70`, "a disagreement is settled from the finding that reports it" |
+| Findings | a fix chosen, its changes shown, and applied | 7 | `findings.spec.ts:129`, "a missing id is fixed" |
+| Findings | a finding that leads nowhere, saying why | 7 | `findings.spec.ts:155`, "a finding that leads nowhere says why" |
+| Findings | nothing to report | 7 | `findings.spec.ts:174`, "the tab says when there is nothing to report" |
 | Findings | the tab's line counting the findings, after an edit too | 7 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
 | Findings | the table scrolled to its end | 7 | `large.spec.ts:139`, "the Findings table scrolled to its end" |
 | Findings | the keyboard walking past the rows drawn | 7 | `large.spec.ts:162`, "the keyboard walks past the rows drawn" |
-| Findings | a finding no longer reported | 7 | none yet |
-| Findings | a fix's Apply refused as out of date | 7 | none yet |
-| Findings | the fixes a finding carries failing | 7 | none yet |
-| Findings | the page of findings failing | 7 | none yet |
+| Findings | a finding no longer reported | 7 | `findings.spec.ts:182`, "a finding fixed from outside while its panel is open is no longer reported, and the tab says so" |
+| Findings | a fix's Apply refused as out of date | 7 | `findings.spec.ts:212`, "a fix applied while its file changed on disk is refused, and nothing is written" |
+| Findings | the fixes a finding carries failing | 7 | `findings.spec.ts:257`, "the fixes of a finding failing leave its panel without them, and an alert over it says so" |
+| Findings | the page of findings failing | 7 | `findings.spec.ts:280`, "the page of findings failing leaves an alert over a table with nothing to open" |
 | Findings | a page of findings still being read | 19c | none yet |
 | Findings | a fix's Apply the server fails on | 19c | none yet |
 | Files | a component created by New file | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |

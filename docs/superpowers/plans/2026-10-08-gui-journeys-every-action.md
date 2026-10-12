@@ -824,21 +824,22 @@ test("a project with a file that does not load is drawn without arrows, and says
 
 **What the pre-flight corrected** (spec §4 assumed otherwise):
 - **The keys a scalar type offers.** Exactly four: datatype, unit, conversion and limits (`SCALAR_KEYS`, `src/ddd/project_types.py`).
-- **"State nothing".** Datatype and conversion are required (`type_plans.REQUIRED`), so neither offers it. Only unit and limits can be stated as nothing.
+- **"State nothing".** Datatype and conversion are required (`type_plans.REQUIRED`), so neither offers it. Only unit and limits can be stated as nothing, and their lists word it differently: the unit picker's own "no unit" (group "No unit"), the limits' "state nothing" (group "State nothing"). The review found the pick itself unpinned, and the page dropping the unit's: see the row added below.
 - **Saving the description.** The Types panel has no "Save": a changed description shows "Changes 1 file: types.ddd.json" and "Apply to 1 file", where the Units panel has "Save".
 
 **The rows,** as read at `205d5a6`. Every quoted string is a guide: read the whole sentence off the running page before asserting it.
 
 | Row | Setup | Steps and what the reader sees | Ablation |
 | --- | --- | --- | --- |
-| **A type's range** | `structuresGui`; Temperature_t (`limits` -40 … 150) | The worked journey below. | `TypePanel.tsx`'s `? limitsRaw(range.min, range.max)` making no request |
+| **A type's range** | `structuresGui`; Temperature_t (`limits` -40 … 150) | The worked journey below. | Two, both kept. `TypePanel.tsx`'s `? limitsRaw(range.min, range.max)` made `? null` dies at the file, on the last assertion: a `null` range is the removal of `limits`, one file changed, so "Changes 1 file" is still drawn. The limits row made to ask for no request dies at "Changes 1 file". |
 | **A type's datatype, picked from its list** | `structuresGui`; Temperature_t | Select the row "Datatype" (it reads "uint16"). The combobox "Datatype of Temperature_t" lists "Datatypes". Pick "sint16": "Changes 1 file: types.ddd.json", "Apply to 1 file", and the file then says `"datatype": "sint16"`. | `src/ddd/variable_keys.py`'s `if key == "datatype": return DATATYPES` returning nothing |
-| **No "state nothing" for a required key** | `structuresGui`; Temperature_t | Open the choices of "Datatype" and then of "Conversion" (`ArrowDown`, as `keys.spec.ts`'s "a truth value is typed, confirmed with Enter, and cannot be left unstated" opens them). Neither lists an option "state nothing"; "Unit"'s choices do. | `type_plans.py`'s `REQUIRED` without `"datatype"` |
+| **No "state nothing" for a required key** | `structuresGui`; Temperature_t | Open the choices of "Datatype" and then of "Conversion" (`ArrowDown`, as `keys.spec.ts`'s "a truth value is typed, confirmed with Enter, and cannot be left unstated" opens them). Neither lists an option "state nothing" or a group "State nothing"; the choices of "Unit" list "no unit", and those of "Limits" "state nothing". | `type_plans.py`'s `REQUIRED` without `"datatype"`, and again without `"conversion"`: each dies in its own list. |
 | **A type's description** | `structuresGui`; Temperature_t | Type into the field "Description" (region "Description"): "Changes 1 file: types.ddd.json", "Apply to 1 file". The file then carries the new description. | `TypePanelView.tsx`'s `props.description !== type.description` disjunct removed from `pending` |
 | **A type gone** | `structuresGui`; a type's panel open (Sample_t) | Rewrite `types.ddd.json` from outside, valid, without Sample_t's entry. The panel closes, and a `status` reads "Sample_t is no longer declared in the open project." | `TypePanel.tsx`'s `const gone = … code === "not-found"` made `false` |
 | **A type's file half-written** | `structuresGui`; Temperature_t's panel open | Cut `types.ddd.json` in half. The panel stays open, titled Temperature_t, with an `alert`: "'Temperature_t' is not declared in any file that loaded, and types.ddd.json did not load" (`api.py`'s `_undeclared`). Writing the file back whole brings the panel back. Model: `project-units.spec.ts`'s "a unit nothing states any longer…" | `api.py`'s `if unread:` branch removed |
 | **A type's Apply refused as out of date** (added) | `structuresGui`; Temperature_t's "Max" filled, "Apply to 1 file" enabled | `driftMaxUnseen(structuresGui.directory, "types.ddd.json", "Temperature_t", 999)`, then press Apply. A `status` reads "A file changed on disk, so nothing was written. The page now shows the files as they are." Then `utimesSync`, as `keys.spec.ts` does; the refusal hides; Apply again writes it. | `TypePanel.tsx`'s `if (error instanceof ApiError && error.code === "stale")` branch removed |
-| **The adopt refused** | `gui` (no units file); the Units tab's adopt banner, "Show changes" pressed | Create `units.ddd.json` in the copy by hand (`writeFileSync`, any content), then press "Adopt 5 units". The banner's `adopt-refusal` paragraph reads "A file changed on disk, so nothing was written. The page now shows the files as they are." The server refuses a file to be created that exists already (`editing._created`). | `UnitsPage.tsx`'s `onError` setting the stale refusal made a no-op |
+| **The adopt refused** | `gui` (no units file); the Units tab's adopt banner, "Show changes" pressed | Create `units.ddd.json` in the copy by hand (`writeFileSync`, any content), then press "Adopt 5 units". The banner's `adopt-refusal` paragraph reads "A file changed on disk, so nothing was written. The page now shows the files as they are." The server refuses a file to be created that exists already (`editing._created`). **The paragraph stands for tens of milliseconds only:** with that file there the server offers no adoption (`ddd.lsp.units.adoption`), so the banner, the refusal in it, is withdrawn as soon as the page reads `/api/units` again, the moment its Apply is answered. The journey holds that one read (`page.route("**/api/units", …, { times: 1 })`, `route.continue()` once released, in a `finally`), reads the sentence, checks that the project and the hand-made file are as they were, then lets the read through and sees the banner go. | `UnitsPage.tsx`'s `onError` setting the stale refusal made a no-op |
+| **A type's unit or limits stated as nothing** (added by the review) | `structuresGui`; Temperature_t | Select "Unit", open its choices (`ArrowDown`) and pick "no unit": the field reads "no unit", "Show changes" removes `"unit": "degC",` and adds no line, and Apply writes the entry without `unit`. The twin does the same with "Limits" and "state nothing": the two fields empty, the range's lines removed, the entry without `limits`. | The unit: `settledRaw` (`lib/variableKeys.ts`) made `chosen ?? starting` again dies at the field's value ("degC" for "no unit"), as the journey did before the fix. The limits: `onChosen` no longer emptying the two fields dies at the field's value ("-40 … 150" for "state nothing"). A key stated as nothing written as `null` (`type_plans.py`) kills both at "no line added". |
 
 - [ ] **Step 1: The worked journey,** in `gui/e2e/types.spec.ts`:
 
@@ -863,8 +864,8 @@ test("a type's range is settled from its two fields, and written", async ({
 });
 ```
 
-  Read the row's accessible name, and the file's spelling after the write, off the running page and the copy before asserting them.
-- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then the ablation: `TypePanel.tsx`'s planned range made `null`, in a scratch copy of the package. It must die at "Changes 1 file".
+  Read the row's accessible name, and the file's spelling after the write, off the running page and the copy before asserting them. The file reads `"limits": { "min": -40, "max": 120 }` on one line, so the journeys as committed compare the type's parsed entry (`entryOf`) with `{ ...before, limits: { min: -40, max: 120 } }`, which also pins every other key.
+- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then two ablations, in a scratch copy of the package: `TypePanel.tsx`'s planned range made `null` dies at the last assertion, on the file (a `null` range plans the removal of `limits`, which is one file changed, so "Changes 1 file" is still drawn), and the limits row made to ask for no request dies at "Changes 1 file". Keep both: one pins what is written, the other the preview.
 - [ ] **Step 3: The other rows,** each a journey of its own: the Types rows in `types.spec.ts`, the adopt in `project-units.spec.ts`. Each is run and ablated as its row says.
 - [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
 - [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
@@ -1296,6 +1297,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Types | a type gone | 5 | `types.spec.ts:293`, "a type nothing declares any longer closes its panel, and the tab says so" |
 | Types | a type's file half-written | 5 | `types.spec.ts:323`, "a type whose file does not load keeps its panel, naming the file, until the file loads again" |
 | Types | a type's Apply refused as out of date | 5 | `types.spec.ts:354`, "an apply made from a type's panel that is out of date is refused, and goes through once the page has caught up" |
+| Types | a type's unit or limits stated as nothing, the key leaving its entry | 5 | `types.spec.ts:405`, "a type's unit stated as nothing leaves its entry"; `types.spec.ts:432`, "a type's limits stated as nothing leave its entry" |
 | Types | reading the project's types | 19c | none yet |
 | Types | the types failing to load | 19c | none yet |
 | Types | the types failing once listed, the table kept | 19c | none yet |
@@ -1342,7 +1344,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Findings | a row pressed, opening its finding with its notes | 7 | `findings.spec.ts:30`, "a disagreement leads to its variable" |
 | Findings | a finding's route followed to its variable | 7 | `findings.spec.ts:30`, "a disagreement leads to its variable" |
 | Findings | a finding's route followed to a unit | 7 | `findings.spec.ts:100`, "an unknown unit leads to its unit" |
-| Findings | a finding's route followed to a type | 7 | `types.spec.ts:29`, "a finding inside a type leads to it" |
+| Findings | a finding's route followed to a type | 7 | `types.spec.ts:30`, "a finding inside a type leads to it" |
 | Findings | a finding's route followed to the add form of an entry not declared yet | 7 | `constants.spec.ts:19`, "a finding nobody could act on becomes a constant declared in two clicks"; `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks"; `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
 | Findings | a settlement chosen, reaching every file of the variable | 7 | `findings.spec.ts:59`, "a disagreement is settled from the finding that reports it" |
 | Findings | a fix chosen, its changes shown, and applied | 7 | `findings.spec.ts:118`, "a missing id is fixed" |
@@ -1408,7 +1410,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | A component | a range the two fields do not make, offering no Apply | 9 | `keys.spec.ts:168`, "a range the two fields do not make offers no Apply, and changes nothing" |
 | A component | a truth value typed with Enter, never left unstated | 9 | `keys.spec.ts:206`, "a truth value is typed, confirmed with Enter, and cannot be left unstated" |
 | A component | a key a declared type fixes, refused | 9 | `keys.spec.ts:226`, "a key a declared type fixes is refused, and nothing is written" |
-| A component | a key a declared type fixes, followed to the type | 9 | `types.spec.ts:56`, "a key a declared type fixes leads to that type" |
+| A component | a key a declared type fixes, followed to the type | 9 | `types.spec.ts:57`, "a key a declared type fixes leads to that type" |
 | A component | a key left unstated, gone from every declaration | 9 | `keys.spec.ts:241`, "a key that may be left unstated goes from every declaration" |
 | A component | a dimension naming a constant, followed to it | 9 | `constants.spec.ts:19`, "a finding nobody could act on becomes a constant declared in two clicks" |
 | A component | a variable another component produces, read in | 9 | `declarations.spec.ts:16`, "a variable another component produces is read, keys and all" |

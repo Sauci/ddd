@@ -1331,8 +1331,8 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | an Apply refused as out of date | 6 | `shared.spec.ts:460`, "a save made from a constant's panel that is out of date is refused, and nothing is written" |
 | Shared files | an entry gone | 6 | `shared.spec.ts:197`, "a raster nothing declares any longer closes the panel an address opened, and the tab says so, even when the table hears of it first" |
 | Shared files | an entry's file half-written | 6 | `shared.spec.ts:482`, "a constant whose file does not load keeps its panel, naming the file, until the file loads again" |
-| Shared files | the untold banner | 6 | none yet |
-| Shared files | the unreadable banner | 6 | none yet |
+| Shared files | the untold banner | 6 | `shared.spec.ts:628`, "a shared file saved half-written is named above the table, whatever it declared untold" |
+| Shared files | the unreadable banner | 6 | `shared.spec.ts:650`, "a shared file that parses but breaks its model is named above the table, the entries declared there missing" |
 | Shared files | reading the project's shared files | 19c | none yet |
 | Shared files | the shared files failing to load | 19c | none yet |
 | Shared files | the shared files failing once listed, the table kept | 19c | none yet |

@@ -624,3 +624,52 @@ test("a raster's Used by leads to the component measuring everything it produces
   // read as their own component gone.
   await expect(page.getByText("no longer declared")).toHaveCount(0);
 });
+
+test("a shared file saved half-written is named above the table, whatever it declared untold", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const path = join(vocabularyGui.directory, FILES.rasters.file);
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  await expect(
+    page.getByText("2 constants · 3 rasters · 2 sections", { exact: true }),
+  ).toBeVisible();
+
+  // Cut in half, the file no longer parses, so not even its kind is known: the tab cannot say the
+  // entries missing are its own, only that whatever the file declares is not listed.
+  const whole = readFileSync(path);
+  writeFileSync(path, whole.subarray(0, Math.floor(whole.length / 2)));
+  await expect(page.getByRole("status").filter({ hasText: "did not load" })).toHaveText(
+    "rasters.ddd.json did not load, so whatever is declared there is not listed.",
+  );
+  await expect(page.getByText("2 constants · 2 sections", { exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: "100ms", exact: true })).toHaveCount(0);
+});
+
+test("a shared file that parses but breaks its model is named above the table, the entries declared there missing", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const path = join(vocabularyGui.directory, FILES.sections.file);
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  await expect(
+    page.getByText("2 constants · 3 rasters · 2 sections", { exact: true }),
+  ).toBeVisible();
+
+  // .calib aligned to three bytes: still json, and plainly a sections file, but no power of two,
+  // so the file fails its own model and does not load.
+  const before = readFileSync(path, "utf8");
+  const broken = before.replace(
+    /("section": "\.calib"[^}]*?"alignment": )4/,
+    (_, head: string) => `${head}3`,
+  );
+  if (broken === before) throw new Error(`.calib states no alignment 4 in ${path}`);
+  writeFileSync(path, broken);
+  await expect(page.getByRole("status").filter({ hasText: "did not load" })).toHaveText(
+    "sections.ddd.json did not load, so the entries declared there are not listed.",
+  );
+  await expect(page.getByText("2 constants · 3 rasters", { exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: ".calib", exact: true })).toHaveCount(0);
+});

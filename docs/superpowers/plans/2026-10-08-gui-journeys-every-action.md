@@ -1318,19 +1318,19 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | the add form refused: a name taken | 6 | `shared.spec.ts:296`, "the add form refuses a section's name the project already declares, and offers no apply" |
 | Shared files | the add form refused: a value no constant may state | 6 | `shared.spec.ts:313`, "the add form refuses a value no constant may state, in the words of a constant's own model" |
 | Shared files | the add form refused: an event taken | 6 | `shared.spec.ts:333`, "the add form refuses an event another raster already claims" |
-| Shared files | a constant's value saved | 6 | none yet |
-| Shared files | a constant's description saved | 6 | none yet |
-| Shared files | a constant renamed, and refused onto a name taken | 6 | none yet |
-| Shared files | a constant removed | 6 | none yet |
+| Shared files | a constant's value saved | 6 | `shared.spec.ts:347`, "a constant's value and description are each saved from its panel" |
+| Shared files | a constant's description saved | 6 | `shared.spec.ts:347`, "a constant's value and description are each saved from its panel" |
+| Shared files | a constant renamed, and refused onto a name taken | 6 | `shared.spec.ts:380`, "a constant is renamed everywhere, and a rename onto a name c already holds is refused" |
+| Shared files | a constant removed | 6 | `shared.spec.ts:430`, "a constant nothing names is removed, row and panel, where one in use says why it cannot be" |
 | Shared files | a section's access, alignment and description saved | 6 | none yet |
 | Shared files | a section renamed, and removed | 6 | none yet |
 | Shared files | a raster's event, cycle and description saved | 6 | `shared.spec.ts:76`, "a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused" |
 | Shared files | a raster renamed | 6 | `shared.spec.ts:148`, "a raster is renamed everywhere, its panel moving straight to the new name, and a rename onto another raster's name is refused" |
 | Shared files | a constant's "Used by" followed | 6 | none yet |
 | Shared files | a raster's "Used by" followed, to a component | 6 | none yet |
-| Shared files | an Apply refused as out of date | 6 | none yet |
+| Shared files | an Apply refused as out of date | 6 | `shared.spec.ts:460`, "a save made from a constant's panel that is out of date is refused, and nothing is written" |
 | Shared files | an entry gone | 6 | `shared.spec.ts:197`, "a raster nothing declares any longer closes the panel an address opened, and the tab says so, even when the table hears of it first" |
-| Shared files | an entry's file half-written | 6 | none yet |
+| Shared files | an entry's file half-written | 6 | `shared.spec.ts:482`, "a constant whose file does not load keeps its panel, naming the file, until the file loads again" |
 | Shared files | the untold banner | 6 | none yet |
 | Shared files | the unreadable banner | 6 | none yet |
 | Shared files | reading the project's shared files | 19c | none yet |

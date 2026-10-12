@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { PUMP } from "./demo";
+import { PUMP, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** Each vocabulary's file in a copy of examples/vocabulary: its name, which is also the key its
@@ -342,4 +342,169 @@ test("the add form refuses an event another raster already claims", async ({
   await event.fill("0");
   await expect(form.getByRole("status")).toHaveText("event 0 is already claimed by raster '1ms'");
   await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
+test("a constant's value and description are each saved from its panel", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const directory = vocabularyGui.directory;
+  const before = entryOf(directory, "constants", "TREND_SAMPLES");
+  const panel = await openEntry(page, vocabularyGui, "TREND_SAMPLES");
+
+  const value = panel.getByRole("region", { name: "Value" });
+  const valueField = value.getByRole("textbox", { name: "Value" });
+  await expect(valueField).toHaveValue("16");
+  await valueField.fill("32");
+  await expect(value.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
+  await value.getByRole("button", { name: "Save" }).click();
+  await expect
+    .poll(() => entryOf(directory, "constants", "TREND_SAMPLES"))
+    .toEqual({ ...before, value: 32 });
+  await expect(value.getByText("Changes 1 file")).toHaveCount(0);
+  await expect(page.getByRole("row", { name: "TREND_SAMPLES", exact: true })).toContainText("32");
+
+  const describing = panel.getByRole("region", { name: "Description" });
+  const description = describing.getByRole("textbox", { name: "Description" });
+  await expect(description).toHaveValue(String(before.description));
+  await description.fill("slots of the pressure trend buffer");
+  await expect(describing.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
+  await describing.getByRole("button", { name: "Save" }).click();
+  await expect
+    .poll(() => entryOf(directory, "constants", "TREND_SAMPLES"))
+    .toEqual({ ...before, value: 32, description: "slots of the pressure trend buffer" });
+  await expect(describing.getByText("Changes 1 file")).toHaveCount(0);
+  await expect(description).toHaveValue("slots of the pressure trend buffer");
+});
+
+test("a constant is renamed everywhere, and a rename onto a name c already holds is refused", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const directory = vocabularyGui.directory;
+  const before = entryOf(directory, "constants", "TREND_SAMPLES");
+  const panel = await openEntry(page, vocabularyGui, "TREND_SAMPLES");
+  const renaming = panel.getByRole("region", { name: "Rename" });
+  await renaming.getByRole("textbox", { name: "Rename TREND_SAMPLES to" }).fill("TREND_SLOTS");
+  await expect(
+    renaming.getByText("Changes 2 files: constants.ddd.json, pump.ddd.json"),
+  ).toBeVisible();
+  await renaming.getByRole("button", { name: "Apply to 2 files" }).click();
+
+  // The constant and the one shape naming it, PressureTrend's dimension, both renamed.
+  const moved = page.getByRole("complementary", { name: "TREND_SLOTS" });
+  await expect(moved.getByRole("textbox", { name: "Rename TREND_SLOTS to" })).toBeVisible();
+  await expect(page).toHaveURL(/\/project\?view=shared&kind=constant&name=TREND_SLOTS$/);
+  expect(entryOf(directory, "constants", "TREND_SLOTS")).toEqual({
+    ...before,
+    name: "TREND_SLOTS",
+  });
+  expect(definitionOf(directory, "PressureTrend").dimensions).toEqual(["TREND_SLOTS"]);
+
+  // Onto the other constant's name, which c's namespace already holds: refused before anything is
+  // written, and nothing left to press to write it anyway.
+  await moved.getByRole("textbox", { name: "Rename TREND_SLOTS to" }).fill("PRESSURE_CELLS");
+  await expect(moved.getByRole("region", { name: "Rename" }).getByRole("status")).toHaveText(
+    "'PRESSURE_CELLS' is the name of the declared constant 'PRESSURE_CELLS', which shares c's " +
+      "namespace with the variables",
+  );
+  await expect(moved.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
+/** PressureTrend's own `dimensions` in a copy of examples/vocabulary's pump.ddd.json, sized `16`
+ * rather than by `TREND_SAMPLES`, from outside the page: the one shape naming the constant, gone,
+ * so that nothing in the project names it. Scoped by the declaration's name first, as
+ * constants.spec.ts's own `breakPressureTrend` writes the same key; throws where nothing matched,
+ * since a copy left naming it would offer no Remove at all. */
+function sizePressureTrend(directory: string): void {
+  const path = join(directory, PUMP);
+  const before = readFileSync(path, "utf8");
+  const text = before.replace(
+    /("name": "PressureTrend"[\s\S]*?"dimensions": )\["TREND_SAMPLES"\]/,
+    "$1[16]",
+  );
+  if (text === before) throw new Error(`PressureTrend names no TREND_SAMPLES in ${path}`);
+  writeFileSync(path, text, "utf8");
+}
+
+test("a constant nothing names is removed, row and panel, where one in use says why it cannot be", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("vocabulary", sizePressureTrend);
+
+  // In use: ManifoldPressure is sized by PRESSURE_CELLS, so its panel offers no Remove.
+  const used = await openEntry(page, gui, "PRESSURE_CELLS");
+  const blocked = used.getByRole("region", { name: "Remove from the constants" });
+  await expect(blocked).toHaveText("1 shape names PRESSURE_CELLS, so it cannot be removed.");
+  await expect(blocked.getByRole("button")).toHaveCount(0);
+
+  await page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "TREND_SAMPLES" });
+  await expect(panel.getByText("Nothing in the project uses TREND_SAMPLES.")).toBeVisible();
+  const removing = panel.getByRole("region", { name: "Remove from the constants" });
+  await expect(removing.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
+  await removing.getByRole("button", { name: "Remove from the constants" }).click();
+
+  await expect(page.getByRole("row", { name: "TREND_SAMPLES", exact: true })).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project\?view=shared$/);
+  await expect.poll(() => entriesOf(gui.directory, "constants")).toEqual([]);
+});
+
+/** What a panel of the Shared files tab says when an Apply is refused because a file changed under
+ * its preview. */
+const STALE =
+  "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+test("a save made from a constant's panel that is out of date is refused, and nothing is written", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const path = join(vocabularyGui.directory, FILES.constants.file);
+  const panel = await openEntry(page, vocabularyGui, "TREND_SAMPLES");
+  const value = panel.getByRole("region", { name: "Value" });
+  await value.getByRole("textbox", { name: "Value" }).fill("32");
+  const save = value.getByRole("button", { name: "Save" });
+  await expect(save).toBeEnabled();
+
+  // The file changes under the page, between the preview it holds and the press that sends it:
+  // its description, one word for another as long, written where the session's own watcher does
+  // not see it (`writeUnseen`), so only the Apply's own fresh read of the bytes does.
+  const changed = readFileSync(path, "utf8").replace("sample slots", "sample cells");
+  writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
+  await save.click();
+  await expect(value.getByRole("status")).toHaveText(STALE);
+  // Nothing was written: the file is as the change from outside left it.
+  expect(readFileSync(path, "utf8")).toBe(changed);
+});
+
+test("a constant whose file does not load keeps its panel, naming the file, until the file loads again", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const path = join(vocabularyGui.directory, FILES.constants.file);
+  const panel = await openEntry(page, vocabularyGui, "TREND_SAMPLES");
+  const renaming = panel.getByRole("textbox", { name: "Rename TREND_SAMPLES to" });
+  await expect(renaming).toBeVisible();
+  const gone = page.getByRole("status").filter({ hasText: "no longer declared" });
+
+  // Saved half-edited, as an editor saves a file being typed into: no file that loads declares
+  // TREND_SAMPLES, and the table lists it no longer - but the file that does not load may, so the
+  // panel stays, naming it, rather than becoming the form that declares it.
+  const whole = readFileSync(path);
+  writeFileSync(path, whole.subarray(0, Math.floor(whole.length / 2)));
+  await expect(panel.getByRole("alert")).toHaveText(
+    "'TREND_SAMPLES' is not declared in any file that loaded, and constants.ddd.json did not load",
+  );
+  await expect(page.getByRole("row", { name: "TREND_SAMPLES", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "Declare a constant" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/project\?view=shared&kind=constant&name=TREND_SAMPLES$/);
+  await expect(gone).toHaveCount(0);
+
+  // Written back whole, the file loads again and the panel shows the constant again.
+  writeFileSync(path, whole);
+  await expect(renaming).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(gone).toHaveCount(0);
 });

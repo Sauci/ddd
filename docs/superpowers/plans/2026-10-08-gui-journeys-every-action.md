@@ -1247,15 +1247,15 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The canvas | an arrow about one variable pressed, opening its panel, whose Apply settles it | 4 | `units.spec.ts:225`, "the same disagreement is resolved from its arrow on the canvas" |
 | The canvas | an arrow about two variables, asking which, from the keyboard | 4 | `units.spec.ts:237`, "an arrow in disagreement about two variables asks which, from the keyboard too" |
 | The canvas | an address naming a variable no longer declared, answered above the canvas | 4 | `units.spec.ts:188`, "a variable no longer declared closes its panel, and the page says so" |
-| The canvas | no dictionary | 4 | none yet |
-| The canvas | Fit | 4 | none yet |
-| The canvas | the module search, typed | 4 | none yet |
-| The canvas | the module search's Enter | 4 | none yet |
-| The canvas | hovering a module | 4 | none yet |
-| The canvas | the undeclared-variable banner, from an arrow | 4 | none yet |
-| The canvas | drawing the project | 4 | none yet |
-| The canvas | laying the project out | 4 | none yet |
-| The canvas | the layout worker failing | 4 | none yet |
+| The canvas | no dictionary | 4 | `canvas.spec.ts:68`, "a project with a file that does not load is drawn without arrows, and says why" |
+| The canvas | Fit | 4 | `canvas.spec.ts:85`, "Fit returns the viewport to the one the canvas opened on, and moves no module" |
+| The canvas | the module search, typed | 4 | `canvas.spec.ts:116`, "a search typed dims every module whose name does not contain it" |
+| The canvas | the module search's Enter | 4 | `canvas.spec.ts:132`, "a search's Enter centres the first module it finds" |
+| The canvas | hovering a module | 4 | `canvas.spec.ts:174`, "hovering a module dims every module that is not one of its neighbours" |
+| The canvas | the undeclared-variable banner, from an arrow | 4 | `canvas.spec.ts:200`, "a variable opened from an arrow and then no longer declared closes, and the canvas says so" |
+| The canvas | drawing the project | 4 | `canvas.spec.ts:222`, "the canvas says it is drawing the project until the graph answers" |
+| The canvas | laying the project out | 4 | `canvas.spec.ts:247`, "the canvas says it is laying the project out until the layout comes" |
+| The canvas | the layout worker failing | 4 | `canvas.spec.ts:276`, "a layout worker that cannot start says to reload, and a reload draws the canvas" |
 | The canvas | the project's graph failing before anything is drawn | 19c | none yet |
 | The canvas | the project's graph failing once drawn, the canvas kept | 19c | none yet |
 | The canvas | a module whose file does not load, drawn as not loaded | 19c | none yet |
@@ -1266,7 +1266,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The canvas | a later layout failing, the canvas kept | 19c | none yet |
 | The components table | each component listed with its errors and its warnings | 4 | `skeleton.spec.ts:16`, "the demo opens on its project page, with every component" |
 | The components table | a component's name pressed, opening its page | 4 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
-| The components table | its summary while the findings update | 4 | none yet |
+| The components table | its summary while the findings update | 4 | `canvas.spec.ts:326`, "the components table's summary says the findings are updating while they are" |
 | The components table | a row pressed beside its name, or Enter on it, opening its component | 19c | none yet |
 | Units | the units in use listed, the tab's line counting them | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
 | Units | a project with no units file offered the adoption, previewed and adopted | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |

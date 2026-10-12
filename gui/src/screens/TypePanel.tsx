@@ -17,7 +17,7 @@ import type { Route } from "../lib/route";
 import { planShown } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
-import { limitsNote, limitsOf, limitsRaw, shortValue } from "../lib/variableKeys";
+import { limitsNote, limitsOf, limitsRaw, settledRaw, shortValue } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
@@ -150,7 +150,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
       ? null
       : selected === "limits"
         ? limitsRaw(range.min, range.max)
-        : (chosen ?? starting);
+        : settledRaw(chosen, starting);
   // What the reader has changed the description away from, `null` while it reads the type's own -
   // the third write path, with no marker of its own the way `selected`/`renameTo` are.
   const draft = description !== undefined && description !== type?.description ? description : null;

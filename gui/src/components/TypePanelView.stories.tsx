@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PlanReply, TypeReply } from "../api/types";
 import { textOf, unitLabel } from "../lib/units";
+import { settledRaw } from "../lib/variableKeys";
 import {
   EXTERNAL_TYPE,
   PROJECT_UNITS,
@@ -93,7 +94,7 @@ function startingLabel(
 ): string {
   if (key === undefined) return "";
   const offer = reply.keys.find((entry) => entry.key === key);
-  const raw = chosen === undefined ? (offer?.values[0]?.raw ?? null) : chosen;
+  const raw = settledRaw(chosen, offer?.values[0]?.raw ?? null);
   const value = textOf(raw ?? undefined);
   return offer?.editor === "unit" ? unitLabel(value) : (value ?? "");
 }

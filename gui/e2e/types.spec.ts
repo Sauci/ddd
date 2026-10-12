@@ -396,3 +396,73 @@ test("an apply made from a type's panel that is out of date is refused, and goes
     .toEqual({ ...before, limits: { min: -40, max: 120 } });
   await expect(limits).toContainText("-40 … 120");
 });
+
+/** An entry with one key left out, as the file holds it once that key is taken away. */
+function without(entry: Record<string, unknown>, key: string): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(entry).filter(([each]) => each !== key));
+}
+
+test("a type's unit stated as nothing leaves its entry", async ({ page, structuresGui }) => {
+  const before = entryOf(structuresGui.directory, "Temperature_t");
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  const unit = panel.getByRole("row", { name: "Unit", exact: true });
+  await expect(unit).toContainText("degC");
+  await unit.click();
+  const field = panel.getByRole("combobox", { name: "Unit of Temperature_t" });
+  await field.press("ArrowDown");
+  // The list is a popover at the root of the page, not inside the panel.
+  await page.getByRole("listbox").getByRole("option", { name: "no unit", exact: true }).click();
+  await expect(field).toHaveValue("no unit");
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk .removed")).toHaveText(['- "unit": "degC",']);
+  await expect(panel.locator(".hunk .added")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+
+  // The unit alone is gone from the type's entry: every other key of it is as it was.
+  await expect
+    .poll(() => entryOf(structuresGui.directory, "Temperature_t"))
+    .toEqual(without(before, "unit"));
+  await expect(unit).toContainText("state nothing");
+});
+
+test("a type's limits stated as nothing leave its entry", async ({ page, structuresGui }) => {
+  const before = entryOf(structuresGui.directory, "Temperature_t");
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  const limits = panel.getByRole("row", { name: "Limits", exact: true });
+  await expect(limits).toContainText("-40 … 150");
+  await limits.click();
+  const field = panel.getByRole("combobox", { name: "Limits of Temperature_t" });
+  await field.press("ArrowDown");
+  // The list is a popover at the root of the page, not inside the panel.
+  await page
+    .getByRole("listbox")
+    .getByRole("option", { name: "state nothing", exact: true })
+    .click();
+  // Stated as nothing, the range is the two fields left empty.
+  await expect(field).toHaveValue("state nothing");
+  await expect(panel.getByLabel("Min", { exact: true })).toHaveValue("");
+  await expect(panel.getByLabel("Max", { exact: true })).toHaveValue("");
+  await panel.getByRole("button", { name: "Show changes" }).click();
+  // The range's lines go, and no line is put in their place.
+  await expect(panel.locator(".hunk .removed")).toContainText([
+    '"limits": {',
+    '"min": -40,',
+    '"max": 150',
+  ]);
+  await expect(panel.locator(".hunk .added")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+
+  // The range alone is gone from the type's entry: every other key of it is as it was.
+  await expect
+    .poll(() => entryOf(structuresGui.directory, "Temperature_t"))
+    .toEqual(without(before, "limits"));
+  await expect(limits).toContainText("state nothing");
+});

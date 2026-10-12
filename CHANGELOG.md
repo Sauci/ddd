@@ -97,6 +97,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   been made, and neither is one that got any answer, a refusal included.  A second failure
   reads as one did before: the page drawn unstyled, or saying that `ddd gui` is not answering.
 
+* **A type's unit chosen as "no unit" is now taken off the type.**  On the Types tab, choosing
+  "no unit" for a type's unit read as no choice at all: the field went back to the unit the
+  type states, the preview offered a change that changed nothing, and Apply left the unit in
+  the file.  The choice now stands: the field reads "no unit", the preview takes the `unit`
+  line out, and Apply writes the type without it.  Stating a type's limits as nothing, and
+  choosing no unit for a variable, already worked.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

@@ -1,7 +1,14 @@
 import { useState } from "react";
 import type { PlanReply, SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { outsideVocabulary, textOf } from "../lib/units";
-import { labelOfRaw, limitsNote, limitsOf, limitsRaw, startingRaw } from "../lib/variableKeys";
+import {
+  labelOfRaw,
+  limitsNote,
+  limitsOf,
+  limitsRaw,
+  settledRaw,
+  startingRaw,
+} from "../lib/variableKeys";
 import {
   AGREEING,
   DISAGREEING,
@@ -132,9 +139,7 @@ function View({
       ? null
       : selected === "limits"
         ? limitsRaw(range.min, range.max)
-        : chosen === undefined
-          ? startingRaw(variable, selected)
-          : chosen;
+        : settledRaw(chosen, startingRaw(variable, selected));
   const select = (key: string | undefined) => {
     setSelected(key);
     setChosen(undefined);

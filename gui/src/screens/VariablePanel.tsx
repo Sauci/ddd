@@ -23,6 +23,7 @@ import {
   limitsNote,
   limitsOf,
   limitsRaw,
+  settledRaw,
   startingRaw,
 } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
@@ -180,9 +181,7 @@ export function VariablePanel({
       ? null
       : selected === "limits"
         ? limitsRaw(range.min, range.max)
-        : chosen === undefined
-          ? startingRaw(reply, selected)
-          : chosen;
+        : settledRaw(chosen, startingRaw(reply, selected));
   // `target` is typed into directly while `selected` is `limits` (the two range fields commit on
   // every keystroke, like every other plain field on this screen) and otherwise set discretely by
   // a chooser's pick or Enter. `typedLimits` says which this one is (fix round 2: `selected` and

@@ -1326,8 +1326,8 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | a section renamed, and removed | 6 | `shared.spec.ts:559`, "a section renamed onto another section's name is refused, and a section nothing places data in is removed" |
 | Shared files | a raster's event, cycle and description saved | 6 | `shared.spec.ts:76`, "a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused" |
 | Shared files | a raster renamed | 6 | `shared.spec.ts:148`, "a raster is renamed everywhere, its panel moving straight to the new name, and a rename onto another raster's name is refused" |
-| Shared files | a constant's "Used by" followed | 6 | none yet |
-| Shared files | a raster's "Used by" followed, to a component | 6 | none yet |
+| Shared files | a constant's "Used by" followed | 6 | `shared.spec.ts:590`, "a constant's Used by leads to the variable naming it, on its component's page" |
+| Shared files | a raster's "Used by" followed, to a component | 6 | `shared.spec.ts:604`, "a raster's Used by leads to the component measuring everything it produces in it, and to no variable" |
 | Shared files | an Apply refused as out of date | 6 | `shared.spec.ts:460`, "a save made from a constant's panel that is out of date is refused, and nothing is written" |
 | Shared files | an entry gone | 6 | `shared.spec.ts:197`, "a raster nothing declares any longer closes the panel an address opened, and the tab says so, even when the table hears of it first" |
 | Shared files | an entry's file half-written | 6 | `shared.spec.ts:482`, "a constant whose file does not load keeps its panel, naming the file, until the file loads again" |

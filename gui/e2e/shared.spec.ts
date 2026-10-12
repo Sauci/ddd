@@ -586,3 +586,41 @@ test("a section renamed onto another section's name is refused, and a section no
   await expect(page).toHaveURL(/\/project\?view=shared$/);
   await expect.poll(() => entriesOf(vocabularyGui.directory, "sections")).toEqual(declared);
 });
+
+test("a constant's Used by leads to the variable naming it, on its component's page", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const panel = await openEntry(page, vocabularyGui, "TREND_SAMPLES");
+  const use = panel.getByRole("row", { name: /^PressureTrend/ });
+  await expect(use.getByRole("cell")).toHaveText(["PressureTrend", "pump.ddd.json", "Pump"]);
+  await use.getByRole("button", { name: "PressureTrend" }).click();
+
+  await expect(page).toHaveURL(/\/component\?file=[^&]*pump\.ddd\.json&variable=PressureTrend$/);
+  await expect(page.getByRole("heading", { name: "Pump", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "PressureTrend" })).toBeVisible();
+});
+
+test("a raster's Used by leads to the component measuring everything it produces in it, and to no variable", async ({
+  page,
+  vocabularyGui,
+}) => {
+  // Pump's own default, which no definition stands between: its row says what it covers.
+  const panel = await openEntry(page, vocabularyGui, "10ms");
+  const use = panel.getByRole("row", { name: /^Pump/ });
+  await expect(use.getByRole("cell")).toHaveText([
+    "Pump",
+    "pump.ddd.json",
+    "everything it produces",
+  ]);
+  await use.getByRole("button", { name: "Pump" }).click();
+
+  await expect(page).toHaveURL(/\/component\?file=[^&]*pump\.ddd\.json$/);
+  await expect(page.getByRole("heading", { name: "Pump", level: 1 })).toBeVisible();
+  await expect(page.getByRole("row", { name: "PumpSpeed", exact: true })).toBeVisible();
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  // Led there directly: a route naming a variable "Pump" ends on this same address too, once the
+  // page finds nothing declares one - and says so, which a reader following a component would
+  // read as their own component gone.
+  await expect(page.getByText("no longer declared")).toHaveCount(0);
+});

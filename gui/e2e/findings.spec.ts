@@ -265,9 +265,9 @@ test("the fixes of a finding failing leave its panel without them, and an alert 
   await page.getByRole("link", { name: "Findings", exact: true }).click();
   await page.getByRole("row", { name: "missing-id" }).click();
 
-  // Said in the panel's column, over the panel (`:above()` is Playwright's layout selector: the
-  // alert's box lies over the panel's): it is the fixes that failed, and the finding itself is
-  // drawn all the same, with the route it leads by.
+  // Said over the panel (`:above()` is Playwright's layout selector: the alert's box lies over the
+  // panel's): it is the fixes that failed, and the finding itself is drawn all the same, with the
+  // route it leads by.
   const panel = page.getByRole("complementary", { name: "missing-id" });
   await expect(page.getByRole("alert").and(page.locator(":above(.panel)"))).toHaveText(
     SERVER_FAILED,

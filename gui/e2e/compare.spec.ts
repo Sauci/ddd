@@ -45,9 +45,11 @@ function posixOf(path: string): string {
 }
 
 /** A whole sentence's start, as a pattern: the page's own words, up to where the system's own
- * begin - an OSError's text or the json parser's, which differ between Linux and Windows. */
+ * begin - an OSError's text or the json parser's, which differ between Linux and Windows - and
+ * then at least one of the system's own, on as many lines as it takes: a refusal that dropped
+ * them fails. */
 function startingWith(words: string): RegExp {
-  return new RegExp(`^${words.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+  return new RegExp(`^${words.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]+`);
 }
 
 test("a baseline missing, not json, of the wrong shape or outside the root is refused in words of its own", async ({
@@ -89,10 +91,7 @@ test("a baseline missing, not json, of the wrong shape or outside the root is re
   );
 });
 
-test("a row of the findings table opens its finding in a panel beside it", async ({
-  page,
-  copiedGui,
-}) => {
+test("a row of the findings table opens its finding in a panel", async ({ page, copiedGui }) => {
   // The baseline is dumped before ValueA is widened, and the server starts over the widened copy:
   // the comparison it is asked for already has its finding when the page asks.
   const gui = await copiedGui("demo", (directory) => {
@@ -126,7 +125,10 @@ test("a finding filed on a declaration leads to that declaration from its panel'
   const gui = await copiedGui("layout", (directory) => {
     dump(directory, "project.ddd.json", "baseline.json");
     const storage = join(directory, "storage.ddd.json");
-    writeFileSync(storage, readFileSync(storage, "utf8").replace('"key": 12', '"key": 14'));
+    const before = readFileSync(storage, "utf8");
+    const moved = before.replace('"key": 12', '"key": 14');
+    if (moved === before) throw new Error(`EngineHours carries no key 12 in ${storage}`);
+    writeFileSync(storage, moved);
   });
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Compare" }).click();
@@ -137,7 +139,7 @@ test("a finding filed on a declaration leads to that declaration from its panel'
   const panel = page.getByRole("complementary", { name: "layout/key-changed" });
   const message = "'EngineHours' carried key 12 and now carries 14; its entry under 12 is orphaned";
   await expect(panel.getByText(message, { exact: true })).toBeVisible();
-  await panel.getByRole("link", { name: "Open EngineHours" }).click();
+  await panel.getByRole("link", { name: "Open EngineHours", exact: true }).click();
 
   // Storage's own page, with EngineHours' panel open: the same place a finding of the Findings
   // tab leads to.

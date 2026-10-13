@@ -14,7 +14,8 @@ interface Example {
   project: string;
   /** Directories of examples/ that its project names by a path beside its own directory, such as
    * the `../plugins/ddd_layout.py` of `LAYOUT`: copied beside the copy, so that the path resolves
-   * there. */
+   * there. Only `copiedGui` honours it: `started` and `mappedGui`, which serve an example as it
+   * stands, copy the example's own directory alone. */
   beside?: readonly string[];
 }
 

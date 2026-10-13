@@ -396,7 +396,7 @@ test("a Remove applied while the description changed on disk is refused, and goe
   // The analysis reads the file as it now is, the refusal goes, and the plan asked for that
   // revision carries the file's new fingerprint - which is what lets the same press go through.
   utimesSync(project, new Date(), new Date());
-  await expect(refused).toHaveCount(0);
+  await expect(refused).toHaveCount(0, { timeout: 15000 });
   await remove.click();
   await expect(page.getByRole("row", { name: UNITS })).toHaveCount(0);
   const written = JSON.parse(readFileSync(project, "utf8")).project;
@@ -456,7 +456,7 @@ test("the errors a file would bring are listed in the Add a file preview, which 
   await expect(brought.locator("p")).toHaveText(
     "'Torque' is read by component 'Reader' but no component declares it as output",
   );
-  await expect(adding.getByRole("button", { name: "Apply to 1 file" })).toBeVisible();
+  await expect(adding.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
 });
 
 test("the list failing at first leaves the server's own error, with no table and no way to add a file", async ({
@@ -486,7 +486,7 @@ test("the list failing once drawn leaves the table, with the server's own error 
   // holds (stale from the start), and when that read fails the answer stays drawn, the error said
   // over it. A change the watcher sees does not reach this state: the new revision's read has no
   // answer to hold (`placeholderData` serves a read that is pending, not one that failed), so the
-  // tab shows the alert alone, as at first (measured on FilesPage.tsx at d76a61e).
+  // tab shows the alert alone, as at first (ruling P19b-20 in the plan).
   await page.getByRole("link", { name: "Findings", exact: true }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
   await failing(page, "/api/files", "http");

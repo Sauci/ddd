@@ -34,8 +34,8 @@ test("an empty directory finds no project, and the start page says so", async ({
   const started = await copiedGui("demo", empty, { named: false });
   await page.goto(started.address);
   await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
-  // The page shows the server's own `root.as_posix()` (session.py), forward-slashed even on
-  // Windows; `started.directory` is native-separated there, so only the separator is swapped,
+  // The page shows the server's own `root.as_posix()` (api.py's `_projects`), forward-slashed even
+  // on Windows; `started.directory` is native-separated there, so only the separator is swapped,
   // never `path.resolve()`'d, as `files.spec.ts`'s own `key` does for the same comparison.
   const root = started.directory.replaceAll("\\", "/");
   await expect(page.getByText(`Found under ${root}`)).toBeVisible();
@@ -44,7 +44,7 @@ test("an empty directory finds no project, and the start page says so", async ({
   ).toBeVisible();
 });
 
-test("a build record in a format too new is listed as not used, and its project still opens", async ({
+test("a build record in a format too new is listed as not used, and its project is still offered", async ({
   page,
   copiedGui,
 }) => {

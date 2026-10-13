@@ -113,7 +113,10 @@ test("a copy of the layout example is served with the plugin its project names b
   // beside it lists `plugin-not-found` and `unknown-extension` instead, and never this.
   const gui = await copiedGui("layout", (directory) => {
     const storage = join(directory, "storage.ddd.json");
-    writeFileSync(storage, readFileSync(storage, "utf8").replace('"key": 12', '"key": 5000'));
+    const before = readFileSync(storage, "utf8");
+    const moved = before.replace('"key": 12', '"key": 5000');
+    if (moved === before) throw new Error(`EngineHours carries no key 12 in ${storage}`);
+    writeFileSync(storage, moved);
   });
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Findings" }).click();

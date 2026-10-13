@@ -72,7 +72,8 @@ JOURNEY_HELPERS: Final = EXAMPLES.parent / "gui" / "e2e" / "demo.ts"
 """The journeys' own helpers, whose ``failing`` answers a request as this server fails one."""
 
 JS_STRING: Final = r'"(?:[^"\\]|\\.)*"'
-"""A double-quoted string literal of javascript, escapes and all: json reads it as it is."""
+"""A double-quoted string literal of javascript, escapes and all: json reads it as it is, for the
+escapes json shares."""
 
 
 @pytest.fixture

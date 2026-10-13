@@ -1209,7 +1209,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The network | the layout worker's script failed once | 10 | `network.spec.ts:83`, "the layout worker's script the network failed once is asked for again, and the canvas is drawn" |
 | The start page | the projects found listed, and the one chosen opened | 3 | `skeleton.spec.ts:143`, "without a project the start page lists the ones found and opens the one chosen" |
 | The start page | no project found | 3 | `start.spec.ts:30`, "an empty directory finds no project, and the start page says so" |
-| The start page | a build record not used | 3 | `start.spec.ts:47`, "a build record in a format too new is listed as not used, and its project still opens" |
+| The start page | a build record not used | 3 | `start.spec.ts:47`, "a build record in a format too new is listed as not used, and its project is still offered" |
 | The start page | looking for projects | 3 | `start.spec.ts:67`, "the start page says it is looking for projects, until the list answers" |
 | The start page | the projects list failing | 3 | `start.spec.ts:88`, "the projects list failing shows the server's own error, with no list drawn" |
 | The start page | opening a project failing | 3 | `start.spec.ts:99`, "opening a project that fails leaves the start page in place, with the server's own error" |
@@ -1250,14 +1250,14 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The canvas | an arrow about two variables, asking which, from the keyboard | 4 | `units.spec.ts:237`, "an arrow in disagreement about two variables asks which, from the keyboard too" |
 | The canvas | an address naming a variable no longer declared, answered above the canvas | 4 | `units.spec.ts:188`, "a variable no longer declared closes its panel, and the page says so" |
 | The canvas | no dictionary | 4 | `canvas.spec.ts:68`, "a project with a file that does not load is drawn without arrows, and says why" |
-| The canvas | Fit | 4 | `canvas.spec.ts:85`, "Fit returns the viewport to the one the canvas opened on, and moves no module" |
-| The canvas | the module search, typed | 4 | `canvas.spec.ts:116`, "a search typed dims every module whose name does not contain it" |
-| The canvas | the module search's Enter | 4 | `canvas.spec.ts:132`, "a search's Enter centres the first module it finds" |
-| The canvas | hovering a module | 4 | `canvas.spec.ts:174`, "hovering a module dims every module that is not one of its neighbours" |
-| The canvas | the undeclared-variable banner, from an arrow | 4 | `canvas.spec.ts:200`, "a variable opened from an arrow and then no longer declared closes, and the canvas says so" |
-| The canvas | drawing the project | 4 | `canvas.spec.ts:222`, "the canvas says it is drawing the project until the graph answers" |
-| The canvas | laying the project out | 4 | `canvas.spec.ts:247`, "the canvas says it is laying the project out until the layout comes" |
-| The canvas | the layout worker failing | 4 | `canvas.spec.ts:276`, "a layout worker that cannot start says to reload, and a reload draws the canvas" |
+| The canvas | Fit | 4 | `canvas.spec.ts:85`, "Fit returns the viewport to the one the canvas opened on" |
+| The canvas | the module search, typed | 4 | `canvas.spec.ts:113`, "a search typed dims every module whose name does not contain it" |
+| The canvas | the module search's Enter | 4 | `canvas.spec.ts:129`, "a search's Enter centres the first module it finds" |
+| The canvas | hovering a module | 4 | `canvas.spec.ts:172`, "hovering a module dims every module that is not one of its neighbours" |
+| The canvas | the undeclared-variable banner, from an arrow | 4 | `canvas.spec.ts:198`, "a variable opened from an arrow and then no longer declared closes, and the canvas says so" |
+| The canvas | drawing the project | 4 | `canvas.spec.ts:220`, "the canvas says it is drawing the project until the graph answers" |
+| The canvas | laying the project out | 4 | `canvas.spec.ts:245`, "the canvas says it is laying the project out until the layout comes" |
+| The canvas | the layout worker failing | 4 | `canvas.spec.ts:274`, "a layout worker that cannot start says to reload, and a reload draws the canvas" |
 | The canvas | the project's graph failing before anything is drawn | 19c | none yet |
 | The canvas | the project's graph failing once drawn, the canvas kept | 19c | none yet |
 | The canvas | a module whose file does not load, drawn as not loaded | 19c | none yet |
@@ -1268,7 +1268,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The canvas | a later layout failing, the canvas kept | 19c | none yet |
 | The components table | each component listed with its errors and its warnings | 4 | `skeleton.spec.ts:16`, "the demo opens on its project page, with every component" |
 | The components table | a component's name pressed, opening its page | 4 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
-| The components table | its summary while the findings update | 4 | `canvas.spec.ts:331`, "the components table's summary says the findings are updating while they are" |
+| The components table | its summary while the findings update | 4 | `canvas.spec.ts:329`, "the components table's summary says the findings are updating while they are" |
 | The components table | a row pressed beside its name, or Enter on it, opening its component | 19c | none yet |
 | Units | the units in use listed, the tab's line counting them | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
 | Units | a project with no units file offered the adoption, previewed and adopted | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
@@ -1315,25 +1315,25 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Shared files | a raster declared from a finding's route | 6 | `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
 | Shared files | a section's "Used by" followed to the declaration | 6 | `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks" |
 | Shared files | a raster nothing uses, removed | 6 | `shared.spec.ts:51`, "a raster nothing measures in is removed, row and panel" |
-| Shared files | "Declare an entry", and the blank form | 6 | `shared.spec.ts:256`, "a project declaring nothing offers a blank form, whose vocabulary brings its fields, and a constant declared from it is listed" |
-| Shared files | the add form refused: a name taken | 6 | `shared.spec.ts:296`, "the add form refuses a section's name the project already declares, and offers no apply" |
-| Shared files | the add form refused: a value no constant may state | 6 | `shared.spec.ts:313`, "the add form refuses a value no constant may state, in the words of a constant's own model" |
-| Shared files | the add form refused: an event taken | 6 | `shared.spec.ts:333`, "the add form refuses an event another raster already claims" |
-| Shared files | a constant's value saved | 6 | `shared.spec.ts:347`, "a constant's value and description are each saved from its panel" |
-| Shared files | a constant's description saved | 6 | `shared.spec.ts:347`, "a constant's value and description are each saved from its panel" |
-| Shared files | a constant renamed, and refused onto a name taken | 6 | `shared.spec.ts:380`, "a constant is renamed everywhere, and a rename onto a name c already holds is refused" |
-| Shared files | a constant removed | 6 | `shared.spec.ts:430`, "a constant nothing names is removed, row and panel, where one in use says why it cannot be" |
-| Shared files | a section's access, alignment and description saved | 6 | `shared.spec.ts:512`, "a section's access, alignment and description are each saved from its panel" |
-| Shared files | a section renamed, and removed | 6 | `shared.spec.ts:559`, "a section renamed onto another section's name is refused, and a section nothing places data in is removed" |
-| Shared files | a raster's event, cycle and description saved | 6 | `shared.spec.ts:76`, "a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused" |
-| Shared files | a raster renamed | 6 | `shared.spec.ts:148`, "a raster is renamed everywhere, its panel moving straight to the new name, and a rename onto another raster's name is refused" |
-| Shared files | a constant's "Used by" followed | 6 | `shared.spec.ts:590`, "a constant's Used by leads to the variable naming it, on its component's page" |
-| Shared files | a raster's "Used by" followed, to a component | 6 | `shared.spec.ts:604`, "a raster's Used by leads to the component measuring everything it produces in it, and to no variable" |
-| Shared files | an Apply refused as out of date | 6 | `shared.spec.ts:460`, "a save made from a constant's panel that is out of date is refused, and nothing is written" |
-| Shared files | an entry gone | 6 | `shared.spec.ts:197`, "a raster nothing declares any longer closes the panel an address opened, and the tab says so, even when the table hears of it first" |
-| Shared files | an entry's file half-written | 6 | `shared.spec.ts:482`, "a constant whose file does not load keeps its panel, naming the file, until the file loads again" |
-| Shared files | the untold banner | 6 | `shared.spec.ts:628`, "a shared file saved half-written is named above the table, whatever it declared untold" |
-| Shared files | the unreadable banner | 6 | `shared.spec.ts:650`, "a shared file that parses but breaks its model is named above the table, the entries declared there missing" |
+| Shared files | "Declare an entry", and the blank form | 6 | `shared.spec.ts:258`, "a project declaring nothing offers a blank form, whose vocabulary brings its fields, and a constant declared from it is listed" |
+| Shared files | the add form refused: a name taken | 6 | `shared.spec.ts:298`, "the add form refuses a section's name the project already declares, and offers no apply" |
+| Shared files | the add form refused: a value no constant may state | 6 | `shared.spec.ts:315`, "the add form refuses a value no constant may state, in the words of a constant's own model" |
+| Shared files | the add form refused: an event taken | 6 | `shared.spec.ts:335`, "the add form refuses an event another raster already claims" |
+| Shared files | a constant's value saved | 6 | `shared.spec.ts:349`, "a constant's value and description are each saved from its panel" |
+| Shared files | a constant's description saved | 6 | `shared.spec.ts:349`, "a constant's value and description are each saved from its panel" |
+| Shared files | a constant renamed, and refused onto a name taken | 6 | `shared.spec.ts:382`, "a constant is renamed everywhere, and a rename onto a name c already holds is refused" |
+| Shared files | a constant removed | 6 | `shared.spec.ts:432`, "a constant nothing names is removed, row and panel, where one in use says why it cannot be" |
+| Shared files | a section's access, alignment and description saved | 6 | `shared.spec.ts:518`, "a section's access, alignment and description are each saved from its panel" |
+| Shared files | a section renamed, and removed | 6 | `shared.spec.ts:565`, "a section renamed onto another section's name is refused, and a section nothing places data in is removed" |
+| Shared files | a raster's event, cycle and description saved | 6 | `shared.spec.ts:78`, "a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused" |
+| Shared files | a raster renamed | 6 | `shared.spec.ts:150`, "a raster is renamed everywhere, its panel moving straight to the new name, and a rename onto another raster's name is refused" |
+| Shared files | a constant's "Used by" followed | 6 | `shared.spec.ts:598`, "a constant's Used by leads to the variable naming it, on its component's page" |
+| Shared files | a raster's "Used by" followed, to a component | 6 | `shared.spec.ts:612`, "a raster's Used by leads to the component measuring everything it produces in it, and to no variable" |
+| Shared files | an Apply refused as out of date | 6 | `shared.spec.ts:464`, "a save made from a constant's panel that is out of date is refused, and nothing is written" |
+| Shared files | an entry gone | 6 | `shared.spec.ts:199`, "a raster nothing declares any longer closes the panel an address opened, and the tab says so, even when the table hears of it first" |
+| Shared files | an entry's file half-written | 6 | `shared.spec.ts:488`, "a constant whose file does not load keeps its panel, naming the file, until the file loads again" |
+| Shared files | the untold banner | 6 | `shared.spec.ts:636`, "a shared file saved half-written is named above the table, whatever it declared untold" |
+| Shared files | the unreadable banner | 6 | `shared.spec.ts:658`, "a shared file that parses but breaks its model is named above the table, the entries declared there missing" |
 | Shared files | reading the project's shared files | 19c | none yet |
 | Shared files | the shared files failing to load | 19c | none yet |
 | Shared files | the shared files failing once listed, the table kept | 19c | none yet |
@@ -1384,11 +1384,11 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | Files | a removal refused for a file only a pattern brings in | 19c | none yet |
 | Files | an Apply the server fails on | 19c | none yet |
 | Compare | a baseline compared: the verdict, the line counting its findings, and a changed interface | 8 | `compare.spec.ts:6`, "a reader can ask whether this delivery replaces the last" |
-| Compare | a baseline refused: not found, not json, of the wrong shape, outside the root | 8 | `compare.spec.ts:53`, "a baseline missing, not json, of the wrong shape or outside the root is refused in words of its own" |
-| Compare | a row opens its finding | 8 | `compare.spec.ts:92`, "a row of the findings table opens its finding in a panel beside it" |
-| Compare | a finding's route followed, which only a plugin's comparison rule files on a declaration | 8 | `compare.spec.ts:118`, "a finding filed on a declaration leads to that declaration from its panel's link" |
-| Compare | the renamed objects | 8 | `compare.spec.ts:160`, "an object renamed since the baseline is listed with its id, where nothing was renamed before" |
-| Compare | the busy state | 8 | `compare.spec.ts:182`, "while a comparison is awaited the field and the button are disabled and the earlier verdict is gone" |
+| Compare | a baseline refused: not found, not json, of the wrong shape, outside the root | 8 | `compare.spec.ts:55`, "a baseline missing, not json, of the wrong shape or outside the root is refused in words of its own" |
+| Compare | a row opens its finding | 8 | `compare.spec.ts:94`, "a row of the findings table opens its finding in a panel" |
+| Compare | a finding's route followed, which only a plugin's comparison rule files on a declaration | 8 | `compare.spec.ts:117`, "a finding filed on a declaration leads to that declaration from its panel's link" |
+| Compare | the renamed objects | 8 | `compare.spec.ts:162`, "an object renamed since the baseline is listed with its id, where nothing was renamed before" |
+| Compare | the busy state | 8 | `compare.spec.ts:184`, "while a comparison is awaited the field and the button are disabled and the earlier verdict is gone" |
 | Compare | a baseline asked for with Enter | 19c | none yet |
 | Compare | a finding about the whole delivery, saying why it leads nowhere | 19c | none yet |
 | Compare | the baseline's own findings, named as the baseline's and leading nowhere | 19c | none yet |

@@ -57,7 +57,9 @@ test("a raster nothing measures in is removed, row and panel", async ({ page, vo
   const row = page.getByRole("row", { name: /^100ms/ });
   await row.click();
   const panel = page.getByRole("complementary", { name: "100ms" });
-  await expect(panel.getByText("Nothing in the project measures in 100ms.")).toBeVisible();
+  await expect(
+    panel.getByText("Nothing in the project measures in 100ms.", { exact: true }),
+  ).toBeVisible();
 
   // The removal's own plan, shown before the press that applies it: no "Apply to 1 file" here,
   // the button itself says what it does.
@@ -441,7 +443,9 @@ test("a constant nothing names is removed, row and panel, where one in use says 
 
   await page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "TREND_SAMPLES" });
-  await expect(panel.getByText("Nothing in the project uses TREND_SAMPLES.")).toBeVisible();
+  await expect(
+    panel.getByText("Nothing in the project uses TREND_SAMPLES.", { exact: true }),
+  ).toBeVisible();
   const removing = panel.getByRole("region", { name: "Remove from the constants" });
   await expect(removing.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
   await removing.getByRole("button", { name: "Remove from the constants" }).click();
@@ -471,7 +475,9 @@ test("a save made from a constant's panel that is out of date is refused, and no
   // The file changes under the page, between the preview it holds and the press that sends it:
   // its description, one word for another as long, written where the session's own watcher does
   // not see it (`writeUnseen`), so only the Apply's own fresh read of the bytes does.
-  const changed = readFileSync(path, "utf8").replace("sample slots", "sample cells");
+  const before = readFileSync(path, "utf8");
+  const changed = before.replace("sample slots", "sample cells");
+  if (changed === before) throw new Error(`TREND_SAMPLES describes no sample slots in ${path}`);
   writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
   await save.click();
   await expect(value.getByRole("status")).toHaveText(STALE);
@@ -577,7 +583,9 @@ test("a section renamed onto another section's name is refused, and a section no
   await form.getByRole("button", { name: "Apply to 1 file" }).click();
 
   const fresh = page.getByRole("complementary", { name: ".spare" });
-  await expect(fresh.getByText("Nothing in the project places its data in .spare.")).toBeVisible();
+  await expect(
+    fresh.getByText("Nothing in the project places its data in .spare.", { exact: true }),
+  ).toBeVisible();
   const removing = fresh.getByRole("region", { name: "Remove from the sections" });
   await expect(removing.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
   await removing.getByRole("button", { name: "Remove from the sections" }).click();

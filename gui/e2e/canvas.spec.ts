@@ -82,10 +82,7 @@ test("a project with a file that does not load is drawn without arrows, and says
   await expect(page.locator(".react-flow__edge")).toHaveCount(0);
 });
 
-test("Fit returns the viewport to the one the canvas opened on, and moves no module", async ({
-  page,
-  gui,
-}) => {
+test("Fit returns the viewport to the one the canvas opened on", async ({ page, gui }) => {
   await page.goto(gui.address);
   const nodes = page.locator(".react-flow__node");
   await expect(nodes).toHaveCount(4);
@@ -133,7 +130,8 @@ test("a search's Enter centres the first module it finds", async ({ page, gui })
   await page.goto(gui.address);
   await expect(moduleOf(page, "SensorHub")).toBeVisible();
   const opening = await viewportOf(page);
-  // Zoomed out first, so that the flight has a zoom to change as well as a place to go to.
+  // Zoomed out first, so that the search starts from a view the reader moved rather than the one
+  // the canvas opened on, with SensorHub still off its middle, which the next step pins.
   await wheelOverCanvas(page, 300);
   await expect.poll(async () => (await viewportOf(page)).zoom).toBeLessThan(opening.zoom);
   // Off the middle before the search, or its Enter would have nothing to show: 254 px, zoomed

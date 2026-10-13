@@ -6,8 +6,8 @@ export interface SheetLoad {
 }
 
 /** Whether the network answered a stylesheet's request, from the sheet its link holds once
- * loading has ended: only a sheet whose rules the page can read did (spec 2026-10-08 §6, the GET
- * rule's "never after any HTTP answer"). A link the network failed holds none, as the HTML
+ * loading has ended: only a sheet whose rules the page can read did (spec 2026-10-08 §6: no GET
+ * is sent again "after any HTTP answer"). A link the network failed holds none, as the HTML
  * standard has it, or, in Chromium, a sheet whose rules no page may read, as if it came from
  * another origin: its `cssRules` throws a `SecurityError`. An HTTP error answer holds a sheet
  * too, empty but readable, so it counts as answered, the way the GET rule counts one (both

@@ -46,8 +46,8 @@ function posixOf(path: string): string {
 
 /** A whole sentence's start, as a pattern: the page's own words, up to where the system's own
  * begin - an OSError's text or the json parser's, which differ between Linux and Windows - and
- * then at least one of the system's own, on as many lines as it takes: a refusal that dropped
- * them fails. */
+ * then at least a character of theirs, on as many lines as they take: a refusal that dropped
+ * them all fails. */
 function startingWith(words: string): RegExp {
   return new RegExp(`^${words.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]+`);
 }

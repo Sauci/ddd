@@ -53,8 +53,7 @@ export function useLayout(
 
   useEffect(() => {
     // The worker, and - where it failed to start - one more in its place (`createdAgain`), each
-    // with whether it has answered, which is how a worker that started is told from one that
-    // did not.
+    // with whether it has answered: one that has, had started.
     const create = (again: boolean): Worker => {
       const created = new Worker(new URL("./layoutWorker.ts", import.meta.url), {
         type: "module",
@@ -71,7 +70,7 @@ export function useLayout(
       created.onerror = () => {
         if (createdAgain({ again, answered })) {
           created.terminate();
-          // Asked what the failed one was asked, which it never read.
+          // Asked what the failed one was asked, which it never answered.
           create(true).postMessage({
             modules: latest.current.modules,
             flows: latest.current.flows,

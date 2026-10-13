@@ -1416,20 +1416,20 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | A component | a variable another component produces, read in | 9 | `declarations.spec.ts:16`, "a variable another component produces is read, keys and all" |
 | A component | a new measurement declared, and stamped | 9 | `declarations.spec.ts:42`, "a new measurement is declared and stamped" |
 | A component | a value block declared with the shape it is given | 9 | `declarations.spec.ts:76`, "a value block is declared with the shape it is given" |
-| A component | a curve declared against an axis picked from the project's | 9 | `declarations.spec.ts:109`, "a curve is declared against an axis the project has" |
-| A component | a name the project already has, refused | 9 | `declarations.spec.ts:143`, "a name the project already has is refused in its own words" |
-| A component | a declaration removed, then put back | 9 | `declarations.spec.ts:168`, "a declaration is removed and put back" |
+| A component | a curve declared against an axis picked from the project's | 9 | `declarations.spec.ts:137`, "a curve is declared against an axis the project has" |
+| A component | a name the project already has, refused | 9 | `declarations.spec.ts:171`, "a name the project already has is refused in its own words" |
+| A component | a declaration removed, then put back | 9 | `declarations.spec.ts:196`, "a declaration is removed and put back" |
 | A component | a finding of the component followed to a grid | 9 | `values.spec.ts:416`, "a finding on an object's init leads to its grid, not its panel" |
 | A component | a shape deeper than a grid, shown as text with no button | 9 | `values.spec.ts:442`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
 | A component | a curve naming a scalar type, keeping its button | 9 | `values.spec.ts:470`, "a curve naming a scalar type keeps its button, and its grid" |
 | A component | the table walked back up by the keyboard, a row stopping below its header | 9 | `values.spec.ts:504`, "a row walked back up near the top stops below the sticky header, not under it" |
-| A component | a dimension removed | 9 | none yet |
-| A component | a finding's link to a variable of the same file, opened in place | 9 | none yet |
-| A component | its file not json | 9 | none yet |
-| A component | its file failing to load | 9 | none yet |
-| A component | a component no longer in the project | 9 | none yet |
-| A component | a declaration refused as out of date | 9 | none yet |
-| A component | a declaration's removal refused as out of date | 9 | none yet |
+| A component | a dimension removed | 9 | `declarations.spec.ts:109`, "a dimension removed leaves the next one in its place, and a shape keeps one" |
+| A component | a finding's link to a variable of the same file, opened in place | 9 | `declarations.spec.ts:313`, "a finding's link to a variable of the same file opens its panel in place, without loading the page again" |
+| A component | its file not json | 9 | `declarations.spec.ts:343`, "a component file that stops parsing is shown by its path and the parser's words, and nothing else" |
+| A component | its file failing to load | 9 | `declarations.spec.ts:370`, "a component file failing to load leaves the server's own error, and nothing else" |
+| A component | a component no longer in the project | 9 | `declarations.spec.ts:385`, "an address naming a file the project does not include says so, and shows nothing else" |
+| A component | a declaration refused as out of date | 9 | `declarations.spec.ts:231`, "a declaration made from a file that changed on disk is refused, and made once the page has caught up" |
+| A component | a declaration's removal refused as out of date | 9 | `declarations.spec.ts:278`, "a removal made from a file that changed on disk is refused, and made once the page has caught up" |
 | A component | reading its file | 19c | none yet |
 | A component | reading its findings | 19c | none yet |
 | A component | its findings failing to load | 19c | none yet |

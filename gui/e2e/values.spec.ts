@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
 import {
   CONTROLLER,
+  driftMaxUnseen,
   type Frame,
   framesWatched,
   openValues,
@@ -285,6 +286,38 @@ test("a cell changed is put back", async ({ page, gui }) => {
   await strip.getByRole("button", { name: "Put back 1 file" }).click();
 
   await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+test("a value applied from a file that changed on disk is refused, and applied once the page has caught up", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  await page.getByRole("textbox", { name: "element 3" }).fill("7.5");
+  const apply = page.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeEnabled();
+
+  // Controller changes under the plan the grid holds, unseen by the session's watcher, as
+  // keys.spec.ts's own stale journey changes it: only the Apply's own fingerprint check sees it.
+  const path = join(gui.directory, CONTROLLER);
+  driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
+  const drifted = readFileSync(path);
+  await apply.click();
+  const setting = page.getByRole("region", { name: "Set the cell" });
+  await expect(setting.getByRole("status")).toHaveText(
+    "A file changed on disk, so nothing was written. The page now shows the files as they are.",
+  );
+  expect(readFileSync(path).equals(drifted)).toBe(true);
+
+  // A stamp moved with no byte touched lets the next poll read the drifted file; the refusal is
+  // held until the analysis moves on, and goes with it, the cell still being typed into.
+  const now = new Date();
+  utimesSync(path, now, now);
+  await expect(setting.getByRole("status")).toHaveCount(0, { timeout: 15000 });
+  await apply.click();
+  await expect
+    .poll(() => readFileSync(path, "utf8"))
+    .toContain('"init": [1200, 900, 750, 750, 700, 650]');
 });
 
 // Part 9's own five: a table pasted from a spreadsheet replaces every value of an object in one

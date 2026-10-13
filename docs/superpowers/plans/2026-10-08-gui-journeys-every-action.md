@@ -1419,10 +1419,10 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | A component | a curve declared against an axis picked from the project's | 9 | `declarations.spec.ts:137`, "a curve is declared against an axis the project has" |
 | A component | a name the project already has, refused | 9 | `declarations.spec.ts:171`, "a name the project already has is refused in its own words" |
 | A component | a declaration removed, then put back | 9 | `declarations.spec.ts:196`, "a declaration is removed and put back" |
-| A component | a finding of the component followed to a grid | 9 | `values.spec.ts:416`, "a finding on an object's init leads to its grid, not its panel" |
-| A component | a shape deeper than a grid, shown as text with no button | 9 | `values.spec.ts:442`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
-| A component | a curve naming a scalar type, keeping its button | 9 | `values.spec.ts:470`, "a curve naming a scalar type keeps its button, and its grid" |
-| A component | the table walked back up by the keyboard, a row stopping below its header | 9 | `values.spec.ts:504`, "a row walked back up near the top stops below the sticky header, not under it" |
+| A component | a finding of the component followed to a grid | 9 | `values.spec.ts:449`, "a finding on an object's init leads to its grid, not its panel" |
+| A component | a shape deeper than a grid, shown as text with no button | 9 | `values.spec.ts:475`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
+| A component | a curve naming a scalar type, keeping its button | 9 | `values.spec.ts:503`, "a curve naming a scalar type keeps its button, and its grid" |
+| A component | the table walked back up by the keyboard, a row stopping below its header | 9 | `values.spec.ts:537`, "a row walked back up near the top stops below the sticky header, not under it" |
 | A component | a dimension removed | 9 | `declarations.spec.ts:109`, "a dimension removed leaves the next one in its place, and a shape keeps one" |
 | A component | a finding's link to a variable of the same file, opened in place | 9 | `declarations.spec.ts:313`, "a finding's link to a variable of the same file opens its panel in place, without loading the page again" |
 | A component | its file not json | 9 | `declarations.spec.ts:343`, "a component file that stops parsing is shown by its path and the parser's words, and nothing else" |
@@ -1442,25 +1442,25 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | A component | the add panel failing to read it | 19c | none yet |
 | A component | a dimension picked from the project's constants | 19c | none yet |
 | A component | a key's Apply, a removal or a declaration the server fails on | 19c | none yet |
-| Values | a curve read against its axis, raw and physical | 9 | `values.spec.ts:38`, "a curve is read against its axis, raw and physical" |
-| Values | a curve drawn from the numbers it holds | 9 | `values.spec.ts:76`, "a curve is drawn from the numbers it holds" |
-| Values | a cell changed, its changes shown, and written to the producer's file | 9 | `values.spec.ts:130`, "a cell changed is written to the producer's file" |
-| Values | a value applied, shown at once and kept while its findings update | 9 | `values.spec.ts:168`, "a value applied in the grid shows at once, and stays while its findings update" |
-| Values | a reader's grid naming the producer's file | 9 | `values.spec.ts:185`, "a reader's page names the producer's file, not its own" |
-| Values | a map's cell, named by its row and its column | 9 | `values.spec.ts:198`, "a map's cell names its row and its column" |
-| Values | a physical value no raw count represents, shown as stored | 9 | `values.spec.ts:217`, "a physical value no raw count represents shows what was stored" |
-| Values | a value refused: not a number, or more than its datatype holds | 9 | `values.spec.ts:228`, "a value the datatype cannot hold is refused, and nothing is written" |
-| Values | Enter, settling what was typed and writing nothing | 9 | `values.spec.ts:249`, "Enter settles what was typed and writes nothing" |
-| Values | a cell changed, then put back | 9 | `values.spec.ts:273`, "a cell changed is put back" |
-| Values | a curve pasted, every value replaced in one edit | 9 | `values.spec.ts:330`, "a pasted curve replaces every value in one edit" |
-| Values | a map pasted with its header row and column | 9 | `values.spec.ts:348`, "a pasted map takes its header row and column" |
-| Values | a pasted block of the wrong shape, refused | 9 | `values.spec.ts:361`, "a block of the wrong shape is refused and nothing is written" |
-| Values | a pasted block refused, naming every value its datatype cannot hold | 9 | `values.spec.ts:374`, "a value the datatype cannot hold names every offender" |
-| Values | a pasted table, put back | 9 | `values.spec.ts:393`, "a pasted table is put back" |
-| Values | a grid's finding shown beside it | 9 | `values.spec.ts:416`, "a finding on an object's init leads to its grid, not its panel" |
-| Values | a shape deeper than a grid, refused with a way back | 9 | `values.spec.ts:442`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
-| Values | a curve naming a scalar type, its grid as before | 9 | `values.spec.ts:470`, "a curve naming a scalar type keeps its button, and its grid" |
-| Values | an Apply refused as out of date | 9 | none yet |
+| Values | a curve read against its axis, raw and physical | 9 | `values.spec.ts:39`, "a curve is read against its axis, raw and physical" |
+| Values | a curve drawn from the numbers it holds | 9 | `values.spec.ts:77`, "a curve is drawn from the numbers it holds" |
+| Values | a cell changed, its changes shown, and written to the producer's file | 9 | `values.spec.ts:131`, "a cell changed is written to the producer's file" |
+| Values | a value applied, shown at once and kept while its findings update | 9 | `values.spec.ts:169`, "a value applied in the grid shows at once, and stays while its findings update" |
+| Values | a reader's grid naming the producer's file | 9 | `values.spec.ts:186`, "a reader's page names the producer's file, not its own" |
+| Values | a map's cell, named by its row and its column | 9 | `values.spec.ts:199`, "a map's cell names its row and its column" |
+| Values | a physical value no raw count represents, shown as stored | 9 | `values.spec.ts:218`, "a physical value no raw count represents shows what was stored" |
+| Values | a value refused: not a number, or more than its datatype holds | 9 | `values.spec.ts:229`, "a value the datatype cannot hold is refused, and nothing is written" |
+| Values | Enter, settling what was typed and writing nothing | 9 | `values.spec.ts:250`, "Enter settles what was typed and writes nothing" |
+| Values | a cell changed, then put back | 9 | `values.spec.ts:274`, "a cell changed is put back" |
+| Values | a curve pasted, every value replaced in one edit | 9 | `values.spec.ts:363`, "a pasted curve replaces every value in one edit" |
+| Values | a map pasted with its header row and column | 9 | `values.spec.ts:381`, "a pasted map takes its header row and column" |
+| Values | a pasted block of the wrong shape, refused | 9 | `values.spec.ts:394`, "a block of the wrong shape is refused and nothing is written" |
+| Values | a pasted block refused, naming every value its datatype cannot hold | 9 | `values.spec.ts:407`, "a value the datatype cannot hold names every offender" |
+| Values | a pasted table, put back | 9 | `values.spec.ts:426`, "a pasted table is put back" |
+| Values | a grid's finding shown beside it | 9 | `values.spec.ts:449`, "a finding on an object's init leads to its grid, not its panel" |
+| Values | a shape deeper than a grid, refused with a way back | 9 | `values.spec.ts:475`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
+| Values | a curve naming a scalar type, its grid as before | 9 | `values.spec.ts:503`, "a curve naming a scalar type keeps its button, and its grid" |
+| Values | an Apply refused as out of date | 9 | `values.spec.ts:291`, "a value applied from a file that changed on disk is refused, and applied once the page has caught up" |
 | Values | reading the values | 19c | none yet |
 | Values | the values failing to load | 19c | none yet |
 | Values | an object no longer declared, its page saying so, with the way back | 19c | none yet |

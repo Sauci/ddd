@@ -86,6 +86,37 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   already spent, though, so that one case still ends signed out, with the terminal's
   reused-code line printed as a false alarm.
 
+* **A stylesheet or a request the network drops once is asked for again.**  The page could
+  come up unstyled, or say that `ddd gui` was not answering, when the network failed one of
+  its requests before any answer came back - measured in CI, in Edge on Windows, where the
+  browser was briefly refused a socket for the page's stylesheet (`net::ERR_NO_BUFFER_SPACE`).
+  The page now asks once more, before it is drawn, for any of its stylesheets the network
+  failed, and sends a request that only reads once more, at once, when it got no answer at all:
+  one lost request goes unnoticed.  A request that changes something - an edit, an undo, a
+  project opened from the start page - is never sent again, since its change may already have
+  been made, and neither is one that got any answer, a refusal included.  The project's canvas
+  likewise starts its layout worker once more when the worker did not start, rather than
+  saying at once that the layout worker stopped and drawing no modules.  A second failure
+  reads as one did before: the page drawn unstyled, saying that `ddd gui` is not answering, or
+  saying that the layout worker stopped.
+
+* **A type's unit chosen as "no unit" is now taken off the type.**  On the Types tab, choosing
+  "no unit" for a type's unit read as no choice at all: the field went back to the unit the
+  type states, the preview offered a change that changed nothing, and Apply left the unit in
+  the file.  The choice now stands: the field reads "no unit", the preview takes the `unit`
+  line out, and Apply writes the type without it.  Stating a type's limits as nothing, and
+  choosing no unit for a variable, already worked.
+
+* **A shared entry's panel no longer turns into the form that declares it.**  On the Shared
+  files tab, the panel of a constant, a section or a raster gave way to the form declaring one,
+  pre-filled with its name, whenever the table stopped listing the entry: when its file was
+  saved half-written, where the panel was meant to stay and name the file; when the entry went,
+  if the table heard of it before the panel did, where the tab was meant to say it had gone;
+  and for a moment on every rename from the panel.  The panel now stays until its own answer
+  says why: it names the file that did not load and shows the entry again once the file loads,
+  it closes with the tab saying the entry is no longer declared, or it moves straight onto the
+  new name.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

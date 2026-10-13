@@ -1559,6 +1559,20 @@ export const SET_UNIT: PlanReply = {
   ],
 };
 
+/** Temperature_t's unit chosen as "no unit": the `unit` line taken out of its entry, as
+ * `GET /api/type-plan` answers it over examples/structures, for the no-unit story. */
+export const UNIT_TAKEN_OFF: PlanReply = {
+  revision: 7,
+  changes: [
+    {
+      file: TYPES,
+      fingerprint: "d4a3f1c6b2e5978a0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b",
+      operations: [{ op: "remove", pointer: "types[0].unit", raw: null }],
+      hunks: [{ line: 9, before: ['      "unit": "degC",'], after: [] }],
+    },
+  ],
+};
+
 // Part 7's declare panel (spec 5.2): the real `GET /api/declarable` answer for examples/demo's
 // Controller, transcribed from .superpowers/sdd/2026-09-23-gui-declarations/declarable-
 // controller.json rather than written by hand.

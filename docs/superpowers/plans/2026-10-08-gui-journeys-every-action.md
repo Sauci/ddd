@@ -1,0 +1,1710 @@
+# The GUI's Journeys for Every Reader Action Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Every action a reader can take in `ddd gui`, and every state a reader can meet, has a journey or a recorded reason it has none; and the page sends its own loads once more when the network fails them.
+
+**Architecture:**
+- **An inventory first.** Task 1 redoes part 19's survey against today's tree and commits it as this plan's table. Every later task closes its screen's rows.
+- **Two helpers carry every state the examples do not have as they stand:**
+  - `failing` makes the page's requests to one path fail, with the server's own error answer or with no answer at all;
+  - `copiedGui` serves a copy of an example changed before `ddd gui` starts.
+- **The page sends its loads once more** (spec §6):
+  - `request()` resends a GET whose fetch was rejected, once;
+  - `main.tsx` asks again, before drawing, for any stylesheet that failed;
+  - as built, `useLayout` also creates the layout worker once more when its script failed (the final review's M3, P19b-26).
+- **Each screen's task** writes its journeys, shows each one fails under a named change, and fixes the contained bugs they find, red first.
+
+**Tech Stack:**
+- **Journeys:** Playwright 1.63, driving the compiled pages served by a real `ddd gui` over a copied example. Its `page.route` fails a request in the browser alone.
+- **Page:** React 19 + TypeScript, with Vitest at 100 % over `src/api`, `src/lib` and `src/state`, and React Query with `retry: false`.
+- **CI:** the three legs part 19a built, ubuntu chromium, windows chromium and windows msedge, with `-f repeat=N` hunts.
+
+**Spec:** `docs/superpowers/specs/2026-10-08-gui-journeys-every-action-design.md`. Read it before any task. Where this plan departs from it, the departure is a ruling in *Rulings taken* at the end, with its reason.
+
+> **As built** (executed 2026-10-08 to 2026-10-13; the departures from the task texts, each a ruling under *Rulings taken*):
+> - **The split** (P19b-3, P19b-4, P19b-27). Task 1 found 150 rows with no journey, three times the spec's estimate. By the maintainer's choice this part closed the 71 starting rows, and the rows Task 1 added went to part 19c. All 186 of this part's rows now name a journey, and none a reason; 88 rows are part 19c's.
+> - **Two contained bugs fixed, red first** (P19b-12, P19b-17):
+>   - a type's pick of "no unit" was dropped;
+>   - the Shared files tab swapped an entry's panel for the form declaring it whenever its table stopped listing the entry.
+> - **The page asks once more for one more load: the layout worker's script** (P19b-26), which spec §6 did not name. The final review found it.
+> - **Added: Task 1b** (P19b-7, P19b-8). A route is scoped to its one request, after Windows met one at teardown.
+> - **Recorded for the maintainer, not fixed** (P19b-11, P19b-13, P19b-18, P19b-20, P19b-22, P19b-24): each a design question, or a change across several screens.
+> - **The page's own script refused a socket stays open** (P19b-22). It was seen once, on Windows chromium; both final hunts were clean.
+
+## Global Constraints
+
+Every task's requirements include this section.
+
+**Running things**
+
+- **Interpreters.** There is no `python` on PATH: always use `.venv/bin/python`. Node is not on PATH either; it is at `~/.local/node-v24.21.0/bin`.
+- **Never add `-q` to pytest.** `pyproject.toml` already sets it in `addopts`. A second one removes the `N passed` line while pytest-cov still prints its coverage line, so the output looks fine and says nothing.
+- **A pipeline reports its last command's exit status.** Capture each tool's own: `.venv/bin/python -m pytest > gate.txt 2>&1; echo "EXIT=$?"; tail -n 3 gate.txt`. A run that finished ends with its **summary line**; a tail ending in a stack trace did not finish, whatever the exit code says.
+- **A stale `.coverage` file.** Once it made pytest answer `4445 passed` with exit 3 and **no coverage line**. If the coverage summary is missing, delete `.coverage*` (gitignored) and run again.
+- **Journeys:**
+  1. Run `cd gui && npm run build` first, because the journeys drive the **compiled** pages in `src/ddd/gui/static`.
+  2. Then run `PLAYWRIGHT_CHANNEL=chrome DDD_PYTHON="$PWD/../.venv/bin/python" npx playwright test --output=<a path outside the repository>`. Writing `--output` inside `gui/` fails with `EACCES`.
+- **Never run the journeys while the Docker screenshot run is running.** Both drive Playwright over the same `gui/` checkout, and the journeys then fail with "Playwright Test did not expect test() to be called here". Run one after the other.
+- **Screenshots and docs** run from the repository root, in Docker, which cannot see the session scratchpad:
+  - `UPDATE=1 docker compose run --rm gui-screenshots` rewrites the references; without `UPDATE=1` it compares.
+  - `docker compose run --rm -e JAVA_TOOL_OPTIONS=-Duser.home=/tmp docs` builds the docs.
+- **Page schemas:** run `cd gui && DDD=../.venv/bin/ddd DDD_PYTHON=../.venv/bin/python npm run schemas`. `gui/src/generated/` is gitignored, so grep the generated file and let `npm run typecheck` prove the page agrees.
+- **Stopping a server you started.** List its PID by process name, then kill it in a **separate** command:
+  1. `ps -eo pid,comm,args | awk '$2 ~ /^python/ && /<pattern>/'`
+  2. `kill <pid>`
+
+  Never `pkill -f` and never `pgrep -f`: the shell running the command holds the pattern in its own command line, so `pkill -f` kills that shell, and a `pgrep -f` wait loop never ends. Leave nothing of yours running.
+- **Never route around a refusal.** If the permission check refuses a command, stop and say so in your report. Never reach the same effect another way.
+- **Delete only what you created,** each by its exact path, and never with a glob outside the session scratchpad.
+- **Two `ddd gui` Docker containers on ports 8124 and 8125 belong to other work.** They run `ddd gui` over this checkout, with `PYTHONPATH=/work/src`, so they serve its `src/ddd/gui/static`. Leave them alone, and never build an ablated page into that directory (below).
+
+**Windows, through CI alone**
+
+- **No Windows machine is at hand.** A change whose proof is a Windows leg is pushed to this branch and run there. Each attempt costs about ten minutes, so batch what can be batched.
+- **Only the controller pushes, and only this branch.** The maintainer gave leave on 2026-10-09 to push `feature/gui-journeys-every-action` alone, for this part's CI runs and hunts. Never master, never `--force`. An implementer commits locally and reports; the controller pushes, starts the run, and hands the result back.
+- **Each task's Windows proof is a full run** (spec §8), started by the controller once the task's commits are pushed, and read before the task's review is closed. Only the final hunt must be clean on all three legs.
+- **Starting a run:**
+  - a full run of every job: `gh workflow run ci.yml --ref feature/gui-journeys-every-action -f repeat=1`;
+  - a hunt: `-f repeat=5`.
+
+  Wait on it once, in the background. Never poll it in short loops.
+- **Reading a run:**
+  - its jobs: `gh run view <run> --json jobs`;
+  - a job's log: `gh run view --job <job> --log`.
+- **A failed run's Playwright report** (`gh run download <run> -n playwright-report-<os>-<browser> -D <scratchpad>/<run>`) may be downloaded without asking: the maintainer's leave of 2026-10-09, for any failed run of this part, hunt or single pass. Read each failed test's `error-context.md`, the page's accessibility snapshot at the failure, and the network entries in its trace. Nothing else is downloaded without asking.
+
+**Gates**
+
+- **Python:** `.venv/bin/python -m pytest` at **100 % line and branch**, `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`, and `.venv/bin/mypy` run **bare** (it checks `src/ddd` and `tools`, strictly).
+- **Page:** `npm run lint && npm run typecheck && npm test && npm run build && npm run ladle:build`, with Vitest at 100 % on statements, branches, functions **and** lines over `src/api`, `src/lib` and `src/state`.
+- No `pragma: no cover`, no skips, no xfails.
+- **No commit leaves a gate red.**
+- **CI runs more than the development PC does:**
+  - Python 3.12, 3.13 and 3.14, on ubuntu **and** windows runners;
+  - the journeys on three legs: ubuntu with Chromium, windows with Chromium, windows with the runner's own Edge;
+  - **Windows file locks:** Windows refuses to rename over, or delete, a file that another handle holds open (`ddd.editing.REPLACE_TRIES`). `writeUnseen` in `gui/e2e/demo.ts` already tries a rename again while Windows refuses it.
+
+**What the gates cannot see**
+
+- **No journey is vacuous** (spec §5). Each new journey's key assertion is shown to fail under one named change to the page or the server, and the report says which change, and which assertion died.
+  - **Ablate the page in a scratch copy, never in place.** Build the ablated page into a copy of the package (`npx vite build --outDir <scratch>/pysrc/ddd/gui/static --emptyOutDir`, the rest of `src/ddd` copied beside it), and start the journeys' server from that copy (`DDD_PYTHON` as usual, `PYTHONPATH=<scratch>/pysrc`, `PYTHONDONTWRITEBYTECODE=1`). Check that the copy's `ddd.gui.server.static_directory()` is its own. The containers on 8124/8125 serve the checkout's static, so the checkout's page only ever holds the real build.
+  - **Restore every source ablation by exact edit.** Save `git diff` to a patch first. Compare it after each restore, and run `git status --porcelain <file>` immediately before every restore. Never `git checkout -- <file>` over uncommitted work.
+  - **Ablate Python in a scratch `git worktree`,** with pytest run from inside it (`pyproject.toml`'s `pythonpath` beats `PYTHONPATH`), and `PYTHONDONTWRITEBYTECODE=1`.
+  - **Confirm one ablation kills something before trusting that another kills nothing.** A survival is believed only after `PYTHONHASHSEED=0`, `1`, `4` and `7` (Python), or `--repeat-each=5` (a journey).
+- **A coverage gate cannot see data.** Ablate every new data value (a sentence, a header, a default) and confirm that a **named** test dies.
+- **Never conclude what *else* pins something from a narrowed run** (no `-k`, no path argument, no `-g`). That is a whole-suite question; copy the summary line in rather than paraphrasing it.
+- **No decision may live in a `.tsx` file.** Every judgement lives in `gui/src/lib`, `gui/src/state` or `gui/src/api`, under the Vitest gate; a `src/app` module is glue only.
+- **A refusal or banner is asserted as its whole sentence.** Read every expected sentence off the running code, never out of this plan. This plan's quoted strings were read at `205d5a6` and are a guide.
+- **A journey waits on what the reader sees.**
+  - Never `page.waitForTimeout`, beyond the recorded exception in `demo.ts`'s `settled()` (P19a-8).
+  - Never `page.waitForResponse` to coordinate, beyond the recorded exception in `hostile.spec.ts` (P19a-30's D2).
+  - Never a count read with `.all()` before what it counts is drawn.
+  - Use `toHaveCount`, `toBeVisible`, `toHaveText`, `toHaveCSS`, or `expect.poll` on what the page shows.
+  - A request the journey must see held is held by its own `page.route`, then let through; a request the journey must see answered is fetched in the route with `route.fetch()`, checked, then `route.fulfill()`ed.
+- **A journey leaves no visible window between a write and its stamp** (`driftMaxUnseen`, `writeUnseen` in `gui/e2e/demo.ts`). A change the watcher must see is written plainly; a change it must not see yet is written unseen.
+- **Playwright's `retries` stays 0.** No journey is repeated to pass.
+- **The suite forbids skips** (`test_nothing_in_the_suite_skips`).
+
+**Prose**
+
+- **A sentence stating a measurement gets the measurement run as it is written,** against the file it names, with the exit status copied from *that* run.
+- **A probe is quoted with the machine, the commit, the project and the run it came from.**
+- **Cite by name, not by line number.** Line numbers in this plan were measured at `205d5a6`, and go stale the moment an earlier task edits the file.
+- **Before ruling on a trade-off, confirm that both sides of it can actually happen.**
+
+**Conventions**
+
+- **Commits:** a lowercase imperative subject on **one line**, with no `feat:`-style prefix, and a body saying why. The trailer names the model that wrote the commit: `Co-Authored-By: <the model you are> <noreply@anthropic.com>`. A dispatch never tells you which model to name (part 18b's P18b-15). Never `--amend`, never rebase, never push.
+- **Every UI pull request carries a screenshot of what it added,** the maintainer's standing rule. A fix that changes what the page shows changes or adds its Ladle reference, made in Docker with `UPDATE=1`, opened and described in words.
+- **Reports go where your dispatch says,** to the report file it names.
+- **If a brief or this plan is wrong, say so in your report** rather than working around it silently.
+- **Bidi characters.** A unicode escape typed through the tools can land as the character itself: a right-to-left override did, twice, in part 18. Write such a character as words ("U+202E"), or build it in code with `chr()`. Before any push, the controller scans the commit messages and the changed files for U+202A to U+202E and U+2066 to U+2069.
+- **A bug a journey finds** (spec §3, the maintainer's second answer):
+  - fixed in its task when the fix stays within one screen, one component or one library function, with the journey red first;
+  - otherwise recorded as a ruling for the maintainer, its row naming the bug as the reason it has no journey, with the evidence.
+
+## Prerequisites
+
+1. **The branch.** The work is on `feature/gui-journeys-every-action`, made from master `ff9954e` (part 19a, PR #81). Its first commit is the spec, `205d5a6`. Work in the main checkout `/home/sauci/Documents/Github/ddd`: Docker cannot see the session scratchpad.
+2. **The baseline gate.** Run the milestone gate (below) once at this plan's commit, before Task 1, so that every later red is this part's own.
+3. **Read the spec,** whose §4 lists the starting rows and whose §5 says how each kind of state is reached.
+4. **The maintainer's leave** to push this branch alone, and to download any failed run's report of this part, was given on 2026-10-09.
+
+## Review Focus
+
+The five failure modes the spec implies but no row of the inventory would test on its own, most likely first. Each has its test in the task that owns the code.
+
+1. **A server really gone still reads as gone, at once.** With every GET sent once more, a stopped server must still show the page's stopped banner, never wait or loop. *(Task 2: `skeleton.spec.ts`'s "the page says so when the server stops" keeps passing, and a Vitest case pins two sends, then `ServerUnreachable`.)* **Measured:** the banner now follows the fourth rejection, not the second as first written here - `followStates` already asks again 250 ms after an unanswered `getState`, and each `getState` is now sent twice. CI measured the server-stops journey at 1.2 s against 1.1 s (ubuntu chromium), 997 ms against 1.0 s (windows chromium), and 1.3 s against 913 ms (windows msedge): runs 37905686691 and 37913135127.
+2. **An abort is never resent.** The long poll aborts its own fetch when the page moves on. A resend would start a poll nobody reads. *(Task 2: a Vitest case: one send, then `AbortError`.)*
+3. **A `POST` is never resent,** even when its fetch is rejected, since an edit may have been written. *(Task 2: a Vitest case: one send, then `ServerUnreachable`.)*
+4. **A stylesheet that fails twice does not hang the page.** It draws as it does today, unstyled, and works. *(Task 2: a journey failing the stylesheet on every request.)*
+5. **An error banner reads as a sentence.** A request the server fails shows the server's own message, never a code such as `internal` or `http-500`. *(Every error-banner journey of Tasks 3 to 9 asserts the whole sentence the page shows.)*
+
+## File Structure
+
+| File | Task | What |
+| --- | --- | --- |
+| `gui/e2e/demo.ts` | 1 | `failing`: the page's requests to one path fail, with the server's error answer or with none |
+| `gui/e2e/fixtures.ts` | 1, 8 | `start` split out of `serving`; the fixture `copiedGui` (1); its copy of examples/layout with examples/plugins beside it (8) |
+| `gui/e2e/helpers.spec.ts` | 1, 8 | the helpers' journeys (1); the layout copy's (8) |
+| `gui/e2e/files.spec.ts` | 1, 7 | the Remove-ordering journey's `waitForResponse` replaced (1); the Files rows (7) |
+| `docs/developer_documentation.rst` | 1, 8, the final wave | the two helpers, beside the fixtures it lists (1); the layout copy (8); that a journey for a load the page asks for once more fails every request (the final wave) |
+| `tests/test_gui_server.py` | 1, the final wave | `SERVER_FAILED` and `failing`'s body held to the server's own `_INTERNAL` and 500 answer (1); a docstring made true (the final wave) |
+| `gui/src/api/client.ts`, `client.test.ts` | 2 | `sentAgain`, and `request()` resending a GET once |
+| `gui/src/lib/sheets.ts`, `sheets.test.ts` | 2 | `sheetsToAskAgain`: which of the page's stylesheets failed; `sheetLoaded`: whether the network answered one |
+| `gui/src/app/sheets.ts` | 2 | `askSheetsAgain`: the glue asking for them once more |
+| `gui/src/main.tsx` | 2 | draws once the stylesheets are asked again, as it does once signed in |
+| `gui/e2e/network.spec.ts` | 2, the final wave | the network rows (2); the layout worker's script failed once (the final wave) |
+| `CHANGELOG.md` | 2, and any task fixing a bug a reader would notice | |
+| `gui/e2e/start.spec.ts` | 3 | the start page and the app around every page |
+| `gui/e2e/canvas.spec.ts` | 4, the final wave | the canvas rows, and the components table's summary line (4); the layout worker's journey failing every request (the final wave) |
+| `gui/e2e/types.spec.ts`, `project-units.spec.ts` | 5 | the Types and Units rows |
+| `gui/src/lib/variableKeys.ts`, `variableKeys.test.ts`, `gui/src/screens/TypePanel.tsx`, `VariablePanel.tsx`, `gui/src/components/TypePanelView.stories.tsx`, `VariablePanelView.stories.tsx` | 5 | `settledRaw`: what a chosen key is set to, a pick of nothing kept as nothing (P19b-12) |
+| `gui/e2e/shared.spec.ts` | 6 | the Shared files rows |
+| `gui/src/lib/shared.ts`, `shared.test.ts`, `gui/src/screens/SharedPage.tsx` | 6 | `opensPanel`: the tab keeps the panel it holds while the table stops listing its entry (P19b-17) |
+| `gui/e2e/findings.spec.ts` | 7 | the Findings rows |
+| `gui/e2e/compare.spec.ts` | 8 | the Compare rows |
+| `gui/e2e/declarations.spec.ts`, `values.spec.ts` | 9 | a component's rows and the values' |
+| `gui/src/lib/layoutAnswers.ts`, `layoutAnswers.test.ts`, `gui/src/app/useLayout.ts` | the final wave | `createdAgain`: the layout worker created once more when it failed to start (P19b-26) |
+| `gui/src/components/TypePanelView.stories.tsx`, `gui/src/stories/fixtures.ts`, `gui/screenshots/references/components--typepanelview--no-unit-chosen.png` | the final wave | the story of a type's unit chosen as no unit, and its reference (P19b-15) |
+| `gui/e2e/start.spec.ts`, `files.spec.ts`, `findings.spec.ts`, `shared.spec.ts`, `compare.spec.ts` | the final wave | the final review's minors, in the rows above: titles, comments, guards and exact matches made to say what they prove |
+| this plan's *The inventory* | 1, then every task | each row's journey, or its reason |
+
+A screen's fix, where a journey finds a bug, is in that screen's own files, with its decision in `gui/src/lib` under Vitest.
+
+## Interfaces Between Tasks
+
+- **Task 1 produces:**
+  - `failing(page: Page, path: string | RegExp, how: "http" | "network", times?: number): Promise<() => number>`, in `gui/e2e/demo.ts`. It fails the page's requests whose pathname is `path` (or matches it), the first `times` of them (every one if omitted), and answers how many it has failed so far. `"http"` answers `500` with the server's own error body; `"network"` aborts with no answer.
+  - `SERVER_FAILED`: the sentence `"ddd gui failed on this request; the terminal it runs in shows why"` that `failing`'s `"http"` answers with, the server's own `_INTERNAL` (`src/ddd/gui/server.py`).
+  - The fixture `copiedGui: (example: "demo" | "vocabulary" | "structures" | "layout", change: (directory: string) => void | Promise<void>, options?: { named?: boolean }) => Promise<Gui>`, in `gui/e2e/fixtures.ts`. It copies the example under the test's own output directory, runs `change` on the copy and awaits it, then starts `ddd gui` there, naming the project unless `named` is `false`. Every server it started is stopped when the test ends. `"layout"` is Task 8's (P19b-5, P19b-23): its project names `../plugins/ddd_layout.py`, so the copy is made as `layout-N/layout`, with a copy of examples/plugins beside it as `layout-N/plugins`, and two layout copies of one test share no plugins directory.
+  - The inventory table, in this plan.
+- **Task 2 produces:**
+  - `sentAgain(method: string | undefined, error: unknown): boolean`, in `gui/src/api/client.ts`;
+  - `sheetsToAskAgain(sheets: readonly SheetLoad[]): string[]`, with `SheetLoad = { href: string; loaded: boolean }`, in `gui/src/lib/sheets.ts`;
+  - `sheetLoaded(sheet: { readonly cssRules: unknown } | null): boolean`, also in `gui/src/lib/sheets.ts`: whether the network answered a stylesheet's request;
+  - `askSheetsAgain(document: Document): Promise<void>`, in `gui/src/app/sheets.ts`.
+
+  From Task 2 on, a GET the network fails once is recovered, and so is a stylesheet it fails once (Task 2) and, from the final wave, the layout worker's script (P19b-26): each is asked for once more. So a journey for a network banner fails its request at least twice (`failing(page, path, "network")`, every time), and the banner shows only then.
+- **Tasks 3 to 9 consume the helpers their rows need,** and each adds rows' journeys to its own files. As built, Task 4's journeys use `copiedGui` alone, and Task 8 extended Task 1's `fixtures.ts` and `helpers.spec.ts` with the layout copy (P19b-5). Otherwise none changes another task's spec files, except where a row moved (the inventory says which task owns it).
+
+---
+
+### Task 1: the inventory, the two helpers, and `files.spec.ts`'s wait
+
+**Model:** opus, reviewed on opus. The inventory needs judgement across every screen, and the helpers are what every later task stands on.
+
+**Files:**
+- Create: `gui/e2e/helpers.spec.ts`
+- Modify: `gui/e2e/demo.ts`, `gui/e2e/fixtures.ts`, `gui/e2e/files.spec.ts`, `docs/developer_documentation.rst`, and this plan's *The inventory*
+
+**Interfaces:**
+- Consumes: the spec's §4 starting rows; part 19's survey (summarised in spec §2).
+- Produces: `failing`, `SERVER_FAILED` and `copiedGui` (see *Interfaces Between Tasks*), and the inventory table.
+
+- [ ] **Step 1: The inventory.** For each starting row of spec §4, find the code that draws it and every journey that drives it, at this commit.
+  - Write one row per action or state into *The inventory* below, replacing its starting list: screen, row, owner task, the journey that covers it (`file:line` and title) or "none yet".
+  - **Add** rows the survey missed:
+    - any action or state on a screen that no row names;
+    - the rows part 19a added (the Files tab's option C, `localhost.spec.ts`, `mapped.spec.ts`).
+  - **Mark** rows already covered since the survey with their journey.
+  - **Cite by name.** A row is a reader's words ("a constant renamed"), never a component's.
+  - The owner task is the screen's (Tasks 3 to 9). A row of no screen goes to Task 3.
+- [ ] **Step 2: The helpers' journeys, red first.** Create `gui/e2e/helpers.spec.ts`:
+
+```ts
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Page } from "@playwright/test";
+import { failing, SERVER_FAILED } from "./demo";
+import { expect, test } from "./fixtures";
+
+/** A route the page never asks on its own (no caller in gui/src), so that only the asks below
+ * are counted - and one the server answers: refused 401 here, since `fetch` below sends no
+ * token. */
+const UNASKED = "/api/checks";
+
+type Asked = { status: number; message: string | null } | "no answer";
+
+/** `path` asked from the page's own origin, as its code asks: the answer's status and message,
+ * or "no answer" where the fetch was rejected. */
+function askedFromPage(page: Page, path: string): Promise<Asked> {
+  return page.evaluate(async (path) => {
+    try {
+      const response = await fetch(path);
+      const body: unknown = await response.json().catch(() => null);
+      const message =
+        typeof body === "object" &&
+        body !== null &&
+        "message" in body &&
+        typeof body.message === "string"
+          ? body.message
+          : null;
+      return { status: response.status, message };
+    } catch {
+      return "no answer" as const;
+    }
+  }, path);
+}
+
+test("a request failed with the server's own error answer, then let through", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  const failed = await failing(page, UNASKED, "http", 1);
+  expect(await askedFromPage(page, UNASKED)).toEqual({ status: 500, message: SERVER_FAILED });
+  expect(failed()).toBe(1);
+  // Past its one failure the ask reaches the server, which refuses it: no token was sent.
+  expect(await askedFromPage(page, UNASKED)).toMatchObject({ status: 401 });
+  expect(failed()).toBe(1);
+});
+
+test("a request failed with no answer, every time, matched by a pattern", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  const failed = await failing(page, /^\/api\/checks$/, "network");
+  expect(await askedFromPage(page, UNASKED)).toBe("no answer");
+  expect(await askedFromPage(page, UNASKED)).toBe("no answer");
+  expect(failed()).toBe(2);
+});
+
+test("a copy changed before ddd gui starts is the one served", async ({ page, copiedGui }) => {
+  const gui = await copiedGui("demo", (directory) => {
+    const project = join(directory, "demo.ddd.json");
+    const text = readFileSync(project, "utf8");
+    writeFileSync(project, text.replace('"name": "DemoDevice"', '"name": "ChangedDevice"'));
+  });
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "ChangedDevice", exact: true })).toBeVisible();
+});
+```
+
+- [ ] **Step 3: Run it to see it fail.**
+  - Run: `cd gui && npm run build && PLAYWRIGHT_CHANNEL=chrome DDD_PYTHON="$PWD/../.venv/bin/python" npx playwright test helpers.spec.ts --output=<scratch>/t1-red`.
+  - Expected: it fails to compile. `failing`, `SERVER_FAILED` and `copiedGui` do not exist yet.
+- [ ] **Step 4: `failing` and `SERVER_FAILED`,** at the end of `gui/e2e/demo.ts`:
+
+```ts
+/** What `ddd gui` answers a request it failed on (`_INTERNAL`, src/ddd/gui/server.py), and so
+ * what `failing`'s `"http"` answers with: a page shows the server's own words for it. */
+export const SERVER_FAILED = "ddd gui failed on this request; the terminal it runs in shows why";
+
+/**
+ * Makes the page's requests whose path is `path` - or matches it - fail, the first `times` of
+ * them, or every one where `times` is left out, and lets the rest through to the server
+ * (spec 2026-10-08 §5). `"http"` answers each as the server answers a request it failed on, a
+ * `500` with its own error body; `"network"` answers nothing at all, as a dropped connection.
+ * Playwright's own route, on this page alone: the server's code is never touched. Answers how
+ * many it has failed so far.
+ */
+export async function failing(
+  page: Page,
+  path: string | RegExp,
+  how: "http" | "network",
+  times = Number.POSITIVE_INFINITY,
+): Promise<() => number> {
+  let failed = 0;
+  const matches = (pathname: string) =>
+    typeof path === "string" ? pathname === path : path.test(pathname);
+  await page.route(
+    (url) => matches(url.pathname),
+    async (route) => {
+      if (failed >= times) {
+        await route.fallback();
+        return;
+      }
+      failed += 1;
+      if (how === "network") {
+        await route.abort("failed");
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "internal", message: SERVER_FAILED }),
+      });
+    },
+  );
+  return () => failed;
+}
+```
+
+- [ ] **Step 5: `start` and `copiedGui`,** in `gui/e2e/fixtures.ts`.
+  - Split `serving` into `start`, which answers the `Gui`, and the callback around it:
+
+```ts
+/** `ddd gui` over `directory`, already prepared, naming `project` on the command line or opening
+ * on the start page where it is empty; stopped by the `Gui`'s own `stop`. The shared head of
+ * `serving` and `copiedGui`. */
+async function start(directory: string, project: readonly string[]): Promise<Gui> {
+  // python -m ddd rather than the ddd launcher: on Windows the launcher starts python as a child
+  // of its own, which killing the launcher leaves running, holding the port and the copy.
+  const child = spawn(
+    process.env.DDD_PYTHON ?? "python",
+    ["-m", "ddd", "gui", ...project, "--no-browser"],
+    {
+      cwd: directory,
+      stdio: ["ignore", "pipe", "inherit"],
+    },
+  );
+  let stopped = false;
+  const stop = async () => {
+    if (!stopped) {
+      stopped = true;
+      await terminated(child);
+    }
+  };
+  try {
+    const address = await served(child);
+    if (project.length > 0) await analysed(address);
+    return { address, directory, stop };
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+}
+
+/** `ddd gui` over `directory`, handed to `use` and stopped after it whatever it did. */
+async function serving(
+  directory: string,
+  project: readonly string[],
+  use: (gui: Gui) => Promise<void>,
+): Promise<void> {
+  const gui = await start(directory, project);
+  try {
+    await use(gui);
+  } finally {
+    await gui.stop();
+  }
+}
+```
+
+  - Add the type and the fixture. The examples below are Task 1's: Task 8 added a fourth to `EXAMPLES_BY_NAME`, `layout: LAYOUT` (examples/layout, whose `Example` carries `beside: ["plugins"]`), and had `copiedGui` copy what an example names beside its own directory (P19b-23; see *Interfaces Between Tasks*):
+
+```ts
+/** The examples a copy can be made of, by the name `copiedGui` takes. */
+const EXAMPLES_BY_NAME = { demo: DEMO, vocabulary: VOCABULARY, structures: STRUCTURES } as const;
+
+/** Serves a copy of an example changed before `ddd gui` starts, for a state no example has as it
+ * stands: no shared entry, no dictionary, a build record not used (spec 2026-10-08 §5). The
+ * copy is under the test's own output directory, as `started` makes one, numbered so that a
+ * test can serve two; the project is named unless `named` is `false`. */
+export type CopiedGui = (
+  example: keyof typeof EXAMPLES_BY_NAME,
+  change: (directory: string) => void,
+  options?: { named?: boolean },
+) => Promise<Gui>;
+```
+
+    and, in `test.extend`'s fixtures, beside `mappedGui`:
+
+```ts
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  copiedGui: async ({}, use, testInfo) => {
+    const running: Gui[] = [];
+    try {
+      await use(async (name, change, options) => {
+        const example = EXAMPLES_BY_NAME[name];
+        const directory = testInfo.outputPath(`${example.directory}-${running.length}`);
+        cpSync(join(EXAMPLES, example.directory), directory, { recursive: true });
+        change(directory);
+        const named = options?.named ?? true;
+        const gui = await start(directory, named ? [join(directory, example.project)] : []);
+        running.push(gui);
+        return gui;
+      });
+    } finally {
+      for (const gui of running) await gui.stop();
+    }
+  },
+```
+
+    with `copiedGui: CopiedGui;` added to `test.extend`'s type parameter.
+
+    As built (Task 1's round, `de1dd7d`), the listing above changed in four ways:
+    - `change` is `(directory: string) => void | Promise<void>`, awaited before the server starts;
+    - a copy is numbered as it is asked for, before anything is awaited, so that two copies asked for at once never share a directory;
+    - a start still in flight when the test ends is stopped too;
+    - the doc names "no project at all" where it said "no shared entry", a state examples/demo already has.
+- [ ] **Step 6: Run the helpers' journeys to see them pass:** `npx playwright test helpers.spec.ts`, after a build. Expected: 3 passed. As built: five at the head, since Task 1's round and Task 8 each added one.
+- [ ] **Step 7: Ablate each helper's data,** in place, restoring by exact edit:
+  - `failing` ignoring `times` (`if (false)`): the first journey dies at its second `askedFromPage`;
+  - `"network"` answering `"http"`: the second journey dies;
+  - `change(directory)` removed: the third journey dies.
+- [ ] **Step 8: `files.spec.ts`'s `waitForResponse`** (P19a-30's D1). In "the row a Remove takes out goes before the tab's next list of entries answers", replace the route, the `listed` promise and its `await` with a route that fetches the server's own next list, checks it, and only then hands it to the page:
+
+```ts
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // The server's next list, read here before the page is handed it: the entry Remove took out
+  // is not in it, so the row the page drops at once (below) is not drawn again by that answer.
+  let listed: string[] | null = null;
+  await page.route("**/api/files", async (route) => {
+    await released;
+    const response = await route.fetch();
+    const reply = (await response.json()) as { entries: { entry: string }[] };
+    listed = reply.entries.map((each) => each.entry);
+    await route.fulfill({ response });
+  }, { times: 1 });
+  try {
+    await remove.click();
+    await expect(unitsRow).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect.poll(() => listed).not.toBeNull();
+  expect(listed).not.toContain(UNITS);
+  await expect(unitsRow).toHaveCount(0);
+```
+
+  As built, the route handles its one list and no other (`{ times: 1 }`, P19b-7, Task 1b's `d4fd8f6`): left registered, it met the teardown on Windows as `ECONNRESET`. Run it with `--repeat-each=10`: 10 passed. Ablate the page's at-once removal (the hold in `gui/src/lib/filesHold.ts` returning the list as it was), and see it die at the first `toHaveCount(0)`. Restore.
+- [ ] **Step 9: The developer documentation.** In `docs/developer_documentation.rst`'s paragraph on the journeys, after the fixtures it names, say in its own style:
+  - what `copiedGui` serves;
+  - what `failing` fails, and how;
+  - that `SERVER_FAILED` is the server's own sentence.
+- [ ] **Step 10: The gates:**
+  - lint, typecheck, Vitest, build;
+  - every journey: the count before this task, plus its three;
+  - `tests/test_gui_docs.py` and `tests/test_documentation.py` with `--no-cov -p no:cacheprovider`;
+  - the docs under `-W` in Docker, after the journeys and never alongside them.
+- [ ] **Step 11: Commit.** One commit for the inventory, one for the helpers and their journeys, one for `files.spec.ts`.
+
+### Task 2: the page sends its loads once more
+
+**Model:** opus, reviewed on opus. It changes how every request of the page fails.
+
+**Files:**
+- Modify: `gui/src/api/client.ts`, `gui/src/api/client.test.ts`, `gui/src/main.tsx`, `CHANGELOG.md`
+- Create: `gui/src/lib/sheets.ts`, `gui/src/lib/sheets.test.ts`, `gui/src/app/sheets.ts`, `gui/e2e/network.spec.ts`
+
+**Interfaces:**
+- Consumes: `failing` (Task 1).
+- Produces: `sentAgain`, `sheetsToAskAgain`, `SheetLoad` and `askSheetsAgain` (see *Interfaces Between Tasks*).
+
+- [ ] **Step 1: The journeys, red first.** Create `gui/e2e/network.spec.ts`. The worked journey:
+
+```ts
+import { failing } from "./demo";
+import { expect, test } from "./fixtures";
+
+/** The page's own stylesheet, as Vite names it in /assets/ - its hash changes with every build. */
+const STYLESHEET = /^\/assets\/index-[^/]+\.css$/;
+
+test("a stylesheet the network failed once is asked for again, and the page is drawn styled", async ({
+  page,
+  gui,
+}) => {
+  const failed = await failing(page, STYLESHEET, "network", 1);
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  expect(failed()).toBe(1);
+  // app.css's own ground on the body (tokens.css's --ground): unstyled, the body is transparent.
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(247, 249, 249)");
+});
+```
+
+  Then the other four, in the same file:
+  - **"the pressable rule's stylesheet the network failed once is asked for again".** `failing(page, "/pressable.css", "network", 1)`. A button React Aria presses (the masthead's "Projects") then has `touch-action` `pan-x pan-y pinch-zoom` (`gui/public/pressable.css`).
+  - **"a stylesheet the network fails every time leaves the page drawn and working"** (Review Focus 4). `failing(page, STYLESHEET, "network")`. The canvas still draws "Controller". The body's `background-color` is `rgba(0, 0, 0, 0)`. Pressing "Controller" opens its page, whose heading is "Controller".
+  - **"a GET the network failed once is sent again, and the page carries on".** `failing(page, "/api/graph", "network", 1)` before `goto`. The canvas draws "Controller", `failed()` is 1, and no banner shows. Read the graph's error banner's role and text off `GraphPage.tsx`, and assert it has count 0.
+  - **"a GET the network fails every time reads as the server not answering".** `failing(page, "/api/graph", "network")`. The page shows the graph's error banner with the whole sentence the page draws for `ServerUnreachable` ("ddd gui is not answering", `client.ts`), and `failed()` is 2.
+- [ ] **Step 2: Run them to see the red.** On the page as it is, the first, second, fourth and fifth journeys fail: no stylesheet is asked again, and a GET is sent once. The third passes, since the page today already draws, unstyled, when its stylesheet fails. Record each failure's line in the report.
+- [ ] **Step 3: The GET's rule, red first,** in `gui/src/api/client.test.ts`, inside `describe("requests to the server")`:
+
+```ts
+  test("a GET whose first fetch got no answer is sent once more, and answered", async () => {
+    let sends = 0;
+    const fetchImpl = vi.fn(async () => {
+      sends += 1;
+      if (sends === 1) throw new TypeError("fetch failed");
+      return new Response("{}", { status: 200 });
+    });
+    await expect(request("/api/state", {}, fetchImpl)).resolves.toEqual({});
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  test("a GET whose fetch got no answer twice is unreachable, after two sends", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(request("/api/state", {}, fetchImpl)).rejects.toBeInstanceOf(ServerUnreachable);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  test("a POST whose fetch got no answer is never sent again", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(
+      request("/api/edit", { method: "POST", body: "{}" }, fetchImpl),
+    ).rejects.toBeInstanceOf(ServerUnreachable);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("an aborted GET is never sent again", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new DOMException("aborted", "AbortError");
+    });
+    await expect(request("/api/state", {}, fetchImpl)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("a GET answered with an error is never sent again", async () => {
+    const fetchImpl = answering(500, JSON.stringify({ error: "internal", message: "failed" }));
+    await expect(request("/api/state", {}, fetchImpl)).rejects.toMatchObject({ status: 500 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+```
+
+  And `sentAgain`'s own cases, in a `describe("sentAgain")`:
+  - `sentAgain(undefined, new TypeError("x"))` and `sentAgain("get", new TypeError("x"))` are `true`;
+  - `sentAgain("POST", new TypeError("x"))` is `false`;
+  - `sentAgain(undefined, new DOMException("aborted", "AbortError"))` is `false`.
+
+  Run `npx vitest run src/api/client.test.ts`. Expected: the new cases fail (`sentAgain` is not exported; one send each).
+- [ ] **Step 4: The GET's rule,** in `gui/src/api/client.ts`.
+  - Above `request`:
+
+```ts
+/** Whether a request whose fetch was rejected is sent once more (spec 2026-10-08 §6): a GET,
+ * which asks and changes nothing, whose fetch got no answer at all. Never an abort, which the
+ * page asked for itself, and never another method, whose effect may have happened before the
+ * connection failed. An HTTP answer, a refusal included, never comes here: `fetch` resolves it. */
+export function sentAgain(method: string | undefined, error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return false;
+  return (method ?? "GET").toUpperCase() === "GET";
+}
+```
+
+  - In `request`, replace the single `fetchImpl` call:
+
+```ts
+  const send = () =>
+    fetchImpl(path, {
+      ...init,
+      credentials: "omit",
+      ...(headers === undefined ? {} : { headers }),
+    });
+  let response: Response;
+  try {
+    // Once more where the first got no answer at all (`sentAgain`): on Windows a request was seen
+    // refused a socket (`net::ERR_NO_BUFFER_SPACE`, part 19a) while the server answered every
+    // other, and a second rejection is the server gone.
+    response = await send().catch((error: unknown) => {
+      if (!sentAgain(init.method, error)) throw error;
+      return send();
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ServerUnreachable(error);
+  }
+```
+
+  Run `npm test`. Expected: every case passes, at 100 % on all four metrics.
+- [ ] **Step 5: The stylesheets' rule, red first.** Create `gui/src/lib/sheets.test.ts`:
+
+```ts
+import { describe, expect, test } from "vitest";
+import { sheetsToAskAgain } from "./sheets";
+
+describe("sheetsToAskAgain", () => {
+  test("asks for nothing when every stylesheet loaded", () => {
+    expect(sheetsToAskAgain([{ href: "/a.css", loaded: true }])).toEqual([]);
+  });
+
+  test("asks again for each stylesheet that failed, in the page's order", () => {
+    expect(
+      sheetsToAskAgain([
+        { href: "/a.css", loaded: false },
+        { href: "/b.css", loaded: true },
+        { href: "/c.css", loaded: false },
+      ]),
+    ).toEqual(["/a.css", "/c.css"]);
+  });
+
+  test("asks once for an address two failed links name", () => {
+    expect(
+      sheetsToAskAgain([
+        { href: "/a.css", loaded: false },
+        { href: "/a.css", loaded: false },
+      ]),
+    ).toEqual(["/a.css"]);
+  });
+});
+```
+
+  Run it; expected: it fails, since `./sheets` does not exist.
+- [ ] **Step 6: `gui/src/lib/sheets.ts`:**
+
+```ts
+/** One of the page's stylesheets as the page found it before drawing: its address, and whether
+ * it loaded. */
+export interface SheetLoad {
+  href: string;
+  loaded: boolean;
+}
+
+/** The addresses of the page's stylesheets to ask for once more before it draws: those that did
+ * not load (spec 2026-10-08 §6). On Windows a stylesheet's request was seen refused a socket
+ * (`net::ERR_NO_BUFFER_SPACE`, run 37760106344), and the page then drew unstyled. Each address
+ * once, in the page's order, however many links name it. */
+export function sheetsToAskAgain(sheets: readonly SheetLoad[]): string[] {
+  const again: string[] = [];
+  for (const sheet of sheets) {
+    if (!sheet.loaded && !again.includes(sheet.href)) again.push(sheet.href);
+  }
+  return again;
+}
+```
+
+- [ ] **Step 7: The glue,** `gui/src/app/sheets.ts`:
+
+```ts
+import { sheetsToAskAgain } from "../lib/sheets";
+
+/** Asks once more for each of the page's stylesheets that failed to load, and resolves once each
+ * such ask has loaded or failed (spec 2026-10-08 §6). Run before the page draws: the module
+ * script running this waits for the parser's own stylesheets to load or fail, so a link with no
+ * sheet here is one that failed. A second failure leaves the page as it would have been. */
+export function askSheetsAgain(document: Document): Promise<void> {
+  const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')];
+  const again = sheetsToAskAgain(
+    links.map((link) => ({ href: link.href, loaded: sheetLoaded(link.sheet) })),
+  );
+  return Promise.all(
+    again.map(
+      (href) =>
+        new Promise<void>((resolve) => {
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = href;
+          link.addEventListener("load", () => resolve());
+          link.addEventListener("error", () => resolve());
+          document.head.append(link);
+        }),
+    ),
+  ).then(() => undefined);
+}
+```
+
+  - **As built, `loaded` is `sheetLoaded(link.sheet)`,** where this listing first read `link.sheet !== null`. In Chromium a link whose stylesheet failed still holds a sheet, whose `cssRules` throws, so "loaded" means its rules can be read (`gui/src/lib/sheets.ts`, under Vitest).
+  - **The premise in its comment is measured, not assumed:** the first journey of Step 1 dies without it. If that journey shows a sheet still loading when this runs (passing only sometimes under `--repeat-each=20`), wait for each link with no sheet to fire `load` or `error` before deciding. Say which in the report.
+- [ ] **Step 8: `gui/src/main.tsx`.** Render once the sign-in and the stylesheets have both ended:
+
+```ts
+// Signed in, and every stylesheet that failed asked for once more, before anything is rendered:
+// no ask goes out without the token, and the page is not drawn unstyled for one lost request.
+// Rendered however either ends, so that one that throws still draws the page.
+void Promise.allSettled([
+  signInFrom(window.location, window.history),
+  askSheetsAgain(document),
+]).then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <App />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});
+```
+
+- [ ] **Step 9: Run the journeys to see them pass:** `network.spec.ts` with `--repeat-each=20`, after a build: 100 passed. Then every journey: the count before this task, plus its five. `skeleton.spec.ts`'s "the page says so when the server stops" must pass unchanged (Review Focus 1).
+- [ ] **Step 10: Ablations,** each into a scratch copy of the package (Global Constraints), each killing a named journey:
+  - `sentAgain` always `false`: "a GET the network failed once is sent again" dies;
+  - `askSheetsAgain` not called: the two stylesheet-once journeys die;
+  - `loaded: sheetLoaded(link.sheet)` replaced by `true`: the same two die.
+- [ ] **Step 11: The CHANGELOG.** One entry under `## Unreleased`, in its own style (a bold lead, two spaces between sentences, no line over 95 columns). It says what a reader notices: a page whose stylesheet, or one of whose requests, the network drops once is drawn and answered as if nothing had happened, and a second failure reads as it does today.
+- [ ] **Step 12: The gates,** as in Task 1, and the screenshots in Docker in compare mode (no reference may move). Commit: one commit for the GET's rule, one for the stylesheets, one for the journeys and the CHANGELOG.
+
+### Task 3: the start page and the app around every page
+
+**Model:** sonnet, reviewed on sonnet. Each row is a state the page already draws; the journeys reach it with Task 1's helpers.
+
+**Files:**
+- Create: `gui/e2e/start.spec.ts`
+- Modify: this plan's *The inventory*
+
+**Interfaces:**
+- Consumes: `copiedGui`, `failing`, `SERVER_FAILED` (Task 1); the GET's resend (Task 2), which leaves an HTTP error unretried.
+
+**The rows,** as read at `205d5a6`. Every quoted string is a guide: read the whole sentence off the running page before asserting it.
+
+| Row | Setup | Steps and what the reader sees | Ablation |
+| --- | --- | --- | --- |
+| **No project found** | `copiedGui("demo", empty, { named: false })`, where `empty` removes the copy's contents and leaves its directory (`rmSync` of each entry, then nothing) | Heading "Open a project"; "Found under <the copy's path>"; the paragraph "No project description was found here. Start ddd gui with the path of one." | `StartPage.tsx`'s `found.data.projects.length === 0 ? … : …` inverted. As built, the path is asserted as the server writes it, `as_posix()` (`api.py`'s `_projects`): with forward slashes on Windows too, where the first run failed on backslashes |
+| **A build record not used** | `copiedGui("demo", record, { named: false })`, where `record` writes `build/ddd-build.json` naming the copy's `demo.ddd.json` with a `"format"` one past `BUILD_INFO_FORMAT`. Read `ddd.lsp.discovery.load_builds` for what a record must hold to reach the format check rather than be skipped silently. | Heading "Build records not used"; an item "<the record's path>: written in format 2 by a newer DDD, and this one understands up to format 1". The project is still listed. As built, the record's path is asserted as the server writes it, `as_posix()`, on Windows too. | `api.py`'s `refused=[…]` in `Api._projects` made `[]` |
+| **Looking for projects** (added: the start page's loading state) | `bareGui`; the `/api/projects` request held by a route until the text is seen | "Looking for projects…", then, released, the list with "DemoDevice" | `StartPage.tsx`'s pending line removed |
+| **The projects list failing** | `bareGui`; `failing(page, "/api/projects", "http")` before `goto` | An `alert` reading `SERVER_FAILED`; no list, no heading's list. | `StartPage.tsx`'s `if (found.isError) return <Banner …>` removed |
+| **Opening a project failing** | `bareGui`; `failing(page, "/api/open", "http")` once the list shows | Pressing "DemoDevice" leaves the start page in place, with an `alert` reading `SERVER_FAILED`. A `POST` is never resent (Task 2), so one failure is enough. | `StartPage.tsx`'s `{open.isError && <Banner …>}` removed |
+| **The signed-out view** | `gui` | The worked journey below. | `client.ts`'s `if (response.status === 401)` branch made never to mark the page signed out |
+| **The failure banner a broken answer raises** | `gui`; once the canvas shows, `failing(page, "/api/state", "http")` | The page's long poll is answered `500`. An `alert` reading `SERVER_FAILED` shows above the page, which stays drawn. The stopped banner is not shown: an HTTP answer is no stopped server. As built, a project file's stamp is moved with `utimesSync` once `failing` is registered, so the server answers the pending long poll at once and the page's next ask is the one failed, in about 2 s rather than the poll's 25 s (P19b-9). | `revisions.ts`'s `if (!(error instanceof ServerUnreachable)) throw error;` made to swallow every error |
+
+- [ ] **Step 1: The worked journey,** in a new `gui/e2e/start.spec.ts`:
+
+```ts
+import { expect, test } from "./fixtures";
+
+test("a page whose token the server no longer holds says how to sign in again", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  // A token this server never issued, where the page keeps its own (`TOKEN_KEY`, api/token.ts):
+  // what a page holds after its server was restarted and handed out another. The address is
+  // already `/` (the sign-in replaced it), so the reload trades no code or token of its own.
+  await page.evaluate(() => localStorage.setItem("ddd-gui-token", "not-the-token-it-was-given"));
+  await page.reload();
+  const view = page.getByRole("status").filter({ hasText: "printed in its terminal" });
+  await expect(view).toHaveText("Open the address ddd gui printed in its terminal.");
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
+});
+```
+
+- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then ablate `client.ts`'s `401` branch in a scratch copy of the package: the journey must die at `toHaveText`.
+- [ ] **Step 3: The other rows,** each a journey of its own in `start.spec.ts`, each run and ablated as its row says.
+- [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
+- [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
+- [ ] **Step 6: The gates,** every journey included. Commit.
+
+### Task 4: the canvas, and the components table's summary
+
+**Model:** opus, reviewed on opus. The viewport's movements are measured, not read off a string, and the loading states need requests held at the right moment.
+
+**Files:**
+- Create: `gui/e2e/canvas.spec.ts`
+- Modify: this plan's *The inventory*
+
+**Interfaces:**
+- Consumes: `copiedGui` (Task 1); `drift`, `renameValueA`, `CONTROLLER`, `EVENT_LOGGER` (`gui/e2e/demo.ts`); the fixture `generatedGui`. No journey of this task uses `failing`: the worker's script is answered by a route of the journey's own.
+
+**The rows,** as read at `205d5a6`:
+
+| Row | Setup | Steps and what the reader sees | Ablation |
+| --- | --- | --- | --- |
+| **No dictionary** | `gui`; Controller's file cut in half | The worked journey below. | `GraphPage.tsx`'s `{!graph.data.dictionary && (` made false |
+| **Fit** | `gui` | Read the viewport's transform (`.react-flow__viewport`'s `transform` style) as the canvas opens. Zoom in with the wheel over the canvas, and see the transform change. Press "Fit": the transform returns to the one the canvas opened with (`expect.poll`), within half a pixel and half a thousandth of the zoom (`openingViewport`, `lib/canvas.ts`). The modules' own placements are read before and after and found the same, but with no drag every module already stands where any re-layout would put it, so no change to `onFit` makes that comparison fail: the journey claims the viewport alone, and is titled so ("Fit returns the viewport to the one the canvas opened on"; the final wave dropped "and moves no module"). Pinning the modules would take a drag first. | `GraphPage.tsx`'s `if (view !== null) void flow.setViewport(view, { duration: FLIGHT });` removed |
+| **The module search, typed** | `gui` | Type "Sensor" into the textbox "Search modules". SensorHub's `.module` has `data-faded="false"`, and Controller's has `data-faded="true"` (`ModuleNode.tsx`; `.module[data-faded="true"]` is drawn at 0.2 opacity). | `lib/canvas.ts`'s `const faded = bright !== null && !bright.has(node.id);` made `false` |
+| **The module search's Enter** | `gui`; the canvas zoomed out first, so that the search starts from a view the reader moved. SensorHub is off the middle already (385.58 px at the opening view, 254.41 px after the zoom-out; measured in Chrome on the Linux development PC, over `gui`'s copy of the demo, at b53efaa): the zoom-out brings it nearer, it does not put it there | Type "Sensor" and press Enter. SensorHub's module is centred in the canvas: `expect.poll` on its box's centre against the canvas's centre, within 2 px, once the 300 ms flight has landed (0 px measured, on a canvas 1068 by 504). Before the Enter the journey asserts SensorHub is more than 100 px off, so the Enter has something to show. | `GraphPage.tsx`'s `void flow.fitView({ nodes: [{ id: first }], … })` removed |
+| **Hovering a module** | `copiedGui("demo", …)`, its change taking `ValueE` out of what EventLogger reads (`subsystems/logging/event_logger.ddd.json`), before the server starts. Not `gui`: the demo's seven arrows join all six pairs of its four modules, so each is every other's neighbour and a hover dims nothing (measured in Chrome on the Linux development PC at 4bf7fa9, over `gui`'s copy of the demo: every module and every arrow label still `data-faded="false"` with Controller, or EventLogger, hovered). On the copy there are six arrows, none in disagreement, and no finding on any module | Hover Controller's module. Its neighbours are SensorHub and UserInterface, so EventLogger alone has `data-faded="true"`, and Controller and its two neighbours have `"false"`. Moving the pointer away, to a corner of the canvas, brightens every module again. | the same `fadedNodes` line |
+| **The undeclared-variable banner, from an arrow** | `gui`; `drift(gui.directory)` | The arrow's error label (`.flow-label.error`) opens ValueA's panel, as `units.spec.ts`'s "the same disagreement is resolved from its arrow on the canvas" does. Then `renameValueA(gui.directory, "ValueZ")`: the panel closes, and a `status` reads "ValueA is no longer declared in the open project." | `VariablePanel.tsx`'s `const undeclared = …` made `false` |
+| **Drawing the project** | `gui`; the first `/api/graph` held by a route until the text is seen | "Drawing the project…", then, released, the modules. | `GraphPage.tsx`'s "Drawing the project…" line removed |
+| **Laying the project out** | `gui`; the layout worker's script (`**/assets/layoutWorker-*.js`) held by a route until the text is seen | "Laying the project out…", then, released, the modules. | `layoutAnswers.ts`'s `{ kind: "waiting" }` branch removed |
+| **The layout worker failing** (added) | `gui`; the worker's script answered with something that is not JavaScript (`route.fulfill` with a `404`), on every request: the page creates a worker that failed to start once more (`createdAgain`, `lib/layoutAnswers.ts`; P19b-26), so the script is asked for twice. The 404 is kept as an answer that is not a script, the case of a page left open across a rebuild, which asking again cannot cure; a script the network fails is `network.spec.ts`'s | "The layout worker stopped; reload the page to try again." (`WORKER_FAILED`, `lib/layoutAnswers.ts`), once the second worker has failed too and the route has counted two requests (`asked` is 2); no canvas is drawn. With the route taken away (`page.unroute`), a reload draws the canvas, as the banner advises. | Two, from the final wave: `createdAgain` answering `false` dies at `expect(asked).toBe(2)` (`canvas.spec.ts:293`, received 1) and also kills `network.spec.ts:83` at its Controller assertion (`:91`), the canvas never drawn; `useLayout.ts`'s `onerror` keeping the retry but no longer setting `WORKER_FAILED` dies at the alert's `toHaveText` (`canvas.spec.ts:289`), which `network.spec.ts:83` survives, never reaching that state |
+| **The components table's summary while the findings update** | `generatedGui` (an analysis long enough to see); the Table tab | Write a change from outside that the watcher sees. The summary line reads "<errors>, <warnings> · updating" while the analysis runs, then loses " · updating". | `lib/findings.ts`'s `tableLine` dropping `UPDATING` |
+
+- [ ] **Step 1: The worked journey,** in a new `gui/e2e/canvas.spec.ts`:
+
+```ts
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { CONTROLLER } from "./demo";
+import { expect, test } from "./fixtures";
+
+test("a project with a file that does not load is drawn without arrows, and says why", async ({
+  page,
+  gui,
+}) => {
+  // Cut in half, as findings.spec.ts's "a finding that leads nowhere says why" cuts it: no
+  // dictionary is resolved while a file of the project does not load (`lsp/diagnostics.py`).
+  const path = join(gui.directory, CONTROLLER);
+  const bytes = readFileSync(path);
+  writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  await page.goto(gui.address);
+  await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
+    "This project has no dictionary, so its modules are drawn without arrows.",
+  );
+  await expect(page.getByRole("button", { name: "SensorHub", exact: true })).toBeVisible();
+  await expect(page.locator(".react-flow__edge")).toHaveCount(0);
+});
+```
+
+  Read the modules the canvas still draws off the running page. A file that does not load may draw no module of its own.
+- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then the ablation: `GraphPage.tsx`'s dictionary banner made never to show, in a scratch copy of the package. It must die at `toHaveText`.
+- [ ] **Step 3: The other rows.** Each is a journey of its own in `canvas.spec.ts`.
+  - Every geometric assertion is an `expect.poll` with a stated tolerance. Never a sleep for the 300 ms flight.
+  - Each is run with `--repeat-each=10`, because the viewport's animation is the likeliest place for a race.
+  - Each is ablated as its row says.
+- [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
+- [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
+- [ ] **Step 6: The gates,** every journey included. Commit.
+
+### Task 5: Units and Types
+
+**Model:** sonnet, reviewed on sonnet. The panels' mechanisms are the Units panel's, which journeys already drive.
+
+**Files:**
+- Modify: `gui/e2e/types.spec.ts`, `gui/e2e/project-units.spec.ts`, and this plan's *The inventory*
+- Modify, for the bug the review found (P19b-12; see the last row below): `gui/src/lib/variableKeys.ts` and `variableKeys.test.ts`, `gui/src/screens/TypePanel.tsx` and `VariablePanel.tsx`, the two stories that copy their derivation (`gui/src/components/TypePanelView.stories.tsx`, `VariablePanelView.stories.tsx`), and `CHANGELOG.md`
+
+**Interfaces:**
+- Consumes: `driftMaxUnseen` (`gui/e2e/demo.ts`). As built, its rows needed neither `writeUnseen` nor `failing`, which the plan had listed.
+
+**What the pre-flight corrected** (spec §4 assumed otherwise):
+- **The keys a scalar type offers.** Exactly four: datatype, unit, conversion and limits (`SCALAR_KEYS`, `src/ddd/project_types.py`).
+- **"State nothing".** Datatype and conversion are required (`type_plans.REQUIRED`), so neither offers it. Only unit and limits can be stated as nothing, and their lists word it differently: the unit picker's own "no unit" (group "No unit"), the limits' "state nothing" (group "State nothing"). The review found the pick itself unpinned, and the page dropping the unit's: see the row added below.
+- **Saving the description.** The Types panel has no "Save": a changed description shows "Changes 1 file: types.ddd.json" and "Apply to 1 file", where the Units panel has "Save".
+
+**The rows,** as read at `205d5a6`. Every quoted string is a guide: read the whole sentence off the running page before asserting it.
+
+| Row | Setup | Steps and what the reader sees | Ablation |
+| --- | --- | --- | --- |
+| **A type's range** | `structuresGui`; Temperature_t (`limits` -40 … 150) | The worked journey below. | Two, both kept. `TypePanel.tsx`'s `? limitsRaw(range.min, range.max)` made `? null` dies at the file, at the poll on the type's entry (`types.spec.ts:186-188`; one assertion follows it): a `null` range is the removal of `limits`, one file changed, so "Changes 1 file" is still drawn. The limits row made to ask for no request dies at "Changes 1 file". |
+| **A type's datatype, picked from its list** | `structuresGui`; Temperature_t | Select the row "Datatype" (it reads "uint16"). The combobox "Datatype of Temperature_t" lists "Datatypes". Pick "sint16": "Changes 1 file: types.ddd.json", "Apply to 1 file", and the file then says `"datatype": "sint16"`. | `src/ddd/variable_keys.py`'s `if key == "datatype": return DATATYPES` returning nothing |
+| **No "state nothing" for a required key** | `structuresGui`; Temperature_t | Open the choices of "Datatype" and then of "Conversion" (`ArrowDown`, as `keys.spec.ts`'s "a truth value is typed, confirmed with Enter, and cannot be left unstated" opens them). Neither lists an option "state nothing" or a group "State nothing"; the choices of "Unit" list "no unit", and those of "Limits" "state nothing". | `type_plans.py`'s `REQUIRED` without `"datatype"`, and again without `"conversion"`: each dies in its own list. |
+| **A type's description** | `structuresGui`; Temperature_t | Type into the field "Description" (region "Description"): "Changes 1 file: types.ddd.json", "Apply to 1 file". The file then carries the new description. | `TypePanelView.tsx`'s `props.description !== type.description` disjunct removed from `pending` |
+| **A type gone** | `structuresGui`; a type's panel open (Sample_t) | Rewrite `types.ddd.json` from outside, valid, without Sample_t's entry. The panel closes, and a `status` reads "Sample_t is no longer declared in the open project." | `TypePanel.tsx`'s `const gone = … code === "not-found"` made `false` |
+| **A type's file half-written** | `structuresGui`; Temperature_t's panel open | Cut `types.ddd.json` in half. The panel stays open, titled Temperature_t, with an `alert`: "'Temperature_t' is not declared in any file that loaded, and types.ddd.json did not load" (`api.py`'s `_undeclared`). Writing the file back whole brings the panel back. Model: `project-units.spec.ts`'s "a unit nothing states any longer…" | `api.py`'s `if unread:` branch removed |
+| **A type's Apply refused as out of date** (added) | `structuresGui`; Temperature_t's "Max" filled, "Apply to 1 file" enabled | `driftMaxUnseen(structuresGui.directory, "types.ddd.json", "Temperature_t", 999)`, then press Apply. A `status` reads "A file changed on disk, so nothing was written. The page now shows the files as they are." Then `utimesSync`, as `keys.spec.ts` does; the refusal hides; Apply again writes it. | `TypePanel.tsx`'s `if (error instanceof ApiError && error.code === "stale")` branch removed |
+| **The adopt refused** | `gui` (no units file); the Units tab's adopt banner, "Show changes" pressed | Create `units.ddd.json` in the copy by hand (`writeFileSync`, any content), then press "Adopt 5 units". The banner's `adopt-refusal` paragraph reads "A file changed on disk, so nothing was written. The page now shows the files as they are." The server refuses a file to be created that exists already (`editing._created`). **The paragraph stands for tens of milliseconds only:** with that file there the server offers no adoption (`ddd.lsp.units.adoption`), so the banner, the refusal in it, is withdrawn as soon as the page reads `/api/units` again, the moment its Apply is answered. The journey holds that one read (`page.route("**/api/units", …, { times: 1 })`, `route.continue()` once released, in a `finally`), reads the sentence, checks that the project and the hand-made file are as they were, then lets the read through and sees the banner go. | `UnitsPage.tsx`'s `onError` setting the stale refusal made a no-op |
+| **A type's unit or limits stated as nothing** (added by the review) | `structuresGui`; Temperature_t | Select "Unit", open its choices (`ArrowDown`) and pick "no unit": the field reads "no unit", "Show changes" removes `"unit": "degC",` and adds no line, and Apply writes the entry without `unit`. The twin does the same with "Limits" and "state nothing": the two fields empty, the range's lines removed, the entry without `limits`. | The unit: `settledRaw` (`lib/variableKeys.ts`) made `chosen ?? starting` again dies at the field's value ("degC" for "no unit"), as the journey did before the fix. The limits: `onChosen` no longer emptying the two fields dies at the field's value ("-40 … 150" for "state nothing"). A key stated as nothing written as `null` (`type_plans.py`) kills both at "no line added". |
+
+- [ ] **Step 1: The worked journey,** in `gui/e2e/types.spec.ts`:
+
+```ts
+test("a type's range is settled from its two fields, and written", async ({
+  page,
+  structuresGui,
+}) => {
+  const typesFile = join(structuresGui.directory, TYPES);
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: /^Limits/ }).click();
+  // The two fields the variable's own panel settles a range with (`KeyChooser`), here on a type.
+  await expect(panel.getByLabel("Min")).toHaveValue("-40");
+  await panel.getByLabel("Max").fill("120");
+  await expect(panel.getByText("Changes 1 file: types.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => readFileSync(typesFile, "utf8")).toContain('"max": 120');
+});
+```
+
+  Read the row's accessible name, and the file's spelling after the write, off the running page and the copy before asserting them. The file reads `"limits": { "min": -40, "max": 120 }` on one line, so the journeys as committed compare the type's parsed entry (`entryOf`) with `{ ...before, limits: { min: -40, max: 120 } }`, which also pins every other key.
+- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then two ablations, in a scratch copy of the package: `TypePanel.tsx`'s planned range made `null` dies at the poll on the file (`types.spec.ts:186-188`, where the entry has lost its `limits`; one assertion follows it), since a `null` range plans the removal of `limits`, which is one file changed, so "Changes 1 file" is still drawn, and the limits row made to ask for no request dies at "Changes 1 file". Keep both: one pins what is written, the other the preview.
+- [ ] **Step 3: The other rows,** each a journey of its own: the Types rows in `types.spec.ts`, the adopt in `project-units.spec.ts`. Each is run and ablated as its row says.
+- [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
+- [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
+- [ ] **Step 6: The gates,** every journey included. Commit: one commit for the Types rows, one for the adopt.
+
+### Task 6: Shared files
+
+**Model:** opus, reviewed on opus. The largest group, with three panels' worth of fields and the two banners that tell an unreadable file from an untold one.
+
+**Files:**
+- Create: `gui/e2e/shared.spec.ts`
+- Modify: this plan's *The inventory*
+- Modify, for the bug the journeys found (P19b-17, Step 4): `gui/src/lib/shared.ts` and `gui/src/lib/shared.test.ts`, `gui/src/screens/SharedPage.tsx`, and `CHANGELOG.md`
+
+**Interfaces:**
+- Consumes: `copiedGui` (Task 1); `writeUnseen` (`gui/e2e/demo.ts`).
+
+**What the pre-flight found:**
+- **Only examples/vocabulary declares shared entries.** Constants `TREND_SAMPLES` (16, one use) and `PRESSURE_CELLS` (8, inline in pump.ddd.json, one use). Sections `.fast_ram` (two uses) and `.calib` (one use). Rasters `1ms` (one use), `10ms` (Pump's own default) and `100ms`, **used by nothing**.
+- **examples/demo and examples/structures declare none,** so `gui` shows "Declare an entry" with no setup at all.
+- **Remove is offered only for an entry nothing uses.** `100ms` is the one such entry as shipped. A constant or a section that nothing uses is either declared first by the form (zero uses), or made by a `copiedGui` change that drops its one use.
+- **A truncated file is *untold*; a schema-broken one is *unreadable*.**
+  - Truncated, a file no longer parses, so its kind is unknown.
+  - Schema-broken, it parses but fails its model, for example `sections.ddd.json`'s alignment made 3.
+
+  Each has its own banner.
+- **Each shared file names its entries differently.** `driftMaxUnseen` matches a variable's `"max"`. A shared file's stale journey writes its own same-length change through `writeUnseen`, as `constants.spec.ts`, `sections.spec.ts` and `rasters.spec.ts` define their own file helpers.
+
+**The rows,** as read at `205d5a6`. Every quoted string is a guide: read the whole sentence off the running page before asserting it.
+
+| Row | Setup | Steps and what the reader sees | Ablation |
+| --- | --- | --- | --- |
+| **A raster nothing uses, removed** | `vocabularyGui` | The worked journey below. | `lib/shared.ts`'s `rasterRemovable` answering `false` dies one assertion before the region's button, at the caption "Nothing in the project measures in 100ms.", because the same function decides the caption and the Used by line. The button is pinned by `RasterPanel.tsx`'s remove request made `null`, which dies at the region's "Changes 1 file: rasters.ddd.json" (no plan, so no button) |
+| **"Declare an entry," and the blank form** | `gui` | The Shared files tab offers "Declare an entry" (no entry declared). Pressing it opens the panel "Declare an entry", whose one field is the combobox "Vocabulary", with "Choose a vocabulary, and the fields it is declared with follow." Picking "constants" retitles it "Declare a constant" and shows "Name". Declaring a constant there (name, value, Apply) lists it. | `SharedPage.tsx`'s `setDeclaring(true)` removed |
+| **The add form refused: a name taken** | `vocabularyGui`; the form for a section | Type `.fast_ram`: a `status` reads "'.fast_ram' is already a section this project declares", and no Apply is drawn. | `navigation.py`'s `if name in built.sections: return …` removed |
+| **The add form refused: a value no constant may state** | `vocabularyGui`; the form for a constant | Name `SPARE`, value `"oops"`, with its quotes. Typed bare, `oops` is refused first by the request's json check, in the parser's words ("'oops' is not one json value: Expecting value: line 1 column 1 (char 0)", read off the form in Chrome on the Linux development PC at f27c374, over a copy of examples/vocabulary; P19b-18), and never reaches the constant's model. The page then reads `"oops" is not a value a constant may state, so 'SPARE' cannot take it in constants.ddd.json: a whole number a 64 bit target holds, of either sign, or a finite fractional one`, read whole off the page. | `shared_plans.py`'s `judgement.adapter.validate_python(json.loads(raw))` removed |
+| **The add form refused: an event taken** | `vocabularyGui`; the form for a raster | Event `0`: "event 0 is already claimed by raster '1ms'". | `project_shared.py`'s `_event_taken` answering nothing |
+| **A constant's value saved** | `vocabularyGui`; `TREND_SAMPLES` | Region "Value": change it, "Save"; the file states the new value, the table's row shows it. | the Value region's `Save` request made `null` in `ConstantPanel.tsx` |
+| **A constant's description saved** | `vocabularyGui`; `TREND_SAMPLES` | Region "Description", "Save"; the file carries it. | the Description region's request made `null` |
+| **A constant renamed, and refused onto a name taken** | `vocabularyGui`; `TREND_SAMPLES` | The textbox "Rename TREND_SAMPLES to": `PRESSURE_CELLS` is refused ("'PRESSURE_CELLS' is the name of the declared constant 'PRESSURE_CELLS', which shares c's namespace with the variables"); `TREND_SLOTS` is applied ("Apply to 2 files"), and pump.ddd.json's `PressureTrend` names the new name. | `shared_plans.py`'s `rename_entry` refusal removed (refused half); the rename's request `null` (applied half) |
+| **A constant removed** | `copiedGui("vocabulary", …)` with `PressureTrend`'s `"dimensions": ["TREND_SAMPLES"]` made `[16]`, which leaves `TREND_SAMPLES` unused and `PRESSURE_CELLS` the constant in use | `TREND_SAMPLES` offers "Remove from the constants"; removed, its row and panel go, and constants.ddd.json declares none. The constant in use, `PRESSURE_CELLS` (ManifoldPressure is sized by it), shows "1 shape names PRESSURE_CELLS, so it cannot be removed." and no button instead. | `ConstantPanel.tsx`'s `entry.uses.length === 0` made `false` |
+| **A section's access, alignment and description saved** | `vocabularyGui`; `.calib` | The combobox "Access" ("read-write"/"read-only"), the textbox "Alignment", the textbox "Description", each with its "Save". | each region's request made `null`, one at a time |
+| **A section renamed, and removed** | `vocabularyGui`; `.fast_ram` renamed onto `.calib` is refused ("'.calib' is already a section this project declares"); a fresh section declared by the form is removed ("Remove from the sections") | | `SectionPanel.tsx`'s `entry.uses.length === 0` made `false` |
+| **A raster's event, cycle and description saved** | `vocabularyGui`; `100ms` | The textboxes "Event" and "Cycle", and "Description", each with "Save". An event another raster holds is refused ("event 0 is already claimed by raster '1ms'"). | each region's request made `null` |
+| **A raster renamed** | `vocabularyGui`; `1ms` renamed onto `10ms` is refused ("'10ms' is already a raster this project declares"); renamed to `2ms`, PumpSpeed's raster follows | The panel moves straight onto the new name: the panels drawn, watched at every frame, are 1ms and then 2ms, never the form declaring 2ms between them (P19b-17). | the rename's request `null`; `SharedPage.tsx`'s `select` no longer holding the entry it moves onto dies at the panels seen |
+| **A constant's "Used by" followed** | `vocabularyGui`; `TREND_SAMPLES` | Its Used by row (Where, File, What: "PressureTrend", "pump.ddd.json", "Pump"): the link "PressureTrend" opens Pump's page with PressureTrend's panel. | `ConstantPanelView.tsx`'s `if (use.kind === "variable")` route inverted |
+| **A raster's "Used by" followed, to a component** | `vocabularyGui`; `10ms` | Its row reads "Pump", "everything it produces". The link opens Pump's page: the address ends at `pump.ddd.json`, the heading "Pump" and the row PumpSpeed are drawn, no panel is, and the page does not say "no longer declared". The last assertion is the one the ablation dies at: a route naming a variable "Pump" ends at the same address with no panel too, since the component page drops a variable nothing declares and says so, so the address and the missing panel survive the swap alone. | `lib/shared.ts`'s `rasterUseRoute` branches swapped |
+| **An Apply refused as out of date** | `vocabularyGui`; `TREND_SAMPLES`'s value changed, "Save" enabled | `constants.ddd.json` rewritten unseen (`writeUnseen`, same length), then "Save": a `status` in region "Value" reads "A file changed on disk, so nothing was written. The page now shows the files as they are." | `editing.py`'s fingerprint check, in a scratch worktree of the Python |
+| **An entry gone** | `vocabularyGui`; `100ms`'s panel opened from its address, not by its row: a row pressed is held by the tab's own `select`, which would mask what holds a panel an address opened (P19b-17). The panel's next read of the raster is held once (`{ times: 1 }`, `route.continue()`, released in a `finally`) until the table has dropped the row | `rasters.ddd.json` rewritten valid without `100ms`. The table drops the row, and the panel is still the raster's own while its read is held (its "Rename 100ms to" field is drawn): before P19b-17 the tab swapped it for the form declaring `100ms` whenever the table answered first. Released, the panel closes, a `status` reads "100ms is no longer declared in the open project.", and the address is the bare tab's. | `RasterPanel.tsx`'s `code === "not-found"` made `false` dies at the `status`; `SharedPage.tsx`'s effect holding the panel it drew removed dies at the held panel |
+| **An entry's file half-written** | `vocabularyGui`; `TREND_SAMPLES`'s panel open | `constants.ddd.json` cut in half. The panel stays, with an `alert`: "'TREND_SAMPLES' is not declared in any file that loaded, and constants.ddd.json did not load". Before P19b-17 it did not stay: the tab swapped it for the form declaring `TREND_SAMPLES`, every time, for all three vocabularies. Now the row is gone from the table, no panel "Declare a constant" is drawn, the address is still the entry's, and no status says it is no longer declared. Written back whole, the panel shows the constant again, with no alert. | `api.py`'s `if unread:` branch removed (the panel then closes, saying `TREND_SAMPLES` is no longer declared); `opensPanel` ignoring the panel held draws the form, and dies at the alert too |
+| **The untold banner** | `vocabularyGui` | `rasters.ddd.json` cut in half. Above the table, a `status`: "rasters.ddd.json did not load, so whatever is declared there is not listed." | `lib/findings.ts`'s `untold` filter made empty |
+| **The unreadable banner** | `vocabularyGui` | `sections.ddd.json`'s `"alignment": 4` made `3` (valid json, a broken model). Above the table: "sections.ddd.json did not load, so the entries declared there are not listed." | `lib/findings.ts`'s `own` filter made empty |
+
+- [ ] **Step 1: The worked journey,** in a new `gui/e2e/shared.spec.ts`:
+
+```ts
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { expect, test } from "./fixtures";
+
+/** The rasters file of examples/vocabulary, in its copy. */
+const RASTERS = "rasters.ddd.json";
+
+test("a raster nothing measures in is removed, row and panel", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  const row = page.getByRole("row", { name: /^100ms/ });
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "100ms" });
+  await expect(panel.getByText("Nothing in the project measures in 100ms.")).toBeVisible();
+
+  const removing = panel.getByRole("region", { name: "Remove from the rasters" });
+  await removing.getByRole("button", { name: "Remove from the rasters" }).click();
+  await expect(row).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
+  await expect
+    .poll(() => readFileSync(join(vocabularyGui.directory, RASTERS), "utf8"))
+    .not.toContain('"100ms"');
+});
+```
+
+  Read `project-units.spec.ts`'s removal of a unit nothing states before writing it. A Remove may first show its plan and ask for "Apply to 1 file": follow the running page, and assert what it shows. As built, it shows its plan as "Changes 1 file: rasters.ddd.json", and the region's own button applies it, with no "Apply to 1 file". The Used by table's links are buttons, styled as links, as `sections.spec.ts` already finds them.
+- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then the ablation: `rasterRemovable` answering `false`, in a scratch copy of the package. It dies at the caption "Nothing in the project measures in 100ms.", one assertion before the region's button, since the same function decides both. A second ablation, `RasterPanel.tsx`'s remove request made `null`, dies at the region's plan, which the button needs.
+- [ ] **Step 3: The other rows,** each a journey of its own in `shared.spec.ts`. Group a panel's fields into one journey where a reader would do them in one sitting, but keep one assertion per row, so each row's ablation kills it. Each is run and ablated as its row says.
+- [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*. This task's found one (P19b-17): `SharedPage` chose between an entry's panel and the form declaring it on the table's answer alone, so the panel gave way to the form whenever the table stopped listing its entry - its file saved half-written, the entry gone, a rename. `opensPanel(reply, selection, held)`, in `gui/src/lib/shared.ts`, now keeps the panel the tab holds, and the panel's own answer says why the table lists the entry no longer. Fixed red first (three journeys, five Vitest cases), with a CHANGELOG entry.
+- [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
+- [ ] **Step 6: The gates,** every journey included. Commit: one commit per panel's rows, and one for the banners.
+
+### Task 7: Files and Findings
+
+**Model:** sonnet, reviewed on sonnet. Each row is a state the two tabs already draw.
+
+**Files:**
+- Modify: `gui/e2e/files.spec.ts`, `gui/e2e/findings.spec.ts`, and this plan's *The inventory*
+
+**Interfaces:**
+- Consumes: `copiedGui`, `failing`, `SERVER_FAILED` (Task 1); `drift`, `unstamp`, `writeUnseen`, `CONTROLLER`, `UNITS` (`gui/e2e/demo.ts`).
+
+**What the pre-flight corrected:**
+- **A file brings errors only, never a warning.** `ddd.file_plans.new_errors` lists errors only, so the preview's chips are always `error`.
+- **The Files tab writes only the project description.** Its three actions change `project.ddd.json` alone. So a Files out-of-date journey makes the description change unseen (`writeUnseen`, same length), not a component file.
+
+**The rows,** as read at `205d5a6`. Every quoted string is a guide: read the whole sentence off the running page before asserting it.
+
+| Row | Setup | Steps and what the reader sees | Ablation |
+| --- | --- | --- | --- |
+| **A finding no longer reported** | `gui`; `drift(gui.directory)` | The worked journey below. | `lib/findings.ts`'s `selectionAfter` answering `gone: false` |
+| **A fix's Apply refused as out of date** | `gui`; `unstamp(gui.directory, CONTROLLER, "ValueH")`, as `findings.spec.ts`'s "a missing id is fixed" does. Not ValueA: `unstamp` takes the first `"id"` after the name, and in Controller ValueA is an input with no id of its own, so it strips ValueE's | Choose the fix, "Give 'ValueH' an id", and "Show changes". Then a route on `**/api/edit` (`{ times: 1 }`, ending in `route.continue()`) writes Controller's description unseen (`writeUnseen`: a space taken out and a full stop put in, so the size is kept) before letting the request through, as `skeleton.spec.ts`'s "an edit made from a page that is out of date is refused, and the file reloaded" does. In the panel, a `status`: "A file changed on disk, so nothing was written. The tab now shows the findings as they are." (`FindingsPage.tsx`'s own `STALE`: "The tab", and "the findings"). The file is as the outside change left it, and ValueH still has no id. | `FindingsPage.tsx`'s `error.code === "stale"` branch removed |
+| **The fixes a finding carries failing** | `gui`; `unstamp(…, "ValueH")`; `failing(page, "/api/fix", "http")` before the finding is selected | Over the panel (`:above(.panel)`, Playwright's layout selector), an `alert` reading `SERVER_FAILED`. The finding is drawn all the same, with its message and its route, "Open ValueH", and no fix button. | `FindingsPage.tsx`'s `{fixes.isError && <Banner …>}` removed |
+| **The page of findings failing** | `copiedGui("demo", …)`, its change drifting the copy (`drift(directory)`) before the server starts; `failing(page, "/api/findings", "http")` before the tab opens. Not `gui` and `drift(…)`: the page can open on the clean revision and keep drawing it ("Nothing to report", `drawnWindow` keeping the last whole window) while the drifted revision's page is asked for and fails | An `alert` reading `SERVER_FAILED` over the table (`:above([role="grid"])`). The line above the table still counts the findings, "2 findings · 2 errors", and the table has no definition-mismatch row to open. | `FindingsPage.tsx`'s `unasked` banner removed |
+| **A Files action refused as out of date** | `vocabularyGui`; the units row's Remove offered | A route on `**/api/edit` rewrites `project.ddd.json` unseen (`writeUnseen`, one space traded for one character), then lets it through. In region "Remove from the includes", a `status`: "A file changed on disk, so nothing was written. The page now shows the files as they are." The file is as the outside change left it. **The journey goes on past the sentence,** because `useFilesApply`'s `onError` words a stale refusal and any other the same, and they differ only in how long it is held (until the analysis moves on, or until the next Apply): a journey that stops at the sentence survives the ablation. A moved stamp (`utimesSync`) lets the watcher see the file; the refusal goes, within 15 s; the same Remove goes through, the row goes, and the file keeps the outside change. | `lib/refusals.ts`'s `isStale` answering `false` passes the sentence and dies at the refusal's going |
+| **The findings a file would bring** | `vocabularyGui`; before `goto`, a new component file in the copy that reads a variable nothing produces | "Add a file" with its name. The preview lists a `missing-producer` chip, the file, and "'<name>' is read by component '<component>' but no component declares it as output" (`analysis.py`'s own words). | `FileActionsView.tsx`'s `{preview.brought.length > 0 && (` made false |
+| **The list failing at first** | `vocabularyGui`; `failing(page, "/api/files", "http")` before the tab opens | Only an `alert` reading `SERVER_FAILED`: no "New file", no table. | `FilesPage.tsx`'s early `if (files.isError) return <Banner …>` removed |
+| **The list failing later** | `vocabularyGui`; the tab open, its table drawn; the tab left (Findings), `failing(page, "/api/files", "http")` registered, and the tab returned to. Not a change from outside that the watcher sees (P19b-20) | The table stays drawn, with an `alert` reading `SERVER_FAILED` over it (`:above([role="grid"])`), and the units row and both actions still drawn: a tab mounting asks again for an answer it holds, stale from the start, and when that read fails the answer is kept. A new revision's read has no answer to hold (`placeholderData` serves a read that is pending, not one that failed), so there the tab shows the alert alone, as at first, on Files, Units, Types, Shared files and the canvas: recorded for the maintainer and for 19c, not fixed here. | `FilesPage.tsx`'s `{files.isError && <Banner …>}` above the table removed |
+
+- [ ] **Step 1: The worked journey,** in `gui/e2e/findings.spec.ts` (add `writeFileSync` to its `node:fs` import, and `drift`, `CONTROLLER` to its `./demo` import if absent):
+
+```ts
+test("a finding fixed from outside while its panel is open is no longer reported, and the tab says so", async ({
+  page,
+  gui,
+}) => {
+  // Controller's own reading of ValueA drifted, as "a disagreement leads to its variable" drifts
+  // it: a definition-mismatch is filed on each file it concerns.
+  const before = drift(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page.getByRole("row", { name: /definition-mismatch/ }).first().click();
+  await expect(page.getByRole("complementary")).toBeVisible();
+
+  // Put back from outside, as somebody fixing it in their editor would: the watcher sees it, the
+  // analysis no longer reports the finding, and the tab says so where the panel was.
+  writeFileSync(join(gui.directory, CONTROLLER), before);
+  await expect(page.getByRole("status").filter({ hasText: "no longer reported" })).toHaveText(
+    "This finding is no longer reported.",
+  );
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+});
+```
+
+  Read the panel's accessible name off the running page, and narrow `complementary` to it.
+- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then the ablation: `selectionAfter` answering `gone: false`, in a scratch copy of the package. It must die at `toHaveText`.
+- [ ] **Step 3: The other rows,** each a journey of its own: the Findings rows in `findings.spec.ts`, the Files rows in `files.spec.ts`. Each is run and ablated as its row says.
+- [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
+- [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
+- [ ] **Step 6: The gates,** every journey included. Commit: one commit for the Findings rows, one for the Files rows.
+
+### Task 8: Compare
+
+**Model:** sonnet, reviewed on sonnet. The tab's one journey is extended with its finding panel, its renames, its refusals and its busy state.
+
+**Files:**
+- Modify: `gui/e2e/compare.spec.ts`, and this plan's *The inventory*
+- Modify, for the layout copy of `copiedGui` that the routed finding's row needed (P19b-5, P19b-23): `gui/e2e/fixtures.ts`, `gui/e2e/helpers.spec.ts` (its journey), and `docs/developer_documentation.rst` (its paragraph on `copiedGui`)
+
+**Interfaces:**
+- Consumes: `copiedGui` (Task 1, extended by this task for the layout copy); `dump`, `driftDatatypeIn`, `renameValueA`, `SENSOR_HUB` (`gui/e2e/demo.ts`).
+
+**What the pre-flight found:**
+- **No busy text.** While a comparison runs, the tab draws no text saying so. The field "Baseline" and the button "Compare" are disabled. With no `placeholderData`, the reply's verdict, table and renames are gone until the answer comes.
+- **A refusal holds the system's own words.** Every refusal reads `the baseline '<path>' …` and ends in the system's own words: an `OSError`'s text, or the json parser's. Those words differ between Linux and Windows.
+
+**The rows,** as read at `205d5a6`. Every quoted string is a guide: read the whole sentence off the running page before asserting it.
+
+| Row | Setup | Steps and what the reader sees | Ablation |
+| --- | --- | --- | --- |
+| **A baseline refused, four ways** | `gui`; `shape.json` (`{"neither": true}`) written into the copy | The worked journey below: not found, not json, of the wrong shape, outside the root. | `CompareView.tsx`'s `{refusal !== null && <Banner …>}` removed |
+| **A row opens its finding** | `copiedGui("demo", …)`, its change making the dump (`dump(directory, "demo.ddd.json", "baseline.json")`) and then the drift (`driftDatatypeIn(directory, SENSOR_HUB, "ValueA", "uint16")`) before the server starts, so that the first comparison already holds the finding and no watcher races it. The tab's existing journey keeps the drift of a live `gui` | Compare, then press the row "changed-interface" in the table "Findings": a panel named for the check opens, with the finding's whole message, "'ValueA' is not the same object any more (datatype: uint16 != uint8), read by Controller". It is not there until the row is pressed. Where it sits is not asserted, and the journey is titled "in a panel", not "beside it" (the final wave). | `CompareView.tsx`'s `row = rows.find(…)` never matching |
+| **That finding's route followed** | `copiedGui("layout", …)`: a copy of examples/layout with examples/plugins beside it, its description naming `"plugins": ["../plugins/ddd_layout.py"]`. `copiedGui` copied one example's directory alone, so Task 8 extended it (P19b-5): `layout` joins its examples, and a layout copy is made as `layout-N/layout` with the plugins as `layout-N/plugins`, so that two layout copies of one test share no plugins directory. The extension has a journey of its own, in `helpers.spec.ts`. The change dumps the copy as the baseline (`dump(directory, "project.ddd.json", "baseline.json")`), then changes EngineHours' `"key": 12` in storage.ddd.json to `14`, and throws if that text is not there. | The demo's comparison findings carry no route: `changed-interface` is filed on the project with no pointer (measured on the Linux development PC at `f891682`: route `None`), so its panel gives the reason "it is about the whole delivery being compared" and no link. A routed one comes from the layout plugin's comparison rule, which locates on a declaration: measured at `f090048` over such a copy, EngineHours moved from key 12 to 14, `layout/key-changed` is filed on storage.ddd.json at `component.interface[0]` with a route to the variable EngineHours. Compare, press that row (`layout/key-changed`), and its panel, which reads "'EngineHours' carried key 12 and now carries 14; its entry under 12 is orphaned", has the link "Open EngineHours". It opens the component page with EngineHours' panel: the address ends `storage.ddd.json&variable=EngineHours`, the heading "Storage" is level 1, and the panel is named EngineHours. | `CompareView.tsx`'s `onOpen` made a no-op |
+| **The renamed objects** | `gui`; `dump(…)`, then `renameValueA(gui.directory, "ValueZ")` | Compare: under the heading "Renamed objects", a row reading ValueA's id, "ValueA", "ValueZ" (columns "Id", "From", "To"). Before any rename, the heading's paragraph reads "Nothing was renamed." | `CompareView.tsx`'s `reply.renames.length === 0 ? …` inverted |
+| **The busy state** | `gui`; `dump(…)` twice (`baseline.json`, `other.json`); the `/api/compare` request of the second ask held by a route (`{ times: 1 }`, `route.continue()`, released in a `finally`) | The first ask has no verdict to lose, so the held ask is the second: `baseline.json` is asked first and its verdict, "This project can replace the baseline.", drawn; then `other.json` is asked. While held, "Baseline" and "Compare" are disabled and no verdict shows, the earlier one gone and not left standing. Released, the verdict shows again and both are enabled again. | `ComparePage.tsx`'s `busy={stopped \|\| compare.isFetching}` made `busy={stopped}` dies at the field's `toBeDisabled`; `placeholderData: (previous) => previous` added to the compare query keeps the earlier verdict, and dies at its `toHaveCount(0)` |
+
+- [ ] **Step 1: The worked journey,** in `gui/e2e/compare.spec.ts` (add `writeFileSync` from `node:fs`, `join` and `posix`-separated paths from `node:path`):
+
+```ts
+/** `path` as the server writes a path into a refusal: absolute, with forward slashes. */
+function posixOf(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+/** A whole sentence's start, as a pattern: the page's own words, up to where the system's own
+ * begin - an OSError's text or the json parser's, which differ between Linux and Windows. */
+function startingWith(words: string): RegExp {
+  return new RegExp(`^${words.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+}
+
+test("a baseline missing, not json, of the wrong shape or outside the root is refused in words of its own", async ({
+  page,
+  gui,
+}) => {
+  writeFileSync(join(gui.directory, "shape.json"), JSON.stringify({ neither: true }));
+  const root = posixOf(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+  const compare = page.getByRole("button", { name: "Compare" });
+  const refusal = page.getByRole("alert");
+
+  await baseline.fill("missing.json");
+  await compare.click();
+  await expect(refusal).toHaveText(
+    startingWith(`the baseline '${root}/missing.json' is unreadable: `),
+  );
+
+  await baseline.fill("include/sensor_hub_driver.h");
+  await compare.click();
+  await expect(refusal).toHaveText(
+    startingWith(`the baseline '${root}/include/sensor_hub_driver.h' is not valid json: `),
+  );
+
+  await baseline.fill("shape.json");
+  await compare.click();
+  await expect(refusal).toHaveText(
+    startingWith(`the baseline '${root}/shape.json' is neither a dictionary nor a description: `),
+  );
+
+  // Confinement is checked before anything is read: the file need not exist.
+  await baseline.fill("../outside.json");
+  await compare.click();
+  const outside = posixOf(join(gui.directory, "..", "outside.json"));
+  await expect(refusal).toHaveText(
+    `the baseline '${outside}' is outside the session root '${root}'`,
+  );
+});
+```
+
+  - Read each sentence off the running page on Linux before asserting it.
+  - Check how the server spells the copy's path: it resolves it, so a symlinked `/tmp` may differ. Build `root` from what the page shows if it does.
+  - The outside-the-root sentence has no system words, so it is asserted whole.
+- [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then the ablation: the refusal's banner removed, in a scratch copy of the package. It must die at the first `toHaveText`.
+- [ ] **Step 3: The other rows,** each a journey of its own in `compare.spec.ts`, each run and ablated as its row says.
+- [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
+- [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
+- [ ] **Step 6: The gates,** every journey included. Commit.
+
+### Task 9: a component and its values
+
+**Model:** sonnet, reviewed on sonnet. The rows reuse mechanisms other journeys already prove (`driftMaxUnseen`, a truncated file, `failing`).
+
+**Files:**
+- Modify: `gui/e2e/declarations.spec.ts` (a component's rows), `gui/e2e/values.spec.ts` (the values' row), and this plan's *The inventory*
+
+**Interfaces:**
+- Consumes: `failing`, `SERVER_FAILED` (Task 1); `driftMaxUnseen`, `drift`, `openValues`, `CONTROLLER` (`gui/e2e/demo.ts`).
+
+**The rows,** as read at `205d5a6`. Every quoted string is a guide: read the whole sentence off the running page before asserting it.
+
+| Row | Setup | Steps and what the reader sees | Ablation |
+| --- | --- | --- | --- |
+| **A dimension removed** | `gui` | Controller, "Add a declaration", a new name, kind `value_block`. Fill "Dimension 1 of <name>", press "Add a dimension", fill "Dimension 2 of <name>", then press "Remove dimension 1 of <name>". The one row left reads the second value, now "Dimension 1 of <name>", and its own "Remove dimension 1 of <name>" is disabled (a shape keeps one). Model: `declarations.spec.ts`'s "a value block is declared with the shape it is given". | `DimensionsField.tsx`'s `onPress={() => onRows(shown.filter((_, at) => at !== index))}` filtering nothing |
+| **A finding's link to a variable of the same file, opened in place** | `gui`; `drift(gui.directory)` once the page shows Controller | Controller's page. Under "Findings in this component", the `definition-mismatch` item's message is a link. Before pressing it, set a marker on `window` (`page.evaluate`). Pressing it opens ValueA's panel (`complementary` "ValueA"), the grid "Declarations of Controller" stays drawn, and the marker is still there: the same document, no page load. | `ComponentPage.tsx`'s `const onClick = inThisFile === null ? undefined : followVariable(inThisFile);` made `undefined` (the link then navigates, and the marker is gone) |
+| **The component's file not json** | `gui`; Controller's page open, and its file cut in half there (`writeFileSync(path, bytes.subarray(0, Math.floor(bytes.length / 2)))`, as `findings.spec.ts`'s "a finding that leads nowhere says why" does). Not once the page shows the canvas: Controller's module leaves the canvas within a second of the cut (measured in Chrome on the Linux development PC at 7e92c97, over `gui`'s copy of the demo: on it for three samples 250 ms apart, gone from the fourth), so there is nothing left to press | Controller's page shows only an `alert`, which is also the whole of `main`: "<the file's absolute path> is not json: <the parser's words>" (`session.py`'s `read_file`; the path as the server resolves it, so with native separators). No heading, no table. | `ComponentPage.tsx`'s `if (content.data.error !== null) return <Banner …>` removed |
+| **The component's file failing to load** | `gui`; `failing(page, "/api/file", "http")` before pressing Controller | The page shows only an `alert` reading `SERVER_FAILED`. | `ComponentPage.tsx`'s `if (content.isError) return <Banner …>` removed |
+| **A component no longer in the project** (added row: a stale bookmark) | `gui`; a file that exists and that no include names: `retired.ddd.json`, a copy of Controller's written at the copy's root, where the demo's `components/*.ddd.json` does not reach it. The page is signed in and drawn at the printed address first, then opened at `/component?file=<its path>` | The page shows only an `alert`: "<path> is not a description file of the open project" (`session.py`, answered `404`), the path as it was sent, in posix spelling. A file that exists makes membership, not existence, the reason for the refusal: with `session.py`'s membership check removed the server reads the file and the journey dies. | the same `content.isError` line |
+| **A declaration refused as out of date** | `gui` | The worked journey below. | `DeclarePanel.tsx`'s `onError: (error) => setRefusal(refusalOf(error))` made a no-op |
+| **A declaration's removal refused as out of date** | `gui` | Controller, ValueB's row (as `declarations.spec.ts`'s removal journey selects it), wait for "Remove from Controller" to be enabled. `driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999)`, press it. Under `region` "Remove the declaration", a `status` reads "A file changed on disk, so nothing was written. The panel now shows the files as they are." (`VariablePanel.tsx`'s `STALE`: "The panel", where the other panels say "The page"). Then `utimesSync`, as `keys.spec.ts` does; the refusal hides within 15 s; press again: ValueB's row is gone. | `VariablePanel.tsx`'s `setRemovalStale({ text: STALE, revision })` made a no-op |
+| **A value's Apply refused as out of date** | `gui`; `openValues(page, gui.address, "CurveA")` | Fill "element 3" with a new value, wait for "Apply to 1 file" (as `values.spec.ts`'s "a cell changed is written to the producer's file"). `driftMaxUnseen(...CONTROLLER, "ValueA", 999)`, press Apply. Under `region` "Set the cell", a `status` reads "A file changed on disk, so nothing was written. The page now shows the files as they are." Then `utimesSync`, the refusal hides, Apply again: the cell is written. | `ValuesPage.tsx`'s `setStaleFailed({ text: refusalOf(error), revision })` made a no-op |
+
+- [ ] **Step 1: The worked journey,** in `gui/e2e/declarations.spec.ts` (add `utimesSync` to its `node:fs` import, and `driftMaxUnseen` to its `./demo` import):
+
+```ts
+test("a declaration made from a file that changed on disk is refused, and made once the page has caught up", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Add a declaration" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a declaration" });
+  const name = adding.getByRole("combobox", { name: "Name" });
+  await name.fill("ValueC");
+  await name.press("Enter");
+  await expect(adding.getByText("Reads ValueC as SensorHub declares it.")).toBeVisible();
+  const apply = adding.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeEnabled();
+
+  // Controller changes under the plan the panel holds, unseen by the session's watcher, as
+  // keys.spec.ts's own stale journey changes it: only the Apply's own fingerprint check sees it.
+  driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
+  await apply.click();
+  await expect(adding.getByRole("status")).toHaveText(
+    "A file changed on disk, so nothing was written. The page now shows the files as they are.",
+  );
+  await expect(apply).toHaveCount(0);
+
+  // A stamp moved with no byte touched is what lets the next poll read the drifted file. The
+  // analysis landing shows as the disagreement the drift made, in Controller's own findings.
+  const path = join(gui.directory, CONTROLLER);
+  const now = new Date();
+  utimesSync(path, now, now);
+  await expect(
+    page.getByRole("link", { name: /'ValueA' is declared differently by component 'Controller'/ }),
+  ).toBeVisible({ timeout: 15000 });
+
+  // Asked again, against the files as they are now: the refusal goes with the edit, and the
+  // declaration is made.
+  await name.fill("ValueC");
+  await name.press("Enter");
+  await adding.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(page.getByRole("complementary", { name: "ValueC" })).toBeVisible();
+});
+```
+
+  The disagreement's link text is read off the running page before it is asserted, and the regex is narrowed to it.
+- [ ] **Step 2: Run it** after a build, and with `--repeat-each=10`. Then the ablation: `DeclarePanel.tsx`'s `onError` made a no-op, in a scratch copy of the package. It must die at the `status`'s `toHaveText`.
+- [ ] **Step 3: The other rows** of the table, each a journey of its own in the named file, each run, each ablated as its row says.
+- [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
+- [ ] **Step 5: The inventory.** Each row names its journey, or its reason.
+- [ ] **Step 6: The gates,** every journey included. Commit: one commit for a component's rows, one for the values' row.
+
+### Task 10: the final hunt, the figures, the gate and the close-out
+
+**The controller's own.**
+
+- [ ] **Step 1: The inventory complete.** Every row names a journey or a reason. Count them by screen for *Figures*.
+- [ ] **Step 2: Push,** after the bidi scan, and start the final hunt (`-f repeat=5`). It must pass with no failure on all three legs.
+  - A failure is worked at its cause, as part 19a's Task 3 worked them, and never retried.
+  - Its report may be downloaded, by the maintainer's leave (*Global Constraints*).
+- [ ] **Step 3: A full run** (`-f repeat=1`) at the head, with every job green, its six Python legs and three gui legs recorded in *Figures* with the journeys' time per leg.
+- [ ] **Step 4: The milestone gate** at the head, each exit status captured.
+- [ ] **Step 5: Close the plan out:**
+  - an *As built* note under the header;
+  - *Figures*;
+  - the progress log;
+  - *What was left open*;
+  - *Rulings taken*.
+
+## The inventory
+
+Every action a reader can take in `ddd gui`, and every state a reader can meet, with the journey that covers it or the reason none does (spec §4). Task 1 checked the starting rows, from part 19's survey and this plan's pre-flight at `205d5a6`, against the tree, and added the rows it and its review found that they did not name: a row a journey already drives cites it by file, line and title; a row none drives reads "none yet". By the maintainer's split, part 19b closes the starting rows alone, each owned by the task of its screen; every row added that no journey drives is owned by `19c`, for part 19c's own later plan on the same spec and helpers. A row that names a journey keeps it, whatever its owner. A line number is the one Task 1 read, and goes stale as journeys are added above it; the title is what names a journey. Each task of 19b fills in its own rows' journeys, or their reasons.
+
+| Screen | Row | Task | Journey |
+| --- | --- | --- | --- |
+| The journeys | `files.spec.ts`'s Remove-ordering wait, without `waitForResponse` | 1 | `files.spec.ts:145`, "the row a Remove takes out goes before the tab's next list of entries answers" |
+| The network | the page's stylesheet failed once | 2 | `network.spec.ts:11`, "a stylesheet the network failed once is asked for again, and the page is drawn styled" |
+| The network | the pressable rule's stylesheet failed once | 2 | `network.spec.ts:23`, "the pressable rule's stylesheet the network failed once is asked for again" |
+| The network | a stylesheet failing every time | 2 | `network.spec.ts:38`, "a stylesheet the network fails every time leaves the page drawn and working" |
+| The network | a GET failed once | 2 | `network.spec.ts:54`, "a GET the network failed once is sent again, and the page carries on" |
+| The network | a GET failing every time | 2 | `network.spec.ts:67`, "a GET the network fails every time reads as the server not answering" |
+| The network | the layout worker's script failed once | 10 | `network.spec.ts:83`, "the layout worker's script the network failed once is asked for again, and the canvas is drawn" |
+| The start page | the projects found listed, and the one chosen opened | 3 | `skeleton.spec.ts:143`, "without a project the start page lists the ones found and opens the one chosen" |
+| The start page | no project found | 3 | `start.spec.ts:30`, "an empty directory finds no project, and the start page says so" |
+| The start page | a build record not used | 3 | `start.spec.ts:47`, "a build record in a format too new is listed as not used, and its project is still offered" |
+| The start page | looking for projects | 3 | `start.spec.ts:67`, "the start page says it is looking for projects, until the list answers" |
+| The start page | the projects list failing | 3 | `start.spec.ts:88`, "the projects list failing shows the server's own error, with no list drawn" |
+| The start page | opening a project failing | 3 | `start.spec.ts:99`, "opening a project that fails leaves the start page in place, with the server's own error" |
+| The start page | a project listed with the images its build records name | 19c | none yet |
+| The start page | a project whose description does not load, listed as an unnamed project | 19c | none yet |
+| The start page | a project opening, the list's buttons held until it has | 19c | none yet |
+| The app | the address `ddd gui` printed, signing the page in on its project | 3 | `skeleton.spec.ts:16`, "the demo opens on its project page, with every component" |
+| The app | a tab of the project followed, and its address kept across a reload | 3 | `skeleton.spec.ts:216`, "the table is one tab away" |
+| The app | the browser's Back, within the page | 3 | `skeleton.spec.ts:205`, "clicking a module opens its component page, and the back button returns to the canvas" |
+| The app | the masthead's Projects, with a project open | 3 | `units.spec.ts:262`, "no page reports a violation of its content security policy" |
+| The app | the masthead's project name, back to the canvas | 3 | `units.spec.ts:6`, "a disagreement written from outside is resolved from the component page" |
+| The app | "Updating the findings…" while an edit's analysis runs | 3 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
+| The app | the server stopped, and the page saying so | 3 | `skeleton.spec.ts:134`, "the page says so when the server stops" |
+| The app | the signed-out view | 3 | `start.spec.ts:117`, "a page whose token the server no longer holds says how to sign in again" |
+| The app | the failure banner a broken answer raises | 3 | `start.spec.ts:133`, "an http failure of the long poll raises its own banner, and leaves the page drawn" |
+| The app | signed in by the one-time code `ddd gui` opens its own browser with | 19c | none yet |
+| The app | connecting, before the session answers | 19c | none yet |
+| The app | the session failing | 19c | none yet |
+| The app | analysing the project, before its first analysis lands | 19c | none yet |
+| The app | the server answering again after it stopped | 19c | none yet |
+| The app | nothing written while the server is stopped: every Apply and every write's button disabled | 19c | none yet |
+| The app | an entry's panel just after a rename or a declaration, saying the findings are updating until the analysis lands | 19c | none yet |
+| The app | the changes a plan makes, shown and then hidden again | 19c | none yet |
+| The undo strip | a unit's settlement undone, its changes shown, the file put back as it was | 3 | `undo.spec.ts:12`, "a unit settled from a panel is put back exactly as the file was" |
+| The undo strip | an adoption undone, file and include | 3 | `undo.spec.ts:44`, "an adopted vocabulary is taken away again, file and include" |
+| The undo strip | an undo refused, its file changed by hand | 3 | `undo.spec.ts:67`, "an undo of an edit whose file was changed by hand is refused, and keeps its place" |
+| The undo strip | the undo offered beside a component's name | 3 | `undo.spec.ts:95`, "the control stands beside a component's name too" |
+| The undo strip | the files an undo puts back, being read | 19c | none yet |
+| The undo strip | an undo the server fails on | 19c | none yet |
+| The server | localhost reaching `ddd gui`, which nothing else may take at [::1] | 3 | `localhost.spec.ts:13`, "localhost reaches ddd gui, and nothing else can listen on [::1] at its port" |
+| The server | a project on a mapped drive, served by its network path and edited through it (CI's Windows Chromium leg alone) | 3 | `mapped.spec.ts:14`, "a project on a mapped drive is served by its network path, and edited through it" |
+| The canvas | the project's modules and arrows drawn, every arrow agreed | 4 | `skeleton.spec.ts:160`, "the demo opens on a canvas of its four modules" |
+| The canvas | an arrow coloured by a disagreement, and plain again once it is put right | 4 | `skeleton.spec.ts:180`, "a disagreement colours its arrow" |
+| The canvas | hovering an arrow's label, which says what is wrong | 4 | `skeleton.spec.ts:192`, "an arrow says what is wrong" |
+| The canvas | a module pressed, opening its component | 4 | `skeleton.spec.ts:205`, "clicking a module opens its component page, and the back button returns to the canvas" |
+| The canvas | a module dragged, kept where it was put across a revision, and Tidy | 4 | `skeleton.spec.ts:227`, "a dragged module stays where it was put after a revision, and Tidy puts it back" |
+| The canvas | an arrow about one variable pressed, opening its panel, whose Apply settles it | 4 | `units.spec.ts:225`, "the same disagreement is resolved from its arrow on the canvas" |
+| The canvas | an arrow about two variables, asking which, from the keyboard | 4 | `units.spec.ts:237`, "an arrow in disagreement about two variables asks which, from the keyboard too" |
+| The canvas | an address naming a variable no longer declared, answered above the canvas | 4 | `units.spec.ts:188`, "a variable no longer declared closes its panel, and the page says so" |
+| The canvas | no dictionary | 4 | `canvas.spec.ts:68`, "a project with a file that does not load is drawn without arrows, and says why" |
+| The canvas | Fit | 4 | `canvas.spec.ts:85`, "Fit returns the viewport to the one the canvas opened on" |
+| The canvas | the module search, typed | 4 | `canvas.spec.ts:113`, "a search typed dims every module whose name does not contain it" |
+| The canvas | the module search's Enter | 4 | `canvas.spec.ts:129`, "a search's Enter centres the first module it finds" |
+| The canvas | hovering a module | 4 | `canvas.spec.ts:172`, "hovering a module dims every module that is not one of its neighbours" |
+| The canvas | the undeclared-variable banner, from an arrow | 4 | `canvas.spec.ts:198`, "a variable opened from an arrow and then no longer declared closes, and the canvas says so" |
+| The canvas | drawing the project | 4 | `canvas.spec.ts:220`, "the canvas says it is drawing the project until the graph answers" |
+| The canvas | laying the project out | 4 | `canvas.spec.ts:245`, "the canvas says it is laying the project out until the layout comes" |
+| The canvas | the layout worker failing | 4 | `canvas.spec.ts:274`, "a layout worker that cannot start says to reload, and a reload draws the canvas" |
+| The canvas | the project's graph failing before anything is drawn | 19c | none yet |
+| The canvas | the project's graph failing once drawn, the canvas kept | 19c | none yet |
+| The canvas | a module whose file does not load, drawn as not loaded | 19c | none yet |
+| The canvas | a module's badge, counting its errors or its warnings | 19c | none yet |
+| The canvas | an arrow reached by the keyboard, saying what is wrong | 19c | none yet |
+| The canvas | zoomed in and out with the canvas's own buttons | 19c | none yet |
+| The canvas | laid out in ranks only, for a project too large for the full layout | 19c | none yet |
+| The canvas | a later layout failing, the canvas kept | 19c | none yet |
+| The components table | each component listed with its errors and its warnings | 4 | `skeleton.spec.ts:16`, "the demo opens on its project page, with every component" |
+| The components table | a component's name pressed, opening its page | 4 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
+| The components table | its summary while the findings update | 4 | `canvas.spec.ts:329`, "the components table's summary says the findings are updating while they are" |
+| The components table | a row pressed beside its name, or Enter on it, opening its component | 19c | none yet |
+| Units | the units in use listed, the tab's line counting them | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
+| Units | a project with no units file offered the adoption, previewed and adopted | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
+| Units | the adoption made straight from its banner | 5 | `undo.spec.ts:44`, "an adopted vocabulary is taken away again, file and include" |
+| Units | a unit renamed, picked from the list or typed, merging into the vocabulary's spelling | 5 | `project-units.spec.ts:64`, "a unit renamed from its panel is renamed everywhere, merging into the vocabulary's spelling" |
+| Units | a unit's description saved | 5 | `project-units.spec.ts:124`, "the vocabulary is described, added to and pruned from the units' panels" |
+| Units | a unit added to the vocabulary | 5 | `project-units.spec.ts:124`, "the vocabulary is described, added to and pruned from the units' panels" |
+| Units | a unit nothing states, removed from the vocabulary | 5 | `project-units.spec.ts:124`, "the vocabulary is described, added to and pruned from the units' panels" |
+| Units | an Apply refused as out of date, then applied | 5 | `project-units.spec.ts:181`, "an apply made from a panel that is out of date is refused, and the panel shows the files as they are" |
+| Units | a unit no longer stated, its panel closed and the tab saying so, by a bookmark too | 5 | `project-units.spec.ts:226`, "a unit nothing states any longer closes its panel and the tab says so, but not while a file does not load" |
+| Units | the file stating a unit half-written, its panel kept and naming the file | 5 | `project-units.spec.ts:226`, "a unit nothing states any longer closes its panel and the tab says so, but not while a file does not load" |
+| Units | the adopt refused | 5 | `project-units.spec.ts:275`, "an adopt refused because its units file now exists says so in the banner, which goes once the units are read again" |
+| Units | reading the project's units | 19c | none yet |
+| Units | the units failing to load | 19c | none yet |
+| Units | the units failing once listed, the table kept | 19c | none yet |
+| Units | a unit's panel reading the unit | 19c | none yet |
+| Units | a unit's panel failing to read the unit | 19c | none yet |
+| Units | a units file listing no unit, the units in use adopted into it | 19c | none yet |
+| Units | a project stating no unit, with nothing to adopt | 19c | none yet |
+| Units | an Apply the server fails on | 19c | none yet |
+| Types | a type's unit settled, written, then undone | 5 | `types.spec.ts:76`, "a type's unit settled from its panel is written, then undone" |
+| Types | a type renamed everywhere, and refused onto another type's name | 5 | `types.spec.ts:110`, "a type is renamed everywhere, and a rename onto another type's name is refused" |
+| Types | a type's range | 5 | `types.spec.ts:165`, "a type's range is settled from its two fields, and written" |
+| Types | a type's datatype, picked from its list | 5 | `types.spec.ts:192`, "a type's datatype is picked from the list of datatypes, and written" |
+| Types | no "state nothing" for a required key | 5 | `types.spec.ts:224`, "a type's datatype and conversion offer no way to state nothing, where its unit and limits do" |
+| Types | a type's description | 5 | `types.spec.ts:266`, "a type's description is typed, and written" |
+| Types | a type gone | 5 | `types.spec.ts:293`, "a type nothing declares any longer closes its panel, and the tab says so" |
+| Types | a type's file half-written | 5 | `types.spec.ts:323`, "a type whose file does not load keeps its panel, naming the file, until the file loads again" |
+| Types | a type's Apply refused as out of date | 5 | `types.spec.ts:354`, "an apply made from a type's panel that is out of date is refused, and goes through once the page has caught up" |
+| Types | a type's unit or limits stated as nothing, the key leaving its entry | 5 | `types.spec.ts:405`, "a type's unit stated as nothing leaves its entry"; `types.spec.ts:432`, "a type's limits stated as nothing leave its entry" |
+| Types | reading the project's types | 19c | none yet |
+| Types | the types failing to load | 19c | none yet |
+| Types | the types failing once listed, the table kept | 19c | none yet |
+| Types | a type's panel reading the type | 19c | none yet |
+| Types | a type's panel failing to read the type | 19c | none yet |
+| Types | the untold banner | 19c | none yet |
+| Types | the unreadable banner | 19c | none yet |
+| Types | a type's "Where it is used" followed to the declaration | 19c | none yet |
+| Types | a structure's member followed to its type | 19c | none yet |
+| Types | a finding in a type's panel followed | 19c | none yet |
+| Types | an Apply the server fails on | 19c | none yet |
+| Shared files | a constant declared from a finding's route, its form filled in | 6 | `constants.spec.ts:19`, "a finding nobody could act on becomes a constant declared in two clicks" |
+| Shared files | a section declared from a finding's route, its access picked from the list | 6 | `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks" |
+| Shared files | a raster declared from a finding's route | 6 | `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
+| Shared files | a section's "Used by" followed to the declaration | 6 | `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks" |
+| Shared files | a raster nothing uses, removed | 6 | `shared.spec.ts:51`, "a raster nothing measures in is removed, row and panel" |
+| Shared files | "Declare an entry", and the blank form | 6 | `shared.spec.ts:258`, "a project declaring nothing offers a blank form, whose vocabulary brings its fields, and a constant declared from it is listed" |
+| Shared files | the add form refused: a name taken | 6 | `shared.spec.ts:298`, "the add form refuses a section's name the project already declares, and offers no apply" |
+| Shared files | the add form refused: a value no constant may state | 6 | `shared.spec.ts:315`, "the add form refuses a value no constant may state, in the words of a constant's own model" |
+| Shared files | the add form refused: an event taken | 6 | `shared.spec.ts:335`, "the add form refuses an event another raster already claims" |
+| Shared files | a constant's value saved | 6 | `shared.spec.ts:349`, "a constant's value and description are each saved from its panel" |
+| Shared files | a constant's description saved | 6 | `shared.spec.ts:349`, "a constant's value and description are each saved from its panel" |
+| Shared files | a constant renamed, and refused onto a name taken | 6 | `shared.spec.ts:382`, "a constant is renamed everywhere, and a rename onto a name c already holds is refused" |
+| Shared files | a constant removed | 6 | `shared.spec.ts:432`, "a constant nothing names is removed, row and panel, where one in use says why it cannot be" |
+| Shared files | a section's access, alignment and description saved | 6 | `shared.spec.ts:518`, "a section's access, alignment and description are each saved from its panel" |
+| Shared files | a section renamed, and removed | 6 | `shared.spec.ts:565`, "a section renamed onto another section's name is refused, and a section nothing places data in is removed" |
+| Shared files | a raster's event, cycle and description saved | 6 | `shared.spec.ts:78`, "a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused" |
+| Shared files | a raster renamed | 6 | `shared.spec.ts:150`, "a raster is renamed everywhere, its panel moving straight to the new name, and a rename onto another raster's name is refused" |
+| Shared files | a constant's "Used by" followed | 6 | `shared.spec.ts:598`, "a constant's Used by leads to the variable naming it, on its component's page" |
+| Shared files | a raster's "Used by" followed, to a component | 6 | `shared.spec.ts:612`, "a raster's Used by leads to the component measuring everything it produces in it, and to no variable" |
+| Shared files | an Apply refused as out of date | 6 | `shared.spec.ts:464`, "a save made from a constant's panel that is out of date is refused, and nothing is written" |
+| Shared files | an entry gone | 6 | `shared.spec.ts:199`, "a raster nothing declares any longer closes the panel an address opened, and the tab says so, even when the table hears of it first" |
+| Shared files | an entry's file half-written | 6 | `shared.spec.ts:488`, "a constant whose file does not load keeps its panel, naming the file, until the file loads again" |
+| Shared files | the untold banner | 6 | `shared.spec.ts:636`, "a shared file saved half-written is named above the table, whatever it declared untold" |
+| Shared files | the unreadable banner | 6 | `shared.spec.ts:658`, "a shared file that parses but breaks its model is named above the table, the entries declared there missing" |
+| Shared files | reading the project's shared files | 19c | none yet |
+| Shared files | the shared files failing to load | 19c | none yet |
+| Shared files | the shared files failing once listed, the table kept | 19c | none yet |
+| Shared files | an entry's panel reading the entry | 19c | none yet |
+| Shared files | an entry's panel failing to read the entry | 19c | none yet |
+| Shared files | a constant declared inside a component, its file followed | 19c | none yet |
+| Shared files | the add form's Apply refused as out of date | 19c | none yet |
+| Shared files | an Apply the server fails on | 19c | none yet |
+| Findings | a row pressed, opening its finding with its notes | 7 | `findings.spec.ts:41`, "a disagreement leads to its variable" |
+| Findings | a finding's route followed to its variable | 7 | `findings.spec.ts:41`, "a disagreement leads to its variable" |
+| Findings | a finding's route followed to a unit | 7 | `findings.spec.ts:111`, "an unknown unit leads to its unit" |
+| Findings | a finding's route followed to a type | 7 | `types.spec.ts:30`, "a finding inside a type leads to it" |
+| Findings | a finding's route followed to the add form of an entry not declared yet | 7 | `constants.spec.ts:19`, "a finding nobody could act on becomes a constant declared in two clicks"; `sections.spec.ts:28`, "a finding nobody could act on becomes a section declared in two clicks"; `rasters.spec.ts:33`, "a finding nobody could act on becomes a raster declared in two clicks" |
+| Findings | a settlement chosen, reaching every file of the variable | 7 | `findings.spec.ts:70`, "a disagreement is settled from the finding that reports it" |
+| Findings | a fix chosen, its changes shown, and applied | 7 | `findings.spec.ts:129`, "a missing id is fixed" |
+| Findings | a finding that leads nowhere, saying why | 7 | `findings.spec.ts:155`, "a finding that leads nowhere says why" |
+| Findings | nothing to report | 7 | `findings.spec.ts:174`, "the tab says when there is nothing to report" |
+| Findings | the tab's line counting the findings, after an edit too | 7 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
+| Findings | the table scrolled to its end | 7 | `large.spec.ts:139`, "the Findings table scrolled to its end" |
+| Findings | the keyboard walking past the rows drawn | 7 | `large.spec.ts:162`, "the keyboard walks past the rows drawn" |
+| Findings | a finding no longer reported | 7 | `findings.spec.ts:182`, "a finding fixed from outside while its panel is open is no longer reported, and the tab says so" |
+| Findings | a fix's Apply refused as out of date | 7 | `findings.spec.ts:212`, "a fix applied while its file changed on disk is refused, and nothing is written" |
+| Findings | the fixes a finding carries failing | 7 | `findings.spec.ts:257`, "the fixes of a finding failing leave its panel without them, and an alert over it says so" |
+| Findings | the page of findings failing | 7 | `findings.spec.ts:280`, "the page of findings failing leaves an alert over a table with nothing to open" |
+| Findings | a page of findings still being read | 19c | none yet |
+| Findings | a fix's Apply the server fails on | 19c | none yet |
+| Files | a component created by New file | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
+| Files | an existing file added | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
+| Files | a removal refused for the error it would leave | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
+| Files | a file removed from the includes | 7 | `files.spec.ts:14`, "a component is created, an existing file is added, and one removal is refused where another goes through" |
+| Files | the row a New file makes, shown before the tab's next list answers | 7 | `files.spec.ts:104`, "the row a New file makes shows before the tab's next list of entries answers" |
+| Files | the row a Remove takes out, gone before the tab's next list answers, and put back by the undo | 7 | `files.spec.ts:145`, "the row a Remove takes out goes before the tab's next list of entries answers" |
+| Files | the row the page was opened on, waiting for the reader before its removal is planned, and planned from the keyboard | 7 | `files.spec.ts:232`, "the row the page was opened on waits for the reader before its removal is planned" |
+| Files | the row the page was opened on, pressed off and on again in the table | 7 | `files.spec.ts:284`, "the row the page was opened on, pressed off and on again in the table, is planned at once" |
+| Files | a row reached by Back within the page, planned at once, after a reload too | 7 | `files.spec.ts:319`, "a row reached by going back within the page is planned at once, even after a reload" |
+| Files | an action refused as out of date | 7 | `files.spec.ts:354`, "a Remove applied while the description changed on disk is refused, and goes through once the analysis has caught up" |
+| Files | the findings a file would bring | 7 | `files.spec.ts:417`, "the errors a file would bring are listed in the Add a file preview, which still offers to add it" |
+| Files | the list failing at first | 7 | `files.spec.ts:462`, "the list failing at first leaves the server's own error, with no table and no way to add a file" |
+| Files | the list failing later | 7 | `files.spec.ts:476`, "the list failing once drawn leaves the table, with the server's own error over it" |
+| Files | reading the project's files | 19c | none yet |
+| Files | a New file of a vocabulary's own kind: types, units, constants, sections or rasters | 19c | none yet |
+| Files | New file refused | 19c | none yet |
+| Files | Add a file refused | 19c | none yet |
+| Files | New file's and Add's out-of-date refusal, shown in their own panels | 19c | none yet |
+| Files | an entry whose file did not load | 19c | none yet |
+| Files | an entry naming no file | 19c | none yet |
+| Files | an entry the last analysis did not read | 19c | none yet |
+| Files | a pattern entry, the files it matches listed under it | 19c | none yet |
+| Files | a removal refused for a file only a pattern brings in | 19c | none yet |
+| Files | an Apply the server fails on | 19c | none yet |
+| Compare | a baseline compared: the verdict, the line counting its findings, and a changed interface | 8 | `compare.spec.ts:6`, "a reader can ask whether this delivery replaces the last" |
+| Compare | a baseline refused: not found, not json, of the wrong shape, outside the root | 8 | `compare.spec.ts:55`, "a baseline missing, not json, of the wrong shape or outside the root is refused in words of its own" |
+| Compare | a row opens its finding | 8 | `compare.spec.ts:94`, "a row of the findings table opens its finding in a panel" |
+| Compare | a finding's route followed, which only a plugin's comparison rule files on a declaration | 8 | `compare.spec.ts:117`, "a finding filed on a declaration leads to that declaration from its panel's link" |
+| Compare | the renamed objects | 8 | `compare.spec.ts:162`, "an object renamed since the baseline is listed with its id, where nothing was renamed before" |
+| Compare | the busy state | 8 | `compare.spec.ts:184`, "while a comparison is awaited the field and the button are disabled and the earlier verdict is gone" |
+| Compare | a baseline asked for with Enter | 19c | none yet |
+| Compare | a finding about the whole delivery, saying why it leads nowhere | 19c | none yet |
+| Compare | the baseline's own findings, named as the baseline's and leading nowhere | 19c | none yet |
+| Compare | a finding's panel closed | 19c | none yet |
+| A component | its declarations, and a change saved by another editor reaching them while a unit is being typed | 9 | `skeleton.spec.ts:81`, "a change saved by another editor reaches the page, and a unit being typed keeps its draft" |
+| A component | a row selected, opening its variable's panel, kept across a reload | 9 | `units.spec.ts:179`, "the address keeps the panel open across a reload" |
+| A component | a unit cell pressed, its picker focused, and focused again by a second press | 9 | `units.spec.ts:163`, "a unit cell pressed again, once focus has moved elsewhere, moves it back to the picker" |
+| A component | a unit chosen and applied to every file declaring it | 9 | `skeleton.spec.ts:30`, "a unit set from the panel is written as one value in every file declaring it" |
+| A component | a unit chosen but not applied, the panel closed | 9 | `skeleton.spec.ts:65`, "a unit chosen but not applied changes nothing" |
+| A component | the picker's choices, narrowed by typing | 9 | `units.spec.ts:143`, "the picker lists the variable's units, then the project's, narrowed by what is typed" |
+| A component | a unit typed and confirmed with Enter, listed or not, or reached with ArrowDown | 9 | `units.spec.ts:38`, "a unit typed and confirmed with Enter is the unit chosen, listed or not" |
+| A component | text left without Enter: Escape, an empty Enter, Tab | 9 | `units.spec.ts:81`, "text left without Enter chooses nothing, and the field reads the chosen unit again" |
+| A component | the panel after an Apply, still on the unit applied | 9 | `units.spec.ts:114`, "after Apply the panel stays on the unit applied, and asks again only what Apply changed" |
+| A component | a disagreement written from outside, settled from its panel with its changes shown | 9 | `units.spec.ts:6`, "a disagreement written from outside is resolved from the component page" |
+| A component | a variable no longer declared, its panel closed and the page saying so, by a bookmark too | 9 | `units.spec.ts:188`, "a variable no longer declared closes its panel, and the page says so" |
+| A component | a file half-written, the panel of a variable only it declares kept | 9 | `units.spec.ts:381`, "a file saved half-edited leaves open the panel of a variable only it declares" |
+| A component | a conversion carried back from the producer | 9 | `keys.spec.ts:23`, "a conversion drifted from outside is carried back from the producer" |
+| A component | a range typed into its two fields | 9 | `keys.spec.ts:57`, "a range typed into the two fields reaches every declaration" |
+| A component | a limits row the panel opens by itself, settled on the producer's range, the other picked and previewed | 9 | `keys.spec.ts:72`, "a limits row the panel opens by itself settles on the producer's range" |
+| A component | a key's Apply refused as out of date, the file read again, then applied | 9 | `keys.spec.ts:130`, "a change refused as stale can be applied again once the analysis has caught up"; `skeleton.spec.ts:105`, "an edit made from a page that is out of date is refused, and the file reloaded" |
+| A component | a range the two fields do not make, offering no Apply | 9 | `keys.spec.ts:168`, "a range the two fields do not make offers no Apply, and changes nothing" |
+| A component | a truth value typed with Enter, never left unstated | 9 | `keys.spec.ts:206`, "a truth value is typed, confirmed with Enter, and cannot be left unstated" |
+| A component | a key a declared type fixes, refused | 9 | `keys.spec.ts:226`, "a key a declared type fixes is refused, and nothing is written" |
+| A component | a key a declared type fixes, followed to the type | 9 | `types.spec.ts:57`, "a key a declared type fixes leads to that type" |
+| A component | a key left unstated, gone from every declaration | 9 | `keys.spec.ts:241`, "a key that may be left unstated goes from every declaration" |
+| A component | a dimension naming a constant, followed to it | 9 | `constants.spec.ts:19`, "a finding nobody could act on becomes a constant declared in two clicks" |
+| A component | a variable another component produces, read in | 9 | `declarations.spec.ts:16`, "a variable another component produces is read, keys and all" |
+| A component | a new measurement declared, and stamped | 9 | `declarations.spec.ts:42`, "a new measurement is declared and stamped" |
+| A component | a value block declared with the shape it is given | 9 | `declarations.spec.ts:76`, "a value block is declared with the shape it is given" |
+| A component | a curve declared against an axis picked from the project's | 9 | `declarations.spec.ts:137`, "a curve is declared against an axis the project has" |
+| A component | a name the project already has, refused | 9 | `declarations.spec.ts:171`, "a name the project already has is refused in its own words" |
+| A component | a declaration removed, then put back | 9 | `declarations.spec.ts:196`, "a declaration is removed and put back" |
+| A component | a finding of the component followed to a grid | 9 | `values.spec.ts:449`, "a finding on an object's init leads to its grid, not its panel" |
+| A component | a shape deeper than a grid, shown as text with no button | 9 | `values.spec.ts:475`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
+| A component | a curve naming a scalar type, keeping its button | 9 | `values.spec.ts:503`, "a curve naming a scalar type keeps its button, and its grid" |
+| A component | the table walked back up by the keyboard, a row stopping below its header | 9 | `values.spec.ts:537`, "a row walked back up near the top stops below the sticky header, not under it" |
+| A component | a dimension removed | 9 | `declarations.spec.ts:109`, "a dimension removed leaves the next one in its place, and a shape keeps one" |
+| A component | a finding's link to a variable of the same file, opened in place | 9 | `declarations.spec.ts:313`, "a finding's link to a variable of the same file opens its panel in place, without loading the page again" |
+| A component | its file not json | 9 | `declarations.spec.ts:343`, "a component file that stops parsing is shown by its path and the parser's words, and nothing else" |
+| A component | its file failing to load | 9 | `declarations.spec.ts:370`, "a component file failing to load leaves the server's own error, and nothing else" |
+| A component | a component no longer in the project | 9 | `declarations.spec.ts:385`, "an address naming a file the project does not include says so, and shows nothing else" |
+| A component | a declaration refused as out of date | 9 | `declarations.spec.ts:231`, "a declaration made from a file that changed on disk is refused, and made once the page has caught up" |
+| A component | a declaration's removal refused as out of date | 9 | `declarations.spec.ts:278`, "a removal made from a file that changed on disk is refused, and made once the page has caught up" |
+| A component | reading its file | 19c | none yet |
+| A component | a component file that parses but breaks its schema, drawn as the page draws any file | 19c | none yet |
+| A component | reading its findings | 19c | none yet |
+| A component | its findings failing to load | 19c | none yet |
+| A component | no finding in it | 19c | none yet |
+| A component | a variable's panel reading the variable | 19c | none yet |
+| A component | a variable's panel failing to read the variable | 19c | none yet |
+| A component | a finding in a variable's panel, followed to what it names | 19c | none yet |
+| A component | a unit outside the project's vocabulary, said to be | 19c | none yet |
+| A component | the add panel reading what may be declared | 19c | none yet |
+| A component | the add panel failing to read it | 19c | none yet |
+| A component | a dimension picked from the project's constants | 19c | none yet |
+| A component | a key's Apply, a removal or a declaration the server fails on | 19c | none yet |
+| Values | a curve read against its axis, raw and physical | 9 | `values.spec.ts:39`, "a curve is read against its axis, raw and physical" |
+| Values | a curve drawn from the numbers it holds | 9 | `values.spec.ts:77`, "a curve is drawn from the numbers it holds" |
+| Values | a cell changed, its changes shown, and written to the producer's file | 9 | `values.spec.ts:131`, "a cell changed is written to the producer's file" |
+| Values | a value applied, shown at once and kept while its findings update | 9 | `values.spec.ts:169`, "a value applied in the grid shows at once, and stays while its findings update" |
+| Values | a reader's grid naming the producer's file | 9 | `values.spec.ts:186`, "a reader's page names the producer's file, not its own" |
+| Values | a map's cell, named by its row and its column | 9 | `values.spec.ts:199`, "a map's cell names its row and its column" |
+| Values | a physical value no raw count represents, shown as stored | 9 | `values.spec.ts:218`, "a physical value no raw count represents shows what was stored" |
+| Values | a value refused: not a number, or more than its datatype holds | 9 | `values.spec.ts:229`, "a value the datatype cannot hold is refused, and nothing is written" |
+| Values | Enter, settling what was typed and writing nothing | 9 | `values.spec.ts:250`, "Enter settles what was typed and writes nothing" |
+| Values | a cell changed, then put back | 9 | `values.spec.ts:274`, "a cell changed is put back" |
+| Values | a curve pasted, every value replaced in one edit | 9 | `values.spec.ts:363`, "a pasted curve replaces every value in one edit" |
+| Values | a map pasted with its header row and column | 9 | `values.spec.ts:381`, "a pasted map takes its header row and column" |
+| Values | a pasted block of the wrong shape, refused | 9 | `values.spec.ts:394`, "a block of the wrong shape is refused and nothing is written" |
+| Values | a pasted block refused, naming every value its datatype cannot hold | 9 | `values.spec.ts:407`, "a value the datatype cannot hold names every offender" |
+| Values | a pasted table, put back | 9 | `values.spec.ts:426`, "a pasted table is put back" |
+| Values | a grid's finding shown beside it | 9 | `values.spec.ts:449`, "a finding on an object's init leads to its grid, not its panel" |
+| Values | a shape deeper than a grid, refused with a way back | 9 | `values.spec.ts:475`, "a shape deeper than a grid is shown, not offered, and says so with a way back" |
+| Values | a curve naming a scalar type, its grid as before | 9 | `values.spec.ts:503`, "a curve naming a scalar type keeps its button, and its grid" |
+| Values | an Apply refused as out of date | 9 | `values.spec.ts:291`, "a value applied from a file that changed on disk is refused, and applied once the page has caught up" |
+| Values | reading the values | 19c | none yet |
+| Values | the values failing to load | 19c | none yet |
+| Values | an object no longer declared, its page saying so, with the way back | 19c | none yet |
+| Values | a declaration with no cell, opened by its address | 19c | none yet |
+| Values | an object initialised with text | 19c | none yet |
+| Values | a grid that states nothing | 19c | none yet |
+| Values | a grid stated once for every cell | 19c | none yet |
+| Values | a grid nothing produces, or more than one place does, read only | 19c | none yet |
+| Values | a cell's Apply the server fails on | 19c | none yet |
+
+## Milestone gate
+
+At the head, each exit status captured on its own (`gate.sh` in the session scratchpad runs them in this order):
+1. `.venv/bin/python -m pytest`: its summary line, and 100 % line and branch.
+2. `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`, `.venv/bin/mypy`.
+3. `cd gui`, then `DDD=../.venv/bin/ddd DDD_PYTHON=../.venv/bin/python npm run schemas`, then `npm run lint`, `npm run typecheck`, `npm test` (100 % on all four), `npm run build`, `npm run ladle:build`.
+4. From the root: `docker compose run --rm gui-screenshots` in compare mode, with no reference moved except those a task changed on purpose, each opened and described.
+5. `docker compose run --rm -e JAVA_TOOL_OPTIONS=-Duser.home=/tmp docs`.
+6. The journeys, after the build and never alongside Docker: `PLAYWRIGHT_CHANNEL=chrome DDD_PYTHON="$PWD/../.venv/bin/python" npx playwright test --output=<scratch>`.
+7. CI: the final hunt clean on all three legs, and a full run green on every job.
+
+## Figures
+
+### The inventory
+
+By screen: the rows covered before this part's journeys (the inventory as Task 1 closed it, at `de1dd7d`), the rows covered after them (at the head), the rows with a reason instead, and the rows owned by part 19c. "The journeys" is Task 1's own row: an older journey whose wait it changed.
+
+| screen | rows | covered before | covered after | with a reason | for 19c |
+| --- | --- | --- | --- | --- | --- |
+| The journeys | 1 | 1 | 1 | 0 | 0 |
+| The network | 6 | 0 | 6 | 0 | 0 |
+| The start page | 9 | 1 | 6 | 0 | 3 |
+| The app | 17 | 7 | 9 | 0 | 8 |
+| The undo strip | 6 | 4 | 4 | 0 | 2 |
+| The server | 2 | 2 | 2 | 0 | 0 |
+| The canvas | 25 | 8 | 17 | 0 | 8 |
+| The components table | 4 | 2 | 3 | 0 | 1 |
+| Units | 19 | 10 | 11 | 0 | 8 |
+| Types | 21 | 2 | 10 | 0 | 11 |
+| Shared files | 32 | 4 | 24 | 0 | 8 |
+| Findings | 18 | 12 | 16 | 0 | 2 |
+| Files | 24 | 9 | 13 | 0 | 11 |
+| Compare | 10 | 1 | 6 | 0 | 4 |
+| A component | 52 | 32 | 39 | 0 | 13 |
+| Values | 28 | 18 | 19 | 0 | 9 |
+| **all** | 274 | 113 | 186 | 0 | 88 |
+
+Every one of this part's 186 rows names its journey; 190 citations, each checked against its file's `test(` line and title at the head.
+
+### The journeys' time
+
+Before: part 19a's pull request run 37787987752. After: Task 10's full run 38339879535, at `1aa88a5`, whose code is the milestone gate's `ba28818`. The windows chromium leg has one journey more on both sides: `mapped.spec.ts`, which runs there alone. Spec §8 estimated about 50 more journeys; there are 78, and a pass takes about two minutes longer on each leg, far inside the jobs' timeouts.
+
+| leg | journeys before | time before | journeys after | time after |
+| --- | --- | --- | --- | --- |
+| ubuntu chromium | 93 | 3.6 min | 171 | 5.6 min |
+| windows chromium | 94 | 3.7 min | 172 | 6.0 min |
+| windows msedge | 93 | 3.9 min | 171 | 6.0 min |
+
+### The full run at the head
+
+Run 38339879535, at `1aa88a5`, `repeat=1`: every job succeeded. The development build and publish were skipped, as on any dispatch.
+
+| job | result |
+| --- | --- |
+| test (ubuntu-latest, 3.12) | 7026 passed in 6 min 27 s, at 100 % |
+| test (ubuntu-latest, 3.13) | 7026 passed in 6 min 11 s, at 100 % |
+| test (ubuntu-latest, 3.14) | 7026 passed in 4 min 14 s, at 100 % |
+| test (windows-latest, 3.12) | 7026 passed in 9 min 6 s, at 100 % |
+| test (windows-latest, 3.13) | 7026 passed in 8 min 18 s, at 100 % |
+| test (windows-latest, 3.14) | 7026 passed in 4 min 50 s, at 100 % |
+| gui (ubuntu-latest, chromium) | Vitest 936 passed; journeys 171 passed in 5.6 min |
+| gui (windows-latest, chromium) | Vitest 936 passed; journeys 172 passed in 6.0 min, mapped.spec.ts included |
+| gui (windows-latest, msedge) | Vitest 936 passed; journeys 171 passed in 6.0 min |
+| lint, container, extension, gui-screenshots | success |
+
+### The final hunt
+
+Two hunts, `repeat=5`, each journey five times on each leg: the first at `e7c7515` (Task 9's head), while the final review read the branch; the second at `4e546ad` (the final review's fix wave), because the wave changed a journey's steps and added one (P19b-25). Neither had a failure.
+
+| run | head | leg | journeys run | failures | time |
+| --- | --- | --- | --- | --- | --- |
+| 38330498359 | `e7c7515` | ubuntu chromium | 850 | 0 | 26.1 min |
+| | | windows chromium | 855 | 0 | 23.1 min |
+| | | windows msedge | 850 | 0 | 33.1 min |
+| 38336521123 | `4e546ad` | ubuntu chromium | 855 | 0 | 27.8 min |
+| | | windows chromium | 860 | 0 | 25.3 min |
+| | | windows msedge | 855 | 0 | 31.4 min |
+
+Between them, every task's own run passed on every leg but one. Run 38316603646, at Task 7's head, failed once on Windows chromium, in `values.spec.ts:249`, a journey older than this part: the page's own script was refused a socket (`net::ERR_NO_BUFFER_SPACE`), and the page stayed blank (P19b-22).
+
+### The milestone gate
+
+At `ba28818`, on the Linux development PC, through `gate.sh`, each exit status captured on its own line. Every one was 0.
+
+| gate | result |
+| --- | --- |
+| `.venv/bin/python -m pytest` | 7026 passed in 2 min 54 s, at 100 % line and branch |
+| `ruff check`, `ruff format --check`, `mypy` | all checks passed; 170 files already formatted; no issues in 91 source files |
+| `npm run schemas`, `npm run lint`, `npm run typecheck` | 0; lint prints biome's one info, which predates this part |
+| `npm test` | 936 passed, 100 % on all four (1606 statements, 1283 branches, 565 functions, 1303 lines) |
+| `npm run build`, `npm run ladle:build` | 0 |
+| `docker compose run --rm gui-screenshots` | 162 passed in compare mode; no reference moved (the new `components--typepanelview--no-unit-chosen.png` was made by the wave) |
+| the docs under `-W`, in Docker | build succeeded |
+| every journey, Chrome | 171 passed in 3.8 min |
+
+## Progress log
+
+| Task | Commits | Review | Notes |
+| --- | --- | --- | --- |
+| 1: the inventory, the two helpers, `files.spec.ts`'s wait | `78f3e8c`, `7d1ab91`, `f090048`; round 1 `3f1279d`, `cb09778`, `c506c66`, `de1dd7d` | opus: needs fixes, then clean after one round | the inventory came to 150 rows with no journey, and the split followed (P19b-3); run 37905686691 green |
+| 2: the page sends its loads once more | `9782858`, `0855e8e`, `19fab74` | opus: approved | `sheetLoaded`: in Chromium a failed link still holds a sheet; run 37913135127's one failure led to P19b-7 |
+| 1b: the Remove journey's route, Task 2's Minors | `d4fd8f6`, `19e700b`, `7517ba2` | sonnet: approved | run 37918281766 green |
+| 3: the start page and the app around every page | `9caafd3`, `4bf7fa9` | sonnet: needs fixes, then clean after one round | Windows paths written posix; the long poll answered at once (P19b-9); run 37926757938 green |
+| 4: the canvas and the components table's summary | `307b244` | opus: approved | run 38284718643 green |
+| 5: Units and Types | `a513001`, `7e46f9a`; round 1 `72a7f01`, `f27c374` | sonnet: needs fixes, then clean after one round | a bug fixed (P19b-12); runs 38291224356 and 38297464266 green |
+| 6: Shared files | `61cda0e`, `163a6e3`, `e0eae6e`, `cfcc45e`, `4a702f3`, `d76a61e` | opus: approved | a bug fixed (P19b-17); run 38307570169 green |
+| 7: Files and Findings | `d14e71d`, `59c609d` | sonnet: approved | P19b-20 recorded; run 38316603646: Task 7's eight green on every leg, one failure that was P19b-22's |
+| 8: Compare | `76219b2`, `ebf5bca`, `7e92c97` | sonnet: approved | `copiedGui`'s layout copy (P19b-5); run 38323123373 green |
+| 9: a component and its values | `2f5d96c`, `e7c7515` | sonnet: approved | run 38328645456 green, the two path spellings proven on Windows; P19b-24 recorded |
+| final review | `b53efaa`, `0c9ff12`, `a8ae8a7`, `ccab3e7`, `4e546ad`; then `ba28818` | opus: with fixes, five Minors and 15 of 36 deferred Minors into one wave; re-review all addressed | the worker asked for once more (P19b-26), the "no unit" story (P19b-15); the re-review's two Minors fixed by the controller (P19b-28) |
+| 10: the hunts, the figures, the gate, the close-out | `1aa88a5`, then this close-out | | two clean hunts; the milestone gate at `ba28818`; the task texts made true to what was built |
+
+## What was left open
+
+Known before execution:
+- **Firefox, Safari and macOS** (spec §11).
+- **The user guide,** part 20.
+- **P19a-7's question:** how long a refusal held stale shows. The maintainer has not answered it.
+- **The rows owned by 19c,** 88 of them, for part 19c, which takes them under its own later plan on the same spec and helpers:
+  - every row Task 1 added to *The inventory* that no journey drives (79);
+  - the six that ruling P19b-4 added;
+  - the three that ruling P19b-27 added.
+- **That the page draws only after its stylesheets were asked again is pinned by no journey** (Task 2). A journey would need a negative wait, which the house rules forbid. `network.spec.ts`'s journeys 1 and 2 prove that the stylesheet arrives, not that it arrived before the first draw.
+
+Found during execution, each recorded for the maintainer with its ruling:
+- **An adopt refused because a units file appeared** (P19b-11). It shows its refusal for 31 to 44 ms before its banner is withdrawn. Whether the refusal should outlive the banner is a design decision, beside P19a-7's.
+- **A selection that changes nothing offers a change** (P19b-13). A type's key selected and left unchanged shows "Changes 1 file", with an empty diff (datatype, unit) or a re-layout (conversion, limits). The plan route answers a file entry with no hunk, and the view reads it as a change. The final review notes that the datatype and unit half could be fixed in the view's library alone.
+- **A bare word in a constant's value** (P19b-18) is answered in the json parser's words ("'oops' is not one json value: …"), not the constant's own sentence. This is the api's design: a request that is not json answers 400.
+- **A failed read of a new revision drops the table** (P19b-20) on five tabs: Files, Units, Types, Shared files and Graph. `placeholderData` serves only a pending read, so the comment "A server that stopped answering leaves the table as it was" holds only for a re-read of the same revision. Part 19c's "failing once listed, the table kept" rows meet the same choice. Part 19a's *What was left open* named its cause, `retry: false`, as a candidate.
+- **The page's own script refused a socket** (P19b-22). `net::ERR_NO_BUFFER_SPACE`, once, on Windows chromium in run 38316603646, left the page blank. Neither final hunt met it. The options:
+  - a same-origin boot script asking for the module once more;
+  - an inline boot behind a CSP hash;
+  - accepting it.
+- **The panels differ on a stale refusal** (P19b-24).
+  - The declare panel lets it go on the next edit; the others hold it until the next revision.
+  - The declare and removal panels withdraw their button while it stands; the values grid keeps its Apply.
+- **The stale decision is made inline** in ten `.tsx` files, thirteen places (`error instanceof ApiError && error.code === "stale"`), and `UnitPanel.tsx`'s `refusalOf` repeats it. Meanwhile `lib/refusals.ts` exports `isStale`, which only `FilesPage.tsx` uses. This predates 19b and spans the screens. The house rule "no decision in a .tsx file" is not met there.
+
+For part 19c, from the reviews:
+- **A `held(page, matcher)` helper,** as 19c's first task. The held-request recipe has eight copies, two of them drifted to no `{ times: 1 }`, and 19c's loading-state rows add about fifteen more. The final review's recommendations give its shape.
+- **Write before the press** for the out-of-date rows: a file written unseen before the press, as five 19b journeys do, needs no route.
+- **The stamp bump** (seven copies) gets a helper beside `writeUnseen` if 19c adds more "refused, then applied once caught up" journeys.
+
+Elsewhere:
+- **`npm run lint` prints "Found 1 info"** (biome.json's deprecated `recommended`). It predates 19b; a `biome migrate` belongs in a change of its own.
+- **GitHub's `ubuntu-latest` moves to Ubuntu 26** from 2026-10-19. The next runs after that date are the first on it.
+
+## Rulings taken
+
+Taken while planning; execution adds its own below them.
+
+1. **The inventory lives in this plan, and starts from the pre-flight's rows** (spec §4). The pre-flight read every screen the spec names at `205d5a6` and added rows the survey missed: the start page's loading state, the layout worker failing, a type's Apply out of date, a component no longer in the project, a declaration's removal out of date. Task 1 checks them all again — cost if wrong: none.
+2. **Task 2 comes before every screen's task.** A network banner's journey depends on whether a GET is sent again — cost if wrong: none.
+3. **An error banner from an HTTP failure is reached with `failing`'s `"http"`,** which answers the server's own error body (`SERVER_FAILED`). A network banner's request fails every time — cost if wrong: a banner shown for a body the server never sends.
+4. **A refusal whose sentence ends in the system's own words** (an `OSError`'s text, the json parser's) is asserted whole up to those words, as its start. Those words differ between Linux and Windows — cost if wrong: a change to the system's words goes unpinned, which is not the page's to pin.
+5. **The Compare tab's busy state is asserted by what the page does,** the field and the button disabled and the reply gone, since it draws no busy text — cost if wrong: none.
+6. **The pre-flight's corrections stand over the spec's rows** (Tasks 5 to 8):
+   - a scalar type offers four keys, two of them required;
+   - the Types panel applies, where the Units panel saves;
+   - a file brings errors only;
+   - the Files tab writes the project description alone;
+   - a truncated shared file is untold, a schema-broken one unreadable.
+
+   Cost if wrong: none; each was read from the code.
+7. **Models:** opus for Tasks 1, 2, 4 and 6, sonnet for 3, 5, 7, 8 and 9. Reviews on opus for 1, 2, 4 and 6, sonnet for the rest. The final whole-branch review on opus — cost if wrong: a cheaper reviewer missing a vacuous journey, which each journey's named ablation guards against.
+8. **Only the controller pushes,** and only this branch, by the maintainer's leave of 2026-10-09 — cost if wrong: a slower loop.
+
+### Taken during execution
+
+Numbered as the ledger numbered them; code comments cite them by number.
+
+- **P19b-1. The baseline gate is part 19a's.** That is its milestone gate at `0cd4172`, pytest at `9d6e96c` (7025 at 100 %), and its pull request's run 37787987752. Master `ff9954e`'s tree is `9d6e96c`'s, and this part's first commits touched only its own documents — cost if wrong: a red misattributed to this part, which Task 1's gate would have shown.
+- **P19b-2. The models are those of ruling 7.** Opus implemented Tasks 1, 2, 4 and 6, and sonnet the rest. Reviews took the same seats, and the final review ran on opus — cost if wrong: a cheaper seat missing a vacuous journey, which each journey's named ablation guards against.
+- **P19b-3. The split.** Task 1 found 150 rows with no journey, about three times the spec's estimate. By the maintainer's choice, this part closes the 71 starting rows, and every row Task 1 added is owned by "19c" in *The inventory*. A row Task 1 added that already cites a journey keeps its screen's task as owner, with no work — cost if wrong: none; rows only change part.
+- **P19b-4. Six more rows for 19c.** Two Values rows, and a panel failing to read its entry for the variable, unit, type and entry panels — cost if wrong: none.
+- **P19b-5. The routed comparison finding is reached through examples/layout.** That example's plugin files `layout/key-changed` on a declaration. Task 8 extended `copiedGui` with a `layout` example, the plugins copied beside each copy, with a journey of its own — cost if wrong: one more example in `copiedGui`.
+- **P19b-6. Task 1's review Minors 1 to 11 were fixed in its round.** Minor 1 was met by retitling the journey to what it proves — cost if wrong: none.
+- **P19b-7. A route that forwards with `route.fetch` handles its one request and no other** (`{ times: 1 }`). Left registered, it met teardown on Windows as `ECONNRESET` (`files.spec.ts`'s Remove journey, run 37913135127) — cost if wrong: none; the journey's claim is unchanged.
+- **P19b-8. A task 1b took P19b-7's fix,** with Task 2's Minors 1 to 5 (comments, a Vitest case, and the plan's bookkeeping), in one dispatch and one review — cost if wrong: none.
+- **P19b-9. The long poll is answered at once,** by a project file's stamp moved with `utimesSync`. A journey that fails the page's next state read then reaches its state in about 2 s instead of waiting out the 25 s poll — cost if wrong: none; the claim is unchanged.
+- **P19b-10. An implementer's re-issued `rm`, with the exact paths the permission check asked for, followed the rule** "delete only what you created, by exact path" — cost if wrong: none.
+- **P19b-11. Recorded for the maintainer:** an adopt refused because `units.ddd.json` appeared shows its refusal for 31 to 44 ms before its banner is withdrawn — cost if wrong: a reader in that race reads no refusal.
+- **P19b-12. Fixed as a contained bug:** a type's pick of "no unit" was dropped (`chosen ?? starting` read the pick of nothing as no pick). The rule is now `settledRaw` in `lib/variableKeys.ts`, used by both panels and both stories, red first, with a CHANGELOG entry — cost if wrong: none.
+- **P19b-13. Recorded for the maintainer:** a type's key selected and left unchanged offers "Changes 1 file" with an empty diff or a re-layout. Whether a selection that changes nothing should plan anything spans the server's plan and the view — cost if wrong: a change offered that changes nothing, as today.
+- **P19b-14, P19b-19, P19b-21 and P19b-23. The plan's records were corrected at the close-out:** Tasks 5 to 8's text, from what their reports and reviews measured, and the layout extension in *Interfaces* and *File Structure* — cost if wrong: none.
+- **P19b-15. The "no unit" fix got a story and its screenshot reference,** so that the pull request shows what it changed — cost if wrong: one story, removable.
+- **P19b-16. Task 7 refreshed three of its rows' stale citations** — cost if wrong: none.
+- **P19b-17. Fixed as a contained bug:** the Shared files tab swapped an entry's panel for the form declaring it whenever its table stopped listing the entry. That happened always for a half-written file, about once in ten for a gone entry, and as a flash on every rename. The rule is now `opensPanel` in `lib/shared.ts`, red first, with a CHANGELOG entry — cost if wrong: revert `opensPanel`'s `held`.
+- **P19b-18. Recorded for the maintainer:** a bare word typed into a constant's value is answered in the json parser's words, not the constant's own sentence, because a request that is not json answers 400 — cost if wrong: the parser's words, as today.
+- **P19b-20. "The list failing later" is reached by leaving the tab and coming back.** Recorded for the maintainer and part 19c: a failed read of a new revision drops the table on five tabs, Files, Units, Types, Shared files and Graph. A failed read of a new key has no data, and `placeholderData` serves only a pending read. Not fixed, because it spans five screens — cost if wrong: the table lost behind the alert, as today.
+- **P19b-22. Recorded for the maintainer:** the page's own script refused a socket (`net::ERR_NO_BUFFER_SPACE`, run 38316603646, Windows chromium) leaves the page blank. It is the one load the page cannot ask for again from its own code. The options are a same-origin boot script, an inline boot behind a CSP hash, or accepting it. A final hunt that met it again would have had it worked at its cause; neither hunt did — cost if wrong: one small task.
+- **P19b-24. Recorded for the maintainer:** the panels differ on a stale refusal.
+  - The declare panel lets it go on the next edit; the others hold it until the next revision.
+  - The declare and removal panels withdraw their button while it stands; the values grid keeps its Apply.
+
+  One rule for every panel spans several screens — cost if wrong: a reader quick enough within the watcher's second is refused once more, as today.
+- **P19b-25. The close's order.** The final hunt ran at `e7c7515` while the final review read the branch. The one fix wave followed, and a second hunt, because the wave changed journeys' steps — cost if wrong: one more hunt.
+- **P19b-26. The layout worker's script is asked for once more** (the final review's M3). It is a load the page's own code makes, so spec §6's rule applies to it. `useLayout` creates the worker once more on its first error, with the decision in `lib/layoutAnswers.ts`, red first. A worker's error does not say whether the network or the answer failed, so a script that is not one is asked for twice, and a second failure shows the same sentence as before — cost if wrong: one hook's retry, removable.
+- **P19b-27. Two of the spec's starting rows were narrowed** (the final review's M5).
+  - The three Files actions are one row, reached by Remove: all three share `useFilesApply`, which that journey pins.
+  - The spec's schema case is the not-json row: `Session.read_file` makes no schema check, and a file that parses but breaks its schema is drawn as the page draws any file.
+
+  What neither pins became rows for 19c, with one candidate a task noted: New file's and Add's out-of-date refusal in their own panels; a component file that parses but breaks its schema; Compare's finding panel closed. "Hide changes" pressed, the other candidate, was already a 19c row ("the changes a plan makes, shown and then hidden again") — cost if wrong: three rows only.
+- **P19b-28. The wave's re-review left two Minors, and the controller fixed both with gates,** as part 19a's Global Constraints have it. The failed worker's handlers let go before its retry, and the documentation's sentence on `failing` names the loads it holds for — cost if wrong: none.

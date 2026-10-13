@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphFlow, GraphModule } from "../api/types";
 import type { Placed } from "../lib/layout";
 import {
+  createdAgain,
   INITIAL_LAYOUT_STATE,
   type LayoutAnswer,
   type LayoutState,
@@ -12,18 +13,18 @@ import { shapeOf } from "../lib/shape";
 
 /**
  * The graph's layout, made once per shape and off the main thread (design doc §6, Ruling 2): one
- * worker for the page's whole life, asked again only when `shapeOf` changes - never for a
- * revision that only changes a module's findings counts or `loaded`, or a flow's objects,
- * severity or disagreements.
+ * worker for the page's whole life, or one more in place of one that failed to start, asked
+ * again only when `shapeOf` changes - never for a revision that only changes a module's findings
+ * counts or `loaded`, or a flow's objects, severity or disagreements.
  *
  * Glue only (Global Constraints: "no decision may live in a .tsx file... a src/app hook is glue
- * only"): `shapeOf` and `withAnswer` are `gui/src/lib`'s own, under the Vitest gate. This hook
- * decides nothing - it only tracks which shape it currently wants (`wanted`, written by the
- * posting effect and read by the worker's handlers to tell a stale answer from the one they are
- * waiting for) and which `modules`/`flows` go with it (`latest`, read by that same effect so it
- * does not also have to depend on `modules`/`flows` themselves - depending on them would repost
- * on every revision whose *shape* did not change, exactly the layout this hook exists to avoid
- * making again).
+ * only"): `shapeOf`, `withAnswer` and `createdAgain` are `gui/src/lib`'s own, under the Vitest
+ * gate. This hook decides nothing - it only tracks which shape it currently wants (`wanted`,
+ * written by the posting effect and read by the worker's handlers to tell a stale answer from
+ * the one they are waiting for) and which `modules`/`flows` go with it (`latest`, read by that
+ * same effect so it does not also have to depend on `modules`/`flows` themselves - depending on
+ * them would repost on every revision whose *shape* did not change, exactly the layout this hook
+ * exists to avoid making again).
  */
 export function useLayout(
   modules: readonly GraphModule[],
@@ -51,24 +52,51 @@ export function useLayout(
   const wanted = useRef(shape);
 
   useEffect(() => {
-    const created = new Worker(new URL("./layoutWorker.ts", import.meta.url), {
-      type: "module",
-    });
-    worker.current = created;
-    created.onmessage = (event: MessageEvent<LayoutAnswer>) => {
-      setState((current) => withAnswer(current, event.data, wanted.current));
+    // The worker, and - where it failed to start - one more in its place (`createdAgain`), each
+    // with whether it has answered: one that has, had started.
+    const create = (again: boolean): Worker => {
+      const created = new Worker(new URL("./layoutWorker.ts", import.meta.url), {
+        type: "module",
+      });
+      worker.current = created;
+      let answered = false;
+      created.onmessage = (event: MessageEvent<LayoutAnswer>) => {
+        answered = true;
+        setState((current) => withAnswer(current, event.data, wanted.current));
+      };
+      // A worker that fails to start, or dies - including a stale URL from before a rebuild
+      // answering something that is not JavaScript at all (Minor 3) - fires this instead of ever
+      // answering a message; without it the page is left on "Laying the project out…" for good.
+      created.onerror = () => {
+        if (createdAgain({ again, answered })) {
+          // Let go first, as the cleanup below does: a second error this worker had already
+          // queued would otherwise make a third worker and orphan the one made here.
+          created.onmessage = null;
+          created.onerror = null;
+          created.terminate();
+          // Asked what the failed one was asked, which it never answered.
+          create(true).postMessage({
+            modules: latest.current.modules,
+            flows: latest.current.flows,
+          });
+          return;
+        }
+        setState((current) =>
+          withAnswer(current, { shape: wanted.current, error: WORKER_FAILED }, wanted.current),
+        );
+      };
+      return created;
     };
-    // A worker that fails to start, or dies - including a stale URL from before a rebuild
-    // answering something that is not JavaScript at all (Minor 3) - fires this instead of ever
-    // answering a message; without it the page is left on "Laying the project out…" for good.
-    created.onerror = () => {
-      setState((current) =>
-        withAnswer(current, { shape: wanted.current, error: WORKER_FAILED }, wanted.current),
-      );
-    };
+    create(false);
     return () => {
-      created.terminate();
+      // Its handlers let go first: an error the browser had already queued would otherwise
+      // create a worker for a canvas no longer drawn.
+      const last = worker.current;
       worker.current = null;
+      if (last === null) return;
+      last.onmessage = null;
+      last.onerror = null;
+      last.terminate();
     };
   }, []);
 

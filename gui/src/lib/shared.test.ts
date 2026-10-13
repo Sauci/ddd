@@ -5,6 +5,7 @@ import {
   constantAdd,
   isDeclared,
   kindNamed,
+  opensPanel,
   planEdit,
   rasterAdd,
   rasterRaw,
@@ -17,6 +18,7 @@ import {
   SECTION_ACCESSES,
   SHARED_KINDS,
   SHARED_VOCABULARIES,
+  type SharedSelection,
   sectionAdd,
   sectionRaw,
   sectionRemoveBlocked,
@@ -116,6 +118,32 @@ describe("whether a name is declared", () => {
 
   test("a name of another kind is not, however it is spelled", () => {
     expect(isDeclared(reply(["TREND_SAMPLES"]), "section", "TREND_SAMPLES")).toBe(false);
+  });
+});
+
+describe("whether the tab draws an entry's panel or the form declaring it", () => {
+  const trend: SharedSelection = { kind: "constant", name: "TREND_SAMPLES" };
+
+  test("an entry the table lists opens its panel", () => {
+    expect(opensPanel(reply(["TREND_SAMPLES"]), trend, null)).toBe(true);
+  });
+
+  test("an entry it does not list opens the form, where the tab holds no panel of it", () => {
+    expect(opensPanel(reply(["PRESSURE_CELLS"]), trend, null)).toBe(false);
+  });
+
+  test("the panel the tab holds stays while the table no longer lists its entry", () => {
+    // Its file saved half-written, the entry gone, or the entry renamed into a moment ago: the
+    // panel's own answer says which, where the form would offer to declare it again.
+    expect(opensPanel(reply([]), trend, rowKey("constant", "TREND_SAMPLES"))).toBe(true);
+  });
+
+  test("holding another entry's panel holds none for this one", () => {
+    expect(opensPanel(reply([]), trend, rowKey("constant", "PRESSURE_CELLS"))).toBe(false);
+  });
+
+  test("nor does holding the panel of another vocabulary's entry spelled the same", () => {
+    expect(opensPanel(reply([]), trend, rowKey("section", "TREND_SAMPLES"))).toBe(false);
   });
 });
 

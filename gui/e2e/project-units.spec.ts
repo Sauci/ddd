@@ -267,3 +267,59 @@ test("a unit nothing states any longer closes its panel and the tab says so, but
   await expect(page.getByRole("complementary", { name: "RPM" })).toHaveCount(0);
   await expect(page).toHaveURL(/\?view=units$/);
 });
+
+/** What the Units tab says when an Apply is refused because a file changed under its preview. */
+const STALE =
+  "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+
+test("an adopt refused because its units file now exists says so in the banner, which goes once the units are read again", async ({
+  page,
+  gui,
+}) => {
+  const adopted = join(gui.directory, UNITS);
+  const project = join(gui.directory, "demo.ddd.json");
+  const before = readFileSync(project);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(page.getByText("5 units · no units file")).toBeVisible();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  await banner.getByRole("button", { name: "Show changes" }).click();
+  const preview = page.getByRole("complementary", { name: "Adopt a vocabulary" });
+  await expect(preview.getByText("Changes 2 files: demo.ddd.json, units.ddd.json")).toBeVisible();
+
+  // A units file made by hand between the preview and the press. The project does not include it,
+  // so the watcher has nothing to notice, and the page still holds a preview that creates a file
+  // which now exists.
+  const written = `${JSON.stringify({ units: [{ unit: "ms", description: "milliseconds" }] })}\n`;
+  writeFileSync(adopted, written);
+
+  // Once that file is there the server offers no adoption (`ddd.lsp.units.adoption` refuses to
+  // write over it), so the banner, the refusal in it, goes as soon as the page reads the units
+  // again - which it does the moment its Apply is answered, a few tens of milliseconds after the
+  // refusal is drawn: a window that polling finds only by luck. The units the page reads next are
+  // held until the refusal has been seen, once only: the ones it reads later go straight through.
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/api/units",
+    async (route) => {
+      await released;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  try {
+    await preview.getByRole("button", { name: "Adopt 5 units" }).click();
+    await expect(banner.getByText(STALE, { exact: true })).toBeVisible();
+    // Nothing was written: the project does not include the file, and the file is the reader's.
+    expect(readFileSync(project).equals(before)).toBe(true);
+    expect(readFileSync(adopted, "utf8")).toBe(written);
+  } finally {
+    release();
+  }
+  await expect(banner).toHaveCount(0);
+  await expect(preview).toHaveCount(0);
+  await expect(page.getByText("5 units · no units file")).toBeVisible();
+});

@@ -484,3 +484,61 @@ export async function watchFrames(page: Page, label: string, edit: string): Prom
 export function framesWatched(page: Page): Promise<Frame[]> {
   return page.evaluate(() => (window as unknown as { watched: Frame[] }).watched);
 }
+
+/** What `ddd gui` answers a request it failed on (`_INTERNAL`, src/ddd/gui/server.py), and so
+ * what `failing`'s `"http"` answers with: a page shows the server's own words for it. */
+export const SERVER_FAILED = "ddd gui failed on this request; the terminal it runs in shows why";
+
+/**
+ * Makes the page's requests whose path is `path` - or matches it - fail, the first `times` of
+ * them, or every one where `times` is left out, and lets the rest through to the server
+ * (spec 2026-10-08 §5). `"http"` answers each as the server answers a request it failed on, a
+ * `500` with its own error body; `"network"` answers nothing at all, as a dropped connection.
+ * Playwright's own route, on this page alone: the server's code is never touched. Answers how
+ * many it has failed so far.
+ *
+ * A pattern is matched afresh for every request, whatever its flags: a copy of it is tried from
+ * its start each time, so a `g` or `y` flag, which makes `test` go on from where it last stopped,
+ * never lets one request through and fails the next. A route on the same path registered after
+ * this one, and calling `route.continue()`, sends its request straight to the server, past
+ * `failing`; one calling `route.fallback()` hands it on to `failing`.
+ */
+export async function failing(
+  page: Page,
+  path: string | RegExp,
+  how: "http" | "network",
+  times = Number.POSITIVE_INFINITY,
+): Promise<() => number> {
+  let failed = 0;
+  let matches: (pathname: string) => boolean;
+  if (typeof path === "string") {
+    matches = (pathname) => pathname === path;
+  } else {
+    // A copy, flags and all, so that setting where it starts leaves the caller's own untouched.
+    const pattern = new RegExp(path);
+    matches = (pathname) => {
+      pattern.lastIndex = 0;
+      return pattern.test(pathname);
+    };
+  }
+  await page.route(
+    (url) => matches(url.pathname),
+    async (route) => {
+      if (failed >= times) {
+        await route.fallback();
+        return;
+      }
+      failed += 1;
+      if (how === "network") {
+        await route.abort("failed");
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "internal", message: SERVER_FAILED }),
+      });
+    },
+  );
+  return () => failed;
+}

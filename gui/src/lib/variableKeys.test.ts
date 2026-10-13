@@ -11,6 +11,7 @@ import {
   limitsOf,
   limitsRaw,
   offerOf,
+  settledRaw,
   shortValue,
   startingRaw,
   willChangeKey,
@@ -639,6 +640,25 @@ describe("the value a chooser starts on", () => {
     expect(startingRaw(variable([offer("unit")]), "nonsense")).toBeNull();
     // chooserSections no longer looks a key up itself (Task 6): it now takes the offer
     // directly, and a caller that finds none from offerOf - covered above - does not call it.
+  });
+});
+
+describe("the value a chooser settles on", () => {
+  test("the value it starts on, until the reader picks one", () => {
+    expect(settledRaw(undefined, '"%"')).toBe('"%"');
+    expect(settledRaw(undefined, null)).toBeNull();
+  });
+
+  test("the value picked, once there is one", () => {
+    expect(settledRaw('"rpm"', '"%"')).toBe('"rpm"');
+    expect(settledRaw('"rpm"', null)).toBe('"rpm"');
+  });
+
+  test("a pick of nothing is a pick, and stays nothing", () => {
+    // `chosen ?? starting` read it as no pick at all: a type stating degC, asked for no unit,
+    // went on stating degC - the field going back to it, and Apply leaving it in the file.
+    expect(settledRaw(null, '"degC"')).toBeNull();
+    expect(settledRaw(null, null)).toBeNull();
   });
 });
 

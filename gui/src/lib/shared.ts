@@ -171,6 +171,31 @@ export function selectionAt(key: string): SharedSelection | undefined {
   return kind === undefined ? undefined : { kind, name: key.slice(space + 1) };
 }
 
+/** Whether the tab draws the panel of the entry an address selects, rather than the form that
+ * declares one - `held` being the key (`rowKey`) of the entry whose panel the tab holds: the one
+ * it last drew, or the one a row, a rename or a declaration has just moved it onto.
+ *
+ * An entry the table lists opens its panel, and one it does not list opens the form pre-filled
+ * with its name (`isDeclared`, "one route kind, and the page decides") - for an address the tab
+ * has just been brought to. Not for the panel it holds, whose entry the table can stop listing
+ * for three reasons, none of them that it was never declared: its file saved half-written, the
+ * entry gone, or a rename the table has not caught up with. The panel then stays, and its own
+ * answer says which (`panelShows`, spec 5.4): it names the file that did not load, it closes with
+ * the tab saying the entry is gone, or it says the findings are updating. Decided on the table's
+ * answer alone, the tab swapped each of these for the form: an entry declared in a file mid-save
+ * was offered to be declared again, one gone was offered so whenever the table answered before
+ * the panel, and a rename drew the form between the two panels. */
+export function opensPanel(
+  reply: SharedReply,
+  selection: SharedSelection,
+  held: string | null,
+): boolean {
+  return (
+    isDeclared(reply, selection.kind, selection.name) ||
+    held === rowKey(selection.kind, selection.name)
+  );
+}
+
 /** Of a section's keys, the ones whose value is a json string - `ddd.project_shared.SECTIONS.
  * strings`, the same two words. */
 const SECTION_STRINGS: readonly string[] = ["access", "description"];

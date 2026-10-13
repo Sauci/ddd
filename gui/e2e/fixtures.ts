@@ -12,6 +12,11 @@ const GENERATE_PROJECT = fileURLToPath(new URL("../../tools/generate_project.py"
 interface Example {
   directory: string;
   project: string;
+  /** Directories of examples/ that its project names by a path beside its own directory, such as
+   * the `../plugins/ddd_layout.py` of `LAYOUT`: copied beside the copy, so that the path resolves
+   * there. Only `copiedGui` honours it: `started` and `mappedGui`, which serve an example as it
+   * stands, copy the example's own directory alone. */
+  beside?: readonly string[];
 }
 
 const DEMO: Example = { directory: "demo", project: "demo.ddd.json" };
@@ -19,6 +24,9 @@ const DEMO: Example = { directory: "demo", project: "demo.ddd.json" };
 const VOCABULARY: Example = { directory: "vocabulary", project: "project.ddd.json" };
 /** The example with all three kinds of type, which part 6's journeys change. */
 const STRUCTURES: Example = { directory: "structures", project: "project.ddd.json" };
+/** The one example whose project loads a plugin - examples/plugins/ddd_layout.py, by a path beside
+ * its own directory - and so the one in which a plugin's own rules file findings. */
+const LAYOUT: Example = { directory: "layout", project: "project.ddd.json", beside: ["plugins"] };
 
 export interface Gui {
   /** The address ddd gui printed, token included. */
@@ -30,6 +38,29 @@ export interface Gui {
   /** Stops the server; stopping twice is harmless. */
   stop: () => Promise<void>;
 }
+
+/** The examples a copy can be made of, by the name `copiedGui` takes. */
+const EXAMPLES_BY_NAME = {
+  demo: DEMO,
+  vocabulary: VOCABULARY,
+  structures: STRUCTURES,
+  layout: LAYOUT,
+} as const;
+
+/** Serves a copy of an example changed before `ddd gui` starts, for a state no example has as it
+ * stands: no project at all, no dictionary, a build record not used (spec 2026-10-08 §5).
+ * `change` is awaited before the server starts. The copy is under the test's own output
+ * directory, as `started` makes one, numbered as it is asked for, so that no two copies of one
+ * test share a directory; the project is named unless `named` is `false`. A copy of an example
+ * that names files beside its own directory (`layout`) is made in a directory of its own name
+ * inside the numbered one, with those files copied beside it, so that they are no more shared
+ * than the copy is. Every server it starts is stopped when the test ends, one still starting
+ * then included. */
+export type CopiedGui = (
+  example: keyof typeof EXAMPLES_BY_NAME,
+  change: (directory: string) => void | Promise<void>,
+  options?: { named?: boolean },
+) => Promise<Gui>;
 
 /**
  * `tools/generate_project.py DIRECTORY --declarations 20000 --shape many --missing-ids 1
@@ -91,15 +122,24 @@ function generated(directory: string): void {
   }
 }
 
+/** A fresh copy of `example` made in `parent`, with whatever its project names beside its own
+ * directory copied beside it. Answers the copy's directory: `parent` itself, or - where something
+ * is to lie beside it - the directory of `parent` named for the example, so that the two lie side
+ * by side in a `parent` no other copy shares. */
+function copiedExample(example: Example, parent: string): string {
+  const beside = example.beside ?? [];
+  const directory = beside.length === 0 ? parent : join(parent, example.directory);
+  cpSync(join(EXAMPLES, example.directory), directory, { recursive: true });
+  for (const name of beside) {
+    cpSync(join(EXAMPLES, name), join(parent, name), { recursive: true });
+  }
+  return directory;
+}
+
 /** `ddd gui` over `directory`, already prepared, naming `project` on the command line or opening
- * on the start page where it is empty - the shared tail of `started` and `generatedGui`, which
- * prepare `directory` two different ways (a copied example; a generated project) and otherwise
- * start the very same server the very same way. */
-async function serving(
-  directory: string,
-  project: readonly string[],
-  use: (gui: Gui) => Promise<void>,
-): Promise<void> {
+ * on the start page where it is empty; stopped by the `Gui`'s own `stop`. The shared head of
+ * `serving` and `copiedGui`. */
+async function start(directory: string, project: readonly string[]): Promise<Gui> {
   // python -m ddd rather than the ddd launcher: on Windows the launcher starts python as a child
   // of its own, which killing the launcher leaves running, holding the port and the copy.
   const child = spawn(
@@ -120,9 +160,24 @@ async function serving(
   try {
     const address = await served(child);
     if (project.length > 0) await analysed(address);
-    await use({ address, directory, stop });
-  } finally {
+    return { address, directory, stop };
+  } catch (error) {
     await stop();
+    throw error;
+  }
+}
+
+/** `ddd gui` over `directory`, handed to `use` and stopped after it whatever it did. */
+async function serving(
+  directory: string,
+  project: readonly string[],
+  use: (gui: Gui) => Promise<void>,
+): Promise<void> {
+  const gui = await start(directory, project);
+  try {
+    await use(gui);
+  } finally {
+    await gui.stop();
   }
 }
 
@@ -217,6 +272,7 @@ export const test = base.extend<{
   structuresGui: Gui;
   generatedGui: Gui;
   mappedGui: Gui;
+  copiedGui: CopiedGui;
 }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   gui: async ({}, use, testInfo) => started(DEMO, true, use, testInfo),
@@ -248,6 +304,35 @@ export const test = base.extend<{
     );
     cpSync(join(EXAMPLES, DEMO.directory), directory, { recursive: true });
     await serving(directory, [join(directory, DEMO.project)], use);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  copiedGui: async ({}, use, testInfo) => {
+    // Every start, kept as it begins: one still starting when the test ends is stopped too.
+    const starts: Promise<Gui>[] = [];
+    let copies = 0;
+    let ended = false;
+    try {
+      await use(async (name, change, options) => {
+        const example = EXAMPLES_BY_NAME[name];
+        // Numbered before anything is awaited, so two calls in flight never share a directory.
+        const numbered = testInfo.outputPath(`${example.directory}-${copies}`);
+        copies += 1;
+        const directory = copiedExample(example, numbered);
+        await change(directory);
+        // A change still running when the test ended starts nothing: nothing would stop it.
+        if (ended) throw new Error(`the test ended before ${directory} was served`);
+        const named = options?.named ?? true;
+        const begun = start(directory, named ? [join(directory, example.project)] : []);
+        starts.push(begun);
+        return begun;
+      });
+    } finally {
+      ended = true;
+      // `start` stops a server whose start fails; every one that started is stopped here.
+      for (const outcome of await Promise.allSettled(starts)) {
+        if (outcome.status === "fulfilled") await outcome.value.stop();
+      }
+    }
   },
 });
 

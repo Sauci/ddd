@@ -323,6 +323,20 @@ export function startingRaw(variable: VariableReply, key: string): string | null
   return offerOf(variable, key)?.values[0]?.raw ?? null;
 }
 
+/** The json text a key's chooser has settled on: the reader's pick once they have made one, and
+ * the value it starts on (`startingRaw`) until then.
+ *
+ * `chosen` is a tri-state, `undefined` until a pick: a pick of nothing ("state nothing", "no
+ * unit") is a pick, `null`, and stays `null` - only `undefined` gives way to `starting`. Reading
+ * `chosen ?? starting` took it for no pick at all, so that a type's "no unit" went back to the
+ * unit it started on: the field read it again, and Apply left it in the file. */
+export function settledRaw(
+  chosen: string | null | undefined,
+  starting: string | null,
+): string | null {
+  return chosen === undefined ? starting : chosen;
+}
+
 /** What the field reads for a value while nothing is being typed.
  *
  * Takes the variable for symmetry with `startingRaw`, whose result this labels; the label

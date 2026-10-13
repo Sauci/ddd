@@ -1,7 +1,7 @@
 /**
- * What the worker answers, what `useLayout` keeps from it, and what `GraphPage` draws because of
- * it - every one of those three decisions, so that `gui/src/app/useLayout.ts` is glue only
- * (review fix round 1, Important 1 and Minor 6).
+ * What the worker answers, what `useLayout` keeps from it, whether it creates a worker that
+ * failed once more, and what `GraphPage` draws because of it - every one of those decisions, so
+ * that `gui/src/app/useLayout.ts` is glue only (review fix round 1, Important 1 and Minor 6).
  */
 import type { Placed } from "./layout";
 
@@ -51,6 +51,29 @@ export const RANKS_ONLY_NOTE =
  * "Laying the project out…" stays up for good.
  */
 export const WORKER_FAILED = "The layout worker stopped; reload the page to try again.";
+
+/** A layout worker that failed, firing `onerror` rather than answering, as `useLayout` knows it. */
+export interface FailedWorker {
+  /** Whether it was itself created once more, after an earlier worker failed. */
+  readonly again: boolean;
+  /** Whether it answered any message before it failed: one that did had started. */
+  readonly answered: boolean;
+}
+
+/**
+ * Whether `useLayout` creates its worker once more after one failed, rather than showing
+ * `WORKER_FAILED` (spec 2026-10-08 §6, a load the network failed asked for once more; ruling
+ * P19b-26 in the plan). The worker's script is one of the page's requests like any other, and on
+ * Windows the browser was seen refused a socket for one (`net::ERR_NO_BUFFER_SPACE`): refused,
+ * the worker never starts, and the canvas is never drawn. Once, and only for a worker that never
+ * answered, as one whose script did not load never does: one that answered had started, and its
+ * failure is its own code's, which a second worker would meet again. A layout the worker answers
+ * it could not make (`withAnswer`'s `error`) is an answer, never a failure here. A second worker
+ * that fails shows `WORKER_FAILED`, as the first did before.
+ */
+export function createdAgain(failed: FailedWorker): boolean {
+  return !failed.again && !failed.answered;
+}
 
 /**
  * The name the worker's own layout is measured under on its timeline (`measuredLayoutOf`,

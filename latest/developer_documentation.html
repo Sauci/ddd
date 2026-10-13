@@ -1022,6 +1022,25 @@ npm run e2e -- mapped.spec.ts
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>DDD_MAPPED_DRIVE=M: npm run e2e -- mapped.spec.ts
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">copiedGui</span></code>, beside those fixtures in <code class="docutils literal notranslate"><span class="pre">gui/e2e/fixtures.ts</span></code>, serves a copy of
+<code class="docutils literal notranslate"><span class="pre">examples/demo</span></code>, <code class="docutils literal notranslate"><span class="pre">examples/vocabulary</span></code>, <code class="docutils literal notranslate"><span class="pre">examples/structures</span></code> or <code class="docutils literal notranslate"><span class="pre">examples/layout</span></code>
+that the journey changes before <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> starts on it, for a state no example has as it
+stands - no project at all, a project with no dictionary, or a build record not used - naming
+its project unless the journey asks for the start page; a journey may serve several. A copy of
+<code class="docutils literal notranslate"><span class="pre">examples/layout</span></code> is made with a copy of <code class="docutils literal notranslate"><span class="pre">examples/plugins</span></code> beside it, because its project
+loads <code class="docutils literal notranslate"><span class="pre">../plugins/ddd_layout.py</span></code>: it is the one example in which a plugin’s own rules file
+findings, a comparison rule’s among them. <code class="docutils literal notranslate"><span class="pre">failing</span></code>, in <code class="docutils literal notranslate"><span class="pre">gui/e2e/demo.ts</span></code>, makes the
+page’s requests to one path, or to every path a pattern matches, fail - the first so many of
+them, or every one - and lets the rest through to the server: each is answered as the server
+answers a request it failed on, a <code class="docutils literal notranslate"><span class="pre">500</span></code>, or not answered at all, as a dropped connection.
+The page sends a GET once more when its fetch got no answer at all, and asks once more for a
+stylesheet or for its layout worker’s script that failed, so a journey that wants the failure
+state fails every request, <code class="docutils literal notranslate"><span class="pre">failing(page,</span> <span class="pre">path,</span> <span class="pre">&quot;network&quot;)</span></code> with no <code class="docutils literal notranslate"><span class="pre">times</span></code>:
+<code class="docutils literal notranslate"><span class="pre">failing(page,</span> <span class="pre">path,</span> <span class="pre">&quot;network&quot;,</span> <span class="pre">1)</span></code> on one of those loads shows no banner, where a <code class="docutils literal notranslate"><span class="pre">POST</span></code>,
+never sent again, shows its banner at the first failure. <code class="docutils literal notranslate"><span class="pre">failing</span></code> is Playwright’s own route
+on that one page, so the server’s code is never touched. The <code class="docutils literal notranslate"><span class="pre">500</span></code>’s message,
+<code class="docutils literal notranslate"><span class="pre">SERVER_FAILED</span></code>, is the server’s own sentence for such a request, <code class="docutils literal notranslate"><span class="pre">_INTERNAL</span></code> in
+<code class="docutils literal notranslate"><span class="pre">src/ddd/gui/server.py</span></code>, so a banner it raises reads as the one a real failure raises.</p>
 <p>The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
 BSD-3-Clause or 0BSD. The project screen’s canvas is drawn with <code class="docutils literal notranslate"><span class="pre">&#64;xyflow/react</span></code> and laid out
 with <code class="docutils literal notranslate"><span class="pre">&#64;dagrejs/dagre</span></code>, both MIT like every other bundled package.</p>

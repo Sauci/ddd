@@ -1,9 +1,9 @@
 import { failing } from "./demo";
 import { expect, test } from "./fixtures";
 
-// The page's own loads, failed by the network once or every time (spec 2026-10-08 §6): a
-// stylesheet is asked for once more before the page draws, and a GET of the API is sent once
-// more, while a second failure reads as one did before either was.
+// The page's own loads, failed by the network once or every time (spec 2026-10-08 §6): each
+// stylesheet, GET of the API and the layout worker's script is asked for once more, a stylesheet
+// before the page draws, while a second failure reads as one did before any was asked again.
 
 /** The page's own stylesheet, as Vite names it in /assets/ - its hash changes with every build. */
 const STYLESHEET = /^\/assets\/index-[^/]+\.css$/;
@@ -74,4 +74,23 @@ test("a GET the network fails every time reads as the server not answering", asy
   // of `ServerUnreachable` (client.ts) - once the GET got no answer twice.
   await expect(page.getByRole("alert")).toHaveText("ddd gui is not answering");
   expect(failed()).toBe(2);
+});
+
+/** The layout worker's own script, as Vite names it in /assets/ beside the stylesheet. Asked for
+ * once more by creating the worker once more (ruling P19b-26 in the plan). */
+const LAYOUT_WORKER = /^\/assets\/layoutWorker-[^/]+\.js$/;
+
+test("the layout worker's script the network failed once is asked for again, and the canvas is drawn", async ({
+  page,
+  gui,
+}) => {
+  const failed = await failing(page, LAYOUT_WORKER, "network", 1);
+  await page.goto(gui.address);
+  // The modules, laid out by the worker created once more (`createdAgain`, lib/layoutAnswers.ts):
+  // the one that failed never started, and never answered.
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  expect(failed()).toBe(1);
+  // A worker that stopped is said in an alert, in place of the canvas (`WORKER_FAILED`): none
+  // shows.
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

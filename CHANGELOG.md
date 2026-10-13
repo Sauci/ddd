@@ -94,8 +94,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   failed, and sends a request that only reads once more, at once, when it got no answer at all:
   one lost request goes unnoticed.  A request that changes something - an edit, an undo, a
   project opened from the start page - is never sent again, since its change may already have
-  been made, and neither is one that got any answer, a refusal included.  A second failure
-  reads as one did before: the page drawn unstyled, or saying that `ddd gui` is not answering.
+  been made, and neither is one that got any answer, a refusal included.  The project's canvas
+  likewise starts its layout worker once more when the worker did not start, rather than
+  saying at once that the layout worker stopped and drawing no modules.  A second failure
+  reads as one did before: the page drawn unstyled, saying that `ddd gui` is not answering, or
+  saying that the layout worker stopped.
 
 * **A type's unit chosen as "no unit" is now taken off the type.**  On the Types tab, choosing
   "no unit" for a type's unit read as no choice at all: the field went back to the unit the

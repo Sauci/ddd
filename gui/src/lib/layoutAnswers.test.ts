@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { GraphModule } from "../api/types";
 import {
+  createdAgain,
   INITIAL_LAYOUT_STATE,
   LAYOUT_MEASURE,
   type LayoutState,
@@ -26,6 +27,18 @@ test("WORKER_FAILED is its own exact sentence", () => {
 // under the same name, imported: pinned by its literal here.
 test("LAYOUT_MEASURE names the measure layout", () => {
   expect(LAYOUT_MEASURE).toBe("layout");
+});
+
+test("a first worker that failed before it ever answered is created once more", () => {
+  expect(createdAgain({ again: false, answered: false })).toBe(true);
+});
+
+test("a worker itself created once more is not created again when it fails too", () => {
+  expect(createdAgain({ again: true, answered: false })).toBe(false);
+});
+
+test("a worker that answered before it failed had started, and is not created again", () => {
+  expect(createdAgain({ again: false, answered: true })).toBe(false);
 });
 
 const graphModule = (path: string): GraphModule => ({

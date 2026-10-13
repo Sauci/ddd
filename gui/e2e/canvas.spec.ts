@@ -278,20 +278,25 @@ test("a layout worker that cannot start says to reload, and a reload draws the c
   gui,
 }) => {
   // Answered with what is not its script, as a page left open across a rebuild meets a worker
-  // address that no longer exists (`WORKER_FAILED`, lib/layoutAnswers.ts); once only, so that the
-  // reload the banner asks for is served the worker itself.
-  await page.route(
-    "**/assets/layoutWorker-*.js",
-    (route) => route.fulfill({ status: 404, contentType: "text/plain", body: "not found" }),
-    { times: 1 },
-  );
+  // address that no longer exists (`WORKER_FAILED`, lib/layoutAnswers.ts), and on every request:
+  // the page creates a worker that failed to start once more (`createdAgain`), which is answered
+  // the same. Taken away before the reload the banner asks for, which is served the worker itself.
+  const worker = "**/assets/layoutWorker-*.js";
+  let asked = 0;
+  await page.route(worker, (route) => {
+    asked += 1;
+    return route.fulfill({ status: 404, contentType: "text/plain", body: "not found" });
+  });
   await page.goto(gui.address);
   await expect(page.getByRole("alert")).toHaveText(
     "The layout worker stopped; reload the page to try again.",
   );
+  // Said once the worker created once more failed too: its script asked for twice, no more.
+  expect(asked).toBe(2);
   await expect(page.getByText("Laying the project out…", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
 
+  await page.unroute(worker);
   await page.reload();
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);

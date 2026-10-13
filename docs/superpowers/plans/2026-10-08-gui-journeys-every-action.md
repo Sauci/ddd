@@ -1206,6 +1206,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The network | a stylesheet failing every time | 2 | `network.spec.ts:38`, "a stylesheet the network fails every time leaves the page drawn and working" |
 | The network | a GET failed once | 2 | `network.spec.ts:54`, "a GET the network failed once is sent again, and the page carries on" |
 | The network | a GET failing every time | 2 | `network.spec.ts:67`, "a GET the network fails every time reads as the server not answering" |
+| The network | the layout worker's script failed once | 10 | `network.spec.ts:83`, "the layout worker's script the network failed once is asked for again, and the canvas is drawn" |
 | The start page | the projects found listed, and the one chosen opened | 3 | `skeleton.spec.ts:143`, "without a project the start page lists the ones found and opens the one chosen" |
 | The start page | no project found | 3 | `start.spec.ts:30`, "an empty directory finds no project, and the start page says so" |
 | The start page | a build record not used | 3 | `start.spec.ts:47`, "a build record in a format too new is listed as not used, and its project still opens" |
@@ -1267,7 +1268,7 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The canvas | a later layout failing, the canvas kept | 19c | none yet |
 | The components table | each component listed with its errors and its warnings | 4 | `skeleton.spec.ts:16`, "the demo opens on its project page, with every component" |
 | The components table | a component's name pressed, opening its page | 4 | `large.spec.ts:77`, "an edit shows at once, and its findings follow" |
-| The components table | its summary while the findings update | 4 | `canvas.spec.ts:326`, "the components table's summary says the findings are updating while they are" |
+| The components table | its summary while the findings update | 4 | `canvas.spec.ts:331`, "the components table's summary says the findings are updating while they are" |
 | The components table | a row pressed beside its name, or Enter on it, opening its component | 19c | none yet |
 | Units | the units in use listed, the tab's line counting them | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |
 | Units | a project with no units file offered the adoption, previewed and adopted | 5 | `project-units.spec.ts:16`, "adopting writes the units in use into a units file the project includes, and reports nothing more" |

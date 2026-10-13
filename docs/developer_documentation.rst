@@ -987,7 +987,8 @@ answers a request it failed on, a ``500``, or not answered at all, as a dropped 
 The page sends a GET once more when its fetch got no answer at all, and asks once more for a
 stylesheet or for its layout worker's script that failed, so a journey that wants the failure
 state fails every request, ``failing(page, path, "network")`` with no ``times``:
-``failing(page, path, "network", 1)`` shows no banner. ``failing`` is Playwright's own route
+``failing(page, path, "network", 1)`` on one of those loads shows no banner, where a ``POST``,
+never sent again, shows its banner at the first failure. ``failing`` is Playwright's own route
 on that one page, so the server's code is never touched. The ``500``'s message,
 ``SERVER_FAILED``, is the server's own sentence for such a request, ``_INTERNAL`` in
 ``src/ddd/gui/server.py``, so a banner it raises reads as the one a real failure raises.

@@ -69,6 +69,10 @@ export function useLayout(
       // answering a message; without it the page is left on "Laying the project out…" for good.
       created.onerror = () => {
         if (createdAgain({ again, answered })) {
+          // Let go first, as the cleanup below does: a second error this worker had already
+          // queued would otherwise make a third worker and orphan the one made here.
+          created.onmessage = null;
+          created.onerror = null;
           created.terminate();
           // Asked what the failed one was asked, which it never answered.
           create(true).postMessage({

@@ -11,7 +11,8 @@
   - `copiedGui` serves a copy of an example changed before `ddd gui` starts.
 - **The page sends its loads once more** (spec §6):
   - `request()` resends a GET whose fetch was rejected, once;
-  - `main.tsx` asks again, before drawing, for any stylesheet that failed.
+  - `main.tsx` asks again, before drawing, for any stylesheet that failed;
+  - as built, `useLayout` also creates the layout worker once more when its script failed (the final review's M3, P19b-26).
 - **Each screen's task** writes its journeys, shows each one fails under a named change, and fixes the contained bugs they find, red first.
 
 **Tech Stack:**
@@ -20,6 +21,16 @@
 - **CI:** the three legs part 19a built, ubuntu chromium, windows chromium and windows msedge, with `-f repeat=N` hunts.
 
 **Spec:** `docs/superpowers/specs/2026-10-08-gui-journeys-every-action-design.md`. Read it before any task. Where this plan departs from it, the departure is a ruling in *Rulings taken* at the end, with its reason.
+
+> **As built** (executed 2026-10-08 to 2026-10-13; the departures from the task texts, each a ruling under *Rulings taken*):
+> - **The split** (P19b-3, P19b-4, P19b-27). Task 1 found 150 rows with no journey, three times the spec's estimate. By the maintainer's choice this part closed the 71 starting rows, and the rows Task 1 added went to part 19c. All 186 of this part's rows now name a journey, and none a reason; 88 rows are part 19c's.
+> - **Two contained bugs fixed, red first** (P19b-12, P19b-17):
+>   - a type's pick of "no unit" was dropped;
+>   - the Shared files tab swapped an entry's panel for the form declaring it whenever its table stopped listing the entry.
+> - **The page asks once more for one more load: the layout worker's script** (P19b-26), which spec §6 did not name. The final review found it.
+> - **Added: Task 1b** (P19b-7, P19b-8). A route is scoped to its one request, after Windows met one at teardown.
+> - **Recorded for the maintainer, not fixed** (P19b-11, P19b-13, P19b-18, P19b-20, P19b-22, P19b-24): each a design question, or a change across several screens.
+> - **The page's own script refused a socket stays open** (P19b-22). It was seen once, on Windows chromium; both final hunts were clean.
 
 ## Global Constraints
 
@@ -176,7 +187,7 @@ A screen's fix, where a journey finds a bug, is in that screen's own files, with
   - `askSheetsAgain(document: Document): Promise<void>`, in `gui/src/app/sheets.ts`.
 
   From Task 2 on, a GET the network fails once is recovered, and so is a stylesheet it fails once (Task 2) and, from the final wave, the layout worker's script (P19b-26): each is asked for once more. So a journey for a network banner fails its request at least twice (`failing(page, path, "network")`, every time), and the banner shows only then.
-- **Tasks 3 to 9 consume both helpers,** and each adds rows' journeys to its own files. None changes another task's spec files, except where a row moved (the inventory says which task owns it).
+- **Tasks 3 to 9 consume the helpers their rows need,** and each adds rows' journeys to its own files. As built, Task 4's journeys use `copiedGui` alone, and Task 8 extended Task 1's `fixtures.ts` and `helpers.spec.ts` with the layout copy (P19b-5). Otherwise none changes another task's spec files, except where a row moved (the inventory says which task owns it).
 
 ---
 
@@ -412,7 +423,13 @@ export type CopiedGui = (
 ```
 
     with `copiedGui: CopiedGui;` added to `test.extend`'s type parameter.
-- [ ] **Step 6: Run the helpers' journeys to see them pass:** `npx playwright test helpers.spec.ts`, after a build. Expected: 3 passed.
+
+    As built (Task 1's round, `de1dd7d`), the listing above changed in four ways:
+    - `change` is `(directory: string) => void | Promise<void>`, awaited before the server starts;
+    - a copy is numbered as it is asked for, before anything is awaited, so that two copies asked for at once never share a directory;
+    - a start still in flight when the test ends is stopped too;
+    - the doc names "no project at all" where it said "no shared entry", a state examples/demo already has.
+- [ ] **Step 6: Run the helpers' journeys to see them pass:** `npx playwright test helpers.spec.ts`, after a build. Expected: 3 passed. As built: five at the head, since Task 1's round and Task 8 each added one.
 - [ ] **Step 7: Ablate each helper's data,** in place, restoring by exact edit:
   - `failing` ignoring `times` (`if (false)`): the first journey dies at its second `askedFromPage`;
   - `"network"` answering `"http"`: the second journey dies;
@@ -433,7 +450,7 @@ export type CopiedGui = (
     const reply = (await response.json()) as { entries: { entry: string }[] };
     listed = reply.entries.map((each) => each.entry);
     await route.fulfill({ response });
-  });
+  }, { times: 1 });
   try {
     await remove.click();
     await expect(unitsRow).toHaveCount(0);
@@ -445,7 +462,7 @@ export type CopiedGui = (
   await expect(unitsRow).toHaveCount(0);
 ```
 
-  Run it with `--repeat-each=10`: 10 passed. Ablate the page's at-once removal (the hold in `gui/src/lib/filesHold.ts` returning the list as it was), and see it die at the first `toHaveCount(0)`. Restore.
+  As built, the route handles its one list and no other (`{ times: 1 }`, P19b-7, Task 1b's `d4fd8f6`): left registered, it met the teardown on Windows as `ECONNRESET`. Run it with `--repeat-each=10`: 10 passed. Ablate the page's at-once removal (the hold in `gui/src/lib/filesHold.ts` returning the list as it was), and see it die at the first `toHaveCount(0)`. Restore.
 - [ ] **Step 9: The developer documentation.** In `docs/developer_documentation.rst`'s paragraph on the journeys, after the fixtures it names, say in its own style:
   - what `copiedGui` serves;
   - what `failing` fails, and how;
@@ -659,7 +676,7 @@ import { sheetsToAskAgain } from "../lib/sheets";
 export function askSheetsAgain(document: Document): Promise<void> {
   const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')];
   const again = sheetsToAskAgain(
-    links.map((link) => ({ href: link.href, loaded: link.sheet !== null })),
+    links.map((link) => ({ href: link.href, loaded: sheetLoaded(link.sheet) })),
   );
   return Promise.all(
     again.map(
@@ -677,6 +694,7 @@ export function askSheetsAgain(document: Document): Promise<void> {
 }
 ```
 
+  - **As built, `loaded` is `sheetLoaded(link.sheet)`,** where this listing first read `link.sheet !== null`. In Chromium a link whose stylesheet failed still holds a sheet, whose `cssRules` throws, so "loaded" means its rules can be read (`gui/src/lib/sheets.ts`, under Vitest).
   - **The premise in its comment is measured, not assumed:** the first journey of Step 1 dies without it. If that journey shows a sheet still loading when this runs (passing only sometimes under `--repeat-each=20`), wait for each link with no sheet to fire `load` or `error` before deciding. Say which in the report.
 - [ ] **Step 8: `gui/src/main.tsx`.** Render once the sign-in and the stylesheets have both ended:
 
@@ -702,7 +720,7 @@ void Promise.allSettled([
 - [ ] **Step 10: Ablations,** each into a scratch copy of the package (Global Constraints), each killing a named journey:
   - `sentAgain` always `false`: "a GET the network failed once is sent again" dies;
   - `askSheetsAgain` not called: the two stylesheet-once journeys die;
-  - `loaded: link.sheet !== null` replaced by `true`: the same two die.
+  - `loaded: sheetLoaded(link.sheet)` replaced by `true`: the same two die.
 - [ ] **Step 11: The CHANGELOG.** One entry under `## Unreleased`, in its own style (a bold lead, two spaces between sentences, no line over 95 columns). It says what a reader notices: a page whose stylesheet, or one of whose requests, the network drops once is drawn and answered as if nothing had happened, and a second failure reads as it does today.
 - [ ] **Step 12: The gates,** as in Task 1, and the screenshots in Docker in compare mode (no reference may move). Commit: one commit for the GET's rule, one for the stylesheets, one for the journeys and the CHANGELOG.
 
@@ -721,13 +739,13 @@ void Promise.allSettled([
 
 | Row | Setup | Steps and what the reader sees | Ablation |
 | --- | --- | --- | --- |
-| **No project found** | `copiedGui("demo", empty, { named: false })`, where `empty` removes the copy's contents and leaves its directory (`rmSync` of each entry, then nothing) | Heading "Open a project"; "Found under <the copy's path>"; the paragraph "No project description was found here. Start ddd gui with the path of one." | `StartPage.tsx`'s `found.data.projects.length === 0 ? … : …` inverted |
-| **A build record not used** | `copiedGui("demo", record, { named: false })`, where `record` writes `build/ddd-build.json` naming the copy's `demo.ddd.json` with a `"format"` one past `BUILD_INFO_FORMAT`. Read `ddd.lsp.discovery.load_builds` for what a record must hold to reach the format check rather than be skipped silently. | Heading "Build records not used"; an item "<the record's path>: written in format 2 by a newer DDD, and this one understands up to format 1". The project is still listed. | `api.py`'s `refused=[…]` in `Api._projects` made `[]` |
+| **No project found** | `copiedGui("demo", empty, { named: false })`, where `empty` removes the copy's contents and leaves its directory (`rmSync` of each entry, then nothing) | Heading "Open a project"; "Found under <the copy's path>"; the paragraph "No project description was found here. Start ddd gui with the path of one." | `StartPage.tsx`'s `found.data.projects.length === 0 ? … : …` inverted. As built, the path is asserted as the server writes it, `as_posix()` (`api.py`'s `_projects`): with forward slashes on Windows too, where the first run failed on backslashes |
+| **A build record not used** | `copiedGui("demo", record, { named: false })`, where `record` writes `build/ddd-build.json` naming the copy's `demo.ddd.json` with a `"format"` one past `BUILD_INFO_FORMAT`. Read `ddd.lsp.discovery.load_builds` for what a record must hold to reach the format check rather than be skipped silently. | Heading "Build records not used"; an item "<the record's path>: written in format 2 by a newer DDD, and this one understands up to format 1". The project is still listed. As built, the record's path is asserted as the server writes it, `as_posix()`, on Windows too. | `api.py`'s `refused=[…]` in `Api._projects` made `[]` |
 | **Looking for projects** (added: the start page's loading state) | `bareGui`; the `/api/projects` request held by a route until the text is seen | "Looking for projects…", then, released, the list with "DemoDevice" | `StartPage.tsx`'s pending line removed |
 | **The projects list failing** | `bareGui`; `failing(page, "/api/projects", "http")` before `goto` | An `alert` reading `SERVER_FAILED`; no list, no heading's list. | `StartPage.tsx`'s `if (found.isError) return <Banner …>` removed |
 | **Opening a project failing** | `bareGui`; `failing(page, "/api/open", "http")` once the list shows | Pressing "DemoDevice" leaves the start page in place, with an `alert` reading `SERVER_FAILED`. A `POST` is never resent (Task 2), so one failure is enough. | `StartPage.tsx`'s `{open.isError && <Banner …>}` removed |
 | **The signed-out view** | `gui` | The worked journey below. | `client.ts`'s `if (response.status === 401)` branch made never to mark the page signed out |
-| **The failure banner a broken answer raises** | `gui`; once the canvas shows, `failing(page, "/api/state", "http")` | The page's long poll is answered `500`. An `alert` reading `SERVER_FAILED` shows above the page, which stays drawn. The stopped banner is not shown: an HTTP answer is no stopped server. | `revisions.ts`'s `if (!(error instanceof ServerUnreachable)) throw error;` made to swallow every error |
+| **The failure banner a broken answer raises** | `gui`; once the canvas shows, `failing(page, "/api/state", "http")` | The page's long poll is answered `500`. An `alert` reading `SERVER_FAILED` shows above the page, which stays drawn. The stopped banner is not shown: an HTTP answer is no stopped server. As built, a project file's stamp is moved with `utimesSync` once `failing` is registered, so the server answers the pending long poll at once and the page's next ask is the one failed, in about 2 s rather than the poll's 25 s (P19b-9). | `revisions.ts`'s `if (!(error instanceof ServerUnreachable)) throw error;` made to swallow every error |
 
 - [ ] **Step 1: The worked journey,** in a new `gui/e2e/start.spec.ts`:
 
@@ -828,7 +846,7 @@ test("a project with a file that does not load is drawn without arrows, and says
 - Modify, for the bug the review found (P19b-12; see the last row below): `gui/src/lib/variableKeys.ts` and `variableKeys.test.ts`, `gui/src/screens/TypePanel.tsx` and `VariablePanel.tsx`, the two stories that copy their derivation (`gui/src/components/TypePanelView.stories.tsx`, `VariablePanelView.stories.tsx`), and `CHANGELOG.md`
 
 **Interfaces:**
-- Consumes: `driftMaxUnseen`, `writeUnseen` (`gui/e2e/demo.ts`); `failing` (Task 1) where a row needs it.
+- Consumes: `driftMaxUnseen` (`gui/e2e/demo.ts`). As built, its rows needed neither `writeUnseen` nor `failing`, which the plan had listed.
 
 **What the pre-flight corrected** (spec §4 assumed otherwise):
 - **The keys a scalar type offers.** Exactly four: datatype, unit, conversion and limits (`SCALAR_KEYS`, `src/ddd/project_types.py`).
@@ -958,7 +976,7 @@ test("a raster nothing measures in is removed, row and panel", async ({
 });
 ```
 
-  Read `project-units.spec.ts`'s removal of a unit nothing states before writing it. A Remove may first show its plan and ask for "Apply to 1 file": follow the running page, and assert what it shows.
+  Read `project-units.spec.ts`'s removal of a unit nothing states before writing it. A Remove may first show its plan and ask for "Apply to 1 file": follow the running page, and assert what it shows. As built, it shows its plan as "Changes 1 file: rasters.ddd.json", and the region's own button applies it, with no "Apply to 1 file". The Used by table's links are buttons, styled as links, as `sections.spec.ts` already finds them.
 - [ ] **Step 2: Run it** after a build, with `--repeat-each=10`. Then the ablation: `rasterRemovable` answering `false`, in a scratch copy of the package. It dies at the caption "Nothing in the project measures in 100ms.", one assertion before the region's button, since the same function decides both. A second ablation, `RasterPanel.tsx`'s remove request made `null`, dies at the region's plan, which the button needs.
 - [ ] **Step 3: The other rows,** each a journey of its own in `shared.spec.ts`. Group a panel's fields into one journey where a reader would do them in one sitting, but keep one assertion per row, so each row's ablation kills it. Each is run and ablated as its row says.
 - [ ] **Step 4: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*. This task's found one (P19b-17): `SharedPage` chose between an entry's panel and the form declaring it on the table's answer alone, so the panel gave way to the form whenever the table stopped listing its entry - its file saved half-written, the entry gone, a rename. `opensPanel(reply, selection, held)`, in `gui/src/lib/shared.ts`, now keeps the panel the tab holds, and the panel's own answer says why the table lists the entry no longer. Fixed red first (three journeys, five Vitest cases), with a CHANGELOG entry.
@@ -1243,7 +1261,6 @@ Every action a reader can take in `ddd gui`, and every state a reader can meet, 
 | The app | nothing written while the server is stopped: every Apply and every write's button disabled | 19c | none yet |
 | The app | an entry's panel just after a rename or a declaration, saying the findings are updating until the analysis lands | 19c | none yet |
 | The app | the changes a plan makes, shown and then hidden again | 19c | none yet |
-| The app | Hide changes pressed, on a panel offering it | 19c | none yet |
 | The undo strip | a unit's settlement undone, its changes shown, the file put back as it was | 3 | `undo.spec.ts:12`, "a unit settled from a panel is put back exactly as the file was" |
 | The undo strip | an adoption undone, file and include | 3 | `undo.spec.ts:44`, "an adopted vocabulary is taken away again, file and include" |
 | The undo strip | an undo refused, its file changed by hand | 3 | `undo.spec.ts:67`, "an undo of an edit whose file was changed by hand is refused, and keeps its place" |
@@ -1501,39 +1518,138 @@ At the head, each exit status captured on its own (`gate.sh` in the session scra
 
 ### The inventory
 
-Filled in by Task 10: by screen, the rows covered before this part, the rows covered after it, and the rows with a reason instead.
+By screen: the rows covered before this part's journeys (the inventory as Task 1 closed it, at `de1dd7d`), the rows covered after them (at the head), the rows with a reason instead, and the rows owned by part 19c. "The journeys" is Task 1's own row: an older journey whose wait it changed.
 
-| screen | rows | covered before | covered after | with a reason |
-| --- | --- | --- | --- | --- |
+| screen | rows | covered before | covered after | with a reason | for 19c |
+| --- | --- | --- | --- | --- | --- |
+| The journeys | 1 | 1 | 1 | 0 | 0 |
+| The network | 6 | 0 | 6 | 0 | 0 |
+| The start page | 9 | 1 | 6 | 0 | 3 |
+| The app | 17 | 7 | 9 | 0 | 8 |
+| The undo strip | 6 | 4 | 4 | 0 | 2 |
+| The server | 2 | 2 | 2 | 0 | 0 |
+| The canvas | 25 | 8 | 17 | 0 | 8 |
+| The components table | 4 | 2 | 3 | 0 | 1 |
+| Units | 19 | 10 | 11 | 0 | 8 |
+| Types | 21 | 2 | 10 | 0 | 11 |
+| Shared files | 32 | 4 | 24 | 0 | 8 |
+| Findings | 18 | 12 | 16 | 0 | 2 |
+| Files | 24 | 9 | 13 | 0 | 11 |
+| Compare | 10 | 1 | 6 | 0 | 4 |
+| A component | 52 | 32 | 39 | 0 | 13 |
+| Values | 28 | 18 | 19 | 0 | 9 |
+| **all** | 274 | 113 | 186 | 0 | 88 |
+
+Every one of this part's 186 rows names its journey; 190 citations, each checked against its file's `test(` line and title at the head.
 
 ### The journeys' time
 
-Before: part 19a's pull request run 37787987752 (ubuntu chromium 93 journeys in 3.6 min, windows chromium 94 in 3.7 min, windows msedge 93 in 3.9 min). After: Task 10's full run.
+Before: part 19a's pull request run 37787987752. After: Task 10's full run 38339879535, at `1aa88a5`, whose code is the milestone gate's `ba28818`. The windows chromium leg has one journey more on both sides: `mapped.spec.ts`, which runs there alone. Spec §8 estimated about 50 more journeys; there are 78, and a pass takes about two minutes longer on each leg, far inside the jobs' timeouts.
 
 | leg | journeys before | time before | journeys after | time after |
 | --- | --- | --- | --- | --- |
+| ubuntu chromium | 93 | 3.6 min | 171 | 5.6 min |
+| windows chromium | 94 | 3.7 min | 172 | 6.0 min |
+| windows msedge | 93 | 3.9 min | 171 | 6.0 min |
+
+### The full run at the head
+
+Run 38339879535, at `1aa88a5`, `repeat=1`: every job succeeded. The development build and publish were skipped, as on any dispatch.
+
+| job | result |
+| --- | --- |
+| test (ubuntu-latest, 3.12) | 7026 passed in 6 min 27 s, at 100 % |
+| test (ubuntu-latest, 3.13) | 7026 passed in 6 min 11 s, at 100 % |
+| test (ubuntu-latest, 3.14) | 7026 passed in 4 min 14 s, at 100 % |
+| test (windows-latest, 3.12) | 7026 passed in 9 min 6 s, at 100 % |
+| test (windows-latest, 3.13) | 7026 passed in 8 min 18 s, at 100 % |
+| test (windows-latest, 3.14) | 7026 passed in 4 min 50 s, at 100 % |
+| gui (ubuntu-latest, chromium) | Vitest 936 passed; journeys 171 passed in 5.6 min |
+| gui (windows-latest, chromium) | Vitest 936 passed; journeys 172 passed in 6.0 min, mapped.spec.ts included |
+| gui (windows-latest, msedge) | Vitest 936 passed; journeys 171 passed in 6.0 min |
+| lint, container, extension, gui-screenshots | success |
 
 ### The final hunt
 
-Filled in by Task 10.
+Two hunts, `repeat=5`, each journey five times on each leg: the first at `e7c7515` (Task 9's head), while the final review read the branch; the second at `4e546ad` (the final review's fix wave), because the wave changed a journey's steps and added one (P19b-25). Neither had a failure.
 
-| leg | runs | failures |
-| --- | --- | --- |
+| run | head | leg | journeys run | failures | time |
+| --- | --- | --- | --- | --- | --- |
+| 38330498359 | `e7c7515` | ubuntu chromium | 850 | 0 | 26.1 min |
+| | | windows chromium | 855 | 0 | 23.1 min |
+| | | windows msedge | 850 | 0 | 33.1 min |
+| 38336521123 | `4e546ad` | ubuntu chromium | 855 | 0 | 27.8 min |
+| | | windows chromium | 860 | 0 | 25.3 min |
+| | | windows msedge | 855 | 0 | 31.4 min |
+
+Between them, every task's own run passed on every leg but one. Run 38316603646, at Task 7's head, failed once on Windows chromium, in `values.spec.ts:249`, a journey older than this part: the page's own script was refused a socket (`net::ERR_NO_BUFFER_SPACE`), and the page stayed blank (P19b-22).
+
+### The milestone gate
+
+At `ba28818`, on the Linux development PC, through `gate.sh`, each exit status captured on its own line. Every one was 0.
+
+| gate | result |
+| --- | --- |
+| `.venv/bin/python -m pytest` | 7026 passed in 2 min 54 s, at 100 % line and branch |
+| `ruff check`, `ruff format --check`, `mypy` | all checks passed; 170 files already formatted; no issues in 91 source files |
+| `npm run schemas`, `npm run lint`, `npm run typecheck` | 0; lint prints biome's one info, which predates this part |
+| `npm test` | 936 passed, 100 % on all four (1606 statements, 1283 branches, 565 functions, 1303 lines) |
+| `npm run build`, `npm run ladle:build` | 0 |
+| `docker compose run --rm gui-screenshots` | 162 passed in compare mode; no reference moved (the new `components--typepanelview--no-unit-chosen.png` was made by the wave) |
+| the docs under `-W`, in Docker | build succeeded |
+| every journey, Chrome | 171 passed in 3.8 min |
 
 ## Progress log
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
+| 1: the inventory, the two helpers, `files.spec.ts`'s wait | `78f3e8c`, `7d1ab91`, `f090048`; round 1 `3f1279d`, `cb09778`, `c506c66`, `de1dd7d` | opus: needs fixes, then clean after one round | the inventory came to 150 rows with no journey, and the split followed (P19b-3); run 37905686691 green |
+| 2: the page sends its loads once more | `9782858`, `0855e8e`, `19fab74` | opus: approved | `sheetLoaded`: in Chromium a failed link still holds a sheet; run 37913135127's one failure led to P19b-7 |
+| 1b: the Remove journey's route, Task 2's Minors | `d4fd8f6`, `19e700b`, `7517ba2` | sonnet: approved | run 37918281766 green |
+| 3: the start page and the app around every page | `9caafd3`, `4bf7fa9` | sonnet: needs fixes, then clean after one round | Windows paths written posix; the long poll answered at once (P19b-9); run 37926757938 green |
+| 4: the canvas and the components table's summary | `307b244` | opus: approved | run 38284718643 green |
+| 5: Units and Types | `a513001`, `7e46f9a`; round 1 `72a7f01`, `f27c374` | sonnet: needs fixes, then clean after one round | a bug fixed (P19b-12); runs 38291224356 and 38297464266 green |
+| 6: Shared files | `61cda0e`, `163a6e3`, `e0eae6e`, `cfcc45e`, `4a702f3`, `d76a61e` | opus: approved | a bug fixed (P19b-17); run 38307570169 green |
+| 7: Files and Findings | `d14e71d`, `59c609d` | sonnet: approved | P19b-20 recorded; run 38316603646: Task 7's eight green on every leg, one failure that was P19b-22's |
+| 8: Compare | `76219b2`, `ebf5bca`, `7e92c97` | sonnet: approved | `copiedGui`'s layout copy (P19b-5); run 38323123373 green |
+| 9: a component and its values | `2f5d96c`, `e7c7515` | sonnet: approved | run 38328645456 green, the two path spellings proven on Windows; P19b-24 recorded |
+| final review | `b53efaa`, `0c9ff12`, `a8ae8a7`, `ccab3e7`, `4e546ad`; then `ba28818` | opus: with fixes, five Minors and 15 of 36 deferred Minors into one wave; re-review all addressed | the worker asked for once more (P19b-26), the "no unit" story (P19b-15); the re-review's two Minors fixed by the controller (P19b-28) |
+| 10: the hunts, the figures, the gate, the close-out | `1aa88a5`, then this close-out | | two clean hunts; the milestone gate at `ba28818`; the task texts made true to what was built |
 
 ## What was left open
 
-Filled in as the work goes. Known before execution:
+Known before execution:
 - **Firefox, Safari and macOS** (spec §11).
 - **The user guide,** part 20.
-- **P19a-7's question,** how long a refusal held stale shows, unless the maintainer answers it.
-- **A fix that needs a design decision,** each recorded by the task that found it.
-- **The rows owned by 19c,** 85 of them, for part 19c: every row Task 1 added to *The inventory* that no journey drives (79), and the six ruling P19b-4 added (two Values rows, and a panel failing to read its entry for the variable, unit, type and entry panels). Part 19c takes them under its own later plan, on the same spec and helpers.
-- **That the page draws only after its stylesheets were asked again is pinned by no journey** (Task 2). A journey would need a negative wait, which the house rules forbid; `network.spec.ts`'s journeys 1 and 2 prove the stylesheet arrives, not that it arrived before the first draw.
+- **P19a-7's question:** how long a refusal held stale shows. The maintainer has not answered it.
+- **The rows owned by 19c,** 88 of them, for part 19c, which takes them under its own later plan on the same spec and helpers:
+  - every row Task 1 added to *The inventory* that no journey drives (79);
+  - the six that ruling P19b-4 added;
+  - the three that ruling P19b-27 added.
+- **That the page draws only after its stylesheets were asked again is pinned by no journey** (Task 2). A journey would need a negative wait, which the house rules forbid. `network.spec.ts`'s journeys 1 and 2 prove that the stylesheet arrives, not that it arrived before the first draw.
+
+Found during execution, each recorded for the maintainer with its ruling:
+- **An adopt refused because a units file appeared** (P19b-11). It shows its refusal for 31 to 44 ms before its banner is withdrawn. Whether the refusal should outlive the banner is a design decision, beside P19a-7's.
+- **A selection that changes nothing offers a change** (P19b-13). A type's key selected and left unchanged shows "Changes 1 file", with an empty diff (datatype, unit) or a re-layout (conversion, limits). The plan route answers a file entry with no hunk, and the view reads it as a change. The final review notes that the datatype and unit half could be fixed in the view's library alone.
+- **A bare word in a constant's value** (P19b-18) is answered in the json parser's words ("'oops' is not one json value: …"), not the constant's own sentence. This is the api's design: a request that is not json answers 400.
+- **A failed read of a new revision drops the table** (P19b-20) on five tabs: Files, Units, Types, Shared files and Graph. `placeholderData` serves only a pending read, so the comment "A server that stopped answering leaves the table as it was" holds only for a re-read of the same revision. Part 19c's "failing once listed, the table kept" rows meet the same choice. Part 19a's *What was left open* named its cause, `retry: false`, as a candidate.
+- **The page's own script refused a socket** (P19b-22). `net::ERR_NO_BUFFER_SPACE`, once, on Windows chromium in run 38316603646, left the page blank. Neither final hunt met it. The options:
+  - a same-origin boot script asking for the module once more;
+  - an inline boot behind a CSP hash;
+  - accepting it.
+- **The panels differ on a stale refusal** (P19b-24).
+  - The declare panel lets it go on the next edit; the others hold it until the next revision.
+  - The declare and removal panels withdraw their button while it stands; the values grid keeps its Apply.
+- **The stale decision is made inline** in ten `.tsx` files, thirteen places (`error instanceof ApiError && error.code === "stale"`), and `UnitPanel.tsx`'s `refusalOf` repeats it. Meanwhile `lib/refusals.ts` exports `isStale`, which only `FilesPage.tsx` uses. This predates 19b and spans the screens. The house rule "no decision in a .tsx file" is not met there.
+
+For part 19c, from the reviews:
+- **A `held(page, matcher)` helper,** as 19c's first task. The held-request recipe has eight copies, two of them drifted to no `{ times: 1 }`, and 19c's loading-state rows add about fifteen more. The final review's recommendations give its shape.
+- **Write before the press** for the out-of-date rows: a file written unseen before the press, as five 19b journeys do, needs no route.
+- **The stamp bump** (seven copies) gets a helper beside `writeUnseen` if 19c adds more "refused, then applied once caught up" journeys.
+
+Elsewhere:
+- **`npm run lint` prints "Found 1 info"** (biome.json's deprecated `recommended`). It predates 19b; a `biome migrate` belongs in a change of its own.
+- **GitHub's `ubuntu-latest` moves to Ubuntu 26** from 2026-10-19. The next runs after that date are the first on it.
 
 ## Rulings taken
 
@@ -1556,3 +1672,39 @@ Taken while planning; execution adds its own below them.
 8. **Only the controller pushes,** and only this branch, by the maintainer's leave of 2026-10-09 — cost if wrong: a slower loop.
 
 ### Taken during execution
+
+Numbered as the ledger numbered them; code comments cite them by number.
+
+- **P19b-1. The baseline gate is part 19a's.** That is its milestone gate at `0cd4172`, pytest at `9d6e96c` (7025 at 100 %), and its pull request's run 37787987752. Master `ff9954e`'s tree is `9d6e96c`'s, and this part's first commits touched only its own documents — cost if wrong: a red misattributed to this part, which Task 1's gate would have shown.
+- **P19b-2. The models are those of ruling 7.** Opus implemented Tasks 1, 2, 4 and 6, and sonnet the rest. Reviews took the same seats, and the final review ran on opus — cost if wrong: a cheaper seat missing a vacuous journey, which each journey's named ablation guards against.
+- **P19b-3. The split.** Task 1 found 150 rows with no journey, about three times the spec's estimate. By the maintainer's choice, this part closes the 71 starting rows, and every row Task 1 added is owned by "19c" in *The inventory*. A row Task 1 added that already cites a journey keeps its screen's task as owner, with no work — cost if wrong: none; rows only change part.
+- **P19b-4. Six more rows for 19c.** Two Values rows, and a panel failing to read its entry for the variable, unit, type and entry panels — cost if wrong: none.
+- **P19b-5. The routed comparison finding is reached through examples/layout.** That example's plugin files `layout/key-changed` on a declaration. Task 8 extended `copiedGui` with a `layout` example, the plugins copied beside each copy, with a journey of its own — cost if wrong: one more example in `copiedGui`.
+- **P19b-6. Task 1's review Minors 1 to 11 were fixed in its round.** Minor 1 was met by retitling the journey to what it proves — cost if wrong: none.
+- **P19b-7. A route that forwards with `route.fetch` handles its one request and no other** (`{ times: 1 }`). Left registered, it met teardown on Windows as `ECONNRESET` (`files.spec.ts`'s Remove journey, run 37913135127) — cost if wrong: none; the journey's claim is unchanged.
+- **P19b-8. A task 1b took P19b-7's fix,** with Task 2's Minors 1 to 5 (comments, a Vitest case, and the plan's bookkeeping), in one dispatch and one review — cost if wrong: none.
+- **P19b-9. The long poll is answered at once,** by a project file's stamp moved with `utimesSync`. A journey that fails the page's next state read then reaches its state in about 2 s instead of waiting out the 25 s poll — cost if wrong: none; the claim is unchanged.
+- **P19b-10. An implementer's re-issued `rm`, with the exact paths the permission check asked for, followed the rule** "delete only what you created, by exact path" — cost if wrong: none.
+- **P19b-11. Recorded for the maintainer:** an adopt refused because `units.ddd.json` appeared shows its refusal for 31 to 44 ms before its banner is withdrawn — cost if wrong: a reader in that race reads no refusal.
+- **P19b-12. Fixed as a contained bug:** a type's pick of "no unit" was dropped (`chosen ?? starting` read the pick of nothing as no pick). The rule is now `settledRaw` in `lib/variableKeys.ts`, used by both panels and both stories, red first, with a CHANGELOG entry — cost if wrong: none.
+- **P19b-13. Recorded for the maintainer:** a type's key selected and left unchanged offers "Changes 1 file" with an empty diff or a re-layout. Whether a selection that changes nothing should plan anything spans the server's plan and the view — cost if wrong: a change offered that changes nothing, as today.
+- **P19b-14, P19b-19, P19b-21 and P19b-23. The plan's records were corrected at the close-out:** Tasks 5 to 8's text, from what their reports and reviews measured, and the layout extension in *Interfaces* and *File Structure* — cost if wrong: none.
+- **P19b-15. The "no unit" fix got a story and its screenshot reference,** so that the pull request shows what it changed — cost if wrong: one story, removable.
+- **P19b-16. Task 7 refreshed three of its rows' stale citations** — cost if wrong: none.
+- **P19b-17. Fixed as a contained bug:** the Shared files tab swapped an entry's panel for the form declaring it whenever its table stopped listing the entry. That happened always for a half-written file, about once in ten for a gone entry, and as a flash on every rename. The rule is now `opensPanel` in `lib/shared.ts`, red first, with a CHANGELOG entry — cost if wrong: revert `opensPanel`'s `held`.
+- **P19b-18. Recorded for the maintainer:** a bare word typed into a constant's value is answered in the json parser's words, not the constant's own sentence, because a request that is not json answers 400 — cost if wrong: the parser's words, as today.
+- **P19b-20. "The list failing later" is reached by leaving the tab and coming back.** Recorded for the maintainer and part 19c: a failed read of a new revision drops the table on five tabs, Files, Units, Types, Shared files and Graph. A failed read of a new key has no data, and `placeholderData` serves only a pending read. Not fixed, because it spans five screens — cost if wrong: the table lost behind the alert, as today.
+- **P19b-22. Recorded for the maintainer:** the page's own script refused a socket (`net::ERR_NO_BUFFER_SPACE`, run 38316603646, Windows chromium) leaves the page blank. It is the one load the page cannot ask for again from its own code. The options are a same-origin boot script, an inline boot behind a CSP hash, or accepting it. A final hunt that met it again would have had it worked at its cause; neither hunt did — cost if wrong: one small task.
+- **P19b-24. Recorded for the maintainer:** the panels differ on a stale refusal.
+  - The declare panel lets it go on the next edit; the others hold it until the next revision.
+  - The declare and removal panels withdraw their button while it stands; the values grid keeps its Apply.
+
+  One rule for every panel spans several screens — cost if wrong: a reader quick enough within the watcher's second is refused once more, as today.
+- **P19b-25. The close's order.** The final hunt ran at `e7c7515` while the final review read the branch. The one fix wave followed, and a second hunt, because the wave changed journeys' steps — cost if wrong: one more hunt.
+- **P19b-26. The layout worker's script is asked for once more** (the final review's M3). It is a load the page's own code makes, so spec §6's rule applies to it. `useLayout` creates the worker once more on its first error, with the decision in `lib/layoutAnswers.ts`, red first. A worker's error does not say whether the network or the answer failed, so a script that is not one is asked for twice, and a second failure shows the same sentence as before — cost if wrong: one hook's retry, removable.
+- **P19b-27. Two of the spec's starting rows were narrowed** (the final review's M5).
+  - The three Files actions are one row, reached by Remove: all three share `useFilesApply`, which that journey pins.
+  - The spec's schema case is the not-json row: `Session.read_file` makes no schema check, and a file that parses but breaks its schema is drawn as the page draws any file.
+
+  What neither pins became rows for 19c, with one candidate a task noted: New file's and Add's out-of-date refusal in their own panels; a component file that parses but breaks its schema; Compare's finding panel closed. "Hide changes" pressed, the other candidate, was already a 19c row ("the changes a plan makes, shown and then hidden again") — cost if wrong: three rows only.
+- **P19b-28. The wave's re-review left two Minors, and the controller fixed both with gates,** as part 19a's Global Constraints have it. The failed worker's handlers let go before its retry, and the documentation's sentence on `failing` names the loads it holds for — cost if wrong: none.

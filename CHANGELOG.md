@@ -111,11 +111,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   files tab, the panel of a constant, a section or a raster gave way to the form declaring one,
   pre-filled with its name, whenever the table stopped listing the entry: when its file was
   saved half-written, where the panel was meant to stay and name the file; when the entry went,
-  if the table heard of it before the panel did, where the tab was meant to say it had gone; and
-  for a moment on every rename from the panel.  The panel now stays until its own answer says
-  why: it names the file that did not load and shows the entry again once the file loads, it
-  closes with the tab saying the entry is no longer declared, or it moves straight onto the new
-  name.
+  if the table heard of it before the panel did, where the tab was meant to say it had gone;
+  and for a moment on every rename from the panel.  The panel now stays until its own answer
+  says why: it names the file that did not load and shows the entry again once the file loads,
+  it closes with the tab saying the entry is no longer declared, or it moves straight onto the
+  new name.
 
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.

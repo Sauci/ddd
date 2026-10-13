@@ -974,18 +974,22 @@ in Git Bash or a similar shell:
    DDD_MAPPED_DRIVE=M: npm run e2e -- mapped.spec.ts
 
 ``copiedGui``, beside those fixtures in ``gui/e2e/fixtures.ts``, serves a copy of
-``examples/demo``, ``examples/vocabulary``, ``examples/structures`` or ``examples/layout`` that the
-journey changes before ``ddd gui`` starts on it, for a state no example has as it stands - no
-project at all, a project with no dictionary, or a build record not used - naming its project unless
-the journey asks for the start page; a journey may serve several. A copy of ``examples/layout`` is
-made with a copy of ``examples/plugins`` beside it, because its project loads
-``../plugins/ddd_layout.py``: it is the one example in which a plugin's own rules file findings, a
-comparison rule's among them. ``failing``, in ``gui/e2e/demo.ts``, makes
-the page's requests to one path, or to every path a pattern matches, fail - the first so many
-of them, or every one - and lets the rest through to the server: each is answered as the server
-answers a request it failed on, a ``500``, or not answered at all, as a dropped connection. It is
-Playwright's own route on that one page, so the server's code is never touched. The ``500``'s
-message, ``SERVER_FAILED``, is the server's own sentence for such a request, ``_INTERNAL`` in
+``examples/demo``, ``examples/vocabulary``, ``examples/structures`` or ``examples/layout``
+that the journey changes before ``ddd gui`` starts on it, for a state no example has as it
+stands - no project at all, a project with no dictionary, or a build record not used - naming
+its project unless the journey asks for the start page; a journey may serve several. A copy of
+``examples/layout`` is made with a copy of ``examples/plugins`` beside it, because its project
+loads ``../plugins/ddd_layout.py``: it is the one example in which a plugin's own rules file
+findings, a comparison rule's among them. ``failing``, in ``gui/e2e/demo.ts``, makes the
+page's requests to one path, or to every path a pattern matches, fail - the first so many of
+them, or every one - and lets the rest through to the server: each is answered as the server
+answers a request it failed on, a ``500``, or not answered at all, as a dropped connection.
+The page sends a GET once more when its fetch got no answer at all, and asks once more for a
+stylesheet or for its layout worker's script that failed, so a journey that wants the failure
+state fails every request, ``failing(page, path, "network")`` with no ``times``:
+``failing(page, path, "network", 1)`` shows no banner. ``failing`` is Playwright's own route
+on that one page, so the server's code is never touched. The ``500``'s message,
+``SERVER_FAILED``, is the server's own sentence for such a request, ``_INTERNAL`` in
 ``src/ddd/gui/server.py``, so a banner it raises reads as the one a real failure raises.
 
 The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,

@@ -8,6 +8,7 @@ import {
   SCALAR_TYPE,
   SET_UNIT,
   STRUCT_TYPE,
+  UNIT_TAKEN_OFF,
 } from "../stories/fixtures";
 import { TypePanelView } from "./TypePanelView";
 
@@ -17,6 +18,9 @@ interface Props {
   reply: TypeReply;
   /** The key whose chooser is open, or unopened when left out. */
   on?: string;
+  /** What that chooser was settled on before the story opens: `null` for a pick of nothing ("no
+   * unit"), and no pick at all when left out. */
+  chosen?: string | null;
   preview?: PlanReply | null;
   shown?: boolean;
   refusal?: string;
@@ -33,6 +37,7 @@ interface Props {
 function PanelStory({
   reply,
   on,
+  chosen: chosenSeed,
   preview = null,
   shown = false,
   refusal,
@@ -40,7 +45,7 @@ function PanelStory({
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(on);
   const [typed, setTyped] = useState<string | undefined>(undefined);
-  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
+  const [chosen, setChosen] = useState<string | null | undefined>(chosenSeed);
   const [range, setRange] = useState({ min: "", max: "" });
   const [description, setDescription] = useState(reply.description);
   const [renameTo, setRenameTo] = useState<string | null>(renameSeed);
@@ -108,6 +113,13 @@ export const AKeyChosen = () => <PanelStory reply={SCALAR_TYPE} on="unit" previe
 /** The same, with Show changes open: the one hunk that moves degC to K. */
 export const ChangesShown = () => (
   <PanelStory reply={SCALAR_TYPE} on="unit" preview={SET_UNIT} shown />
+);
+
+/** The unit row's pick of "no unit", with Show changes open: the field reads "no unit", where it
+ * once went back to degC, and the one hunk takes the `unit` line out (`settledRaw`,
+ * `gui/src/lib/variableKeys.ts`). */
+export const NoUnitChosen = () => (
+  <PanelStory reply={SCALAR_TYPE} on="unit" chosen={null} preview={UNIT_TAKEN_OFF} shown />
 );
 
 /** Sensor_t: no "What it fixes" table, its four members, one with dimensions, its two uses. */

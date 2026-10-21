@@ -163,6 +163,11 @@ The failure modes the spec implies but no row of the inventory would test on its
 | `gui/src/screens/FindingsPage.tsx`, `gui/src/lib/findings.ts`, `findings.test.ts` | 7 | a fix the server failed on chosen again |
 | `gui/src/screens/CompareView.tsx`, `gui/src/components/FindingPanelView.tsx` | 7 | a baseline's finding named as the baseline's in its panel |
 | `gui/e2e/declarations.spec.ts`, `values.spec.ts` | 8 | a component and its values |
+| `src/ddd/gui/session.py`, `tests/test_gui_session.py` | 3 | `find_projects` lists no empty image and no image twice (ruling 18) |
+| `gui/src/screens/ComponentPage.tsx` | 3 | the declarations table's cells follow a stopped server (ruling 18) |
+| `gui/src/lib/compare.ts`, `compare.test.ts`, `gui/src/screens/ComparePage.tsx` | 7 | a baseline asked for again is asked (ruling 18) |
+| `gui/src/ui/ComboBox.tsx`, `gui/src/styles/ui.css` | 8 | a note drawn after its combobox is its description (ruling 18) |
+| `2026-10-21-gui-journeys-remaining-preflight.md` | 3 to 8 | the earlier pre-flight's drafts of every row, kept as evidence (ruling 18) |
 | `docs/developer_documentation.rst` | 1, 3 | `held` and `restamp` (1); `openedGui` (3) |
 | this plan's *The inventory* | 1, then every task | each row's journey, or its reason |
 
@@ -203,7 +208,7 @@ A screen's fix, where a journey finds a bug, is in that screen's own files, with
 - [ ] **Step 2: The rows.** For each row of *The inventory*, find the code that draws it at this commit and confirm that no journey drives it.
   - A row a journey now drives names it (`file:line` and title), and keeps its task as owner, with no work.
   - A row whose state no longer exists in the code is marked so, with what was read.
-  - Nothing is added beyond the five rows the spec adds (§5, §6), already in the table.
+  - Nothing is added beyond the five rows the spec adds (§5, §6) and the nine the earlier pre-flight found (ruling 18), all already in the table.
 - [ ] **Step 3: `held`'s and `restamp`'s journeys, red first,** appended to `gui/e2e/helpers.spec.ts`, whose `UNASKED` and `askedFromPage` they reuse. Add `held`, `restamp`, `CONTROLLER` to its import from `./demo`, and `statSync`, `utimesSync` to its `node:fs` import:
 
 ```ts
@@ -764,6 +769,8 @@ def page_policy(page: bytes) -> str:
 - Consumes: `held`, `restamp` (Task 1); `failing`, `SERVER_FAILED`, `copiedGui` (19b); `bareGui`, `gui`, `generatedGui`.
 - Produces: `start`'s `browser` option, and `openedGui` (see *Interfaces Between Tasks*).
 
+**The earlier pre-flight** (ruling 18) drafted a journey for each of this task's rows, ran it ten times, and killed it with a named change: `2026-10-21-gui-journeys-remaining-preflight.md`, §A.1 to §A.3. Before writing a row's journey, read its draft: its setup, the words it read off the page, and the change that killed it. Then write the journey with this plan's helpers.
+
 - [ ] **Step 1: The fixture `openedGui`, red first.** Its journey, appended to `gui/e2e/helpers.spec.ts`:
 
 ```ts
@@ -939,6 +946,13 @@ test("a server that answers again after it stopped lifts the banner, and the pag
   - The journey's second half holds the session's next read: register `held(page, "/api/session")` after the list shows and before the press, and see every project's button still `toBeDisabled()` once the open has answered and while the session is held. Red today.
   - The fix: the list's buttons stay disabled from the press until the start page goes, the decision a function in `gui/src/lib` under Vitest (the rule in *Global Constraints*), read by `StartPage.tsx`.
   - A CHANGELOG entry under `## Unreleased`.
+- [ ] **Step 6b: Two bugs the earlier pre-flight found, each red first** (ruling 18; the drafts are in §A.1 and §A.2 of the companion):
+  - **A build record with no image prints "built as" with nothing after it, and one image named twice prints twice** (`StartPage.tsx`'s `{project.images.length > 0 && (`, over `find_projects`' list). It is fixed at the source: `find_projects` (`src/ddd/gui/session.py`) skips an empty image and names each image once. Its pytest cases go in `tests/test_gui_session.py` first, and are watched failing.
+  - **The component table's cell buttons stay enabled while the server is stopped.**
+    - "Set the unit of ValueA" and "Show the values of CurveA" read `isDisabled={stopped}` inside the declarations table's `TableBody` render function. React Aria caches that function's rows per item, and `rows` does not change with `stopped`.
+    - The fix is `<TableBody items={rows} dependencies={[stopped]}>` in `ComponentPage.tsx`.
+    - Red first: row 9's journey asserts both cell buttons disabled, beside its five controls. Today it fails with "Expected: disabled, Received: enabled".
+  - Each gets a CHANGELOG entry under `## Unreleased`.
 - [ ] **Step 7: What the survey found, to confirm on the running page** and record as rulings for the maintainer (not fixed here: each is wording, or a choice of what to show):
   - With the session failed, the masthead's "Projects" changes the address and nothing else (`App.tsx` checks `session.isError` before `route.page === "start"`).
   - Pressing an unnamed project is refused with "<path> is not a project description", its path in native separators (`Session.open`), while the list beside it writes forward slashes (`_projects`'s `as_posix()`).
@@ -958,6 +972,8 @@ test("a server that answers again after it stopped lifts the banner, and the pag
 **Interfaces:**
 - Consumes: `copiedGui` (19b); `drift`, `driftMax`, `CONTROLLER`, `EVENT_LOGGER` (`gui/e2e/demo.ts`); `canvas.spec.ts`'s own `moduleOf` and `viewportOf`; `skeleton.spec.ts`'s `componentRow`, copied in.
 - Produces: the generator's `chain` shape, and the fixture `chainedGui`.
+
+**The earlier pre-flight** (ruling 18) drafted a journey for each of this task's rows, ran it ten times, and killed it with a named change: `2026-10-21-gui-journeys-remaining-preflight.md`, §A.4. Before writing a row's journey, read its draft: its setup, the words it read off the page, and the change that killed it. Then write the journey with this plan's helpers.
 
 - [ ] **Step 1: The worked journey,** the row "a module's badge, counting its errors or its warnings", added to `gui/e2e/canvas.spec.ts` (its import line becomes the one below; `moduleOf` is the file's own):
 
@@ -1061,6 +1077,8 @@ test("a module's badge counts its warnings, and only its errors once it has any"
   InletTemperature; types.ddd.json's Temperature_t) and `ms` (Sample_t's `timestamp` member).
 - **Row 17 types into the description, not a key row,** so P19b-13's empty plan for a selection
   that changes nothing never enters it.
+
+**The earlier pre-flight** (ruling 18) drafted a journey for each of this task's rows, ran it ten times, and killed it with a named change: `2026-10-21-gui-journeys-remaining-preflight.md`, §A.5. Before writing a row's journey, read its draft: its setup, the words it read off the page, and the change that killed it. Then write the journey with this plan's helpers.
 
 - [ ] **Step 1: The worked journey,** the row "a finding in a type's panel followed", in `gui/e2e/types.spec.ts`. Add `driftIn` and `PUMP` to its `./demo` import:
 
@@ -1190,6 +1208,8 @@ test("a finding in a type's panel leads to the unit it names, on the Units tab",
   Apply only under a plan `planShown` trusts (`lib/typing.ts`), so waiting on the consequence line
   is enough.
 
+**The earlier pre-flight** (ruling 18) drafted a journey for each of this task's rows, ran it ten times, and killed it with a named change: `2026-10-21-gui-journeys-remaining-preflight.md`, §A.6, its Shared files rows. Before writing a row's journey, read its draft: its setup, the words it read off the page, and the change that killed it. Then write the journey with this plan's helpers.
+
 - [ ] **Step 1: The worked journey,** the row "an entry's panel reading the entry", in `gui/e2e/shared.spec.ts`. Its `./demo` import becomes `import { held, PUMP, writeUnseen } from "./demo";`, and the failing rows add `failing` and `SERVER_FAILED`:
 
 ```ts
@@ -1255,6 +1275,8 @@ test("an entry's panel says it is reading the entry until it is read", async ({
 - Consumes: `held`, `restamp` (Task 1); `failing`, `SERVER_FAILED`, `copiedGui` (19b); `drift`, `driftDatatypeIn`, `dump`, `unstamp`, `writeUnseen`, `CONTROLLER`, `SENSOR_HUB`, `UNITS` (`gui/e2e/demo.ts`); the fixtures `gui`, `vocabularyGui`. The kept answer (Task 2) changes the Files tab's early return, which the row "reading the project's files" names.
 
 **Read before the rows** (the survey, at `2bc00da`): Constants a row reuses: `files.spec.ts`'s own `PROJECT` (`"project.ddd.json"`), `STALE` ("A file changed on disk, so nothing was written. The page now shows the files as they are.") and `EXTRA` (`"extra.ddd.json"`); `findings.spec.ts`'s own `valueH`; `demo.ts`'s `CONTROLLER`, `SENSOR_HUB`, `UNITS`, `SERVER_FAILED`. A Files cell is read as `row.getByRole("gridcell").nth(i)`: Entry is the row header (`isRowHeader`, `FilesTableView.tsx`), so `nth(0)` is Kind, `nth(1)` State, `nth(2)` Findings, as `skeleton.spec.ts`'s `componentRow` reads the components table.
+
+**The earlier pre-flight** (ruling 18) drafted a journey for each of this task's rows, ran it ten times, and killed it with a named change: `2026-10-21-gui-journeys-remaining-preflight.md`, §A.6 (its Findings rows), §A.7 and §A.8. Before writing a row's journey, read its draft: its setup, the words it read off the page, and the change that killed it. Then write the journey with this plan's helpers.
 
 - [ ] **Step 1: The worked journeys,** the row "New file's and Add's out-of-date refusal, shown in their own panels", appended to `gui/e2e/files.spec.ts`. Its imports become the lines below, merged with the file's own (Task 1 replaced its `utimesSync` with `restamp`); `PROJECT`, `STALE` and `EXTRA` are the file's own constants:
 
@@ -1408,6 +1430,12 @@ test("an Add applied while the description changed on disk is refused in its own
   - The fix: `FindingPanelView` takes the file's label as a prop, `CompareView` passes `fileLabel`'s for a baseline row, and the Findings tab passes `baseName` as today. The note's files take the same label.
   - Its Ladle story, if `FindingPanelView` has one for a baseline finding, gains the label, and its reference changes in Docker with `UPDATE=1`.
   - A CHANGELOG entry under `## Unreleased`.
+- [ ] **Step 5b: A baseline asked for again is asked, red first** (ruling 18; the drafts are in §A.8 of the companion).
+  - **The bug.** Pressing Compare, or Enter, again with the same path sends nothing. `ComparePage.tsx` sets the value it already holds, so the query key `["compare", asked, revision]` does not change, and React Query keeps the cached answer. A refused baseline stays refused after its file is made, and a stale "This project can replace the baseline." stays after the file is written over.
+  - **Two journeys, red first:** a baseline refused, then made, is asked for again by the same press; a baseline written over is asked for again, and the verdict follows.
+  - **The fix** numbers each ask into the key. Its decision goes in `gui/src/lib/compare.ts` under Vitest: `nextAsk(previous, typed)` answers the typed path trimmed, numbered one more.
+  - **Its row,** "a baseline asked for again, its file made or written over since", names the two journeys.
+  - **A CHANGELOG entry.**
 - [ ] **Step 6: What the survey found, beside the rows:** the row "an entry naming no file" leaves a Remove panel this task does not drive. Its project is not analysed, so removing either entry is allowed with the server's `unjudged` sentence ("not every analysis of this project ran to its end, so what removing missing.ddd.json leaves cannot be judged"). No row names it, and this part adds no row beyond spec §5's and §6's: record it in *What was left open*.
 - [ ] **Step 7: Bugs.** Any other a journey finds follows the rule in *Global Constraints*.
 - [ ] **Step 8: The inventory.** Each row names its journey, or its reason.
@@ -1455,6 +1483,8 @@ test("an Add applied while the description changed on disk is refused in its own
   - Nothing in the demo is shaped and states nothing, is produced by nobody, or is produced twice. Rows 19 and 21 change a copy.
 - **A failed read of a new revision dropped the component page and the grid** (P19b-20's pattern). Task 2 now keeps their answer over a failed read and never over a refusal (planning ruling 17). Rows 4, 7, 11 and 15 fail the *first* read, which still shows the error alone.
 - **`values.spec.ts`'s comment above "a pasted curve replaces every value in one edit"** (lines 352 to 362 at `2bc00da`) says no cell Apply can fail non-stale without "a mechanism of its own". Row 22's journey is that mechanism (`failing` on `/api/edit`). Rewrite the comment to name the journey, or remove it.
+
+**The earlier pre-flight** (ruling 18) drafted a journey for each of this task's rows, ran it ten times, and killed it with a named change: `2026-10-21-gui-journeys-remaining-preflight.md`, §A.9 and §A.10. Before writing a row's journey, read its draft: its setup, the words it read off the page, and the change that killed it. Then write the journey with this plan's helpers.
 
 - [ ] **Step 1: The worked journey,** the row "an object no longer declared, its page saying so, with the way back", in `gui/e2e/values.spec.ts`. Add `writeFileSync` to its `node:fs` import; Task 1 has already replaced its `utimesSync` with `restamp`, and `CONTROLLER` and `openValues` are already in its `./demo` import:
 
@@ -1590,6 +1620,14 @@ test("an object renamed under its open grid is said to be declared no longer, wi
 - [ ] **Step 4: Read off the running page before asserting them:** the row "a component file that parses but breaks its schema"'s schema message ("Field required" is pydantic's own wording for a missing key); the row "a finding in a variable's panel"'s message, and the name of the unit panel's row for PumpSpeed; the row "a dimension picked from the project's constants"'s consequence sentence, if asserted (a new name's scope defaults to `output`, the first of `SCOPES`); and, for "more than one place", that the analysis still resolves a dictionary on the demo with two producers of ValueB (the python test proves it on a two-file project, not the demo).
 - [ ] **Step 5: `values.spec.ts`'s comment** above "a pasted curve replaces every value in one edit" says no cell Apply can fail other than as out of date without a mechanism of its own. The row "a cell's Apply the server fails on" is that mechanism: rewrite the comment to name its journey.
 - [ ] **Step 6: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*. Seen again by the survey and already recorded: `VariablePanel.tsx` words its refusal inline (`` `The change was refused: ${error.message}` ``, twice) rather than through `refusalOf`, and the rows "a key's Apply, a removal or a declaration…" and "a cell's Apply…" assert P19b-24's split as it stands (three write paths withdraw their button; the grid keeps its Apply).
+- [ ] **Step 6b: A note drawn after its combobox is not its description, red first** (ruling 18; the draft is in §A.9 of the companion).
+  - **The bug.** In the row "a unit outside the project's vocabulary, said to be", the field's note ("Not one of this project's units") appears after the field first drew. The combobox then has no `aria-describedby`, so a screen reader does not read the note: `toHaveAccessibleDescription` receives `""`.
+  - **The fix,** in `gui/src/ui/ComboBox.tsx`: always render the description slot, and hide an empty one with `.combo-note:empty { display: none; }` in `gui/src/styles/ui.css`. Without that rule every combobox grows 8 px (measured), and the Ladle references move.
+  - **Red first:** that row's journey asserts the field's accessible description.
+  - **A CHANGELOG entry.**
+- [ ] **Step 6c: An oddity to reproduce first.** The earlier pre-flight typed "ValueD" (and "FlagA") into the Add a declaration panel's Name field, and found "Diagnosis" there. Reproduce it on `gui`.
+  - If the field does not keep what was typed, it is a bug under the rule in *Global Constraints*.
+  - If it does, record the probe in the report.
 - [ ] **Step 7: The inventory.** Each row names its journey, or its reason.
 - [ ] **Step 8: The gates,** every journey included. Commit: one commit for the component's rows, one for the values'.
 
@@ -1610,7 +1648,7 @@ test("an object renamed under its open grid is said to be declared no longer, wi
 
 ## The inventory
 
-The 88 rows part 19b handed over, with the owner task each now has, and the five rows this part adds (marked *added*): two for the page's script (spec §6), and three for the kept answer on the Files tab, a component's page and the values grid (spec §5). A row a journey drives names it by `file:line` and title; a row with none names its reason. Every row reads "none yet" until its task fills it in.
+The 88 rows part 19b handed over, with the owner task each now has, and the fourteen rows this part adds (marked *added*). Five come from the spec: two for the page's script (§6), and three for the kept answer on the Files tab, a component's page and the values grid (§5). Nine come from the earlier pre-flight (ruling 18). A row a journey drives names it by `file:line` and title; a row with none names its reason. Every row reads "none yet" until its task fills it in.
 
 | Screen | Row | Task | Journey |
 | --- | --- | --- | --- |
@@ -1629,6 +1667,7 @@ The 88 rows part 19b handed over, with the owner task each now has, and the five
 | The app | the changes a plan makes, shown and then hidden again | 3 | none yet |
 | The undo strip | the files an undo puts back, being read | 3 | none yet |
 | The undo strip | an undo the server fails on | 3 | none yet |
+| The undo strip | the files an undo puts back, failing to be read (*added*, pre-flight) | 3 | none yet |
 | The canvas | the project's graph failing before anything is drawn | 4 | none yet |
 | The canvas | the project's graph failing once drawn, the canvas kept | 2 | none yet |
 | The canvas | a module whose file does not load, drawn as not loaded | 4 | none yet |
@@ -1646,6 +1685,8 @@ The 88 rows part 19b handed over, with the owner task each now has, and the five
 | Units | a units file listing no unit, the units in use adopted into it | 5 | none yet |
 | Units | a project stating no unit, with nothing to adopt | 5 | none yet |
 | Units | an Apply the server fails on | 5 | none yet |
+| Units | a rename the plan refuses (*added*, pre-flight) | 5 | none yet |
+| Units | a unit listed twice, the `duplicate-unit` chip (*added*, pre-flight) | 5 | none yet |
 | Types | reading the project's types | 5 | none yet |
 | Types | the types failing to load | 5 | none yet |
 | Types | the types failing once listed, the table kept | 2 | none yet |
@@ -1679,10 +1720,15 @@ The 88 rows part 19b handed over, with the owner task each now has, and the five
 | Files | a pattern entry, the files it matches listed under it | 7 | none yet |
 | Files | a removal refused for a file only a pattern brings in | 7 | none yet |
 | Files | an Apply the server fails on | 7 | none yet |
+| Files | a removal or an add the server could not judge (*added*, pre-flight) | 7 | none yet |
+| Files | a removal a pattern keeps in (*added*, pre-flight) | 7 | none yet |
+| Files | a plan refused as out of date before any press (*added*, pre-flight) | 7 | none yet |
+| Files | a finding's route followed to a Files row (*added*, pre-flight) | 7 | none yet |
 | Compare | a baseline asked for with Enter | 7 | none yet |
 | Compare | a finding about the whole delivery, saying why it leads nowhere | 7 | none yet |
 | Compare | the baseline's own findings, named as the baseline's and leading nowhere | 7 | none yet |
 | Compare | a finding's panel closed | 7 | none yet |
+| Compare | a baseline asked for again, its file made or written over since (*added*, pre-flight) | 7 | none yet |
 | A component | reading its file | 8 | none yet |
 | A component | its file failing on a new revision, the page and its open panel kept (*added*) | 2 | none yet |
 | A component | a component file that parses but breaks its schema, drawn as the page draws any file | 8 | none yet |
@@ -1707,6 +1753,7 @@ The 88 rows part 19b handed over, with the owner task each now has, and the five
 | Values | a grid stated once for every cell | 8 | none yet |
 | Values | a grid nothing produces, or more than one place does, read only | 8 | none yet |
 | Values | a cell's Apply the server fails on | 8 | none yet |
+| Values | a values address naming a file the project does not include (*added*, pre-flight) | 8 | none yet |
 
 ## Milestone gate
 
@@ -1741,9 +1788,20 @@ Known before execution, from 19b's plan and this part's spec §11, each left wit
 Found by the surveys while planning, read in the code and not yet seen on a running page: each task confirms its own, and records it as a ruling with its evidence.
 - **A panel whose read of the units fails says it is reading, for good** (planning ruling 14).
 - **A type's panel links a finding routed back to the type itself,** where a variable's panel keeps such a finding as text (Task 5's survey).
-- **After a failed session, the masthead's "Projects" changes the address and nothing else;** an unnamed project's refusal writes its path in native separators beside a list in forward slashes; a failed read of the undo's preview reads "The undo was refused: …" (Task 3's survey).
+- **After a failed session, the masthead's "Projects" changes the address and nothing else;** an unnamed project's refusal writes its path in native separators beside a list in forward slashes; a failed read of the undo's preview reads "The undo was refused: …" (Task 3's survey). That last is now a row (ruling 18).
 - **An arrow's description mounts a render after focus lands** (Task 4's survey).
-- **Removing an entry of a project that was never analysed** is allowed with the server's `unjudged` sentence, and no row names it (Task 7's survey).
+- **Removing an entry of a project that was never analysed** is allowed with the server's `unjudged` sentence (Task 7's survey). It is now a row, beside the three other Files states the earlier pre-flight found (ruling 18).
+
+Found by the earlier pre-flight (ruling 18), and recorded for the maintainer:
+- **The Add a declaration panel loses its typed name when the server stops.** Its combobox, disabled, resets to no choice.
+- **Compare's Baseline field loses its focus after an Enter ask,** and drops keystrokes when a revision lands while the reader types.
+- **The Types tab names no component file that breaks its schema:** the types that file declares inline vanish, with no banner.
+- **A component with no name is named three ways:** its file's stem on the canvas, its path in the Table tab, and "Unnamed component" on its page.
+- **`set_entry` (`shared_plans.py`) plans a value equal to the entry's,** which its panels never ask for.
+- **`TypePanelView.tsx` decides a use's route in a `.tsx`.**
+- **A refusal that is not stale differs across panels:** some keep their Apply, others withdraw it until the reader chooses again.
+- **The undo strip blanks its preview for about one frame on every revision.**
+- **P19b-13 and P19b-24:** their designs, run red on the page and then green with the change, are in the companion's §B, for whoever takes them up.
 
 Found during execution: filled in by Task 9.
 
@@ -1768,6 +1826,23 @@ Taken while planning; execution adds its own below them.
 15. **A fix whose Apply the server failed on can be chosen again** (Task 7's survey), fixed in Task 7, red first: today only another row, or Close and the row again, gives back its Apply, against the comment over `refused` in `FindingsPage.tsx`. The rule is one `lib/findings.ts` function, read by that one screen — cost if wrong: one function and its journey's second half.
 16. **A baseline's finding names its file as the baseline's in its panel too** (Task 7's survey), fixed in Task 7, red first, with the words the Compare table's File cell already uses (`fileLabel`). It changes the Compare screen and one prop of `FindingPanelView` — cost if wrong: a prop the Findings tab passes as today.
 17. **The kept answer covers the component page and the values grid too,** the maintainer's answer of 2026-10-21 to Task 8's survey: their reads dropped everything on a failure, an open panel's choice included, against their own comments. A refusal (a 4xx) is never kept (`refusedRead`): the values page answers a renamed object, or a shape no grid can draw, with a refusal about the object, and the component page a file no longer in the project, so an answer kept over it would show what the project no longer has. The five tabs follow the same rule, though none of their reads is refused in practice — cost if wrong: a refusal shown alone where a kept answer would have served, or two more screens to revert.
+18. **The earlier 19c pre-flight is folded in** (the maintainer's choice of 2026-10-21). An earlier plan for this part was written on another branch, from a pre-flight of every row at `2bc00da`. That branch is retired, and its pre-flight is kept in `2026-10-21-gui-journeys-remaining-preflight.md`. This plan takes from it:
+    - **four contained bugs,** each fixed red first:
+      - the start page's empty or doubled image (Task 3);
+      - the component table's cells under a stopped server (Task 3);
+      - Compare asked again for the same baseline (Task 7);
+      - a combobox's late note (Task 8).
+
+      Its fifth, a fix that could not be chosen again, this plan already had (ruling 15);
+    - **nine rows:**
+      - the undo's preview failing (Task 3);
+      - a rename the plan refuses, and a unit listed twice (Task 5);
+      - four Files states: an unjudged plan, a removal a pattern keeps in, a plan refused as out of date before any press, and a finding's route to a Files row (Task 7);
+      - a baseline asked for again (Task 7);
+      - a values address naming a file the project does not include (Task 8);
+    - **its drafts,** as evidence for every screen task.
+
+    Where it chose otherwise than this plan, this plan stands: rows 14, 20 and 21, row 9's one screen, and the kept answer's design — cost if wrong: nine cheap journeys and four small fixes.
 
 ### Taken during execution
 

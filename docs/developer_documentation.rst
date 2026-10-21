@@ -998,12 +998,17 @@ every later one straight through: the journey sees what the page shows while it 
 the request go in a ``finally``, so that a failed assertion never leaves the page waiting. With
 ``every``, each such request is held until then, for a claim about every answer rather than the
 next one; with ``onAnswer``, the server's answer is fetched and handed to the journey before the
-page gets it, for a claim about an answer the page has not drawn yet. ``restamp`` moves a file's
-modification time to now and changes none of its bytes. The session's watcher compares a file's
-modification time and size alone (``stamped``, in ``src/ddd/gui/session.py``), so its next poll
-reads a new revision, and the long poll the page has open, which would otherwise wait out its
-``WAIT_SECONDS``, answers at once: a journey needs it to let go a refusal held until the next
-revision, or to make the page's next read of the state the one ``failing`` fails.
+page gets it, for a claim about an answer the page has not drawn yet. The two together leave a
+route that fetches every later request it matches until the page closes, the teardown's own
+included, which on Windows can meet a server already going away: they go together only for a
+path the page never asks on its own. A path given to ``failing`` or ``held`` as a string is a
+pathname, from its leading ``/``, and never a glob: any other string is refused, rather than
+left to match nothing. ``restamp`` moves a file's modification time to now and changes none of
+its bytes. The session's watcher compares a file's modification time and size alone
+(``stamped``, in ``src/ddd/gui/session.py``), so its next poll reads a new revision, and the long
+poll the page has open, which would otherwise wait out its ``WAIT_SECONDS``, answers at once: a
+journey needs it to let go a refusal held until the next revision, or to make the page's next
+read of the state the one ``failing`` fails.
 
 The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
 BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out

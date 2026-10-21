@@ -161,11 +161,10 @@ test("a request held until released is answered then, and the next goes straight
 test("every request held, with every, until released", async ({ page, gui }) => {
   await page.goto(gui.address);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
-  // The `g` flag makes a pattern's own `test` go on from where it last stopped: `held` tries it
-  // afresh for every request all the same. Every answer the hold lets go is read on its way to the
-  // page, so the asks it held are counted once all are answered, whatever came first.
+  // Every answer the hold lets go is read on its way to the page, so the asks it held are counted
+  // once all are answered, whatever came first.
   let through = 0;
-  const release = await held(page, /^\/api\/checks$/g, {
+  const release = await held(page, /^\/api\/checks$/, {
     every: true,
     onAnswer: () => {
       through += 1;
@@ -179,9 +178,11 @@ test("every request held, with every, until released", async ({ page, gui }) => 
     }),
   );
   try {
-    // A third ask of another path is answered while both are held: the page and the server work.
+    // A third ask of another path is answered while both are held: the page and the server work,
+    // and the hold has fetched neither answer yet.
     expect(await askedFromPage(page, BESIDE)).toMatchObject({ status: 401 });
     expect(answers).toBe(0);
+    expect(through).toBe(0);
   } finally {
     release();
   }
@@ -234,4 +235,15 @@ test("a file restamped has a later modification time and the same bytes", async 
   restamp(gui.directory, CONTROLLER);
   expect(statSync(path).mtimeMs).toBeGreaterThan(old.getTime() + 1000);
   expect(readFileSync(path).equals(bytes)).toBe(true);
+});
+
+test("a string that is not a pathname is refused, rather than holding or failing nothing", async ({
+  page,
+}) => {
+  // A glob, as a route of Playwright's own takes one: a pathname no request has.
+  const refusal = new Error(
+    '"**/api/units" matches no request: a string is a pathname, starting with /, never a glob',
+  );
+  await expect(held(page, "**/api/units")).rejects.toThrow(refusal);
+  await expect(failing(page, "**/api/units", "http")).rejects.toThrow(refusal);
 });

@@ -497,11 +497,10 @@ export const SERVER_FAILED = "ddd gui failed on this request; the terminal it ru
  * Playwright's own route, on this page alone: the server's code is never touched. Answers how
  * many it has failed so far.
  *
- * A pattern is matched afresh for every request, whatever its flags: a copy of it is tried from
- * its start each time, so a `g` or `y` flag, which makes `test` go on from where it last stopped,
- * never lets one request through and fails the next. A route on the same path registered after
- * this one, and calling `route.continue()`, sends its request straight to the server, past
- * `failing`; one calling `route.fallback()` hands it on to `failing`.
+ * `path` is matched as `held`'s is (`Matcher`): a string as a request's pathname, and a pattern
+ * afresh for every request, whatever its flags. A route on the same path registered after this
+ * one, and calling `route.continue()`, sends its request straight to the server, past `failing`;
+ * one calling `route.fallback()` hands it on to `failing`.
  */
 export async function failing(
   page: Page,
@@ -510,47 +509,45 @@ export async function failing(
   times = Number.POSITIVE_INFINITY,
 ): Promise<() => number> {
   let failed = 0;
-  let matches: (pathname: string) => boolean;
-  if (typeof path === "string") {
-    matches = (pathname) => pathname === path;
-  } else {
-    // A copy, flags and all, so that setting where it starts leaves the caller's own untouched.
-    const pattern = new RegExp(path);
-    matches = (pathname) => {
-      pattern.lastIndex = 0;
-      return pattern.test(pathname);
-    };
-  }
-  await page.route(
-    (url) => matches(url.pathname),
-    async (route) => {
-      if (failed >= times) {
-        await route.fallback();
-        return;
-      }
-      failed += 1;
-      if (how === "network") {
-        await route.abort("failed");
-        return;
-      }
-      await route.fulfill({
-        status: 500,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "internal", message: SERVER_FAILED }),
-      });
-    },
-  );
+  await page.route(matching(path), async (route) => {
+    if (failed >= times) {
+      await route.fallback();
+      return;
+    }
+    failed += 1;
+    if (how === "network") {
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "internal", message: SERVER_FAILED }),
+    });
+  });
   return () => failed;
 }
 
-/** What `held` matches: a pathname, a pattern over the pathname, or a test of the whole address
- * (a query parameter included). A pattern is matched afresh for every request, as `failing`
- * matches one: a copy of it is tried from its start each time, so that a `g` or `y` flag never
- * makes one match depend on the last. */
+/** What `held` and `failing` match: a pathname, a pattern over the pathname, or a test of the
+ * whole address (a query parameter included). A pathname is the request's own, from its leading
+ * `/`, and never a glob: a string that does not start with `/` is refused, rather than left to
+ * match no request and say nothing. A pattern is matched afresh for every request, whatever its
+ * flags: a copy of it is tried from its start each time, so a `g` or `y` flag, which makes `test`
+ * go on from where it last stopped, never makes one match depend on the last. */
 export type Matcher = string | RegExp | ((url: URL) => boolean);
 
 function matching(matcher: Matcher): (url: URL) => boolean {
-  if (typeof matcher === "string") return (url) => url.pathname === matcher;
+  if (typeof matcher === "string") {
+    // A glob such as `**/api/units`, as a route of Playwright's own takes one, is a pathname no
+    // request has: refused here, where a hold of it would hold nothing.
+    if (!matcher.startsWith("/")) {
+      throw new Error(
+        `${JSON.stringify(matcher)} matches no request: a string is a pathname, ` +
+          "starting with /, never a glob",
+      );
+    }
+    return (url) => url.pathname === matcher;
+  }
   if (matcher instanceof RegExp) {
     // A copy, flags and all, so that setting where it starts leaves the caller's own untouched.
     const pattern = new RegExp(matcher);
@@ -568,7 +565,10 @@ function matching(matcher: Matcher): (url: URL) => boolean {
  * route left registered met the teardown on Windows as `ECONNRESET`, P19b-7). With `every`,
  * each one is held until the release, for a journey whose claim is about every answer, not the
  * next one. With `onAnswer`, the server's answer is fetched and handed to it before the page
- * gets it: what a journey reads of an answer the page has not drawn yet. For a state the page
+ * gets it: what a journey reads of an answer the page has not drawn yet. Under `every` the route
+ * stays registered until the page closes, so with `onAnswer` as well it fetches every later
+ * request it matches with `route.fetch`, the teardown's own included: the route P19b-7 met on
+ * Windows. Combine the two only for a path the page never asks on its own. For a state the page
  * shows while it waits (spec 2026-10-08 §5, "Loading states"): release in a `finally`, so that a
  * failed assertion never leaves the page waiting.
  */

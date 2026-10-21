@@ -140,6 +140,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   from the press until the start page goes; a project the server refuses to open gives them
   back.
 
+* **The start page no longer says "built as" with nothing after it.**  A build record written
+  without an image, as `ddd build-info` writes one when `--image` is left out, listed an image
+  called nothing: the project's button on the start page read "built as" and stopped there.
+  Two build trees configured for one image listed it twice, as "built as firmware, firmware".
+  A record that names no image now offers its project and lists none, and each image a
+  project's records name is listed once, in the order of the records.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

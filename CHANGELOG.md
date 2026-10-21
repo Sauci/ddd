@@ -117,6 +117,22 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   it closes with the tab saying the entry is no longer declared, or it moves straight onto the
   new name.
 
+* **A screen whose next read fails keeps what it showed.**  The Files, Units, Types and Shared
+  files tabs, the project's canvas, a component's page and a values grid showed the error
+  alone when their read of the project's next revision failed - the server failing on it, or
+  the network dropping it twice - and dropped what they had drawn, a component's page taking
+  an open panel with it, and what the reader had chosen there but not applied.  They now keep
+  what they showed, with the error above it, and an open panel keeps what the reader chose in
+  it.  A refusal, such as a grid whose object was renamed away, is still shown alone, and so
+  is an error before anything was drawn.
+
+* **The page's own script the network drops once is asked for again.**  The page stayed blank
+  when the network failed the one request that loads its own code - measured in CI, in
+  Chromium on Windows, where the browser was briefly refused a socket
+  (`net::ERR_NO_BUFFER_SPACE`).  The page now asks for it once more and is drawn as if nothing
+  had happened; dropped twice, it says to reload it.  What asks is a short script the page
+  holds inline, which the content security policy allows by its SHA-256 alone.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

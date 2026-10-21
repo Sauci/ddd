@@ -1659,8 +1659,8 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 
 | Screen | Row | Task | Journey |
 | --- | --- | --- | --- |
-| The network | the page's script failed once (*added*) | 2 | none yet |
-| The network | the page's script failing every time (*added*) | 2 | none yet |
+| The network | the page's script failed once (*added*) | 2 | `network.spec.ts:107`, "the page's script the network failed once is asked for again, and the page is drawn" |
+| The network | the page's script failing every time (*added*) | 2 | `network.spec.ts:118`, "the page's script the network fails every time says how to try again" |
 | The start page | a project listed with the images its build records name | 3 | none yet |
 | The start page | a project whose description does not load, listed as an unnamed project | 3 | none yet |
 | The start page | a project opening, the list's buttons held until it has | 3 | none yet |
@@ -1676,7 +1676,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | The undo strip | an undo the server fails on | 3 | none yet |
 | The undo strip | the files an undo puts back, failing to be read (*added*, pre-flight) | 3 | none yet |
 | The canvas | the project's graph failing before anything is drawn | 4 | none yet |
-| The canvas | the project's graph failing once drawn, the canvas kept | 2 | none yet |
+| The canvas | the project's graph failing once drawn, the canvas kept | 2 | `kept.spec.ts:67`, "the graph failing on a new revision keeps the canvas, with the error above it" |
 | The canvas | a module whose file does not load, drawn as not loaded | 4 | none yet |
 | The canvas | a module's badge, counting its errors or its warnings | 4 | none yet |
 | The canvas | an arrow reached by the keyboard, saying what is wrong | 4 | none yet |
@@ -1686,7 +1686,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | The components table | a row pressed beside its name, or Enter on it, opening its component | 4 | none yet |
 | Units | reading the project's units | 5 | none yet |
 | Units | the units failing to load | 5 | none yet |
-| Units | the units failing once listed, the table kept | 2 | none yet |
+| Units | the units failing once listed, the table kept | 2 | `kept.spec.ts:20`, "the units failing on a new revision keep the table, with the error above it" |
 | Units | a unit's panel reading the unit | 5 | none yet |
 | Units | a unit's panel failing to read the unit | 5 | none yet |
 | Units | a units file listing no unit, the units in use adopted into it | 5 | none yet |
@@ -1696,7 +1696,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | Units | a unit listed twice, the `duplicate-unit` chip (*added*, pre-flight) | 5 | none yet |
 | Types | reading the project's types | 5 | none yet |
 | Types | the types failing to load | 5 | none yet |
-| Types | the types failing once listed, the table kept | 2 | none yet |
+| Types | the types failing once listed, the table kept | 2 | `kept.spec.ts:37`, "the types failing on a new revision keep the table, with the error above it" |
 | Types | a type's panel reading the type | 5 | none yet |
 | Types | a type's panel failing to read the type | 5 | none yet |
 | Types | the untold banner | 5 | none yet |
@@ -1707,7 +1707,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | Types | an Apply the server fails on | 5 | none yet |
 | Shared files | reading the project's shared files | 6 | none yet |
 | Shared files | the shared files failing to load | 6 | none yet |
-| Shared files | the shared files failing once listed, the table kept | 2 | none yet |
+| Shared files | the shared files failing once listed, the table kept | 2 | `kept.spec.ts:52`, "the shared files failing on a new revision keep the table, with the error above it" |
 | Shared files | an entry's panel reading the entry | 6 | none yet |
 | Shared files | an entry's panel failing to read the entry | 6 | none yet |
 | Shared files | a constant declared inside a component, its file followed | 6 | none yet |
@@ -1716,7 +1716,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | Findings | a page of findings still being read | 7 | none yet |
 | Findings | a fix's Apply the server fails on | 7 | none yet |
 | Files | reading the project's files | 7 | none yet |
-| Files | the list failing on a new revision, the table kept (*added*) | 2 | none yet |
+| Files | the list failing on a new revision, the table kept (*added*) | 2 | `kept.spec.ts:81`, "the files failing on a new revision keep the table, with the error above it" |
 | Files | a New file of a vocabulary's own kind: types, units, constants, sections or rasters | 7 | none yet |
 | Files | New file refused | 7 | none yet |
 | Files | Add a file refused | 7 | none yet |
@@ -1737,7 +1737,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | Compare | a finding's panel closed | 7 | none yet |
 | Compare | a baseline asked for again, its file made or written over since (*added*, pre-flight) | 7 | none yet |
 | A component | reading its file | 8 | none yet |
-| A component | its file failing on a new revision, the page and its open panel kept (*added*) | 2 | none yet |
+| A component | its file failing on a new revision, the page and its open panel kept (*added*) | 2 | `kept.spec.ts:96`, "a component's file failing on a new revision keeps the page and its open panel, with the error above it" |
 | A component | a component file that parses but breaks its schema, drawn as the page draws any file | 8 | none yet |
 | A component | reading its findings | 8 | none yet |
 | A component | its findings failing to load | 8 | none yet |
@@ -1751,7 +1751,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | A component | a dimension picked from the project's constants | 8 | none yet |
 | A component | a key's Apply, a removal or a declaration the server fails on | 8 | none yet |
 | Values | reading the values | 8 | none yet |
-| Values | the values failing on a new revision, the grid kept (*added*) | 2 | none yet |
+| Values | the values failing on a new revision, the grid kept (*added*) | 2 | `kept.spec.ts:115`, "the values failing on a new revision keep the grid, with the error above it" |
 | Values | the values failing to load | 8 | none yet |
 | Values | an object no longer declared, its page saying so, with the way back | 8 | none yet |
 | Values | a declaration with no cell, opened by its address | 8 | none yet |

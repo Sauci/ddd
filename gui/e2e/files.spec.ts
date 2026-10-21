@@ -470,9 +470,9 @@ test("the list failing once drawn leaves the table, with the server's own error 
 
   // The tab left, then returned to once the list fails: a tab mounting asks again for an answer it
   // holds (stale from the start), and when that read fails the answer stays drawn, the error said
-  // over it. A change the watcher sees does not reach this state: the new revision's read has no
-  // answer to hold (`placeholderData` serves a read that is pending, not one that failed), so the
-  // tab shows the alert alone, as at first (ruling P19b-20 in the plan).
+  // over it. A change the watcher sees reaches the same state another way: the new revision's read
+  // has no answer of its own to hold (`placeholderData` serves a read that is pending, not one that
+  // failed), and the tab draws the last one it read (`useKept`, P19b-20; kept.spec.ts).
   await page.getByRole("link", { name: "Findings", exact: true }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
   await failing(page, "/api/files", "http");

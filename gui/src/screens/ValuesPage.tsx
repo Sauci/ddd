@@ -4,6 +4,7 @@ import { ApiError, getValuePlan, getValues, getValuesPlan, postEdit } from "../a
 import type { State, ValuesReply } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
+import { useKept } from "../app/useKept";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
@@ -84,6 +85,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     // the table stays up while the next revision's answer is read.
     placeholderData: (previous) => previous,
   });
+  const answer = useKept(values, JSON.stringify(["values", name]));
   // What this grid's last Apply wrote, and the edits the page's undos put back - the Undo strip's,
   // which tell the grid its Apply was undone. The hold is stamped with the first revision the page
   // sees include its last edit (`holdAfter`), and ends once an answer of that revision has come.
@@ -91,8 +93,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const undone = useSyncExternalStore(ownEdits.subscribe, ownEdits.undone);
   const holding = holdAfter(hold, undone, state);
   if (holding !== hold) setHold(holding);
-  const shown =
-    values.data === undefined ? undefined : valuesShown(holding, undone, state, values.data);
+  const shown = answer === undefined ? undefined : valuesShown(holding, undone, state, answer);
   // Whether an Apply may be planned over the values shown: not over an older revision's answer
   // kept on screen (`appliesOver`).
   const current = shown !== undefined && appliesOver(shown, state);
@@ -240,27 +241,31 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     },
   });
 
-  if (values.isPending) return <p className="quiet">Reading the values…</p>;
-  if (values.isError) {
-    // Every refusal keeps the heading and the way back, not only the object removed from under
-    // the reader (spec 5.4): a grid this cannot draw - a shape of more dimensions than rows of
-    // cells - is reached by a typed address or by a finding filed on its own init, and a bare
-    // banner would leave the reader on a page holding nothing but the sentence.
-    return (
-      <section>
-        <div className="heading">
-          <h1>{name}</h1>
-          <Button variant="link" onPress={onBack}>
-            Back to {backTo}
-          </Button>
-          <UpdatingStatus updating={updating} />
-        </div>
-        <Banner tone="error">{values.error.message}</Banner>
-      </section>
-    );
+  if (answer === undefined) {
+    if (values.isError) {
+      // Every refusal keeps the heading and the way back, not only the object removed from under
+      // the reader (spec 5.4): a grid this cannot draw - a shape of more dimensions than rows of
+      // cells - is reached by a typed address or by a finding filed on its own init, and a bare
+      // banner would leave the reader on a page holding nothing but the sentence.
+      return (
+        <section>
+          <div className="heading">
+            <h1>{name}</h1>
+            <Button variant="link" onPress={onBack}>
+              Back to {backTo}
+            </Button>
+            <UpdatingStatus updating={updating} />
+          </div>
+          <Banner tone="error">{values.error.message}</Banner>
+        </section>
+      );
+    }
+    return <p className="quiet">Reading the values…</p>;
   }
-  // Past both branches above the query has an answer, and `shown` is made from it.
-  const reply = shown ?? values.data;
+  // Past both branches above there is an answer to draw, and `shown` is made from it.
+  const reply = shown ?? answer;
+  // A server that stopped answering leaves the grid as it was, and says so under its heading.
+  const banner = values.isError && <Banner tone="error">{values.error.message}</Banner>;
   if (!drawable(reply) && reply.stated !== "text") {
     // A scalar's own init: no cell for a value to sit in, the same words `object_values.py`'s
     // own `set_cell` refuses one with - reached by a finding on it or a typed address, never by
@@ -274,6 +279,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
           </Button>
           <UpdatingStatus updating={updating} />
         </div>
+        {banner}
         <p className="quiet">{`'${reply.name}' has no cell for a value to sit in`}</p>
       </section>
     );
@@ -283,6 +289,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       reply={reply}
       updating={updating}
       backTo={backTo}
+      banner={banner}
       undoStrip={<UndoStrip state={state} stopped={stopped} />}
       physical={physical}
       editing={editing}

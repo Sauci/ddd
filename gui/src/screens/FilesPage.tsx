@@ -9,6 +9,7 @@ import { useState, useSyncExternalStore } from "react";
 import { type FilesPlanRequest, getFiles, getFilesPlan, postEdit } from "../api/client";
 import type { FilesPlanReply, State } from "../api/types";
 import { useDebounced } from "../app/useDebounced";
+import { useKept } from "../app/useKept";
 import {
   AddFileView,
   FileActionsView,
@@ -68,6 +69,7 @@ export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
     // table already keeps its place across a poll.
     placeholderData: (previous) => previous,
   });
+  const answer = useKept(files, "files");
   // Which of the two forms that start from no row is open beside the table, if either. Opening
   // one lets the row selected go, and selecting a row closes it, so that one panel at a time
   // stands beside the table - `SharedPage`'s own rule for its add form and an entry's panel.
@@ -76,13 +78,13 @@ export function FilesPage({ state, path, arrived, onPath, stopped }: Props) {
   // the edits the page's undos put back - the Undo strip's, which end the hold.
   const [hold, setHold] = useState<FilesHold | null>(null);
   const undone = useSyncExternalStore(ownEdits.subscribe, ownEdits.undone);
-  const holding = filesHoldAfter(hold, undone, state, files.data);
+  const holding = filesHoldAfter(hold, undone, state, answer);
   if (holding !== hold) setHold(holding);
-  if (files.data === undefined) {
+  if (answer === undefined) {
     if (files.isError) return <Banner tone="error">{files.error.message}</Banner>;
     return <p className="quiet">Reading the project's files…</p>;
   }
-  const reply = filesShown(holding, files.data);
+  const reply = filesShown(holding, answer);
   const read = state?.files ?? [];
   const removal = fileRemoval(rowsOf(reply, read), path, reply.project);
   const open = (next: "create" | "add") => {

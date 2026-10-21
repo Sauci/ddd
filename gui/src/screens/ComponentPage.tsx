@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { getFile, getFindings } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
+import { useKept } from "../app/useKept";
 import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
@@ -98,6 +99,7 @@ export function ComponentPage({
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === file ? previous : undefined,
   });
+  const answer = useKept(content, JSON.stringify(["file", file]));
   // Every finding of this file, worst first - each declaration's chips and the list below - asked
   // again for every revision, the last revision's kept up meanwhile as the file's own is.
   const listed = useQuery({
@@ -107,12 +109,13 @@ export function ComponentPage({
       previousQuery?.queryKey[3] === file ? previous : undefined,
   });
 
-  // `null` while the file is pending, errored, or failed its schema check - the three cases the
-  // early returns below show their own message for instead of this page's table - so that the
-  // two memos just below, like every hook, run the same on every render, those three included
-  // (Rules of Hooks: a hook after an early return would run on some renders and not others).
-  const loaded = !content.isPending && !content.isError && content.data.error === null;
-  const data = loaded ? content.data.data : null;
+  // `null` while there is no answer to draw - the file pending, or failed with none kept for it -
+  // or the answer failed its schema check - the cases the early returns below show their own
+  // message for instead of this page's table - so that the two memos just below, like every
+  // hook, run the same on every render, those cases included (Rules of Hooks: a hook after an
+  // early return would run on some renders and not others).
+  const loaded = answer !== undefined && answer.error === null;
+  const data = loaded ? answer.data : null;
   const findings = listed.data?.findings ?? NONE;
   // Grouped once per findings answer, not refiltered per row on every render (part 17's task
   // 11f): on a file of 3,334 declarations and 4,167 findings, a row's own `findings.filter(...)`
@@ -169,9 +172,11 @@ export function ComponentPage({
     });
   }, [data, byRow]);
 
-  if (content.isPending) return <p className="quiet">Reading the file…</p>;
-  if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
-  if (content.data.error !== null) return <Banner tone="error">{content.data.error}</Banner>;
+  if (answer === undefined) {
+    if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
+    return <p className="quiet">Reading the file…</p>;
+  }
+  if (answer.error !== null) return <Banner tone="error">{answer.error}</Banner>;
 
   // Opens a variable declared in this very file without a reload - a third way to the same
   // place the row's own selection and the unit cell's button already open, so it clears the
@@ -214,6 +219,8 @@ export function ComponentPage({
           {/* Last in the row, so that none of the controls before it ever moves. */}
           <UpdatingStatus updating={updating} />
         </div>
+        {/* A server that stopped answering leaves the table as it was, and says so above it. */}
+        {content.isError && <Banner tone="error">{content.error.message}</Banner>}
         {undeclared !== null && (
           <Banner tone="warning">
             {undeclared.name} is no longer declared in the open project.

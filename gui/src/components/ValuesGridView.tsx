@@ -36,6 +36,10 @@ export interface ValuesGridViewProps {
    * strip where it always is") rather than in a row of its own - omitted where nothing hosts one,
    * which is every story but the ones about undoing. */
   undoStrip?: ReactNode;
+  /** Drawn under the heading, over the grid: the screen's banner saying its read of the next
+   * revision failed, the grid drawn being the last one read (`useKept`) - omitted where nothing
+   * failed, which is every story. */
+  banner?: ReactNode;
   /** Reading in physical values rather than raw counts. */
   physical: boolean;
   /** The cell being typed into, and its text; `null` when none is. */
@@ -84,7 +88,8 @@ interface GridRow {
  * holds no state - the raw/physical toggle, the cell being typed into, Show changes and busy all
  * live in the screen behind it. */
 export function ValuesGridView(props: ValuesGridViewProps) {
-  const { reply, backTo, undoStrip, physical, editing, plan, refusal, changesShown, busy } = props;
+  const { reply, backTo, undoStrip, banner, physical, editing, plan, refusal, changesShown, busy } =
+    props;
   const columnLabels = columnHeader(reply, physical);
   const rowLabels = rowHeader(reply, physical);
   // Ids of their own, distinct from either's own label text and from each other's: a map's row
@@ -162,6 +167,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         </Button>
         <UpdatingStatus updating={props.updating === true} />
       </div>
+      {banner}
       <p className="values-meta">{meta}</p>
       {reply.stated === "text" ? (
         <p className="quiet">{`'${reply.name}' is initialised with text, not with a grid`}</p>

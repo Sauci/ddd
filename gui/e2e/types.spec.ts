@@ -1,6 +1,6 @@
-import { readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftMaxUnseen } from "./demo";
+import { driftMaxUnseen, restamp } from "./demo";
 import { expect, test } from "./fixtures";
 
 const MONITORING = "monitoring.ddd.json";
@@ -355,7 +355,6 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   page,
   structuresGui,
 }) => {
-  const path = join(structuresGui.directory, TYPES);
   const before = entryOf(structuresGui.directory, "Temperature_t");
   await page.goto(structuresGui.address);
   await page.getByRole("link", { name: "Types" }).click();
@@ -386,8 +385,7 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   // the file's modification time is a real difference in what the watcher compares, so the next
   // poll reads the file as it is - drifted - and the page takes that revision on board, which is
   // when the sentence goes and the preview is asked for again against the bytes just read.
-  const now = new Date();
-  utimesSync(path, now, now);
+  restamp(structuresGui.directory, TYPES);
   await expect(refused).toBeHidden({ timeout: 15000 });
   await expect(limits).toContainText("-40 … 999");
   await apply.click();

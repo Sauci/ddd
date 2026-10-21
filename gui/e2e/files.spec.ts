@@ -1,7 +1,7 @@
-import { readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { failing, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
+import { failing, held, restamp, SERVER_FAILED, UNITS, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** A component the project does not include yet, declaring nothing - written into the copy
@@ -109,14 +109,9 @@ test("the row a New file makes shows before the tab's next list of entries answe
   await page.getByRole("link", { name: "Files", exact: true }).click();
   await expect(page.getByRole("row", { name: UNITS })).toBeVisible();
 
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route("**/api/files", async (route) => {
-    await released;
-    await route.continue();
-  });
+  // Every list the tab asks for until the row shows, not the next alone: the claim is about any
+  // of them, and the edit's analysis may ask for more than one.
+  const release = await held(page, "/api/files", { every: true });
   try {
     await page.getByRole("button", { name: "New file" }).click();
     const creating = page.getByRole("complementary", { name: "New file" });
@@ -156,28 +151,19 @@ test("the row a Remove takes out goes before the tab's next list of entries answ
   const remove = removing.getByRole("button", { name: "Remove from the includes" });
   await expect(remove).toBeVisible();
 
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
   // The server's next list, read here before the page is handed it: the entry Remove took out
   // is not in it, so the row the page drops at once (below) is not drawn again by that answer.
-  // Once only (`times: 1`): the teardown that follows this journey's last assertion stops the
-  // server, and the page then asks GET /api/files once more - a request this route must leave
-  // to the browser, as it did before Task 1, rather than meet with its own route.fetch() against
-  // a server already going away.
+  // Once only (`held`'s `times: 1`): the teardown that follows this journey's last assertion
+  // stops the server, and the page then asks GET /api/files once more - a request this route must
+  // leave to the browser, as it did before part 19b's Task 1, rather than meet with its own
+  // route.fetch() against a server already going away.
   let listed: string[] | null = null;
-  await page.route(
-    "**/api/files",
-    async (route) => {
-      await released;
-      const response = await route.fetch();
+  const release = await held(page, "/api/files", {
+    onAnswer: async (response) => {
       const reply = (await response.json()) as { entries: { entry: string }[] };
       listed = reply.entries.map((each) => each.entry);
-      await route.fulfill({ response });
     },
-    { times: 1 },
-  );
+  });
   try {
     await remove.click();
     await expect(unitsRow).toHaveCount(0);
@@ -395,7 +381,7 @@ test("a Remove applied while the description changed on disk is refused, and goe
   // comes of a change the watcher did not see, so the file's stamp is moved, which it does see.
   // The analysis reads the file as it now is, the refusal goes, and the plan asked for that
   // revision carries the file's new fingerprint - which is what lets the same press go through.
-  utimesSync(project, new Date(), new Date());
+  restamp(vocabularyGui.directory, PROJECT);
   await expect(refused).toHaveCount(0, { timeout: 15000 });
   await remove.click();
   await expect(page.getByRole("row", { name: UNITS })).toHaveCount(0);

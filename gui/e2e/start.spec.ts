@@ -1,6 +1,6 @@
-import { mkdirSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, failing, SERVER_FAILED } from "./demo";
+import { CONTROLLER, failing, held, restamp, SERVER_FAILED } from "./demo";
 import { expect, test } from "./fixtures";
 
 // The start page's own states - no project found, a build record this DDD cannot read, the
@@ -68,14 +68,7 @@ test("the start page says it is looking for projects, until the list answers", a
   page,
   bareGui,
 }) => {
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve_) => {
-    release = resolve_;
-  });
-  await page.route("**/api/projects", async (route) => {
-    await released;
-    await route.continue();
-  });
+  const release = await held(page, "/api/projects");
   try {
     await page.goto(bareGui.address);
     await expect(page.getByText("Looking for projects…")).toBeVisible();
@@ -143,7 +136,7 @@ test("an http failure of the long poll raises its own banner, and leaves the pag
   // answering unchanged - ruling P19b-9. Touching a project file's own stamp instead wakes it at
   // once with a new version (`stamped`/`poll`, session.py, compare `(st_mtime_ns, st_size)`
   // alone, so no byte need change): the ask the page sends *after* that is the one this fails.
-  utimesSync(join(gui.directory, CONTROLLER), new Date(), new Date());
+  restamp(gui.directory, CONTROLLER);
   await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
   // The page stays drawn: the canvas is still the one up, not replaced by anything else.
   await expect(canvas).toBeVisible();

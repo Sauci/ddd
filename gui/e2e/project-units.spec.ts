@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftIn, PUMP, UNITS } from "./demo";
+import { driftIn, held, PUMP, UNITS } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** The entries of a units file as it stands on disk: objects, in both examples' units files. */
@@ -298,18 +298,7 @@ test("an adopt refused because its units file now exists says so in the banner, 
   // again - which it does the moment its Apply is answered, a few tens of milliseconds after the
   // refusal is drawn: a window that polling finds only by luck. The units the page reads next are
   // held until the refusal has been seen, once only: the ones it reads later go straight through.
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route(
-    "**/api/units",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
-  );
+  const release = await held(page, "/api/units");
   try {
     await preview.getByRole("button", { name: "Adopt 5 units" }).click();
     await expect(banner.getByText(STALE, { exact: true })).toBeVisible();

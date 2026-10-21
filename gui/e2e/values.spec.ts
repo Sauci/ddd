@@ -1,4 +1,4 @@
-import { readFileSync, utimesSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
 import {
@@ -8,6 +8,7 @@ import {
   framesWatched,
   openValues,
   paste,
+  restamp,
   SENSOR_HUB,
   scrolledIntoView,
   typeCurveA,
@@ -311,8 +312,7 @@ test("a value applied from a file that changed on disk is refused, and applied o
 
   // A stamp moved with no byte touched lets the next poll read the drifted file; the refusal is
   // held until the analysis moves on, and goes with it, the cell still being typed into.
-  const now = new Date();
-  utimesSync(path, now, now);
+  restamp(gui.directory, CONTROLLER);
   await expect(setting.getByRole("status")).toHaveCount(0, { timeout: 15000 });
   await apply.click();
   await expect

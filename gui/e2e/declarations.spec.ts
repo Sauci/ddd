@@ -1,6 +1,6 @@
-import { readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, drift, driftMaxUnseen, failing, SERVER_FAILED } from "./demo";
+import { CONTROLLER, drift, driftMaxUnseen, failing, restamp, SERVER_FAILED } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** One variable's definition in a file of the copy, read back from disk - the same shape
@@ -257,8 +257,7 @@ test("a declaration made from a file that changed on disk is refused, and made o
 
   // A stamp moved with no byte touched is what lets the next poll read the drifted file. The
   // analysis landing shows as the disagreement the drift made, in Controller's own findings.
-  const now = new Date();
-  utimesSync(path, now, now);
+  restamp(gui.directory, CONTROLLER);
   await expect(
     page.getByRole("link", {
       name: "'ValueA' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 999] != [0, 100])",
@@ -302,8 +301,7 @@ test("a removal made from a file that changed on disk is refused, and made once 
 
   // A stamp moved with no byte touched lets the next poll read the drifted file; the refusal is
   // held until the analysis moves on, and goes with it.
-  const now = new Date();
-  utimesSync(path, now, now);
+  restamp(gui.directory, CONTROLLER);
   await expect(removing.getByRole("status")).toHaveCount(0, { timeout: 15000 });
   await remove.click();
   await expect(page.getByRole("rowheader", { name: "ValueB", exact: true })).toHaveCount(0);

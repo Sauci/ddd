@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { CONTROLLER, drift, EVENT_LOGGER, renameValueA } from "./demo";
+import { CONTROLLER, drift, EVENT_LOGGER, held, renameValueA } from "./demo";
 import { expect, test } from "./fixtures";
 
 // The canvas's own actions and states - no dictionary, Fit, the module search and its Enter,
@@ -218,20 +218,9 @@ test("a variable opened from an arrow and then no longer declared closes, and th
 });
 
 test("the canvas says it is drawing the project until the graph answers", async ({ page, gui }) => {
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
   // The first graph the page asks for alone, held until the journey has seen what is shown
   // meanwhile; any later one goes straight through.
-  await page.route(
-    "**/api/graph",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
-  );
+  const release = await held(page, "/api/graph");
   try {
     await page.goto(gui.address);
     await expect(page.getByText("Drawing the project…", { exact: true })).toBeVisible();
@@ -246,21 +235,10 @@ test("the canvas says it is laying the project out until the layout comes", asyn
   page,
   gui,
 }) => {
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
   // The layout worker's own script, the one request between the graph and its layout (`useLayout`
   // starts the worker once the graph is there to lay out): held, the worker never starts, and
   // nothing is laid out until it is let through.
-  await page.route(
-    "**/assets/layoutWorker-*.js",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
-  );
+  const release = await held(page, /^\/assets\/layoutWorker-[^/]+\.js$/);
   try {
     await page.goto(gui.address);
     await expect(page.getByText("Laying the project out…", { exact: true })).toBeVisible();

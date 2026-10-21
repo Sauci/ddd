@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { PUMP, writeUnseen } from "./demo";
+import { held, PUMP, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** Each vocabulary's file in a copy of examples/vocabulary: its name, which is also the key its
@@ -210,17 +210,9 @@ test("a raster nothing declares any longer closes the panel an address opened, a
   // The panel's next read of the raster is held until the table has answered without it - the
   // order that swapped the panel for the form declaring "100ms", where the tab should have said
   // the raster went. Held once, and let through whatever happens below.
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route(
+  const release = await held(
+    page,
     (url) => url.pathname === "/api/raster" && url.searchParams.get("name") === "100ms",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
   );
   try {
     // Rewritten from outside without 100ms's entry, and still a rasters file that loads.

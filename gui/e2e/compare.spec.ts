@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftDatatypeIn, dump, renameValueA, SENSOR_HUB } from "./demo";
+import { driftDatatypeIn, dump, held, renameValueA, SENSOR_HUB } from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a reader can ask whether this delivery replaces the last", async ({ page, gui }) => {
@@ -198,18 +198,7 @@ test("while a comparison is awaited the field and the button are disabled and th
 
   // The answer for the next baseline is held until the page has been seen waiting for it. Once
   // only: nothing else asks for a comparison here, the project not changing.
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route(
-    (url) => url.pathname === "/api/compare",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
-  );
+  const release = await held(page, "/api/compare");
   try {
     await baseline.fill("other.json");
     await compare.click();

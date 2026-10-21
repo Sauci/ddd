@@ -2,7 +2,8 @@
 
 - **Part:** 19c of the GUI work, in milestone 8: the last of end-to-end breadth (part 19). After it
   come the user guide (part 20), the independent review, the pilot, and removing *preview*.
-- **Status:** design approved section by section; to be planned
+- **Status:** design approved section by section, and amended while planning by the maintainer's
+  answer of 2026-10-21 (§12); planned in `docs/superpowers/plans/2026-10-21-gui-journeys-remaining.md`
 - **Depends on:** part 19b (pull request #82, merged into master as `2bc00da`)
 
 Part 19b split its inventory. It closed the 71 starting rows, and handed the 88 rows its first task
@@ -39,7 +40,9 @@ otherwise:
 
 - **A failed read of a new revision drops the table** (P19b-20) on five tabs: Files, Units, Types,
   Shared files and the canvas. Four of the 88 rows are "failing once listed, the table kept", and
-  today they hold only for a re-read of the same revision.
+  today they hold only for a re-read of the same revision. Planning found the same on two more
+  screens: a component's page and the values grid, where an open panel's unapplied choice is lost
+  with the page.
 - **The page's own script refused a socket leaves the page blank** (P19b-22). It happened once, on
   Windows with Chromium (run 38316603646). It is the one load the page cannot ask for again from its
   own code, and the flake most likely to meet this part's final hunt.
@@ -73,7 +76,8 @@ otherwise:
 
 - **A journey for each of the 88 rows,** or the recorded reason it has none, written screen by
   screen, each shown to fail under one named change.
-- **A tab keeps its last answer** when the read of a new revision fails (§5).
+- **A screen keeps its last answer** when the read of a new revision fails, and never over a
+  refusal (§5).
 - **The page asks for its own script once more** when the network fails it (§6).
 - **Three helpers** the reviews asked for, before the screens' tasks:
   - `held(page, matcher)`, which replaces the eight copies of the held-request recipe, two of which
@@ -107,23 +111,31 @@ otherwise:
   revision's. 19b's Files journey "the list failing later", a re-read of the same revision, stays as
   it is.
 
-## 5 A tab keeps its last answer
+## 5 A screen keeps its last answer
 
-- **The rule.** When a tab's read of a new revision fails, the tab shows its last good answer, with
-  the error banner above it. A tab that never had an answer shows the error alone, as today.
+- **The rule.** When a screen's read of a new revision fails, the screen shows its last good
+  answer, with the error banner above it. A screen that never had an answer shows the error alone,
+  as today.
+- **A failure, not a refusal.** A read fails when it gets no answer, or the server fails on it (a
+  5xx). A refusal (a 4xx) is the server's answer about what was asked, such as an object renamed
+  away under its values grid, and is shown alone, never under a kept answer: that answer would show
+  what the project no longer has.
 - **The same thing only.** An answer is kept across revisions of the same query, never across names
   or tabs: a query's key less its revision must match. So no panel can ever show one unit's answer
   for another.
 - **Where it lives.**
   - The decision is a pure function in `gui/src/lib`, under Vitest at 100 %.
   - A hook in `gui/src/state` holds the last good answer.
-  - The five tabs P19b-20 named use it: Files, Units, Types, Shared files and the canvas. The panels
-    are not changed: their rows in this part are a first read failing, which the rule leaves as it
-    is.
+  - The five tabs P19b-20 named use it: Files, Units, Types, Shared files and the canvas; and so do
+    a component's page and the values grid (§12). The panels are not changed: their rows in this
+    part are a first read failing, which the rule leaves as it is. A panel open on a component's
+    page stays open because its page does.
 - **Writes from a kept table** are unchanged. If the files changed meanwhile, the server refuses the
   write as out of date, as it refuses any stale write.
-- **Rows.** The four "failing once listed, the table kept" rows pin it after an edit. One row is
-  added for the Files tab: the list failing on a new revision, the table kept.
+- **Rows.** The four "failing once listed, the table kept" rows pin it after an edit. Three rows are
+  added: the Files tab's list, a component's page with its open panel, and the values grid, each
+  failing on a new revision and kept. The row of 19b's inventory "an object no longer declared, its
+  page saying so, with the way back" pins that a refusal is never kept.
 - **CHANGELOG:** an entry under the unreleased version.
 
 ## 6 The page asks for its own script once more
@@ -155,19 +167,20 @@ otherwise:
 ## 7 The work
 
 One part, one branch (`feature/gui-journeys-remaining`), one pull request. The plan holds the
-inventory, its 88 rows moved from owner `19c` to a task, and the three rows §5 and §6 add. In order:
+inventory, its 88 rows moved from owner `19c` to a task, and the five rows §5 and §6 add. In order:
 1. **The groundwork.**
-   - The 88 rows checked against today's tree, their citations refreshed, the three new rows added.
+   - The 88 rows checked against today's tree, their citations refreshed, the five new rows added.
    - `held`, replacing the eight copies; the stamp helper, replacing the seven.
    - A baseline full run in CI. GitHub's `ubuntu-latest` moved to Ubuntu 26 on 2026-10-19, and this
      is the first run there.
 2. **The two fixes,** each red first: the kept answer (§5) and the boot script (§6), with their
-   journeys.
+   journeys. The four "table kept" rows are this task's, as its proof, so Tasks 4, 5 and 6 carry
+   one, two and one fewer than their screens hand over.
 3. **The start page, the app around every page, and the undo strip:** 13 rows, and the fixture's
    browser option.
-4. **The canvas and the components table:** 9 rows.
-5. **Units and Types:** 19 rows.
-6. **Shared files:** 8 rows.
+4. **The canvas and the components table:** 8 rows.
+5. **Units and Types:** 17 rows.
+6. **Shared files:** 7 rows.
 7. **Files, Findings and Compare:** 17 rows.
 8. **A component and its values:** 22 rows.
 9. **The controller's:** the final hunt, the figures, the milestone gate and the close-out.
@@ -221,6 +234,8 @@ Recorded for the maintainer in 19b's plan, and left there:
 The maintainer's answers while this was designed:
 - **P19b-20 is fixed, then pinned,** across the five tabs it names, though it spans five screens.
 - **P19b-22 joins the part.** No other recorded item does.
+- **The kept answer covers a component's page and the values grid too** (2026-10-21, while
+  planning): their reads dropped everything on a failure, an open panel's choice included.
 - **One part, shaped like 19b:** groundwork, the two fixes, a task per screen, one pull request and
   one final hunt.
 
@@ -228,5 +243,6 @@ Taken in the design:
 - **The boot script is inline behind a hash,** not a same-origin `/boot.js`, which would be one more
   load the network can refuse in the same way.
 - **The hash is computed by the server at start,** from the page it serves, not pinned in the source.
-- **The kept answer is the tabs' alone;** the panels keep today's behaviour.
+- **The kept answer is the screens' alone;** the panels keep today's behaviour.
+- **A refusal is never kept,** since it is the server's answer about what was asked.
 - **Compare's four rows join Files and Findings** in Task 7.

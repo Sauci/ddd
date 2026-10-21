@@ -133,6 +133,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   had happened; dropped twice, it says to reload it.  What asks is a short script the page
   holds inline, which the content security policy allows by its SHA-256 alone.
 
+* **The start page's list stays held until the project it opened has replaced it.**  Once the
+  server had opened the project chosen, the page asked it which project was open, and until
+  that answer came it drew the list again with every project's button enabled: a second press
+  in that moment opened another project in place of the first.  The buttons now stay disabled
+  from the press until the start page goes; a project the server refuses to open gives them
+  back.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

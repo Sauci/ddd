@@ -100,6 +100,9 @@ test("opening a project that fails leaves the start page in place, with the serv
   await button.click();
   await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
   await expect(page.getByRole("heading", { name: "Open a project" })).toBeVisible();
+  // An open the server refused gives the list back (`listHeld`, lib/start.ts): the reader may try
+  // again, or another project.
+  await expect(button).toBeEnabled();
   // One failure is enough regardless of the method: `failing`'s "http" resolves the fetch with
   // a 500, and `sentAgain` (client.ts) is only ever asked from the `.catch` of one that
   // *rejected* - "An HTTP answer, a refusal included, never comes here: `fetch` resolves it",
@@ -143,4 +146,42 @@ test("an http failure of the long poll raises its own banner, and leaves the pag
   // An HTTP answer is no stopped server: that banner is a different one, and does not show.
   await expect(page.getByText("ddd gui has stopped", { exact: false })).toHaveCount(0);
   expect(failed()).toBeGreaterThan(0);
+});
+
+test("a project opening holds every button of the list, until the start page goes", async ({
+  page,
+  bareGui,
+}) => {
+  await page.goto(bareGui.address);
+  const demo = page.getByRole("button", { name: /^DemoDevice/ });
+  const logging = page.getByRole("button", { name: /^Logging/ });
+  const list = page.getByRole("heading", { name: "Open a project" });
+  await expect(demo).toBeVisible();
+  const releaseOpen = await held(page, "/api/open");
+  // Once the open has answered, `onOpened` (App.tsx) asks for the session again without waiting
+  // for it, and the start page is drawn until that answer lands: that ask is held as well.
+  const releaseSession = await held(page, "/api/session");
+  try {
+    await demo.click();
+    // The open is asked and held: no button of the list takes another press.
+    await expect(demo).toBeDisabled();
+    await expect(logging).toBeDisabled();
+    await expect(list).toBeVisible();
+
+    releaseOpen();
+    // The open answered: the address moves on to the project's (`onOpened`), and the session is
+    // held, so the start page is still drawn - with its list still held, since a press now would
+    // open another project in place of the one just opened.
+    await expect(page).toHaveURL(/\/project$/);
+    await expect(list).toBeVisible();
+    await expect(demo).toBeDisabled();
+    await expect(logging).toBeDisabled();
+  } finally {
+    releaseOpen();
+    releaseSession();
+  }
+  // The session answered: the start page goes, and the project is drawn.
+  await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
+  await expect(list).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
 });

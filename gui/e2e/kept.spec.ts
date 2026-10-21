@@ -1,3 +1,6 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Page } from "@playwright/test";
 import {
   CONTROLLER,
   chooseUnit,
@@ -17,6 +20,12 @@ import { expect, test } from "./fixtures";
 /** The types file of a copy of examples/structures, as types.spec.ts names it. */
 const TYPES = "types.ddd.json";
 
+/** The page's alert, standing above what the screen kept (`kept`, a CSS selector): the error said
+ * over the kept answer, as files.spec.ts's "the list failing once drawn" asserts it. */
+function alertAbove(page: Page, kept: string) {
+  return page.getByRole("alert").and(page.locator(`:above(${kept})`));
+}
+
 test("the units failing on a new revision keep the table, with the error above it", async ({
   page,
   gui,
@@ -29,7 +38,7 @@ test("the units failing on a new revision keep the table, with the error above i
   // whose units the tab asks for under a new key - the read P19b-20 found dropped the table.
   const failed = await failing(page, "/api/units", "http");
   restamp(gui.directory, CONTROLLER);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(alertAbove(page, '[role="grid"]')).toHaveText(SERVER_FAILED);
   await expect(ms).toBeVisible();
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
@@ -44,7 +53,7 @@ test("the types failing on a new revision keep the table, with the error above i
   await expect(temperature).toBeVisible();
   const failed = await failing(page, "/api/types", "http");
   restamp(structuresGui.directory, TYPES);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(alertAbove(page, '[role="grid"]')).toHaveText(SERVER_FAILED);
   await expect(temperature).toBeVisible();
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
@@ -59,7 +68,7 @@ test("the shared files failing on a new revision keep the table, with the error 
   await expect(raster).toBeVisible();
   const failed = await failing(page, "/api/shared", "http");
   restamp(vocabularyGui.directory, UNITS);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(alertAbove(page, '[role="grid"]')).toHaveText(SERVER_FAILED);
   await expect(raster).toBeVisible();
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
@@ -73,7 +82,7 @@ test("the graph failing on a new revision keeps the canvas, with the error above
   await expect(controller).toBeVisible();
   const failed = await failing(page, "/api/graph", "http");
   restamp(gui.directory, CONTROLLER);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(alertAbove(page, 'section[aria-label="Modules"]')).toHaveText(SERVER_FAILED);
   await expect(controller).toBeVisible();
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
@@ -88,7 +97,7 @@ test("the files failing on a new revision keep the table, with the error above i
   await expect(units).toBeVisible();
   const failed = await failing(page, "/api/files", "http");
   restamp(vocabularyGui.directory, UNITS);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(alertAbove(page, '[role="grid"]')).toHaveText(SERVER_FAILED);
   await expect(units).toBeVisible();
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
@@ -105,10 +114,35 @@ test("a component's file failing on a new revision keeps the page and its open p
   await expect(unit).toHaveValue("rpm");
   const failed = await failing(page, "/api/file", "http");
   restamp(gui.directory, CONTROLLER);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(alertAbove(page, '[aria-label="Declarations of Controller"]')).toHaveText(
+    SERVER_FAILED,
+  );
   await expect(page.getByRole("grid", { name: "Declarations of Controller" })).toBeVisible();
   await expect(panel).toBeVisible();
   await expect(unit).toHaveValue("rpm");
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+test("a component's file failing on a new revision keeps the parse error it last read, with the failure above it", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  // Saved half-edited and plainly, as declarations.spec.ts's journey of a file that stops parsing
+  // saves it: the watcher sees it, and the page's last good answer is the parser's words. Read
+  // off the page, and the same on every system: the file is checked out with LF (.gitattributes).
+  const file = join(gui.directory, CONTROLLER);
+  const before = readFileSync(file);
+  writeFileSync(file, before.subarray(0, Math.floor(before.length / 2)));
+  const parsed = `${file} is not json: Unterminated string starting at: line 110 column 27 (char 3427)`;
+  await expect(page.getByRole("alert")).toHaveText(parsed);
+  // Every read of the file fails from here, and the restamp makes a new revision at once: the
+  // parse error is kept, under the failure - never alone, as if it were the new revision's.
+  const failed = await failing(page, "/api/file", "http");
+  restamp(gui.directory, CONTROLLER);
+  await expect(page.getByRole("alert")).toHaveText([SERVER_FAILED, parsed]);
   expect(failed()).toBeGreaterThanOrEqual(1);
 });
 
@@ -121,7 +155,7 @@ test("the values failing on a new revision keep the grid, with the error above i
   await expect(grid).toBeVisible();
   const failed = await failing(page, "/api/values", "http");
   restamp(gui.directory, CONTROLLER);
-  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(alertAbove(page, '[aria-label="Values of CurveA"]')).toHaveText(SERVER_FAILED);
   await expect(page.getByRole("heading", { name: "CurveA" })).toBeVisible();
   await expect(grid).toBeVisible();
   expect(failed()).toBeGreaterThanOrEqual(1);

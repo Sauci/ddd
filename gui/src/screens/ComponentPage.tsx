@@ -176,7 +176,16 @@ export function ComponentPage({
     if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;
     return <p className="quiet">Reading the file…</p>;
   }
-  if (answer.error !== null) return <Banner tone="error">{answer.error}</Banner>;
+  if (answer.error !== null) {
+    // A kept answer is drawn under the failed read's banner, its own content error too (spec
+    // 2026-10-21 §5): alone, the parser's words of an older revision read as the new one's.
+    return (
+      <>
+        {content.isError && <Banner tone="error">{content.error.message}</Banner>}
+        <Banner tone="error">{answer.error}</Banner>
+      </>
+    );
+  }
 
   // Opens a variable declared in this very file without a reload - a third way to the same
   // place the row's own selection and the unit cell's button already open, so it clears the

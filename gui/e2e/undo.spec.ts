@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { CONTROLLER, drift, driftIn, UNITS } from "./demo";
-import { expect, test } from "./fixtures";
+import { CONTROLLER, drift, driftIn, failing, held, SERVER_FAILED, UNITS } from "./demo";
+import { expect, type Gui, test } from "./fixtures";
 
 /** The strip the Undo button opens. */
 function strip(page: Page) {
@@ -110,4 +110,86 @@ test("the control stands beside a component's name too", async ({ page, gui }) =
   await page.getByRole("button", { name: "DemoDevice" }).click();
   await page.getByRole("button", { name: "SensorHub", exact: true }).click();
   await expect(page.getByRole("button", { name: "Undo the unit of ValueA" })).toBeVisible();
+});
+
+/** ValueA's disagreement settled from Controller's panel, and the analysis of that edit landed.
+ * The strip's preview is asked under the revision the page holds (`["undo", at, revision]`), so
+ * one asked before that analysis lands is asked again when it does: a journey that holds or
+ * fails the preview waits for the heading to stop saying the findings are updating first. */
+async function settledAndAnalysed(page: Page, gui: Gui): Promise<void> {
+  drift(gui.directory);
+  await page.goto(gui.address);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(panel.getByText("Nothing to change")).toBeVisible();
+  await expect(page.locator(".updating-status")).toHaveText("");
+}
+
+/** The unit Controller's file states for ValueA. */
+function unitOfValueA(gui: Gui): string | undefined {
+  const text = readFileSync(join(gui.directory, CONTROLLER), "utf8");
+  return /"name": "ValueA"[\s\S]*?"unit": "([^"]*)"/.exec(text)?.[1];
+}
+
+test("the strip says it is reading the files an undo would put back, until it has", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  const release = await held(page, "/api/undo");
+  try {
+    await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+    await expect(strip(page).getByText("Reading the files…", { exact: true })).toBeVisible();
+    await expect(strip(page).getByRole("button", { name: "Put back 1 file" })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await expect(strip(page).getByRole("button", { name: "Put back 1 file" })).toBeVisible();
+  await expect(strip(page).getByText("Reading the files…", { exact: true })).toHaveCount(0);
+});
+
+test("an undo the server fails on is refused in the strip, with nothing put back", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueA" });
+  await undo.click();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  const putBack = strip(page).getByRole("button", { name: "Put back 1 file" });
+  // Only now, with the preview read: the one request it meets is the press's `POST`. The preview
+  // is asked again at a new revision only, and none is coming.
+  const failed = await failing(page, "/api/undo", "http");
+  await putBack.click();
+  // The refusal is the whole of the strip (an undo is all or nothing): the preview is gone.
+  await expect(strip(page).getByRole("status")).toHaveText(
+    `The undo was refused: ${SERVER_FAILED}`,
+  );
+  await expect(putBack).toHaveCount(0);
+  // Nothing was put back, and the entry is still there to try again.
+  expect(unitOfValueA(gui)).toBe("%");
+  await expect(undo).toBeEnabled();
+  // A `POST` is never sent again (`sentAgain`, client.ts).
+  expect(failed()).toBe(1);
+});
+
+test("a preview the server fails on is refused in the strip, before any undo was asked", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  // Registered before the strip is opened, whose first ask is the preview's `GET`: failed, it
+  // leaves no "Put back" to press, so no `POST` follows.
+  const failed = await failing(page, "/api/undo", "http");
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  await expect(strip(page).getByRole("status")).toHaveText(
+    `The undo was refused: ${SERVER_FAILED}`,
+  );
+  await expect(strip(page).getByRole("button", { name: /^Put back/ })).toHaveCount(0);
+  expect(unitOfValueA(gui)).toBe("%");
+  expect(failed()).toBe(1);
 });

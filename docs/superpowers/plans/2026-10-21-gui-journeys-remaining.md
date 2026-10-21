@@ -1661,20 +1661,20 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | --- | --- | --- | --- |
 | The network | the page's script failed once (*added*) | 2 | `network.spec.ts:107`, "the page's script the network failed once is asked for again, and the page is drawn" |
 | The network | the page's script failing every time (*added*) | 2 | `network.spec.ts:118`, "the page's script the network fails every time says how to try again" |
-| The start page | a project listed with the images its build records name | 3 | none yet |
-| The start page | a project whose description does not load, listed as an unnamed project | 3 | none yet |
-| The start page | a project opening, the list's buttons held until it has | 3 | none yet |
-| The app | signed in by the one-time code `ddd gui` opens its own browser with | 3 | none yet |
-| The app | connecting, before the session answers | 3 | none yet |
-| The app | the session failing | 3 | none yet |
-| The app | analysing the project, before its first analysis lands | 3 | none yet |
-| The app | the server answering again after it stopped | 3 | none yet |
-| The app | nothing written while the server is stopped: every Apply and every write's button disabled | 3 | none yet |
-| The app | an entry's panel just after a rename or a declaration, saying the findings are updating until the analysis lands | 3 | none yet |
-| The app | the changes a plan makes, shown and then hidden again | 3 | none yet |
-| The undo strip | the files an undo puts back, being read | 3 | none yet |
-| The undo strip | an undo the server fails on | 3 | none yet |
-| The undo strip | the files an undo puts back, failing to be read (*added*, pre-flight) | 3 | none yet |
+| The start page | a project listed with the images its build records name | 3 | `start.spec.ts:230`, "a project is listed with the images its build records name" |
+| The start page | a project whose description does not load, listed as an unnamed project | 3 | `start.spec.ts:246`, "a project whose description does not load is listed as an unnamed project" |
+| The start page | a project opening, the list's buttons held until it has | 3 | `start.spec.ts:267`, "a project opening holds every button of the list, until the start page goes" |
+| The app | signed in by the one-time code `ddd gui` opens its own browser with | 3 | `start.spec.ts:305`, "the address ddd gui opens its own browser with signs the page in by a one-time code, spent once used"; the fixture's own journey is `helpers.spec.ts:251`, "the browser ddd gui opens is handed a one-time sign-in address of its own" |
+| The app | connecting, before the session answers | 3 | `start.spec.ts:334`, "the page says it is connecting until the session answers" |
+| The app | the session failing | 3 | `start.spec.ts:357`, "the session failing shows the server's own error, and no page" |
+| The app | analysing the project, before its first analysis lands | 3 | `start.spec.ts:372`, "a project opened is analysed before its tabs show anything, and the page says so" |
+| The app | the server answering again after it stopped | 3 | `start.spec.ts:396`, "a server that answers again after it stopped lifts the banner, and the page follows the project again" |
+| The app | nothing written while the server is stopped: every Apply and every write's button disabled | 3 | `start.spec.ts:430`, "a stopped server disables every control that writes, the component table's cells among them": the variable panel's Apply and Remove, the Undo and the component page's three `isDisabled={stopped}` (Add a declaration and the table's two cell buttons). The survey read the same `busy` rule, `stopped` included, in every screen that writes: ComparePage, ConstantPanel, DeclarePanel, FilesPage (three), FindingsPage, RasterPanel, SectionPanel, SharedPage, TypePanel, UndoStrip, UnitPanel, UnitsPage (two), ValuesPage, VariablePanel; the journey drives UndoStrip's and VariablePanel's |
+| The app | an entry's panel just after a rename or a declaration, saying the findings are updating until the analysis lands | 3 | `start.spec.ts:474`, "a variable just declared shows its panel saying the findings are updating, until the analysis lands": a declaration on the demo with a slowed analysis (`slowAnalyses`), not on `generatedGui`, where the panel opens after the analysis has landed (measured, six runs) |
+| The app | the changes a plan makes, shown and then hidden again | 3 | `start.spec.ts:517`, "the changes a plan makes are shown, and hidden again" |
+| The undo strip | the files an undo puts back, being read | 3 | `undo.spec.ts:137`, "the strip says it is reading the files an undo would put back, until it has" |
+| The undo strip | an undo the server fails on | 3 | `undo.spec.ts:155`, "an undo the server fails on is refused in the strip, with nothing put back" |
+| The undo strip | the files an undo puts back, failing to be read (*added*, pre-flight) | 3 | `undo.spec.ts:180`, "a preview the server fails on is refused in the strip, before any undo was asked" |
 | The canvas | the project's graph failing before anything is drawn | 4 | none yet |
 | The canvas | the project's graph failing once drawn, the canvas kept | 2 | `kept.spec.ts:76`, "the graph failing on a new revision keeps the canvas, with the error above it" |
 | The canvas | a module whose file does not load, drawn as not loaded | 4 | none yet |

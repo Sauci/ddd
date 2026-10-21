@@ -10,7 +10,7 @@ import { expect, test } from "./fixtures";
 const UNASKED = "/api/checks";
 
 /** The other route the page never asks (spec 2026-10-08 §4), asked beside `UNASKED` to show that
- * `failing` leaves alone a path it was not given: the server refuses it 401 too. */
+ * `failing` and `held` leave alone a path they were not given: the server refuses it 401 too. */
 const BESIDE = "/api/dictionary";
 
 type Asked = { status: number; message: string | null } | "no answer";
@@ -135,23 +135,42 @@ test("a request held until released is answered then, and the next goes straight
   await page.goto(gui.address);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
   const release = await held(page, UNASKED);
-  let answered = false;
+  let firstAnswered = false;
+  let secondAnswered = false;
   const first = askedFromPage(page, UNASKED).then((asked) => {
-    answered = true;
+    firstAnswered = true;
     return asked;
   });
-  // The second ask is past the hold, and the server answers it - refused 401, since `fetch` in
-  // askedFromPage sends no token - while the first still waits for its release.
-  expect(await askedFromPage(page, UNASKED)).toMatchObject({ status: 401 });
-  expect(answered).toBe(false);
-  release();
+  const second = askedFromPage(page, UNASKED).then((asked) => {
+    secondAnswered = true;
+    return asked;
+  });
+  try {
+    // The second ask is past the hold, and the server answers it - refused 401, since `fetch` in
+    // askedFromPage sends no token - while the first still waits for its release. Waited for a
+    // bounded time: an ask held too would never be answered.
+    await expect.poll(() => secondAnswered, { timeout: 5000 }).toBe(true);
+    expect(await second).toMatchObject({ status: 401 });
+    expect(firstAnswered).toBe(false);
+  } finally {
+    release();
+  }
   expect(await first).toMatchObject({ status: 401 });
 });
 
 test("every request held, with every, until released", async ({ page, gui }) => {
   await page.goto(gui.address);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
-  const release = await held(page, /^\/api\/checks$/, { every: true });
+  // The `g` flag makes a pattern's own `test` go on from where it last stopped: `held` tries it
+  // afresh for every request all the same. Every answer the hold lets go is read on its way to the
+  // page, so the asks it held are counted once all are answered, whatever came first.
+  let through = 0;
+  const release = await held(page, /^\/api\/checks$/g, {
+    every: true,
+    onAnswer: () => {
+      through += 1;
+    },
+  });
   let answers = 0;
   const asks = [askedFromPage(page, UNASKED), askedFromPage(page, UNASKED)].map((ask) =>
     ask.then((asked) => {
@@ -159,27 +178,51 @@ test("every request held, with every, until released", async ({ page, gui }) => 
       return asked;
     }),
   );
-  // A third ask of another path is answered while both are held: the page and the server work.
-  expect(await askedFromPage(page, "/api/dictionary")).toMatchObject({ status: 401 });
-  expect(answers).toBe(0);
-  release();
+  try {
+    // A third ask of another path is answered while both are held: the page and the server work.
+    expect(await askedFromPage(page, BESIDE)).toMatchObject({ status: 401 });
+    expect(answers).toBe(0);
+  } finally {
+    release();
+  }
   for (const asked of await Promise.all(asks)) expect(asked).toMatchObject({ status: 401 });
+  // Both were held: an ask let past the hold reaches the page without being read on the way.
+  expect(through).toBe(2);
 });
 
 test("a held request's answer is read before the page is handed it", async ({ page, gui }) => {
   await page.goto(gui.address);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  // The answer, once read, is kept until the journey lets it go: what the page has meanwhile is
+  // what it was handed before the answer was read.
   let read: number | null = null;
+  let letGo = (): void => undefined;
+  const kept = new Promise<void>((resolve) => {
+    letGo = resolve;
+  });
   const release = await held(page, (url) => url.pathname === UNASKED, {
-    onAnswer: (response) => {
+    onAnswer: async (response) => {
       read = response.status();
+      await kept;
     },
   });
-  const asked = askedFromPage(page, UNASKED);
-  expect(read).toBeNull();
-  release();
+  let answered = false;
+  const asked = askedFromPage(page, UNASKED).then((answer) => {
+    answered = true;
+    return answer;
+  });
+  try {
+    release();
+    await expect.poll(() => read, { timeout: 5000 }).toBe(401);
+    // An ask of another path, there and back from the page while the answer is kept: an answer
+    // handed to the page before it was read, and so before that ask was sent, has had all of that
+    // round trip to arrive.
+    expect(await askedFromPage(page, BESIDE)).toMatchObject({ status: 401 });
+    expect(answered).toBe(false);
+  } finally {
+    letGo();
+  }
   expect(await asked).toMatchObject({ status: 401 });
-  expect(read).toBe(401);
 });
 
 test("a file restamped has a later modification time and the same bytes", async ({ gui }) => {

@@ -544,12 +544,21 @@ export async function failing(
 }
 
 /** What `held` matches: a pathname, a pattern over the pathname, or a test of the whole address
- * (a query parameter included). */
+ * (a query parameter included). A pattern is matched afresh for every request, as `failing`
+ * matches one: a copy of it is tried from its start each time, so that a `g` or `y` flag never
+ * makes one match depend on the last. */
 export type Matcher = string | RegExp | ((url: URL) => boolean);
 
 function matching(matcher: Matcher): (url: URL) => boolean {
   if (typeof matcher === "string") return (url) => url.pathname === matcher;
-  if (matcher instanceof RegExp) return (url) => matcher.test(url.pathname);
+  if (matcher instanceof RegExp) {
+    // A copy, flags and all, so that setting where it starts leaves the caller's own untouched.
+    const pattern = new RegExp(matcher);
+    return (url) => {
+      pattern.lastIndex = 0;
+      return pattern.test(url.pathname);
+    };
+  }
   return matcher;
 }
 

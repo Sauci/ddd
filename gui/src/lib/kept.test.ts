@@ -32,6 +32,11 @@ describe("kept", () => {
   test("keeps the query's own answer, under its question", () => {
     expect(kept(["Hz"], false, "units", null)).toEqual({ identity: "units", data: ["Hz"] });
     expect(kept(["Hz"], false, "types", units)).toEqual({ identity: "types", data: ["Hz"] });
+    // The very answer it kept, now asked under another question: kept anew, under that one.
+    expect(kept(units.data, false, "types", units)).toEqual({
+      identity: "types",
+      data: units.data,
+    });
   });
 
   test("answers the very object it kept while nothing changed", () => {

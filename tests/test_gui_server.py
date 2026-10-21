@@ -74,6 +74,10 @@ FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
 JOURNEY_HELPERS: Final = EXAMPLES.parent / "gui" / "e2e" / "demo.ts"
 """The journeys' own helpers, whose ``failing`` answers a request as this server fails one."""
 
+PAGE_SOURCE: Final = EXAMPLES.parent / "gui" / "index.html"
+"""The page's own source, whose inline scripts the build copies as they are: the page ``ddd gui``
+serves holds the very same."""
+
 JS_STRING: Final = r'"(?:[^"\\]|\\.)*"'
 """A double-quoted string literal of javascript, escapes and all: json reads it as it is, for the
 escapes json shares."""
@@ -995,6 +999,13 @@ class TestThePagePolicy:
 
     def test_an_empty_inline_script_is_hashed_too(self) -> None:
         assert page_policy(b"<script></script>") == f"{self.BASE}; script-src 'self' {_hashed('')}"
+
+    def test_the_page_holds_one_inline_script_today(self) -> None:
+        """docs/gui_security.rst says the page holds one script inline today, the one that asks
+        for its own module once more. ``page_policy`` allows each the page holds, so a second one
+        added to gui/index.html would be allowed without a word, and that page would go untrue:
+        this says so first."""
+        assert page_policy(PAGE_SOURCE.read_bytes()).count("'sha256-") == 1
 
     def test_a_server_over_pages_with_no_index_keeps_the_base_policy(self, tmp_path: Path) -> None:
         """``run`` refuses to start over pages with no ``index.html``; a server built over them

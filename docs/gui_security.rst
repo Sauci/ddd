@@ -139,12 +139,13 @@ What it trusts
 
 * **The page's own origin.** The token is kept in its ``localStorage``, readable only by
   script running in this origin; the content security policy runs no script but one served
-  from this origin and the one script the page starts with inline, which asks for the page's
-  own module once more when the network failed it. That one is allowed by its SHA-256 alone,
-  which ``ddd gui`` reads off the page it serves when it starts: ``script-src 'self'`` and
-  that hash, beside ``default-src 'self'``. No other inline script runs, and
-  ``'unsafe-inline'`` is never allowed. What may have served this origin before ``ddd gui``
-  did - a server on the same port, earlier - is *What it does not defend against*, below.
+  from this origin and each script the page itself holds inline - today one, which asks for
+  the page's own module once more when the network failed it. Each of those is allowed by its
+  SHA-256 alone, which ``ddd gui`` reads off the page it serves when it starts:
+  ``script-src 'self'`` and those hashes, beside ``default-src 'self'``. No other inline
+  script runs, and ``'unsafe-inline'`` is never allowed. What may have served this origin
+  before ``ddd gui`` did - a server on the same port, earlier - is *What it does not defend
+  against*, below.
 
 The table of every route, below, marks which ones may run a project's or a baseline's
 plugins: opening a project, comparing against one, an edit or an undo - each re-analysed

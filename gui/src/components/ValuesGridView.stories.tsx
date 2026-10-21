@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { PlanReply, ValuesReply } from "../api/types";
 import { holdOf } from "../lib/valuesHold";
 import {
@@ -11,6 +11,7 @@ import {
   VALUES_SOFTWARE_LABEL,
   VALUES_VALUE_D,
 } from "../stories/fixtures";
+import { Banner } from "../ui/Banner";
 import { UndoStripView } from "./UndoStripView";
 import { ValuesGridView } from "./ValuesGridView";
 import { ValuesPlotView } from "./ValuesPlotView";
@@ -26,6 +27,7 @@ interface Props {
   refusal?: string | null;
   changesShown?: boolean;
   busy?: boolean;
+  banner?: ReactNode;
 }
 
 /** The grid over one scenario's fixtures, with its own toggle, cell being typed into and Show
@@ -39,6 +41,7 @@ function View({
   refusal = null,
   changesShown: initialChangesShown = false,
   busy = false,
+  banner,
 }: Props) {
   const [physical, setPhysical] = useState(initialPhysical);
   const [editing, setEditing] = useState(initialEditing ?? null);
@@ -47,6 +50,7 @@ function View({
     <ValuesGridView
       reply={reply}
       backTo={backTo}
+      banner={banner}
       physical={physical}
       onPhysical={setPhysical}
       editing={editing}
@@ -184,6 +188,22 @@ export function ATableWaitingForAPaste() {
     />
   );
 }
+
+// Part 19c's own: CurveA's grid as its page keeps it once the read of the project's next
+// revision failed (`useKept`, spec 2026-10-21 §5) - the last grid read, under the server's own
+// sentence for a request it failed on, which the page draws under the heading (`banner`).
+export const AGridKeptUnderAFailedRead = () => (
+  <View
+    reply={VALUES_CURVE}
+    backTo="Controller"
+    physical
+    banner={
+      <Banner tone="error">
+        ddd gui failed on this request; the terminal it runs in shows why
+      </Banner>
+    }
+  />
+);
 
 // Part 10's own stories: the plot alone rather than the whole grid, since a grid's own picture
 // is already the ones above - `View` wraps `ValuesGridView`, these draw `ValuesPlotView` direct.

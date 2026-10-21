@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { type APIResponse, expect, type Locator, type Page } from "@playwright/test";
 
 export const CONTROLLER = join("components", "controller.ddd.json");
 export const SENSOR_HUB = join("components", "sensor_hub.ddd.json");
@@ -541,4 +541,66 @@ export async function failing(
     },
   );
   return () => failed;
+}
+
+/** What `held` matches: a pathname, a pattern over the pathname, or a test of the whole address
+ * (a query parameter included). */
+export type Matcher = string | RegExp | ((url: URL) => boolean);
+
+function matching(matcher: Matcher): (url: URL) => boolean {
+  if (typeof matcher === "string") return (url) => url.pathname === matcher;
+  if (matcher instanceof RegExp) return (url) => matcher.test(url.pathname);
+  return matcher;
+}
+
+/**
+ * Holds the page's next request that `matcher` matches until the function it answers is called,
+ * then lets it through to the server; any later one goes straight through (`{ times: 1 }`: a
+ * route left registered met the teardown on Windows as `ECONNRESET`, P19b-7). With `every`,
+ * each one is held until the release, for a journey whose claim is about every answer, not the
+ * next one. With `onAnswer`, the server's answer is fetched and handed to it before the page
+ * gets it: what a journey reads of an answer the page has not drawn yet. For a state the page
+ * shows while it waits (spec 2026-10-08 §5, "Loading states"): release in a `finally`, so that a
+ * failed assertion never leaves the page waiting.
+ */
+export async function held(
+  page: Page,
+  matcher: Matcher,
+  options: {
+    every?: boolean;
+    onAnswer?: (response: APIResponse) => void | Promise<void>;
+  } = {},
+): Promise<() => void> {
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { every = false, onAnswer } = options;
+  await page.route(
+    matching(matcher),
+    async (route) => {
+      await released;
+      if (onAnswer === undefined) {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      await onAnswer(response);
+      await route.fulfill({ response });
+    },
+    every ? {} : { times: 1 },
+  );
+  return release;
+}
+
+/**
+ * Moves `file`'s modification time to now and changes none of its bytes. The watcher compares a
+ * file's `(st_mtime_ns, st_size)` alone (`stamped` and `poll`, session.py), so its next poll
+ * reads a new revision, and the server's long poll, which would otherwise wait out its
+ * `WAIT_SECONDS`, answers at once (P19b-9). For a journey that needs the next revision now: a
+ * held refusal let go, or the page's next state read failed.
+ */
+export function restamp(directory: string, file: string): void {
+  const now = new Date();
+  utimesSync(join(directory, file), now, now);
 }

@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { failing, SERVER_FAILED } from "./demo";
+import { CONTROLLER, failing, held, restamp, SERVER_FAILED } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** A route the page never asks on its own (no caller in gui/src), so that only the asks below
@@ -126,4 +126,69 @@ test("a copy of the layout example is served with the plugin its project names b
       exact: true,
     }),
   ).toBeVisible();
+});
+
+test("a request held until released is answered then, and the next goes straight through", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  const release = await held(page, UNASKED);
+  let answered = false;
+  const first = askedFromPage(page, UNASKED).then((asked) => {
+    answered = true;
+    return asked;
+  });
+  // The second ask is past the hold, and the server answers it - refused 401, since `fetch` in
+  // askedFromPage sends no token - while the first still waits for its release.
+  expect(await askedFromPage(page, UNASKED)).toMatchObject({ status: 401 });
+  expect(answered).toBe(false);
+  release();
+  expect(await first).toMatchObject({ status: 401 });
+});
+
+test("every request held, with every, until released", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  const release = await held(page, /^\/api\/checks$/, { every: true });
+  let answers = 0;
+  const asks = [askedFromPage(page, UNASKED), askedFromPage(page, UNASKED)].map((ask) =>
+    ask.then((asked) => {
+      answers += 1;
+      return asked;
+    }),
+  );
+  // A third ask of another path is answered while both are held: the page and the server work.
+  expect(await askedFromPage(page, "/api/dictionary")).toMatchObject({ status: 401 });
+  expect(answers).toBe(0);
+  release();
+  for (const asked of await Promise.all(asks)) expect(asked).toMatchObject({ status: 401 });
+});
+
+test("a held request's answer is read before the page is handed it", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  let read: number | null = null;
+  const release = await held(page, (url) => url.pathname === UNASKED, {
+    onAnswer: (response) => {
+      read = response.status();
+    },
+  });
+  const asked = askedFromPage(page, UNASKED);
+  expect(read).toBeNull();
+  release();
+  expect(await asked).toMatchObject({ status: 401 });
+  expect(read).toBe(401);
+});
+
+test("a file restamped has a later modification time and the same bytes", async ({ gui }) => {
+  const path = join(gui.directory, CONTROLLER);
+  const bytes = readFileSync(path);
+  // An old stamp first, so that the move is measurable on any file system's resolution.
+  const old = new Date(2000, 0, 1);
+  utimesSync(path, old, old);
+  restamp(gui.directory, CONTROLLER);
+  expect(statSync(path).mtimeMs).toBeGreaterThan(old.getTime() + 1000);
+  expect(readFileSync(path).equals(bytes)).toBe(true);
 });

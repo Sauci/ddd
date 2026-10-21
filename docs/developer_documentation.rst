@@ -992,6 +992,18 @@ never sent again, shows its banner at the first failure. ``failing`` is Playwrig
 on that one page, so the server's code is never touched. The ``500``'s message,
 ``SERVER_FAILED``, is the server's own sentence for such a request, ``_INTERNAL`` in
 ``src/ddd/gui/server.py``, so a banner it raises reads as the one a real failure raises.
+``held``, beside it, holds the page's next request to one path, to a path a pattern matches, or
+to an address a function accepts, its query included, until the journey lets it go, and lets
+every later one straight through: the journey sees what the page shows while it waits, and lets
+the request go in a ``finally``, so that a failed assertion never leaves the page waiting. With
+``every``, each such request is held until then, for a claim about every answer rather than the
+next one; with ``onAnswer``, the server's answer is fetched and handed to the journey before the
+page gets it, for a claim about an answer the page has not drawn yet. ``restamp`` moves a file's
+modification time to now and changes none of its bytes. The session's watcher compares a file's
+modification time and size alone (``stamped``, in ``src/ddd/gui/session.py``), so its next poll
+reads a new revision, and the long poll the page has open, which would otherwise wait out its
+``WAIT_SECONDS``, answers at once: a journey needs it to let go a refusal held until the next
+revision, or to make the page's next read of the state the one ``failing`` fails.
 
 The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
 BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out

@@ -43,8 +43,10 @@ See ``docs/gui_security.rst`` for the threat model this is reviewed against.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import errno
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -57,6 +59,7 @@ import time
 import traceback
 import webbrowser
 from collections.abc import Callable, Sequence
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
@@ -176,6 +179,55 @@ SECURITY_HEADERS: Final = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
 }
+
+
+class _InlineScripts(HTMLParser):
+    """The text of each script a page holds inline: one with no ``src``, whose text is what
+    runs."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.scripts: list[str] = []
+        self._text: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "script" and all(name != "src" for name, _ in attrs):
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._text is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._text is not None:
+            self.scripts.append("".join(self._text))
+            self._text = None
+
+
+def page_policy(page: bytes) -> str:
+    """The content security policy of every answer of a server serving ``page``: the base one in
+    :data:`SECURITY_HEADERS`, and, where the page holds a script inline, ``script-src`` allowing
+    the server's own scripts and each inline one by its SHA-256 - never ``'unsafe-inline'``
+    (spec 2026-10-21 §6). The page's boot script is the one today: it asks for the page's own
+    module once more when the network failed it, which no code of that module can do.
+
+    Hashed as a browser reads the script: its parser turns every CRLF, and every lone CR, into LF
+    before a script runs, and a page's bytes may hold either - an ``index.html`` saved by an
+    editor on Windows, say. (``.gitattributes`` checks it out with LF on every system.)
+    """
+    reader = _InlineScripts()
+    text = page.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    reader.feed(text)
+    reader.close()
+    base = SECURITY_HEADERS["Content-Security-Policy"]
+    if not reader.scripts:
+        return base
+    hashes = " ".join(
+        "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
+        for script in reader.scripts
+    )
+    return f"{base}; script-src 'self' {hashes}"
+
 
 SIGN_IN_PAGE: Final = (
     b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
@@ -355,6 +407,11 @@ class GuiServer(ThreadingHTTPServer):
             raise
         self.api = api
         self.static = static.resolve()
+        # Read once: the pages do not change under a running server, and every answer carries it.
+        # `run` refuses to start without an index.html; a test's server may have none.
+        page = self.static / "index.html"
+        base = SECURITY_HEADERS["Content-Security-Policy"]
+        self.policy = page_policy(page.read_bytes()) if page.is_file() else base
         self.token = secrets.token_urlsafe(TOKEN_BYTES)
         self._clock = clock
         self._code: tuple[str, float] | None = None
@@ -767,6 +824,8 @@ class _Handler(BaseHTTPRequestHandler):
         self, status: int, data: bytes, kind: str, headers: dict[str, str] | None = None
     ) -> None:
         own = dict(headers or {})
+        # The policy of the page this server serves (`page_policy`), in the base one's place.
+        own.setdefault("Content-Security-Policy", self._gui.policy)
         if self.command == "POST" and not self._body_read:
             # Refused before its body was read. A body this server would have read is read now
             # and thrown away: nothing of it is then read as the next request, and nothing is

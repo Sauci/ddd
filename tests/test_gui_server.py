@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import dataclasses
 import errno
+import hashlib
 import http.client
 import json
 import os
@@ -60,6 +62,7 @@ from ddd.gui.server import (
     GuiServer,
     is_loopback,
     launched,
+    page_policy,
     run,
     static_directory,
 )
@@ -964,6 +967,55 @@ class TestWhoMayAsk:
         connection.close()
 
 
+def _hashed(text: str) -> str:
+    return "'sha256-" + base64.b64encode(hashlib.sha256(text.encode()).digest()).decode() + "'"
+
+
+class TestThePagePolicy:
+    BASE = SECURITY_HEADERS["Content-Security-Policy"]
+
+    def test_a_page_with_no_inline_script_keeps_the_base_policy(self) -> None:
+        page = b'<!doctype html><script type="module" src="/assets/index-a.js"></script>'
+        assert page_policy(page) == self.BASE
+
+    def test_each_inline_script_is_allowed_by_its_hash(self) -> None:
+        page = b"<html><head><script>one()</script></head><body><script> two(); </script></body>"
+        assert page_policy(page) == (
+            f"{self.BASE}; script-src 'self' {_hashed('one()')} {_hashed(' two(); ')}"
+        )
+
+    def test_a_page_written_with_crlf_is_hashed_as_the_browser_reads_it(self) -> None:
+        # Review Focus 1: the browser's parser turns every CRLF and every lone CR into LF before
+        # it hashes a script, so a page whose bytes carry either - saved by an editor on Windows,
+        # say - is hashed as its LF text. (.gitattributes checks index.html out with LF on every
+        # system, the windows runners included.)
+        page = b"<script>\r\n  a();\r  b();\n</script>"
+        expected = _hashed("\n  a();\n  b();\n")
+        assert page_policy(page) == f"{self.BASE}; script-src 'self' {expected}"
+
+    def test_an_empty_inline_script_is_hashed_too(self) -> None:
+        assert page_policy(b"<script></script>") == f"{self.BASE}; script-src 'self' {_hashed('')}"
+
+    def test_a_server_over_pages_with_no_index_keeps_the_base_policy(self, tmp_path: Path) -> None:
+        """``run`` refuses to start over pages with no ``index.html``; a server built over them
+        regardless has no page to read a script from, and answers with the base policy."""
+        bare = tmp_path / "bare"
+        bare.mkdir()
+        server = GuiServer(Api(Session(tmp_path)), bare)
+        try:
+            assert server.policy == self.BASE
+        finally:
+            server.server_close()
+
+
+INLINE_PAGE: Final = (
+    b"<!doctype html><html><head><script>again();</script>"
+    b'<script type="module" src="/app.js"></script></head><body></body></html>'
+)
+"""A stand-in for the compiled pages' ``index.html``, holding one script inline, as theirs
+holds the boot script that asks for the page's own module once more."""
+
+
 class TestWhatIsServed:
     def test_every_response_carries_the_security_headers(self, server) -> None:
         for method, path in (("GET", "/"), ("GET", "/api/session"), ("GET", "/api/nothing")):
@@ -972,6 +1024,21 @@ class TestWhatIsServed:
             assert policy is not None and "frame-ancestors 'none'" in policy
             assert response.getheader("X-Content-Type-Options") == "nosniff"
             assert response.getheader("Referrer-Policy") == "no-referrer"
+
+    @pytest.fixture
+    def inline(self, project_file: Path, pages: Path) -> Iterator[GuiServer]:
+        """``server``, over pages whose ``index.html`` holds a script inline (``INLINE_PAGE``),
+        written before the server reads it."""
+        (pages / "index.html").write_bytes(INLINE_PAGE)
+        session = Session(project_file.parent)
+        session.open(project_file)
+        yield from serving(Api(session, project_file, wait_seconds=0.05), pages)
+
+    @pytest.mark.parametrize("path", ["/", "/api/session", "/app.js"])
+    def test_every_answer_carries_the_policy_of_the_page_served(self, inline, path) -> None:
+        response, _ = ask(inline, "GET", path)
+        assert response.status == 200
+        assert response.getheader("Content-Security-Policy") == page_policy(INLINE_PAGE)
 
     def test_the_api_is_never_cached_and_the_pages_are_not_told_so(self, server) -> None:
         assert ask(server, "GET", "/api/session")[0].getheader("Cache-Control") == "no-store"

@@ -1,9 +1,9 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { test as base, type TestInfo } from "@playwright/test";
+import { test as base, expect, type TestInfo } from "@playwright/test";
 
 const EXAMPLES = fileURLToPath(new URL("../../examples/", import.meta.url));
 const GENERATE_PROJECT = fileURLToPath(new URL("../../tools/generate_project.py", import.meta.url));
@@ -136,18 +136,67 @@ function copiedExample(example: Example, parent: string): string {
   return directory;
 }
 
+/** A stand-in for the browser `ddd gui` opens: a program that writes the address it is opened
+ * with to a file beside it, and a function answering that address once it is there. A shell
+ * script, or on Windows a batch file. `webbrowser` runs a `BROWSER` entry with no `%s` as one
+ * program, handed the address as its one argument (`GenericBrowser`), so the program's path may
+ * hold no whitespace; and a batch file reads it as `%*`, since cmd splits `%1` at the `=` of
+ * `?code=`. */
+function recorder(directory: string): { program: string; opened: () => Promise<string> } {
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, "opened.txt");
+  const program = join(directory, process.platform === "win32" ? "record.cmd" : "record.sh");
+  if (/\s/.test(program)) {
+    throw new Error(`webbrowser cannot run ${program}: it splits BROWSER at whitespace`);
+  }
+  if (process.platform === "win32") {
+    writeFileSync(program, '@echo off\r\n>"%~dp0opened.txt" echo %*\r\n');
+  } else {
+    writeFileSync(program, '#!/bin/sh\nprintf \'%s\' "$1" > "$(dirname "$0")/opened.txt"\n', {
+      mode: 0o755,
+    });
+  }
+  const opened = async () => {
+    // `launched` runs on a thread of its own once the address is printed (server.py's `run`).
+    await expect
+      .poll(() => existsSync(file) && readFileSync(file, "utf8").trim() !== "", {
+        timeout: 10_000,
+      })
+      .toBe(true);
+    return readFileSync(file, "utf8").trim();
+  };
+  return { program, opened };
+}
+
+/** `ddd gui` with the browser it opens itself, for the sign-in no other journey sees: every
+ * other server is started with `--no-browser`. */
+export type OpenedGui = Gui & { opened: () => Promise<string> };
+
+/** What else `start` is told: `browser`, a program `ddd gui` opens its browser with, through the
+ * `BROWSER` variable Python's `webbrowser` reads, in place of `--no-browser`. */
+interface StartOptions {
+  browser?: string;
+}
+
 /** `ddd gui` over `directory`, already prepared, naming `project` on the command line or opening
  * on the start page where it is empty; stopped by the `Gui`'s own `stop`. The shared head of
  * `serving` and `copiedGui`. */
-async function start(directory: string, project: readonly string[]): Promise<Gui> {
+async function start(
+  directory: string,
+  project: readonly string[],
+  options: StartOptions = {},
+): Promise<Gui> {
   // python -m ddd rather than the ddd launcher: on Windows the launcher starts python as a child
   // of its own, which killing the launcher leaves running, holding the port and the copy.
   const child = spawn(
     process.env.DDD_PYTHON ?? "python",
-    ["-m", "ddd", "gui", ...project, "--no-browser"],
+    ["-m", "ddd", "gui", ...project, ...(options.browser === undefined ? ["--no-browser"] : [])],
     {
       cwd: directory,
       stdio: ["ignore", "pipe", "inherit"],
+      ...(options.browser === undefined
+        ? {}
+        : { env: { ...process.env, BROWSER: options.browser } }),
     },
   );
   let stopped = false;
@@ -273,6 +322,7 @@ export const test = base.extend<{
   generatedGui: Gui;
   mappedGui: Gui;
   copiedGui: CopiedGui;
+  openedGui: OpenedGui;
 }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   gui: async ({}, use, testInfo) => started(DEMO, true, use, testInfo),
@@ -304,6 +354,20 @@ export const test = base.extend<{
     );
     cpSync(join(EXAMPLES, DEMO.directory), directory, { recursive: true });
     await serving(directory, [join(directory, DEMO.project)], use);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  openedGui: async ({}, use, testInfo) => {
+    const directory = testInfo.outputPath(DEMO.directory);
+    cpSync(join(EXAMPLES, DEMO.directory), directory, { recursive: true });
+    const browser = recorder(testInfo.outputPath("browser"));
+    const gui = await start(directory, [join(directory, DEMO.project)], {
+      browser: browser.program,
+    });
+    try {
+      await use({ ...gui, opened: browser.opened });
+    } finally {
+      await gui.stop();
+    }
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   copiedGui: async ({}, use, testInfo) => {

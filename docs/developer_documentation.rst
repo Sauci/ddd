@@ -1010,6 +1010,17 @@ poll the page has open, which would otherwise wait out its ``WAIT_SECONDS``, ans
 journey needs it to let go a refusal held until the next revision, or to make the page's next
 read of the state the one ``failing`` fails.
 
+``openedGui``, a fixture beside ``copiedGui``, serves a copy of the demo as a reader's own ``ddd
+gui`` serves it: started without ``--no-browser``, so that it opens a browser, with the
+``BROWSER`` variable naming a program of the fixture's own. Python's ``webbrowser`` runs that
+program in place of a browser, handed the address to open as its one argument, and the program,
+a shell script or on Windows a batch file, only writes that address to a file. The fixture's
+``opened`` waits for the file and answers the address: ``/open?code=...`` on the server's own
+port, the one-time sign-in address ``ddd gui`` hands its browser instead of the token the
+printed address carries. A journey presents it to a page as the reader's browser would, and
+shows what the page does with it. ``webbrowser`` splits ``BROWSER`` at whitespace, so the
+fixture refuses a path that holds some.
+
 The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
 BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out
 with ``@dagrejs/dagre``, both MIT like every other bundled package.

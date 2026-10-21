@@ -247,3 +247,17 @@ test("a string that is not a pathname is refused, rather than holding or failing
   await expect(held(page, "**/api/units")).rejects.toThrow(refusal);
   await expect(failing(page, "**/api/units", "http")).rejects.toThrow(refusal);
 });
+
+test("the browser ddd gui opens is handed a one-time sign-in address of its own", async ({
+  openedGui,
+}) => {
+  const printed = new URL(openedGui.address);
+  const handed = new URL(await openedGui.opened());
+  // `launched` (server.py) hands the opener this server's own address with a one-time code of
+  // `TOKEN_BYTES`' 43 characters, never the token the printed address carries.
+  expect(handed.origin).toBe(printed.origin);
+  expect(handed.pathname).toBe("/open");
+  expect(handed.searchParams.get("code")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  expect(handed.searchParams.get("token")).toBeNull();
+  expect(handed.searchParams.get("code")).not.toBe(printed.searchParams.get("token"));
+});

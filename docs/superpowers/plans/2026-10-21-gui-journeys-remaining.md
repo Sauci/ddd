@@ -124,6 +124,8 @@ Every task's requirements include this section. It is part 19b's, with this part
    - to push `feature/gui-journeys-remaining` alone, for this part's CI runs and hunts;
    - to download the Playwright report of any failed run of this part.
 
+   It was given on 2026-10-13 for part 19c's branch: "Same as 19b", meaning push that branch only, never master and never force, and download any failed run's report without asking. It carried to this branch on 2026-10-21, when the maintainer chose it for part 19c and said go.
+
 ## Review Focus
 
 The failure modes the spec implies but no row of the inventory would test on its own, most likely first. Each has its test in the task that owns the code.
@@ -764,6 +766,7 @@ def page_policy(page: bytes) -> str:
 **Files:**
 - Modify: `gui/e2e/fixtures.ts`, `gui/e2e/helpers.spec.ts`, `gui/e2e/start.spec.ts`, `gui/e2e/undo.spec.ts`, `docs/developer_documentation.rst`, this plan's *The inventory*
 - Modify, for the bug in the row "a project opening, the list's buttons held until it has": `gui/src/screens/StartPage.tsx`, a `gui/src/lib` module and its test, `CHANGELOG.md`
+- Modify, for the two bugs of Step 6b (ruling 18): `src/ddd/gui/session.py` and `tests/test_gui_session.py`; `gui/src/screens/ComponentPage.tsx`
 
 **Interfaces:**
 - Consumes: `held`, `restamp` (Task 1); `failing`, `SERVER_FAILED`, `copiedGui` (19b); `bareGui`, `gui`, `generatedGui`.
@@ -1270,6 +1273,7 @@ test("an entry's panel says it is reading the entry until it is read", async ({
 **Files:**
 - Modify: `gui/e2e/files.spec.ts` (the Files rows), `gui/e2e/findings.spec.ts` (the Findings rows), `gui/e2e/compare.spec.ts` (the Compare rows), this plan's *The inventory*
 - Modify, for the two bugs (Steps 4 and 5): `gui/src/screens/FindingsPage.tsx` and `gui/src/lib/findings.ts` with its test; `gui/src/screens/CompareView.tsx` and `gui/src/components/FindingPanelView.tsx`; `CHANGELOG.md`
+- Modify, for the bug of Step 5b (ruling 18): `gui/src/lib/compare.ts` with its test, and `gui/src/screens/ComparePage.tsx`
 
 **Interfaces:**
 - Consumes: `held`, `restamp` (Task 1); `failing`, `SERVER_FAILED`, `copiedGui` (19b); `drift`, `driftDatatypeIn`, `dump`, `unstamp`, `writeUnseen`, `CONTROLLER`, `SENSOR_HUB`, `UNITS` (`gui/e2e/demo.ts`); the fixtures `gui`, `vocabularyGui`. The kept answer (Task 2) changes the Files tab's early return, which the row "reading the project's files" names.
@@ -1447,6 +1451,7 @@ test("an Add applied while the description changed on disk is refused in its own
 
 **Files:**
 - Modify: `gui/e2e/declarations.spec.ts` (rows 1 to 13), `gui/e2e/values.spec.ts` (rows 14 to 22), this plan's *The inventory*
+- Modify, for the bug of Step 6b (ruling 18): `gui/src/ui/ComboBox.tsx`, `gui/src/styles/ui.css`, `CHANGELOG.md`
 
 **Interfaces:**
 - Consumes: `held`, `restamp` (Task 1); `failing`, `SERVER_FAILED`, `copiedGui`, `vocabularyGui` (19b); `CONTROLLER`, `SENSOR_HUB`, `USER_INTERFACE`, `PUMP`, `drift`, `driftIn`, `openPanel`, `openValues`, `chooseUnit` (`gui/e2e/demo.ts`); `values.spec.ts`'s own `definitionOf` and `expectRow`. The kept answer (Task 2) on the component page and the values grid: the rows here fail a *first* read, which still shows the error alone, and the row "an object no longer declared…" pins that a refusal is never kept.

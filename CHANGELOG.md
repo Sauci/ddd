@@ -147,6 +147,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   A record that names no image now offers its project and lists none, and each image a
   project's records name is listed once, in the order of the records.
 
+* **The component table's buttons are disabled when `ddd gui` has stopped.**  On a component's
+  page, the buttons in the table's Shape and Unit cells, which open a variable's values and its
+  panel, stayed enabled after the page said that `ddd gui` had stopped, while the page's other
+  buttons that write were disabled.  They are now disabled with the rest, and enabled again
+  once `ddd gui` answers.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

@@ -1,11 +1,23 @@
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, failing, held, restamp, SERVER_FAILED } from "./demo";
+import {
+  CONTROLLER,
+  drift,
+  failing,
+  held,
+  restamp,
+  SENSOR_HUB,
+  SERVER_FAILED,
+  scrolledIntoView,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 // The start page's own states - no project found, a build record this DDD cannot read, the
 // list loading or failing, opening a project failing - and the app around every page: signed
 // out, and the banner an HTTP failure of the long poll raises (spec 2026-10-08 §5).
+
+/** What the page says while its long poll goes unanswered: `App.tsx`'s `stopped` banner. */
+const STOPPED = "ddd gui has stopped. Start it again and open the address it prints.";
 
 /** The copy's own contents taken away, its directory left standing: no project description, no
  * build record, nothing - what the start page meets where `ddd gui` was started somewhere
@@ -184,4 +196,48 @@ test("a project opening holds every button of the list, until the start page goe
   await expect(page.getByRole("heading", { name: "DemoDevice", level: 1 })).toBeVisible();
   await expect(list).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+});
+
+test("a stopped server disables every control that writes, the component table's cells among them", async ({
+  page,
+  gui,
+}) => {
+  // Both flow from SensorHub to Controller in the demo, and Controller reads each in another unit.
+  drift(gui.directory, "ValueA", "rpm");
+  drift(gui.directory, "ValueB", "mV");
+  await page.goto(gui.address);
+  await expect(page.getByLabel("SensorHub to Controller: 2 variables, error")).toBeVisible();
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+
+  // An edit of the page's own, so that the Undo is offered: ValueB settled on the unit its
+  // producer states.
+  await page.getByRole("button", { name: "Set the unit of ValueB" }).click();
+  const settled = page.getByRole("complementary", { name: "ValueB" });
+  await settled.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(settled.getByText("Nothing to change")).toBeVisible();
+  const undo = page.getByRole("button", { name: "Undo the unit of ValueB" });
+  await expect(undo).toBeVisible();
+
+  // ValueA's panel, with a change to apply and a declaration to remove.
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const apply = panel.getByRole("button", { name: "Apply to 1 file" });
+  const remove = panel.getByRole("button", { name: "Remove from Controller" });
+  const add = page.getByRole("button", { name: "Add a declaration" });
+  // The table's own buttons: one that opens another declaration's panel, and one that opens the
+  // values of CurveA, whose row is drawn once the virtualised table is wheeled to it.
+  const setUnit = page.getByRole("button", { name: "Set the unit of ValueB" });
+  const showValues = page.getByRole("button", { name: "Show the values of CurveA" });
+  await scrolledIntoView(page, "Declarations of Controller", showValues);
+  const controls = [apply, remove, add, setUnit, undo, showValues];
+  for (const control of controls) await expect(control).toBeEnabled();
+  const written = readFileSync(join(gui.directory, CONTROLLER));
+
+  // The page's state poll fails as a stopped server fails it. A file's stamp moved, no byte
+  // changed, answers the poll in flight, so that the ask after it is the first one dropped.
+  await failing(page, "/api/state", "network");
+  restamp(gui.directory, SENSOR_HUB);
+  await expect(page.getByRole("alert").filter({ hasText: "has stopped" })).toHaveText(STOPPED);
+  for (const control of controls) await expect(control).toBeDisabled();
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(written)).toBe(true);
 });

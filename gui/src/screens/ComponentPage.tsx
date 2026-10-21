@@ -288,7 +288,13 @@ export function ComponentPage({
               Findings
             </Column>
           </TableHeader>
-          <TableBody items={rows}>
+          <TableBody
+            items={rows}
+            // The cells' buttons are disabled with `stopped`, which `rows` does not hold: React
+            // Aria keeps each row it has rendered for its item, and draws it again only when the
+            // item changes or a value named here does.
+            dependencies={[stopped]}
+          >
             {(row) => (
               <Row
                 id={row.id}

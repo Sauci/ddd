@@ -7,6 +7,32 @@
     <!-- This id is also react-aria's own guard (public/pressable.css): present already, it skips
          inserting the equivalent inline stylesheet the page's Content-Security-Policy blocks. -->
     <link id="react-aria-pressable-style" rel="stylesheet" href="/pressable.css" />
+    <!-- Asks once more for the page's own module when the network failed it (P19b-22): the one
+         load no code of the page can ask for again, since it is that code. Inline, so that
+         nothing need load for it to run; allowed by its hash alone (page_policy, server.py). A
+         failed module address is remembered by the browser, so the second ask adds a query,
+         which the server ignores. -->
+    <script>
+      addEventListener(
+        "error",
+        (event) => {
+          const script = event.target;
+          if (!(script instanceof HTMLScriptElement) || script.type !== "module") return;
+          if (script.hasAttribute("data-again")) {
+            document.getElementById("root").textContent =
+              "ddd gui could not load this page. Reload it to try again.";
+            return;
+          }
+          const again = document.createElement("script");
+          again.type = "module";
+          again.crossOrigin = script.crossOrigin;
+          again.src = `${script.src}${script.src.indexOf("?") < 0 ? "?" : "&"}again`;
+          again.setAttribute("data-again", "");
+          document.head.appendChild(again);
+        },
+        true,
+      );
+    </script>
   </head>
   <body>
     <div id="root"></div>

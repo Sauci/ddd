@@ -45,6 +45,9 @@ test("a stylesheet the network fails every time leaves the page drawn and workin
   await expect(controller).toBeVisible();
   // Asked for once more, and failed again: the page is drawn all the same, never left waiting.
   expect(failed()).toBe(2);
+  // A stylesheet's failure reaches the boot script's listener too, which asks again for the
+  // page's own module alone: nothing says the page did not load.
+  await expect(page.getByText(PAGE_NOT_LOADED, { exact: true })).toHaveCount(0);
   // The browser's own body, transparent: the page is drawn unstyled, as before it asked again.
   await expect(page.locator("body")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await controller.click();
@@ -93,4 +96,31 @@ test("the layout worker's script the network failed once is asked for again, and
   // A worker that stopped is said in an alert, in place of the canvas (`WORKER_FAILED`): none
   // shows.
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+/** The page's own module, as Vite names it in /assets/; a query string does not change the path. */
+const SCRIPT = /^\/assets\/index-[^/]+\.js$/;
+
+/** What the boot script in index.html writes once the page's module failed twice. */
+const PAGE_NOT_LOADED = "ddd gui could not load this page. Reload it to try again.";
+
+test("the page's script the network failed once is asked for again, and the page is drawn", async ({
+  page,
+  gui,
+}) => {
+  const failed = await failing(page, SCRIPT, "network", 1);
+  await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  expect(failed()).toBe(1);
+  await expect(page.getByText(PAGE_NOT_LOADED, { exact: true })).toHaveCount(0);
+});
+
+test("the page's script the network fails every time says how to try again", async ({
+  page,
+  gui,
+}) => {
+  const failed = await failing(page, SCRIPT, "network");
+  await page.goto(gui.address);
+  await expect(page.getByText(PAGE_NOT_LOADED, { exact: true })).toBeVisible();
+  expect(failed()).toBe(2);
 });

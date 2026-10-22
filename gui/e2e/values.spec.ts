@@ -401,7 +401,7 @@ const MAP_A_OVER_RANGE = [
 // cell's own Apply button fails non-stale without the file also changing underneath it, which is
 // staleness itself, unless the server is made to fail on the Apply's own request: the mechanism
 // of "a cell's apply the server fails on says so in its words, keeps its Apply, and is sent once",
-// further down this file. It stops at that refusal: a table pasted over it is not written either.
+// further down this file. It stops at that refusal: no journey pastes a table over it.
 test("a pasted curve replaces every value in one edit", async ({ page, gui }) => {
   await openValues(page, gui.address, "CurveA");
 

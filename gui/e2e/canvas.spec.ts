@@ -404,8 +404,8 @@ test("a module's badge counts its warnings, and only its errors once it has any"
   }
   // ValueH is Controller's own too, `local`: an sint16 at a tenth of a percent a count, so it can
   // hold at most 3276.7 %. A greatest limit of 5000 is a second `limits-out-of-range`, and the
-  // badge counts the two warnings. More warnings than errors from here on, so that a badge counting
-  // the larger of the two, or the warnings first, reads otherwise than one counting the errors.
+  // badge counts the two warnings. More warnings than errors until ValueB's drift below, so that a
+  // badge counting the larger, or the warnings first, reads otherwise than one counting the errors.
   driftMax(gui.directory, CONTROLLER, "ValueH", 5000);
   const warnedTwice = controller.getByRole("img", { name: "2 warnings", exact: true });
   await expect(warnedTwice).toHaveText("2");

@@ -257,9 +257,9 @@ test("a project whose description does not load is listed as an unnamed project"
     `${started.directory.replaceAll("\\", "/")}/demo.ddd.json`,
   );
   await expect(unnamed.getByText("built as firmware", { exact: true })).toBeVisible();
-  // The name is the cut file's, which no longer loads: the record's project and the description
-  // the walk finds are one entry, so there is no second one under the demo's name. The other
-  // project is listed as usual.
+  // The name is the cut file's, which no longer loads: the walk does not find it (`unreadable`),
+  // and only the record offers it, so there is no entry under the demo's name. The other project
+  // is listed as usual.
   await expect(page.getByRole("button", { name: /^DemoDevice/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Logging/ })).toBeVisible();
 });

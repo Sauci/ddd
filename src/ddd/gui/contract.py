@@ -189,7 +189,8 @@ class FoundProject(_Frozen):
     """Name its description gives it, or ``None`` when the file did not load that far."""
 
     images: tuple[str, ...]
-    """Build images a build record names this project for; empty for a file found alone."""
+    """Build images a build record names this project for; empty for a file found alone, and for
+    one whose records name no image."""
 
 
 class RefusedBuild(_Frozen):

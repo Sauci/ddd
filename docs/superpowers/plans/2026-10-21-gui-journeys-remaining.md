@@ -1777,6 +1777,12 @@ At the head, each exit status captured on its own (`gate.sh` in the session scra
 
 Filled in by Task 1 (the baseline run) and Task 9.
 
+- **The shortest chain laid out in ranks only** (Task 4, Step 4). Measured on the Linux development PC, in Chrome 155.0.8059.84, at `110accb`, whose page is that of `5cac6e0`. Each chain was the generator's `chain` shape (`tools/generate_project.py DIRECTORY --declarations N --shape chain`), served by `ddd gui` and opened in a page of 1280 by 720.
+  - 907 components (1,814 declarations) laid out in full, and 908 (1,816) in ranks only, four times each.
+  - Once each, 800, 900, 905 and 906 laid out in full; 909, 910, 915, 920, 925, 930, 950, 970, 990, 1,000, 1,100 and 2,000 in ranks only.
+  - `chainedGui` serves 2,000 components (4,000 declarations), more than twice 908. That project was generated in 143 ms, served and analysed in 484 ms, and drawn in ranks only 374 ms after the page was asked for. Its journey ran in 1.1 to 1.2 s, ten times.
+  - The three legs' own figures are read off this task's full run.
+
 ## Progress log
 
 | Task | Commits | Review | Notes |

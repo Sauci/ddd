@@ -1021,6 +1021,13 @@ printed address carries. A journey presents it to a page as the reader's browser
 shows what the page does with it. ``webbrowser`` splits ``BROWSER`` at whitespace, so the
 fixture refuses a path that holds some.
 
+``chainedGui``, beside ``generatedGui`` in ``gui/e2e/fixtures.ts``, serves a project that
+``tools/generate_project.py`` writes in its ``chain`` shape: 2,000 components, each reading the
+next one's output. The page lays its canvas out with dagre, in a worker of its own, and dagre
+overflows that worker's stack on a chain so deep, so the canvas is laid out in ranks only: a
+state no example and no other generated project reaches. In Chrome on Linux the shortest chain
+laid out in ranks only is 908 components long, and the fixture's is more than twice that.
+
 The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
 BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out
 with ``@dagrejs/dagre``, both MIT like every other bundled package.

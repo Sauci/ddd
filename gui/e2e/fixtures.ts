@@ -32,8 +32,8 @@ export interface Gui {
   /** The address ddd gui printed, token included. */
   address: string;
   /** The directory the server is started in and edits: a copy of an example, or the project
-   * `generatedGui` generates, under this test's own output directory - or, for `mappedGui`, a
-   * copy of the demo in a fresh directory on the drive `DDD_MAPPED_DRIVE` names. */
+   * `generatedGui` or `chainedGui` generates, under this test's own output directory - or, for
+   * `mappedGui`, a copy of the demo in a fresh directory on the drive `DDD_MAPPED_DRIVE` names. */
   directory: string;
   /** Stops the server; stopping twice is harmless. */
   stop: () => Promise<void>;
@@ -63,33 +63,47 @@ export type CopiedGui = (
 ) => Promise<Gui>;
 
 /**
- * `tools/generate_project.py DIRECTORY --declarations 20000 --shape many --missing-ids 1
- * --unread 0.5` through `DDD_PYTHON`, into `directory`, which must not exist yet - the way
- * `demo.ts`'s own `dump` runs `ddd dump` (part 17's task 1). 20,000 declarations, "every output
- * without an id and half the inputs unread" (task 12's own brief): large enough that the
- * analysis an edit starts runs long enough for a reader to see the heading read "Updating the
- * findings…" rather than turn back before a reader's eye catches it - and findings enough,
- * 25,000 of them, that the Findings tab's table is a window rather than a page's worth of rows
- * (tasks 7 and 9).
+ * `generatedGui`'s project: 20,000 declarations, "every output without an id and half the
+ * inputs unread" (part 17's task 12's own brief): large enough that the analysis an edit starts
+ * runs long enough for a reader to see the heading read "Updating the findings…" rather than turn
+ * back before a reader's eye catches it - and findings enough, 25,000 of them, that the Findings
+ * tab's table is a window rather than a page's worth of rows (its tasks 7 and 9).
  */
-function generated(directory: string): void {
+const MANY: readonly string[] = [
+  "--declarations",
+  "20000",
+  "--shape",
+  "many",
+  "--missing-ids",
+  "1",
+  "--unread",
+  "0.5",
+];
+
+/**
+ * `chainedGui`'s project: 4,000 declarations in the `chain` shape, 2,000 components each reading
+ * the next one's output and the last reading the first's, a cycle the canvas's layout breaks into
+ * one chain 2,000 deep. dagre overflows its stack in the layout worker on a chain that deep, and
+ * the canvas is laid out in ranks only (`ranked`'s doc, gui/src/lib/layout.ts). In Chrome on the
+ * Linux development PC a chain of 907 components laid out in full and one of 908 in ranks only,
+ * four times each, at 110accb: 2,000 is more than twice that, the room left for the Windows legs,
+ * where no one has measured it. Never `--unread`: it turns inputs into outputs, and the chain
+ * would break where it did.
+ */
+const CHAIN: readonly string[] = ["--declarations", "4000", "--shape", "chain"];
+
+/**
+ * `tools/generate_project.py DIRECTORY` with `options` through `DDD_PYTHON`, into `directory`,
+ * which must not exist yet - the way `demo.ts`'s own `dump` runs `ddd dump` (part 17's task 1):
+ * `generatedGui`'s project unless told otherwise.
+ */
+function generated(directory: string, options: readonly string[] = MANY): void {
   const result = spawnSync(
     process.env.DDD_PYTHON ?? "python",
-    [
-      GENERATE_PROJECT,
-      directory,
-      "--declarations",
-      "20000",
-      "--shape",
-      "many",
-      "--missing-ids",
-      "1",
-      "--unread",
-      "0.5",
-    ],
-    // A minute is far more than the ~0.15 s this takes (measured): long enough that a real run
-    // never trips it, short enough that an interpreter stuck for some other reason does not
-    // hang the whole suite behind one fixture.
+    [GENERATE_PROJECT, directory, ...options],
+    // A minute is far more than the ~0.15 s either project takes (measured): long enough that a
+    // real run never trips it, short enough that an interpreter stuck for some other reason does
+    // not hang the whole suite behind one fixture.
     { timeout: 60_000 },
   );
   // The timeout above kills the process on expiry and sets *both* `result.error` (`code:
@@ -116,8 +130,8 @@ function generated(directory: string): void {
   }
   if (result.status !== 0) {
     throw new Error(
-      `generate_project.py ${directory} --declarations 20000 --shape many --missing-ids 1 ` +
-        `--unread 0.5 exited with ${String(result.status)}: ${result.stderr.toString("utf8")}`,
+      `generate_project.py ${directory} ${options.join(" ")} exited with ` +
+        `${String(result.status)}: ${result.stderr.toString("utf8")}`,
     );
   }
 }
@@ -320,6 +334,7 @@ export const test = base.extend<{
   vocabularyGui: Gui;
   structuresGui: Gui;
   generatedGui: Gui;
+  chainedGui: Gui;
   mappedGui: Gui;
   copiedGui: CopiedGui;
   openedGui: OpenedGui;
@@ -336,6 +351,12 @@ export const test = base.extend<{
   generatedGui: async ({}, use, testInfo) => {
     const directory = testInfo.outputPath("generated");
     generated(directory);
+    await serving(directory, [join(directory, "project.ddd.json")], use);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  chainedGui: async ({}, use, testInfo) => {
+    const directory = testInfo.outputPath("chained");
+    generated(directory, CHAIN);
     await serving(directory, [join(directory, "project.ddd.json")], use);
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern

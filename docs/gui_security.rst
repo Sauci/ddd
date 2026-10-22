@@ -141,13 +141,13 @@ What it trusts
   script running in this origin; the content security policy runs no script but one served
   from this origin and each script the page itself holds inline - today one, which asks once
   more for a module script of this origin whose load failed, the page's own module when the
-  network failed it, and never for one of another origin; failed again, it says the page did
-  not load, but never over a page already drawn. Each inline script is allowed by its
-  SHA-256 alone, which ``ddd gui`` reads off the page it serves when it starts:
-  ``script-src 'self'`` and those hashes, beside ``default-src 'self'``. No other inline
-  script runs, and ``'unsafe-inline'`` is never allowed. What may have served this origin
-  before ``ddd gui`` did - a server on the same port, earlier - is *What it does not defend
-  against*, below.
+  network failed it, and never for one of another origin; if the copy it asked for fails too,
+  it says the page did not load, but never over a page already drawn. Each inline script is
+  allowed by its SHA-256 alone, which ``ddd gui`` reads off the page it serves when it
+  starts: ``script-src 'self'`` and those hashes, beside ``default-src 'self'``. No other
+  inline script runs, and ``'unsafe-inline'`` is never allowed. What may have served this
+  origin before ``ddd gui`` did - a server on the same port, earlier - is *What it does not
+  defend against*, below.
 
 The table of every route, below, marks which ones may run a project's or a baseline's
 plugins: opening a project, comparing against one, an edit or an undo - each re-analysed

@@ -19,6 +19,29 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-21-gui-journeys-remaining-design.md`, and through it part 19b's, `docs/superpowers/specs/2026-10-08-gui-journeys-every-action-design.md`, whose §4, §5 and §12 hold here unchanged. Read both before any task. Where this plan departs from them, the departure is a ruling in *Rulings taken* at the end, with its reason.
 
+> **As built** (executed 2026-10-21 to 2026-10-22; the departures from the task texts, each a ruling under *Rulings taken*):
+> - **Every one of the 102 rows names a journey, and none a reason.** The journeys went from 171 to 294 on ubuntu chromium (*Figures*).
+> - **The two fixes, as the spec decided** (Task 2):
+>   - The kept answer covers five tabs, a component's page and the values grid. A kept content error is drawn under the read's banner (P19c-1), and no answer is ever shown under a refusal, not even the query's own (the final review's M1, P19c-13).
+>   - The boot script asks again only for a module script of the page's own origin, and writes its sentence only over an empty page (M5, P19c-13).
+> - **Seven contained bugs fixed, red first:**
+>   - the start page's list held until the opened project replaces it (planning ruling 13);
+>   - an empty or doubled image on the start page;
+>   - the component table's cells under a stopped server (ruling 18);
+>   - a fix the server failed on, chosen again (ruling 15);
+>   - a baseline's finding named as the baseline's in its panel (ruling 16);
+>   - a baseline asked for again (ruling 18);
+>   - a combobox's late note made its description (ruling 18).
+> - **One journey for each copy of a row's code** (P19c-10): the second arm of a type's "Where it is used", the section's and the raster's panels beside the constant's, and a Compare panel closing by itself.
+> - **Recorded for the maintainer, not fixed:**
+>   - a panel whose read of the units fails says it is reading, for good (planning ruling 14);
+>   - an arrow's description (P19c-7);
+>   - a type's finding that leads back to its own panel (P19c-11);
+>   - a combobox entry under a resting pointer taken by Enter (P19c-12);
+>   - a kept answer not dropped by a refusal (P19c-15).
+> - **The plan's CRLF premise was wrong** (P19c-14). `.gitattributes` checks the page out with LF on the Windows legs too.
+> - **The final hunt is not clean on Windows** (P19c-16). `start.spec.ts:474` hangs about one run in fifteen there, for a cause not found. Step 1's gate is unmet, and the maintainer decides what follows.
+
 ## Global Constraints
 
 Every task's requirements include this section. It is part 19b's, with this part's branch and leave.
@@ -73,7 +96,7 @@ Every task's requirements include this section. It is part 19b's, with this part
   - Python 3.12, 3.13 and 3.14, on ubuntu **and** windows runners;
   - the journeys on three legs: ubuntu with Chromium, windows with Chromium, windows with the runner's own Edge;
   - **Windows file locks:** Windows refuses to rename over, or delete, a file that another handle holds open (`ddd.editing.REPLACE_TRIES`). `writeUnseen` in `gui/e2e/demo.ts` already tries a rename again while Windows refuses it;
-  - **Windows line endings:** the runners check files out with CRLF. Anything this part hashes or compares as text must say what it does with a CR (Task 2, Review Focus 1).
+  - **Windows line endings:** the runners check files out with CRLF. Anything this part hashes or compares as text must say what it does with a CR (Task 2, Review Focus 1). As built, Task 2's `.gitattributes` (`* text=auto eol=lf`) checks every file out with LF on the Windows legs too (P19c-14).
 
 **What the gates cannot see**
 
@@ -130,12 +153,12 @@ Every task's requirements include this section. It is part 19b's, with this part
 
 The failure modes the spec implies but no row of the inventory would test on its own, most likely first. Each has its test in the task that owns the code.
 
-1. **The script's hash on Windows.** The runners check `gui/index.html` out with CRLF, and Vite copies the inline script as it finds it. A browser hashes a script after the HTML parser has turned every CRLF and lone CR into LF, so a hash of the raw bytes allows nothing on Windows, and every page there loads with its boot script refused. *(Task 2: a pytest case hashing a page written with CRLF against the hash of its LF text; `units.spec.ts`'s "no page reports a violation of its content security policy" on the windows legs.)*
+1. **The script's hash on Windows.** The runners check `gui/index.html` out with CRLF, and Vite copies the inline script as it finds it. A browser hashes a script after the HTML parser has turned every CRLF and lone CR into LF, so a hash of the raw bytes allows nothing on Windows, and every page there loads with its boot script refused. *(Task 2: a pytest case hashing a page written with CRLF against the hash of its LF text; `units.spec.ts`'s "no page reports a violation of its content security policy" on the windows legs.)* As built, the runners check the page out with LF (P19c-14), so the pytest case is the CRLF half's one proof.
 2. **A kept answer shown for another question.** The canvas's query names the project; a tab of one project must never show another's graph after a failed read. *(Task 2: Vitest cases for `shown` across identities.)*
-3. **A refusal is never kept.** A values grid whose object was renamed away must show its refusal alone, never the old grid under it; a kept grid would offer cells of an object the project no longer has. *(Task 2: Vitest's `refusedRead` and `shown` cases; Task 8's row "an object no longer declared…", whose grid must be gone.)*
+3. **A refusal is never kept.** A values grid whose object was renamed away must show its refusal alone, never the old grid under it; a kept grid would offer cells of an object the project no longer has. *(Task 2: Vitest's `refusedRead` and `shown` cases; Task 8's row "an object no longer declared…", whose grid must be gone.)* As built, `shown` asks `refusedRead` before its query's own answer, so a refusal of a read of the same key again is shown alone too (the final review's M1, P19c-13). A kept answer is not yet dropped by a refusal, which a server failure on the next revision would show (P19c-15).
 4. **A first read that fails still shows the error alone.** The fix must not turn "the units failing to load" into an empty table with a banner. *(Task 2: Vitest; Task 5's "the units failing to load" journey.)*
 5. **The boot script retries the page's module and nothing else.** A stylesheet's failed load reaches the same capture-phase listener. *(Task 2: 19b's `network.spec.ts` stylesheet journeys keep passing unchanged, and a stylesheet failed every time shows no sentence.)*
-6. **The boot script's sentence never covers a page that loaded.** *(Task 2: "the page's script failed once" asserts the sentence has count 0 once the canvas is drawn.)*
+6. **The boot script's sentence never covers a page that loaded.** *(Task 2: "the page's script failed once" asserts the sentence has count 0 once the canvas is drawn.)* As built, that guard cannot see a sentence React erases as it mounts. The final review found the boot script would write over a drawn page when a module script the page did not ask for failed twice. Two journeys pin the fix: `network.spec.ts:157` (one of this origin) and `:176` (one of another, which the policy blocks), each killed by its own check's ablation (M5, P19c-13).
 7. **An error banner reads as a sentence.** A request the server fails shows the server's own message, never a code. *(Every error-banner journey of Tasks 2 to 8 asserts the whole sentence.)*
 
 ## File Structure
@@ -149,7 +172,7 @@ The failure modes the spec implies but no row of the inventory would test on its
 | `gui/src/lib/kept.ts`, `kept.test.ts` | 2 | `Kept`, `kept`, `refusedRead`, `shown`: what a screen shows once a read failed |
 | `gui/src/app/useKept.ts` | 2 | the glue holding a tab's last good answer |
 | `gui/src/screens/FilesPage.tsx`, `UnitsPage.tsx`, `TypesPage.tsx`, `SharedPage.tsx`, `GraphPage.tsx`, `ComponentPage.tsx`, `ValuesPage.tsx` | 2 | each reads its answer through `useKept` |
-| `gui/e2e/kept.spec.ts` | 2 | the seven "kept" journeys |
+| `gui/e2e/kept.spec.ts` | 2 | the eight "kept" journeys (as built: the eighth for a kept parse error, P19c-1 and P19c-4) |
 | `gui/index.html` | 2 | the inline boot script |
 | `src/ddd/gui/server.py`, `tests/test_gui_server.py` | 2 | `page_policy`, `GuiServer.policy`, and `_send` carrying it |
 | `gui/e2e/network.spec.ts` | 2 | the page's script failed once; failing every time |
@@ -180,6 +203,7 @@ A screen's fix, where a journey finds a bug, is in that screen's own files, with
 - **Task 1 produces,** in `gui/e2e/demo.ts`:
   - `type Matcher = string | RegExp | ((url: URL) => boolean)`: a pathname, a pattern over the pathname, or a test of the whole address.
   - `held(page: Page, matcher: Matcher, options?: { every?: boolean; onAnswer?: (response: APIResponse) => void | Promise<void> }): Promise<() => void>`. It holds the page's next request `matcher` matches (every one, with `every`) until the function it answers is called, then lets it through; with `onAnswer`, the server's answer is fetched and handed to it before the page gets it.
+  - As built, a string `Matcher` must start with `/`, and anything else throws, so that a glob never silently holds nothing. `failing(page, path: Matcher, how, times?)` is matched through the same `matching` (P19c-0e, and the final review's M6).
   - `restamp(directory: string, file: string): void`. It moves the file's modification time to now and changes none of its bytes: the watcher's next poll reads a new revision, and the server's pending long poll answers at once (P19b-9).
 - **Task 2 produces:**
   - `interface Kept<T> { readonly identity: string; readonly data: T }`, `kept<T>(data: T | undefined, placeholder: boolean, identity: string, before: Kept<T> | null): Kept<T> | null`, `refusedRead(error: unknown): boolean` and `shown<T>(data: T | undefined, identity: string, before: Kept<T> | null, error: unknown): T | undefined`, in `gui/src/lib/kept.ts`;
@@ -197,6 +221,8 @@ A screen's fix, where a journey finds a bug, is in that screen's own files, with
 ### Task 1: the rows checked, `held` and `restamp`
 
 **Model:** opus, reviewed on opus. The rows need judgement across every screen, and the helpers replace code fifteen journeys stand on.
+
+> **As built** (`54ef308` to `24da1e8`): `held` and `restamp` as *Interfaces Between Tasks* says, a string `Matcher` that does not start with `/` refused. The helpers' own journeys were made sound before the review (P19c-0d), and three Minors rode in its fix round (P19c-0e).
 
 **Files:**
 - Modify: `gui/e2e/demo.ts`, `gui/e2e/helpers.spec.ts`, `docs/developer_documentation.rst`, this plan's *The inventory*
@@ -375,6 +401,13 @@ export function restamp(directory: string, file: string): void {
 ### Task 2: a screen keeps its last answer, and the page asks for its script once more
 
 **Model:** opus, reviewed on opus. It changes what seven screens show, the page's start, and the server's content security policy.
+
+> **As built** (`50a3ceb` to `f25adfc`; the final wave's `f8b1114` and `a9c9154`):
+> - A kept content error is drawn under the read's banner, pinned by an eighth kept journey (P19c-1, P19c-4).
+> - The values grid's banner slot has a story and its reference (P19c-2).
+> - `shown` asks `refusedRead` first, where Step 3's listing has the query's own answer first, so that no answer is shown under a refusal (the final review's M1).
+> - The boot script asks again only for a module script of the page's own origin, compared as text, and writes its sentence only while `#root` holds nothing (M5).
+> - `.gitattributes` checks every file out with LF (P19c-14).
 
 **Files:**
 - Create: `gui/src/lib/kept.ts`, `gui/src/lib/kept.test.ts`, `gui/src/app/useKept.ts`, `gui/e2e/kept.spec.ts`
@@ -763,6 +796,12 @@ def page_policy(page: bytes) -> str:
 
 **Model:** sonnet, reviewed on sonnet. Each row is a state the page already draws; one needs this task's own fixture, and one shows a bug contained in one screen.
 
+> **As built** (`81ba5af` to `5cac6e0`; the final wave's `c092b04`):
+> - Row 10 is reached on a demo copy whose analysis a project plugin slows. `generatedGui` does not reach the state, since its panel opens after the analysis has landed (P19c-5).
+> - Row 9's last assertion cannot fail, and stays (P19c-6).
+> - The recorder refuses only a path holding `path.delimiter`, the separator `webbrowser` splits `BROWSER` at. A path with whitespace runs whole (the final review's M2).
+> - `opened()`'s poll answers `false` for a read that throws, and names the file it waits on.
+
 **Files:**
 - Modify: `gui/e2e/fixtures.ts`, `gui/e2e/helpers.spec.ts`, `gui/e2e/start.spec.ts`, `gui/e2e/undo.spec.ts`, `docs/developer_documentation.rst`, this plan's *The inventory*
 - Modify, for the bug in the row "a project opening, the list's buttons held until it has": `gui/src/screens/StartPage.tsx`, a `gui/src/lib` module and its test, `CHANGELOG.md`
@@ -969,6 +1008,16 @@ test("a server that answers again after it stopped lifts the banner, and the pag
 
 **Model:** opus, reviewed on opus. The viewport is measured, a project large enough for ranks only must be made and measured, and one row is reached inside the layout worker.
 
+> **As built** (`110accb` to `71b51f4`): the brief was wrong in six places, each fixed and reported:
+> - the import line lacked `held`;
+> - one more Tab does not leave the arrows, so the journey Tabs until no arrow has the focus;
+> - the swapped-tone ablation dies at the badge's name, not at its class;
+> - a comment about the mirror finding on SensorHub;
+> - the badge journey did not pin its title, so a second warning (ValueH) now comes before the error (P19c-8);
+> - `network.spec.ts:67` is `:70`.
+>
+> The arrow's tooltip mounts inside the focus event's own dispatch (P19c-7). 2,000 components fall back to ranks only on all three legs.
+
 **Files:**
 - Modify: `gui/e2e/canvas.spec.ts`, `gui/e2e/fixtures.ts`, `tools/generate_project.py`, `tests/test_generate_project.py`, `docs/developer_documentation.rst`, this plan's *The inventory*
 
@@ -1053,6 +1102,13 @@ test("a module's badge counts its warnings, and only its errors once it has any"
 ### Task 5: Units and Types
 
 **Model:** sonnet, reviewed on sonnet. Each row is a state the two tabs already draw; the reading and failing rows share one shape.
+
+> **As built** (`467c00b`, `6f50298`; the final wave's `9b3fbf7`):
+> - 19 rows, the two the pre-flight added among them.
+> - Row 14 has two journeys, one per arm of `routeOfUse` (P19c-10).
+> - Row 6 records the page's asks of `/api/unit-plan` with a listener, read after the tab is left: the refusal of an asked plan joins the banner tens of milliseconds after its sentence, so the sentence alone let the ablation survive 3 runs of 10.
+> - Step 4's two findings were seen on the page (planning ruling 14, P19c-11).
+> - Rows 7 and 17 are titled by what their journeys pin (the final review's M3).
 
 **Files:**
 - Modify: `gui/e2e/project-units.spec.ts` (the Units rows), `gui/e2e/types.spec.ts` (the Types rows), this plan's *The inventory*
@@ -1142,7 +1198,7 @@ test("a finding in a type's panel leads to the unit it names, on the Units tab",
 | **4. Units: a unit's panel failing to read the unit** | `gui`; `failing(page, "/api/unit", "http")` before `goto` (the pathname is exact: `/api/units` and `/api/unit-plan` go through) | Press "Units", then row "ms". `complementary` "ms": its heading "ms" visible, `panel.getByRole("alert")` has text `SERVER_FAILED` (`UnitPanel`'s `answer.shown === "refusal"` branch, `panelShows` in `lib/refusals.ts`), no combobox "Rename ms to". The table stays: row "ms" visible. No status "ms is no longer stated or listed in the open project." (the error's code is `internal`, not `not-found`). Title: "a unit's panel whose unit fails to load says why, beside the table". | `UnitPanel.tsx`'s `if (answer.shown === "refusal")` branch removed: the panel falls through to "Reading ms…"; dies at the alert. |
 | **5. Units: a units file listing no unit, the units in use adopted into it** | `copiedGui("vocabulary", (d) => writeFileSync(join(d, UNITS), '{ "units": [] }\n', "utf8"))`; `project.ddd.json`'s bytes kept | Press "Units". Summary "3 units · 3 not in the vocabulary" (`tabTitle`). The status banner (filter `hasText: "No unit this project states"`) holds the paragraph, `exact: true`: "No unit this project states is in its vocabulary. Adopting lists the 3 units in use in a units file: nothing is reported that is not reported today." (`adoptionSentence`'s `hasUnitsFile` arm, `lib/projectUnits.ts`). Its "Show changes": `complementary` "Adopt a vocabulary" with meta "Changes 1 file: units.ddd.json" (`consequence`, `lib/units.ts`; no "units.ddd.json, new", the file exists). Press "Adopt 3 units" (`adoptLabel`, `AdoptBannerView.tsx`). Poll `entriesOf(units)` to `[{unit:"Nm",description:""},{unit:"kPa",…},{unit:"rpm",…}]` (by code point: `adoption`, `ddd/lsp/units.py`); `project.ddd.json` byte-equal to before (nothing included: `adopt_units`'s `into` arm); summary "3 units · all in the vocabulary"; banner and preview count 0. Title: "a units file listing no unit has the units in use adopted into it, and nothing else written". | Page: `UnitsPage.tsx`'s `hasUnitsFile={hasUnitsFile(units.data)}` on `AdoptBannerView` passed `false`: the banner says "This project has no units file, …"; dies at the paragraph. Server (scratch worktree): `adopt_units`'s `if planned.into is not None:` arm removed, so the plan creates `units.ddd.json` beside the description where it already is; dies at "Changes 1 file: units.ddd.json". |
 | **6. Units: a project stating no unit, with nothing to adopt** | `copiedGui("structures", (d) => stateNoUnit(d, ["sensing.ddd.json", "types.ddd.json"]))`, the spec-local helper below | Press "Units". Summary "0 units · no units file" (`tabTitle`). The status banner (filter `hasText: "This project has no units file"`) has text, whole: "This project has no units file, so no unit is checked against a vocabulary. It states no unit, so there is nothing to adopt." (`adoptionSentence`, adoptable `0`; `adoptable` in `ddd/project_units.py` answers `0` where `adoption` answers `None`). In it, buttons "Show changes" and `/^Adopt/` have count 0 (`AdoptBannerView` draws them only under a plan, and `adoptionAsked` asks none for `0`). Title: "a project stating no unit is told there is nothing to adopt, and offered nothing to press". | `lib/projectUnits.ts`'s `adoptionAsked` answering `units.adoptable !== null` (the `> 0` dropped): the plan is asked, the server refuses it ("this project states no unit, so there is nothing to adopt", `adopt_units`), and the banner's `adopt-refusal` paragraph joins its text; dies at the banner's whole text. |
-| **7. Units: an Apply the server fails on** | `vocabularyGui`; Units tab; row "degC"; region "Remove from the vocabulary" shows "Changes 1 file: units.ddd.json"; then `const failed = await failing(page, "/api/edit", "http")` | Press the region's button "Remove from the vocabulary". In the region, `getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`refusalOf`, `UnitPanel.tsx`; drawn by `Outcome`, `UnitPanelView.tsx`, above the plan asked for again). Nothing written: `entriesOf(units)`' units still include "degC". `failed()` is exactly 1 (a POST is never resent). The button is still offered. Title: "a removal the server fails on says so in its words, and nothing is written". | `UnitPanel.tsx`'s `onError` else-branch `setFailed({ action, message: refusalOf(error) })` removed: no status; dies at the sentence. |
+| **7. Units: an Apply the server fails on** | `vocabularyGui`; Units tab; row "degC"; region "Remove from the vocabulary" shows "Changes 1 file: units.ddd.json"; then `const failed = await failing(page, "/api/edit", "http")` | Press the region's button "Remove from the vocabulary". In the region, `getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`refusalOf`, `UnitPanel.tsx`; drawn by `Outcome`, `UnitPanelView.tsx`, above the plan asked for again). Nothing written: `entriesOf(units)`' units still include "degC". `failed()` is exactly 1 (a POST is never resent). The button is still offered. Title: "a removal the server fails on says so in its words, is offered again, and is sent once". | `UnitPanel.tsx`'s `onError` else-branch `setFailed({ action, message: refusalOf(error) })` removed: no status; dies at the sentence. |
 | **8. Types: reading the project's types** | `structuresGui`; canvas drawn; `held(page, "/api/types")` | Press "Types" (`exact: true`). While held: "Reading the project's types…" (`TypesPage.tsx`, `TypesPage`'s early return). Released: the summary, by `typesTitle` (`lib/projectTypes.ts`) "6 types · 1 scalar, 4 structures, 1 external" (read it off the page), and the reading line count 0. Title: "the types tab says it is reading the project's types until they are read". | `TypesPage.tsx`'s loading line made `return null`: dies at "Reading the project's types…". |
 | **9. Types: the types failing to load** | `structuresGui`; `failing(page, "/api/types", "http")` before `goto` | Press "Types". `alert` has text `SERVER_FAILED`; no summary (`page.getByText(/^\d+ types? ·/)` and "This project declares no types" count 0); `grid` "Types" count 0. `failed()` ≥ 1. Title: "the types failing to load leave the server's own error, with no table". | `TypesPage.tsx`'s `if (types.isError) return <Banner …>` removed: "Reading the project's types…" for good; dies at the alert. |
 | **10. Types: a type's panel reading the type** | `structuresGui`; Types tab, row "Temperature_t" visible; `held(page, (url) => url.pathname === "/api/type" && url.searchParams.get("name") === "Temperature_t")` | Press row "Temperature_t" (`exact: true`). While held: `complementary` "Temperature_t" shows "Reading Temperature_t…" (`TypePanel.tsx`, `TypePanel`'s last early return), and no textbox "Rename Temperature_t to". Released: that textbox visible, "Reading Temperature_t…" count 0. Title: "a type's panel says it is reading the type until it is read". | `TypePanel.tsx`'s reading branch made `return null`: dies at "Reading Temperature_t…". |
@@ -1152,7 +1208,7 @@ test("a finding in a type's panel leads to the unit it names, on the Units tab",
 | **14. Types: a type's "Where it is used" followed to the declaration** | `structuresGui` | Types tab, row "SensorCal_t" (`exact: true`). In `complementary` "SensorCal_t", heading "Where it is used": `panel.getByRole("row", { name: /^InletCal/ })`'s cells have texts `["InletCal", "sensing.ddd.json", "Sensing · local"]` (`TypePanelView.tsx`: `use.name`, `baseName(use.path)`, `whatOf`; the role `local` is `ROLES`, `ddd/variables.py`). Press its button "InletCal". The address matches `/\/component\?file=[^&]*sensing\.ddd\.json&variable=InletCal$/`; heading "Sensing", level 1; `complementary` "InletCal" visible. Title: "a type's Where it is used leads to the variable naming it, on its component's page". | `TypePanelView.tsx`'s `routeOfUse` variable arm answering `{ page: "component", file: use.path }` (no `variable`): Sensing's page opens with no panel and an address ending at the file; dies at the address, before `complementary` "InletCal". |
 | **15. Types: a structure's member followed to its type** | `structuresGui` | Types tab, row "Sensor_t". In `complementary` "Sensor_t", heading "Members": `panel.getByRole("row", { name: /^latest/ })`; press its button "Sample_t" (`exact: true`; `memberRows`, `lib/projectTypes.ts`, `typename` drawn as a button in `TypePanelView`). The address matches `/\/project\?view=types&type=Sample_t$/`; `complementary` "Sample_t" (`exact: true`) has its meta "structure · types.ddd.json" (`TypePanelView`'s `meta`, `KIND_WORDS`); `complementary` "Sensor_t" count 0. Title: "a structure's member leads to the panel of the type it names". | `TypePanelView.tsx`'s member button's route `type: typename` made `type: type.name` (the panel's own): the panel stays on Sensor_t; dies at the address. |
 | **16. Types: a finding in a type's panel followed** | `copiedGui("vocabulary", (d) => { driftIn(d, PUMP, "Torque_t", "NM"); })`: Torque_t, declared inline in pump.ddd.json, states a spelling the vocabulary does not list, before the server starts | The worked journey, Step 1. Types tab, row "Torque_t". In `complementary` "Torque_t", the list item with chip "unknown-unit"; its button, `exact: true`, "'NM' is not a unit this project declares - did you mean 'Nm'?" (`_check_units` and `_suggesting`, `analysis.py`; `close_units` answers "Nm" alone against rpm, Nm, degC, kPa). Pressed: the address matches `/\/project\?view=units&unit=NM$/`; `complementary` "NM" (`exact: true`) shows "not in the vocabulary · stated in 1 place, 1 file" (`unitMeta`); its row "Torque_t" contains "scalar type" (`placeRole`). Title: "a finding in a type's panel leads to the unit it names, on the Units tab". | Page: `TypePanelView.tsx`'s finding button `onPress={() => props.onOpen(route)}` made `onPress={() => undefined}`: dies at the address. Server (scratch worktree): `finding_routes.py`'s `UNIT_CHECKS` arm moved below `WITHIN_TYPE`: the finding routes to Torque_t itself, the address ends `type=Torque_t`; dies at the address. |
-| **17. Types: an Apply the server fails on** | `structuresGui`; Temperature_t's panel; region "Description"'s textbox filled with a new sentence; "Changes 1 file: types.ddd.json" visible; then `const failed = await failing(page, "/api/edit", "http")` | Press "Apply to 1 file". `panel.getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`refusalOf` in `TypePanel.tsx`; `TypePanelView`'s `panel-refusal`). The refusal stands where the plan was: `panel.getByRole("button", { name: /^Apply to/ })` count 0. The field keeps what was typed; `entryOf(directory, "Temperature_t")` equals the entry before; `failed()` is 1. Title: "an apply made from a type's panel that the server fails on says so in its words, and nothing is written". | `TypePanel.tsx`'s `onError` else-branch `setRefused({ kind, message: refusalOf(error) })` removed: dies at the status. |
+| **17. Types: an Apply the server fails on** | `structuresGui`; Temperature_t's panel; region "Description"'s textbox filled with a new sentence; "Changes 1 file: types.ddd.json" visible; then `const failed = await failing(page, "/api/edit", "http")` | Press "Apply to 1 file". `panel.getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`refusalOf` in `TypePanel.tsx`; `TypePanelView`'s `panel-refusal`). The refusal stands where the plan was: `panel.getByRole("button", { name: /^Apply to/ })` count 0. The field keeps what was typed; `entryOf(directory, "Temperature_t")` equals the entry before; `failed()` is 1. Title: "an apply made from a type's panel that the server fails on says so in its words, is withdrawn with what was typed kept, and is sent once". | `TypePanel.tsx`'s `onError` else-branch `setRefused({ kind, message: refusalOf(error) })` removed: dies at the status. |
 
   The row "a project stating no unit" uses a helper local to `project-units.spec.ts`:
 
@@ -1189,6 +1245,8 @@ test("a finding in a type's panel leads to the unit it names, on the Units tab",
 ### Task 6: Shared files
 
 **Model:** sonnet, reviewed on sonnet. The rows are states the tab and its panels already draw, and one refusal written before the press.
+
+> **As built** (`613c7ef`; the final wave's `9b3fbf7`): rows 20, 21 and 24 run once for each of the three panels, the constant's, the section's and the raster's (P19c-10). Step 4 was seen on the page. Row 24's titles say what the journeys pin (M3).
 
 **Files:**
 - Modify: `gui/e2e/shared.spec.ts`, this plan's *The inventory*
@@ -1259,7 +1317,7 @@ test("an entry's panel says it is reading the entry until it is read", async ({
 | **21. Shared files: an entry's panel failing to read the entry** | `vocabularyGui`; `failing(page, "/api/constant", "http")` before `goto` (`/api/constant-plan` goes through) | `openEntry(page, vocabularyGui, "TREND_SAMPLES")`. The panel: heading "TREND_SAMPLES", `panel.getByRole("alert")` has text `SERVER_FAILED` (`ConstantPanel`'s `answer.shown === "refusal"` branch), no textbox "Value". The table keeps the row; no `complementary` "Declare a constant" (the table lists the entry, so `opensPanel` draws the panel); no status "no longer declared". Title: "an entry's panel whose entry fails to load says why, beside the table". | `ConstantPanel.tsx`'s `if (answer.shown === "refusal")` branch removed: "Reading TREND_SAMPLES…"; dies at the alert. |
 | **22. Shared files: a constant declared inside a component, its file followed** | `vocabularyGui` | `openEntry(…, "TREND_SAMPLES")`: `panel.locator(".panel-meta")` has text "Declared in constants.ddd.json", and `panel.getByRole("button", { name: "constants.ddd.json" })` count 0. Press row "PRESSURE_CELLS" (`exact: true`): its meta reads "Declared in pump.ddd.json" (`ConstantPanelView.tsx`, `baseName(reply.file)`), the file a button. Press the button "pump.ddd.json" (`exact: true`). The address matches `/\/component\?file=[^&]*pump\.ddd\.json$/`; heading "Pump", level 1; row "PumpSpeed" (`exact: true`) visible; `page.getByRole("complementary")` count 0. Title: "a constant declared inside a component leads to that component's page, where one in a constants file names its file alone". | `ConstantPanelView.tsx`'s Declared in button's `onPress` made `() => undefined`: dies at the address. Kept beside it: `declaredInComponent` made `true` dies at the count of the button "constants.ddd.json". |
 | **23. Shared files: the add form's Apply refused as out of date** | `vocabularyGui`; `openForm(page, vocabularyGui, "constant", "SPARE")`; textbox "Value" filled "4"; "Changes 1 file: constants.ddd.json" visible, `Apply to 1 file` enabled | Write before the press: `writeUnseen(directory, FILES.constants.file, changed)`, `changed` being the file with "sample slots" made "sample cells" (same length; throw if unchanged), as `shared.spec.ts`'s constant-save stale journey does. Press "Apply to 1 file". `form.getByRole("status")` has text `STALE`, "A file changed on disk, so nothing was written. The page now shows the files as they are." (`refusalOf`, `UnitPanel.tsx`, through `SharedAdd`'s `onError`). While it stands, `form.getByRole("button", { name: /^Apply to/ })` count 0 (`SharedAddView`: the plan and its Apply are drawn only under no refusal). Nothing written: the file reads `changed` exactly, with no SPARE. Title: "the add form's apply that is out of date is refused, and nothing is written". | `SharedPage.tsx`'s `SharedAdd` `onError` made a no-op: no status; dies at the sentence. Server, kept beside it (scratch worktree): `editing.py`'s fingerprint check removed: SPARE is written; dies at the sentence. |
-| **24. Shared files: an Apply the server fails on** | `vocabularyGui`; `openEntry(…, "TREND_SAMPLES")`; region "Value"'s textbox filled "32"; "Changes 1 file: constants.ddd.json" visible; then `const failed = await failing(page, "/api/edit", "http")` | Press the region's "Save". `value.getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`refusalOf` through `ConstantPanel`'s `onError`; drawn by `Outcome`, `ConstantPanelView.tsx`). The plan and its Save stay under it. Nothing written: `entryOf(directory, "constants", "TREND_SAMPLES").value` is 16. `failed()` is exactly 1. Title: "a save the server fails on says so in its words, and nothing is written". | `ConstantPanel.tsx`'s `onError` else-branch `setFailed({ action, message: refusalOf(error) })` removed: dies at the status. |
+| **24. Shared files: an Apply the server fails on** | `vocabularyGui`; `openEntry(…, "TREND_SAMPLES")`; region "Value"'s textbox filled "32"; "Changes 1 file: constants.ddd.json" visible; then `const failed = await failing(page, "/api/edit", "http")` | Press the region's "Save". `value.getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`refusalOf` through `ConstantPanel`'s `onError`; drawn by `Outcome`, `ConstantPanelView.tsx`). The plan and its Save stay under it. Nothing written: `entryOf(directory, "constants", "TREND_SAMPLES").value` is 16. `failed()` is exactly 1. Title: "a save made from a constant's panel that the server fails on says so in its words, keeps its plan and its Save, and is sent once" (one per panel, P19c-10). | `ConstantPanel.tsx`'s `onError` else-branch `setFailed({ action, message: refusalOf(error) })` removed: dies at the status. |
 
 - [ ] **Step 4: What the survey found, to confirm on the running page:** the add form's out-of-date refusal (the row "the add form's Apply refused as out of date") withdraws its Apply, is let go only on the next edit, and is never cleared by a later revision: P19b-24's rule, which `SharedAdd` shares with `DeclarePanel`. *What was left open*'s P19b-24 entry names `SharedAdd` beside it.
 - [ ] **Step 5: Bugs.** A journey that finds a bug follows the rule in *Global Constraints*.
@@ -1269,6 +1327,14 @@ test("an entry's panel says it is reading the entry until it is read", async ({
 ### Task 7: Files, Findings and Compare
 
 **Model:** sonnet, reviewed on sonnet. The rows are states the three tabs already draw; two show bugs, each contained in one screen.
+
+> **As built** (`3e69ec3` to `475ead0`; the final wave's `9b3fbf7`):
+> - 22 rows, the five the pre-flight added among them.
+> - Step 6 is superseded: its state is the row "a removal or an add the server could not judge" (ruling 18).
+> - Row 17 has a second journey, the panel closing by itself once a comparison no longer reports its finding (P19c-10).
+> - `fileNameIn` (`lib/compare.ts`) is the label Step 5 and ruling 16 call `fileLabel`, and `CompareView.tsx` is in `gui/src/components`.
+> - Step 4's rule reads the two refusals as one `FixRefusals` value, so that `refusalsAfterChoice` sees the stale one.
+> - The Applies the server fails on are titled by what their journeys pin (M3).
 
 **Files:**
 - Modify: `gui/e2e/files.spec.ts` (the Files rows), `gui/e2e/findings.spec.ts` (the Findings rows), `gui/e2e/compare.spec.ts` (the Compare rows), this plan's *The inventory*
@@ -1449,6 +1515,12 @@ test("an Add applied while the description changed on disk is refused in its own
 
 **Model:** sonnet, reviewed on sonnet. Every row is a state the component page, its two panels or the values grid already draw; rows 2, 19 and 21 need a copy changed before the server starts.
 
+> **As built** (`81a763a` to `1542c37`; the final wave's `9b3fbf7`):
+> - 23 rows, the one the pre-flight added among them.
+> - The survey's "Nothing in the demo is shaped and states nothing" is false: SensorHub's ValueD is. Row 19 keeps its copy all the same.
+> - Step 6c found that the Name field keeps what was typed, unless an entry of its open list is focused, by the arrow keys or by a resting pointer, which Enter or Tab then takes. That is as designed, and recorded for the maintainer (P19c-12).
+> - The Applies the server fails on are titled by what their journeys pin (M3).
+
 **Files:**
 - Modify: `gui/e2e/declarations.spec.ts` (rows 1 to 13), `gui/e2e/values.spec.ts` (rows 14 to 22), this plan's *The inventory*
 - Modify, for the bug of Step 6b (ruling 18): `gui/src/ui/ComboBox.tsx`, `gui/src/styles/ui.css`, `CHANGELOG.md`
@@ -1552,7 +1624,7 @@ test("an object renamed under its open grid is said to be declared no longer, wi
 | **10. A component: the add panel reading what may be declared** | `gui`; Controller's page drawn; `held(page, "/api/declarable")` | Press "Add a declaration". While held: `complementary` "Add a declaration" shows `getByText("Reading the file…", { exact: true })` (`DeclarePanel`'s second early return, `declarable.data === undefined`; scoped to the panel, since the page's own reading line is the same sentence); combobox "Name" count 0. Released: combobox "Name" and "Choose a variable, or type a new name." (`declareSentence`, `lib/declarations.ts`) visible; the panel's reading line count 0. Title: "the add panel says it is reading what may be declared until it is read". | `DeclarePanel.tsx`'s `if (declarable.data === undefined)` branch made `return null`: dies at the panel's "Reading the file…". |
 | **11. A component: the add panel failing to read it** | `gui`; `failing(page, "/api/declarable", "http")` before `goto` | Controller, then "Add a declaration". In `complementary` "Add a declaration": `panel.getByRole("alert")` has text `SERVER_FAILED` (`DeclarePanel`'s `declarable.isError` branch); combobox "Name" count 0; button "Close Add a declaration" visible. Grid "Declarations of Controller" stays. Title: "the add panel whose choices fail to load says why, and offers nothing to fill". | `DeclarePanel.tsx`'s `if (declarable.isError)` branch removed: "Reading the file…" for good; dies at the alert. |
 | **12. A component: a dimension picked from the project's constants** | `vocabularyGui`. The demo declares no constant. `DeclarableReply.constants` is `sorted(built.constants)` (`Api._declarable`): PRESSURE_CELLS, inline in pump.ddd.json, and TREND_SAMPLES, in constants.ddd.json. | Button "Pump" (`exact: true`), "Add a declaration". Name "TrendB", Enter; Kind "value_block", Enter. Press "Show the choices for Dimension 1 of TrendB" (`ComboBox`'s ▾). Options "PRESSURE_CELLS" and "TREND_SAMPLES" (`exact: true`) visible; the list is a popover at the page's root, under "This project's constants" (`DimensionsField`). Press "TREND_SAMPLES": combobox "Dimension 1 of TrendB" has value "TREND_SAMPLES". Volatile "false", Enter; Datatype "uint16", Enter. Press "Apply to 1 file": `complementary` "TrendB" visible. Poll pump.ddd.json `toContain('"dimensions": ["TREND_SAMPLES"]')` (`dimensionsRaw` keeps a name as a string). Title: "a value block's dimension is picked from the project's constants". | `DeclarePanelView.tsx`'s `constants={reply.constants}` made `constants={[]}`: the list has no entry; dies at the option "TREND_SAMPLES". |
-| **13. A component: a key's Apply, a removal or a declaration the server fails on**, (a) a key's Apply. One journey per action: each has its own `onError` (`VariablePanel`'s `apply`, `VariablePanel`'s `remove`, `DeclarePanel`'s `apply`). | `gui`; `const panel = await openPanel(page, gui.address, "ValueA")`; `chooseUnit(page, "rpm")`; "Changes 2 files: controller.ddd.json, sensor_hub.ddd.json" visible; both files' bytes read; then `const failed = await failing(page, "/api/edit", "http")` | Press "Apply to 2 files". In `panel.getByRole("region", { name: "Settle the key" })`, `getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`VariablePanel`'s `apply` `onError` else-branch). `getByRole("button", { name: /^Apply to/ })` count 0 in the region (P19b-24). Combobox "Unit of ValueA" still reads "rpm". Both files byte-equal; `failed()` is exactly 1 (a POST is never resent). Title: "a key's apply the server fails on says so in its words, and nothing is written". | `VariablePanel.tsx`'s `apply` `onError` else-branch `setRefused(…)` removed: dies at the status. |
+| **13. A component: a key's Apply, a removal or a declaration the server fails on**, (a) a key's Apply. One journey per action: each has its own `onError` (`VariablePanel`'s `apply`, `VariablePanel`'s `remove`, `DeclarePanel`'s `apply`). | `gui`; `const panel = await openPanel(page, gui.address, "ValueA")`; `chooseUnit(page, "rpm")`; "Changes 2 files: controller.ddd.json, sensor_hub.ddd.json" visible; both files' bytes read; then `const failed = await failing(page, "/api/edit", "http")` | Press "Apply to 2 files". In `panel.getByRole("region", { name: "Settle the key" })`, `getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`VariablePanel`'s `apply` `onError` else-branch). `getByRole("button", { name: /^Apply to/ })` count 0 in the region (P19b-24). Combobox "Unit of ValueA" still reads "rpm". Both files byte-equal; `failed()` is exactly 1 (a POST is never resent). Title: "a key's apply the server fails on says so in its words, is withdrawn with the unit still chosen, and is sent once". | `VariablePanel.tsx`'s `apply` `onError` else-branch `setRefused(…)` removed: dies at the status. |
 | **13. A component: a key's Apply, a removal or a declaration the server fails on**, (b) a removal | `gui`; Controller, row `/ValueB/`; `const removing = panel.getByRole("region", { name: "Remove the declaration" })`; its "Remove from Controller" enabled; Controller's bytes read; then `failing(page, "/api/edit", "http")` | Press "Remove from Controller". `removing.getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`VariablePanel`'s `remove` `onError` else-branch). "Remove from Controller" count 0 (P19b-24). Rowheader "ValueB" (`exact: true`) still drawn. Controller byte-equal; `failed()` exactly 1. Title: "a removal the server fails on says so in its words, and the declaration stays". | `VariablePanel.tsx`'s `remove` `onError` else-branch `setRemovalRefused(…)` removed: dies at the status. |
 | **13. A component: a key's Apply, a removal or a declaration the server fails on**, (c) a declaration | `gui`; Controller, "Add a declaration"; `adding` = `complementary` "Add a declaration"; Name "ValueC", Enter; "Reads ValueC as SensorHub declares it." visible; "Apply to 1 file" enabled; Controller's bytes read; then `failing(page, "/api/edit", "http")` | Press "Apply to 1 file". `adding.getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`refusalOf`, `UnitPanel.tsx`, through `DeclarePanel`'s `onError`). `adding.getByRole("button", { name: /^Apply to/ })` count 0 (withdrawn until the next edit of the form, P19b-24). Combobox "Name" still "ValueC"; `complementary` "ValueC" count 0 (no `onDeclared`). Controller byte-equal; `failed()` exactly 1. Title: "a declaration the server fails on says so in its words, and nothing is declared". | `DeclarePanel.tsx`'s `onError: (error) => setRefusal(refusalOf(error))` made a no-op: dies at the status. |
 | **14. Values: reading the values** | `gui`; `const release = await held(page, "/api/values")` before `openValues` (only `ValuesPage` asks for it) | `openValues(page, gui.address, "CurveA")`. While held: `page.getByText("Reading the values…", { exact: true })` visible (`ValuesPage`'s first early return); heading "CurveA" count 0. Released: grid "Values of CurveA", its rowheaders `["CurveA (ms)"]`; the reading line count 0. File `values.spec.ts`. Title: "the values grid says it is reading the values until they are read". | `ValuesPage.tsx`'s `if (values.isPending) return <p className="quiet">Reading the values…</p>;` made `return null`: dies at "Reading the values…". |
@@ -1564,7 +1636,7 @@ test("an object renamed under its open grid is said to be declared no longer, wi
 | **20. Values: a grid stated once for every cell** | `gui` (UserInterface's CurveB states `"init": 200`) | `openValues(page, gui.address, "CurveB", "UserInterface")`. Grid "Values of CurveB": rowheaders `["CurveB (%)"]`; `expectRow(grid, ["100", "100", "100", "100", "100", "100"])` (200 × 0.5). `page.getByText("Stated once, for every cell.", { exact: true })` visible (`ValuesGridView`, `stated === "scalar"`). Fill "element 3" with "50": "Sets element 3 of CurveB to 50 %" and "Changes 1 file: user_interface.ddd.json". Press "Apply to 1 file". Poll `definitionOf(gui.directory, USER_INTERFACE, "CurveB").init` `toEqual([200, 200, 100, 200, 200, 200])` (`set_cell`'s arm for an init that is no list). Then "Stated once, for every cell." count 0. Title: "a grid stated once for every cell says so, and one cell set writes every value". | `ValuesGridView.tsx`'s `{reply.stated === "scalar" && <p className="quiet">Stated once, for every cell.</p>}` removed: dies at the sentence. |
 | **21. Values: a grid nothing produces, or more than one place does, read only**, (a) nothing produces it. Two journeys: `readOnlyNote` (`lib/objectValues.ts`) has a sentence for each cause. | `copiedGui("demo", (d) => producedByNobody(d))`, spec-local: SensorHub's ValueB declaration taken out, the file rewritten whole as `typeCurveA` rewrites one. Controller and UserInterface still read it. It still resolves, with `owner` and `file` null (`test_an_object_nothing_produces_has_no_file_or_pointer`). | `openValues(page, gui.address, "ValueB")`. Grid "Values of ValueB"; `getByRole("textbox", { name: "element 1" })` `toBeDisabled()` (`ValuesGridView`, `disabled` while `reply.file` is null). `page.getByText("nothing produces 'ValueB', so it has no values to set", { exact: true })` visible (`readOnlyNote`'s first sentence, as `set_cell` words it). The paste hint (`getByText(/^Paste /)`) count 0. Title: "a grid nothing produces is read only, and says why". | `ValuesGridView.tsx`'s `{readOnly !== null && <p className="quiet">{readOnly}</p>}` removed: dies at the sentence. |
 | **21. Values: a grid nothing produces, or more than one place does, read only**, (b) more than one place | `copiedGui("demo", (d) => producedTwice(d))`, spec-local: UserInterface's ValueB `"scope": "input"` made `"output"`. The regex is anchored on the `"definition": { "name": "ValueB"` that follows it, and throws if nothing matched. SensorHub and UserInterface both produce ValueB: the analysis reads one (`owner` named), `built.producers` holds two, so `file` is null (`test_two_declarations_producing_one_name_leave_the_grid_read_only`). | `openValues(page, gui.address, "ValueB")`. "element 1" `toBeDisabled()`. `page.getByText("'ValueB' is produced in more than one place, so there is no one file to set it in", { exact: true })` visible (`readOnlyNote`'s second sentence). The paste hint count 0. Title: "a grid more than one place produces is read only, and says why". | `lib/objectValues.ts`'s `readOnlyNote` `if (reply.owner === null)` made `if (reply.file === null)`: it says "nothing produces 'ValueB'…"; dies at the sentence. Server, kept beside it (scratch worktree): `grid_of`'s `if len(sites) == 1:` made `if sites:`. A file is answered and the grid is writable; dies at `toBeDisabled`. |
-| **22. Values: a cell's Apply the server fails on** | `gui`; `openValues(…, "CurveA")`; "element 3" filled "7.5"; "Sets element 3 of CurveA to 7.5 ms" and "Changes 1 file: controller.ddd.json" visible; Controller's bytes read; then `const failed = await failing(page, "/api/edit", "http")` | Press "Apply to 1 file". `page.getByRole("region", { name: "Set the cell" }).getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`ValuesPage`'s `apply` `onError` else-branch, `refusalOf`). The Apply is still offered and enabled (the grid keeps its Apply, P19b-24). "element 3" still reads "7.5". Controller byte-equal; `failed()` exactly 1. Title: "a cell's apply the server fails on says so in its words, and nothing is written". | `ValuesPage.tsx`'s `onError` else-branch `setFailed(refusalOf(error))` removed: dies at the status. |
+| **22. Values: a cell's Apply the server fails on** | `gui`; `openValues(…, "CurveA")`; "element 3" filled "7.5"; "Sets element 3 of CurveA to 7.5 ms" and "Changes 1 file: controller.ddd.json" visible; Controller's bytes read; then `const failed = await failing(page, "/api/edit", "http")` | Press "Apply to 1 file". `page.getByRole("region", { name: "Set the cell" }).getByRole("status")` has text `` `The change was refused: ${SERVER_FAILED}` `` (`ValuesPage`'s `apply` `onError` else-branch, `refusalOf`). The Apply is still offered and enabled (the grid keeps its Apply, P19b-24). "element 3" still reads "7.5". Controller byte-equal; `failed()` exactly 1. Title: "a cell's apply the server fails on says so in its words, keeps its Apply, and is sent once". | `ValuesPage.tsx`'s `onError` else-branch `setFailed(refusalOf(error))` removed: dies at the status. |
 
   The helpers local to the two spec files, each written whole or by one anchored replace, each throwing when it changed nothing:
 
@@ -1639,6 +1711,8 @@ test("an object renamed under its open grid is said to be declared no longer, wi
 ### Task 9: the final hunt, the figures, the gate and the close-out
 
 **Model:** the controller's own.
+
+> **As built:** the hunt ran three times (*Figures*). At `1542c37`, beside the final review, it was clean. At `7618897`, after the fix wave added two journeys, it failed twice on windows chromium, and once more on windows msedge when run again (P19c-16). One of those failures was a runner fault. The other two were the same journey, `start.spec.ts:474`, which hangs on Windows about one run in fifteen for a cause not found. **Step 1's gate, a clean hunt on all three legs, is not met**; the maintainer decides what follows. One fix wave took the final review's six Minors and one recommendation (P19c-13). The re-review found four Minors more, settled in the close-out (P19c-15).
 
 - [ ] **Step 1: The final hunt.** With every task merged into the branch and pushed: `gh workflow run ci.yml --ref feature/gui-journeys-remaining -f repeat=5`. It must be clean on all three legs. A failure is worked at its cause, from its trace (under the leave in *Prerequisites*), and the hunt run again; it is never retried to pass.
 - [ ] **Step 2: The final whole-branch review,** on opus, while the hunt runs: the spec, this plan, and the branch's diff from `2bc00da`. One fix wave takes its Important findings and the Minors the controller chooses; a re-review reads the wave. If the wave changes a journey's steps, the hunt runs again after it.
@@ -1745,7 +1819,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | A component | a variable's panel reading the variable | 8 | `declarations.spec.ts:575`, "a variable's panel says it is reading the variable until it is read": dies under the panel's reading branch made `return null`, at the sentence |
 | A component | a variable's panel failing to read the variable | 8 | `declarations.spec.ts:610`, "a variable's panel whose variable fails to load says why, beside the table": dies under the `answer.shown === "refusal"` branch removed, at the alert |
 | A component | a finding in a variable's panel, followed to what it names | 8 | `declarations.spec.ts:634`, "a finding in a variable's panel leads to the unit it names, on the Units tab": the link is the panel's own, an address the browser loads; dies under `VariablePanelView`'s `href` made `null` (the finding is text; at the link) and under a server whose `route_of` tries a declaration's own route before the unit checks (a scratch worktree; at the link, and three pytest cases die) |
-| A component | a unit outside the project's vocabulary, said to be | 8 | `declarations.spec.ts:666`, "a unit outside the project's vocabulary is said to be, and still offered": the list offers the text under `As typed`, saying so in lower case, and the field's note says so in capitals, which is also the field's description as a screen reader reads it (the bug of planning ruling 18, red first: `ComboBox` drew its note's element only when it had a note, so a note drawn after the field was on screen and not its description, and the description read ""); dies under the list entry's sentence emptied (at the entry), under the note's arm made `undefined` (at the note), and under `ComboBox`'s always-drawn slot made conditional again (at the description) |
+| A component | a unit outside the project's vocabulary, said to be | 8 | `declarations.spec.ts:666`, "a unit outside the project's vocabulary is said to be, and still offered": the list offers the text under `As typed`, saying so in lower case, and the field's note says so with a capital first letter, which is also the field's description as a screen reader reads it (the bug of planning ruling 18, red first: `ComboBox` drew its note's element only when it had a note, so a note drawn after the field was on screen and not its description, and the description read ""); dies under the list entry's sentence emptied (at the entry), under the note's arm made `undefined` (at the note), and under `ComboBox`'s always-drawn slot made conditional again (at the description) |
 | A component | the add panel reading what may be declared | 8 | `declarations.spec.ts:704`, "the add panel says it is reading what may be declared until it is read": scoped to the panel, since the page's own reading line is the same sentence; dies under the panel's `declarable.data === undefined` branch made `return null`, at the panel's sentence |
 | A component | the add panel failing to read it | 8 | `declarations.spec.ts:732`, "the add panel whose choices fail to load says why, and offers nothing to fill": dies under the `declarable.isError` branch removed, at the alert |
 | A component | a dimension picked from the project's constants | 8 | `declarations.spec.ts:752`, "a value block's dimension is picked from the project's constants": on `vocabularyGui`, the one example that declares constants; dies under `constants={reply.constants}` made `constants={[]}`, at the list of the constants |
@@ -1777,16 +1851,100 @@ At the head, each exit status captured on its own (`gate.sh` in the session scra
 
 Filled in by Task 1 (the baseline run) and Task 9.
 
+- **The baseline** (Task 1, Step 1): full run 39626166379 at `8366d2a`, the first of this repository on Ubuntu 26, green on every job.
+  - Journeys: 171 on ubuntu chromium in 4.3 min, 172 on windows chromium in 5.8 min, and 171 on windows msedge in 6.7 min.
+  - pytest: 7026 passed on each of the six Python legs.
+  - The local milestone gate at the same commit exited 0 at every step: pytest 7026 at 100 %, Vitest 936 at 100 %, 162 screenshots with none moved, and 171 journeys.
+- **Windows chromium runs one journey more on every run:** `mapped.spec.ts`, which `DDD_MAPPED_DRIVE` chooses on that leg alone (part 19a).
+- **The inventory by screen.** At Task 1's close no journey drove any of the 102 rows. One state was reached by a journey in another flavour: the canvas's graph failing before anything is drawn, which Task 4 cites (ruling 12).
+
+  | Screen | Rows | Added | Covered at Task 1's close | Covered now | With a reason |
+  | --- | --- | --- | --- | --- | --- |
+  | The network | 2 | 2 | 0 | 2 | 0 |
+  | The start page | 3 | 0 | 0 | 3 | 0 |
+  | The app | 8 | 0 | 0 | 8 | 0 |
+  | The undo strip | 3 | 1 | 0 | 3 | 0 |
+  | The canvas | 8 | 0 | 0 | 8 | 0 |
+  | The components table | 1 | 0 | 0 | 1 | 0 |
+  | Units | 10 | 2 | 0 | 10 | 0 |
+  | Types | 11 | 0 | 0 | 11 | 0 |
+  | Shared files | 8 | 0 | 0 | 8 | 0 |
+  | Findings | 2 | 0 | 0 | 2 | 0 |
+  | Files | 16 | 5 | 0 | 16 | 0 |
+  | Compare | 5 | 1 | 0 | 5 | 0 |
+  | A component | 14 | 1 | 0 | 14 | 0 |
+  | Values | 11 | 2 | 0 | 11 | 0 |
+  | **all** | **102** | **14** | **0** | **102** | **0** |
+
+- **The journeys' time per leg,** as each leg's list reporter prints its whole run:
+
+  | Leg | Before: 39626166379 at `8366d2a` | After: 39785959517 at `7618897` |
+  | --- | --- | --- |
+  | ubuntu chromium | 171 in 4.3 min | 294 in 7.0 min |
+  | windows chromium | 172 in 5.8 min | 295 in 7.7 min |
+  | windows msedge | 171 in 6.7 min | 294 in 7.5 min |
+
+- **Each task's full runs,** green on every job. The journeys are given as windows chromium / windows msedge / ubuntu chromium:
+
+  | Task | Run | Head | Journeys | Minutes |
+  | --- | --- | --- | --- | --- |
+  | 1 | 39638559420 | `bf2ce8b` | 176 / 175 / 175 | 6.1 / 5.4 / 4.6 |
+  | 1 | 39644175210 | `24da1e8` | 177 / 176 / 176 | 4.5 / 4.8 / 5.0 |
+  | 2 | 39655676721 | `2985494` | 186 / 185 / 185 | 5.3 / 6.8 / 6.0 |
+  | 2 | 39662587302 | `f25adfc` | 187 / 186 / 186 | 6.3 / 5.5 / 4.7 |
+  | 3 | 39678019815 | `5cac6e0` | 202 / 201 / 201 | 5.1 / 7.4 / 6.5 |
+  | 4 | 39720606626 | `f968616` | 209 / 208 / 208 | 7.3 / 7.6 / 7.3 |
+  | 4 | 39724379962 | `71b51f4` | 209 / 208 / 208 | 7.2 / 7.8 / 7.0 |
+  | 5 | 39730749575 | `6f50298` | 229 / 228 / 228 | 7.2 / 8.2 / 7.2 |
+  | 6 | 39739695289 | `613c7ef` | 242 / 241 / 241 | 8.0 / 8.6 / 6.4 |
+  | 7 | 39754436364 | `475ead0` | 267 / 266 / 266 | 8.8 / 9.1 / 7.3 |
+  | 8 | 39771083688 | `1542c37` | 293 / 292 / 292 | 7.8 / 8.2 / 6.8 |
+  | the fix wave | 39785959517 | `7618897` | 295 / 294 / 294 | 7.7 / 7.5 / 7.0 |
+
+- **The full run at the head of the work** (39785959517 at `7618897`): every job green.
+  - The gui legs, as above.
+  - pytest: 7041 passed on each of the six Python legs. ubuntu 3.12 took 6:20, 3.13 6:11 and 3.14 4:26; windows 3.12 took 9:16, 3.13 6:19 and 3.14 6:32.
+  - lint, extension, container and gui-screenshots: green.
+  - dev-build and dev-publish: skipped, as they run on master alone.
+- **The final hunts** (`-f repeat=5`), none failed and none flaky:
+
+  | Run | Head | Windows chromium | Windows msedge | Ubuntu chromium |
+  | --- | --- | --- | --- | --- |
+  | 39772742204 | `1542c37`, before the fix wave | 1465 in 35.0 min | 1460 in 50.2 min | 1460 in 36.9 min |
+  | 39788238509 | `7618897`, after the fix wave | 1473 in 40.2 min: 2 failed, Windows runner faults (P19c-16) | 1470 in 50.0 min | 1470 in 44.6 min |
+  | 39797380863 | `7618897`, run again | 1475 in 34.6 min | 1469 in 52.9 min: 1 failed, `start.spec.ts:474` hung again (P19c-16) | 1470 in 45.2 min |
+
+- **The local milestone gate at `7618897`:** every step exited 0, each on its own line.
+  - pytest: 7041 passed at 100.00 % line and branch.
+  - ruff ("All checks passed!"), format ("170 files already formatted") and mypy ("no issues found in 91 source files").
+  - schemas, lint and typecheck: exit 0.
+  - Vitest: 959 passed, at 100 % statements (1621/1621), branches (1306/1306), functions (572/572) and lines (1314/1314).
+  - build and ladle:build: exit 0.
+  - Screenshots: 163 passed in compare mode, with no reference changed.
+  - docs: "build succeeded."
+  - Journeys: 294 passed in 6.1 min.
+- **The references this part changed,** each opened and described:
+  - `components--valuesgridview--a-grid-kept-under-a-failed-read.png` (Task 2, new) shows CurveA's grid and plot, with the server's own sentence in a red banner under the heading. It is 722 px tall, against its siblings' 720: the banner makes the page 2 px taller than the viewport.
+  - `components--compareview--cannot-replace-the-baseline.png` (Task 7) has two changes: the panel's meta line and its note read "the baseline's sensor_hub.ddd.json". Nothing else moved.
 - **The shortest chain laid out in ranks only** (Task 4, Step 4). Measured on the Linux development PC, in Chrome 155.0.8059.84, at `110accb`, whose page is that of `5cac6e0`. Each chain was the generator's `chain` shape (`tools/generate_project.py DIRECTORY --declarations N --shape chain`), served by `ddd gui` and opened in a page of 1280 by 720.
   - 907 components (1,814 declarations) laid out in full, and 908 (1,816) in ranks only, four times each.
   - Once each, 800, 900, 905 and 906 laid out in full; 909, 910, 915, 920, 925, 930, 950, 970, 990, 1,000, 1,100 and 2,000 in ranks only.
   - `chainedGui` serves 2,000 components (4,000 declarations), more than twice 908. That project was generated in 143 ms, served and analysed in 484 ms, and drawn in ranks only 374 ms after the page was asked for. Its journey ran in 1.1 to 1.2 s, ten times.
-  - The three legs' own figures are read off this task's full run.
+  - On the three legs (full run 39720606626), the ranks-only journey took 3.4 s on ubuntu chromium, 3.8 s on windows chromium and 4.5 s on windows msedge, the fixture included.
 
 ## Progress log
 
 | Task | Commits | Review | Notes |
 | --- | --- | --- | --- |
+| 1 | `54ef308`, `06d058f`, `f6b9c65`, `bf2ce8b`, `24da1e8` | Needs fixes; one round; re-review: all addressed | `held` and `restamp`; eight held-request copies and seven stamp bumps each made one helper; a round before the review for the helpers' own journeys (P19c-0d, P19c-0e) |
+| 2 | `50a3ceb`, `bb7d347`, `0a04f45`, `2985494`, `a9f591e`, `1131a2c`, `f25adfc` | Needs fixes (two plan-mandated Importants); one round; re-review: all addressed | the kept answer and the boot script with its hash; `.gitattributes` (P19c-1 to P19c-4) |
+| 3 | `81ba5af`, `2e9e243`, `3466bd1`, `cb8cd5e`, `5cac6e0` | Approved | `openedGui`; three bugs red first; row 10 on a slowed demo (P19c-5, P19c-6) |
+| 4 | `110accb`, `a5ed00d`, `f968616`, `468eed7`, `71b51f4` | Needs fixes (one Important, partly plan-mandated); one round; re-review: all addressed | the `chain` shape and `chainedGui`; the badge given more warnings than errors (P19c-7 to P19c-9) |
+| 5 | `467c00b`, `6f50298` | Approved | 20 journeys, row 14's second arm (P19c-10, P19c-11) |
+| 6 | `613c7ef` | Approved | 13 journeys, three panels each for rows 20, 21 and 24 (P19c-10) |
+| 7 | `3e69ec3`, `5241c6e`, `4bac82a`, `6ddf584`, `82b1400`, `475ead0` | Approved | 25 journeys; three bugs red first (planning rulings 15, 16 and 18) |
+| 8 | `81a763a`, `8de0bcc`, `7e83fd8`, `1542c37` | Needs fixes, on a record alone, which the controller corrected (P19c-12) | 26 journeys; the combobox's note made its description |
+| 9 | `f8b1114`, `c092b04`, `9b3fbf7`, `e9dffe1`, `a9c9154`, `7618897`, and the close-out | the final review: with fixes (six Minors); one wave; re-review: all addressed | the hunt twice, the gate, the close-out (P19c-13 to P19c-15) |
 
 ## What was left open
 
@@ -1798,16 +1956,18 @@ Known before execution, from 19b's plan and this part's spec §11, each left wit
 - **Firefox, Safari and macOS.**
 - **The user guide,** part 20.
 
-Found by the surveys while planning, read in the code and not yet seen on a running page: each task confirms its own, and records it as a ruling with its evidence.
-- **A panel whose read of the units fails says it is reading, for good** (planning ruling 14).
-- **A type's panel links a finding routed back to the type itself,** where a variable's panel keeps such a finding as text (Task 5's survey).
-- **After a failed session, the masthead's "Projects" changes the address and nothing else;** an unnamed project's refusal writes its path in native separators beside a list in forward slashes; a failed read of the undo's preview reads "The undo was refused: …" (Task 3's survey). That last is now a row (ruling 18).
-- **An arrow's description mounts a render after focus lands** (Task 4's survey).
-- **Removing an entry of a project that was never analysed** is allowed with the server's `unjudged` sentence (Task 7's survey). It is now a row, beside the three other Files states the earlier pre-flight found (ruling 18).
+Found by the surveys while planning, and each since seen on the running page by its task:
+- **A panel whose read of the units fails says it is reading, for good** (planning ruling 14). Task 5 saw it on the Types tab. It saw it on the Units tab too, where the kept table carries its alert beside an open unit's panel turned to "Reading ms…".
+- **A type's panel links a finding routed back to the type itself,** where a variable's panel keeps such a finding as text (P19c-11, Task 5). Pressed, the link changes nothing.
+- **After a failed session, the masthead's "Projects" changes the address and nothing else** (Task 3). Task 3 also saw two more:
+  - An unnamed project's refusal writes its path as the server spells it. On Linux the two spellings are alike; the native separators on Windows were read in the code, not seen.
+  - A failed read of the undo's preview reads "The undo was refused: …", now a row (ruling 18).
+- **An arrow's description is in the document before the focus event has finished** (P19c-7, Task 4). The survey's "a render after focus" holds: the tooltip mounts inside the event's own dispatch, after React's handler. What a screen reader hears was not measured.
+- **Removing an entry of a project that was never analysed** is allowed with the server's `unjudged` sentence (Task 7). It is now a row, beside the three other Files states the earlier pre-flight found (ruling 18).
 
 Found by the earlier pre-flight (ruling 18), and recorded for the maintainer:
 - **The Add a declaration panel loses its typed name when the server stops.** Its combobox, disabled, resets to no choice.
-- **Compare's Baseline field loses its focus after an Enter ask,** and drops keystrokes when a revision lands while the reader types.
+- **Compare's Baseline field loses its focus after an Enter ask,** and drops keystrokes when a revision lands while the reader types. Since Task 7's fix, an ask pressed again for the same path is sent, and loses the focus the same way.
 - **The Types tab names no component file that breaks its schema:** the types that file declares inline vanish, with no banner.
 - **A component with no name is named three ways:** its file's stem on the canvas, its path in the Table tab, and "Unnamed component" on its page.
 - **`set_entry` (`shared_plans.py`) plans a value equal to the entry's,** which its panels never ask for.
@@ -1816,7 +1976,22 @@ Found by the earlier pre-flight (ruling 18), and recorded for the maintainer:
 - **The undo strip blanks its preview for about one frame on every revision.**
 - **P19b-13 and P19b-24:** their designs, run red on the page and then green with the change, are in the companion's §B, for whoever takes them up.
 
-Found during execution: filled in by Task 9.
+Found during execution, each recorded for the maintainer:
+- **A combobox's entry focused by a resting pointer, or by the arrow keys, is taken by Enter or Tab in place of the typed text** (P19c-12). This is `ComboBox.tsx`'s documented design, shared by every combobox. Add a declaration's Name list is not narrowed by the text, so it covers the panel past its Apply, and a press there takes an entry too.
+- **A kept answer is not dropped by a refusal** (P19c-15). Take a refusal on one revision, then a server failure on the next: the screen draws the answer from before the refusal, with no Apply, under the failure banner.
+  - The fix is for `kept` to drop its answer once a read is refused, under Vitest, with `useKept`'s call.
+  - The final review's re-review found it. There was no second wave to take it.
+- **Shared files' add form withdraws its plan, "Show changes" and its Apply under an out-of-date refusal** (Task 6). A later revision does not clear it; only the next edit does. The three panels keep their plan and Save under a refusal that is not stale. This is P19b-24's rule, which `SharedAdd` shares with `DeclarePanel`.
+- **The unit panel keeps its Apply after a refused Apply, and the type panel withdraws it** (Task 5). Both are pinned as they stand.
+- **The start page's list can stay held** if "Projects" is pressed in the few milliseconds between an open's answer and the session's (Task 3). Leaving the page, or reloading, recovers it. A fix needs a second input to `listHeld`, which is a design choice.
+- **The final hunts at `7618897` are not clean on Windows** (P19c-16). Two causes:
+  - **A runner fault, once.** `start.spec.ts:334`'s first `page.goto` failed at once with `net::ERR_NO_BUFFER_SPACE`, which is Windows' WSAENOBUFS, before any page code ran. It happened on windows chromium, in the second hunt.
+  - **A hang that recurs.** `start.spec.ts:474`, the one journey whose copy names a project plugin (`slowAnalyses`), hung twice in thirty Windows runs: once on windows chromium in the second hunt, and once on windows msedge in the third.
+    - Each time the server printed its address about a second into the test, but into the job's log rather than the fixture's stdout pipe. No other run's log holds such a line.
+    - `served()` then waited out the test's 60 s. The teardown waited 60 s more, on a start that never settled (`Promise.allSettled(starts)`).
+    - ddd starts no subprocess, and loads a plugin in its own process. How the line reached the log was not found.
+    - A bounded wait in `served()`, an error naming what it saw with the child killed, would make the hang die in seconds and say why. It would not stop it.
+- **The boot script's address check has no journey for a script with no address** (P19c-15). It returns because `"".startsWith(…)` is false, and only a synthetic `error` event reaches it.
 
 ## Rulings taken
 
@@ -1859,4 +2034,45 @@ Taken while planning; execution adds its own below them.
 
 ### Taken during execution
 
-Numbered P19c-1 onward; code comments cite them by number.
+Numbered P19c-1 onward, after five taken before Task 1 (P19c-0a to P19c-0e); code comments cite them by number.
+
+- **P19c-0a. The Files lists of Tasks 3, 7 and 8 gain the files ruling 18's fold put in their steps.** The fold edited the steps and *File Structure*, not the tasks' own lists — cost if wrong: none; lists only.
+- **P19c-0b. Prerequisite 4 records the leave as the maintainer gave it** on 2026-10-13 for 19c's branch: push it alone, never master or force; download failed runs' reports. It was carried to this branch on 2026-10-21, when the maintainer chose it and said go — cost if wrong: a push the maintainer did not mean, on this branch alone.
+- **P19c-0c. One agent at a time** (planning ruling 8). The local gate and CI runs are not agents, and may run while one agent works — cost if wrong: a slower part.
+- **P19c-0d. Task 1's concerns about its own journeys were fixed before its review,** since they were about those journeys' correctness — cost if wrong: one round the review might have asked for anyway.
+- **P19c-0e. Task 1's three Minors rode in its fix round.** Tasks 3 to 8 stand on `held`: a glob that holds nothing, or an `every` and `onAnswer` route left registered, would pass on Linux and flake on Windows — cost if wrong: three lines a later review might have left.
+- **P19c-1. A kept answer is drawn under the failed read's banner, even when it is itself a content error** (spec §5; plan-mandated). The component page draws the read's banner above the kept parse error, pinned by an eighth kept journey — cost if wrong: two banners where one was mandated.
+- **P19c-2. The values grid's banner slot has a story and its reference.** The states no View draws are shown in the pull request by screenshots of the running page: the component page and the four tabs kept under an error, and the boot script's sentence — cost if wrong: one story, and screenshots in the pull request.
+- **P19c-3. Four of Task 2's Minors rode in its fix round,** each pinning a claim Task 2 makes. Whether a same-key refusal is drawn alone was left to the whole-branch review, which fixed it (P19c-13) — cost if wrong: four small edits.
+- **P19c-4. The eighth kept journey is cited in the row "its file failing on a new revision, the page and its open panel kept",** as a second state of that row: a kept parse error. No row is added — cost if wrong: one row's split.
+- **P19c-5. Task 3's row 10 is reached on a demo copy whose analysis a project plugin slows,** as the earlier pre-flight reached it. `generatedGui` does not reach the state (0 of 6, measured) — cost if wrong: a plugin in one journey's copy.
+- **P19c-6. Task 3's row 9 keeps an unfailable last assertion, as a Minor.** Its other assertions each die under the row's ablations — cost if wrong: one redundant line.
+- **P19c-7. An arrow's description is in the document before the focus event has finished.** Recorded for the maintainer, not fixed. Measured in Chrome, the tooltip an arrow's `aria-describedby` names is absent when the focus event's dispatch begins. It is present once the event reaches `window`'s bubble phase: mounted in the same task, after React's handler. What a screen reader hears was not measured — cost if wrong: a screen-reader user may hear an arrow without what is wrong with it.
+- **P19c-8. The badge journey gives the module more warnings than errors,** with the earlier pre-flight's second warning (ValueH's max past its range), so that "only its errors once it has any" is pinned. A badge showing the larger of the two counts passed the brief's journey — cost if wrong: one phase, about a second.
+- **P19c-9. Four of Task 4's Minors rode in its fix round:** the tooltip's record worded as measured, row 15's dashed border, and two sentences — cost if wrong: a longer round.
+- **P19c-10. Where a row's state is drawn by more than one copy of its code, each copy has a journey** (part 19b's spec §4 counts every press, loading state and error banner):
+  - the member arm of a type's "Where it is used" (Task 5);
+  - the section's and the raster's panels beside the constant's (Task 6);
+  - a Compare panel closing by itself (Task 7).
+
+  The earlier pre-flight's other splits were not taken. In each, the state's code is Vitest's, or another journey draws the same branch — cost if wrong: about eight more journeys.
+- **P19c-11. A type's panel draws a finding routed to the type itself as a button that changes nothing.** Recorded for the maintainer, not fixed. A variable's panel draws such a finding as text. Whether such a link should stay text is a design choice — cost if wrong: a button that does nothing, as today.
+- **P19c-12. A combobox's entry focused by a resting pointer is taken by Enter or Tab in place of the typed text.** Recorded for the maintainer, not fixed. It is `ComboBox.tsx`'s documented design, shared by every combobox. The ruling corrects Task 8's own record of Step 6c, which said the field always keeps what was typed — cost if wrong: a reader whose resting pointer swaps the name typed for another, as today.
+- **P19c-13. One fix wave took the final review's six Minors and its `opened()` recommendation:**
+  - a refusal shown alone, the query's own answer included;
+  - the recorder's true reason;
+  - the "an Apply the server fails on" family titled by what it pins;
+  - three comments and a docstring;
+  - the boot script asking again for the page's own origin alone, never over a drawn page;
+  - `failing` typed `Matcher`.
+
+  The boot script's change is the plan's own Review Focus 6, though the review called it optional. It added two journeys, so the hunt ran again. Every other deferred Minor stays, as the review triaged it — cost if wrong: one more hunt, and two lines in the boot script.
+- **P19c-14. The plan's CRLF premise was wrong.** `.gitattributes` (`* text=auto eol=lf`) checks the page out with LF on the Windows legs, so the CRLF half of the hash rests on `test_a_page_written_with_crlf_is_hashed_as_the_browser_reads_it` and Task 2's probe in Chrome — cost if wrong: none for the code.
+- **P19c-15. The re-review's residuals, with no second wave:**
+  - The task tables' titles, and Review Focus 6's two journeys, are the close-out's. The new journeys pin a failure mode, not a reader state, so the inventory keeps its 102 rows.
+  - The security page's sentence is fixed in the close-out.
+  - A script with no address keeps no journey: the boot script returns for it by construction.
+  - A kept answer not dropped by a refusal goes to the maintainer (*What was left open*).
+
+  — cost if wrong: in that rare sequence, a reader sees the answer from before the refusal, read only, under the failure banner.
+- **P19c-16. The final hunts' failures are reported, not retried to pass.** The second hunt's two failures were first ruled Windows runner faults. The third hunt showed half of that wrong: `start.spec.ts:474` hung again on the other Windows leg, the same way. So that ruling now stands for the `ERR_NO_BUFFER_SPACE` navigation alone. The hang is a fault of this part's journey or its fixture on Windows, about one run in fifteen, cause not found from the traces. Step 1's gate is unmet, and what to do is the maintainer's: open the pull request with it recorded, or work the hang first — cost if wrong: a hang taken for a runner fault, as the first wording did.

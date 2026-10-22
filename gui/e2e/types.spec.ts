@@ -739,7 +739,7 @@ test("a finding in a type's panel leads to the unit it names, on the Units tab",
   );
 });
 
-test("an apply made from a type's panel that the server fails on says so in its words, and nothing is written", async ({
+test("an apply made from a type's panel that the server fails on says so in its words, is withdrawn with what was typed kept, and is sent once", async ({
   page,
   structuresGui,
 }) => {
@@ -764,6 +764,7 @@ test("an apply made from a type's panel that the server fails on says so in its 
   // again, and what was typed is kept.
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
   await expect(field).toHaveValue(description);
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual(before);
   expect(failed()).toBe(1);
 });

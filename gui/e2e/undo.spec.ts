@@ -152,7 +152,7 @@ test("the strip says it is reading the files an undo would put back, until it ha
   await expect(strip(page).getByText("Reading the files…", { exact: true })).toHaveCount(0);
 });
 
-test("an undo the server fails on is refused in the strip, with nothing put back", async ({
+test("an undo the server fails on is refused in the strip in its words, is still offered, and is sent once", async ({
   page,
   gui,
 }) => {
@@ -170,8 +170,9 @@ test("an undo the server fails on is refused in the strip, with nothing put back
     `The undo was refused: ${SERVER_FAILED}`,
   );
   await expect(putBack).toHaveCount(0);
-  // Nothing was put back, and the entry is still there to try again.
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(unitOfValueA(gui)).toBe("%");
+  // The entry is still there to try again.
   await expect(undo).toBeEnabled();
   // A `POST` is never sent again (`sentAgain`, client.ts).
   expect(failed()).toBe(1);

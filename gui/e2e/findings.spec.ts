@@ -334,7 +334,7 @@ test("a page of findings still being read is drawn as rows saying so, which the 
   await expect(pending).toHaveCount(0);
 });
 
-test("a fix the server fails on shows its refusal in the panel in place of the fix, writes nothing, and can be chosen again and applied", async ({
+test("a fix the server fails on shows its refusal in the panel in place of the fix, is sent once, and can be chosen again and applied", async ({
   page,
   gui,
 }) => {
@@ -360,6 +360,7 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
   // The finding is still reported, and the panel still shows it.
   await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(valueH(gui.directory).id).toBeUndefined();
   expect(failed()).toBe(1);
 

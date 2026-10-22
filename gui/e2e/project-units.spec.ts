@@ -509,7 +509,7 @@ test("a project stating no unit is told there is nothing to adopt, and offered n
   expect(asked).toEqual([]);
 });
 
-test("a removal the server fails on says so in its words, and nothing is written", async ({
+test("a removal the server fails on says so in its words, is offered again, and is sent once", async ({
   page,
   vocabularyGui,
 }) => {
@@ -530,6 +530,7 @@ test("a removal the server fails on says so in its words, and nothing is written
   // The server's own words behind `refusalOf`'s prefix, drawn by `Outcome` above the plan, which
   // is asked for again.
   await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(readFileSync(units).equals(before)).toBe(true);
   expect(entriesOf(units).map((entry) => entry.unit)).toContain("degC");
   expect(failed()).toBe(1);

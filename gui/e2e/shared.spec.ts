@@ -869,7 +869,7 @@ const SAVES = [
 ] as const;
 
 for (const { kind, vocabulary, name, region, text } of SAVES) {
-  test(`a save made from a ${kind}'s panel that the server fails on says so in its words, and nothing is written`, async ({
+  test(`a save made from a ${kind}'s panel that the server fails on says so in its words, keeps its plan and its Save, and is sent once`, async ({
     page,
     vocabularyGui,
   }) => {
@@ -890,7 +890,7 @@ for (const { kind, vocabulary, name, region, text } of SAVES) {
     await expect(plan).toBeVisible();
     await expect(save).toBeEnabled();
     expect(failed()).toBe(1);
-    // Nothing was written: the entry is as it was.
+    // A guard against a write by another path: the POST is answered by `failing`, not the server.
     expect(entryOf(vocabularyGui.directory, vocabulary, name)).toEqual(before);
   });
 }

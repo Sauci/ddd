@@ -400,8 +400,8 @@ const MAP_A_OVER_RANGE = [
 // `ValuesPage.tsx` sets its non-stale `failed`, is never reached. Nothing reachable through a
 // cell's own Apply button fails non-stale without the file also changing underneath it, which is
 // staleness itself, unless the server is made to fail on the Apply's own request: the mechanism
-// of "a cell's apply the server fails on says so in its words, and nothing is written", further
-// down this file. It stops at that refusal: a table pasted over it is not written either.
+// of "a cell's apply the server fails on says so in its words, keeps its Apply, and is sent once",
+// further down this file. It stops at that refusal: a table pasted over it is not written either.
 test("a pasted curve replaces every value in one edit", async ({ page, gui }) => {
   await openValues(page, gui.address, "CurveA");
 
@@ -842,7 +842,7 @@ test("a grid more than one place produces is read only, and says why", async ({
   await expect(page.getByText(/^Paste /)).toHaveCount(0);
 });
 
-test("a cell's apply the server fails on says so in its words, and nothing is written", async ({
+test("a cell's apply the server fails on says so in its words, keeps its Apply, and is sent once", async ({
   page,
   gui,
 }) => {
@@ -866,6 +866,7 @@ test("a cell's apply the server fails on says so in its words, and nothing is wr
   // The grid keeps its Apply and what was typed (P19b-24: the panels that write withdraw theirs).
   await expect(apply).toBeEnabled();
   await expect(cell).toHaveValue("7.5");
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
   // A POST is never sent again.
   expect(failed()).toBe(1);

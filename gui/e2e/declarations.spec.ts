@@ -795,7 +795,7 @@ test("a value block's dimension is picked from the project's constants", async (
     .toContain('"dimensions": ["TREND_SAMPLES"]');
 });
 
-test("a key's apply the server fails on says so in its words, and nothing is written", async ({
+test("a key's apply the server fails on says so in its words, is withdrawn with the unit still chosen, and is sent once", async ({
   page,
   gui,
 }) => {
@@ -818,6 +818,7 @@ test("a key's apply the server fails on says so in its words, and nothing is wri
   // The panel withdraws its Apply until the reader chooses again (P19b-24); the choice stays.
   await expect(settle.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
   await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("rpm");
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(controller)).toBe(true);
   expect(readFileSync(join(gui.directory, SENSOR_HUB)).equals(hub)).toBe(true);
   // A POST is never sent again.

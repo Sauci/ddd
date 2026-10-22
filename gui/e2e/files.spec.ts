@@ -940,7 +940,7 @@ test("a removal of a file only a pattern brings in is refused, naming the patter
   expect(readFileSync(join(gui.directory, "demo.ddd.json"))).toEqual(description);
 });
 
-test("an Apply the server fails on is refused in the Remove panel in its words, which still offers the removal, and writes nothing", async ({
+test("an Apply the server fails on is sent once, and refused in the Remove panel in its words, which still offers the removal", async ({
   page,
   vocabularyGui,
 }) => {
@@ -968,6 +968,7 @@ test("an Apply the server fails on is refused in the Remove panel in its words, 
   await expect(page.getByRole("row", { name: UNITS, exact: true })).toBeVisible();
   await expect(remove).toBeEnabled();
   expect(failed()).toBe(1);
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
   expect(readFileSync(join(vocabularyGui.directory, PROJECT))).toEqual(description);
 });
 

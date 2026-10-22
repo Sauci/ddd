@@ -76,6 +76,27 @@ def test_the_many_shape_lays_its_reader_a_layer_away(tmp_path: Path) -> None:
     assert not reads_the_first_output(written[1])
 
 
+def test_the_chain_shape_is_components_of_one_output_and_one_input(tmp_path: Path) -> None:
+    made = generate(tmp_path / "p", 200, "chain")
+    written = interfaces(tmp_path / "p")
+    assert (made.components, made.declarations, len(written)) == (100, 200, 100)
+    assert {tuple(entry["scope"] for entry in interface) for interface in written} == {
+        ("output", "input")
+    }
+
+
+def test_the_chain_shape_reads_the_next_component_round_to_the_first(tmp_path: Path) -> None:
+    """Each component reads the very next one's output, and the last reads the first's: one
+    cycle as long as the project, which the canvas's layout breaks into one chain as deep as the
+    project is long - what no other shape makes, since they keep every reader a layer away."""
+    generate(tmp_path / "p", 200, "chain")
+    read = [
+        [entry["definition"]["name"] for entry in interface if entry["scope"] == "input"]
+        for interface in interfaces(tmp_path / "p")
+    ]
+    assert read == [[f"C{(component + 1) % 100:05d}_O0000"] for component in range(100)]
+
+
 def test_the_findings_asked_for_are_the_findings_reported(tmp_path: Path) -> None:
     """1200 declarations in the "many" shape are 600 outputs and 600 inputs. Half the inputs
     written as outputs: 300 of them, each leaving its output unread and unread itself - 600 -
@@ -151,7 +172,7 @@ def test_every_file_is_written_with_the_same_line_ending_on_every_os(
     ("arguments", "sentence"),
     [
         ((119, "many"), "a generated project has at least 120 declarations, not 119"),
-        ((1200, "round"), "a shape is one of many, large or mixed, not 'round'"),
+        ((1200, "round"), "a shape is one of many, large, mixed or chain, not 'round'"),
     ],
 )
 def test_what_cannot_be_generated_is_refused(
@@ -178,6 +199,17 @@ def test_the_command_line_says_what_it_wrote(
     assert capsys.readouterr().out == (
         f"{tmp_path / 'p' / 'project.ddd.json'}: 30 components, 1200 declarations, "
         "0 outputs without an id, 600 outputs nobody reads\n"
+    )
+
+
+def test_the_command_line_takes_the_chain_shape(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main([str(tmp_path / "p"), "--declarations", "200", "--shape", "chain"])
+    assert code == 0
+    assert capsys.readouterr().out == (
+        f"{tmp_path / 'p' / 'project.ddd.json'}: 100 components, 200 declarations, "
+        "0 outputs without an id, 0 outputs nobody reads\n"
     )
 
 

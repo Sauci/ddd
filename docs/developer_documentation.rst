@@ -1029,7 +1029,12 @@ with ``@dagrejs/dagre``, both MIT like every other bundled package.
 ``N`` declarations, rounded down to even components and refused under 120, to measure ``ddd
 gui`` on - large enough to matter in a way nothing under ``examples/`` is, the same bytes for
 the same arguments on every machine. ``--shape`` chooses ``many`` small components (the
-default), ``large`` thirty components sharing every declaration, or ``mixed`` half of each.
+default), ``large`` thirty components sharing every declaration, ``mixed`` half of each, or
+``chain``: components of one output and one input each, every one reading the next one's output
+and the last reading the first's. That is one cycle as long as the project, which the canvas's
+layout breaks into one chain as deep as the project is long. The other shapes keep every reader
+about thirty components from its source, so only a chain gets deep enough for the canvas to be
+laid out in ranks only, which takes about nine hundred components in the layout worker.
 Every output takes an id and a unit its vocabulary lists, and every input reads one stating what
 its producer states, so a project generated with no further option carries no finding at all.
 ``--missing-ids`` gives that fraction of outputs no id instead, a ``missing-id`` each; ``--unread``

@@ -29,8 +29,12 @@ from typing import Any, Final
 
 from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 
-SHAPES: Final = ("many", "large", "mixed")
-"""Many small components; a few large ones sharing every declaration; or half of each."""
+SHAPES: Final = ("many", "large", "mixed", "chain")
+"""Many small components; a few large ones sharing every declaration; half of each; or a chain of
+components of one output and one input each, every one reading the next one's output and the last
+reading the first's - one cycle as long as the project, which the canvas's layout breaks into one
+chain as deep as the project is long: the depth no other shape reaches (``LAYER``), and what lays
+a project out in ranks only."""
 
 SMALL: Final = 30
 """The declarations of a component of the "many" shape: thirty, as many as the spec's §2
@@ -85,7 +89,7 @@ def generate(
     """Write a project of ``declarations`` declarations, rounded down to even components, into
     ``directory``, which must not exist yet."""
     if shape not in SHAPES:
-        raise ValueError(f"a shape is one of many, large or mixed, not {shape!r}")
+        raise ValueError(f"a shape is one of many, large, mixed or chain, not {shape!r}")
     if declarations < FEWEST:
         raise ValueError(
             f"a generated project has at least {FEWEST} declarations, not {declarations}"
@@ -97,7 +101,8 @@ def generate(
     starts = [sum(halves[:component]) for component in range(len(halves))]
     total = len(owners)
     widest = max(halves)
-    shift = min(max(widest, LAYER * (SMALL // 2)), total - widest)
+    # How many outputs on the one an input reads: a layer away, or in a chain the very next.
+    shift = 1 if shape == "chain" else min(max(widest, LAYER * (SMALL // 2)), total - widest)
     interfaces: list[list[dict[str, Any]]] = [[] for _ in halves]
     names: list[str] = []
     unnamed = 0
@@ -141,6 +146,8 @@ def _sizes(declarations: int, shape: str) -> list[int]:
         return _even(declarations, declarations // SMALL)
     if shape == "large":
         return _even(declarations, LARGE)
+    if shape == "chain":
+        return _even(declarations, declarations // 2)
     half = declarations // 2
     return _even(half, LARGE // 2) + _even(declarations - half, (declarations - half) // SMALL)
 

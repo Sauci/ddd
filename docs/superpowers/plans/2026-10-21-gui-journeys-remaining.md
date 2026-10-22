@@ -1684,16 +1684,16 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | The canvas | laid out in ranks only, for a project too large for the full layout | 4 | `canvas.spec.ts:508`, "a project too deep for the full layout is laid out in ranks only, and says so": on `chainedGui`, a chain of 2,000 components (*Figures*) |
 | The canvas | a later layout failing, the canvas kept | 4 | `canvas.spec.ts:528`, "a layout worker that fails once the canvas is drawn leaves the canvas, with its alert above": reached inside the layout worker (ruling 10) |
 | The components table | a row pressed beside its name, or Enter on it, opening its component | 4 | `canvas.spec.ts:571`, "a row of the components table opens its component, pressed beside its name or on Enter" |
-| Units | reading the project's units | 5 | none yet |
-| Units | the units failing to load | 5 | none yet |
+| Units | reading the project's units | 5 | `project-units.spec.ts:316`, "the units tab says it is reading the project's units until they are read" |
+| Units | the units failing to load | 5 | `project-units.spec.ts:341`, "the units failing to load leave the server's own error, with no table": a first read that fails shows the error alone (Review Focus 4); it also dies when the tab draws an empty table beside the banner |
 | Units | the units failing once listed, the table kept | 2 | `kept.spec.ts:29`, "the units failing on a new revision keep the table, with the error above it" |
-| Units | a unit's panel reading the unit | 5 | none yet |
-| Units | a unit's panel failing to read the unit | 5 | none yet |
-| Units | a units file listing no unit, the units in use adopted into it | 5 | none yet |
-| Units | a project stating no unit, with nothing to adopt | 5 | none yet |
-| Units | an Apply the server fails on | 5 | none yet |
-| Units | a rename the plan refuses (*added*, pre-flight) | 5 | none yet |
-| Units | a unit listed twice, the `duplicate-unit` chip (*added*, pre-flight) | 5 | none yet |
+| Units | a unit's panel reading the unit | 5 | `project-units.spec.ts:359`, "a unit's panel says it is reading the unit until it is read" |
+| Units | a unit's panel failing to read the unit | 5 | `project-units.spec.ts:385`, "a unit's panel whose unit fails to load says why, beside the table" |
+| Units | a units file listing no unit, the units in use adopted into it | 5 | `project-units.spec.ts:411`, "a units file listing no unit has the units in use adopted into it, and nothing else written": dies under a page that says the project has no units file, and under a server that creates `units.ddd.json` beside the description where it already is |
+| Units | a project stating no unit, with nothing to adopt | 5 | `project-units.spec.ts:475`, "a project stating no unit is told there is nothing to adopt, and offered nothing to press": a listener on `/api/unit-plan` is read after the reader has left the tab, since a plan asked for is refused a few tens of milliseconds after the banner's sentence is drawn |
+| Units | an Apply the server fails on | 5 | `project-units.spec.ts:512`, "a removal the server fails on says so in its words, and nothing is written": the unit panel keeps its Apply offered after the refusal |
+| Units | a rename the plan refuses (*added*, pre-flight) | 5 | `project-units.spec.ts:541`, "a rename the plan refuses says why in the panel, and offers nothing to apply" |
+| Units | a unit listed twice, the `duplicate-unit` chip (*added*, pre-flight) | 5 | `project-units.spec.ts:563`, "a unit listed twice is flagged by its chip, and its panel says it is already declared" |
 | Types | reading the project's types | 5 | none yet |
 | Types | the types failing to load | 5 | none yet |
 | Types | the types failing once listed, the table kept | 2 | `kept.spec.ts:46`, "the types failing on a new revision keep the table, with the error above it" |

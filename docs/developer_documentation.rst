@@ -939,19 +939,19 @@ are made nowhere else.
 runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``src/lib`` and
 ``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real
 ``ddd gui`` over a copy of ``examples/demo``, over copies of ``examples/vocabulary`` and
-``examples/structures`` that eight of the spec files serve instead, and over a project it
+``examples/structures`` that eight of the spec files serve instead, and over two projects it
 generates and serves the same way - ``gui/e2e/fixtures.ts``'s own ``vocabularyGui``,
-``structuresGui`` and ``generatedGui`` - each started with the interpreter ``DDD_PYTHON``
-names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without
-Playwright's own Chromium. ``mapped.spec.ts`` is left out of that run unless ``DDD_MAPPED_DRIVE``
-is set, rather than skipped: its own fixture, ``mappedGui``, copies the demo onto a fresh directory
-of the drive that variable names and serves it there, so a project on a mapped drive - named by its
-network path, as Windows names one - is exercised too. ci's windows chromium leg maps one before
-the journeys run: its own "Map a drive for the mapped-drive journey" step shares a local directory
-as ``New-SmbShare -Name ddd-mapped`` and maps it with ``net use M: \\localhost\ddd-mapped``.
-``mapped.spec.ts`` itself requires every path to begin ``//localhost/ddd-mapped/``, so only a drive
-mapped to that very share passes it. Run the journey by hand the same way, on a Windows machine
-with such a share and drive already mapped:
+``structuresGui``, ``generatedGui`` and ``chainedGui`` - each started with the interpreter
+``DDD_PYTHON`` names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine
+without Playwright's own Chromium. ``mapped.spec.ts`` is left out of that run unless
+``DDD_MAPPED_DRIVE`` is set, rather than skipped: its own fixture, ``mappedGui``, copies the demo
+onto a fresh directory of the drive that variable names and serves it there, so a project on a
+mapped drive - named by its network path, as Windows names one - is exercised too. ci's windows
+chromium leg maps one before the journeys run: its own "Map a drive for the mapped-drive journey"
+step shares a local directory as ``New-SmbShare -Name ddd-mapped`` and maps it with
+``net use M: \\localhost\ddd-mapped``. ``mapped.spec.ts`` itself requires every path to begin
+``//localhost/ddd-mapped/``, so only a drive mapped to that very share passes it. Run the journey by
+hand the same way, on a Windows machine with such a share and drive already mapped:
 
 in cmd:
 

@@ -364,10 +364,15 @@ test("a module whose file does not load is drawn as not loaded, named by its fil
   await expect(
     module.getByRole("button", { name: "controller (not loaded)", exact: true }),
   ).toBeVisible();
-  // Its file holds an error, `schema`, which a module that did not load counts in no badge.
+  // Drawn in a dashed box, where every module that loaded is drawn solid (app.css's
+  // `.module.unloaded`).
+  await expect(module).toHaveCSS("border-top-style", "dashed");
+  // The graph counts its file's one error, `schema`, and a module that did not load shows it in no
+  // badge (`data.loaded`, ModuleNode.tsx).
   await expect(module.getByRole("img")).toHaveCount(0);
   for (const name of ["SensorHub", "UserInterface", "EventLogger"]) {
     await expect(moduleOf(page, name)).toBeVisible();
+    await expect(moduleOf(page, name)).toHaveCSS("border-top-style", "solid");
   }
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
   // A project with a file that did not load has no dictionary, so no arrows, and says so.
@@ -397,19 +402,27 @@ test("a module's badge counts its warnings, and only its errors once it has any"
   for (const name of ["SensorHub", "UserInterface", "EventLogger"]) {
     await expect(moduleOf(page, name).getByRole("img")).toHaveCount(0);
   }
+  // ValueH is Controller's own too, `local`: an sint16 at a tenth of a percent a count, so it can
+  // hold at most 3276.7 %. A greatest limit of 5000 is a second `limits-out-of-range`, and the
+  // badge counts the two warnings. More warnings than errors from here on, so that a badge counting
+  // the larger of the two, or the warnings first, reads otherwise than one counting the errors.
+  driftMax(gui.directory, CONTROLLER, "ValueH", 5000);
+  const warnedTwice = controller.getByRole("img", { name: "2 warnings", exact: true });
+  await expect(warnedTwice).toHaveText("2");
 
   // ValueA read by Controller in another unit than SensorHub produces it: `definition-mismatch`,
   // an error, filed on Controller's reading (analysis.py) and mirrored on SensorHub's declaration,
-  // the other side of it (`_mirrors`, lsp/diagnostics.py). The warning stays.
+  // the other side of it (`_mirrors`, lsp/diagnostics.py). The two warnings stay.
   drift(gui.directory);
-  // Errors take the badge while there are any: it counts them alone, and stays one badge.
+  // Errors take the badge while there are any: one error beside two warnings, which the badge
+  // counts alone, and it stays one badge.
   const errored = controller.getByRole("img", { name: "1 error", exact: true });
   await expect(errored).toHaveText("1");
   await expect(errored).toHaveClass("badge error");
   await expect(controller.getByRole("img")).toHaveCount(1);
 
-  // One error and one warning read alike, so ValueB is read in another unit too: two errors
-  // beside the one warning, and the badge counts the two.
+  // ValueB read in another unit too: two errors, and the badge counts them, not only that there
+  // is one.
   drift(gui.directory, "ValueB", "mV");
   const errors = controller.getByRole("img", { name: "2 errors", exact: true });
   await expect(errors).toHaveText("2");
@@ -497,8 +510,8 @@ test("a project too deep for the full layout is laid out in ranks only, and says
   chainedGui,
 }) => {
   await page.goto(chainedGui.address);
-  // dagre overflows its stack in the layout worker on the chain `chainedGui` serves, 2,000
-  // components deep, and the worker ranks the modules itself (`layoutOf`, lib/layout.ts). Said
+  // dagre overflows its stack in the layout worker on the chain `chainedGui` serves (`CHAIN`,
+  // fixtures.ts), and the worker ranks the modules itself (`layoutOf`, lib/layout.ts). Said
   // quietly above the canvas, as a note and not as an alert: the canvas is drawn all the same.
   await expect(
     page.getByText("Laid out in ranks only: the project is too large for the full layout.", {

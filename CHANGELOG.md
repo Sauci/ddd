@@ -153,6 +153,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   buttons that write were disabled.  They are now disabled with the rest, and enabled again
   once `ddd gui` answers.
 
+* **A fix the server failed on can be chosen again.**  On the Findings tab, after the server
+  failed on applying a finding's fix - an error of its own, not a file changed on disk - the
+  panel went on saying so and drew no Apply, whichever fix was chosen next, until the finding
+  was pressed again.  Choosing a fix now takes that refusal away and offers its Apply.  A
+  refusal because a file changed on disk is still held until the analysis has caught up.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

@@ -334,7 +334,7 @@ test("a page of findings still being read is drawn as rows saying so, which the 
   await expect(pending).toHaveCount(0);
 });
 
-test("a fix the server fails on shows its refusal in the panel in place of the fix, and writes nothing", async ({
+test("a fix the server fails on shows its refusal in the panel in place of the fix, writes nothing, and can be chosen again and applied", async ({
   page,
   gui,
 }) => {
@@ -362,4 +362,18 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
   expect(valueH(gui.directory).id).toBeUndefined();
   expect(failed()).toBe(1);
+
+  // The reader chooses again - the fix pressed off and on - with the server answering as it does:
+  // the refusal says nothing of what is chosen now, so it goes with the choice, and the fix is
+  // offered as it was before the server failed on it (`refusalsAfterChoice`). Left standing, it
+  // withdrew the Apply until the finding was pressed again.
+  await page.unrouteAll({ behavior: "wait" });
+  const fix = panel.getByRole("button", { name: "Give 'ValueH' an id" });
+  await fix.click();
+  await fix.click();
+  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toBeVisible();
+  await expect(fixing.getByRole("status")).toHaveCount(0);
+  await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(page.getByText("Nothing to report")).toBeVisible();
+  expect(valueH(gui.directory).id).toMatch(/^[abcdefghjkmnpqrstvwxyz0-9]{12}$/);
 });

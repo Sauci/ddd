@@ -8,8 +8,10 @@ import {
   fixEdit,
   keyedFindings,
   leadsElsewhere,
+  NO_REFUSALS,
   namesThisVariable,
   noRouteReason,
+  refusalsAfterChoice,
   routeHref,
   routeLabel,
   routeOf,
@@ -243,6 +245,23 @@ describe("what the Findings tab keeps of a selected finding", () => {
       gone: true,
     });
     expect(selectionAfter(selected, reply())).toEqual({ selected: undefined, gone: true });
+  });
+});
+
+describe("what the Findings tab keeps of a fix's refusals once the reader chooses again", () => {
+  const stale = { key: "b", text: "A file changed on disk, so nothing was written.", revision: 7 };
+
+  test("a refusal for any reason but a changed file goes with the choice", () => {
+    const held = { refused: "The change was refused: ddd gui failed on this request", stale: null };
+    expect(refusalsAfterChoice(held)).toEqual(NO_REFUSALS);
+  });
+
+  test("a refusal for a changed file is kept: it goes with the revision, which only an analysis moves", () => {
+    expect(refusalsAfterChoice({ refused: null, stale })).toEqual({ refused: null, stale });
+  });
+
+  test("holding none, a choice leaves none", () => {
+    expect(refusalsAfterChoice(NO_REFUSALS)).toEqual(NO_REFUSALS);
   });
 });
 

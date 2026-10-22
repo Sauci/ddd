@@ -1018,8 +1018,11 @@ a shell script or on Windows a batch file, only writes that address to a file. T
 ``opened`` waits for the file and answers the address: ``/open?code=...`` on the server's own
 port, the one-time sign-in address ``ddd gui`` hands its browser instead of the token the
 printed address carries. A journey presents it to a page as the reader's browser would, and
-shows what the page does with it. ``webbrowser`` splits ``BROWSER`` at whitespace, so the
-fixture refuses a path that holds some.
+shows what the page does with it. ``webbrowser`` splits ``BROWSER`` at the system's path
+separator, ``os.pathsep`` - ``:``, or ``;`` on Windows - and runs an entry with no ``%s`` in it
+whole, as one program handed the address, so the fixture refuses a path that holds that
+separator. A path that holds a space is run whole too, though no CI run has had one, so a batch
+file reached through such a path is untested.
 
 ``chainedGui``, beside ``generatedGui`` in ``gui/e2e/fixtures.ts``, serves a project that
 ``tools/generate_project.py`` writes in its ``chain`` shape: 2,000 components, each reading the

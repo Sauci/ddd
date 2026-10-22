@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { test as base, expect, type TestInfo } from "@playwright/test";
@@ -152,16 +152,18 @@ function copiedExample(example: Example, parent: string): string {
 
 /** A stand-in for the browser `ddd gui` opens: a program that writes the address it is opened
  * with to a file beside it, and a function answering that address once it is there. A shell
- * script, or on Windows a batch file. `webbrowser` runs a `BROWSER` entry with no `%s` as one
- * program, handed the address as its one argument (`GenericBrowser`), so the program's path may
- * hold no whitespace; and a batch file reads it as `%*`, since cmd splits `%1` at the `=` of
- * `?code=`. */
+ * script, or on Windows a batch file. `webbrowser` splits `BROWSER` at `os.pathsep` - Node's
+ * `path.delimiter`, `:` or on Windows `;` - and runs an entry with no `%s` in it whole, as one
+ * program handed the address as its one argument (`GenericBrowser`): so the program's path may
+ * hold no such separator. It may hold a space, though no CI run has had one, so a batch file
+ * reached through such a path is untested. A batch file reads the address as `%*`, since cmd
+ * splits `%1` at the `=` of `?code=`. */
 function recorder(directory: string): { program: string; opened: () => Promise<string> } {
   mkdirSync(directory, { recursive: true });
   const file = join(directory, "opened.txt");
   const program = join(directory, process.platform === "win32" ? "record.cmd" : "record.sh");
-  if (/\s/.test(program)) {
-    throw new Error(`webbrowser cannot run ${program}: it splits BROWSER at whitespace`);
+  if (program.includes(delimiter)) {
+    throw new Error(`webbrowser cannot run ${program}: it splits BROWSER at ${delimiter}`);
   }
   if (process.platform === "win32") {
     writeFileSync(program, '@echo off\r\n>"%~dp0opened.txt" echo %*\r\n');
@@ -173,9 +175,21 @@ function recorder(directory: string): { program: string; opened: () => Promise<s
   const opened = async () => {
     // `launched` runs on a thread of its own once the address is printed (server.py's `run`).
     await expect
-      .poll(() => existsSync(file) && readFileSync(file, "utf8").trim() !== "", {
-        timeout: 10_000,
-      })
+      .poll(
+        () => {
+          try {
+            return existsSync(file) && readFileSync(file, "utf8").trim() !== "";
+          } catch {
+            // Refused while the program still holds the file - EBUSY on Windows, say, while
+            // cmd.exe holds its redirect: no answer yet, so asked again, never the poll's end.
+            return false;
+          }
+        },
+        {
+          message: `the address ddd gui opened its browser on, written to ${file}`,
+          timeout: 10_000,
+        },
+      )
       .toBe(true);
     return readFileSync(file, "utf8").trim();
   };

@@ -688,6 +688,9 @@ test("a unit outside the project's vocabulary is said to be, and still offered",
   await picker.press("Enter");
   await expect(picker).toHaveValue("RPM");
   await expect(note).toBeVisible();
+  // It is also the field's description, which a screen reader reads with the field. The note
+  // comes after the field first drew, which is when React Aria ties a description to its field.
+  await expect(picker).toHaveAccessibleDescription("Not one of this project's units");
   await expect(panel.getByText("Changes 1 file: pump.ddd.json", { exact: true })).toBeVisible();
 
   // A unit the vocabulary lists: no note. Nothing was applied on the way.

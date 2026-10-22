@@ -171,6 +171,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   since - until the path or the project changed.  Every press now asks the server, which reads
   the baseline file as it stands.
 
+* **`ddd gui` reads a field's note with the field.**  The note under a field that offers
+  choices - "Not one of this project's units", under a unit typed that the project's units file
+  does not list - is now the field's description however late it appears.  It was tied to the
+  field only if it was already there as the field first drew, so a note that came as the
+  reader typed was on screen and not read with the field by a screen reader.  Nothing changes
+  on screen.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

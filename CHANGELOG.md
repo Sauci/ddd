@@ -131,7 +131,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   Chromium on Windows, where the browser was briefly refused a socket
   (`net::ERR_NO_BUFFER_SPACE`).  The page now asks for it once more and is drawn as if nothing
   had happened; dropped twice, it says to reload it.  What asks is a short script the page
-  holds inline, which the content security policy allows by its SHA-256 alone.
+  holds inline, which the content security policy allows by its SHA-256 alone.  It asks again
+  for no script of another origin, and never writes over a page already drawn.
 
 * **The start page's list stays held until the project it opened has replaced it.**  Once the
   server had opened the project chosen, the page asked it which project was open, and until

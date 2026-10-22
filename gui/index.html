@@ -7,20 +7,26 @@
     <!-- This id is also react-aria's own guard (public/pressable.css): present already, it skips
          inserting the equivalent inline stylesheet the page's Content-Security-Policy blocks. -->
     <link id="react-aria-pressable-style" rel="stylesheet" href="/pressable.css" />
-    <!-- Asks once more for the page's own module when the network failed it (P19b-22): the one
-         load no code of the page can ask for again, since it is that code. Inline, so that
-         nothing need load for it to run; allowed by its hash alone (page_policy, server.py). A
-         failed module address is remembered by the browser, so the second ask adds a query,
-         which the server ignores. -->
+    <!-- Asks once more for a module script of the page's own origin whose load failed (P19b-22):
+         the page's own module when the network failed it, the one load no code of the page can
+         ask for again, since it is that code. A script of another origin, or with no address,
+         is left alone; the address is compared as text, which cannot throw where new URL("")
+         would. Inline, so that nothing need load for it to run; allowed by its hash alone
+         (page_policy, server.py). A failed module address is remembered by the browser, so the
+         second ask adds a query, which the server ignores. Failed again, it says the page did
+         not load, but only while #root holds nothing: never over a page that is drawn. -->
     <script>
       addEventListener(
         "error",
         (event) => {
           const script = event.target;
           if (!(script instanceof HTMLScriptElement) || script.type !== "module") return;
+          if (!script.src.startsWith(`${location.origin}/`)) return;
           if (script.hasAttribute("data-again")) {
-            document.getElementById("root").textContent =
-              "ddd gui could not load this page. Reload it to try again.";
+            const root = document.getElementById("root");
+            if (!root.hasChildNodes()) {
+              root.textContent = "ddd gui could not load this page. Reload it to try again.";
+            }
             return;
           }
           const again = document.createElement("script");

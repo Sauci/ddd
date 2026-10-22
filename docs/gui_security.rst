@@ -139,8 +139,10 @@ What it trusts
 
 * **The page's own origin.** The token is kept in its ``localStorage``, readable only by
   script running in this origin; the content security policy runs no script but one served
-  from this origin and each script the page itself holds inline - today one, which asks for
-  the page's own module once more when the network failed it. Each of those is allowed by its
+  from this origin and each script the page itself holds inline - today one, which asks once
+  more for a module script of this origin whose load failed, the page's own module when the
+  network failed it, and never for one of another origin; failed again, it says the page did
+  not load, but never over a page already drawn. Each inline script is allowed by its
   SHA-256 alone, which ``ddd gui`` reads off the page it serves when it starts:
   ``script-src 'self'`` and those hashes, beside ``default-src 'self'``. No other inline
   script runs, and ``'unsafe-inline'`` is never allowed. What may have served this origin

@@ -1659,8 +1659,8 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 
 | Screen | Row | Task | Journey |
 | --- | --- | --- | --- |
-| The network | the page's script failed once (*added*) | 2 | `network.spec.ts:107`, "the page's script the network failed once is asked for again, and the page is drawn" |
-| The network | the page's script failing every time (*added*) | 2 | `network.spec.ts:118`, "the page's script the network fails every time says how to try again" |
+| The network | the page's script failed once (*added*) | 2 | `network.spec.ts:108`, "the page's script the network failed once is asked for again, and the page is drawn" |
+| The network | the page's script failing every time (*added*) | 2 | `network.spec.ts:119`, "the page's script the network fails every time says how to try again" |
 | The start page | a project listed with the images its build records name | 3 | `start.spec.ts:230`, "a project is listed with the images its build records name" |
 | The start page | a project whose description does not load, listed as an unnamed project | 3 | `start.spec.ts:246`, "a project whose description does not load is listed as an unnamed project" |
 | The start page | a project opening, the list's buttons held until it has | 3 | `start.spec.ts:267`, "a project opening holds every button of the list, until the start page goes" |
@@ -1675,7 +1675,7 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | The undo strip | the files an undo puts back, being read | 3 | `undo.spec.ts:137`, "the strip says it is reading the files an undo would put back, until it has" |
 | The undo strip | an undo the server fails on | 3 | `undo.spec.ts:155`, "an undo the server fails on is refused in the strip in its words, is still offered, and is sent once" |
 | The undo strip | the files an undo puts back, failing to be read (*added*, pre-flight) | 3 | `undo.spec.ts:181`, "a preview the server fails on is refused in the strip, before any undo was asked" |
-| The canvas | the project's graph failing before anything is drawn | 4 | `network.spec.ts:70`, "a GET the network fails every time reads as the server not answering", which already drives it (ruling 12): it fails `/api/graph` every time and reads the canvas's alert in place of the canvas. Without `GraphPage.tsx`'s `if (graph.isError) return <Banner …>` it dies at that alert (read, and run) |
+| The canvas | the project's graph failing before anything is drawn | 4 | `network.spec.ts:71`, "a GET the network fails every time reads as the server not answering", which already drives it (ruling 12): it fails `/api/graph` every time and reads the canvas's alert in place of the canvas. Without `GraphPage.tsx`'s `if (graph.isError) return <Banner …>` it dies at that alert (read, and run) |
 | The canvas | the project's graph failing once drawn, the canvas kept | 2 | `kept.spec.ts:76`, "the graph failing on a new revision keeps the canvas, with the error above it" |
 | The canvas | a module whose file does not load, drawn as not loaded | 4 | `canvas.spec.ts:355`, "a module whose file does not load is drawn as not loaded, named by its file" |
 | The canvas | a module's badge, counting its errors or its warnings | 4 | `canvas.spec.ts:384`, "a module's badge counts its warnings, and only its errors once it has any": the worked journey, with the earlier pre-flight's second warning (ValueH) before the error, so that its one error stands beside two warnings, and ValueB drifted at its end, so that two errors read 2 (P19c-8) |

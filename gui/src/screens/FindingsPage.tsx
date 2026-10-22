@@ -39,6 +39,7 @@ import {
 import { shownRefusal } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { fixLabel } from "../lib/undo";
+import { baseName } from "../lib/units";
 import { Banner } from "../ui/Banner";
 
 interface Props {
@@ -249,6 +250,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
               label={routeLabel(finding, state)}
               href={routeHref(finding)}
               reason={noRouteReason(finding, state)}
+              fileName={baseName}
               onOpen={() => {
                 const route = routeOf(finding);
                 if (route !== null) onOpen(route);

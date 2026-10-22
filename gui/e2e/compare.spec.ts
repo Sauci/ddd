@@ -317,6 +317,13 @@ test("the baseline's own findings are named as the baseline's and lead nowhere, 
     }),
   ).toBeVisible();
   await expect(panel.getByRole("link")).toHaveCount(0);
+
+  // The panel names the baseline's files as the table does - its heading line, and the file its
+  // note points at - for the display name is one the open project's own components have too.
+  await expect(panel.locator(".panel-meta")).toHaveText("the baseline's controller.ddd.json");
+  await expect(panel.locator(".panel-notes li")).toHaveText(
+    "reference declaration the baseline's sensor_hub.ddd.json",
+  );
 });
 
 test("a finding's panel is closed by its Close button, the comparison standing", async ({

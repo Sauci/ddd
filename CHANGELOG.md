@@ -159,6 +159,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   was pressed again.  Choosing a fix now takes that refusal away and offers its Apply.  A
   refusal because a file changed on disk is still held until the analysis has caught up.
 
+* **A baseline's finding names its file as the baseline's in its panel too.**  On the Compare
+  tab, the table names the file of a finding the baseline itself reports as "the baseline's
+  sensor_hub.ddd.json", so that it is not taken for the open project's own file of that name.
+  The panel opened from that row named the file plainly, in its heading line and in its notes.
+  It now names it as the baseline's, as the table does.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

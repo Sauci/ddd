@@ -69,10 +69,9 @@ export const CanReplaceTheBaseline = () => (
 /** A delivery it cannot: three of the thirteen comparison checks - `changed-interface`,
  * `removed-object`, `renamed-object` - and one of the baseline's own findings besides, filed on
  * a file that shares its display name with the candidate's own sensor_hub.ddd.json. Opens with
- * that row selected, so the File column's `the baseline's sensor_hub.ddd.json` and the panel's
- * own reason line ("it is the baseline's own finding...") are both on screen at once, beside
- * `FindingPanelView`'s own meta line - `baseName(finding.file)` alone, unmarked, the same bare
- * `sensor_hub.ddd.json` a comparison row's file would read. */
+ * that row selected, so the File column's `the baseline's sensor_hub.ddd.json`, the panel's own
+ * reason line ("it is the baseline's own finding...") and the panel's meta line and its note,
+ * which name that file as the baseline's too (`fileNameIn`), are all on screen at once. */
 export const CannotReplaceTheBaseline = () => (
   <View baseline={`${BASELINE_ROOT}/demo.ddd.json`} reply={CANNOT_REPLACE} openBaseline />
 );

@@ -45,9 +45,8 @@ describe("kept", () => {
 });
 
 describe("shown", () => {
-  test("shows the query's answer whenever it has one", () => {
+  test("shows the query's answer whenever it has one and its read was not refused", () => {
     expect(shown(["Hz"], "units", units, null)).toEqual(["Hz"]);
-    expect(shown(["Hz"], "types", units, refused)).toEqual(["Hz"]);
   });
 
   test("shows the answer kept for the same question once a read failed", () => {
@@ -55,8 +54,10 @@ describe("shown", () => {
     expect(shown(undefined, "units", units, null)).toEqual(["ms"]);
   });
 
-  test("never shows a kept answer over a refusal: the refusal is about what was asked", () => {
+  test("never shows an answer over a refusal, its query's own included: the refusal is about what was asked", () => {
     expect(shown(undefined, "units", units, refused)).toBeUndefined();
+    // React Query keeps a key's answer when a read of that same key again is refused.
+    expect(shown(["Hz"], "types", units, refused)).toBeUndefined();
   });
 
   test("never shows another question's answer", () => {

@@ -843,8 +843,8 @@ test("a removal the server fails on says so in its words, and the declaration st
   await remove.click();
 
   await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
-  // The removal is withdrawn until the next revision or the reader's next choice (P19b-24), and
-  // the declaration is still drawn.
+  // The removal is withdrawn under the refusal (P19b-24), as the key's Apply is, and the
+  // declaration is still drawn.
   await expect(removing.getByRole("button", { name: "Remove from Controller" })).toHaveCount(0);
   await expect(page.getByRole("rowheader", { name: "ValueB", exact: true })).toBeVisible();
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(controller)).toBe(true);

@@ -504,7 +504,7 @@ export const SERVER_FAILED = "ddd gui failed on this request; the terminal it ru
  */
 export async function failing(
   page: Page,
-  path: string | RegExp,
+  path: Matcher,
   how: "http" | "network",
   times = Number.POSITIVE_INFINITY,
 ): Promise<() => number> {

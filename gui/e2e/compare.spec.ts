@@ -1,7 +1,16 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { drift, driftDatatypeIn, dump, held, renameValueA, SENSOR_HUB } from "./demo";
+import {
+  CONTROLLER,
+  drift,
+  driftDatatypeIn,
+  driftIn,
+  dump,
+  held,
+  renameValueA,
+  SENSOR_HUB,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a reader can ask whether this delivery replaces the last", async ({ page, gui }) => {
@@ -389,4 +398,55 @@ test("a finding's panel closes by itself once a comparison no longer reports the
   await expect(verdict).toHaveText("This project cannot replace the baseline.");
   await expect(row).toBeVisible();
   await expect(panel).toHaveCount(0);
+});
+
+test("a baseline refused, and then made, is asked for again by the same press", async ({
+  page,
+  gui,
+}) => {
+  const root = posixOf(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const compare = page.getByRole("button", { name: "Compare", exact: true });
+  await page.getByRole("textbox", { name: "Baseline" }).fill("later.json");
+  await compare.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    startingWith(`the baseline '${root}/later.json' is unreadable: `),
+  );
+
+  // The file the refusal names now exists. Neither the field nor the project changed, so no
+  // revision comes to ask again: only the press can, and the server reads the file as it stands.
+  dump(gui.directory, "demo.ddd.json", "later.json");
+  await compare.click();
+  await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
+    "This project can replace the baseline.",
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a baseline written over is asked for again by the same press, and the verdict follows", async ({
+  page,
+  gui,
+}, testInfo) => {
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  // Another delivery, made from a copy of the demo in which ValueA is in rpm, in the file that
+  // produces it and in the one that reads it, so that the copy has no error of its own and dumps.
+  const other = testInfo.outputPath("other");
+  cpSync(gui.directory, other, { recursive: true });
+  driftIn(other, SENSOR_HUB, "ValueA", "rpm");
+  driftIn(other, CONTROLLER, "ValueA", "rpm");
+
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const compare = page.getByRole("button", { name: "Compare", exact: true });
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await compare.click();
+  await expect(verdict).toHaveText("This project can replace the baseline.");
+
+  // The other delivery lands over the baseline's file. The open project is not touched, so no
+  // revision comes to ask again: only the press can, or the verdict above stands, stale.
+  dump(other, "demo.ddd.json", join(gui.directory, "baseline.json"));
+  await compare.click();
+  await expect(verdict).toHaveText("This project cannot replace the baseline.");
 });

@@ -165,6 +165,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   The panel opened from that row named the file plainly, in its heading line and in its notes.
   It now names it as the baseline's, as the table does.
 
+* **Compare asks again when it is asked again.**  On the Compare tab, pressing Compare, or
+  Enter, for the baseline just asked for sent nothing: the answer already on the page stayed -
+  a refusal for a file that did not exist yet, or "can replace" for a baseline written over
+  since - until the path or the project changed.  Every press now asks the server, which reads
+  the baseline file as it stands.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

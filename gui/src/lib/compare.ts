@@ -70,3 +70,28 @@ export function compareRows(reply: CompareReply): CompareRow[] {
     })
     .sort((one, other) => rank[one.finding.severity] - rank[other.finding.severity]);
 }
+
+/**
+ * A comparison the reader asked for: the baseline's path, trimmed, and the ask's number, counted
+ * from the first ask the page made. `ComparePage` keys its query on this, so that every ask is a
+ * query of its own (`nextAsk`).
+ */
+export interface Ask {
+  readonly baseline: string;
+  readonly number: number;
+}
+
+/**
+ * The ask a press of Compare, or an Enter, makes after `previous`: `typed`, trimmed - a path with a
+ * stray space at either end is not a path under the root the server would find - and numbered one
+ * more than the ask before it, whatever either baseline is.
+ *
+ * A baseline asked for again is therefore a new query, sent again, and the server reads the file as
+ * it now stands: a query keyed on the path alone was served from the answer the page held, and a
+ * refusal for a file that did not exist then, or a verdict for a delivery written over since,
+ * stood until the path - or the project - changed. A baseline that comes back after another is no
+ * exception: no number repeats, so nothing is answered from an older ask.
+ */
+export function nextAsk(previous: Ask | null, typed: string): Ask {
+  return { baseline: typed.trim(), number: (previous?.number ?? 0) + 1 };
+}

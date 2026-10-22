@@ -1675,15 +1675,15 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | The undo strip | the files an undo puts back, being read | 3 | `undo.spec.ts:137`, "the strip says it is reading the files an undo would put back, until it has" |
 | The undo strip | an undo the server fails on | 3 | `undo.spec.ts:155`, "an undo the server fails on is refused in the strip, with nothing put back" |
 | The undo strip | the files an undo puts back, failing to be read (*added*, pre-flight) | 3 | `undo.spec.ts:180`, "a preview the server fails on is refused in the strip, before any undo was asked" |
-| The canvas | the project's graph failing before anything is drawn | 4 | none yet |
+| The canvas | the project's graph failing before anything is drawn | 4 | `network.spec.ts:70`, "a GET the network fails every time reads as the server not answering", which already drives it (ruling 12): it fails `/api/graph` every time and reads the canvas's alert in place of the canvas. Without `GraphPage.tsx`'s `if (graph.isError) return <Banner …>` it dies at that alert (read, and run) |
 | The canvas | the project's graph failing once drawn, the canvas kept | 2 | `kept.spec.ts:76`, "the graph failing on a new revision keeps the canvas, with the error above it" |
-| The canvas | a module whose file does not load, drawn as not loaded | 4 | none yet |
-| The canvas | a module's badge, counting its errors or its warnings | 4 | none yet |
-| The canvas | an arrow reached by the keyboard, saying what is wrong | 4 | none yet |
-| The canvas | zoomed in and out with the canvas's own buttons | 4 | none yet |
-| The canvas | laid out in ranks only, for a project too large for the full layout | 4 | none yet |
-| The canvas | a later layout failing, the canvas kept | 4 | none yet |
-| The components table | a row pressed beside its name, or Enter on it, opening its component | 4 | none yet |
+| The canvas | a module whose file does not load, drawn as not loaded | 4 | `canvas.spec.ts:355`, "a module whose file does not load is drawn as not loaded, named by its file" |
+| The canvas | a module's badge, counting its errors or its warnings | 4 | `canvas.spec.ts:379`, "a module's badge counts its warnings, and only its errors once it has any": the worked journey, with ValueB drifted too at its end, since one error and one warning read alike |
+| The canvas | an arrow reached by the keyboard, saying what is wrong | 4 | `canvas.spec.ts:419`, "an arrow reached by the keyboard says what is wrong, until the keyboard leaves the arrows": left by Tab past the last arrow, since one more Tab reaches the next arrow, whose own tooltip shows |
+| The canvas | zoomed in and out with the canvas's own buttons | 4 | `canvas.spec.ts:463`, "the canvas's own buttons zoom it in and out, and stop zooming out at its least zoom" |
+| The canvas | laid out in ranks only, for a project too large for the full layout | 4 | `canvas.spec.ts:495`, "a project too deep for the full layout is laid out in ranks only, and says so": on `chainedGui`, a chain of 2,000 components (*Figures*) |
+| The canvas | a later layout failing, the canvas kept | 4 | `canvas.spec.ts:515`, "a layout worker that fails once the canvas is drawn leaves the canvas, with its alert above": reached inside the layout worker (ruling 10) |
+| The components table | a row pressed beside its name, or Enter on it, opening its component | 4 | `canvas.spec.ts:558`, "a row of the components table opens its component, pressed beside its name or on Enter" |
 | Units | reading the project's units | 5 | none yet |
 | Units | the units failing to load | 5 | none yet |
 | Units | the units failing once listed, the table kept | 2 | `kept.spec.ts:29`, "the units failing on a new revision keep the table, with the error above it" |

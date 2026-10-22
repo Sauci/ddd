@@ -1694,17 +1694,17 @@ Task 1 checked every row at `8366d2a`, whose `gui/` and `src/` are those of `2bc
 | Units | an Apply the server fails on | 5 | `project-units.spec.ts:512`, "a removal the server fails on says so in its words, and nothing is written": the unit panel keeps its Apply offered after the refusal |
 | Units | a rename the plan refuses (*added*, pre-flight) | 5 | `project-units.spec.ts:541`, "a rename the plan refuses says why in the panel, and offers nothing to apply" |
 | Units | a unit listed twice, the `duplicate-unit` chip (*added*, pre-flight) | 5 | `project-units.spec.ts:563`, "a unit listed twice is flagged by its chip, and its panel says it is already declared" |
-| Types | reading the project's types | 5 | none yet |
-| Types | the types failing to load | 5 | none yet |
+| Types | reading the project's types | 5 | `types.spec.ts:468`, "the types tab says it is reading the project's types until they are read" |
+| Types | the types failing to load | 5 | `types.spec.ts:493`, "the types failing to load leave the server's own error, with no table": a first read that fails shows the error alone (Review Focus 4); it also dies when the tab draws an empty table beside the banner |
 | Types | the types failing once listed, the table kept | 2 | `kept.spec.ts:46`, "the types failing on a new revision keep the table, with the error above it" |
-| Types | a type's panel reading the type | 5 | none yet |
-| Types | a type's panel failing to read the type | 5 | none yet |
-| Types | the untold banner | 5 | none yet |
-| Types | the unreadable banner | 5 | none yet |
-| Types | a type's "Where it is used" followed to the declaration | 5 | none yet |
-| Types | a structure's member followed to its type | 5 | none yet |
-| Types | a finding in a type's panel followed | 5 | none yet |
-| Types | an Apply the server fails on | 5 | none yet |
+| Types | a type's panel reading the type | 5 | `types.spec.ts:509`, "a type's panel says it is reading the type until it is read" |
+| Types | a type's panel failing to read the type | 5 | `types.spec.ts:537`, "a type's panel whose type fails to load says why, beside the table" |
+| Types | the untold banner | 5 | `types.spec.ts:563`, "a types file saved half-written is named above the table, whatever it declared untold" |
+| Types | the unreadable banner | 5 | `types.spec.ts:590`, "a types file that parses but breaks its model is named above the table, its types missing" |
+| Types | a type's "Where it is used" followed to the declaration | 5 | two journeys, one for each arm of `routeOfUse` (P19c-10): `types.spec.ts:625`, "a type's Where it is used leads to the variable naming it, on its component's page", and `types.spec.ts:651`, "a type's Where it is used leads from a structure's member to the structure holding it", which is the only press of the member arm, in a `.tsx` with no Vitest |
+| Types | a structure's member followed to its type | 5 | `types.spec.ts:677`, "a structure's member leads to the panel of the type it names" |
+| Types | a finding in a type's panel followed | 5 | `types.spec.ts:698`, "a finding in a type's panel leads to the unit it names, on the Units tab": the worked journey; it dies under a button that follows nothing, and under a server that routes the finding to the type (`UNIT_CHECKS` tried after `WITHIN_TYPE`) |
+| Types | an Apply the server fails on | 5 | `types.spec.ts:742`, "an apply made from a type's panel that the server fails on says so in its words, and nothing is written": the type panel withdraws its Apply after the refusal, where the unit panel keeps it |
 | Shared files | reading the project's shared files | 6 | none yet |
 | Shared files | the shared files failing to load | 6 | none yet |
 | Shared files | the shared files failing once listed, the table kept | 2 | `kept.spec.ts:61`, "the shared files failing on a new revision keep the table, with the error above it" |

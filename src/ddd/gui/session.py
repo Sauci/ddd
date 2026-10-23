@@ -79,7 +79,8 @@ class FoundProject:
     path: Path
     name: str | None
     images: tuple[str, ...]
-    """The build images a build record names this project for; empty for a file found alone."""
+    """The build images a build record names this project for, each once and in the order of the
+    records; empty for a file found alone, and for one whose records name no image."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,7 +246,11 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
     refused: dict[Path, str] = {}
     images: dict[Path, list[str]] = {}
     for info in discover(base, build_directories, refused):
-        images.setdefault(Path(info.project).resolve(), []).append(info.image)
+        named = images.setdefault(Path(info.project).resolve(), [])
+        # A record offers its project whatever it names: one written without an image names
+        # none, and two build trees of one image name it twice.
+        if info.image and info.image not in named:
+            named.append(info.image)
     paths = sorted(set(images) | set(_descriptions(base)))
     projects = tuple(
         FoundProject(path, _name_in(_read_json(path), "project"), tuple(images.get(path, ())))

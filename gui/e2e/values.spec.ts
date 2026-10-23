@@ -1,16 +1,21 @@
-import { readFileSync, utimesSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "@playwright/test";
 import {
   CONTROLLER,
   driftMaxUnseen,
   type Frame,
+  failing,
   framesWatched,
+  held,
   openValues,
   paste,
+  restamp,
   SENSOR_HUB,
+  SERVER_FAILED,
   scrolledIntoView,
   typeCurveA,
+  USER_INTERFACE,
   watchFrames,
   widenBlockA,
   withinBox,
@@ -34,6 +39,44 @@ async function expectRow(grid: Locator, values: readonly string[]): Promise<void
   for (const [index, value] of values.entries()) {
     await expect(grid.getByRole("textbox", { name: `element ${index + 1}` })).toHaveValue(value);
   }
+}
+
+/** ValueB's own `"init": 0,` taken out of SensorHub, the one declaration producing it: a shaped
+ * object stating nothing, which the startup code zeroes. */
+function stateNothingOfValueB(directory: string): void {
+  const path = join(directory, SENSOR_HUB);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(/("name": "ValueB"[\s\S]*?)\n\s*"init": 0,/, "$1");
+  if (changed === text) throw new Error(`${SENSOR_HUB} states no init of ValueB`);
+  writeFileSync(path, changed, "utf8");
+}
+
+/** SensorHub's declaration of ValueB taken out, the file rewritten whole: Controller and
+ * UserInterface still read ValueB, and nothing produces it. */
+function producedByNobody(directory: string): void {
+  const path = join(directory, SENSOR_HUB);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  const kept = data.component.interface.filter(
+    (declaration: { definition: { name: string } }) => declaration.definition.name !== "ValueB",
+  );
+  if (kept.length !== data.component.interface.length - 1) {
+    throw new Error(`${SENSOR_HUB} declares ValueB other than once`);
+  }
+  data.component.interface = kept;
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+/** UserInterface's reading of ValueB made a second producing declaration of it, beside
+ * SensorHub's. */
+function producedTwice(directory: string): void {
+  const path = join(directory, USER_INTERFACE);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /"scope": "input",(\s*"definition": \{\s*"name": "ValueB")/,
+    '"scope": "output",$1',
+  );
+  if (changed === text) throw new Error(`${USER_INTERFACE} reads no ValueB`);
+  writeFileSync(path, changed, "utf8");
 }
 
 test("a curve is read against its axis, raw and physical", async ({ page, gui }) => {
@@ -311,8 +354,7 @@ test("a value applied from a file that changed on disk is refused, and applied o
 
   // A stamp moved with no byte touched lets the next poll read the drifted file; the refusal is
   // held until the analysis moves on, and goes with it, the cell still being typed into.
-  const now = new Date();
-  utimesSync(path, now, now);
+  restamp(gui.directory, CONTROLLER);
   await expect(setting.getByRole("status")).toHaveCount(0, { timeout: 15000 });
   await apply.click();
   await expect
@@ -351,15 +393,15 @@ const MAP_A_OVER_RANGE = [
 
 // A stale-failure regression - a cell apply failed for a reason other than staleness, then a
 // table pasted over it, asserting no trace of the old failure remains - is not folded into this
-// journey. The one mechanism this file already has for that failure is the out-of-range cell
-// above ("a value the datatype cannot hold is refused, and nothing is written"), and it cannot
-// reach one: `_value_plan` (`api.py`) runs `set_cell`'s own range check before ever answering a
-// plan, so a value out of range never renders an `Apply to` button at all - that test's own
-// `toHaveCount(0)` is exactly this - and `apply.mutate()`, the only place `ValuesPage.tsx` sets
-// its non-stale `failed`, is never reached. Nothing reachable through a cell's own Apply button
-// can fail non-stale without the file also changing underneath it, which is staleness itself; the
-// only way left is a mechanism of its own (an unwritable file, say), which is not reusing this
-// one - left untried rather than invented.
+// journey. The out-of-range cell above ("a value the datatype cannot hold is refused, and nothing
+// is written") cannot reach one: `_value_plan` (`api.py`) runs `set_cell`'s own range check before
+// ever answering a plan, so a value out of range never renders an `Apply to` button at all - that
+// test's own `toHaveCount(0)` is exactly this - and `apply.mutate()`, the only place
+// `ValuesPage.tsx` sets its non-stale `failed`, is never reached. Nothing reachable through a
+// cell's own Apply button fails non-stale without the file also changing underneath it, which is
+// staleness itself, unless the server is made to fail on the Apply's own request: the mechanism
+// of "a cell's apply the server fails on says so in its words, keeps its Apply, and is sent once",
+// further down this file. It stops at that refusal: no journey pastes a table over it.
 test("a pasted curve replaces every value in one edit", async ({ page, gui }) => {
   await openValues(page, gui.address, "CurveA");
 
@@ -566,4 +608,301 @@ test("a row walked back up near the top stops below the sticky header, not under
       return rowTop - headerBottom;
     })
     .toBeGreaterThanOrEqual(-1);
+});
+
+test("the values grid says it is reading the values until they are read", async ({ page, gui }) => {
+  // Only the values page asks for an object's grid (`getValues`): `/api/value-plan` and
+  // `/api/values-plan` are other pathnames. Held from before the page opens, it is the read this
+  // journey is about.
+  const release = await held(page, "/api/values");
+  const reading = page.getByText("Reading the values…", { exact: true });
+  try {
+    await openValues(page, gui.address, "CurveA");
+    // The line stands alone: no heading and no way back until the grid is read.
+    await expect(reading).toBeVisible();
+    await expect(page.getByRole("heading", { name: "CurveA" })).toHaveCount(0);
+  } finally {
+    release();
+  }
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await expect(grid.getByRole("rowheader")).toHaveText(["CurveA (ms)"]);
+  await expect(reading).toHaveCount(0);
+});
+
+test("the values failing to load leave the server's own error, under the heading and beside the way back", async ({
+  page,
+  gui,
+}) => {
+  const failed = await failing(page, "/api/values", "http");
+  await openValues(page, gui.address, "CurveA");
+
+  // A first read that fails shows the error alone, but for what every refusal of this page keeps:
+  // the heading the reader opened and the way back (spec 5.4).
+  await expect(page.getByRole("heading", { name: "CurveA", level: 1, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to Controller", exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(page.getByRole("grid", { name: "Values of CurveA" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Physical", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Raw", exact: true })).toHaveCount(0);
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+// An object renamed from outside while its grid is open: the grid's next read, keyed by the new
+// revision, asks the server for a name the project no longer has. The page keeps what the reader
+// opened - its heading - and says why there is nothing under it, with the way back that the
+// heading row always carries (spec 5.4: every refusal keeps the heading and the way back).
+test("an object renamed under its open grid is said to be declared no longer, with the way back to its component", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await expect(grid.getByRole("rowheader")).toHaveText(["CurveA (ms)"]);
+
+  // Written plainly, so that the watcher sees it, under a name of another length: the size moves
+  // as well as the stamp (`stamped`, session.py). Nothing else in examples/demo names CurveA, so
+  // the project still loads clean and the rename is the only change the next revision brings.
+  const path = join(gui.directory, CONTROLLER);
+  const text = readFileSync(path, "utf8");
+  const renamed = text.replace('"name": "CurveA"', '"name": "CurveGone"');
+  if (renamed === text) throw new Error(`${CONTROLLER} names no CurveA`);
+  writeFileSync(path, renamed, "utf8");
+
+  // The server's own refusal, in its words (`grid_of`, object_values.py, answered 404 by
+  // `Api._values`): the one alert on the page, under the heading the reader opened, with the grid
+  // gone - a refusal is never kept (`refusedRead`), so the grid of the revision before does not
+  // stay beside it: it would offer cells of an object the project no longer has.
+  await expect(page.getByRole("alert")).toHaveText("the project declares no 'CurveA'");
+  await expect(page.getByRole("heading", { name: "CurveA", level: 1, exact: true })).toBeVisible();
+  await expect(grid).toHaveCount(0);
+
+  // The way back names the component the grid was opened from - read from the state's own list of
+  // files, not from the object, which is gone - and leads to it, where the renamed declaration is.
+  const back = page.getByRole("button", { name: "Back to Controller", exact: true });
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]+$/);
+  await expect(
+    page.getByRole("heading", { name: "Controller", level: 1, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Declarations of Controller" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a shapeless declaration opened by its values address says it has no cell, with the way back", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]+$/);
+  // The component's address as the page spells it, the file in it as it spells every file, so that
+  // the way back finds the component by it.
+  const component = page.url();
+
+  // The address a values route is written as (`hrefOf`, lib/route.ts), for a declaration no
+  // button of the Shape column offers a grid of: ValueA is a scalar. This tab's token is in local
+  // storage, so the page is signed in.
+  await page.goto(`${component}&variable=ValueA&view=values`);
+  await expect(page.getByRole("heading", { name: "ValueA", level: 1, exact: true })).toBeVisible();
+  await expect(
+    page.getByText("'ValueA' has no cell for a value to sit in", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("grid")).toHaveCount(0);
+
+  const back = page.getByRole("button", { name: "Back to Controller", exact: true });
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(
+    page.getByRole("heading", { name: "Controller", level: 1, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Declarations of Controller" })).toBeVisible();
+});
+
+test("an object initialised with text says so on its values page, which only a reader offers", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  // Controller produces StateName and states its text itself (`"init": "OFF"`), so its own row
+  // offers no grid: the Shape cell reads 16 as plain text.
+  await expect(page.getByRole("rowheader", { name: "StateName", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("row", { name: "StateName", exact: true }).getByRole("gridcell", {
+      name: "16",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show the values of StateName" })).toHaveCount(0);
+
+  // UserInterface reads it and states no init - a reader cannot see its producer's - so its row
+  // offers the grid, and the grid it opens says what the producer wrote.
+  await openValues(page, gui.address, "StateName", "UserInterface");
+  await expect(
+    page.getByRole("heading", { name: "StateName", level: 1, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("'StateName' is initialised with text, not with a grid", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Values of StateName" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Physical", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Raw", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Back to UserInterface" })).toBeVisible();
+});
+
+test("a grid that states nothing reads zero, greyed, says so, and takes its first values", async ({
+  page,
+  copiedGui,
+}) => {
+  // ValueB's init taken out of SensorHub, its one producer, before the server starts: the grid is
+  // of a shaped object that states nothing, which the startup code zeroes (`_filled`).
+  const gui = await copiedGui("demo", stateNothingOfValueB);
+  await openValues(page, gui.address, "ValueB");
+  const grid = page.getByRole("grid", { name: "Values of ValueB" });
+  await expectRow(grid, ["0", "0", "0", "0"]);
+  for (const element of [1, 2, 3, 4]) {
+    await expect(grid.getByRole("textbox", { name: `element ${element}` })).toHaveClass("unstated");
+  }
+  const nothing = page.getByText("Nothing is stated.", { exact: true });
+  await expect(nothing).toBeVisible();
+  // One producer, so the grid is writable and a paste is offered.
+  await expect(
+    page.getByText("Paste 1 row of 4 values from a spreadsheet to replace them all.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await grid.getByRole("textbox", { name: "element 2" }).fill("1");
+  await expect(page.getByText("Sets element 2 of ValueB to 1 V")).toBeVisible();
+  await expect(page.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  // `set_cell` writes the whole `init` where none was written: the other cells keep their zeros.
+  await expect
+    .poll(() => definitionOf(gui.directory, SENSOR_HUB, "ValueB").init)
+    .toEqual([0, 1000, 0, 0]);
+  await expect(nothing).toHaveCount(0);
+});
+
+test("a grid stated once for every cell says so, and one cell set writes every value", async ({
+  page,
+  gui,
+}) => {
+  // UserInterface's CurveB states `"init": 200`, one number for its six cells.
+  await openValues(page, gui.address, "CurveB", "UserInterface");
+  const grid = page.getByRole("grid", { name: "Values of CurveB" });
+  await expect(grid.getByRole("rowheader")).toHaveText(["CurveB (%)"]);
+  // 200 raw counts, times the conversion's 0.5.
+  await expectRow(grid, ["100", "100", "100", "100", "100", "100"]);
+  const once = page.getByText("Stated once, for every cell.", { exact: true });
+  await expect(once).toBeVisible();
+
+  await grid.getByRole("textbox", { name: "element 3" }).fill("50");
+  await expect(page.getByText("Sets element 3 of CurveB to 50 %")).toBeVisible();
+  await expect(page.getByText("Changes 1 file: user_interface.ddd.json")).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  // `set_cell` writes the one number out as the list it stands for, with the cell set in it.
+  await expect
+    .poll(() => definitionOf(gui.directory, USER_INTERFACE, "CurveB").init)
+    .toEqual([200, 200, 100, 200, 200, 200]);
+  await expect(once).toHaveCount(0);
+});
+
+test("a grid nothing produces is read only, and says why", async ({ page, copiedGui }) => {
+  // SensorHub's declaration of ValueB taken out before the server starts: Controller and
+  // UserInterface still read it, and it resolves, with no owner and no file to set it in.
+  const gui = await copiedGui("demo", producedByNobody);
+  await openValues(page, gui.address, "ValueB");
+  const grid = page.getByRole("grid", { name: "Values of ValueB" });
+  await expect(grid.getByRole("textbox", { name: "element 1" })).toBeDisabled();
+  await expect(
+    page.getByText("nothing produces 'ValueB', so it has no values to set", { exact: true }),
+  ).toBeVisible();
+  // A grid with nothing to write into has nothing to paste into either.
+  await expect(page.getByText(/^Paste /)).toHaveCount(0);
+});
+
+test("a grid more than one place produces is read only, and says why", async ({
+  page,
+  copiedGui,
+}) => {
+  // UserInterface's reading of ValueB made a producing declaration of it, beside SensorHub's: the
+  // analysis reads one of them (an owner is named), the index holds both, so no one file is the
+  // grid's.
+  const gui = await copiedGui("demo", producedTwice);
+  await openValues(page, gui.address, "ValueB");
+  const grid = page.getByRole("grid", { name: "Values of ValueB" });
+  await expect(grid.getByRole("textbox", { name: "element 1" })).toBeDisabled();
+  await expect(
+    page.getByText(
+      "'ValueB' is produced in more than one place, so there is no one file to set it in",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/^Paste /)).toHaveCount(0);
+});
+
+test("a cell's apply the server fails on says so in its words, keeps its Apply, and is sent once", async ({
+  page,
+  gui,
+}) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await openValues(page, gui.address, "CurveA");
+  const cell = page.getByRole("textbox", { name: "element 3" });
+  await cell.fill("7.5");
+  await expect(page.getByText("Sets element 3 of CurveA to 7.5 ms")).toBeVisible();
+  await expect(page.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  const apply = page.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeEnabled();
+  // Registered once the plan is drawn: `/api/value-plan`, which draws it, goes through either way.
+  const failed = await failing(page, "/api/edit", "http");
+  await apply.click();
+
+  // `refusalOf`, through the grid's `onError`. The plan's own checks (the range, the shape) refuse
+  // before an Apply is offered, so what reaches this one is the server failing on its request.
+  await expect(page.getByRole("region", { name: "Set the cell" }).getByRole("status")).toHaveText(
+    `The change was refused: ${SERVER_FAILED}`,
+  );
+  // The grid keeps its Apply and what was typed (P19b-24: the panels that write withdraw theirs).
+  await expect(apply).toBeEnabled();
+  await expect(cell).toHaveValue("7.5");
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+  // A POST is never sent again.
+  expect(failed()).toBe(1);
+});
+
+test("a values address naming a file the project does not include still draws the grid, and goes back to the component", async ({
+  page,
+  gui,
+}) => {
+  // A component dropped from the project, its file still on disk: beside the project's own, where
+  // the include `components/*.ddd.json` does not reach it.
+  writeFileSync(
+    join(gui.directory, "retired.ddd.json"),
+    readFileSync(join(gui.directory, CONTROLLER)),
+  );
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await expect(page).toHaveURL(/\/component\?file=[^&]+$/);
+
+  // Controller's address as the page spells it, with the file changed to the retired one - spelled
+  // as the page spells every file, absolute and posix-separated, whatever the system - the
+  // variable and the view a values route is written with.
+  const retired = `${gui.directory.replaceAll("\\", "/")}/retired.ddd.json`;
+  const address = new URL(page.url());
+  address.searchParams.set("file", retired);
+  address.searchParams.set("variable", "CurveA");
+  address.searchParams.set("view", "values");
+  await page.goto(address.toString());
+
+  // A grid is found by the object's name, whichever file the route names; only the way back,
+  // which names the component by that file, finds none of the project's.
+  await expect(page.getByRole("grid", { name: "Values of CurveA" })).toBeVisible();
+  const back = page.getByRole("button", { name: "Back to component", exact: true });
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    `${retired} is not a description file of the open project`,
+  );
 });

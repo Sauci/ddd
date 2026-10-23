@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, getUnits, postEdit } from "../api/client";
 import type { State } from "../api/types";
+import { useKept } from "../app/useKept";
 import { AdoptBannerView, AdoptPanelView } from "../components/AdoptBannerView";
 import { UnitsTableView } from "../components/UnitsTableView";
 import {
@@ -36,6 +37,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
     // every edit, it lost the reader's place and made the tab flash.
     placeholderData: (previous) => previous,
   });
+  const answer = useKept(units, "units");
   // The unit whose panel closed because nothing states or lists it any longer (spec 5.4), named
   // above the table until another unit is selected or the reader leaves the tab.
   const [gone, setGone] = useState<string | null>(null);
@@ -49,12 +51,12 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   // fingerprints the server just refused; `shownRefusal` keeps it shown until a later revision
   // arrives.
   const [stale, setStale] = useState<Refused | null>(null);
-  const adoptable = units.data?.adoptable ?? null;
+  const adoptable = answer?.adoptable ?? null;
   // Asked for as soon as the banner offers it, so that Adopt applies exactly what Show changes
   // shows; a project stating no unit has nothing to adopt, and nothing is asked. Both conditions
   // are `adoptionOffered` and `adoptionAsked`, which read the server's own answer.
   const adoption = usePlan(
-    units.data !== undefined && adoptionAsked(units.data) ? { action: "adopt" } : null,
+    answer !== undefined && adoptionAsked(answer) ? { action: "adopt" } : null,
     revision,
   );
   const adopt = useMutation({
@@ -94,7 +96,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
       ]),
   });
 
-  if (units.data === undefined) {
+  if (answer === undefined) {
     if (units.isError) return <Banner tone="error">{units.error.message}</Banner>;
     return <p className="quiet">Reading the project's units…</p>;
   }
@@ -106,16 +108,16 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   const preview = unit === undefined && previewing ? (adoption.data ?? null) : null;
   return (
     <>
-      <p className="summary">{tabTitle(units.data.units, hasUnitsFile(units.data))}</p>
+      <p className="summary">{tabTitle(answer.units, hasUnitsFile(answer))}</p>
       {/* A server that stopped answering leaves the table as it was, and says so above it. */}
       {units.isError && <Banner tone="error">{units.error.message}</Banner>}
       {gone !== null && (
         <Banner tone="warning">{gone} is no longer stated or listed in the open project.</Banner>
       )}
-      {adoptionOffered(units.data) && (
+      {adoptionOffered(answer) && (
         <AdoptBannerView
-          adoptable={units.data.adoptable}
-          hasUnitsFile={hasUnitsFile(units.data)}
+          adoptable={answer.adoptable}
+          hasUnitsFile={hasUnitsFile(answer)}
           plan={adoption.data ?? null}
           refusal={shownRefusal(stale, revision) ?? refused ?? adoption.error?.message ?? null}
           onShowChanges={() => {
@@ -128,7 +130,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
       )}
       <div className={unit !== undefined || preview !== null ? "with-panel" : undefined}>
         <div>
-          <UnitsTableView units={units.data} selected={unit} onSelect={select} />
+          <UnitsTableView units={answer} selected={unit} onSelect={select} />
         </div>
         {unit !== undefined ? (
           <UnitPanel

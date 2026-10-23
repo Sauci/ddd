@@ -1,13 +1,15 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { CONTROLLER, drift, EVENT_LOGGER, renameValueA } from "./demo";
+import { CONTROLLER, drift, driftMax, EVENT_LOGGER, held, renameValueA } from "./demo";
 import { expect, test } from "./fixtures";
 
 // The canvas's own actions and states - no dictionary, Fit, the module search and its Enter,
 // hovering a module, the undeclared-variable banner reached from an arrow, the drawing and layout
-// states and the layout worker failing - and the components table's summary line while the
-// findings update (spec 2026-10-08 §4).
+// states and the layout worker failing, a module not loaded, a module's badge, an arrow reached
+// by the keyboard, its own zoom buttons, a layout in ranks only and a later layout failing - and
+// the components table's summary line while the findings update, and a row opening its component
+// (spec 2026-10-08 §4).
 
 /** Where the viewport stands: React Flow's own `translate(x, y) scale(zoom)` on
  * `.react-flow__viewport`, read back as numbers. */
@@ -218,20 +220,9 @@ test("a variable opened from an arrow and then no longer declared closes, and th
 });
 
 test("the canvas says it is drawing the project until the graph answers", async ({ page, gui }) => {
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
   // The first graph the page asks for alone, held until the journey has seen what is shown
   // meanwhile; any later one goes straight through.
-  await page.route(
-    "**/api/graph",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
-  );
+  const release = await held(page, "/api/graph");
   try {
     await page.goto(gui.address);
     await expect(page.getByText("Drawing the project…", { exact: true })).toBeVisible();
@@ -246,21 +237,10 @@ test("the canvas says it is laying the project out until the layout comes", asyn
   page,
   gui,
 }) => {
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
   // The layout worker's own script, the one request between the graph and its layout (`useLayout`
   // starts the worker once the graph is there to lay out): held, the worker never starts, and
   // nothing is laid out until it is let through.
-  await page.route(
-    "**/assets/layoutWorker-*.js",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
-  );
+  const release = await held(page, /^\/assets\/layoutWorker-[^/]+\.js$/);
   try {
     await page.goto(gui.address);
     await expect(page.getByText("Laying the project out…", { exact: true })).toBeVisible();
@@ -351,4 +331,277 @@ test("the components table's summary says the findings are updating while they a
 
   await expect.poll(() => summariesSeen(page)).toContain(`${line} · updating`);
   await expect(summary).toHaveText(line);
+});
+
+/**
+ * The demo with a key the component model does not have, added to Controller's `component` block.
+ * The model forbids one (`additionalProperties: false`, schemas/ddd_component.schema.json), so
+ * the file fails `schema`, one of the checks after which a file did not load (`LOAD_CHECKS`,
+ * lsp/navigation.py). It still parses, so it is still a component (`kind_of`, session.py) and
+ * the canvas still draws its module. Cut in half, as this file's first journey cuts it, it would
+ * be of kind `unknown` and draw no module at all.
+ */
+function unloaded(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const before = readFileSync(path, "utf8");
+  const after = before.replace(
+    '"name": "Controller",',
+    '"name": "Controller",\n    "unexpected": true,',
+  );
+  if (after === before) throw new Error(`${path} no longer names its component Controller`);
+  writeFileSync(path, after, "utf8");
+}
+
+test("a module whose file does not load is drawn as not loaded, named by its file", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", unloaded);
+  await page.goto(gui.address);
+  // Named by its file's stem, as the file did not load far enough to name its component (`_module`,
+  // api.py), and said not to have loaded (`ModuleNode.tsx`).
+  const module = page.locator(".module.unloaded");
+  await expect(
+    module.getByRole("button", { name: "controller (not loaded)", exact: true }),
+  ).toBeVisible();
+  // Drawn in a dashed box, where every module that loaded is drawn solid (app.css's
+  // `.module.unloaded`).
+  await expect(module).toHaveCSS("border-top-style", "dashed");
+  // The graph counts its file's one error, `schema`, and a module that did not load shows it in no
+  // badge (`data.loaded`, ModuleNode.tsx).
+  await expect(module.getByRole("img")).toHaveCount(0);
+  for (const name of ["SensorHub", "UserInterface", "EventLogger"]) {
+    await expect(moduleOf(page, name)).toBeVisible();
+    await expect(moduleOf(page, name)).toHaveCSS("border-top-style", "solid");
+  }
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toHaveCount(0);
+  // A project with a file that did not load has no dictionary, so no arrows, and says so.
+  await expect(page.getByRole("status").filter({ hasText: "no dictionary" })).toHaveText(
+    "This project has no dictionary, so its modules are drawn without arrows.",
+  );
+});
+
+test("a module's badge counts its warnings, and only its errors once it has any", async ({
+  page,
+  gui,
+}) => {
+  // ParameterA is Controller's own calibration, `scope` "local": a uint16 at a quarter of a hertz
+  // a count, so it can hold at most 16383.75 Hz. A greatest limit of 99999 is then
+  // `limits-out-of-range`, a warning (diagnostics.py), filed on Controller alone. Written plainly,
+  // so the watcher sees it: the badge comes with the revision that reads it.
+  driftMax(gui.directory, CONTROLLER, "ParameterA", 99999);
+  await page.goto(gui.address);
+  const controller = moduleOf(page, "Controller");
+  // The badge is announced as the one picture it is, named by what it counts (`ModuleNode.tsx`):
+  // a number alone would not say whether it counts errors or warnings. Its count is read off the
+  // running page.
+  const warned = controller.getByRole("img", { name: "1 warning", exact: true });
+  await expect(warned).toHaveText("1");
+  await expect(warned).toHaveClass("badge warning");
+  // The other three modules have no finding, so no badge.
+  for (const name of ["SensorHub", "UserInterface", "EventLogger"]) {
+    await expect(moduleOf(page, name).getByRole("img")).toHaveCount(0);
+  }
+  // ValueH is Controller's own too, `local`: an sint16 at a tenth of a percent a count, so it can
+  // hold at most 3276.7 %. A greatest limit of 5000 is a second `limits-out-of-range`, and the
+  // badge counts the two warnings. More warnings than errors until ValueB's drift below, so that a
+  // badge counting the larger, or the warnings first, reads otherwise than one counting the errors.
+  driftMax(gui.directory, CONTROLLER, "ValueH", 5000);
+  const warnedTwice = controller.getByRole("img", { name: "2 warnings", exact: true });
+  await expect(warnedTwice).toHaveText("2");
+
+  // ValueA read by Controller in another unit than SensorHub produces it: `definition-mismatch`,
+  // an error, filed on Controller's reading (analysis.py) and mirrored on SensorHub's declaration,
+  // the other side of it (`_mirrors`, lsp/diagnostics.py). The two warnings stay.
+  drift(gui.directory);
+  // Errors take the badge while there are any: one error beside two warnings, which the badge
+  // counts alone, and it stays one badge.
+  const errored = controller.getByRole("img", { name: "1 error", exact: true });
+  await expect(errored).toHaveText("1");
+  await expect(errored).toHaveClass("badge error");
+  await expect(controller.getByRole("img")).toHaveCount(1);
+
+  // ValueB read in another unit too: two errors, and the badge counts them, not only that there
+  // is one.
+  drift(gui.directory, "ValueB", "mV");
+  const errors = controller.getByRole("img", { name: "2 errors", exact: true });
+  await expect(errors).toHaveText("2");
+  await expect(controller.getByRole("img")).toHaveCount(1);
+});
+
+test("an arrow reached by the keyboard says what is wrong, until the keyboard leaves the arrows", async ({
+  page,
+  gui,
+}) => {
+  // In disagreement, so that the arrow has something wrong to say: an agreed arrow says only
+  // what it carries.
+  drift(gui.directory);
+  await page.goto(gui.address);
+  const arrow = page.getByRole("button", { name: "SensorHub to Controller: 2 variables, error" });
+  await expect(arrow).toBeVisible();
+  // Reached the way a keyboard reaches it, one Tab at a time, as units.spec.ts's "an arrow in
+  // disagreement about two variables asks which, from the keyboard too" reaches it.
+  for (let stop = 0; stop < 50; stop += 1) {
+    if (await arrow.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(arrow).toBeFocused();
+  // Its tooltip shows while it is reached (`edgesOf`'s `onFocus`, FlowEdge.tsx's `data.active`):
+  // what the arrow carries, then each disagreement's check and the analysis's own sentence.
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip.locator(".objects")).toHaveText("ValueA, ValueB");
+  await expect(tooltip.getByRole("listitem")).toHaveText([
+    "definition-mismatch 'ValueA' is declared differently by component 'Controller' than by " +
+      "'SensorHub' (unit: 'rpm' != '%')",
+  ]);
+  // And it is the arrow's description, through its `aria-describedby`: what a screen reader reads
+  // out of an arrow it has reached.
+  await expect(arrow).toHaveAccessibleDescription(
+    "ValueA, ValueB definition-mismatch 'ValueA' is declared differently by component " +
+      "'Controller' than by 'SensorHub' (unit: 'rpm' != '%')",
+  );
+
+  // Each next Tab reaches another arrow, whose own tooltip takes this one's place, until the
+  // focus leaves the arrows for the first module's name: no tooltip is left then (`onBlur`).
+  for (let stop = 0; stop < 10; stop += 1) {
+    await page.keyboard.press("Tab");
+    if (await page.evaluate(() => document.activeElement?.closest(".react-flow__edge") === null)) {
+      break;
+    }
+  }
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeFocused();
+  await expect(tooltip).toHaveCount(0);
+});
+
+test("the canvas's own buttons zoom it in and out, and stop zooming out at its least zoom", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  const opening = await viewportOf(page);
+  // React Flow's own buttons (`<Controls>`, GraphPage.tsx), named in its own words.
+  const zoomIn = page.getByRole("button", { name: "Zoom In", exact: true });
+  const zoomOut = page.getByRole("button", { name: "Zoom Out", exact: true });
+  await expect(zoomIn).toBeVisible();
+  await expect(zoomOut).toBeVisible();
+
+  // A press scales the viewport by 1.2 (React Flow's `zoomIn`), and the other one back: each zoom
+  // to three places, within half a thousandth.
+  await zoomIn.click();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeCloseTo(opening.zoom * 1.2, 3);
+  await zoomOut.click();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeCloseTo(opening.zoom, 3);
+
+  // Out, press after press, each waited for by the zoom it lowers, until the button is turned
+  // off at the canvas's least zoom (`MIN_ZOOM`, lib/canvas.ts): five presses from the demo's
+  // opening zoom of 1.11494 (measured in Chrome on the Linux development PC).
+  for (let presses = 0; presses < 10 && (await zoomOut.isEnabled()); presses += 1) {
+    const before = (await viewportOf(page)).zoom;
+    await zoomOut.click();
+    await expect.poll(async () => (await viewportOf(page)).zoom).toBeLessThan(before);
+  }
+  await expect(zoomOut).toBeDisabled();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeCloseTo(0.5, 3);
+});
+
+test("a project too deep for the full layout is laid out in ranks only, and says so", async ({
+  page,
+  chainedGui,
+}) => {
+  await page.goto(chainedGui.address);
+  // dagre overflows its stack in the layout worker on the chain `chainedGui` serves (`CHAIN`,
+  // fixtures.ts), and the worker ranks the modules itself (`layoutOf`, lib/layout.ts). Said
+  // quietly above the canvas, as a note and not as an alert: the canvas is drawn all the same.
+  await expect(
+    page.getByText("Laid out in ranks only: the project is too large for the full layout.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  // The canvas opens on its first rank, the chain's first module alone, at its least zoom
+  // (`openingViewport`, lib/canvas.ts), within half a thousandth.
+  await expect(page.getByRole("button", { name: "C00000", exact: true })).toBeVisible();
+  await expect.poll(async () => (await viewportOf(page)).zoom).toBeCloseTo(0.5, 3);
+});
+
+test("a layout worker that fails once the canvas is drawn leaves the canvas, with its alert above", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  // Drawn, so the worker has answered once.
+  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  // No route and no project reaches this state: the worker's script is fetched once per canvas,
+  // and its `layoutOf` answers an error only for an input the server never sends. So an error is
+  // thrown in the worker's own thread and left uncaught, as a worker that crashed throws one
+  // (planning ruling 10): the page's `Worker` hears it as `error` (`useLayout`'s `onerror`). One
+  // that has answered is not made again (`createdAgain`, lib/layoutAnswers.ts), so the page says
+  // the worker stopped.
+  const worker = page.workers().find((each) => /layoutWorker-/.test(each.url()));
+  if (worker === undefined) throw new Error("the page runs no layout worker");
+  await worker.evaluate(() => {
+    setTimeout(() => {
+      throw new Error("the layout worker failed");
+    });
+  });
+  const alert = page.getByRole("alert");
+  await expect(alert).toHaveText("The layout worker stopped; reload the page to try again.");
+  // The canvas is kept as it was drawn: the four modules, and its own tools.
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await expect(page.getByRole("textbox", { name: "Search modules" })).toBeVisible();
+  for (const name of ["Tidy", "Fit"]) {
+    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  // The alert stands above it (`layoutScreen`'s `errorMessage`), wholly: within no pixel.
+  const canvas = page.getByRole("region", { name: "Modules" });
+  await expect
+    .poll(async () => {
+      const [said, drawn] = await Promise.all([alert.boundingBox(), canvas.boundingBox()]);
+      return said !== null && drawn !== null && said.y + said.height <= drawn.y;
+    })
+    .toBe(true);
+});
+
+/** A component's row of the Table tab, by the name its button reads (skeleton.spec.ts's own). */
+const componentRow = (page: Page, name: string): Locator =>
+  page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
+
+test("a row of the components table opens its component, pressed beside its name or on Enter", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Table", exact: true }).click();
+  // Pressed beside its name: on Controller's Warnings cell, which holds no button of its own.
+  await componentRow(page, "Controller").getByRole("gridcell").nth(1).click();
+  await expect(page.getByRole("heading", { name: "Controller", level: 1 })).toBeVisible();
+  // The path in the address, percent-encoded or not, ends in the file's own name.
+  await expect(page).toHaveURL(/\/component\?file=.*controller\.ddd\.json$/);
+  await page.goBack();
+  const grid = page.getByRole("grid", { name: "Components" });
+  await expect(grid).toBeVisible();
+
+  // By the keyboard: Tab until a row of the table has the focus, ArrowDown to SensorHub's, and
+  // Enter on it.
+  for (let stop = 0; stop < 50; stop += 1) {
+    const onRow = await grid.evaluate(
+      (element) =>
+        element.contains(document.activeElement) &&
+        document.activeElement?.getAttribute("role") === "row",
+    );
+    if (onRow) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(grid.locator('[role="row"]:focus')).toHaveCount(1);
+  const sensorHub = componentRow(page, "SensorHub");
+  for (let step = 0; step < 10; step += 1) {
+    if (await sensorHub.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(sensorHub).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "SensorHub", level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/component\?file=.*sensor_hub\.ddd\.json$/);
 });

@@ -34,6 +34,20 @@ export function compareRouteReason(row: CompareRow, state: State): string {
   return noRouteReason(row.finding, state);
 }
 
+/** How a comparison names a file, for its table's File column and for its finding's panel - the
+ * heading line, and each file its notes point at: by its base name for a finding of the open
+ * project's own, and as the baseline's for one the baseline itself reports. The baseline's files
+ * can display with the very name one of the open project's own has (comparing a project against
+ * itself is legal), and `sensor_hub.ddd.json` alone would then read as the reader's own file
+ * rather than the baseline's. */
+export function fileNameIn(fromBaseline: boolean): (path: string) => string {
+  return fromBaseline ? baselineFileName : baseName;
+}
+
+function baselineFileName(path: string): string {
+  return `the baseline's ${baseName(path)}`;
+}
+
 /** One row of the Compare tab's table: `FindingRow`'s three fields, and which side of the
  * comparison it came from - structurally, from which field of `CompareReply` it was read out
  * of, never by matching a message's own text (`CompareReply.baseline_findings`'s own docstring
@@ -45,25 +59,39 @@ export interface CompareRow extends FindingRow {
 /** The Compare tab's own rows: `reply.findings` and `reply.baseline_findings` combined, worst
  * first, each carrying which one it came from - keyed by `keyedFindings`, in the Findings tab's
  * own severity order, the order `GET /api/findings` answers the open project's own findings in.
- * The File column names a baseline row as the baseline's own, plainly: its file
- * can display with the very name one of the candidate's own files has (comparing a project
- * against itself is legal), and `sensor_hub.ddd.json` alone would then read as the reader's own
- * file rather than the baseline's. */
+ * The File column names a baseline row as the baseline's own (`fileNameIn`). */
 export function compareRows(reply: CompareReply): CompareRow[] {
   const rank: Record<Finding["severity"], number> = { error: 0, warning: 1, info: 2, ignore: 3 };
   const fromBaseline = new Set<Finding>(reply.baseline_findings);
   return keyedFindings([...reply.findings, ...reply.baseline_findings])
     .map(([finding, key]) => {
       const baseline = fromBaseline.has(finding);
-      return { finding, key, fromBaseline: baseline, file: fileLabel(finding, baseline) };
+      return { finding, key, fromBaseline: baseline, file: fileNameIn(baseline)(finding.file) };
     })
     .sort((one, other) => rank[one.finding.severity] - rank[other.finding.severity]);
 }
 
-/** The File column's own text: plain for a comparison's own finding, the same `baseName` the
- * Findings tab shows; named as the baseline's for one of those, so the display name it happens
- * to share with a candidate file (if any) cannot read as the reader's own. */
-function fileLabel(finding: Finding, fromBaseline: boolean): string {
-  const name = baseName(finding.file);
-  return fromBaseline ? `the baseline's ${name}` : name;
+/**
+ * A comparison the reader asked for: the baseline's path, trimmed, and the ask's number, counted
+ * from the first ask the page made. `ComparePage` keys its query on this, so that every ask is a
+ * query of its own (`nextAsk`).
+ */
+export interface Ask {
+  readonly baseline: string;
+  readonly number: number;
+}
+
+/**
+ * The ask a press of Compare, or an Enter, makes after `previous`: `typed`, trimmed - a path with a
+ * stray space at either end is not a path under the root the server would find - and numbered one
+ * more than the ask before it, whatever either baseline is.
+ *
+ * A baseline asked for again is therefore a new query, sent again, and the server reads the file as
+ * it now stands: a query keyed on the path alone was served from the answer the page held, and a
+ * refusal for a file that did not exist then, or a verdict for a delivery written over since,
+ * stood until the path - or the project - changed. A baseline that comes back after another is no
+ * exception: no number repeats, so nothing is answered from an older ask.
+ */
+export function nextAsk(previous: Ask | null, typed: string): Ask {
+  return { baseline: typed.trim(), number: (previous?.number ?? 0) + 1 };
 }

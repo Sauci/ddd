@@ -138,11 +138,13 @@ export function ComboBox({
         />
         <AriaButton aria-label={`Show the choices for ${label}`}>▾</AriaButton>
       </Group>
-      {note !== undefined && (
-        <Text slot="description" className="combo-note">
-          {note}
-        </Text>
-      )}
+      {/* Always drawn, empty while there is no note (`.combo-note:empty` takes no room): React
+          Aria ties a field to its description only if the description's element is there when
+          the field first draws, so a note drawn later was on screen and not the field's
+          description. */}
+      <Text slot="description" className="combo-note">
+        {note}
+      </Text>
       {/* No offset of React Aria's own: the gap under the field is ui.css's margin alone, the
           chosen mockup's. Measured from the Group, React Aria's 8px would add to it. */}
       <Popover className="combo-popover" offset={0}>

@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getProjects, openProject } from "../api/client";
+import { listHeld } from "../lib/start";
 import { Banner } from "../ui/Banner";
 
 /** The projects found where `ddd gui` was started, to open one of them. */
@@ -24,7 +25,7 @@ export function StartPage({ onOpened }: { onOpened: () => void }) {
             <li key={project.path}>
               <button
                 type="button"
-                disabled={open.isPending}
+                disabled={listHeld(open.status)}
                 onClick={() => open.mutate(project.path)}
               >
                 <span className="name">{project.name ?? "Unnamed project"}</span>

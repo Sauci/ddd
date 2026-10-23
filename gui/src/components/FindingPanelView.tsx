@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import type { Finding, FixReply } from "../api/types";
-import { baseName, consequence, shownChanges } from "../lib/units";
+import { consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Panel } from "../ui/Panel";
@@ -14,6 +14,10 @@ export interface FindingPanelViewProps {
   href: string | null;
   /** Why it leads nowhere, said when `label` is `null`. */
   reason: string;
+  /** How the panel names a file: its heading line's, and each file its notes point at. The
+   * Findings tab says a file by its base name; a comparison says a baseline's file as the
+   * baseline's (`fileNameIn`, `lib/compare.ts`), as its table's File column does. */
+  fileName: (path: string) => string;
   /** Following it, without a reload - `LinkTabs`' own pairing of an href with a handler. */
   onOpen: () => void;
   fixes: FixReply | null;
@@ -30,7 +34,7 @@ export interface FindingPanelViewProps {
 
 /** One finding's panel (spec 5.2), drawn from what the api answered: a picture of its props. */
 export function FindingPanelView(props: FindingPanelViewProps) {
-  const { finding, label, href, reason, fixes, chosen, refusal, busy } = props;
+  const { finding, label, href, reason, fileName, fixes, chosen, refusal, busy } = props;
   const offered = fixes?.fixes ?? [];
   // Built here rather than inline, so that `label` and `href` - which are null together - narrow
   // once for the whole row.
@@ -51,7 +55,7 @@ export function FindingPanelView(props: FindingPanelViewProps) {
       </a>
     ) : null;
   return (
-    <Panel title={finding.check} meta={baseName(finding.file)} onClose={props.onClose}>
+    <Panel title={finding.check} meta={fileName(finding.file)} onClose={props.onClose}>
       <p>
         <Chip tone={toneOf(finding.severity)}>{severityWord(finding.severity)}</Chip>
       </p>
@@ -64,7 +68,7 @@ export function FindingPanelView(props: FindingPanelViewProps) {
               {note.file !== null && (
                 <>
                   {" "}
-                  <span className="quiet">{baseName(note.file)}</span>
+                  <span className="quiet">{fileName(note.file)}</span>
                 </>
               )}
             </li>

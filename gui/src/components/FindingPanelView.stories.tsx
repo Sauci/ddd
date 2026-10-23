@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Finding, FixReply, State } from "../api/types";
 import { noRouteReason, routeHref, routeLabel } from "../lib/findings";
+import { baseName } from "../lib/units";
 import {
   DEFINITION_MISMATCH,
   DEFINITION_MISMATCH_FIX,
@@ -48,6 +49,7 @@ function View({
       label={routeLabel(finding, state)}
       href={routeHref(finding)}
       reason={noRouteReason(finding, state)}
+      fileName={baseName}
       onOpen={() => undefined}
       fixes={fixes}
       chosen={chosen}

@@ -117,6 +117,75 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   it closes with the tab saying the entry is no longer declared, or it moves straight onto the
   new name.
 
+* **A screen whose next read fails keeps what it showed.**  The Files, Units, Types and Shared
+  files tabs, the project's canvas, a component's page and a values grid showed the error
+  alone when their read of the project's next revision failed - the server failing on it, or
+  the network dropping it twice - and dropped what they had drawn, a component's page taking
+  an open panel with it, and what the reader had chosen there but not applied.  They now keep
+  what they showed, with the error above it, and an open panel keeps what the reader chose in
+  it.  A refusal, such as a grid whose object was renamed away, is still shown alone, and so
+  is an error before anything was drawn.
+
+* **The page's own script the network drops once is asked for again.**  The page stayed blank
+  when the network failed the one request that loads its own code - measured in CI, in
+  Chromium on Windows, where the browser was briefly refused a socket
+  (`net::ERR_NO_BUFFER_SPACE`).  The page now asks for it once more and is drawn as if nothing
+  had happened; dropped twice, it says to reload it.  What asks is a short script the page
+  holds inline, which the content security policy allows by its SHA-256 alone.  It asks again
+  for no script of another origin, and never writes over a page already drawn.
+
+* **The start page's list stays held until the project it opened has replaced it.**  Once the
+  server had opened the project chosen, the page asked it which project was open, and until
+  that answer came it drew the list again with every project's button enabled: a second press
+  in that moment opened another project in place of the first.  The buttons now stay disabled
+  from the press until the start page goes; a project the server refuses to open gives them
+  back.
+
+* **The start page no longer says "built as" with nothing after it.**  A build record written
+  without an image, as `ddd build-info` writes one when `--image` is left out, listed an image
+  called nothing: the project's button on the start page read "built as" and stopped there.
+  Two build trees configured for one image listed it twice, as "built as firmware, firmware".
+  A record that names no image now offers its project and lists none, and each image a
+  project's records name is listed once, in the order of the records.
+
+* **The component table's buttons are disabled when `ddd gui` has stopped.**  On a component's
+  page, the buttons in the table's Shape and Unit cells, which open a variable's values and its
+  panel, stayed enabled after the page said that `ddd gui` had stopped, while the page's other
+  buttons that write were disabled.  They are now disabled with the rest, and enabled again
+  once `ddd gui` answers.
+
+* **A fix the server failed on can be chosen again.**  On the Findings tab, after the server
+  failed on applying a finding's fix - an error of its own, not a file changed on disk - the
+  panel went on saying so and drew no Apply, whichever fix was chosen next, until the finding
+  was pressed again.  Choosing a fix now takes that refusal away and offers its Apply.  A
+  refusal because a file changed on disk is still held until the analysis has caught up.
+
+* **A baseline's finding names its file as the baseline's in its panel too.**  On the Compare
+  tab, the table names the file of a finding the baseline itself reports as "the baseline's
+  sensor_hub.ddd.json", so that it is not taken for the open project's own file of that name.
+  The panel opened from that row named the file plainly, in its heading line and in its notes.
+  It now names it as the baseline's, as the table does.
+
+* **Compare asks again when it is asked again.**  On the Compare tab, pressing Compare, or
+  Enter, for the baseline just asked for sent nothing: the answer already on the page stayed -
+  a refusal for a file that did not exist yet, or "can replace" for a baseline written over
+  since - until the path or the project changed.  Every press now asks the server, which reads
+  the baseline file as it stands.
+
+* **`ddd gui` reads a field's note with the field.**  The note under a field that offers
+  choices - "Not one of this project's units", under a unit typed that the project's units file
+  does not list - is now the field's description however late it appears.  It was tied to the
+  field only if it was already there as the field first drew, so a note that came as the
+  reader typed was on screen and not read with the field by a screen reader.  Nothing changes
+  on screen.
+
+* **`ddd gui` prints its address on stdout, whatever a plugin is doing.**  For a project
+  naming a plugin, the address could go to stderr instead: the first analysis runs a
+  plugin's hooks on a thread of its own as the address is printed, and a hook runs with
+  stdout bound to stderr for the whole process.  A program reading the address from
+  `ddd gui`'s stdout then waited for it in vain; in a terminal both look alike.  The address
+  now goes to the stdout `ddd gui` was started with.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

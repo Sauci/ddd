@@ -1,6 +1,16 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftDatatypeIn, dump, renameValueA, SENSOR_HUB } from "./demo";
+import type { Page } from "@playwright/test";
+import {
+  CONTROLLER,
+  drift,
+  driftDatatypeIn,
+  driftIn,
+  dump,
+  held,
+  renameValueA,
+  SENSOR_HUB,
+} from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a reader can ask whether this delivery replaces the last", async ({ page, gui }) => {
@@ -91,13 +101,17 @@ test("a baseline missing, not json, of the wrong shape or outside the root is re
   );
 });
 
+/** The demo as the Compare journeys that open a finding serve it: dumped before ValueA is widened,
+ * and then ValueA's datatype in SensorHub widened, so that the server starts over the widened copy
+ * and the comparison it is asked for against `baseline.json` already has its `changed-interface`
+ * when the page asks. */
+function widenedAfterDump(directory: string): void {
+  dump(directory, "demo.ddd.json", "baseline.json");
+  driftDatatypeIn(directory, SENSOR_HUB, "ValueA", "uint16");
+}
+
 test("a row of the findings table opens its finding in a panel", async ({ page, copiedGui }) => {
-  // The baseline is dumped before ValueA is widened, and the server starts over the widened copy:
-  // the comparison it is asked for already has its finding when the page asks.
-  const gui = await copiedGui("demo", (directory) => {
-    dump(directory, "demo.ddd.json", "baseline.json");
-    driftDatatypeIn(directory, SENSOR_HUB, "ValueA", "uint16");
-  });
+  const gui = await copiedGui("demo", widenedAfterDump);
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Compare" }).click();
   await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
@@ -198,18 +212,7 @@ test("while a comparison is awaited the field and the button are disabled and th
 
   // The answer for the next baseline is held until the page has been seen waiting for it. Once
   // only: nothing else asks for a comparison here, the project not changing.
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route(
-    (url) => url.pathname === "/api/compare",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
-  );
+  const release = await held(page, "/api/compare");
   try {
     await baseline.fill("other.json");
     await compare.click();
@@ -224,4 +227,226 @@ test("while a comparison is awaited the field and the button are disabled and th
   await expect(verdict).toHaveText("This project can replace the baseline.");
   await expect(baseline).toBeEnabled();
   await expect(compare).toBeEnabled();
+});
+
+/** Every ask for a comparison (`GET /api/compare`) the page makes from here on, counted as it is
+ * asked, before any answer. */
+function comparesAsked(page: Page): string[] {
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/compare") asked.push(url.search);
+  });
+  return asked;
+}
+
+test("a baseline typed is asked for with Enter, once, and a field with nothing but spaces in it asks for nothing", async ({
+  page,
+  gui,
+}) => {
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  const asked = comparesAsked(page);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const baseline = page.getByRole("textbox", { name: "Baseline" });
+
+  // Nothing but spaces: the button beside the field is off, and so is Enter.
+  await baseline.fill("   ");
+  await expect(page.getByRole("button", { name: "Compare", exact: true })).toBeDisabled();
+  await baseline.press("Enter");
+
+  // A path, and Enter with no click: asked for, and answered in the verdict's own words.
+  await baseline.fill("baseline.json");
+  await baseline.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
+    "This project can replace the baseline.",
+  );
+  // The spaces' Enter went before the ask that drew the verdict, and asked nothing.
+  expect(asked).toEqual(["?baseline=baseline.json"]);
+});
+
+test("a finding about the whole delivery says why it leads nowhere", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", widenedAfterDump);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await page.getByRole("row", { name: "changed-interface" }).click();
+
+  // `compare` files every finding of its own at the candidate's description with no pointer: it
+  // is about the delivery, not a place in one file, so the panel says so and has no link.
+  const panel = page.getByRole("complementary", { name: "changed-interface" });
+  await expect(
+    panel.getByText("it is about the whole delivery being compared, not a place in one file", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(panel.getByRole("link")).toHaveCount(0);
+});
+
+test("the baseline's own findings are named as the baseline's and lead nowhere, though their files are the open project's own", async ({
+  page,
+  copiedGui,
+}) => {
+  // The project against itself, which a comparison allows: its drift is a `definition-mismatch`
+  // that the baseline's analysis files too, so the baseline's errors refuse the delivery and
+  // their files are the open project's own components.
+  const gui = await copiedGui("demo", (directory) => {
+    drift(directory);
+  });
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  await page.getByRole("textbox", { name: "Baseline" }).fill("demo.ddd.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
+    "This project cannot replace the baseline.",
+  );
+
+  // The baseline's analysis files the drift on both components, each row's message behind "in
+  // the baseline: " (`BASELINE_PREFIX`, deliveries.py), and its File cell names the file as the
+  // baseline's: the same display name a file of the open project has.
+  const row = page
+    .getByRole("row", { name: /definition-mismatch/ })
+    .filter({ hasText: "the baseline's controller.ddd.json" });
+  await expect(row).toHaveCount(1);
+  await expect(row.getByRole("gridcell").nth(0)).toHaveText(
+    "in the baseline: 'ValueA' is declared differently by component 'Controller' than by " +
+      "'SensorHub' (unit: 'rpm' != '%')",
+  );
+  await expect(row.getByRole("gridcell").nth(1)).toHaveText("the baseline's controller.ddd.json");
+  await row.click();
+
+  const panel = page.getByRole("complementary", { name: "definition-mismatch" });
+  await expect(
+    panel.getByText("it is the baseline's own finding, not a place in your project", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(panel.getByRole("link")).toHaveCount(0);
+
+  // The panel names the baseline's files as the table does - its heading line, and the file its
+  // note points at - for the display name is one the open project's own components have too.
+  await expect(panel.locator(".panel-meta")).toHaveText("the baseline's controller.ddd.json");
+  await expect(panel.locator(".panel-notes li")).toHaveText(
+    "reference declaration the baseline's sensor_hub.ddd.json",
+  );
+});
+
+test("a finding's panel is closed by its Close button, the comparison standing", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", widenedAfterDump);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  const row = page.getByRole("row", { name: "changed-interface" });
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "changed-interface" });
+  await expect(panel).toBeVisible();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+
+  await panel.getByRole("button", { name: "Close changed-interface", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(row).toHaveAttribute("aria-selected", "false");
+  // Closing a panel asks nothing again: the verdict and the table are still drawn.
+  await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
+    "This project cannot replace the baseline.",
+  );
+  await expect(row).toBeVisible();
+
+  // Pressed again, the row opens its panel again.
+  await row.click();
+  await expect(panel).toBeVisible();
+});
+
+test("a finding's panel closes by itself once a comparison no longer reports the finding, and stays closed when it returns", async ({
+  page,
+  copiedGui,
+}) => {
+  // SensorHub as it ships, kept to put back.
+  const shipped: { bytes: Buffer } = { bytes: Buffer.alloc(0) };
+  const gui = await copiedGui("demo", (directory) => {
+    dump(directory, "demo.ddd.json", "baseline.json");
+    shipped.bytes = driftDatatypeIn(directory, SENSOR_HUB, "ValueA", "uint16");
+  });
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+  await expect(verdict).toHaveText("This project cannot replace the baseline.");
+  const row = page.getByRole("row", { name: "changed-interface" });
+  await row.click();
+  const panel = page.getByRole("complementary", { name: "changed-interface" });
+  await expect(panel).toBeVisible();
+
+  // SensorHub put back as the baseline has it, which the watcher sees: the next revision asks the
+  // comparison again, it no longer reports the finding, and the panel of a finding it does not
+  // hold is gone.
+  writeFileSync(join(gui.directory, SENSOR_HUB), shipped.bytes);
+  await expect(verdict).toHaveText("This project can replace the baseline.");
+  await expect(panel).toHaveCount(0);
+
+  // Widened again, the very same finding comes back - a finding's key is its severity, check,
+  // pointer and message - and its panel does not: nobody asked for it.
+  driftDatatypeIn(gui.directory, SENSOR_HUB, "ValueA", "uint16");
+  await expect(verdict).toHaveText("This project cannot replace the baseline.");
+  await expect(row).toBeVisible();
+  await expect(panel).toHaveCount(0);
+});
+
+test("a baseline refused, and then made, is asked for again by the same press", async ({
+  page,
+  gui,
+}) => {
+  const root = posixOf(gui.directory);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const compare = page.getByRole("button", { name: "Compare", exact: true });
+  await page.getByRole("textbox", { name: "Baseline" }).fill("later.json");
+  await compare.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    startingWith(`the baseline '${root}/later.json' is unreadable: `),
+  );
+
+  // The file the refusal names now exists. Neither the field nor the project changed, so no
+  // revision comes to ask again: only the press can, and the server reads the file as it stands.
+  dump(gui.directory, "demo.ddd.json", "later.json");
+  await compare.click();
+  await expect(page.getByRole("status").filter({ hasText: "replace the baseline" })).toHaveText(
+    "This project can replace the baseline.",
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a baseline written over is asked for again by the same press, and the verdict follows", async ({
+  page,
+  gui,
+}, testInfo) => {
+  dump(gui.directory, "demo.ddd.json", "baseline.json");
+  // Another delivery, made from a copy of the demo in which ValueA is in rpm, in the file that
+  // produces it and in the one that reads it, so that the copy has no error of its own and dumps.
+  const other = testInfo.outputPath("other");
+  cpSync(gui.directory, other, { recursive: true });
+  driftIn(other, SENSOR_HUB, "ValueA", "rpm");
+  driftIn(other, CONTROLLER, "ValueA", "rpm");
+
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Compare" }).click();
+  const compare = page.getByRole("button", { name: "Compare", exact: true });
+  const verdict = page.getByRole("status").filter({ hasText: "replace the baseline" });
+  await page.getByRole("textbox", { name: "Baseline" }).fill("baseline.json");
+  await compare.click();
+  await expect(verdict).toHaveText("This project can replace the baseline.");
+
+  // The other delivery lands over the baseline's file. The open project is not touched, so no
+  // revision comes to ask again: only the press can, or the verdict above stands, stale.
+  dump(other, "demo.ddd.json", join(gui.directory, "baseline.json"));
+  await compare.click();
+  await expect(verdict).toHaveText("This project cannot replace the baseline.");
 });

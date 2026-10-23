@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { getShared, postEdit } from "../api/client";
 import type { State } from "../api/types";
 import { useDebounced } from "../app/useDebounced";
+import { useKept } from "../app/useKept";
 import { SharedAddView } from "../components/SharedAddView";
 import { SharedTableView } from "../components/SharedTableView";
 import { unreadable } from "../lib/findings";
@@ -69,6 +70,7 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
     // already do.
     placeholderData: (previous) => previous,
   });
+  const answer = useKept(shared, "shared");
   // The entry whose panel closed because nothing declares it any longer (spec 5.4), named above
   // the table until another row is selected or the reader leaves the tab.
   const [gone, setGone] = useState<string | null>(null);
@@ -83,15 +85,15 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
   // The key of the entry whose panel this answer draws, or `null` where it draws the form or
   // nothing - recorded as the panel held once drawn, so the next answer keeps it.
   const drawn =
-    shared.data !== undefined &&
+    answer !== undefined &&
     name !== undefined &&
     kind !== undefined &&
-    opensPanel(shared.data, { kind, name }, held)
+    opensPanel(answer, { kind, name }, held)
       ? rowKey(kind, name)
       : null;
   useEffect(() => setHeld(drawn), [drawn]);
 
-  if (shared.data === undefined) {
+  if (answer === undefined) {
     if (shared.isError) return <Banner tone="error">{shared.error.message}</Banner>;
     return <p className="quiet">Reading the project's shared files…</p>;
   }
@@ -120,7 +122,7 @@ export function SharedPage({ state, name, kind, onName, stopped, onOpen }: Props
       <div className={name !== undefined || declaring ? "with-panel" : undefined}>
         <div>
           <SharedTableView
-            reply={shared.data}
+            reply={answer}
             // Both halves of the address go to the table and both come back: a row is keyed by
             // its vocabulary and its name together, so the row a reader clicked is the row that
             // answers, even where a project declares a constant and a section under one spelling.

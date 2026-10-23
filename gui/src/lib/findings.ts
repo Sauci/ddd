@@ -7,6 +7,7 @@ import type {
   ListedFinding,
   State,
 } from "../api/types";
+import type { Refused } from "./refusals";
 import { hrefOf, type Route } from "./route";
 import { baseName } from "./units";
 
@@ -139,6 +140,41 @@ export function selectionAfter(
   return reported === undefined
     ? { selected: undefined, gone: true }
     : { selected: reported, gone: false };
+}
+
+/** A fix's Apply refused because a file changed on disk since its plan was made: the sentence and
+ * the revision it was refused at (`Refused`), and the key of the finding whose fix it was - the
+ * wait is about that fix, so another finding selected in the meantime is not given its sentence. */
+export interface StaleFix extends Refused {
+  key: string | undefined;
+}
+
+/** The server's refusals of a fix's Apply that the Findings tab holds. */
+export interface FixRefusals {
+  /** A refusal for any reason but a file changed on disk: what the panel says until the reader
+   * chooses again (`refusalsAfterChoice`). */
+  readonly refused: string | null;
+  /** A refusal because a file changed on disk: held until the analysis has moved past the revision
+   * it was made at (`shownRefusal`, `lib/refusals.ts`). */
+  readonly stale: StaleFix | null;
+}
+
+/** No refusal held: before an Apply is pressed, and once one has been applied. */
+export const NO_REFUSALS: FixRefusals = { refused: null, stale: null };
+
+/**
+ * What the Findings tab goes on holding of a fix's refusals once the reader chooses again: another
+ * fix, the same one let go and chosen again, another finding, or an Apply pressed once more.
+ *
+ * A refusal for any reason but a changed file says nothing of what is chosen now, and goes with the
+ * choice: left standing, the panel withdrew the fix's Apply - it draws the refusal in place of the
+ * consequence and the actions - until the finding was pressed again. A refusal because a file
+ * changed on disk is the one a choice cannot answer: choosing again at once sends the same stale
+ * fingerprints the server just refused, so it is held until the analysis moves past the revision it
+ * was made at.
+ */
+export function refusalsAfterChoice(held: FixRefusals): FixRefusals {
+  return { refused: null, stale: held.stale };
 }
 
 /** What the button that follows a finding says, or `null` when it leads nowhere. */

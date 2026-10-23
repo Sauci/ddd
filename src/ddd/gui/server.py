@@ -18,7 +18,8 @@ this one trusts nothing it did not hand out itself:
   this check ever runs. An older browser sends neither header on a plain request, so this
   does not catch it there;
 * a request that changes anything has to come from this server's own origin, as json;
-* no page of it can be framed, and only a script served from this origin runs (a server that
+* no page of it can be framed, and no script runs but one served from this origin, or one the
+  page itself holds inline, which :func:`page_policy` allows by its hash alone (a server that
   used the same port earlier could have served this origin; see ``docs/gui_security.rst``);
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
   connections refuses the next itself, so no flood of connections can exhaust the machine's
@@ -43,8 +44,10 @@ See ``docs/gui_security.rst`` for the threat model this is reviewed against.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import errno
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -57,6 +60,7 @@ import time
 import traceback
 import webbrowser
 from collections.abc import Callable, Sequence
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
@@ -176,6 +180,55 @@ SECURITY_HEADERS: Final = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
 }
+
+
+class _InlineScripts(HTMLParser):
+    """The text of each script a page holds inline: one with no ``src``, whose text is what
+    runs."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.scripts: list[str] = []
+        self._text: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "script" and all(name != "src" for name, _ in attrs):
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._text is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._text is not None:
+            self.scripts.append("".join(self._text))
+            self._text = None
+
+
+def page_policy(page: bytes) -> str:
+    """The content security policy of every answer of a server serving ``page``: the base one in
+    :data:`SECURITY_HEADERS`, and, where the page holds a script inline, ``script-src`` allowing
+    the server's own scripts and each inline one by its SHA-256 - never ``'unsafe-inline'``
+    (spec 2026-10-21 §6). The page's boot script is the one today: it asks for the page's own
+    module once more when the network failed it, which no code of that module can do.
+
+    Hashed as a browser reads the script: its parser turns every CRLF, and every lone CR, into LF
+    before a script runs, and a page's bytes may hold either - an ``index.html`` saved by an
+    editor on Windows, say. (``.gitattributes`` checks it out with LF on every system.)
+    """
+    reader = _InlineScripts()
+    text = page.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    reader.feed(text)
+    reader.close()
+    base = SECURITY_HEADERS["Content-Security-Policy"]
+    if not reader.scripts:
+        return base
+    hashes = " ".join(
+        "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
+        for script in reader.scripts
+    )
+    return f"{base}; script-src 'self' {hashes}"
+
 
 SIGN_IN_PAGE: Final = (
     b'<!doctype html><html lang="en"><meta charset="utf-8"><title>ddd gui</title>'
@@ -355,6 +408,11 @@ class GuiServer(ThreadingHTTPServer):
             raise
         self.api = api
         self.static = static.resolve()
+        # Read once: the pages do not change under a running server, and every answer carries it.
+        # `run` refuses to start without an index.html; a test's server may have none.
+        page = self.static / "index.html"
+        base = SECURITY_HEADERS["Content-Security-Policy"]
+        self.policy = page_policy(page.read_bytes()) if page.is_file() else base
         self.token = secrets.token_urlsafe(TOKEN_BYTES)
         self._clock = clock
         self._code: tuple[str, float] | None = None
@@ -767,6 +825,8 @@ class _Handler(BaseHTTPRequestHandler):
         self, status: int, data: bytes, kind: str, headers: dict[str, str] | None = None
     ) -> None:
         own = dict(headers or {})
+        # The policy of the page this server serves (`page_policy`), in the base one's place.
+        own.setdefault("Content-Security-Policy", self._gui.policy)
         if self.command == "POST" and not self._body_read:
             # Refused before its body was read. A body this server would have read is read now
             # and thrown away: nothing of it is then read as the next request, and nothing is
@@ -931,6 +991,11 @@ def run(
             file=sys.stderr,
         )
         return EXIT_USAGE
+    # The stdout the address goes to, taken before the analyser's thread starts. A plugin's hook
+    # runs there with stdout bound to stderr (``ddd.plugins._call``), and
+    # ``contextlib.redirect_stdout`` binds it for every thread: printed while a hook ran, the
+    # address went to stderr, where a program reading it from stdout never found it (P19c-18).
+    stdout = sys.stdout
     session = Session(Path.cwd(), build_directories)
     # Started before the project is opened, so that its first analysis runs on the analyser's
     # own thread while the address is printed and served, and stopped on every way out of here,
@@ -959,7 +1024,7 @@ def run(
                 attempt += 1
             except OSError as error:
                 return _refused(address, port, error)
-        print(f"ddd gui (preview) serving {server.address}", flush=True)
+        print(f"ddd gui (preview) serving {server.address}", file=stdout, flush=True)
         if beyond_loopback:
             # No browser to open in a container, and nothing left to protect this with either:
             # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost,

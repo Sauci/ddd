@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import contextlib
 import dataclasses
 import errno
+import hashlib
 import http.client
 import json
 import os
@@ -60,6 +63,7 @@ from ddd.gui.server import (
     GuiServer,
     is_loopback,
     launched,
+    page_policy,
     run,
     static_directory,
 )
@@ -70,6 +74,10 @@ FOREIGN_COOKIES = ('prefs={"lang":"en"}', "arr[0]=1", "user@site=1", "lonely")
 
 JOURNEY_HELPERS: Final = EXAMPLES.parent / "gui" / "e2e" / "demo.ts"
 """The journeys' own helpers, whose ``failing`` answers a request as this server fails one."""
+
+PAGE_SOURCE: Final = EXAMPLES.parent / "gui" / "index.html"
+"""The page's own source, whose inline scripts the build copies as they are: the page ``ddd gui``
+serves holds the very same."""
 
 JS_STRING: Final = r'"(?:[^"\\]|\\.)*"'
 """A double-quoted string literal of javascript, escapes and all: json reads it as it is, for the
@@ -964,6 +972,62 @@ class TestWhoMayAsk:
         connection.close()
 
 
+def _hashed(text: str) -> str:
+    return "'sha256-" + base64.b64encode(hashlib.sha256(text.encode()).digest()).decode() + "'"
+
+
+class TestThePagePolicy:
+    BASE = SECURITY_HEADERS["Content-Security-Policy"]
+
+    def test_a_page_with_no_inline_script_keeps_the_base_policy(self) -> None:
+        page = b'<!doctype html><script type="module" src="/assets/index-a.js"></script>'
+        assert page_policy(page) == self.BASE
+
+    def test_each_inline_script_is_allowed_by_its_hash(self) -> None:
+        page = b"<html><head><script>one()</script></head><body><script> two(); </script></body>"
+        assert page_policy(page) == (
+            f"{self.BASE}; script-src 'self' {_hashed('one()')} {_hashed(' two(); ')}"
+        )
+
+    def test_a_page_written_with_crlf_is_hashed_as_the_browser_reads_it(self) -> None:
+        # Review Focus 1: the browser's parser turns every CRLF and every lone CR into LF before
+        # it hashes a script, so a page whose bytes carry either - saved by an editor on Windows,
+        # say - is hashed as its LF text. (.gitattributes checks index.html out with LF on every
+        # system, the windows runners included.)
+        page = b"<script>\r\n  a();\r  b();\n</script>"
+        expected = _hashed("\n  a();\n  b();\n")
+        assert page_policy(page) == f"{self.BASE}; script-src 'self' {expected}"
+
+    def test_an_empty_inline_script_is_hashed_too(self) -> None:
+        assert page_policy(b"<script></script>") == f"{self.BASE}; script-src 'self' {_hashed('')}"
+
+    def test_the_page_holds_one_inline_script_today(self) -> None:
+        """docs/gui_security.rst says the page holds one script inline today, the one that asks
+        for its own module once more. ``page_policy`` allows each the page holds, so a second one
+        added to gui/index.html would be allowed without a word, and that page would go untrue:
+        this says so first."""
+        assert page_policy(PAGE_SOURCE.read_bytes()).count("'sha256-") == 1
+
+    def test_a_server_over_pages_with_no_index_keeps_the_base_policy(self, tmp_path: Path) -> None:
+        """``run`` refuses to start over pages with no ``index.html``; a server built over them
+        regardless has no page to read a script from, and answers with the base policy."""
+        bare = tmp_path / "bare"
+        bare.mkdir()
+        server = GuiServer(Api(Session(tmp_path)), bare)
+        try:
+            assert server.policy == self.BASE
+        finally:
+            server.server_close()
+
+
+INLINE_PAGE: Final = (
+    b"<!doctype html><html><head><script>again();</script>"
+    b'<script type="module" src="/app.js"></script></head><body></body></html>'
+)
+"""A stand-in for the compiled pages' ``index.html``, holding one script inline, as theirs
+holds the boot script that asks for the page's own module once more."""
+
+
 class TestWhatIsServed:
     def test_every_response_carries_the_security_headers(self, server) -> None:
         for method, path in (("GET", "/"), ("GET", "/api/session"), ("GET", "/api/nothing")):
@@ -972,6 +1036,21 @@ class TestWhatIsServed:
             assert policy is not None and "frame-ancestors 'none'" in policy
             assert response.getheader("X-Content-Type-Options") == "nosniff"
             assert response.getheader("Referrer-Policy") == "no-referrer"
+
+    @pytest.fixture
+    def inline(self, project_file: Path, pages: Path) -> Iterator[GuiServer]:
+        """``server``, over pages whose ``index.html`` holds a script inline (``INLINE_PAGE``),
+        written before the server reads it."""
+        (pages / "index.html").write_bytes(INLINE_PAGE)
+        session = Session(project_file.parent)
+        session.open(project_file)
+        yield from serving(Api(session, project_file, wait_seconds=0.05), pages)
+
+    @pytest.mark.parametrize("path", ["/", "/api/session", "/app.js"])
+    def test_every_answer_carries_the_policy_of_the_page_served(self, inline, path) -> None:
+        response, _ = ask(inline, "GET", path)
+        assert response.status == 200
+        assert response.getheader("Content-Security-Policy") == page_policy(INLINE_PAGE)
 
     def test_the_api_is_never_cached_and_the_pages_are_not_told_so(self, server) -> None:
         assert ask(server, "GET", "/api/session")[0].getheader("Cache-Control") == "no-store"
@@ -3007,6 +3086,26 @@ class TestRunning:
         else:
             assert opener.addresses == []
         assert stopped == [True]
+
+    def test_its_address_goes_to_stdout_while_a_plugin_hook_holds_stdout(
+        self, project_file, pages, monkeypatch, capsys
+    ) -> None:
+        """The first analysis runs on the analyser's own thread while the address is printed,
+        and a plugin's hook there runs with stdout bound to stderr (``ddd.plugins._call``) - for
+        every thread, since ``contextlib.redirect_stdout`` swaps the process's own
+        ``sys.stdout``. The address still goes to the stdout ``ddd gui`` was started with. A
+        program reading it there met it on stderr instead, on Windows, for a project naming a
+        plugin (P19c-18). Here the hook holds stdout from the session's start to its stop."""
+        hook = contextlib.redirect_stdout(sys.stderr)
+        monkeypatch.setattr(Session, "start", lambda self: hook.__enter__())
+        monkeypatch.setattr(Session, "start_polling", lambda self: None)
+        monkeypatch.setattr(Session, "stop", lambda self: hook.__exit__(None, None, None))
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        assert run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        captured = capsys.readouterr()
+        (line,) = captured.out.splitlines()
+        assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
+        assert "serving" not in captured.err
 
     def test_a_browser_that_never_returns_does_not_hold_up_serving(
         self, project_file, pages, monkeypatch

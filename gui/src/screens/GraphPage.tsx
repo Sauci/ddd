@@ -13,6 +13,7 @@ import {
 import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import { getGraph } from "../api/client";
 import type { GraphReply, State } from "../api/types";
+import { useKept } from "../app/useKept";
 import { useLayout } from "../app/useLayout";
 import { FlowEdge } from "../components/FlowEdge";
 import { ModuleNode } from "../components/ModuleNode";
@@ -81,8 +82,9 @@ export function GraphPage({
     // answer is waited for.
     placeholderData: (previous) => previous,
   });
+  const answer = useKept(graph, JSON.stringify(["graph", project]));
 
-  if (graph.data === undefined) {
+  if (answer === undefined) {
     if (graph.isError) return <Banner tone="error">{graph.error.message}</Banner>;
     return <p className="quiet">Drawing the project…</p>;
   }
@@ -91,14 +93,14 @@ export function GraphPage({
       {/* Spec 5.6: a server that stopped answering leaves the canvas as it was, and says so
           beside it - what is drawn is still the truth of the last revision that was read. */}
       {graph.isError && <Banner tone="error">{graph.error.message}</Banner>}
-      {!graph.data.dictionary && (
+      {!answer.dictionary && (
         <Banner tone="warning">
           This project has no dictionary, so its modules are drawn without arrows.
         </Banner>
       )}
       <ReactFlowProvider>
         <Canvas
-          graph={graph.data}
+          graph={answer}
           project={project}
           variable={variable}
           revision={state?.revision}

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { getCompare } from "../api/client";
 import type { State } from "../api/types";
 import { CompareView } from "../components/CompareView";
-import { compareRows } from "../lib/compare";
+import { type Ask, compareRows, nextAsk } from "../lib/compare";
 import type { Route } from "../lib/route";
 
 interface Props {
@@ -20,23 +20,25 @@ interface Props {
  * `CompareView` draws all three, holding none of them itself.
  *
  * Re-asks whenever the revision changes: `revision` sits in the query's own key beside the
- * baseline last asked for, exactly as `FindingsPage` reads `state.revision` into its own `fix`
+ * comparison last asked for, exactly as `FindingsPage` reads `state.revision` into its own `fix`
  * query, so that fixing what the verdict complained about turns it while the tab is open (spec
  * 2026-09-26-gui-compare-design.md §4) - and typing in the field, which never touches `asked`,
- * cannot itself trigger a request.
+ * cannot itself trigger a request. Asking again for the baseline just asked for asks again too:
+ * every ask is numbered into the key (`nextAsk`), so the server reads the baseline's file as it
+ * stands, where the answer the page held would have stood for a file made or written over since.
  */
 export function ComparePage({ state, stopped, onOpen }: Props) {
   const revision = state.revision;
   // What the field shows, typed freely.
   const [baseline, setBaseline] = useState("");
-  // The baseline last asked for, or `null` before the reader has asked at all - what keys the
+  // The comparison last asked for, or `null` before the reader has asked at all - what keys the
   // query, so a later revision re-asks *this* baseline rather than whatever the field shows by
-  // then.
-  const [asked, setAsked] = useState<string | null>(null);
+  // then, and so that asking for it again is a query of its own (`nextAsk`).
+  const [asked, setAsked] = useState<Ask | null>(null);
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const compare = useQuery({
     queryKey: ["compare", asked, revision],
-    queryFn: asked === null ? skipToken : () => getCompare(asked),
+    queryFn: asked === null ? skipToken : () => getCompare(asked.baseline),
   });
   const reply = compare.data ?? null;
   // The finding whose panel was open closes quietly when a fresh reply no longer carries it - a
@@ -56,11 +58,10 @@ export function ComparePage({ state, stopped, onOpen }: Props) {
       onOpen={onOpen}
       baseline={baseline}
       onBaseline={setBaseline}
-      // Trimmed here, once, rather than where the field is typed: `CompareView`'s own disabled
-      // check reads the same way (`baseline.trim() === ""`), so the two must agree on what
-      // counts as "nothing typed" - and a path with a stray leading or trailing space is not a
-      // path under the root the server would find.
-      onAsk={() => setAsked(baseline.trim())}
+      // Trimmed in `nextAsk`, once, rather than where the field is typed: `CompareView`'s own
+      // disabled check reads the same way (`baseline.trim() === ""`), so the two must agree on
+      // what counts as "nothing typed".
+      onAsk={() => setAsked((previous) => nextAsk(previous, baseline))}
       reply={reply}
       refusal={compare.isError ? compare.error.message : null}
       busy={stopped || compare.isFetching}

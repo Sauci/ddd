@@ -1,9 +1,9 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { test as base, type TestInfo } from "@playwright/test";
+import { test as base, expect, type TestInfo } from "@playwright/test";
 
 const EXAMPLES = fileURLToPath(new URL("../../examples/", import.meta.url));
 const GENERATE_PROJECT = fileURLToPath(new URL("../../tools/generate_project.py", import.meta.url));
@@ -32,8 +32,8 @@ export interface Gui {
   /** The address ddd gui printed, token included. */
   address: string;
   /** The directory the server is started in and edits: a copy of an example, or the project
-   * `generatedGui` generates, under this test's own output directory - or, for `mappedGui`, a
-   * copy of the demo in a fresh directory on the drive `DDD_MAPPED_DRIVE` names. */
+   * `generatedGui` or `chainedGui` generates, under this test's own output directory - or, for
+   * `mappedGui`, a copy of the demo in a fresh directory on the drive `DDD_MAPPED_DRIVE` names. */
   directory: string;
   /** Stops the server; stopping twice is harmless. */
   stop: () => Promise<void>;
@@ -63,33 +63,47 @@ export type CopiedGui = (
 ) => Promise<Gui>;
 
 /**
- * `tools/generate_project.py DIRECTORY --declarations 20000 --shape many --missing-ids 1
- * --unread 0.5` through `DDD_PYTHON`, into `directory`, which must not exist yet - the way
- * `demo.ts`'s own `dump` runs `ddd dump` (part 17's task 1). 20,000 declarations, "every output
- * without an id and half the inputs unread" (task 12's own brief): large enough that the
- * analysis an edit starts runs long enough for a reader to see the heading read "Updating the
- * findings…" rather than turn back before a reader's eye catches it - and findings enough,
- * 25,000 of them, that the Findings tab's table is a window rather than a page's worth of rows
- * (tasks 7 and 9).
+ * `generatedGui`'s project: 20,000 declarations, "every output without an id and half the
+ * inputs unread" (part 17's task 12's own brief): large enough that the analysis an edit starts
+ * runs long enough for a reader to see the heading read "Updating the findings…" rather than turn
+ * back before a reader's eye catches it - and findings enough, 25,000 of them, that the Findings
+ * tab's table is a window rather than a page's worth of rows (its tasks 7 and 9).
  */
-function generated(directory: string): void {
+const MANY: readonly string[] = [
+  "--declarations",
+  "20000",
+  "--shape",
+  "many",
+  "--missing-ids",
+  "1",
+  "--unread",
+  "0.5",
+];
+
+/**
+ * `chainedGui`'s project: 4,000 declarations in the `chain` shape, 2,000 components each reading
+ * the next one's output and the last reading the first's, a cycle the canvas's layout breaks into
+ * one chain 2,000 deep. dagre overflows its stack in the layout worker on a chain that deep, and
+ * the canvas is laid out in ranks only (`ranked`'s doc, gui/src/lib/layout.ts). In Chrome on the
+ * Linux development PC a chain of 907 components laid out in full and one of 908 in ranks only,
+ * four times each, at 110accb: 2,000 is more than twice that, the room left for the Windows legs,
+ * where no one has measured it. Never `--unread`: it turns inputs into outputs, and the chain
+ * would break where it did.
+ */
+const CHAIN: readonly string[] = ["--declarations", "4000", "--shape", "chain"];
+
+/**
+ * `tools/generate_project.py DIRECTORY` with `options` through `DDD_PYTHON`, into `directory`,
+ * which must not exist yet - the way `demo.ts`'s own `dump` runs `ddd dump` (part 17's task 1):
+ * `generatedGui`'s project unless told otherwise.
+ */
+function generated(directory: string, options: readonly string[] = MANY): void {
   const result = spawnSync(
     process.env.DDD_PYTHON ?? "python",
-    [
-      GENERATE_PROJECT,
-      directory,
-      "--declarations",
-      "20000",
-      "--shape",
-      "many",
-      "--missing-ids",
-      "1",
-      "--unread",
-      "0.5",
-    ],
-    // A minute is far more than the ~0.15 s this takes (measured): long enough that a real run
-    // never trips it, short enough that an interpreter stuck for some other reason does not
-    // hang the whole suite behind one fixture.
+    [GENERATE_PROJECT, directory, ...options],
+    // A minute is far more than the ~0.15 s either project takes (measured): long enough that a
+    // real run never trips it, short enough that an interpreter stuck for some other reason does
+    // not hang the whole suite behind one fixture.
     { timeout: 60_000 },
   );
   // The timeout above kills the process on expiry and sets *both* `result.error` (`code:
@@ -116,8 +130,8 @@ function generated(directory: string): void {
   }
   if (result.status !== 0) {
     throw new Error(
-      `generate_project.py ${directory} --declarations 20000 --shape many --missing-ids 1 ` +
-        `--unread 0.5 exited with ${String(result.status)}: ${result.stderr.toString("utf8")}`,
+      `generate_project.py ${directory} ${options.join(" ")} exited with ` +
+        `${String(result.status)}: ${result.stderr.toString("utf8")}`,
     );
   }
 }
@@ -136,18 +150,91 @@ function copiedExample(example: Example, parent: string): string {
   return directory;
 }
 
+/** A stand-in for the browser `ddd gui` opens: a program that writes the address it is opened
+ * with to a file beside it, and a function answering that address once it is there. A shell
+ * script, or on Windows a batch file. `webbrowser` splits `BROWSER` at `os.pathsep` - Node's
+ * `path.delimiter`, `:` or on Windows `;` - and runs an entry with no `%s` in it whole, as one
+ * program handed the address as its one argument (`GenericBrowser`): so the program's path may
+ * hold no such separator. It may hold a space, though no CI run has had one, so a batch file
+ * reached through such a path is untested. A batch file reads the address as `%*`, since cmd
+ * splits `%1` at the `=` of `?code=`. */
+function recorder(directory: string): { program: string; opened: () => Promise<string> } {
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, "opened.txt");
+  const program = join(directory, process.platform === "win32" ? "record.cmd" : "record.sh");
+  if (program.includes(delimiter)) {
+    throw new Error(`webbrowser cannot run ${program}: it splits BROWSER at ${delimiter}`);
+  }
+  if (process.platform === "win32") {
+    writeFileSync(program, '@echo off\r\n>"%~dp0opened.txt" echo %*\r\n');
+  } else {
+    writeFileSync(program, '#!/bin/sh\nprintf \'%s\' "$1" > "$(dirname "$0")/opened.txt"\n', {
+      mode: 0o755,
+    });
+  }
+  const opened = async () => {
+    // `launched` runs on a thread of its own once the address is printed (server.py's `run`).
+    await expect
+      .poll(
+        () => {
+          try {
+            return existsSync(file) && readFileSync(file, "utf8").trim() !== "";
+          } catch {
+            // Refused while the program still holds the file - EBUSY on Windows, say, while
+            // cmd.exe holds its redirect: no answer yet, so asked again, never the poll's end.
+            return false;
+          }
+        },
+        {
+          message: `the address ddd gui opened its browser on, written to ${file}`,
+          timeout: 10_000,
+        },
+      )
+      .toBe(true);
+    return readFileSync(file, "utf8").trim();
+  };
+  return { program, opened };
+}
+
+/** `ddd gui` with the browser it opens itself, for the sign-in no other journey sees: every
+ * other server is started with `--no-browser`. */
+export type OpenedGui = Gui & { opened: () => Promise<string> };
+
+/** What else `start` is told: `browser`, a program `ddd gui` opens its browser with, through the
+ * `BROWSER` variable Python's `webbrowser` reads, in place of `--no-browser`. */
+interface StartOptions {
+  browser?: string;
+}
+
+/** How long `ddd gui` may take to print its address (`served`): it prints it within a second or
+ * two of starting on every leg, and a journey that waited longer would only wait out its own
+ * timeout, its teardown then waiting on the start another (P19c-16). */
+const ADDRESS_WAIT_MS = 20_000;
+
+/** How long its first analysis may take to land once the address is printed (`analysed`), well
+ * past the generated projects' few seconds, for the same reason. */
+const ANALYSIS_WAIT_MS = 30_000;
+
 /** `ddd gui` over `directory`, already prepared, naming `project` on the command line or opening
  * on the start page where it is empty; stopped by the `Gui`'s own `stop`. The shared head of
  * `serving` and `copiedGui`. */
-async function start(directory: string, project: readonly string[]): Promise<Gui> {
+async function start(
+  directory: string,
+  project: readonly string[],
+  options: StartOptions = {},
+): Promise<Gui> {
   // python -m ddd rather than the ddd launcher: on Windows the launcher starts python as a child
   // of its own, which killing the launcher leaves running, holding the port and the copy.
   const child = spawn(
     process.env.DDD_PYTHON ?? "python",
-    ["-m", "ddd", "gui", ...project, "--no-browser"],
+    ["-m", "ddd", "gui", ...project, ...(options.browser === undefined ? ["--no-browser"] : [])],
     {
       cwd: directory,
-      stdio: ["ignore", "pipe", "inherit"],
+      // Its stderr piped rather than inherited, and passed on line by line (`served`).
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(options.browser === undefined
+        ? {}
+        : { env: { ...process.env, BROWSER: options.browser } }),
     },
   );
   let stopped = false;
@@ -219,38 +306,83 @@ async function analysed(address: string): Promise<void> {
   const token = new URL(address).searchParams.get("token");
   if (token === null) throw new Error(`ddd gui printed an address with no token: ${address}`);
   const headers = { authorization: `Bearer ${token}` };
+  // Bounded, as `served` is, so that an analysis that never lands fails the journey saying so.
+  const deadline = Date.now() + ANALYSIS_WAIT_MS;
   let after: number | null = null;
   for (;;) {
     const asked = new URL(after === null ? "/api/state" : `/api/state?after=${after}`, address);
-    const response = await fetch(asked, { headers });
-    // Refused - signed out, or no project open - it would be refused again at every ask, and the
-    // journey would wait out its own timeout saying nothing of why.
-    if (response.status !== 200) {
+    const signal = AbortSignal.timeout(Math.max(deadline - Date.now(), 0));
+    let state: { version: number; revision: number; analysing: boolean };
+    try {
+      const response = await fetch(asked, { headers, signal });
+      // Refused - signed out, or no project open - it would be refused again at every ask, and
+      // the journey would wait out its own timeout saying nothing of why.
+      if (response.status !== 200) {
+        throw new Error(
+          `ddd gui answered ${response.status} to ${asked.pathname}: ${await response.text()}`,
+        );
+      }
+      state = (await response.json()) as typeof state;
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "TimeoutError")) throw error;
       throw new Error(
-        `ddd gui answered ${response.status} to ${asked.pathname}: ${await response.text()}`,
+        `ddd gui at ${new URL(address).origin} had not finished its first analysis ` +
+          `${ANALYSIS_WAIT_MS / 1000} s after printing its address`,
       );
     }
-    const state = (await response.json()) as {
-      version: number;
-      revision: number;
-      analysing: boolean;
-    };
     if (state.revision > 0 && !state.analysing) return;
     after = state.version;
   }
 }
 
+/**
+ * The address `ddd gui` prints on its stdout once it serves (pytest pins the stream). Its stderr is
+ * read too, each line passed on as it was when stderr was inherited, so that an address that
+ * never comes is an error naming what each stream gave, rather than a journey waiting out its
+ * timeout and its teardown another. That is how a project naming a plugin met it on Windows: a
+ * plugin's hook ran with stdout bound to stderr for the whole process as the address was printed,
+ * which `run` (server.py) now guards against (P19c-18).
+ */
 function served(child: ChildProcess): Promise<string> {
   return new Promise((resolve, reject) => {
-    if (child.stdout === null) {
-      reject(new Error("ddd gui has no stdout"));
+    if (child.stdout === null || child.stderr === null) {
+      reject(new Error("ddd gui has no stdout or no stderr to read"));
       return;
     }
-    createInterface({ input: child.stdout }).on("line", (line) => {
-      const found = /serving (\S+)/.exec(line);
-      if (found?.[1] !== undefined) resolve(found[1]);
-    });
-    child.once("exit", (code) => reject(new Error(`ddd gui exited with ${code} before serving`)));
+    const streams = { stdout: child.stdout, stderr: child.stderr };
+    const seen: Record<"stdout" | "stderr", string[]> = { stdout: [], stderr: [] };
+    let waiting = true;
+    const settle = (settled: () => void) => {
+      if (!waiting) return;
+      waiting = false;
+      clearTimeout(timer);
+      settled();
+    };
+    const timer = setTimeout(() => {
+      settle(() =>
+        reject(
+          new Error(
+            `ddd gui (pid ${child.pid}) printed no address within ${ADDRESS_WAIT_MS / 1000} s: ` +
+              `its stdout gave ${JSON.stringify(seen.stdout)}, ` +
+              `its stderr ${JSON.stringify(seen.stderr)}`,
+          ),
+        ),
+      );
+    }, ADDRESS_WAIT_MS);
+    for (const name of ["stdout", "stderr"] as const) {
+      createInterface({ input: streams[name] }).on("line", (line) => {
+        if (waiting) seen[name].push(line);
+        if (name === "stderr") {
+          process.stderr.write(`${line}\n`);
+          return;
+        }
+        const address = /serving (\S+)/.exec(line)?.[1];
+        if (address !== undefined) settle(() => resolve(address));
+      });
+    }
+    child.once("exit", (code) =>
+      settle(() => reject(new Error(`ddd gui exited with ${code} before serving`))),
+    );
   });
 }
 
@@ -271,8 +403,10 @@ export const test = base.extend<{
   vocabularyGui: Gui;
   structuresGui: Gui;
   generatedGui: Gui;
+  chainedGui: Gui;
   mappedGui: Gui;
   copiedGui: CopiedGui;
+  openedGui: OpenedGui;
 }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   gui: async ({}, use, testInfo) => started(DEMO, true, use, testInfo),
@@ -286,6 +420,12 @@ export const test = base.extend<{
   generatedGui: async ({}, use, testInfo) => {
     const directory = testInfo.outputPath("generated");
     generated(directory);
+    await serving(directory, [join(directory, "project.ddd.json")], use);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  chainedGui: async ({}, use, testInfo) => {
+    const directory = testInfo.outputPath("chained");
+    generated(directory, CHAIN);
     await serving(directory, [join(directory, "project.ddd.json")], use);
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
@@ -304,6 +444,20 @@ export const test = base.extend<{
     );
     cpSync(join(EXAMPLES, DEMO.directory), directory, { recursive: true });
     await serving(directory, [join(directory, DEMO.project)], use);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
+  openedGui: async ({}, use, testInfo) => {
+    const directory = testInfo.outputPath(DEMO.directory);
+    cpSync(join(EXAMPLES, DEMO.directory), directory, { recursive: true });
+    const browser = recorder(testInfo.outputPath("browser"));
+    const gui = await start(directory, [join(directory, DEMO.project)], {
+      browser: browser.program,
+    });
+    try {
+      await use({ ...gui, opened: browser.opened });
+    } finally {
+      await gui.stop();
+    }
   },
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern
   copiedGui: async ({}, use, testInfo) => {

@@ -229,6 +229,28 @@ class TestFindingProjects:
         (found,) = find_projects(tmp_path).projects
         assert (found.path.name, found.name) == ("gone.ddd.json", None)
 
+    def test_a_record_that_names_no_image_offers_its_project_and_lists_none(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd build-info`` without ``--image`` writes ``"image": ""``: not an image, and the
+        start page printed ``built as`` for it with nothing after."""
+        build_record(tmp_path, tmp_path / "gone.ddd.json", image="")
+        (found,) = find_projects(tmp_path).projects
+        assert (found.path.name, found.images) == ("gone.ddd.json", ())
+
+    def test_an_image_two_records_name_is_listed_once_in_the_order_of_the_records(
+        self, shared: Path
+    ) -> None:
+        """Two build trees configured for one image name it twice, one record each."""
+        build_record(shared.parent, shared, image="firmware.elf")
+        build_record(shared.parent, shared, image="tests.elf")
+        again = shared.parent / "out" / "ddd-build.json"
+        again.parent.mkdir()
+        payload = {"format": 1, "project": shared.as_posix(), "image": "firmware.elf"}
+        again.write_text(json.dumps(payload), encoding="utf-8")
+        (found,) = find_projects(shared.parent).projects
+        assert found.images == ("firmware.elf", "tests.elf")
+
     def test_a_record_that_cannot_be_used_is_reported_with_its_reason(self, shared: Path) -> None:
         build_record(shared.parent, shared, severity=["no-such-check=error"])
         with pytest.raises(UnknownCheckError) as expected:

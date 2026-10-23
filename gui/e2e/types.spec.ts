@@ -1,6 +1,6 @@
-import { readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftMaxUnseen } from "./demo";
+import { driftIn, driftMaxUnseen, failing, held, PUMP, restamp, SERVER_FAILED } from "./demo";
 import { expect, test } from "./fixtures";
 
 const MONITORING = "monitoring.ddd.json";
@@ -355,7 +355,6 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   page,
   structuresGui,
 }) => {
-  const path = join(structuresGui.directory, TYPES);
   const before = entryOf(structuresGui.directory, "Temperature_t");
   await page.goto(structuresGui.address);
   await page.getByRole("link", { name: "Types" }).click();
@@ -386,8 +385,7 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   // the file's modification time is a real difference in what the watcher compares, so the next
   // poll reads the file as it is - drifted - and the page takes that revision on board, which is
   // when the sentence goes and the preview is asked for again against the bytes just read.
-  const now = new Date();
-  utimesSync(path, now, now);
+  restamp(structuresGui.directory, TYPES);
   await expect(refused).toBeHidden({ timeout: 15000 });
   await expect(limits).toContainText("-40 … 999");
   await apply.click();
@@ -465,4 +463,308 @@ test("a type's limits stated as nothing leave its entry", async ({ page, structu
     .poll(() => entryOf(structuresGui.directory, "Temperature_t"))
     .toEqual(without(before, "limits"));
   await expect(limits).toContainText("state nothing");
+});
+
+test("the types tab says it is reading the project's types until they are read", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  // The canvas drawn, so that no tab has asked for the types yet: only `TypesPage` asks for them,
+  // so the first `/api/types` is the Types tab's own, and held, it is the read this journey is
+  // about.
+  await expect(page.getByRole("button", { name: "Sensing", exact: true })).toBeVisible();
+  const reading = page.getByText("Reading the project's types…", { exact: true });
+  const summary = page.getByText("6 types · 1 scalar, 4 structures, 1 external", { exact: true });
+  const release = await held(page, "/api/types");
+  try {
+    await page.getByRole("link", { name: "Types", exact: true }).click();
+    // The line stands alone: nothing of the tab is drawn until the types are read.
+    await expect(reading).toBeVisible();
+    await expect(page.getByRole("grid", { name: "Types" })).toHaveCount(0);
+    await expect(summary).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(summary).toBeVisible();
+  await expect(reading).toHaveCount(0);
+});
+
+test("the types failing to load leave the server's own error, with no table", async ({
+  page,
+  structuresGui,
+}) => {
+  const failed = await failing(page, "/api/types", "http");
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  // A first read that fails shows the error alone, as the server worded it (`TypesPage`): the tab
+  // keeps no earlier answer to draw a table from, and says no more than it knows.
+  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(page.getByText(/^\d+ types? ·/)).toHaveCount(0);
+  await expect(page.getByText("This project declares no types", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "Types" })).toHaveCount(0);
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+test("a type's panel says it is reading the type until it is read", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  const row = page.getByRole("row", { name: "Temperature_t", exact: true });
+  await expect(row).toBeVisible();
+  // The type's own read alone: the panel says it is reading until both it and the units answer
+  // (`TypePanel` reads the units too), and the units are not held.
+  const release = await held(
+    page,
+    (url) => url.pathname === "/api/type" && url.searchParams.get("name") === "Temperature_t",
+  );
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  const reading = panel.getByText("Reading Temperature_t…", { exact: true });
+  const renaming = panel.getByRole("textbox", { name: "Rename Temperature_t to" });
+  try {
+    await row.click();
+    await expect(reading).toBeVisible();
+    await expect(renaming).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(renaming).toBeVisible();
+  await expect(reading).toHaveCount(0);
+});
+
+test("a type's panel whose type fails to load says why, beside the table", async ({
+  page,
+  structuresGui,
+}) => {
+  // The pathname is exact: `/api/types`, which draws the table, and `/api/type-plan` go through.
+  const failed = await failing(page, "/api/type", "http");
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  const row = page.getByRole("row", { name: "Temperature_t", exact: true });
+  await row.click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  await expect(panel.getByRole("heading", { name: "Temperature_t" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+  await expect(panel.getByRole("textbox", { name: "Rename Temperature_t to" })).toHaveCount(0);
+  // The table stays beside it, and the failure is not the type's going: that is `not-found`, and
+  // the server's answer here is `internal`.
+  await expect(row).toBeVisible();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Temperature_t is no longer declared in the open project." }),
+  ).toHaveCount(0);
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+test("a types file saved half-written is named above the table, whatever it declared untold", async ({
+  page,
+  structuresGui,
+}) => {
+  const path = join(structuresGui.directory, TYPES);
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  const row = page.getByRole("row", { name: "Temperature_t", exact: true });
+  const summary = page.getByText("6 types · 1 scalar, 4 structures, 1 external", { exact: true });
+  await expect(summary).toBeVisible();
+  await expect(row).toBeVisible();
+
+  // Cut in half, as an editor saves a file being typed into: it no longer parses, so the server
+  // cannot tell what kind of file it is (`kind_of`, session.py) and answers `unknown`. The tab can
+  // only say that whatever was declared there is missing, not that its own types are.
+  const whole = readFileSync(path);
+  writeFileSync(path, whole.subarray(0, Math.floor(whole.length / 2)));
+  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  await expect(banner).toHaveText(
+    "types.ddd.json did not load, so whatever is declared there is not listed.",
+  );
+  await expect(page.getByText("This project declares no types", { exact: true })).toBeVisible();
+  await expect(row).toHaveCount(0);
+  // Not the other banner, which names a file of the tab's own kind.
+  await expect(page.getByText("the types declared there are not listed")).toHaveCount(0);
+});
+
+test("a types file that parses but breaks its model is named above the table, its types missing", async ({
+  page,
+  structuresGui,
+}) => {
+  const path = join(structuresGui.directory, TYPES);
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  const row = page.getByRole("row", { name: "Temperature_t", exact: true });
+  const summary = page.getByText("6 types · 1 scalar, 4 structures, 1 external", { exact: true });
+  await expect(summary).toBeVisible();
+  await expect(row).toBeVisible();
+
+  // Temperature_t's datatype made one DDD has no name for, written plainly: still json, and still
+  // a types file (its kind is read off its top-level key), but `Datatype` is an enumeration
+  // (models/common.py) and `TypesFile` fails its model, so the file does not load. The new
+  // spelling is as long as the one it replaces, so the watcher, which compares a file's
+  // `(st_mtime_ns, st_size)` alone (`stamped`, session.py), sees the write by its modification
+  // time: the copy was written seconds before.
+  const before = readFileSync(path, "utf8");
+  const after = before.replace(
+    /("name": "Temperature_t"[\s\S]*?"datatype": )"uint16"/,
+    '$1"uint17"',
+  );
+  if (after === before) throw new Error(`${path} no longer gives Temperature_t a uint16 datatype`);
+  writeFileSync(path, after, "utf8");
+  const banner = page.getByRole("status").filter({ hasText: "did not load" });
+  await expect(banner).toHaveText(
+    "types.ddd.json did not load, so the types declared there are not listed.",
+  );
+  await expect(page.getByText("This project declares no types", { exact: true })).toBeVisible();
+  await expect(row).toHaveCount(0);
+  // Not the other banner, which cannot say what kind of file it is.
+  await expect(page.getByText("whatever is declared there")).toHaveCount(0);
+});
+
+test("a type's Where it is used leads to the variable naming it, on its component's page", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  await page.getByRole("row", { name: "SensorCal_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "SensorCal_t", exact: true });
+  await expect(panel.getByRole("heading", { name: "Where it is used" })).toBeVisible();
+
+  // Its one use: Sensing's calibration, a `local` variable (`ROLES`, ddd/variables.py).
+  const use = panel.getByRole("row", { name: /^InletCal/ });
+  await expect(use.getByRole("cell")).toHaveText([
+    "InletCal",
+    "sensing.ddd.json",
+    "Sensing · local",
+  ]);
+  await use.getByRole("button", { name: "InletCal", exact: true }).click();
+
+  // The component's page with the variable's own panel open: the file's path is percent-encoded in
+  // the address, and holds no `&`.
+  await expect(page).toHaveURL(/\/component\?file=[^&]*sensing\.ddd\.json&variable=InletCal$/);
+  await expect(page.getByRole("heading", { name: "Sensing", level: 1 })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "InletCal", exact: true })).toBeVisible();
+});
+
+test("a type's Where it is used leads from a structure's member to the structure holding it", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  await expect(panel.getByRole("heading", { name: "Where it is used" })).toBeVisible();
+
+  // A use by a structure's member, not by a variable: `routeOfUse`'s other arm, in a `.tsx` with no
+  // Vitest, so this journey is the only press of it (P19c-10). The use's name is
+  // `<structure>.<member>` (`TypeUse.name`) and its row says "member" under What. Three structures
+  // name Temperature_t, each by one member.
+  const use = panel.getByRole("row", { name: /^Sample_t\.value/ });
+  await expect(use.getByRole("cell")).toHaveText(["Sample_t.value", "types.ddd.json", "member"]);
+  await use.getByRole("button", { name: "Sample_t.value", exact: true }).click();
+
+  // It leads to the structure holding the member, not to the member nor to this very panel
+  // (`routeOfUse`): the Types tab, on Sample_t's own panel.
+  await expect(page).toHaveURL(/\/project\?view=types&type=Sample_t$/);
+  const structure = page.getByRole("complementary", { name: "Sample_t", exact: true });
+  await expect(structure.getByText("structure · types.ddd.json", { exact: true })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+});
+
+test("a structure's member leads to the panel of the type it names", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  await page.getByRole("row", { name: "Sensor_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Sensor_t", exact: true });
+  await expect(panel.getByRole("heading", { name: "Members" })).toBeVisible();
+
+  // Its `latest` member holds a Sample_t, drawn as a button (`memberRows`'s `typename`) where a
+  // member carrying a datatype of its own is plain text.
+  const member = panel.getByRole("row", { name: /^latest/ });
+  await member.getByRole("button", { name: "Sample_t", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/project\?view=types&type=Sample_t$/);
+  const sample = page.getByRole("complementary", { name: "Sample_t", exact: true });
+  await expect(sample.getByText("structure · types.ddd.json", { exact: true })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Sensor_t", exact: true })).toHaveCount(0);
+});
+
+test("a finding in a type's panel leads to the unit it names, on the Units tab", async ({
+  page,
+  copiedGui,
+}) => {
+  // Torque_t, the scalar Pump declares inline, made to state a spelling examples/vocabulary's units
+  // file does not list - before the server starts, so that the first analysis the page reads
+  // already files the finding. `unknown-unit` is filed at the type's own `unit` key
+  // (`_check_units`, analysis.py), inside the type's entry, so the type's panel lists it
+  // (`located_in_type`, project_types.py); and it is routed to the unit rather than to the type,
+  // because `route_of` (finding_routes.py) tries UNIT_CHECKS before WITHIN_TYPE. A finding routed
+  // to the type itself would lead to the very panel it is drawn in, and nothing would be followed.
+  const gui = await copiedGui("vocabulary", (directory) => {
+    driftIn(directory, PUMP, "Torque_t", "NM");
+  });
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  await page.getByRole("row", { name: "Torque_t", exact: true }).click();
+
+  // The analysis's own sentence is the link, its did-you-mean included: `close_units` answers "Nm"
+  // alone for "NM" against this vocabulary. A button styled as a link, as the panel draws every
+  // routed finding.
+  const panel = page.getByRole("complementary", { name: "Torque_t", exact: true });
+  const finding = panel.getByRole("listitem").filter({ hasText: "unknown-unit" });
+  await expect(finding.locator(".chip")).toHaveText("unknown-unit");
+  await finding
+    .getByRole("button", {
+      name: "'NM' is not a unit this project declares - did you mean 'Nm'?",
+      exact: true,
+    })
+    .click();
+
+  // The Units tab, on the unit's own panel. `exact: true` on the panel's name: a role's name is
+  // otherwise matched without regard to case, and the vocabulary's own "Nm" is a unit too.
+  await expect(page).toHaveURL(/\/project\?view=units&unit=NM$/);
+  const unit = page.getByRole("complementary", { name: "NM", exact: true });
+  await expect(
+    unit.getByText("not in the vocabulary · stated in 1 place, 1 file", { exact: true }),
+  ).toBeVisible();
+  // The one place stating it is the type the reader came from.
+  await expect(unit.getByRole("row", { name: "Torque_t", exact: true })).toContainText(
+    "scalar type",
+  );
+});
+
+test("an apply made from a type's panel that the server fails on says so in its words, is withdrawn with what was typed kept, and is sent once", async ({
+  page,
+  structuresGui,
+}) => {
+  const before = entryOf(structuresGui.directory, "Temperature_t");
+  const description = "A temperature as the server will not hear of it";
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types", exact: true }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t", exact: true });
+  const field = panel
+    .getByRole("region", { name: "Description" })
+    .getByRole("textbox", { name: "Description" });
+  await field.fill(description);
+  await expect(panel.getByText("Changes 1 file: types.ddd.json", { exact: true })).toBeVisible();
+
+  // The page's only request to `/api/edit` is an Apply's POST, which is never sent again.
+  const failed = await failing(page, "/api/edit", "http");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  // The server's own words behind `refusalOf`'s prefix (`panel-refusal`, TypePanelView).
+  await expect(panel.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  // The refusal stands where the plan was: nothing is offered to apply until the reader chooses
+  // again, and what was typed is kept.
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(field).toHaveValue(description);
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
+  expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual(before);
+  expect(failed()).toBe(1);
 });

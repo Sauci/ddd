@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { PUMP, writeUnseen } from "./demo";
+import { failing, held, PUMP, SERVER_FAILED, writeUnseen } from "./demo";
 import { expect, type Gui, test } from "./fixtures";
 
 /** Each vocabulary's file in a copy of examples/vocabulary: its name, which is also the key its
@@ -210,17 +210,9 @@ test("a raster nothing declares any longer closes the panel an address opened, a
   // The panel's next read of the raster is held until the table has answered without it - the
   // order that swapped the panel for the form declaring "100ms", where the tab should have said
   // the raster went. Held once, and let through whatever happens below.
-  let release = (): void => undefined;
-  const released = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route(
+  const release = await held(
+    page,
     (url) => url.pathname === "/api/raster" && url.searchParams.get("name") === "100ms",
-    async (route) => {
-      await released;
-      await route.continue();
-    },
-    { times: 1 },
   );
   try {
     // Rewritten from outside without 100ms's entry, and still a rasters file that loads.
@@ -681,3 +673,224 @@ test("a shared file that parses but breaks its model is named above the table, t
   await expect(page.getByText("2 constants · 3 rasters", { exact: true })).toBeVisible();
   await expect(page.getByRole("row", { name: ".calib", exact: true })).toHaveCount(0);
 });
+
+test("the shared files tab says it is reading the project's shared files until they are read", async ({
+  page,
+  vocabularyGui,
+}) => {
+  await page.goto(vocabularyGui.address);
+  // The canvas drawn, so that no tab has asked for the shared files yet: only `SharedPage` asks for
+  // them, so the first `/api/shared` is the Shared files tab's own, and held, it is the read this
+  // journey is about.
+  await expect(page.getByRole("button", { name: "Pump", exact: true })).toBeVisible();
+  const reading = page.getByText("Reading the project's shared files…", { exact: true });
+  const summary = page.getByText("2 constants · 3 rasters · 2 sections", { exact: true });
+  const release = await held(page, "/api/shared");
+  try {
+    await page.getByRole("link", { name: "Shared files", exact: true }).click();
+    // The line stands alone: nothing of the tab is drawn until the shared files are read.
+    await expect(reading).toBeVisible();
+    await expect(page.getByRole("grid", { name: "Shared files" })).toHaveCount(0);
+    await expect(summary).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(summary).toBeVisible();
+  await expect(reading).toHaveCount(0);
+});
+
+test("the shared files failing to load leave the server's own error, with no table and no way to declare", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const failed = await failing(page, "/api/shared", "http");
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Shared files", exact: true }).click();
+  // A first read that fails shows the error alone, as the server worded it (`SharedPage`): the tab
+  // keeps no earlier answer to draw a table from, and says no more than it knows. Not an empty
+  // table beside the banner either, which would offer to declare an entry in a project that
+  // declares seven.
+  await expect(page.getByRole("alert")).toHaveText(SERVER_FAILED);
+  const summary = page.getByText("2 constants · 3 rasters · 2 sections", { exact: true });
+  await expect(summary).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "Shared files" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Declare an entry" })).toHaveCount(0);
+  expect(failed()).toBeGreaterThanOrEqual(1);
+});
+
+/** The three vocabularies' panels, one copy of one shape each (`ConstantPanel.tsx`,
+ * `SectionPanel.tsx`, `RasterPanel.tsx`), each with its own reading line, refusal branch and save
+ * failure: the entry a journey opens, the path its panel reads that entry from, and the first field
+ * the panel draws once it has read it - its region, its role and what it holds. A loop of tests, so
+ * that one copy's ablation kills one test. */
+const PANELS = [
+  {
+    kind: "constant",
+    name: "TREND_SAMPLES",
+    path: "/api/constant",
+    region: "Value",
+    role: "textbox",
+    value: "16",
+  },
+  {
+    kind: "section",
+    name: ".calib",
+    path: "/api/section",
+    region: "Access",
+    role: "combobox",
+    value: "read-only",
+  },
+  {
+    kind: "raster",
+    name: "100ms",
+    path: "/api/raster",
+    region: "Event",
+    role: "textbox",
+    value: "2",
+  },
+] as const;
+
+for (const { kind, name, path, region, role, value } of PANELS) {
+  test(`a ${kind}'s panel says it is reading the entry until it is read`, async ({
+    page,
+    vocabularyGui,
+  }) => {
+    await page.goto(vocabularyGui.address);
+    await page.getByRole("link", { name: "Shared files", exact: true }).click();
+    const row = page.getByRole("row", { name, exact: true });
+    await expect(row).toBeVisible();
+
+    // The panel's own read of the entry, held until the journey has seen the panel wait for it:
+    // that read alone, by its name, so the tab's list and the entry's plans go straight through.
+    const release = await held(
+      page,
+      (url) => url.pathname === path && url.searchParams.get("name") === name,
+    );
+    const panel = page.getByRole("complementary", { name, exact: true });
+    const reading = panel.getByText(`Reading ${name}…`, { exact: true });
+    try {
+      await row.click();
+      // The panel opens at once, under the entry's name, and offers nothing it has not read yet.
+      await expect(reading).toBeVisible();
+      await expect(panel.getByRole("textbox")).toHaveCount(0);
+      await expect(panel.getByRole(role, { name: region, exact: true })).toHaveCount(0);
+    } finally {
+      release();
+    }
+
+    // Read: the entry's own field, and the reading line gone.
+    await expect(panel.getByRole(role, { name: region, exact: true })).toHaveValue(value);
+    await expect(reading).toHaveCount(0);
+  });
+}
+
+for (const { kind, name, path, region, role } of PANELS) {
+  test(`a ${kind}'s panel whose entry fails to load says why, beside the table`, async ({
+    page,
+    vocabularyGui,
+  }) => {
+    // The pathname is exact: the tab's list and the entry's plans go straight through.
+    const failed = await failing(page, path, "http");
+    const panel = await openEntry(page, vocabularyGui, name);
+    const row = page.getByRole("row", { name, exact: true });
+
+    await expect(panel.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect(panel.getByRole("alert")).toHaveText(SERVER_FAILED);
+    await expect(panel.getByRole(role, { name: region, exact: true })).toHaveCount(0);
+    // The table stays beside it, the entry's row still marked. The table lists the entry, so the
+    // tab draws its panel and not the form declaring it; and the failure is not the entry's going,
+    // which is `not-found`, where the server's answer here is `internal`.
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("complementary", { name: `Declare a ${kind}` })).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "no longer declared" })).toHaveCount(0);
+    expect(failed()).toBeGreaterThanOrEqual(1);
+  });
+}
+
+test("a constant declared inside a component leads to that component's page, where one in a constants file names its file alone", async ({
+  page,
+  vocabularyGui,
+}) => {
+  // One in a constants file names that file as text alone: a constants file is no component, with
+  // no page of its own to lead to.
+  const filed = await openEntry(page, vocabularyGui, "TREND_SAMPLES");
+  await expect(filed.locator(".panel-meta")).toHaveText("Declared in constants.ddd.json");
+  await expect(filed.getByRole("button", { name: "constants.ddd.json" })).toHaveCount(0);
+
+  // One in a component's own constants names the component's file, and that file is a button.
+  await page.getByRole("row", { name: "PRESSURE_CELLS", exact: true }).click();
+  const inline = page.getByRole("complementary", { name: "PRESSURE_CELLS", exact: true });
+  await expect(inline.locator(".panel-meta")).toHaveText("Declared in pump.ddd.json");
+  await inline.getByRole("button", { name: "pump.ddd.json", exact: true }).click();
+
+  // Led to the component's page itself, with no variable of it opened.
+  await expect(page).toHaveURL(/\/component\?file=[^&]*pump\.ddd\.json$/);
+  await expect(page.getByRole("heading", { name: "Pump", level: 1 })).toBeVisible();
+  await expect(page.getByRole("row", { name: "PumpSpeed", exact: true })).toBeVisible();
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+});
+
+test("the add form's apply that is out of date is refused, and nothing is written", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const path = join(vocabularyGui.directory, FILES.constants.file);
+  const form = await openForm(page, vocabularyGui, "constant", "SPARE");
+  await form.getByRole("textbox", { name: "Value" }).fill("4");
+  await expect(form.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
+  const apply = form.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeEnabled();
+
+  // The file changes under the page, between the preview it holds and the press that sends it, as
+  // the constant's save journey above has it: its description, one word for another as long,
+  // written where the session's own watcher does not see it (`writeUnseen`).
+  const before = readFileSync(path, "utf8");
+  const changed = before.replace("sample slots", "sample cells");
+  if (changed === before) throw new Error(`TREND_SAMPLES describes no sample slots in ${path}`);
+  writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
+  await apply.click();
+
+  // Refused, in the form: the plan and its Apply are drawn only under no refusal (`SharedAddView`),
+  // so none is left to press while it stands.
+  await expect(form.getByRole("status")).toHaveText(STALE);
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  // Nothing was written: the file is as the change from outside left it, and declares no SPARE.
+  expect(readFileSync(path, "utf8")).toBe(changed);
+});
+
+/** One save from each vocabulary's panel: the entry, the region whose field is saved and what is
+ * typed into it. The section's is its Alignment, a plain field, where its Access is taken from a
+ * chooser. */
+const SAVES = [
+  { kind: "constant", vocabulary: "constants", name: "TREND_SAMPLES", region: "Value", text: "32" },
+  { kind: "section", vocabulary: "sections", name: ".calib", region: "Alignment", text: "8" },
+  { kind: "raster", vocabulary: "rasters", name: "100ms", region: "Event", text: "5" },
+] as const;
+
+for (const { kind, vocabulary, name, region, text } of SAVES) {
+  test(`a save made from a ${kind}'s panel that the server fails on says so in its words, keeps its plan and its Save, and is sent once`, async ({
+    page,
+    vocabularyGui,
+  }) => {
+    const before = entryOf(vocabularyGui.directory, vocabulary, name);
+    const panel = await openEntry(page, vocabularyGui, name);
+    const saving = panel.getByRole("region", { name: region });
+    await saving.getByRole("textbox", { name: region }).fill(text);
+    const plan = saving.getByText(`Changes 1 file: ${FILES[vocabulary].file}`, { exact: true });
+    await expect(plan).toBeVisible();
+
+    // Failed from here on, and the one press below is the only Apply sent.
+    const failed = await failing(page, "/api/edit", "http");
+    const save = saving.getByRole("button", { name: "Save" });
+    await save.click();
+    await expect(saving.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+    // The plan and its Save stay under the refusal, the Save offered again once the page has asked
+    // for the plans again: unlike the add form's, a panel's refusal withdraws nothing.
+    await expect(plan).toBeVisible();
+    await expect(save).toBeEnabled();
+    expect(failed()).toBe(1);
+    // A guard against a write by another path: the POST is answered by `failing`, not the server.
+    expect(entryOf(vocabularyGui.directory, vocabulary, name)).toEqual(before);
+  });
+}

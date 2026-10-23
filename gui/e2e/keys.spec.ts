@@ -1,4 +1,4 @@
-import { readFileSync, utimesSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTROLLER,
@@ -7,6 +7,7 @@ import {
   driftMaxUnseen,
   openPanel,
   PUMP,
+  restamp,
   SENSOR_HUB,
 } from "./demo";
 import { expect, test } from "./fixtures";
@@ -146,7 +147,6 @@ test("a change refused as stale can be applied again once the analysis has caugh
   // merely relying on. Written in place with its stamp put back after, the write stood visible
   // for as long as putting the stamp back took, and a poll landing then re-analysed the project
   // and left nothing stale to refuse - on a slow CI runner, never here.
-  const path = join(gui.directory, CONTROLLER);
   driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
   await apply.click();
   await expect(panel.getByText("A file changed on disk")).toBeVisible();
@@ -157,8 +157,7 @@ test("a change refused as stale can be applied again once the analysis has caugh
   // difference in the one thing `stamped` compares, so it stands in for "something else
   // changed" and is what lets the next poll reanalyse the project - reading, for the first
   // time, the file's true and already-drifted bytes, and updating what the page holds against.
-  const now = new Date();
-  utimesSync(path, now, now);
+  restamp(gui.directory, CONTROLLER);
   await expect(panel.getByText("A file changed on disk")).toBeHidden({ timeout: 15000 });
   await panel.getByLabel("Max").fill("50");
   await panel.getByRole("button", { name: /^Apply to/ }).click();

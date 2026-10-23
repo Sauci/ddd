@@ -6,6 +6,7 @@ import {
   driftIn,
   EVENT_LOGGER,
   failing,
+  held,
   PUMP,
   SERVER_FAILED,
   USER_INTERFACE,
@@ -300,4 +301,80 @@ test("the page of findings failing leaves an alert over a table with nothing to 
   // are, and the table has none of them to open.
   await expect(page.getByText("2 findings · 2 errors", { exact: true })).toBeVisible();
   await expect(page.getByRole("row", { name: /definition-mismatch/ })).toHaveCount(0);
+});
+
+test("a page of findings still being read is drawn as rows saying so, which the findings replace", async ({
+  page,
+  copiedGui,
+}) => {
+  // Drifted before the server starts, so that the first revision already holds the two findings
+  // and no clean window is drawn first (`drawnWindow`).
+  const gui = await copiedGui("demo", (directory) => {
+    drift(directory);
+  });
+  await page.goto(gui.address);
+  // The canvas drawn, so that the Findings tab has asked for no page yet: its first page is the
+  // first ask of the path, and held, it is the read this journey is about.
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
+  const table = page.getByRole("grid", { name: "Findings" });
+  const pending = table.getByRole("row").filter({ hasText: "Reading…" });
+  const mismatches = page.getByRole("row", { name: /definition-mismatch/ });
+  const release = await held(page, "/api/findings");
+  try {
+    await page.getByRole("link", { name: "Findings", exact: true }).click();
+    // The line above the table is the state's own, counted before any page of findings comes, and
+    // the table has a row for each finding, saying that its page is not there yet.
+    await expect(page.getByText("2 findings · 2 errors", { exact: true })).toBeVisible();
+    await expect(pending).toHaveCount(2);
+    await expect(mismatches).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(mismatches).toHaveCount(2);
+  await expect(pending).toHaveCount(0);
+});
+
+test("a fix the server fails on shows its refusal in the panel in place of the fix, is sent once, and can be chosen again and applied", async ({
+  page,
+  gui,
+}) => {
+  // ValueH's id taken away, as "a missing id is fixed" takes it: a fix that writes into
+  // Controller alone.
+  unstamp(gui.directory, CONTROLLER, "ValueH");
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Findings", exact: true }).click();
+  await page.getByRole("row", { name: "missing-id" }).click();
+  const panel = page.getByRole("complementary", { name: "missing-id" });
+  await panel.getByRole("button", { name: "Give 'ValueH' an id" }).click();
+  const fixing = panel.getByRole("region", { name: "Give 'ValueH' an id" });
+  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toBeVisible();
+
+  // Registered once the fix is drawn: nothing GETs the edit's path, and a POST is never sent
+  // again, so the one Apply is the one failed.
+  const failed = await failing(page, "/api/edit", "http");
+  await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
+
+  // Not a refusal of a file changed on disk, so it stays until the reader chooses again, and
+  // the panel draws it in place of the consequence and the Apply.
+  await expect(fixing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
+  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
+  // The finding is still reported, and the panel still shows it.
+  await expect(panel.getByText("'ValueH' has no 'id'")).toBeVisible();
+  // A guard against a write by another path: the POST is answered by `failing`, not the server.
+  expect(valueH(gui.directory).id).toBeUndefined();
+  expect(failed()).toBe(1);
+
+  // The reader chooses again - the fix pressed off and on - with the server answering as it does:
+  // the refusal says nothing of what is chosen now, so it goes with the choice, and the fix is
+  // offered as it was before the server failed on it (`refusalsAfterChoice`). Left standing, it
+  // withdrew the Apply until the finding was pressed again.
+  await page.unrouteAll({ behavior: "wait" });
+  const fix = panel.getByRole("button", { name: "Give 'ValueH' an id" });
+  await fix.click();
+  await fix.click();
+  await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toBeVisible();
+  await expect(fixing.getByRole("status")).toHaveCount(0);
+  await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(page.getByText("Nothing to report")).toBeVisible();
+  expect(valueH(gui.directory).id).toMatch(/^[abcdefghjkmnpqrstvwxyz0-9]{12}$/);
 });

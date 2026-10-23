@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { getTypes } from "../api/client";
 import type { State } from "../api/types";
+import { useKept } from "../app/useKept";
 import { TypesTableView } from "../components/TypesTableView";
 import { unreadable } from "../lib/findings";
 import type { Route } from "../lib/route";
@@ -30,12 +31,13 @@ export function TypesPage({ state, type, stopped, onType, onOpen }: Props) {
     // every edit, it lost the reader's place and made the tab flash.
     placeholderData: (previous) => previous,
   });
+  const answer = useKept(types, "types");
   // The type whose panel closed because nothing declares it any longer (spec 5.4), named above
   // the table until another type is selected or the reader leaves the tab.
   const [gone, setGone] = useState<string | null>(null);
   const missing = unreadable(state, ["types"]);
 
-  if (types.data === undefined) {
+  if (answer === undefined) {
     if (types.isError) return <Banner tone="error">{types.error.message}</Banner>;
     return <p className="quiet">Reading the project's types…</p>;
   }
@@ -53,7 +55,7 @@ export function TypesPage({ state, type, stopped, onType, onOpen }: Props) {
       <div className={type !== undefined ? "with-panel" : undefined}>
         <div>
           <TypesTableView
-            types={types.data}
+            types={answer}
             selected={type}
             onSelect={select}
             unreadable={missing.own}

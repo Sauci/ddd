@@ -1,5 +1,5 @@
 import type { CompareReply, State } from "../api/types";
-import { compareRouteReason, compareRows } from "../lib/compare";
+import { compareRouteReason, compareRows, fileNameIn } from "../lib/compare";
 import { countsOf, findingCounts, routeHref, routeLabel, routeOf } from "../lib/findings";
 import type { Route } from "../lib/route";
 import { Banner } from "../ui/Banner";
@@ -112,6 +112,7 @@ export function CompareView(props: CompareViewProps) {
                   label={routeLabel(row.finding, props.state)}
                   href={routeHref(row.finding)}
                   reason={compareRouteReason(row, props.state)}
+                  fileName={fileNameIn(row.fromBaseline)}
                   onOpen={() => {
                     const route = routeOf(row.finding);
                     if (route !== null) props.onOpen(route);

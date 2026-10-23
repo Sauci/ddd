@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { CompareReply, Finding, State } from "../api/types";
-import { type CompareRow, compareRouteReason, compareRows } from "./compare";
+import { type CompareRow, compareRouteReason, compareRows, fileNameIn, nextAsk } from "./compare";
 
 function finding(fields: Partial<Finding> = {}): Finding {
   return {
@@ -120,4 +120,41 @@ test("rows from both fields are merged, worst severity first, each naming its ow
 
 test("an empty reply has no rows", () => {
   expect(compareRows(reply())).toEqual([]);
+});
+
+test("a baseline's file is named as the baseline's, wherever a comparison names it", () => {
+  // The panel names a finding's file, and each file its notes point at, with this: the baseline's
+  // own sensor_hub.ddd.json is not the open project's, whose display name it shares.
+  const path = "C:/elsewhere/components/sensor_hub.ddd.json";
+  expect(fileNameIn(true)(path)).toBe("the baseline's sensor_hub.ddd.json");
+});
+
+test("a file of the open project is named plainly, by its base name", () => {
+  expect(fileNameIn(false)("C:/work/demo/components/sensor_hub.ddd.json")).toBe(
+    "sensor_hub.ddd.json",
+  );
+});
+
+test("the first ask is numbered one, its baseline trimmed of the spaces round it", () => {
+  expect(nextAsk(null, "  baseline.json ")).toEqual({ baseline: "baseline.json", number: 1 });
+});
+
+test("a baseline asked for again is a new ask, so that it is sent again", () => {
+  const first = nextAsk(null, "baseline.json");
+  const again = nextAsk(first, "baseline.json");
+  expect(again.baseline).toBe(first.baseline);
+  expect(again).not.toEqual(first);
+});
+
+test("a baseline typed with spaces round it is the baseline already asked for", () => {
+  const first = nextAsk(null, "baseline.json");
+  expect(nextAsk(first, "  baseline.json  ").baseline).toBe(first.baseline);
+});
+
+test("no ask repeats an earlier one, even when its baseline comes back", () => {
+  const first = nextAsk(null, "a.json");
+  const second = nextAsk(first, "b.json");
+  const third = nextAsk(second, "a.json");
+  expect(third.baseline).toBe(first.baseline);
+  expect(new Set([first.number, second.number, third.number]).size).toBe(3);
 });

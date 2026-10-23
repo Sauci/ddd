@@ -334,6 +334,11 @@ tr.changing td {
   color: var(--warning);
   font-size: var(--text-small);
 }
+/* Drawn without a note too (ComboBox.tsx), for the field's description; empty, it takes no room:
+   the combo's column would add its gap and this margin under every field. */
+.combo-note:empty {
+  display: none;
+}
 .combo-popover {
   width: var(--trigger-width);
   margin-top: var(--space-1);

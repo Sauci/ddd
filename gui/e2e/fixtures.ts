@@ -340,12 +340,12 @@ async function analysed(address: string): Promise<void> {
 }
 
 /**
- * The address `ddd gui` prints once it serves, read from its stdout or its stderr. It prints it on
- * stdout (pytest pins that); on Windows a server has twice printed it into the job's own log
- * instead, its stdout not the pipe this reads, and the journey waited out its timeout and its
- * teardown another, saying nothing of why (P19c-16). So both streams are read, a line on stderr
- * is passed on as it was when stderr was inherited, an address found there says so, and an
- * address that never comes is an error naming what each stream gave.
+ * The address `ddd gui` prints on its stdout once it serves (pytest pins the stream). Its stderr is
+ * read too, each line passed on as it was when stderr was inherited, so that an address that
+ * never comes is an error naming what each stream gave, rather than a journey waiting out its
+ * timeout and its teardown another. That is how a project naming a plugin met it on Windows: a
+ * plugin's hook bound stdout to stderr for the whole process as the address was printed, which
+ * `run` (server.py) now guards against (P19c-16).
  */
 function served(child: ChildProcess): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -375,13 +375,12 @@ function served(child: ChildProcess): Promise<string> {
     for (const name of ["stdout", "stderr"] as const) {
       createInterface({ input: streams[name] }).on("line", (line) => {
         seen[name].push(line);
-        if (name === "stderr") process.stderr.write(`${line}\n`);
-        const address = /serving (\S+)/.exec(line)?.[1];
-        if (address === undefined) return;
         if (name === "stderr") {
-          process.stderr.write(`ddd gui (pid ${child.pid}) printed its address on stderr\n`);
+          process.stderr.write(`${line}\n`);
+          return;
         }
-        settle(() => resolve(address));
+        const address = /serving (\S+)/.exec(line)?.[1];
+        if (address !== undefined) settle(() => resolve(address));
       });
     }
     child.once("exit", (code) =>

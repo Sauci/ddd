@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import dataclasses
 import errno
 import hashlib
@@ -3085,6 +3086,26 @@ class TestRunning:
         else:
             assert opener.addresses == []
         assert stopped == [True]
+
+    def test_its_address_goes_to_stdout_while_a_plugin_hook_holds_stdout(
+        self, project_file, pages, monkeypatch, capsys
+    ) -> None:
+        """The first analysis runs on the analyser's own thread while the address is printed,
+        and a plugin's hook there runs with stdout bound to stderr (``ddd.plugins._call``) - for
+        every thread, since ``contextlib.redirect_stdout`` swaps the process's own
+        ``sys.stdout``. The address still goes to the stdout ``ddd gui`` was started with. A
+        program reading it there met it on stderr instead, on Windows, for a project naming a
+        plugin (P19c-16). Here the hook holds stdout from the session's start to its stop."""
+        hook = contextlib.redirect_stdout(sys.stderr)
+        monkeypatch.setattr(Session, "start", lambda self: hook.__enter__())
+        monkeypatch.setattr(Session, "start_polling", lambda self: None)
+        monkeypatch.setattr(Session, "stop", lambda self: hook.__exit__(None, None, None))
+        monkeypatch.setattr(GuiServer, "serve_forever", lambda self, poll_interval=0.5: None)
+        assert run(project_file, [], 0, open_browser=False, static=pages) == EXIT_OK
+        captured = capsys.readouterr()
+        (line,) = captured.out.splitlines()
+        assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
+        assert "serving" not in captured.err
 
     def test_a_browser_that_never_returns_does_not_hold_up_serving(
         self, project_file, pages, monkeypatch

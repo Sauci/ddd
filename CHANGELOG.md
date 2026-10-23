@@ -179,6 +179,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   reader typed was on screen and not read with the field by a screen reader.  Nothing changes
   on screen.
 
+* **`ddd gui` prints its address on stdout, whatever a plugin is doing.**  For a project
+  naming a plugin, the address could go to stderr instead: the first analysis runs a
+  plugin's hooks on a thread of its own as the address is printed, and a hook runs with
+  stdout bound to stderr for the whole process.  A program reading the address from
+  `ddd gui`'s stdout then waited for it in vain; in a terminal both look alike.  The address
+  now goes to the stdout `ddd gui` was started with.
+
 * **`ddd gui`'s token is no longer a cookie.**  A browser sends a cookie to every port of
   `127.0.0.1`, so any other server there that the reader's browser visited was sent the token.
   The page now keeps the token in the browser's storage for its own address, port included, and

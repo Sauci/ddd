@@ -991,6 +991,11 @@ def run(
             file=sys.stderr,
         )
         return EXIT_USAGE
+    # The stdout the address goes to, taken before the analyser's thread starts. A plugin's hook
+    # runs there with stdout bound to stderr (``ddd.plugins._call``), and
+    # ``contextlib.redirect_stdout`` binds it for every thread: printed while a hook ran, the
+    # address went to stderr, where a program reading it from stdout never found it (P19c-16).
+    stdout = sys.stdout
     session = Session(Path.cwd(), build_directories)
     # Started before the project is opened, so that its first analysis runs on the analyser's
     # own thread while the address is printed and served, and stopped on every way out of here,
@@ -1019,7 +1024,7 @@ def run(
                 attempt += 1
             except OSError as error:
                 return _refused(address, port, error)
-        print(f"ddd gui (preview) serving {server.address}", flush=True)
+        print(f"ddd gui (preview) serving {server.address}", file=stdout, flush=True)
         if beyond_loopback:
             # No browser to open in a container, and nothing left to protect this with either:
             # the Host and Origin allow-lists above still only admit 127.0.0.1 and localhost,

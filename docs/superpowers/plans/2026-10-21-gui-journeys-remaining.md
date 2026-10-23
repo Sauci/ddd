@@ -19,28 +19,30 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-21-gui-journeys-remaining-design.md`, and through it part 19b's, `docs/superpowers/specs/2026-10-08-gui-journeys-every-action-design.md`, whose §4, §5 and §12 hold here unchanged. Read both before any task. Where this plan departs from them, the departure is a ruling in *Rulings taken* at the end, with its reason.
 
-> **As built** (executed 2026-10-21 to 2026-10-22; the departures from the task texts, each a ruling under *Rulings taken*):
+> **As built** (executed 2026-10-21 to 2026-10-23; the departures from the task texts, each a ruling under *Rulings taken*):
 > - **Every one of the 102 rows names a journey, and none a reason.** The journeys went from 171 to 294 on ubuntu chromium (*Figures*).
 > - **The two fixes, as the spec decided** (Task 2):
 >   - The kept answer covers five tabs, a component's page and the values grid. A kept content error is drawn under the read's banner (P19c-1), and no answer is ever shown under a refusal, not even the query's own (the final review's M1, P19c-13).
 >   - The boot script asks again only for a module script of the page's own origin, and writes its sentence only over an empty page (M5, P19c-13).
-> - **Seven contained bugs fixed, red first:**
+> - **Eight contained bugs fixed, red first:**
 >   - the start page's list held until the opened project replaces it (planning ruling 13);
 >   - an empty or doubled image on the start page;
 >   - the component table's cells under a stopped server (ruling 18);
 >   - a fix the server failed on, chosen again (ruling 15);
 >   - a baseline's finding named as the baseline's in its panel (ruling 16);
 >   - a baseline asked for again (ruling 18);
->   - a combobox's late note made its description (ruling 18).
+>   - a combobox's late note made its description (ruling 18);
+>   - `ddd gui`'s address printed on its stdout whatever a plugin's hook does, the cause of a Windows hang the final hunts met (P19c-18).
 > - **One journey for each copy of a row's code** (P19c-10): the second arm of a type's "Where it is used", the section's and the raster's panels beside the constant's, and a Compare panel closing by itself.
 > - **Recorded for the maintainer, not fixed:**
 >   - a panel whose read of the units fails says it is reading, for good (planning ruling 14);
 >   - an arrow's description (P19c-7);
 >   - a type's finding that leads back to its own panel (P19c-11);
 >   - a combobox entry under a resting pointer taken by Enter (P19c-12);
->   - a kept answer not dropped by a refusal (P19c-15).
+>   - a kept answer not dropped by a refusal (P19c-15);
+>   - a plugin hook's stdout redirect, process-wide in a server of many threads (P19c-18).
 > - **The plan's CRLF premise was wrong** (P19c-14). `.gitattributes` checks the page out with LF on the Windows legs too.
-> - **The final hunt is not clean on Windows** (P19c-16). `start.spec.ts:474` hangs about one run in fifteen there, for a cause not found. Step 1's gate is unmet, and the maintainer decides what follows.
+> - **The final hunts met a Windows hang, worked to its cause and fixed** (P19c-16 to P19c-18). `start.spec.ts:474` hung in two of thirty Windows runs: its server printed its address on stderr while a plugin's hook held stdout for the whole process. The fixture's waits are now bounded and say why (P19c-17), and `run` prints the address to the stdout it was started with (P19c-18).
 
 ## Global Constraints
 
@@ -1712,7 +1714,7 @@ test("an object renamed under its open grid is said to be declared no longer, wi
 
 **Model:** the controller's own.
 
-> **As built:** the hunt ran three times (*Figures*). At `1542c37`, beside the final review, it was clean. At `7618897`, after the fix wave added two journeys, it failed twice on windows chromium, and once more on windows msedge when run again (P19c-16). One of those failures was a runner fault. The other two were the same journey, `start.spec.ts:474`, which hangs on Windows about one run in fifteen for a cause not found. **Step 1's gate, a clean hunt on all three legs, is not met**; the maintainer decides what follows. One fix wave took the final review's six Minors and one recommendation (P19c-13). The re-review found four Minors more, settled in the close-out (P19c-15).
+> **As built:** the hunt ran five times at four heads (*Figures*). At `1542c37`, beside the final review, it was clean. At `7618897`, after the fix wave, it failed twice on windows chromium and, run again, once on windows msedge: one runner fault, and `start.spec.ts:474` hanging twice (P19c-16). The maintainer chose to work the hang before the pull request. At `6271100`, the fixture reading both streams with its waits bounded (P19c-17), it was clean, and caught the address on stderr once: a plugin's hook held stdout for the whole process as the address was printed. `run` now prints it to the stdout it was started with (P19c-18). At `2b704a7`, the fix in, it was clean on all three legs, and no address strayed: Step 1's gate is met.
 
 - [ ] **Step 1: The final hunt.** With every task merged into the branch and pushed: `gh workflow run ci.yml --ref feature/gui-journeys-remaining -f repeat=5`. It must be clean on all three legs. A failure is worked at its cause, from its trace (under the leave in *Prerequisites*), and the hunt run again; it is never retried to pass.
 - [ ] **Step 2: The final whole-branch review,** on opus, while the hunt runs: the spec, this plan, and the branch's diff from `2bc00da`. One fix wave takes its Important findings and the Minors the controller chooses; a re-review reads the wave. If the wave changes a journey's steps, the hunt runs again after it.
@@ -1900,21 +1902,25 @@ Filled in by Task 1 (the baseline run) and Task 9.
   | 7 | 39754436364 | `475ead0` | 267 / 266 / 266 | 8.8 / 9.1 / 7.3 |
   | 8 | 39771083688 | `1542c37` | 293 / 292 / 292 | 7.8 / 8.2 / 6.8 |
   | the fix wave | 39785959517 | `7618897` | 295 / 294 / 294 | 7.7 / 7.5 / 7.0 |
+  | the hang's fixture | 39899796811 | `6271100` | 295 / 294 / 294 | 9.2 / 9.9 / 8.6 |
+  | the hang's fix | 39907766496 | `2b704a7` | 295 / 294 / 294 | 9.0 / 8.4 / 6.8 |
 
-- **The full run at the head of the work** (39785959517 at `7618897`): every job green.
+- **The full run at the head of the work** (39907766496 at `2b704a7`, the hang's fix): every job green.
   - The gui legs, as above.
-  - pytest: 7041 passed on each of the six Python legs. ubuntu 3.12 took 6:20, 3.13 6:11 and 3.14 4:26; windows 3.12 took 9:16, 3.13 6:19 and 3.14 6:32.
+  - pytest: 7042 passed on each of the six Python legs. ubuntu 3.12 took 5:49, 3.13 5:48 and 3.14 4:31; windows 3.12 took 8:44, 3.13 9:16 and 3.14 5:13.
   - lint, extension, container and gui-screenshots: green.
   - dev-build and dev-publish: skipped, as they run on master alone.
-- **The final hunts** (`-f repeat=5`), none failed and none flaky:
+- **The final hunts** (`-f repeat=5`). None was flaky; the failures are P19c-16's:
 
   | Run | Head | Windows chromium | Windows msedge | Ubuntu chromium |
   | --- | --- | --- | --- | --- |
   | 39772742204 | `1542c37`, before the fix wave | 1465 in 35.0 min | 1460 in 50.2 min | 1460 in 36.9 min |
   | 39788238509 | `7618897`, after the fix wave | 1473 in 40.2 min: 2 failed, Windows runner faults (P19c-16) | 1470 in 50.0 min | 1470 in 44.6 min |
   | 39797380863 | `7618897`, run again | 1475 in 34.6 min | 1469 in 52.9 min: 1 failed, `start.spec.ts:474` hung again (P19c-16) | 1470 in 45.2 min |
+  | 39901152700 | `6271100`, the fixture reading both streams (P19c-17) | 1475 in 49.9 min, the address once on stderr | 1470 in 50.6 min | 1470 in 41.0 min |
+  | 39909210274 | `2b704a7`, the hang's fix (P19c-18) | 1475 in 45.6 min | 1470 in 50.6 min | 1470 in 44.3 min |
 
-- **The local milestone gate at `7618897`:** every step exited 0, each on its own line.
+- **The local milestone gate at `7618897`,** and again at `6271100` with the same figures: every step exited 0, each on its own line.
   - pytest: 7041 passed at 100.00 % line and branch.
   - ruff ("All checks passed!"), format ("170 files already formatted") and mypy ("no issues found in 91 source files").
   - schemas, lint and typecheck: exit 0.
@@ -1944,7 +1950,7 @@ Filled in by Task 1 (the baseline run) and Task 9.
 | 6 | `613c7ef` | Approved | 13 journeys, three panels each for rows 20, 21 and 24 (P19c-10) |
 | 7 | `3e69ec3`, `5241c6e`, `4bac82a`, `6ddf584`, `82b1400`, `475ead0` | Approved | 25 journeys; three bugs red first (planning rulings 15, 16 and 18) |
 | 8 | `81a763a`, `8de0bcc`, `7e83fd8`, `1542c37` | Needs fixes, on a record alone, which the controller corrected (P19c-12) | 26 journeys; the combobox's note made its description |
-| 9 | `f8b1114`, `c092b04`, `9b3fbf7`, `e9dffe1`, `a9c9154`, `7618897`, and the close-out | the final review: with fixes (six Minors); one wave; re-review: all addressed | the hunt twice, the gate, the close-out (P19c-13 to P19c-15) |
+| 9 | `f8b1114`, `c092b04`, `9b3fbf7`, `e9dffe1`, `a9c9154`, `7618897`; the close-out `767c6fd`; the hang's `6271100`, `a9405e5`, `2b704a7` and their tidying; this close-out | the final review: with fixes (six Minors); one wave; re-review: all addressed. The hang's fix: with fixes (the plan's prose), taken | the hunt five times, the hang worked to its cause, the gate, the close-out (P19c-13 to P19c-18) |
 
 ## What was left open
 
@@ -1984,13 +1990,12 @@ Found during execution, each recorded for the maintainer:
 - **Shared files' add form withdraws its plan, "Show changes" and its Apply under an out-of-date refusal** (Task 6). A later revision does not clear it; only the next edit does. The three panels keep their plan and Save under a refusal that is not stale. This is P19b-24's rule, which `SharedAdd` shares with `DeclarePanel`.
 - **The unit panel keeps its Apply after a refused Apply, and the type panel withdraws it** (Task 5). Both are pinned as they stand.
 - **The start page's list can stay held** if "Projects" is pressed in the few milliseconds between an open's answer and the session's (Task 3). Leaving the page, or reloading, recovers it. A fix needs a second input to `listHeld`, which is a design choice.
-- **The final hunts at `7618897` are not clean on Windows** (P19c-16). Two causes:
-  - **A runner fault, once.** `start.spec.ts:334`'s first `page.goto` failed at once with `net::ERR_NO_BUFFER_SPACE`, which is Windows' WSAENOBUFS, before any page code ran. It happened on windows chromium, in the second hunt.
-  - **A hang that recurs.** `start.spec.ts:474`, the one journey whose copy names a project plugin (`slowAnalyses`), hung twice in thirty Windows runs: once on windows chromium in the second hunt, and once on windows msedge in the third.
-    - Each time the server printed its address about a second into the test, but into the job's log rather than the fixture's stdout pipe. No other run's log holds such a line.
-    - `served()` then waited out the test's 60 s. The teardown waited 60 s more, on a start that never settled (`Promise.allSettled(starts)`).
-    - ddd starts no subprocess, and loads a plugin in its own process. How the line reached the log was not found.
-    - A bounded wait in `served()`, an error naming what it saw with the child killed, would make the hang die in seconds and say why. It would not stop it.
+- **A runner fault, once** (P19c-16). In the second final hunt, `start.spec.ts:334`'s first `page.goto` failed at once on windows chromium, with `net::ERR_NO_BUFFER_SPACE` (Windows' WSAENOBUFS), before any page code ran.
+- **A plugin's hook binds stdout to stderr for the whole process** (P19c-18). `ddd.plugins._call` runs every hook under `contextlib.redirect_stdout(sys.stderr)`, which swaps `sys.stdout` for every thread, and `ddd gui` is the one process of ddd with many threads.
+  - While a hook runs, another thread's stdout goes to stderr. That is how the address went astray, which `run` now guards against; after that, nothing else in `ddd gui` writes to stdout.
+  - Two hooks overlapping on two threads leave `sys.stdout` bound to stderr for good: each restores what it saw on entry. The reviewer of the fix reproduced it.
+  - Counting overlapping hooks under a lock in `_call` would mend the second half. The first needs stdout routed by thread, a change to the contract `docs/plugins.rst` states for `ddd lsp` and the command line too.
+  - The stress runs caught the race only in `start.spec.ts:474`. `compare.spec.ts` and `helpers.spec.ts` serve the layout example, whose project loads a plugin too, and shared it.
 - **The boot script's address check has no journey for a script with no address** (P19c-15). It returns because `"".startsWith(…)` is false, and only a synthetic `error` event reaches it.
 
 ## Rulings taken
@@ -2075,4 +2080,6 @@ Numbered P19c-1 onward, after five taken before Task 1 (P19c-0a to P19c-0e); cod
   - A kept answer not dropped by a refusal goes to the maintainer (*What was left open*).
 
   — cost if wrong: in that rare sequence, a reader sees the answer from before the refusal, read only, under the failure banner.
-- **P19c-16. The final hunts' failures are reported, not retried to pass.** The second hunt's two failures were first ruled Windows runner faults. The third hunt showed half of that wrong: `start.spec.ts:474` hung again on the other Windows leg, the same way. So that ruling now stands for the `ERR_NO_BUFFER_SPACE` navigation alone. The hang is a fault of this part's journey or its fixture on Windows, about one run in fifteen, cause not found from the traces. Step 1's gate is unmet, and what to do is the maintainer's: open the pull request with it recorded, or work the hang first — cost if wrong: a hang taken for a runner fault, as the first wording did.
+- **P19c-16. The final hunts' failures were reported, not retried to pass.** The second hunt's two failures were first ruled Windows runner faults. That held for the `ERR_NO_BUFFER_SPACE` navigation alone. The third hunt showed `start.spec.ts:474` hanging again, on the other Windows leg, the same way: its server's address went into the job's log rather than the fixture's pipe. The maintainer chose to work the hang before the pull request (2026-10-23) — cost if wrong: none; the cause was found (P19c-18).
+- **P19c-17. The fixture bounds its waits and reads the server's stderr.** `served` fails after 20 s, naming what each stream gave, and `analysed` after 30 s, so a hang fails with a reason, not two timeouts. Stderr is piped and passed on line by line. For one commit (`6271100`) the address was taken from either stream, which is how the next hunt caught it on stderr. Since `2b704a7` it is taken from stdout alone, as pytest pins it: accepting it on stderr would only hide P19c-18's fix failing. Probed: a Python that starts late fails in 20.0 s naming its stderr; an analysis that never lands fails in 30.2 s; stdout sent to stderr fails in 20.0 s with the address in stderr's list — cost if wrong: a start slower than 20 s, or an analysis slower than 30 s, failing a journey; the slowest Windows journey of the clean hunt took 12.7 s, its start included.
+- **P19c-18. The hang was a bug of `ddd gui`, fixed where the address is printed.** `ddd.plugins._call` runs every plugin hook with stdout bound to stderr for the whole process. `ddd gui` starts its first analysis on the analyser's thread before it prints its address, so a hook running at that moment took the address to stderr. `run` now takes `sys.stdout` before the session starts and prints the address to it, red first (a pytest case holding a hook's redirect from the session's start to its stop), with a CHANGELOG entry. The redirect's process-wide reach is recorded for the maintainer (*What was left open*): mending it means routing stdout by thread, a change to a contract `ddd lsp` and the command line share — cost if wrong: none for the address; the wider redirect stays as it was.

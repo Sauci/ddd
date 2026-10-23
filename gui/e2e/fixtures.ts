@@ -206,6 +206,15 @@ interface StartOptions {
   browser?: string;
 }
 
+/** How long `ddd gui` may take to print its address (`served`): it prints it within a second or
+ * two of starting on every leg, and a journey that waited longer would only wait out its own
+ * timeout, its teardown then waiting on the start another (P19c-16). */
+const ADDRESS_WAIT_MS = 20_000;
+
+/** How long its first analysis may take to land once the address is printed (`analysed`), well
+ * past the generated projects' few seconds, for the same reason. */
+const ANALYSIS_WAIT_MS = 30_000;
+
 /** `ddd gui` over `directory`, already prepared, naming `project` on the command line or opening
  * on the start page where it is empty; stopped by the `Gui`'s own `stop`. The shared head of
  * `serving` and `copiedGui`. */
@@ -221,7 +230,8 @@ async function start(
     ["-m", "ddd", "gui", ...project, ...(options.browser === undefined ? ["--no-browser"] : [])],
     {
       cwd: directory,
-      stdio: ["ignore", "pipe", "inherit"],
+      // Its stderr piped rather than inherited, and passed on line by line (`served`).
+      stdio: ["ignore", "pipe", "pipe"],
       ...(options.browser === undefined
         ? {}
         : { env: { ...process.env, BROWSER: options.browser } }),
@@ -296,10 +306,22 @@ async function analysed(address: string): Promise<void> {
   const token = new URL(address).searchParams.get("token");
   if (token === null) throw new Error(`ddd gui printed an address with no token: ${address}`);
   const headers = { authorization: `Bearer ${token}` };
+  // Bounded, as `served` is, so that an analysis that never lands fails the journey saying so.
+  const deadline = Date.now() + ANALYSIS_WAIT_MS;
   let after: number | null = null;
   for (;;) {
     const asked = new URL(after === null ? "/api/state" : `/api/state?after=${after}`, address);
-    const response = await fetch(asked, { headers });
+    const signal = AbortSignal.timeout(Math.max(deadline - Date.now(), 0));
+    let response: Response;
+    try {
+      response = await fetch(asked, { headers, signal });
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "TimeoutError")) throw error;
+      throw new Error(
+        `ddd gui at ${address} had not finished its first analysis ${ANALYSIS_WAIT_MS / 1000} s ` +
+          "after printing its address",
+      );
+    }
     // Refused - signed out, or no project open - it would be refused again at every ask, and the
     // journey would wait out its own timeout saying nothing of why.
     if (response.status !== 200) {
@@ -317,17 +339,54 @@ async function analysed(address: string): Promise<void> {
   }
 }
 
+/**
+ * The address `ddd gui` prints once it serves, read from its stdout or its stderr. It prints it on
+ * stdout (pytest pins that); on Windows a server has twice printed it into the job's own log
+ * instead, its stdout not the pipe this reads, and the journey waited out its timeout and its
+ * teardown another, saying nothing of why (P19c-16). So both streams are read, a line on stderr
+ * is passed on as it was when stderr was inherited, an address found there says so, and an
+ * address that never comes is an error naming what each stream gave.
+ */
 function served(child: ChildProcess): Promise<string> {
   return new Promise((resolve, reject) => {
-    if (child.stdout === null) {
-      reject(new Error("ddd gui has no stdout"));
+    if (child.stdout === null || child.stderr === null) {
+      reject(new Error("ddd gui has no stdout or no stderr to read"));
       return;
     }
-    createInterface({ input: child.stdout }).on("line", (line) => {
-      const found = /serving (\S+)/.exec(line);
-      if (found?.[1] !== undefined) resolve(found[1]);
-    });
-    child.once("exit", (code) => reject(new Error(`ddd gui exited with ${code} before serving`)));
+    const streams = { stdout: child.stdout, stderr: child.stderr };
+    const seen: Record<"stdout" | "stderr", string[]> = { stdout: [], stderr: [] };
+    let waiting = true;
+    const settle = (settled: () => void) => {
+      if (!waiting) return;
+      waiting = false;
+      clearTimeout(timer);
+      settled();
+    };
+    const timer = setTimeout(() => {
+      settle(() =>
+        reject(
+          new Error(
+            `ddd gui (pid ${child.pid}) printed no address within ${ADDRESS_WAIT_MS / 1000} s: ` +
+              `its stdout gave ${JSON.stringify(seen.stdout)}, its stderr ${JSON.stringify(seen.stderr)}`,
+          ),
+        ),
+      );
+    }, ADDRESS_WAIT_MS);
+    for (const name of ["stdout", "stderr"] as const) {
+      createInterface({ input: streams[name] }).on("line", (line) => {
+        seen[name].push(line);
+        if (name === "stderr") process.stderr.write(`${line}\n`);
+        const address = /serving (\S+)/.exec(line)?.[1];
+        if (address === undefined) return;
+        if (name === "stderr") {
+          process.stderr.write(`ddd gui (pid ${child.pid}) printed its address on stderr\n`);
+        }
+        settle(() => resolve(address));
+      });
+    }
+    child.once("exit", (code) =>
+      settle(() => reject(new Error(`ddd gui exited with ${code} before serving`))),
+    );
   });
 }
 

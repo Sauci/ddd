@@ -2,5 +2,5 @@
 <area shape="rect" id="node1" title="ddd.models.conversion.LinearConversion
 
 ``physical = raw * factor + offset``, the scaling of a fixed point value.
-" alt="" coords="5,5,172,117"/>
+" alt="" coords="5,5,170,125"/>
 </map>

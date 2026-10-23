@@ -11,9 +11,9 @@ Accepts both the explicit form::
 and the mapping shorthand::
 
  &#160;&#160;&#160;{&quot;kind&quot;: &quot;enum&quot;, &quot;name&quot;: &quot;StateA&quot;, &quot;enumerators&quot;: {&quot;STATE_OFF&quot;: 0}}
-" alt="" coords="5,5,271,117"/>
+" alt="" coords="5,5,269,125"/>
 <area shape="rect" id="node2" title="ddd.models.conversion.Enumerator
 
 One named value of an enum conversion, and what that value means.
-" alt="" coords="415,91,532,203"/>
+" alt="" coords="413,95,528,215"/>
 </map>

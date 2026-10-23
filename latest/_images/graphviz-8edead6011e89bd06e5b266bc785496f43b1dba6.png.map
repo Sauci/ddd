@@ -6,5 +6,5 @@ One entry of a component interface, in the order the component declared it.
 A reference to an object rather than the object itself: the definition lives once, under
 ``objects``, and is the one the producing component gave. Two components declaring the
 same name appear here twice and in ``objects`` once.
-" alt="" coords="5,5,195,117"/>
+" alt="" coords="5,5,194,125"/>
 </map>

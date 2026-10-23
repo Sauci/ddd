@@ -939,19 +939,19 @@ are made nowhere else.
 runs Vitest with a 100 % gate over the modules that hold logic - ``src/api``, ``src/lib`` and
 ``src/state``. The screens are covered by ``npm run e2e``: Playwright drives the real
 ``ddd gui`` over a copy of ``examples/demo``, over copies of ``examples/vocabulary`` and
-``examples/structures`` that eight of the spec files serve instead, and over a project it
+``examples/structures`` that eight of the spec files serve instead, and over two projects it
 generates and serves the same way - ``gui/e2e/fixtures.ts``'s own ``vocabularyGui``,
-``structuresGui`` and ``generatedGui`` - each started with the interpreter ``DDD_PYTHON``
-names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine without
-Playwright's own Chromium. ``mapped.spec.ts`` is left out of that run unless ``DDD_MAPPED_DRIVE``
-is set, rather than skipped: its own fixture, ``mappedGui``, copies the demo onto a fresh directory
-of the drive that variable names and serves it there, so a project on a mapped drive - named by its
-network path, as Windows names one - is exercised too. ci's windows chromium leg maps one before
-the journeys run: its own "Map a drive for the mapped-drive journey" step shares a local directory
-as ``New-SmbShare -Name ddd-mapped`` and maps it with ``net use M: \\localhost\ddd-mapped``.
-``mapped.spec.ts`` itself requires every path to begin ``//localhost/ddd-mapped/``, so only a drive
-mapped to that very share passes it. Run the journey by hand the same way, on a Windows machine
-with such a share and drive already mapped:
+``structuresGui``, ``generatedGui`` and ``chainedGui`` - each started with the interpreter
+``DDD_PYTHON`` names, and ``PLAYWRIGHT_CHANNEL=msedge`` drives the installed Edge on a machine
+without Playwright's own Chromium. ``mapped.spec.ts`` is left out of that run unless
+``DDD_MAPPED_DRIVE`` is set, rather than skipped: its own fixture, ``mappedGui``, copies the demo
+onto a fresh directory of the drive that variable names and serves it there, so a project on a
+mapped drive - named by its network path, as Windows names one - is exercised too. ci's windows
+chromium leg maps one before the journeys run: its own "Map a drive for the mapped-drive journey"
+step shares a local directory as ``New-SmbShare -Name ddd-mapped`` and maps it with
+``net use M: \\localhost\ddd-mapped``. ``mapped.spec.ts`` itself requires every path to begin
+``//localhost/ddd-mapped/``, so only a drive mapped to that very share passes it. Run the journey by
+hand the same way, on a Windows machine with such a share and drive already mapped:
 
 in cmd:
 
@@ -992,6 +992,44 @@ never sent again, shows its banner at the first failure. ``failing`` is Playwrig
 on that one page, so the server's code is never touched. The ``500``'s message,
 ``SERVER_FAILED``, is the server's own sentence for such a request, ``_INTERNAL`` in
 ``src/ddd/gui/server.py``, so a banner it raises reads as the one a real failure raises.
+``held``, beside it, holds the page's next request to one path, to a path a pattern matches, or
+to an address a function accepts, its query included, until the journey lets it go, and lets
+every later one straight through: the journey sees what the page shows while it waits, and lets
+the request go in a ``finally``, so that a failed assertion never leaves the page waiting. With
+``every``, each such request is held until then, for a claim about every answer rather than the
+next one; with ``onAnswer``, the server's answer is fetched and handed to the journey before the
+page gets it, for a claim about an answer the page has not drawn yet. The two together leave a
+route that fetches every later request it matches until the page closes, the teardown's own
+included, which on Windows can meet a server already going away: they go together only for a
+path the page never asks on its own. A path given to ``failing`` or ``held`` as a string is a
+pathname, from its leading ``/``, and never a glob: any other string is refused, rather than
+left to match nothing. ``restamp`` moves a file's modification time to now and changes none of
+its bytes. The session's watcher compares a file's modification time and size alone
+(``stamped``, in ``src/ddd/gui/session.py``), so its next poll reads a new revision, and the long
+poll the page has open, which would otherwise wait out its ``WAIT_SECONDS``, answers at once: a
+journey needs it to let go a refusal held until the next revision, or to make the page's next
+read of the state the one ``failing`` fails.
+
+``openedGui``, a fixture beside ``copiedGui``, serves a copy of the demo as a reader's own ``ddd
+gui`` serves it: started without ``--no-browser``, so that it opens a browser, with the
+``BROWSER`` variable naming a program of the fixture's own. Python's ``webbrowser`` runs that
+program in place of a browser, handed the address to open as its one argument, and the program,
+a shell script or on Windows a batch file, only writes that address to a file. The fixture's
+``opened`` waits for the file and answers the address: ``/open?code=...`` on the server's own
+port, the one-time sign-in address ``ddd gui`` hands its browser instead of the token the
+printed address carries. A journey presents it to a page as the reader's browser would, and
+shows what the page does with it. ``webbrowser`` splits ``BROWSER`` at the system's path
+separator, ``os.pathsep`` - ``:``, or ``;`` on Windows - and runs an entry with no ``%s`` in it
+whole, as one program handed the address, so the fixture refuses a path that holds that
+separator. A path that holds a space is run whole too, though no CI run has had one, so a batch
+file reached through such a path is untested.
+
+``chainedGui``, beside ``generatedGui`` in ``gui/e2e/fixtures.ts``, serves a project that
+``tools/generate_project.py`` writes in its ``chain`` shape: 2,000 components, each reading the
+next one's output. The page lays its canvas out with dagre, in a worker of its own, and dagre
+overflows that worker's stack on a chain so deep, so the canvas is laid out in ranks only: a
+state no example and no other generated project reaches. In Chrome on Linux the shortest chain
+laid out in ranks only is 908 components long, and the fixture's is more than twice that.
 
 The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
 BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out
@@ -1001,7 +1039,12 @@ with ``@dagrejs/dagre``, both MIT like every other bundled package.
 ``N`` declarations, rounded down to even components and refused under 120, to measure ``ddd
 gui`` on - large enough to matter in a way nothing under ``examples/`` is, the same bytes for
 the same arguments on every machine. ``--shape`` chooses ``many`` small components (the
-default), ``large`` thirty components sharing every declaration, or ``mixed`` half of each.
+default), ``large`` thirty components sharing every declaration, ``mixed`` half of each, or
+``chain``: components of one output and one input each, every one reading the next one's output
+and the last reading the first's. That is one cycle as long as the project, which the canvas's
+layout breaks into one chain as deep as the project is long. The other shapes keep every reader
+about thirty components from its source, so only a chain gets deep enough for the canvas to be
+laid out in ranks only, which takes about nine hundred components in the layout worker.
 Every output takes an id and a unit its vocabulary lists, and every input reads one stating what
 its producer states, so a project generated with no further option carries no finding at all.
 ``--missing-ids`` gives that fraction of outputs no id instead, a ``missing-id`` each; ``--unread``

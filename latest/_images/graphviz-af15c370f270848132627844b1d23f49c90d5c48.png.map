@@ -6,9 +6,9 @@ One entry of a component interface, in the order the component declared it.
 A reference to an object rather than the object itself: the definition lives once, under
 ``objects``, and is the one the producing component gave. Two components declaring the
 same name appear here twice and in ``objects`` once.
-" alt="" coords="496,119,685,231"/>
+" alt="" coords="494,124,683,244"/>
 <area shape="rect" id="node2" title="ddd.ir.ResolvedComponent
 
 A component and the objects it declares.
-" alt="" coords="5,5,352,145"/>
+" alt="" coords="5,5,350,155"/>
 </map>

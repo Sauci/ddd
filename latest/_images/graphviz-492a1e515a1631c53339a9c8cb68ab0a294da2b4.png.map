@@ -12,5 +12,5 @@ The two mappings are the identity on one byte, so that the derived limits of a s
 are the raw range of its datatype &#45; which is what the a2l record states &#45; and nothing
 that ranges a conversion has to know that a string exists. A byte has no reading of its
 own, so no reading is produced for it, as for the identity.
-" alt="" coords="5,5,163,61"/>
+" alt="" coords="5,5,160,65"/>
 </map>

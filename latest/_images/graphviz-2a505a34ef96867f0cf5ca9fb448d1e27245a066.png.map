@@ -5,5 +5,5 @@ What a declaration asks of the a2l backend. Only that backend interprets it.
 
 Nothing here changes the generated c or the meaning of the object; a project that
 generates no a2l can leave the whole block out.
-" alt="" coords="5,5,243,117"/>
+" alt="" coords="5,5,241,125"/>
 </map>

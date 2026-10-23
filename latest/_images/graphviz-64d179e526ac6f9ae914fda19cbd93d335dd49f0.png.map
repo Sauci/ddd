@@ -11,5 +11,5 @@ Exactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds
 of a base datatype, is a structure, or is storage of a type DDD does not describe. A
 member stating none of them would be storage with no size, no meaning and no name, which
 a consumer of this document has nothing to do with.
-" alt="" coords="5,5,283,257"/>
+" alt="" coords="5,5,281,275"/>
 </map>

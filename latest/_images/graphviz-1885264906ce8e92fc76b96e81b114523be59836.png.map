@@ -11,7 +11,7 @@ Exactly one of ``datatype``, ``type`` and ``external`` is stated: a member holds
 of a base datatype, is a structure, or is storage of a type DDD does not describe. A
 member stating none of them would be storage with no size, no meaning and no name, which
 a consumer of this document has nothing to do with.
-" alt="" coords="449,90,727,342"/>
+" alt="" coords="447,94,723,364"/>
 <area shape="rect" id="node2" title="ddd.ir.ResolvedStruct
 
 One structure, in an order a c file can be written out in.
@@ -20,5 +20,5 @@ The order of :attr:`DataDictionary.types` matters and is not alphabetical: a str
 appears after every structure it nests, because a c compiler needs the nested one to be
 complete first. The members keep the order the author wrote them in, which is the order the
 compiler lays them out.
-" alt="" coords="5,5,305,117"/>
+" alt="" coords="5,5,303,125"/>
 </map>

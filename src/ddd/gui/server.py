@@ -994,7 +994,7 @@ def run(
     # The stdout the address goes to, taken before the analyser's thread starts. A plugin's hook
     # runs there with stdout bound to stderr (``ddd.plugins._call``), and
     # ``contextlib.redirect_stdout`` binds it for every thread: printed while a hook ran, the
-    # address went to stderr, where a program reading it from stdout never found it (P19c-16).
+    # address went to stderr, where a program reading it from stdout never found it (P19c-18).
     stdout = sys.stdout
     session = Session(Path.cwd(), build_directories)
     # Started before the project is opened, so that its first analysis runs on the analyser's

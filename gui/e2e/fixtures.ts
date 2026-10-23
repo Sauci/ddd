@@ -312,28 +312,24 @@ async function analysed(address: string): Promise<void> {
   for (;;) {
     const asked = new URL(after === null ? "/api/state" : `/api/state?after=${after}`, address);
     const signal = AbortSignal.timeout(Math.max(deadline - Date.now(), 0));
-    let response: Response;
+    let state: { version: number; revision: number; analysing: boolean };
     try {
-      response = await fetch(asked, { headers, signal });
+      const response = await fetch(asked, { headers, signal });
+      // Refused - signed out, or no project open - it would be refused again at every ask, and
+      // the journey would wait out its own timeout saying nothing of why.
+      if (response.status !== 200) {
+        throw new Error(
+          `ddd gui answered ${response.status} to ${asked.pathname}: ${await response.text()}`,
+        );
+      }
+      state = (await response.json()) as typeof state;
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "TimeoutError")) throw error;
       throw new Error(
-        `ddd gui at ${address} had not finished its first analysis ${ANALYSIS_WAIT_MS / 1000} s ` +
-          "after printing its address",
+        `ddd gui at ${new URL(address).origin} had not finished its first analysis ` +
+          `${ANALYSIS_WAIT_MS / 1000} s after printing its address`,
       );
     }
-    // Refused - signed out, or no project open - it would be refused again at every ask, and the
-    // journey would wait out its own timeout saying nothing of why.
-    if (response.status !== 200) {
-      throw new Error(
-        `ddd gui answered ${response.status} to ${asked.pathname}: ${await response.text()}`,
-      );
-    }
-    const state = (await response.json()) as {
-      version: number;
-      revision: number;
-      analysing: boolean;
-    };
     if (state.revision > 0 && !state.analysing) return;
     after = state.version;
   }
@@ -344,8 +340,8 @@ async function analysed(address: string): Promise<void> {
  * read too, each line passed on as it was when stderr was inherited, so that an address that
  * never comes is an error naming what each stream gave, rather than a journey waiting out its
  * timeout and its teardown another. That is how a project naming a plugin met it on Windows: a
- * plugin's hook bound stdout to stderr for the whole process as the address was printed, which
- * `run` (server.py) now guards against (P19c-16).
+ * plugin's hook ran with stdout bound to stderr for the whole process as the address was printed,
+ * which `run` (server.py) now guards against (P19c-18).
  */
 function served(child: ChildProcess): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -367,14 +363,15 @@ function served(child: ChildProcess): Promise<string> {
         reject(
           new Error(
             `ddd gui (pid ${child.pid}) printed no address within ${ADDRESS_WAIT_MS / 1000} s: ` +
-              `its stdout gave ${JSON.stringify(seen.stdout)}, its stderr ${JSON.stringify(seen.stderr)}`,
+              `its stdout gave ${JSON.stringify(seen.stdout)}, ` +
+              `its stderr ${JSON.stringify(seen.stderr)}`,
           ),
         ),
       );
     }, ADDRESS_WAIT_MS);
     for (const name of ["stdout", "stderr"] as const) {
       createInterface({ input: streams[name] }).on("line", (line) => {
-        seen[name].push(line);
+        if (waiting) seen[name].push(line);
         if (name === "stderr") {
           process.stderr.write(`${line}\n`);
           return;

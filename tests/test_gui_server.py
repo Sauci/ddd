@@ -3095,7 +3095,7 @@ class TestRunning:
         every thread, since ``contextlib.redirect_stdout`` swaps the process's own
         ``sys.stdout``. The address still goes to the stdout ``ddd gui`` was started with. A
         program reading it there met it on stderr instead, on Windows, for a project naming a
-        plugin (P19c-16). Here the hook holds stdout from the session's start to its stop."""
+        plugin (P19c-18). Here the hook holds stdout from the session's start to its stop."""
         hook = contextlib.redirect_stdout(sys.stderr)
         monkeypatch.setattr(Session, "start", lambda self: hook.__enter__())
         monkeypatch.setattr(Session, "start_polling", lambda self: None)

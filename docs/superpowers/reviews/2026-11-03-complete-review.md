@@ -2937,3 +2937,151 @@ The reader is careful, well separated and honest about most of what it cannot do
 11|M10|src/ddd/toolbox/selection.py:80|Two sentences the plans left: defined nowhere of an assembly global, ambiguous of a folded static (KNOWN)
 11|M11|SPEC.md:2503|Small untrue sentences: _Atomic is refused only where DWARF states it, SPEC omits the no-section reason, every variation stops here
 ```
+
+## Pass 12: the web GUI, security of the local server
+
+**The threat model, first.** It is stated, in one place, and plainly: `docs/gui_security.rst` has *What it defends against* (`:9-121`: another page in the same browser, another server on another port, any local process or user without the token, malformed input, `localhost`), *What it trusts* (`:123-150`: the project and its plugins, a baseline and its plugins, the start directory, whoever holds the token, the page's own origin) and *What it does not defend against* (`:195-248`: a local denial of service, the moment of launch, a server earlier on the same port, beyond loopback, transport). `SECURITY.md` points at it, and specs `2026-10-05 §1, §10` and `2026-10-07 §1, §3` are where it was decided.
+
+**Is it the right one?** Its adversaries are the right ones, and against them the server holds up unusually well (*Strengths*). Four things are wrong with the model as written, and they matter more than any single bug below:
+
+1. **It never says what the token is worth.** Spec `2026-10-07 §1` says it in one sentence, "The token is code execution as the reader", and the page never does. I proved it (I2). Everything the page says about losing the token reads differently once you know.
+2. **"Trusted" is wider than a reader will take it.** *The project the reader opens* suggests a decision. A file merely present under the start directory acts on the start page's first request, before anything is opened (I4). A baseline is, by the tool's own concept, something handed over by somebody; the page trusts its python if it is a description, and the Compare form does not say so (M6, adding to pass 1 I15). For build verbs this is the bargain `make` strikes. For a viewer with a one-click project list it is a choice nobody has yet been asked to make.
+3. **A same-user process is outside the model, and the page does not say so.** "Any other local process or user that reaches the port without the token" reads as if it covered malware of the same user, which can read the terminal or the browser's profile. That is the only sensible scope. It should be stated.
+4. **The confinement machinery has no adversary in the model.** The token holder is trusted and so is the project, so `Serving`, `_under`, `_served` and the device rules on request paths defend against nobody the page names. They are robustness against a page's own mistake, and docstrings claim more (M2). Spec `2026-10-05 §10` also puts the page's own code out of scope while *What it trusts* rests on it: I reviewed it here and it holds, but nothing pins that (*Test gaps*).
+
+### Scope covered
+
+**Read in full:** `src/ddd/gui/server.py`, `routes.py`, `queries.py`, `depth.py`, `session.py`, `compare.py`; `SECURITY.md`; `docs/gui_security.rst`; specs `2026-10-05-gui-security-design.md`, `2026-10-07-gui-token-out-of-cookie-design.md`; plans `2026-10-05-gui-security.md:1340-1511` and `2026-10-07-gui-token-out-of-cookie.md:1440-1548` (figures, *What was left open*, rulings), `2026-10-07-gui-journeys-every-platform.md:1231-1307` (`2026-10-21-gui-journeys-remaining.md`'s left-open section searched for security items: none); `tests/test_gui_hostile.py`; `src/ddd/file_names.py:1-80`, `src/ddd/lsp/discovery.py`, `src/ddd/build_info.py:1-110`, `src/ddd/plugins.py:150-300`; on the page `gui/src/api/signIn.ts`, `token.ts`, `client.ts:1-180`, `main.tsx`, `app/App.tsx`, `app/useRoute.ts`, `lib/route.ts`, `gui/index.html`, `gui/e2e/localhost.spec.ts`, `hostile.spec.ts:1-50`.
+**In part:** `src/ddd/gui/api.py:1-800, 1240-1300, 1455-1500, 2150-2486` (every path-taking route and the route table; passes 13 and 14 own the rest); `contract.py` request models; `tests/test_gui_server.py`: every test name, and `:766-830, 979-1058, 2200-2449, 2920-2968, 3215-3342`; `tests/test_gui_api.py:1905-2004`.
+
+**Run (all against a real `ddd gui` I started on loopback, on my own probe copies; transcripts under `SCRATCH/pass-12/transcripts/`, scripts one level up):**
+- `p01_gate`: tokens, 15 hostile `Host` forms, `Sec-Fetch-Site` and `Origin` combinations, `POST /open`, methods, headers on every kind of answer.
+- `p02_confinement`, `p03_reach`, `p14_paths_and_holds`, `p18_short`: 62 path spellings (`..`, junction, drive-relative, UNC in six spellings, `\\?\`, `\\.\`, `\??\`, trailing dots and spaces, alternate streams, device names, case) against `file`, `findings`, `declarable`, `fix`, `declaration-plan`, `files-plan` add and remove, `open` and `edit`; 25 against `compare`, on a project that resolves; 8.3 names apart; 73 on page paths.
+- `p04_limits`, `p10*`: the cap, idle and slow connections, sizes, chunked, abandoned long polls, reload loops in Edge.
+- `p05_ports`, `p06_dual`, `p15_more`, `p19_first`: strangers on the port, the IPv6 hold, `--port 80`, `--host`.
+- `p07_*`: six hostile projects through a real Edge: 492 route visits and 522 presses, recording script runs, injected elements, CSP violations, off-site requests, crashes; screenshots in `SCRATCH/pass-12/shots/`.
+- `p08_hostile_server`: 23 hostile file sets against every no-argument and file route. `p16_records`: hostile build records.
+- `p09_browser`: a signed-in Edge attacked from a page on another port. `p11_launch`: a stub browser, the code, its race and expiry. `p17_csp`: the policy tried by hand.
+- `p12_fuzz`: 8,800 GETs and 2,500 edit bodies over HTTP. `p13_routes`: the page's route table against a plugin noting every call, and the tree hashed around each route.
+- `tests/test_gui_hostile.py` (passes here). `npm audit`. `gh api repos/Sauci/ddd/private-vulnerability-reporting`.
+
+**Not covered:** Linux and macOS (so the `/proc` half of the launch race and the Linux hold are not measured); Chrome, Firefox, Safari (Edge only; no old browser); WSL 2, a mapped drive; a file symlink (no privilege here; junctions yes). **I did not bind beyond loopback**: my instructions are a loopback server, and a real `0.0.0.0` on this enterprise machine exposes it and may raise a firewall dialog (the suite's own comment, `tests/test_gui_server.py:2930`). `run` was driven with the socket on loopback (`p11`), and since nothing reads a client's address, the forged `Host` and `Origin` probes stand in for a remote client. I named no SMB host but `127.0.0.1`, so the network reach in I4 is shown on loopback only. `pip-audit` is not installed and I did not add it. `eval` under the policy could not be judged: CDP's evaluate exempts itself.
+
+### Strengths
+
+- **Nothing about the project is reachable without the token.** Every API request without it answers `401`, token as cookie, in the query or as Basic included; the scheme is case-insensitive, one space, compared in constant time (`p01`). `POST /open` takes a code or the token and nothing else; duplicates, lists, a surrogate, `NaN` and 1,025 bytes are all refused.
+- **DNS rebinding:** 15 hostile `Host` forms answer `421`, and a real Edge at `http://foo.localhost:<port>/` reads "misdirected request" (`p01`, `p09`).
+- **The gate, in a real browser.** From a page on another port of `127.0.0.1`, in the signed-in Edge: `fetch` rejected or opaque, `Authorization` dies in its preflight, image, script and sheet fail, both iframes blocked, a form post and a websocket refused, the opened window's `location` and `localStorage` are `SecurityError`, and navigating it lands on the sign-in page. The baseline plugin's marker never appeared, the project was untouched, the hostile server received no token, the browser holds no cookie (`p09`).
+- **Arriving asks nothing (P18b-10 is closed).** A typed address, and a typed address of another site that redirects, land signed in on a Files row with only `/api/session`, `/api/state`, `/api/files` asked, no `files-plan`; a link pressed on the hostile page lands on the sign-in page (`p09`).
+- **The launch.** The opener is handed a code alone; a `GET` spends nothing; a wrong code leaves it; code and token are not interchangeable; second presentation `403` with the terminal line; expiry at 60 s silent (`p11`).
+- **The policy is a real second layer.** The inline script's hash is right: the module aborted once is asked again and the page draws, with no violation in 492 visits. Injected by hand, inline handlers, `javascript:`, inline, `data:`, `blob:` and foreign scripts, inline styles, foreign `fetch`, sheet and worker are all refused (`p17`).
+- **A hostile file reaches the page as text.** `gui/src` has no raw-HTML sink and every `href` starts with `/` by construction (`lib/route.ts:93-131`). Payloads as description, unit, component and object names, finding text and note (through a plugin), file names, an undo label, a hostile dictionary compared, and the address itself: no script ran, no element was made, no request left the origin, nothing crashed, in any of the six projects (`p07_*`, `shots/clean/090.png`). Wrong-shaped json (`"interface": "x"`, `{"component": []}`, `5`) and names `constructor`, `toString`, `__proto__` draw normally. The one off-site address on any page is React Flow's attribution link.
+- **Path confinement holds for what a request names.** Nothing outside what is served was read or written by any spelling on any route; the network and device spellings are refused before anything resolves them; `\??\` is normalised by python and touches no network; inside spellings land on the one file (`p02`, `p03`, `p14`, `p18`). Page paths serve nothing outside the pages (`p14`).
+- **Malformed input.** 11,300 hostile requests: two `500`s (M1), no hang, no file written by a GET, no edit that left a file unparseable, raw `ESC` never on the terminal (`p12`). 23 hostile file sets (surrogates, `1e400`, `NaN`, a million open brackets, a 40 MB string, 200,000 keys, binary, UTF-16, device names and a pipe as includes) answered no `500` and printed nothing on the terminal (`p08`).
+- **The cap protects the machine.** 64 connections held: 72 threads, the 65th `503`; no slot leak after 500 connect-and-closes or abandoned long polls; idle connections closed at 30 s (`p04`, `p10b`).
+- **The route table is true.** It names all 36 routes, and measured against a noting plugin only `compare` and `files-plan` ran hooks (`p13`).
+- **Reporting works:** private vulnerability reporting is on (`{"enabled":true}`), as `SECURITY.md` says. Shipped dependencies audit clean (`npm audit --omit=dev`: 0).
+- **Left-open items now measured and fine:** a fixed `--port` restarted at once on Windows with a client still connected works (P19a-31, `p05`); 400 parallel connects past the backlog of 5 all connected (`p04`).
+
+### Issues
+
+#### Critical
+
+None. I1 is the nearest: read literally, "a security hole in the local server" would make it Critical. I grade it Important because it needs a second local principal **and** a reader who opens `localhost` rather than the printed address. If you read the definition strictly, promote it.
+
+#### Important
+
+- **I1. On Windows the IPv6 hold does not keep a dual-stack listener off `localhost`: a program on `[::]` with `IPV6_V6ONLY=0` binds beside it and receives `localhost:<port>/open?token=...`.** `src/ddd/gui/server.py:27-31, 128-138, 331-374`; contradicts `docs/gui_security.rst:112-117` ("So no other program can listen on `localhost` at that port ... rather than reaching a stranger there") and `:118-121` (a held port is refused before `ddd gui` starts).
+  *Trigger:* `ddd gui` running on port P; a stranger does `socket(AF_INET6)`, `IPV6_V6ONLY=0`, `bind(("::", P))`, `listen()`. Expected: refused. Observed: **bound**, with or without `SO_REUSEADDR`; the other 16 of 18 combinations are refused. `[::1]:P` then reaches the stranger, `127.0.0.1:P` still reaches `ddd gui`. Edge opening `http://localhost:P/open?token=PROBE-TOKEN-FROM-EDGE` is answered the stranger's page, and the stranger logs the token. No socket options are needed: a plain Node `http.createServer().listen(P)` binds `::` dual-stack by default and does it. Stranger first, on a fixed port: `ddd gui --port Q` starts without a word.
+  *Evidence:* reproduced, `p06_dual.txt`, `p15_more.txt`.
+  *Why the suite missed it:* its stranger always sets `V6ONLY=1` (`tests/test_gui_server.py:3225, 3256`) and the journey only tries `listen(port, "::1")` (`gui/e2e/localhost.spec.ts:5-11, 23`). The runs the docstrings cite are of that stranger.
+  *Consequence:* the token, which is code execution (I2), to any program listening on the port, for a reader who rewrote the address. The printed `127.0.0.1` address stays safe.
+  *Change (S-M):* listen on the hold and serve it. Measured (`p14`, `p19_first.txt`): with `[::1]` or `[::]` exclusive **and listening**, `[::1]` reaches the hold, stranger first or second; a dual-stack hold is refused beside our own IPv4. `localhost` is then `ddd gui` itself, signed out until the address is opened, and the page's section gets shorter. Not measured on Linux.
+
+- **I2. The token is code execution as the reader, and neither the security page nor the terminal says so.** `docs/gui_security.rst:135-138` ("It is the key"), `:214-215` (the race's winner "is signed in with the token"), `src/ddd/gui/server.py:1034-1040` ("what keeps others out"); `src/ddd/plugins.py:172-174`; spec `2026-10-07 §1` has the sentence the page lacks.
+  *Trigger:* with the token, `POST /api/edit` setting `project.plugins` to `["<outside>/evil_plugin.py"]`, label "harmless" -> `200`, and the next analysis imports it from outside what is served: the marker reads "ran from outside what is served" (`p03_reach.txt`). `GET /api/file` of that plugin stays `404`. The same token can create a file of any name beside the project, `fresh.py`, `fresh.bat` (`p02_confinement.txt`), against `src/ddd/gui/session.py:478-480` "only the kind of file adopting a vocabulary writes".
+  *Consequence:* a reader cannot weigh screen-sharing the terminal, pasting the address in a ticket, publishing a container's port, or ignoring the terminal's one line, because the page calls the loss "signed in". Nor does it say that a same-user process is out of scope.
+  *Change (S):* two sentences at `:135`, one in the `--host` warning. Open question 2 is how to make it less true.
+
+- **I3. KNOWN (plans `2026-10-05` P18-8/P18-9, `2026-10-07` *What was left open*): the launch-code race hands whoever wins code execution for the whole run.** `src/ddd/gui/server.py:446-475, 935-949`, documented at `docs/gui_security.rst:208-224`.
+  *Trigger:* a local process reads the code from the opener's command line and posts it first -> `200` with the token; the reader's own post `403`; the terminal prints one line. *Evidence:* the server's half reproduced with a stub browser, the racer's bearer working (`p11_launch.txt`); reading another user's command line not run (Windows here; `/proc` on Linux and `ps` on macOS by reading).
+  Documented and accepted as a residual, but its weight rests on I2, the sign is one line after the fact, and the innocent cause prints the same line (P19a-9). On a shared Linux box this is a colleague's shell. Open question 3.
+
+- **I4. A file merely present under the start directory acts on the start page's first request, before anything is opened: a network path is read, the console is opened, the page hangs or answers `500`.** `src/ddd/gui/session.py:249, 256, 971-975`, reached by `GET /api/projects` and by `POST /api/open` (`src/ddd/gui/api.py:352`); `src/ddd/build_info.py:58-63` says the path is absolute and nothing holds it to that.
+  *Trigger:* `build/ddd-build.json` holding `{"format":1,"project":<X>}`, `ddd gui` with no project, the page's first ask:
+  - `\\127.0.0.1\C$\...\far.ddd.json` -> `200`, offered as `//127.0.0.1/C$/...` **with its name `FarAway` read over SMB**; pressing it is then `400 open takes a project's path`.
+  - `CON` or `CONIN$` -> no answer in 40 s, against `gui_security.rst:49` "no request this server reads in full is left hanging". Every open from the page goes through the same function.
+  - `a\u0000b` -> `500`, a traceback on the terminal.
+  - `C:/Windows/win.ini`, `C:/Windows`, `""` -> read and offered as projects.
+  *Evidence:* reproduced, `p16_records.txt`. Only loopback's SMB named; on Windows a path to another host asks the system to authenticate there with the reader's credentials, which I did not try.
+  *Contradiction:* `src/ddd/gui/queries.py:69-72` and `gui_security.rst:60-63` refuse these very spellings in a request "before anything resolves it", because Windows would open them. A file gets them unasked.
+  *Why it matters:* the start page is the natural way to look at a clone before trusting it, and it is the one step `gui_security.rst:126` ("the project the reader opens") does not cover. `:132` trusts the directory, so this is inside the model as written, which is why it is not graded higher; open question 1.
+  *Change (S):* read a record's `project` by `file_path`'s rule, `_read_json` catching `ValueError` as `_described` does, and read nothing not named `*.ddd.json`.
+
+#### Minor
+
+- **M1. `GET /api/compare?baseline=%00` answers `500` on Windows.** `src/ddd/gui/compare.py:383-389`, which catches `OSError` while `open` raises `ValueError: embedded null character`; `resolve()` no longer raises there. Contradicts `docs/gui_security.rst:47-56` (a NUL refused `400`, `404` or `409`) and `src/ddd/gui/queries.py:20-21`. Reproduced, `p12_fuzz.txt` (both `\x00` and `a\x00b`, the only `500`s in 11,300). The hostile walk passes because it runs with the working directory elsewhere (*Test gaps*): `p15_more.txt` shows the same call `400` with cwd elsewhere and raising with cwd the root, as `run` always has it. S.
+
+- **M2. `served` is no boundary, and docstrings say it is.** `src/ddd/gui/session.py:154-166, 579-581`, `src/ddd/gui/compare.py:333-336`, `tests/test_gui_api.py:1935`. With an outside file added to the includes by `POST /api/edit`, `GET /api/file` is `404`, but `/api/dictionary`, `/api/types`, `/api/type`, `/api/units`, `/api/unit`, `/api/variable`, `/api/values`, `/api/graph` answer its descriptions, units and init, and a json that is no description has its **values** quoted by findings: `OUTSIDE-PASSWORD-VALUE` (`p14_paths_and_holds.txt`). A build record naming a project elsewhere widens `served` to its directory, and an edit then writes there (`p03_reach.txt`). Against "These cannot be widened that way", "its contents are neither read, written, nor shown", "`POST /api/edit` writes description files of the open project and nothing else". No power beyond I2, hence Minor; `docs/gui_security.rst:132` is accurate. Say what the guard is for (S), or open question 2.
+
+- **M3. A long poll whose client has gone keeps its slot for its 25 s, so one tab reloading reaches the cap.** `src/ddd/gui/api.py:378`, `src/ddd/gui/session.py:379-384`; contradicts `docs/gui_security.rst:204-206` ("A browser never comes near that limit by itself"), `src/ddd/gui/server.py:109-110`, spec `2026-10-05 §6, §8`. 64 long polls with every client gone: 70 threads (`p10b_slots.txt`), `503` for the next 23.4 s (`p10c_slots.txt`). Edge, one tab, reloading twice a second: the page reads "answering as many connections" after 31 reloads in 17.5 s; as fast as it can, 34 reloads in 1.7 s; once a second, not in 29 reloads (`p10d_reload.txt`). The page then shows that banner and asks nothing again until reloaded. The `503` itself is sometimes lost to a reset (`ConnectionAbortedError` in `p04_limits.txt`, `p10c`; `_refuse`'s docstring knows the race), and the page then says "not answering". Wait in slices and notice a closed client, or correct the sentence. S.
+
+- **M4. `ddd gui --port 80` prints an address no browser can use.** `src/ddd/gui/server.py:630, 739`. A browser sends `Host: 127.0.0.1` for port 80, answered `421`; only `Host: 127.0.0.1:80`, which no browser sends, is `200` (`p05_ports.txt`, by that `Host`, not in a browser). S.
+
+- **M5. An empty `--host` is not loopback.** `src/ddd/gui/server.py:973`. `getaddrinfo("", ...)` answers this computer's first network address, here `10.27.230.65`; `--host "$UNSET"` is refused only for want of a port, and with `--port` would bind that interface (`p05_ports.txt`; refused path run, bind not run). Adds to pass 9 M8. S.
+
+- **M6. The two clicks that run a project's python say nothing (adds to pass 1 I15).** `gui/src/screens/StartPage.tsx:18-19`, `gui/src/components/CompareView.tsx:83`. Opening from the list imports its plugin; `GET /api/compare?baseline=base/base.ddd.json` imports the *baseline's* plugin; `ddd gui PROJECT` imports before any browser connects (`p15_more.txt`, `p13_routes.txt`). The form says "Accepts a dumped dictionary, or a project or component description" and no more, though only one of those runs code. One sentence on each. S.
+
+- **M7. KNOWN (plan `2026-10-05`): the standard library's answers carry none of the security headers.** `src/ddd/gui/server.py:265-271`. `400`, `414`, `431`, `501`, `505`: no policy, no `nosniff`, no referrer rule; `421` and the `403` page no `no-store` (`p01_gate.txt`). They hold only escaped text, so no effect found; but "no page of `ddd gui` can be shown inside another" (`gui_security.rst:28`) is untrue of them. Override `send_error`. S.
+
+- **M8. KNOWN (plans `2026-10-05`, `2026-10-07`): anyone can hold the 64 connections.** `docs/gui_security.rst:198-206`. Reproduced: 32 connections written to every 20 s stayed held past the 30 s that closed 32 idle ones (`p04_limits.txt`); the 65th of 64 is `503`. Documented, correctly.
+
+- **M9. KNOWN (plan `2026-10-07`, P18b-11/13): a server earlier on the same port can leave a service worker or cached script in this origin.** `docs/gui_security.rst:226-238`. Not re-measured. Its advice, a browser profile of its own, is one few will take; the plan's structural answer, a fresh origin each run, is open question 5.
+
+- **M10. KNOWN (spec `2026-10-05 §10`): the audit was run once, and is already out of date.** `npm audit` today: 0 in what ships, 5 in development (2 high: `vite` through `launch-editor`, `decode-uri-component`; 3 moderate: `vitest`, `@vitest/mocker`, `@vitest/coverage-v8`), none of them the plan's list (`transcripts/npm_audit.json`). A developer's dev server, not the product. A CI job or a dated release step. S.
+
+- **M11. `Sec-Fetch-Site: none` survives a redirect, which the page's sentence does not cover.** `docs/gui_security.rst:177-183` ("a navigation it begins itself - an address typed, or chosen from a bookmark"). A typed address of another site that redirects to `/project?view=files&path=...` lands signed in (`p09_browser.txt`). Arrival asks no plan, so no effect beyond the page's own warning; widen the sentence. S.
+
+### Status of the 2026-09-15 findings in this area
+
+That review had no such pass, so there is nothing to check against.
+
+### Open questions
+
+1. **Is `ddd gui` meant to be safe to point at a tree you have not decided to trust?** Spec `2026-10-05 §10` left it "if the pilot asks"; pass 1 I15 asks for `--no-plugins`. *Yes:* no network or device from a build record (I4), a gate before the first analysis, a baseline's plugins off, and a project's `includes` held to the request rules too. *No:* one sentence at the top of the page: "treat `ddd gui` like `make`: it runs what the project names". Either answer is fine; today's silence is the defect.
+2. **Must the token buy code execution?** Nothing on the page writes `plugins` (no writer in `gui/src` or the plan modules). If `POST /api/edit` refused any edit changing a `plugins` list, a created file's document included, a stolen token could no longer run code of its choosing, and I2, I3 and `served` would all weigh less (M, plus closing M2's read-around if that boundary is then wanted). *If not:* drop the confinement claims and call it robustness.
+3. **The launch race:** keep the one-click browser on every system, or default to printing only where other users can read command lines? Either changes how much I3 matters.
+4. **`localhost`:** serve `[::1]` (I1's measured fix, two origins, one server) or stop promising it and say so? Serving also simplifies the page's longest bullet but one.
+5. **A fresh origin each run** (`<random>.localhost`): closes M9 at the cost of a `Host` rule per run and a browser's support for the name. The plan measured the idea and left it to you.
+
+### Test gaps
+
+- **The IPv6 stranger is always `V6ONLY=1`** (`tests/test_gui_server.py:3225, 3256`; `gui/e2e/localhost.spec.ts:23`). Add a dual-stack one and Node's default `listen(port)`. This is I1.
+- **The hostile walk never runs where the server runs.** `tests/test_gui_hostile.py:152-158` builds its session on a temporary root with the working directory elsewhere, so every relative path is judged against the wrong directory, and it calls `Api.handle`, not HTTP. It claims `\x00` on every key is "never answered 500"; on `/api/compare` that holds only because the baseline lands "outside the session root" first (M1). `monkeypatch.chdir(root)` would have caught it.
+- **No test of a hostile string reaching the page, and no lint rule.** The page's safety rests on React and on nobody adding a sink: Biome's `recommended` set, as configured (`gui/biome.json`), does **not** flag `dangerouslySetInnerHTML` (tried on a scratch file; it flags only `target="_blank"`). `security/noDangerouslySetInnerHtml` is one line, and my `p07_page.cjs` probe is about 60 lines of journey. No journey asserts zero policy violations in general (`units.spec.ts:268` listens in one).
+- **The cap is tested with handlers holding their clients** (`Held`, `tests/test_gui_server.py:2060`), never a long poll whose client has gone (M3).
+- **Build records have one hostile case, a newer format** (`tests/test_gui_api.py:1321`); no NUL, device or network `project` (I4).
+- **`test_a_file_outside_them_is_not_read` pins one route** (`tests/test_gui_api.py:1935`); its neighbours pin an edit and settle. `/api/dictionary`, `/api/variable`, `/api/types` and `/api/findings` read it back (M2).
+- **`Host` is pinned by one foreign name** (`evil.example`); the other forms I tried are refused because the comparison is exact, which is sound, and worth one parametrised test.
+
+### Assessment
+
+As a local server this is careful work that survives being attacked: in a real Edge, a hostile page on another port got nothing; a hostile project reached the page only as text in 492 visits; no request-named path left what is served; 11,300 malformed requests produced two `500`s and no hang. That is better than most tools of this kind, and the threat model is written down honestly. What is wrong is at the edges of the model rather than in its middle: one measured defence, the IPv6 hold, does not hold against the most ordinary way a program listens on Windows; the page never says that the token is code execution, which is what makes every residual it lists matter; "trusted" covers a tree the reader has not opened yet, including a network path read by the first thing the start page does; and a good deal of confinement code defends against nobody the model names while its docstrings claim otherwise. Fix I1 and the two sentences of I2 before calling the server reviewed, and decide open questions 1 and 2, because those two answers decide what the rest of the security page should say.
+
+```candidates
+12|I1|src/ddd/gui/server.py:128|On Windows a dual-stack listener on [::] binds beside the IPv6 hold and receives localhost:<port>/open?token=, against no other program can listen on localhost
+12|I2|docs/gui_security.rst:135|The token is code execution as the reader (an edit names a plugin outside what is served) and neither the security page nor the terminal says so
+12|I3|src/ddd/gui/server.py:446|The launch-code race hands its winner code execution for the whole run; the sign is one line after the fact (KNOWN)
+12|I4|src/ddd/gui/session.py:249|A build record under the start directory acts on the start page's first request: a network path read, the console opened and a hang, a 500, before anything is opened
+12|M1|src/ddd/gui/compare.py:384|GET /api/compare?baseline=%00 answers 500 on Windows with the server's own working directory; the hostile walk passes only because its cwd is elsewhere
+12|M2|src/ddd/gui/session.py:154|served is no boundary: an outside file is read back through the dictionary and quoted by findings, and a build record widens it, against its docstrings
+12|M3|src/ddd/gui/session.py:379|A long poll whose client has gone keeps its slot 25 s, so one tab reloading reaches the cap, against a browser never comes near that limit; the 503 is sometimes lost to a reset
+12|M4|src/ddd/gui/server.py:630|ddd gui --port 80 prints an address no browser can use: Host carries no port, 421
+12|M5|src/ddd/gui/server.py:973|An empty --host resolves to the computer's first network address rather than loopback
+12|M6|gui/src/components/CompareView.tsx:83|The start page and the Compare form run a project's or a baseline's python without a word (adds to pass 1 I15)
+12|M7|src/ddd/gui/server.py:265|The standard library's 400, 414, 431, 501, 505 carry no security headers, so can be framed; no effect found (KNOWN)
+12|M8|docs/gui_security.rst:198|Anyone reaching the port can hold the 64 connections by writing every 30 s (KNOWN)
+12|M9|docs/gui_security.rst:226|A server earlier on the same port can leave a service worker or cached script in this origin (KNOWN)
+12|M10|docs/superpowers/specs/2026-10-05-gui-security-design.md:305|The dependency audit ran once and is out of date: 0 in what ships, 5 in development, 2 high (KNOWN)
+12|M11|docs/gui_security.rst:177|Sec-Fetch-Site none survives a redirect, wider than a navigation the browser begins itself; no effect beyond landing signed in
+```

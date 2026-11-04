@@ -22,6 +22,11 @@ time."
   repository, not even a build output (redirect `--basetemp`, `-o`, `outDir`, coverage files and
   the like to your scratch folder; a stray file in the tree is a defect of yours). Never commit,
   never move HEAD, never touch other branches or worktrees.
+- **Never run anything as root or administrator, WSL included (no `wsl -u root`, no `sudo`), and never
+  name a system path as a target.** A probe writes only into a directory it made itself, under your
+  scratch folder or a temp folder of its own, and removes nothing it did not make. Pass 19 ran a probe
+  as root in WSL and it replaced that instance's real `/dev/null`. If a finding needs root to
+  reproduce, read it off the line and say so.
 - What the last whole review found: `SCRATCH/review-2026-09-15.md` (5649 lines, 219 findings; its
   fixes landed on 2026-09-16 and their plan, with the decisions taken and "Left open by the
   implementers", is `docs/superpowers/plans/2026-09-16-review-fixes.md`). A later review was started

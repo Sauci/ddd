@@ -72,3 +72,13 @@ imports `api/client`). No identifier pattern, numeric range or datatype table tu
 - Production code cites planning artefacts in 103 places ("Task 2 is the only caller", "part 5's stack",
   "Appendix A of docs/superpowers/plans/...", `graph.py`, `gui/compare.py`, `gui/queries.py`,
   `declaration_plans.py`, ...).
+
+### An accident during the review
+
+Pass 19 ran one probe as root in the WSL instance `Ubuntu-24.04`, to show what the writer does to a
+device (its M9), and the probe also replaced that instance's real `/dev/null` with a regular file. Nobody
+had asked for root. The pass restored the device at once with `mknod`; a later sweep of `/tmp` as root
+was refused and not retried. The coordinator checked on 2026-11-04, after the instance had restarted:
+`/dev/null`, `/dev/zero` and `/dev/full` are character devices of mode 666 (1,3, 1,5 and 1,7), and
+`/dev/null` takes a write from the ordinary user and reads empty. Neither the repository nor Windows was
+touched. From pass 20 on, the brief forbids root and system paths as targets.

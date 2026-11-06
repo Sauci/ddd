@@ -86,7 +86,8 @@ is a regression (say so) or it is wrong.
   `SCRATCH/pass-19/wsl/writer_root.txt` and the code, and give it PLAUSIBLE or CONFIRMED from the
   lines. Its part as an ordinary user may be reproduced, in a directory of your own.
 - **The local server.** Start your own `ddd gui` and your own listeners, on loopback addresses only
-  (`127.0.0.1`, `::1`, `::ffff:127.0.0.1`). Never bind a wildcard or a non-loopback address. Where a
+  (any address in `127.0.0.0/8`, `::1`, or such an IPv4 address mapped as `::ffff:127.x.y.z`). Never
+  bind a wildcard or a non-loopback address. Where a
   finding needs one, read it off the code and the pass's transcript, and say so.
 - **The network.** Read-only `gh` queries about this project's own repository are allowed, such as
   `gh api` or `gh run list`. Download nothing: no `pip download`, no `npm pack` of a published version.

@@ -73,6 +73,26 @@ imports `api/client`). No identifier pattern, numeric range or datatype table tu
   "Appendix A of docs/superpowers/plans/...", `graph.py`, `gui/compare.py`, `gui/queries.py`,
   `declaration_plans.py`, ...).
 
+### What the passes made of R1 to R4
+
+The passes found each of the coordinator's readings again, independently, and took each further. The
+one reading that was wrong was the coordinator's, and a pass corrected it.
+
+- **R1 is 1:C1**, which V1 confirmed on gcc 15.2. The stale read happens from `-Og` up, with no
+  warning under the CI's `-Werror` set. The pass added that the documents call it a constraint
+  violation, where C11 makes it undefined behaviour.
+- **R2 is 2:I1, 2:I2, 2:I4 and 2:I5**, with 2:M9 for the planning artefacts cited from the code. Pass 2
+  measured it further: the edit layer's 9,040 lines, the 12-module cycle behind two deferred imports,
+  and 33 of 33 realistic violations passing the guards. It then drew the target structure. Pass 24
+  measured the graph again: 87 modules, 363 edges, and no cycle among top-level imports.
+- **R3's positive half held.** The `api` and `state` cycle is 3:M2. **Its negative half did not.** A
+  first grep found no domain rule in the page, but pass 3 found several by reading: 3:C1 (64-bit
+  integers held as doubles), 3:I1 and 3:I3.
+- **R4 is 4:I1 and 4:I5** for the missing GUI documentation, and **4:I9** for SPEC's silence on
+  `ddd gui`, which V2 lowered to Minor. The dictionary format number is **4:M12** and **5:I1**, which
+  V3 lowered to Minor as a duplicate. The planning artefacts cited from the code are **2:M9** for the
+  Python and **3:M10** for the page.
+
 ### An accident during the review
 
 Pass 19 ran one probe as root in the WSL instance `Ubuntu-24.04`, to show what the writer does to a

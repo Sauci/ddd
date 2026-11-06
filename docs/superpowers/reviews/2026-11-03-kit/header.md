@@ -2,7 +2,7 @@
 
 A full review of the whole project at master `2b4bae6c` (merge of PR #83), asked for by the maintainer
 to answer three questions - is the concept sound, is the code split cleanly, does the documentation
-miss anything - beside the usual one, does it work. It runs as a sequence of independent passes, each
+miss anything - beside the usual one, does it work. It ran as a sequence of independent passes, each
 by one reviewer reading the material fresh, followed by a verification of every finding by a second
 reviewer and two sweeps for what the passes missed.
 
@@ -13,6 +13,7 @@ language server's edit plans, the toolbox and the ELF reader, the a2l's addresse
 image, record layouts and release 0.11.0: 515 files, 125,731 lines added and 5,393 removed since
 0.11.0 alone.
 
-Line numbers refer to the review tree, whose code is master `2b4bae6c`. **Work in progress**: passes are
-added as they finish, a finding is a candidate until its verification is recorded, and the summary is
-written last. The kit that drives the review is in `2026-11-03-kit/` beside this file.
+Line numbers refer to the review tree, whose code is master `2b4bae6c`. The review finished on
+2026-11-07. The summary below answers the four questions and says what to fix first. After it come
+the coordinator's own reading, made before any pass ran, and then each pass's report with its
+verification beside it. The kit that drove the review is in `2026-11-03-kit/` beside this file.

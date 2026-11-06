@@ -37,6 +37,10 @@ your own folder, but run nothing from theirs and write nothing into them.
      copy of your own, and run the tests it names.
    - For a finding about text (a document against the code, a spec sentence, a test that does not
      assert what its name says), read both sides and quote the lines.
+   - For a structural finding (a design, a split, a layering, a duplication), the claim to test is
+     the consequence it states: a defect it causes, a change it blocks, a rule it lets drift. Show
+     that consequence with a measurement of your own, or with the change tried in a copy. That the
+     structure exists confirms nothing by itself.
 4. Try to refute it before you confirm it. Look for the guard, the test, the caller or the spec
    sentence that would make it a non-issue. Look also for an input on which the claimed effect
    should appear and does not.

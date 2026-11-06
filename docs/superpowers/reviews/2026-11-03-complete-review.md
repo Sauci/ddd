@@ -5222,3 +5222,39 @@ the hazards the reader of passes 10 and 13 met were ever tried.
 22|M8|tests/test_gui_api.py:2646|Two longest-name tests fail on any Windows without long paths, so the gate is red out of the box here
 22|M9|docs/developer_documentation.rst:406|A couple of minutes is nine to eleven, two files are two thirds of it, no smaller loop offered
 ```
+
+## Pass 23: the test suite of the page
+
+> Work in progress (started 2026-11-06). Sections are filled as the pass goes; anything not yet
+> measured says so.
+
+### Scope covered
+
+(in progress)
+
+### Strengths
+
+(in progress)
+
+### Issues
+
+#### Critical
+
+#### Important
+
+#### Minor
+
+### Status of the 2026-09-15 findings in this area
+
+(in progress)
+
+### Open questions
+
+### Test gaps
+
+### Assessment
+
+(in progress)
+
+```candidates
+```

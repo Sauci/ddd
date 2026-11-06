@@ -71,6 +71,12 @@ export PATH="$PWD/.venv/Scripts:/c/Users/lmbsog0/AppData/Local/Programs/CLion/bi
   worth more than a complete-looking one that does not.
 - Then probe: write small throwaway projects and run the real tool on them. A finding you reproduced
   beats one you inferred. Keep transcripts in your scratch folder.
+- **The session may end under you; it has twice.** Write your report early, with every section, and
+  update it as you go. Run anything long in the background in a form that resumes, and count only
+  real outcomes as done (a process that could not start is not a result).
+- Copies you make under the scratch folder must carry fresh timestamps (`cp -r` without `-p`, or a
+  `touch` afterwards). Something on this machine, most likely a `%TEMP%` cleaner, deleted old-dated
+  copies of source files from pass 21's worker copies of the tree.
 - **This code argues for itself.** Its docstrings, comments, specs and plans are long and persuasive,
   and it has 100 % coverage and a very large test suite. None of that is evidence of soundness. Treat
   every "cannot drift", "cannot disagree", "by construction", "the same rule", "never" as a claim to

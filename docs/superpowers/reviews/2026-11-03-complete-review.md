@@ -3295,6 +3295,121 @@ The checks are the strongest part of the tool: the registry, the documents and t
 7|M15|src/ddd/analysis.py:1827|Small untrue sentences: typedef of a scalar, the registry on changed-interface and missing-plugin, the dump example lacks point_counts
 ```
 
+### Verification of pass 7
+
+By a reader who did not find these, on 2026-11-06, on the tree at master 2b4bae6c. Scratch:
+`SCRATCH/verify-7-8/`. 19 CONFIRMED. No grade changes.
+
+| id | verdict | grade (was -> now) | duplicate of | evidence | note |
+| --- | --- | --- | --- | --- | --- |
+| C1 | CONFIRMED | Critical -> Critical | 1:C3 | verify-7-8/p7/c1.txt | reproduced with my own types and values, on descriptions and against a dump, each side check --strict clean: Pair_t of Arr[3] gains z at its end -> three info[added-object], can replace, exit 0, a consumer built against the baseline reads 0 from Arr[2].x where the producer wrote 4321; Hd_t nested in Outer_t gains q -> one info, Rec.last reads 0; cells[2] to cells[4] ahead of last -> two infos, Rec.last reads 0; In_t {p, q} renamed In2_t {q, p} -> no finding at all, can replace, Rec.inner.p reads 0; controls: the same swap without the rename is error[changed-interface], and an append on a scalar instance moves nothing (reads 4321); every rebuilt consumer reads 4321; same root as pass 1 C3 (_compare_layouts lines up shared member names only, compare.py:687-700), adds four triggers, one with no finding at all |
+| I1 | CONFIRMED | Important -> Important | - | verify-7-8/p7/i1.txt | reproduced: a uint8[2][2] value block [[10,10],[20,20]] to [[10,20],[10,20]], the 3x3 transposition, and a 2x2x2 pair that is no transposition ([[[1,1],[1,1]],[[2,2],[2,2]]] to [[[1,2],[1,2]],[[1,2],[1,2]]]) each compare --strict exit 0, can replace, while the generated initialisers differ (diff in the transcript); [[1,2,3]x3] to a last row [1,2,4] prints first differs at [0][1]: 2 != 1, both sides hold 2 there; a map whose init alone is transposed passes too; narrower than filed in one way: swapping a map's axes is changed-interface on the references, so the transposition the pass ties to swapped axes is already refused; wider in another: in 3-d the collision is not only a transposition |
+| I2 | CONFIRMED | Important -> Important | - | verify-7-8/p7/i2.txt | reproduced: Level, uint32, written by W and read by R, gains defined(FEATURE_X) on both declarations; check --strict clean; compare (descriptions and dump) warning[changed-condition] ... absent from every build where that condition is false, exit 0, can replace; in a build without the macro the consumer built against the baseline fails to link (undefined reference to Level), linked with -DFEATURE_X it runs; SPEC.md:1584 puts changed-condition under no consumer becomes wrong while compare.py:1087-1090 says its consumers stop linking; the rebuilt reader's compile error is only because its code ignores its own new condition, so the delivered reader is the real harm |
+| I3 | CONFIRMED | Important -> Important | - | verify-7-8/p7/i3.txt | reproduced against both a dump --standalone archive and the description: Motor drops its output Torque -> warning[removed-unused-object] no component read it, exit 0 (an error only under --strict); drops its input Tick instead -> error[removed-object] was read by Motor, exit 1 with or without --strict; the same output removal in a project with a reader is error[removed-object] read by R; the input case refuses a change that harms nobody |
+| M1 | CONFIRMED | Minor -> Minor | 5:I6 | verify-7-8/p7/m1.txt | reproduced: V of S_t {a, b, c} going from measurement to parameter on both declarations gives three error[changed-interface], one per member (V.a, V.b, V.c, kind: parameter != measurement); V of E_t, whose two members are external types, making the same edit compares --strict exit 0, can replace, while R.h goes from extern E_t V to extern const E_t V; the no-leaf half is pass 5 I6's blind spot (an instance with no leaf is compared on nothing) for one more field, the kind; the one-finding-per-member half is new |
+| M2 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m2.txt | reproduced: In_t renamed In2_t under Outer_t, members untouched -> no finding under --strict, the outer type renamed -> changed-interface; a member of a structure type respelled [4] -> [N_CELLS] (N_CELLS = 4) -> no finding, a value member respelled the same way -> changed-interface (shape); Lone_t, which nothing instantiates, reordered -> error ... every variable of it holds its members somewhere else, removed -> nothing; same root as C1 (types compared by name) |
+| M3 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m3.txt | reproduced with a correction: A and B both point_counts leading, B reads A's axis Ax and has a curve over it; the project is clean under --strict, ddd check b.ddd.json --standalone says warning[point-counts-mismatch] ... its axis 'Ax' stores them 'none', exit 1 under --strict; narrower than filed: it needs an axis B alone can resolve (no input, or one B declares); an axis indexed by a measurement B does not declare drops the curve and the axis in silence and nothing fires |
+| M4 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m4.txt | reproduced: p.ddd.json including c.ddd.json with V of a type no file declares -> unknown-type with every check, and ok: 1 variable in 1 component under --standalone, exit 0, no incomplete-project, ddd list showing K alone; src/ddd/lsp/diagnostics.py:136-152 reads a project file with every check for this reason |
+| M5 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m5.txt | reproduced: Comp declared in two files, -W duplicate-component=ignore -> ok: 1 variable, the second file's Y and Z absent from list with no incomplete-project; T_t as uint8 in one types file and uint32 in another, -W duplicate-type=warning -> the dump gives X uint8 or uint32 by the order of the two includes, against docs/consistency_checks.rst:359-361 |
+| M6 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m6.txt | reproduced: a plugin check registered overridable=False, -W pl/fixed=ignore -> accepted, warning[pl/fixed] still reported, exit 0, where -W schema=ignore is the usage error exit 2; CheckInfo("pl/x", "warning", ...) -> AttributeError: 'str' object has no attribute 'rank', traceback, exit 1 on check, and 'value' on checks --plugin after the built-in list printed; diagnostics.py:490-512 verify only asks that the name is registered, resolve drops the override |
+| M7 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m7.txt | reproduced: almost.json holding {"name": "P"} as the baseline -> info[added-object], can replace, --strict exit 0; as the candidate -> warning[removed-unused-object], almost.json can replace p.ddd.json, exit 0 (an error under --strict) |
+| M8 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m8.txt | reproduced: a uint32 parameter's max 4294967295 -> 4294967291, a float64's 1000000 -> 999999.9995 and a uint64's lowered by 13.7e9 each compare --strict exit 0 with no finding; control: uint16 1000 -> 999 is narrowed-limits; pass 18 M5 is the same tolerance on limits-out-of-range |
+| M9 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m9.txt | reproduced: a float32 parameter's init 0.0 -> -0.0 compares --strict clean while ddd_globals.c goes from 0.0F to -0.0F; an init of 1e-400 on a float64 checks clean under --strict, ddd list shows 0 and the dump says 0.0 |
+| M10 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m10.txt; read off src/ddd/models/reserved.py:73-77, SPEC.md:1393-1400 | reproduced with a correction: Speed__raw is error[reserved-identifier] ... reserved by the c language and, relaxed, compiles clean under the CI flags; C11 7.1.3p1 reserves identifiers that begin with two underscores or an underscore and a capital, so the double underscore anywhere of reserved.py:73-74 and SPEC.md:1396-1397 is C++'s rule; _speed passes, but that half is SPEC's stated choice (SPEC.md:1398-1400 leaves the file-scope family to the project), not a misstatement |
+| M11 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m11.txt | reproduced with a correction: B reading A's curve Cv over A's local axis LAx checks clean under --strict; B's declaration without the axis is error[schema] Field required (the pass says definition-mismatch); control: a curve B produces over LAx is local-conflict; so SPEC.md:1282-1286's another component declares is wider than the code's produces |
+| M12 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m12.txt | reproduced: a project with an input nobody produces checks clean under -W missing-producer=ignore; ddd compare base/p.ddd.json cand/p.ddd.json under the same -W -> error[missing-producer]: in the baseline: ..., no verdict line, exit 1; through a dump of the baseline the same comparison gives can replace |
+| M13 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m13.txt | reproduced: an axis input naming In uint16[4], or In a uint8[8] string, checks and generates under --strict; the a2l states COM_AXIS In beside MEASUREMENT In with MATRIX_DIM 4 1 1 or 8 1 1; ASAP2 3.5.17 asks only for a MEASUREMENT, so what a tool indexes by is not settled here; pass 8 I1 is the meaning half |
+| M14 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m14.txt | reproduced: the conditions defined(, A &&, (A, 1 +, and defined(A) defined(B) each check clean under --strict, and gcc under the CI flags stops in gen/ddd_globals.h:23 for each (operator 'defined' requires an identifier, no right operand, missing ')', missing binary operator); pass 6 M6's trigraph is one case of the same missing test |
+| M15 | CONFIRMED | Minor -> Minor | - | verify-7-8/p7/m15.txt; read off src/ddd/diagnostics.py:232-235, README.md:629, docs/comparing_deliveries.rst:52-87 | confirmed piece by piece: Gain as a variable and a scalar type is name-collision saying the types header makes that a typedef name, ddd_types.h holds no typedef, and relaxed it compiles under the CI flags; ddd checks describes changed-interface without bit width, member order or type; missing-plugin fires for a plugin the baseline names and this run loaded (warning[missing-plugin] ... is not among the candidate's plugins), against this run has not loaded in the registry and README; the example object at comparing_deliveries.rst:52-87 has no point_counts, which every dump carries |
+
+No candidate of pass 7 is refuted or left plausible, and no grade changes. Four confirmations
+carry corrections.
+
+Every run was mine, on throwaway projects under `verify-7-8/p7/`, with the review tree's `ddd.exe`
+0.11.0. gcc was MinGW gcc 15.2 under the CI flag set of `docker/compile.sh`. Each comparison was
+run against the baseline as descriptions, and the Critical and I2 also against a `ddd dump` of the
+baseline. The pass's probes only told me what to try. For M3 I read its `chk1.py` to see why my
+first trigger stayed silent.
+
+**C1, confirmed.** I used my own types and values (`p7/c1.txt`), and each side was
+`check --strict` clean.
+- What I saw: `Pair_t` of `Arr[3]` gains `z` at its end, giving three `info[added-object]`. A nested
+  `Hd_t` gains a member, giving one `info`. A nested `cells[2]` becomes `cells[4]`, giving two
+  `info`s. `In_t {p, q}` becomes `In2_t {q, p}`, giving no finding at all. Each comparison says
+  "can replace", exit 0, under `--strict`. In all four, a consumer compiled against the baseline's
+  header and linked with the candidate's definitions reads 0 where the producer wrote 4321. Rebuilt,
+  it reads 4321.
+- The controls behave: the same swap without the rename is `error[changed-interface]`, and an
+  append to a scalar instance moves nothing a reader reads.
+- The refutation I looked for is SPEC's own reason, at `SPEC.md:1560-1562`: "a member that arrived
+  or left is already the addition or the removal of the leaf it contributes". It holds for that
+  scalar control, and for nothing that follows the member in memory: an element of an array, or a
+  member after a nested type.
+- The same root as pass 1 C3. This finding adds four triggers, one of which reports nothing at all.
+- Critical stands, for the reason V1 gave pass 1 C3:
+  `docs/comparing_deliveries.rst:716-721` promises that "everything built ... against the previous
+  delivery still addresses the same objects, with the same layout".
+
+**I1, confirmed with corrections** (`p7/i1.txt`).
+- What holds: a square value block whose rows are each uniform, compared with its transpose, gives
+  no finding under `--strict`, although the generated initialisers differ. The diff is in the
+  transcript. The index is wrong too: two tables that part at `[2][2]` are reported as "first
+  differs at [0][1]: 2 != 1", and both hold 2 there.
+- Narrower than filed: the pass ties the transposition to "a swapped pair of axes". Swapping a
+  map's axes is already `changed-interface` on its references. What stays silent is an init that
+  alone is transposed: a value block, or a map whose axes stand.
+- Wider than filed: in three dimensions the collision is not only a transposition.
+  `[[[1,1],[1,1]],[[2,2],[2,2]]]` and `[[[1,2],[1,2]],[[1,2],[1,2]]]` compare equal.
+- Why it stays Important: SPEC promises an init "compared as the storage it produces" and the
+  first index at which two inits part. Both promises fail on a plausible edit.
+
+**M3, confirmed with a correction** (`p7/m3.txt`).
+- What holds: `point-counts-mismatch` fires against B read alone when the project is clean, and
+  `--strict` turns it into exit 1.
+- The correction: it needs an axis that B alone can resolve, one with no `input` or with an
+  `input` that B declares. My first trigger used an axis indexed by a measurement that only A
+  declares. Under `--standalone` that drops the curve and the axis with no finding at all
+  ("ok: 0 variables").
+
+**M10, confirmed with a correction** (`p7/m10.txt`).
+- What holds: `Speed__raw` is refused as "reserved by the c language" and compiles clean under the
+  CI flags when relaxed. C11 7.1.3p1 reserves identifiers that *begin* with two underscores, or
+  with an underscore and a capital. The "double underscore anywhere" of `reserved.py:73-74` and
+  `SPEC.md:1396-1397` is C++'s rule.
+- The correction: `_speed` passing is not a misstatement of the standard. `SPEC.md:1398-1400`
+  names that file-scope family and chooses to leave it to the project's naming rules. That the
+  choice sits badly with every generated name being at file scope is a fair remark, but it is a
+  decision the SPEC states, not an error in stating C11.
+
+**M11, confirmed with a correction** (`p7/m11.txt`).
+- What holds: B reading A's curve over A's `local` axis is clean under `--strict`. A curve that B
+  produces over that axis is `local-conflict`, so the code's rule is "produces", while
+  `SPEC.md:1282-1286` says "declares".
+- The correction: B's declaration of the curve without its axis is `error[schema]` "Field
+  required". The pass says `definition-mismatch`.
+
+```verdicts
+7|C1|CONFIRMED|Critical|Critical|1:C3|reproduced with my own types and values, on descriptions and against a dump, each side check --strict clean: Pair_t of Arr[3] gains z at its end -> three info[added-object], can replace, exit 0, a consumer built against the baseline reads 0 from Arr[2].x where the producer wrote 4321; Hd_t nested in Outer_t gains q -> one info, Rec.last reads 0; cells[2] to cells[4] ahead of last -> two infos, Rec.last reads 0; In_t {p, q} renamed In2_t {q, p} -> no finding at all, can replace, Rec.inner.p reads 0; controls: the same swap without the rename is error[changed-interface], and an append on a scalar instance moves nothing (reads 4321); every rebuilt consumer reads 4321; same root as pass 1 C3 (_compare_layouts lines up shared member names only, compare.py:687-700), adds four triggers, one with no finding at all
+7|I1|CONFIRMED|Important|Important|-|reproduced: a uint8[2][2] value block [[10,10],[20,20]] to [[10,20],[10,20]], the 3x3 transposition, and a 2x2x2 pair that is no transposition ([[[1,1],[1,1]],[[2,2],[2,2]]] to [[[1,2],[1,2]],[[1,2],[1,2]]]) each compare --strict exit 0, can replace, while the generated initialisers differ (diff in the transcript); [[1,2,3]x3] to a last row [1,2,4] prints first differs at [0][1]: 2 != 1, both sides hold 2 there; a map whose init alone is transposed passes too; narrower than filed in one way: swapping a map's axes is changed-interface on the references, so the transposition the pass ties to swapped axes is already refused; wider in another: in 3-d the collision is not only a transposition
+7|I2|CONFIRMED|Important|Important|-|reproduced: Level, uint32, written by W and read by R, gains defined(FEATURE_X) on both declarations; check --strict clean; compare (descriptions and dump) warning[changed-condition] ... absent from every build where that condition is false, exit 0, can replace; in a build without the macro the consumer built against the baseline fails to link (undefined reference to Level), linked with -DFEATURE_X it runs; SPEC.md:1584 puts changed-condition under no consumer becomes wrong while compare.py:1087-1090 says its consumers stop linking; the rebuilt reader's compile error is only because its code ignores its own new condition, so the delivered reader is the real harm
+7|I3|CONFIRMED|Important|Important|-|reproduced against both a dump --standalone archive and the description: Motor drops its output Torque -> warning[removed-unused-object] no component read it, exit 0 (an error only under --strict); drops its input Tick instead -> error[removed-object] was read by Motor, exit 1 with or without --strict; the same output removal in a project with a reader is error[removed-object] read by R; the input case refuses a change that harms nobody
+7|M1|CONFIRMED|Minor|Minor|5:I6|reproduced: V of S_t {a, b, c} going from measurement to parameter on both declarations gives three error[changed-interface], one per member (V.a, V.b, V.c, kind: parameter != measurement); V of E_t, whose two members are external types, making the same edit compares --strict exit 0, can replace, while R.h goes from extern E_t V to extern const E_t V; the no-leaf half is pass 5 I6's blind spot (an instance with no leaf is compared on nothing) for one more field, the kind; the one-finding-per-member half is new
+7|M2|CONFIRMED|Minor|Minor|-|reproduced: In_t renamed In2_t under Outer_t, members untouched -> no finding under --strict, the outer type renamed -> changed-interface; a member of a structure type respelled [4] -> [N_CELLS] (N_CELLS = 4) -> no finding, a value member respelled the same way -> changed-interface (shape); Lone_t, which nothing instantiates, reordered -> error ... every variable of it holds its members somewhere else, removed -> nothing; same root as C1 (types compared by name)
+7|M3|CONFIRMED|Minor|Minor|-|reproduced with a correction: A and B both point_counts leading, B reads A's axis Ax and has a curve over it; the project is clean under --strict, ddd check b.ddd.json --standalone says warning[point-counts-mismatch] ... its axis 'Ax' stores them 'none', exit 1 under --strict; narrower than filed: it needs an axis B alone can resolve (no input, or one B declares); an axis indexed by a measurement B does not declare drops the curve and the axis in silence and nothing fires
+7|M4|CONFIRMED|Minor|Minor|-|reproduced: p.ddd.json including c.ddd.json with V of a type no file declares -> unknown-type with every check, and ok: 1 variable in 1 component under --standalone, exit 0, no incomplete-project, ddd list showing K alone; src/ddd/lsp/diagnostics.py:136-152 reads a project file with every check for this reason
+7|M5|CONFIRMED|Minor|Minor|-|reproduced: Comp declared in two files, -W duplicate-component=ignore -> ok: 1 variable, the second file's Y and Z absent from list with no incomplete-project; T_t as uint8 in one types file and uint32 in another, -W duplicate-type=warning -> the dump gives X uint8 or uint32 by the order of the two includes, against docs/consistency_checks.rst:359-361
+7|M6|CONFIRMED|Minor|Minor|-|reproduced: a plugin check registered overridable=False, -W pl/fixed=ignore -> accepted, warning[pl/fixed] still reported, exit 0, where -W schema=ignore is the usage error exit 2; CheckInfo("pl/x", "warning", ...) -> AttributeError: 'str' object has no attribute 'rank', traceback, exit 1 on check, and 'value' on checks --plugin after the built-in list printed; diagnostics.py:490-512 verify only asks that the name is registered, resolve drops the override
+7|M7|CONFIRMED|Minor|Minor|-|reproduced: almost.json holding {"name": "P"} as the baseline -> info[added-object], can replace, --strict exit 0; as the candidate -> warning[removed-unused-object], almost.json can replace p.ddd.json, exit 0 (an error under --strict)
+7|M8|CONFIRMED|Minor|Minor|-|reproduced: a uint32 parameter's max 4294967295 -> 4294967291, a float64's 1000000 -> 999999.9995 and a uint64's lowered by 13.7e9 each compare --strict exit 0 with no finding; control: uint16 1000 -> 999 is narrowed-limits; pass 18 M5 is the same tolerance on limits-out-of-range
+7|M9|CONFIRMED|Minor|Minor|-|reproduced: a float32 parameter's init 0.0 -> -0.0 compares --strict clean while ddd_globals.c goes from 0.0F to -0.0F; an init of 1e-400 on a float64 checks clean under --strict, ddd list shows 0 and the dump says 0.0
+7|M10|CONFIRMED|Minor|Minor|-|reproduced with a correction: Speed__raw is error[reserved-identifier] ... reserved by the c language and, relaxed, compiles clean under the CI flags; C11 7.1.3p1 reserves identifiers that begin with two underscores or an underscore and a capital, so the double underscore anywhere of reserved.py:73-74 and SPEC.md:1396-1397 is C++'s rule; _speed passes, but that half is SPEC's stated choice (SPEC.md:1398-1400 leaves the file-scope family to the project), not a misstatement
+7|M11|CONFIRMED|Minor|Minor|-|reproduced with a correction: B reading A's curve Cv over A's local axis LAx checks clean under --strict; B's declaration without the axis is error[schema] Field required (the pass says definition-mismatch); control: a curve B produces over LAx is local-conflict; so SPEC.md:1282-1286's another component declares is wider than the code's produces
+7|M12|CONFIRMED|Minor|Minor|-|reproduced: a project with an input nobody produces checks clean under -W missing-producer=ignore; ddd compare base/p.ddd.json cand/p.ddd.json under the same -W -> error[missing-producer]: in the baseline: ..., no verdict line, exit 1; through a dump of the baseline the same comparison gives can replace
+7|M13|CONFIRMED|Minor|Minor|-|reproduced: an axis input naming In uint16[4], or In a uint8[8] string, checks and generates under --strict; the a2l states COM_AXIS In beside MEASUREMENT In with MATRIX_DIM 4 1 1 or 8 1 1; ASAP2 3.5.17 asks only for a MEASUREMENT, so what a tool indexes by is not settled here; pass 8 I1 is the meaning half
+7|M14|CONFIRMED|Minor|Minor|-|reproduced: the conditions defined(, A &&, (A, 1 +, and defined(A) defined(B) each check clean under --strict, and gcc under the CI flags stops in gen/ddd_globals.h:23 for each (operator 'defined' requires an identifier, no right operand, missing ')', missing binary operator); pass 6 M6's trigraph is one case of the same missing test
+7|M15|CONFIRMED|Minor|Minor|-|confirmed piece by piece: Gain as a variable and a scalar type is name-collision saying the types header makes that a typedef name, ddd_types.h holds no typedef, and relaxed it compiles under the CI flags; ddd checks describes changed-interface without bit width, member order or type; missing-plugin fires for a plugin the baseline names and this run loaded (warning[missing-plugin] ... is not among the candidate's plugins), against this run has not loaded in the registry and README; the example object at comparing_deliveries.rst:52-87 has no point_counts, which every dump carries
+```
+
 ## Pass 8: generated artefacts and addresses (SPEC 5, 6)
 
 ### Scope covered
@@ -3449,6 +3564,119 @@ This is the part of DDD I would trust most. I tried for wrong output and did not
 8|M15|src/ddd/addresses.py:133|-gsplit-dwarf is told to build with -g, -g1 that a variable is not an array
 8|M16|src/ddd/cli.py:1651|ddd build-info P -o P overwrites the description it names (adds to pass 5 I5)
 8|M17|docs/generated_artefacts.rst:1235|Small untrue sentences: the example map's one address, LOWER_LIMIT, cannot drift apart, a placed object in both lists
+```
+
+### Verification of pass 8
+
+By a reader who did not find these, on 2026-11-06, on the tree at master 2b4bae6c. Scratch:
+`SCRATCH/verify-7-8/`. 19 CONFIRMED, 1 REFUTED. No grade changes.
+
+| id | verdict | grade (was -> now) | duplicate of | evidence | note |
+| --- | --- | --- | --- | --- | --- |
+| I1 | CONFIRMED | Important -> Important | - | verify-7-8/p8/i1.txt; read off ASAP2-1.6.1.pdf p.48 (verify-7-8/pdf/page-048.png) | reproduced with my own objects: EngSpeed uint8 factor 50 rpm indexes EngAxis float32 identity Hz under a curve; check --strict and generate a2l --strict exit 0; the a2l says MEASUREMENT EngSpeed UBYTE CM_LIN_RPM and, in the curve, COM_AXIS EngSpeed CM_IDENT_HZ; ASAP2 1.6.1 3.5.17 (p.48): It is expected that both conversions are equivalent, i.e. they must lead to the same result; what CANape or INCA then display was not tested, the contradiction with the standard is settled by its text; the shape half is pass 7 M13 |
+| I2 | CONFIRMED | Important -> Important | - | verify-7-8/p8/i2.txt | reproduced, check --strict clean each time: component stdint -> gen/stdint.h:21:8: unknown type name uint16_t in every header and ddd_globals.c; stdbool -> unknown type name bool; driver beside an external type in driver.h -> gen/driver.h shadows it, unknown type name Box_t; Signal, Math and Time generate and compile, and a hand-written file including signal.h, math.h, time.h with -Igen fails under MinGW gcc 15.2 (sig_atomic_t) and under WSL gcc 13.3 on the NTFS folder (v9fs), and compiles under that gcc on an ext4 copy; the error text depends on the project (the pass saw bool for stdint) |
+| I3 | REFUTED | Important -> - | - | read off ASAP2-1.6.1.pdf pp.111-112, 132, 136, 142 (verify-7-8/pdf/page-NNN.png) | the standard's text, read whole, gives DDD's order: 3.5.81 names the three numbers the dimensions of x, y and z; 3.5.62 (p.112) says rows and columns relate to the XY coordinate system, that a map deposited in rows alternates its rows with the respective Y-coordinates (a row is one y, x varies), and that a cuboid is an array of XY planes with Z incremented, and 3.5.77 sends a measurement's ROW_DIR to that example and 3.5.84 (p.142) makes ROW_DIR the default; DDD writes ROW_DIR in every FNC_VALUES; so the 2 x 3 matrix example has 2 rows (y) and 3 columns (x), xDim 3, yDim 2, which is MATRIX_DIM 3 2 1 for uint8_t T[2][3], exactly what DDD writes; the general formula reads the other way only if i x j x k is mapped onto x, y, z, which the standard nowhere does and which contradicts its Z-slowest cuboid; no tool test exists (a test gap), but the defect claimed rests on a misreading |
+| M1 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m1.txt | reproduced, against exact fractions: uint64 under {"factor": 1} states UPPER_LIMIT 1.84467440737e+19, 9.55e6 below what 2^64-1 counts read; uint32 under 2^-10 states 4194303.99902 below 4194303.9990234375; sint32 under 2^-16 states 32767.9999847 below 32767.99998474121; float64 under the identity states 1.79769313486e+308 below DBL_MAX, against SPEC.md:409-410 (under the identity they are the raw ends themselves); the short decimal of P4-I3 (uint8 under 0.03, 7.65) holds |
+| M2 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m2.txt; read off ASAP2-1.6.1.pdf p.26, p.136 | reproduced: uint8 Trace[70000] and an axis of 70000 points pass check --strict and generate a2l --strict with MATRIX_DIM 70000 1 1, AXIS_PTS ... 70000 and COM_AXIS ... 70000; ASAP2 1.6.1 table 5 (p.26) makes uint a 2-byte unsigned integer and MATRIX_DIM (p.136), NUMBER and MaxAxisPoints are uint; what a tool does with 70000 was not tested |
+| M3 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m3.txt | reproduced: SA of S_t[12] -> the MEASUREMENTs, ddd list and the dictionary's leaves run SA[0] ... SA[9], SA[10], SA[11], the GROUP's REF_MEASUREMENT SA[0], SA[10], SA[11], SA[1] ...; backends/a2l/model.py:502-509 sorts by the text of the path while its comment says the order the dictionary carries them in; SPEC.md:1804 (cell[10] before cell[2]) holds for the group only |
+| M4 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m4.txt; read off ASAP2-1.6.1.pdf p.36 | reproduced with an i386 image of my own (WSL gcc 13.3 -m32, ld -m elf_i386, as the ordinary user): SP.y (uint64), SP.z (float64) and SP.w (uint64[2]) sit at addresses 4 mod 8 in a file stating ALIGNMENT_INT64 8 and ALIGNMENT_FLOAT64_IEEE 8, with BYTE_ORDER taken from the image; 3.5.8 says the address must be dividable by the border and its own example is 4 for int64 with a 4-byte alignment; what a tool then does was not tested |
+| M5 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m5.txt | reproduced: WSL gcc 13.3's default PIE image (readelf Type DYN) -> generate a2l --image exit 0 with no finding, ECU_ADDRESS 0x00004012 for Speed and 0x00002020 for Gain, the link-time offsets, while two runs print &Speed at 0x616704d0f012 and 0x59de56dae012; SPEC.md:2004-2005 accepts ET_DYN and no sentence says the addresses are load-relative |
+| M6 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m6.txt | reproduced: Cu, unconditional, over Ax, which carries defined(F), checks clean under --strict; an image built without F holds Cu and not Ax, and generate a2l --image writes Cu with AXIS_PTS_REF Ax and Ax at 0x00000000, with address-missing on the image run only; adds to pass 1 I5 |
+| M7 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m7.txt | reproduced: an address map in UTF-16 -> ddd: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte, exit 2, no file named; [[[... 200,000 deep -> RecursionError traceback, exit 1; a 5,000 digit address -> Exceeds the limit (4300 digits) ... use sys.set_int_max_str_digits(), exit 2; addresses.py:62-75 catches JSONDecodeError, OSError and its own repeat only |
+| M8 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m8.txt | reproduced: float64 under {"factor": 1.8, "offset": 32} in degF with limits [-100, 500] -> error[schema]: the limits derived from 'float64' and this conversion are not finite, the same as without limits, although physical_limits returns stated limits first (models/objects.py:707-708); against SPEC.md:411-414's reason |
+| M9 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m9.txt | reproduced with a copy of the shipped templates whose input line is built from .const as docs/templates.rst:371-374 offers: --const-inputs gives .const=True on a calibration input that is already const, and the header says extern const const volatile uint16_t ConstMap[2]; gcc -std=c11 compiles it silently, -Wall warns (duplicate-decl-specifier), the CI flags and -std=c89 -pedantic-errors stop it, so no compiler accepts (templates.rst:288-289) and c refuses a repeated qualifier (c/model.py:113) are untrue of C99 and later |
+| M10 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m10.txt | reproduced with a template printing both: 5000000000 -> literal 5000000000LL, 4294967295 -> 4294967295LL, of type long long under MinGW where unsigned int holds it, -2147483648 -> -2147483648, of type long long and not int; only the 64-bit ends are as docs/templates.rst:202-210 says |
+| M11 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m11.txt | reproduced: components Sensor and Sensor_ check clean under --strict and both headers open #ifndef DDD_COMPONENT_SENSOR_H; a file including both stops on 'B' undeclared under the CI flags; still open from the previous review |
+| M12 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m12.txt; read off ASAP2-1.6.1.pdf p.74 | reproduced: {"factor": 0.5, "offset": 10} becomes RAT_FUNC with COEFFS 0 1 -10 0 0 0.5; 3.5.33 (p.74) under RAT_FUNC: For linear functions, use the ConversionType LINEAR; SPEC.md:1899 and docs/generated_artefacts.rst:898-924 explain the coefficients and give no reason for the choice |
+| M13 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m13.txt | reproduced: a component description Reads the sensor??/ checks clean under --strict and the CI flags stop at gen/C.h:12:20 and gen/ddd_globals.h:21:24: trigraph '??/' converted to '\' [-Werror=trigraphs]; extends pass 6 M6 from a condition to a description |
+| M14 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m14.txt | reproduced: C_meas (0.5, V) is the first record of the file, yet Z_axis (0.25, V), met through B_curve, gets CM_LIN_V and C_meas CM_LIN_V_2; against SPEC.md:1896-1897 (the object that reaches the file first, the plain objects in name order); stable and harmless |
+| M15 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m15.txt | reproduced with WSL gcc 13.3 images: -g -gsplit-dwarf -> note ... the unit defining it was built without debug information (-g), although it was built with -g; -g1 -> note 'SA' is not an array, so it has no element [0]; both reach address 0 with address-missing, so safe; the full -g image places everything |
+| M16 | CONFIRMED | Minor -> Minor | 5:I5 | verify-7-8/p8/m16.txt | reproduced: ddd build-info p.ddd.json -o p.ddd.json exits 0 and the project file is now a build record, which check then refuses with five schema errors; control: dump -o p.ddd.json is refused (would write over a file this run reads); adds build-info to pass 5 I5's list |
+| M17 | CONFIRMED | Minor -> Minor | - | verify-7-8/p8/m17.txt; read off docs/generated_artefacts.rst:1235-1239, docs/data_dictionary.rst:15-16, :74 | confirmed piece by piece: the example map gives AxisA 0x08004000 and ParameterA 134234112, one number; LOWER_LIMIT and UPPER_LIMIT appear nowhere in ASAP2 1.6.1 or 1.51, where they are the positional LowerLimit and UpperLimit; C dimensions an array by the constant's name and MATRIX_DIM by the value, so read from one field holds for the shipped templates only; a placed object is listed both in its component's group and in model.sections (rendered), against templates.rst:228-233 |
+
+One candidate of pass 8 is refuted, I3, and no grade changes. No candidate is left plausible.
+Three confirmations rest on the standard's text for the part a tool would show.
+
+Every run was mine, on throwaway projects under `verify-7-8/p8/`, with the review tree's `ddd.exe`
+0.11.0. PE builds used MinGW gcc 15.2 under the CI flag set of `docker/compile.sh`. ELF images were
+built by gcc 13.3 in WSL `Ubuntu-24.04` as the ordinary user `lmbsog0`, in my scratch folder or a
+`mktemp -d` folder of its own that the script removed. The ASAP2 1.6.1 pages I quote were rendered
+from `C:/git/ac11/ddd/docs/superpowers/ASAP2-1.6.1.pdf` itself, through the Windows PDF API, into
+`verify-7-8/pdf/page-NNN.png`. I did not rely on pass 1's text extraction for any quotation.
+
+**I3, refuted** (`verify-7-8/pdf/page-111.png`, `page-112.png`, `page-132.png`, `page-136.png`, `page-142.png`).
+- The finding says DDD's "ASAP2 lists the fastest running index first" is not in the standard,
+  and that the standard's one general formula reads the other way.
+- 3.5.81 names `MATRIX_DIM`'s three numbers the "number of values in dimension of x", of y and
+  of z.
+- 3.5.62 ties rows and columns to that coordinate system: "The concepts 'columns' and 'rows'
+  relate to the XY coordinate system". It also defines what a row is. `ALTERNATE_WITH_Y` is "maps:
+  deposited in rows, the rows of table values alternate with the respective Y-coordinates", and
+  `ALTERNATE_WITH_X` is "the columns of table values alternate with the respective X-coordinates".
+  A row therefore holds one y, with x varying along it. And "the cuboid is stored as an array of
+  maps with incremented or decremented Z coordinates".
+- So under `ROW_DIR`, x runs fastest and z slowest. DDD writes `ROW_DIR` in every `FNC_VALUES`,
+  and no `LAYOUT`, which 3.5.84 (p.142) defaults to `ROW_DIR`. 3.5.77 sends a measurement's `ROW_DIR` to
+  the `FNC_VALUES` example for its meaning.
+- Read with those definitions, the 2 x 3 example on p.112 has two rows (y) and three columns (x).
+  That is `xDim` 3 and `yDim` 2: `MATRIX_DIM 3 2 1` for `uint8_t T[2][3]`, exactly what
+  `backends/a2l/model.py:523-538` writes.
+- The formula `a111 ... a11k ... aijk` reads the other way only if the matrix's i x j x k is mapped
+  onto x, y, z in that order. The standard makes that mapping nowhere, and it would contradict the
+  same section's Z-slowest cuboid.
+- What I could not do: open a calibration tool. That no tool has ever loaded a `MATRIX_DIM` from
+  DDD is true, and one CANape session would remove the remaining doubt. It is a test to add, not
+  the defect the finding claims, because the standard's text supports the order DDD writes and
+  states.
+
+**I1, confirmed; the tool's side rests on the standard's text** (`p8/i1.txt`, `pdf/page-048.png`).
+- What I saw: with my own objects, an axis in Hz under the identity is indexed by a measurement in
+  rpm at 50 counts per unit. Both `check --strict` and `generate a2l --strict` exit 0. The file
+  states `COM_AXIS EngSpeed CM_IDENT_HZ` beside `MEASUREMENT EngSpeed UBYTE CM_LIN_RPM`.
+- 3.5.17 (p.48) says: "It is expected that both conversions are equivalent, i.e. they must lead to
+  the same result."
+- What I could not test: what CANape or INCA display for the operating point. The contradiction
+  with the standard is settled by its text, so the verdict is CONFIRMED and the grade stays
+  Important.
+
+**M2 and M4, confirmed; same limit** (`p8/m2.txt`, `p8/m4.txt`).
+- M2: the file breaks the standard's 2-byte `uint` (table 5, p.26) for `MATRIX_DIM`, `NUMBER` and
+  `MaxAxisPoints`.
+- M4: on a 32-bit image of my own, three 64-bit records sit at addresses 4 mod 8 in a file that
+  states an alignment of 8. 3.5.8 (p.36) makes the address "dividable by the value
+  AlignmentBorder", and its own example is 4 for exactly this ABI.
+- Both reproduced as filed. How a tool reads a count of 70000, or a start address off its stated
+  border, was not tested, and the finder said so too.
+
+**I2, confirmed with a small correction** (`p8/i2.txt`).
+- What holds: each mechanism reproduced as filed, with `ddd check --strict` clean every time.
+- The correction: the compiler's first error depends on what the project declares. For a
+  component `stdint` holding a `uint16` object it is `unknown type name 'uint16_t'`, where the pass
+  saw `bool`.
+- The case-insensitive half reproduced on both compilers. Under WSL gcc 13.3 the hand-written file
+  fails on the NTFS folder (`v9fs`) and compiles on an ext4 copy.
+
+```verdicts
+8|I1|CONFIRMED|Important|Important|-|reproduced with my own objects: EngSpeed uint8 factor 50 rpm indexes EngAxis float32 identity Hz under a curve; check --strict and generate a2l --strict exit 0; the a2l says MEASUREMENT EngSpeed UBYTE CM_LIN_RPM and, in the curve, COM_AXIS EngSpeed CM_IDENT_HZ; ASAP2 1.6.1 3.5.17 (p.48): It is expected that both conversions are equivalent, i.e. they must lead to the same result; what CANape or INCA then display was not tested, the contradiction with the standard is settled by its text; the shape half is pass 7 M13
+8|I2|CONFIRMED|Important|Important|-|reproduced, check --strict clean each time: component stdint -> gen/stdint.h:21:8: unknown type name uint16_t in every header and ddd_globals.c; stdbool -> unknown type name bool; driver beside an external type in driver.h -> gen/driver.h shadows it, unknown type name Box_t; Signal, Math and Time generate and compile, and a hand-written file including signal.h, math.h, time.h with -Igen fails under MinGW gcc 15.2 (sig_atomic_t) and under WSL gcc 13.3 on the NTFS folder (v9fs), and compiles under that gcc on an ext4 copy; the error text depends on the project (the pass saw bool for stdint)
+8|I3|REFUTED|Important|-|-|the standard's text, read whole, gives DDD's order: 3.5.81 names the three numbers the dimensions of x, y and z; 3.5.62 (p.112) says rows and columns relate to the XY coordinate system, that a map deposited in rows alternates its rows with the respective Y-coordinates (a row is one y, x varies), and that a cuboid is an array of XY planes with Z incremented, and 3.5.77 sends a measurement's ROW_DIR to that example and 3.5.84 (p.142) makes ROW_DIR the default; DDD writes ROW_DIR in every FNC_VALUES; so the 2 x 3 matrix example has 2 rows (y) and 3 columns (x), xDim 3, yDim 2, which is MATRIX_DIM 3 2 1 for uint8_t T[2][3], exactly what DDD writes; the general formula reads the other way only if i x j x k is mapped onto x, y, z, which the standard nowhere does and which contradicts its Z-slowest cuboid; no tool test exists (a test gap), but the defect claimed rests on a misreading
+8|M1|CONFIRMED|Minor|Minor|-|reproduced, against exact fractions: uint64 under {"factor": 1} states UPPER_LIMIT 1.84467440737e+19, 9.55e6 below what 2^64-1 counts read; uint32 under 2^-10 states 4194303.99902 below 4194303.9990234375; sint32 under 2^-16 states 32767.9999847 below 32767.99998474121; float64 under the identity states 1.79769313486e+308 below DBL_MAX, against SPEC.md:409-410 (under the identity they are the raw ends themselves); the short decimal of P4-I3 (uint8 under 0.03, 7.65) holds
+8|M2|CONFIRMED|Minor|Minor|-|reproduced: uint8 Trace[70000] and an axis of 70000 points pass check --strict and generate a2l --strict with MATRIX_DIM 70000 1 1, AXIS_PTS ... 70000 and COM_AXIS ... 70000; ASAP2 1.6.1 table 5 (p.26) makes uint a 2-byte unsigned integer and MATRIX_DIM (p.136), NUMBER and MaxAxisPoints are uint; what a tool does with 70000 was not tested
+8|M3|CONFIRMED|Minor|Minor|-|reproduced: SA of S_t[12] -> the MEASUREMENTs, ddd list and the dictionary's leaves run SA[0] ... SA[9], SA[10], SA[11], the GROUP's REF_MEASUREMENT SA[0], SA[10], SA[11], SA[1] ...; backends/a2l/model.py:502-509 sorts by the text of the path while its comment says the order the dictionary carries them in; SPEC.md:1804 (cell[10] before cell[2]) holds for the group only
+8|M4|CONFIRMED|Minor|Minor|-|reproduced with an i386 image of my own (WSL gcc 13.3 -m32, ld -m elf_i386, as the ordinary user): SP.y (uint64), SP.z (float64) and SP.w (uint64[2]) sit at addresses 4 mod 8 in a file stating ALIGNMENT_INT64 8 and ALIGNMENT_FLOAT64_IEEE 8, with BYTE_ORDER taken from the image; 3.5.8 says the address must be dividable by the border and its own example is 4 for int64 with a 4-byte alignment; what a tool then does was not tested
+8|M5|CONFIRMED|Minor|Minor|-|reproduced: WSL gcc 13.3's default PIE image (readelf Type DYN) -> generate a2l --image exit 0 with no finding, ECU_ADDRESS 0x00004012 for Speed and 0x00002020 for Gain, the link-time offsets, while two runs print &Speed at 0x616704d0f012 and 0x59de56dae012; SPEC.md:2004-2005 accepts ET_DYN and no sentence says the addresses are load-relative
+8|M6|CONFIRMED|Minor|Minor|-|reproduced: Cu, unconditional, over Ax, which carries defined(F), checks clean under --strict; an image built without F holds Cu and not Ax, and generate a2l --image writes Cu with AXIS_PTS_REF Ax and Ax at 0x00000000, with address-missing on the image run only; adds to pass 1 I5
+8|M7|CONFIRMED|Minor|Minor|-|reproduced: an address map in UTF-16 -> ddd: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte, exit 2, no file named; [[[... 200,000 deep -> RecursionError traceback, exit 1; a 5,000 digit address -> Exceeds the limit (4300 digits) ... use sys.set_int_max_str_digits(), exit 2; addresses.py:62-75 catches JSONDecodeError, OSError and its own repeat only
+8|M8|CONFIRMED|Minor|Minor|-|reproduced: float64 under {"factor": 1.8, "offset": 32} in degF with limits [-100, 500] -> error[schema]: the limits derived from 'float64' and this conversion are not finite, the same as without limits, although physical_limits returns stated limits first (models/objects.py:707-708); against SPEC.md:411-414's reason
+8|M9|CONFIRMED|Minor|Minor|-|reproduced with a copy of the shipped templates whose input line is built from .const as docs/templates.rst:371-374 offers: --const-inputs gives .const=True on a calibration input that is already const, and the header says extern const const volatile uint16_t ConstMap[2]; gcc -std=c11 compiles it silently, -Wall warns (duplicate-decl-specifier), the CI flags and -std=c89 -pedantic-errors stop it, so no compiler accepts (templates.rst:288-289) and c refuses a repeated qualifier (c/model.py:113) are untrue of C99 and later
+8|M10|CONFIRMED|Minor|Minor|-|reproduced with a template printing both: 5000000000 -> literal 5000000000LL, 4294967295 -> 4294967295LL, of type long long under MinGW where unsigned int holds it, -2147483648 -> -2147483648, of type long long and not int; only the 64-bit ends are as docs/templates.rst:202-210 says
+8|M11|CONFIRMED|Minor|Minor|-|reproduced: components Sensor and Sensor_ check clean under --strict and both headers open #ifndef DDD_COMPONENT_SENSOR_H; a file including both stops on 'B' undeclared under the CI flags; still open from the previous review
+8|M12|CONFIRMED|Minor|Minor|-|reproduced: {"factor": 0.5, "offset": 10} becomes RAT_FUNC with COEFFS 0 1 -10 0 0 0.5; 3.5.33 (p.74) under RAT_FUNC: For linear functions, use the ConversionType LINEAR; SPEC.md:1899 and docs/generated_artefacts.rst:898-924 explain the coefficients and give no reason for the choice
+8|M13|CONFIRMED|Minor|Minor|-|reproduced: a component description Reads the sensor??/ checks clean under --strict and the CI flags stop at gen/C.h:12:20 and gen/ddd_globals.h:21:24: trigraph '??/' converted to '\' [-Werror=trigraphs]; extends pass 6 M6 from a condition to a description
+8|M14|CONFIRMED|Minor|Minor|-|reproduced: C_meas (0.5, V) is the first record of the file, yet Z_axis (0.25, V), met through B_curve, gets CM_LIN_V and C_meas CM_LIN_V_2; against SPEC.md:1896-1897 (the object that reaches the file first, the plain objects in name order); stable and harmless
+8|M15|CONFIRMED|Minor|Minor|-|reproduced with WSL gcc 13.3 images: -g -gsplit-dwarf -> note ... the unit defining it was built without debug information (-g), although it was built with -g; -g1 -> note 'SA' is not an array, so it has no element [0]; both reach address 0 with address-missing, so safe; the full -g image places everything
+8|M16|CONFIRMED|Minor|Minor|5:I5|reproduced: ddd build-info p.ddd.json -o p.ddd.json exits 0 and the project file is now a build record, which check then refuses with five schema errors; control: dump -o p.ddd.json is refused (would write over a file this run reads); adds build-info to pass 5 I5's list
+8|M17|CONFIRMED|Minor|Minor|-|confirmed piece by piece: the example map gives AxisA 0x08004000 and ParameterA 134234112, one number; LOWER_LIMIT and UPPER_LIMIT appear nowhere in ASAP2 1.6.1 or 1.51, where they are the positional LowerLimit and UpperLimit; C dimensions an array by the constant's name and MATRIX_DIM by the value, so read from one field holds for the shipped templates only; a placed object is listed both in its component's group and in model.sections (rendered), against templates.rst:228-233
 ```
 
 ## Pass 9: tool interface and build integration (SPEC 3.11, 7, 7.1)

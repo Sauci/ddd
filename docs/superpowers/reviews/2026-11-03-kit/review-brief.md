@@ -52,6 +52,9 @@ export PATH="$PWD/.venv/Scripts:/c/Users/lmbsog0/AppData/Local/Programs/CLion/bi
 - One test always fails here: `tests/test_lsp.py::TestSymlinkedWorkspace::...` (Windows symlink
   privilege). Not a finding.
 - MinGW gcc 15.2 is on the PATH above for compiling generated C. Docker cannot run here.
+- WSL `Ubuntu-24.04` has gcc 13.3 for ELF images, but no pydantic and no CMake. It runs commands as
+  the ordinary user `lmbsog0` (uid 1000) by default, so call it as `wsl -d Ubuntu-24.04 -- <command>`,
+  never with `-u root` or `sudo`.
 - Node 24 / npm are on the PATH above. Playwright runs with `PLAYWRIGHT_CHANNEL=msedge` and
   `DDD_PYTHON=$PWD/.venv/Scripts/python.exe`.
 - Sphinx plantuml: `JAVA=C:/CAD/Tools/MATLAB/R2022b_x64/sys/java/jre/win64/jre/bin/java.exe`,

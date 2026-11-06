@@ -114,6 +114,7 @@ one setup serves the group:
 | V9 | 17, 18, 19 | code review of the core and of the periphery |
 | V10 | 20, 21 | the repository and remaining documents; the core's test suite |
 | V11 | 22, 23 | the test suites of the periphery, the server and the page |
+| V12 | 24, 25 | the code sweep; the documents sweep |
 
 ## Report
 

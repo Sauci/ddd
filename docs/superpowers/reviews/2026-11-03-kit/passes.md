@@ -3,7 +3,8 @@
 Each pass reads `review-brief.md` first. Paths are relative to the review tree. Parts A and B answer
 the maintainer's three questions directly and come first, so that their readers come to the code
 fresh; part C is the area-by-area correctness review, after the shape of the 2026-09-15 review
-(whose pass each one continues is named); part D holds the suite to account.
+(whose pass each one continues is named); part D holds the suite to account. Part E, written once
+passes 1 to 23 and their verification were done, sweeps what fell between them.
 
 ## Part A: the concept and the split
 
@@ -273,11 +274,61 @@ and screenshot references, the `gui` job of `.github/workflows/ci.yml`. The 100 
 by nothing? Mutate a copy. Flakiness: `waitFor`s, timeouts, order dependence, what the "hunt" of part 19c
 found and fixed. Do the journeys pin behaviour or pixels? Maintenance cost: `gui/e2e/demo.ts`, `fixtures.ts`.
 
+## Part E: the sweeps
+
+Written after passes 1 to 23 and their verification (V1 to V11): every candidate of those passes has a
+verdict in `SCRATCH/reports/verify-<N>.md`. Beyond `review-brief.md`, both sweeps read first the
+"Scope covered" section of every `SCRATCH/reports/pass-1.md` to `pass-23.md`, every candidates block,
+and the verdicts block of every `verify-<N>.md`: a REFUTED candidate is not a finding, and a corrected
+one stands as its verifier left it. Do not report again what a candidate already holds. If you find
+one wider, narrower or wrongly graded, say so under Assessment in one line, with its id. Report every
+Critical and Important you find and at most fifteen Minors, the most consequential; list any further
+Minor in one line under Assessment, unnumbered. "Status of the 2026-09-15 findings" may say "none in
+this area" where that is true.
+
+### Pass 24: the code sweep
+
+- **What no pass read closely.** From the Scope covered sections, list the source files of `src/ddd`,
+  `gui/src`, `editors/vscode/src`, `cmake/`, `tools/`, `docker/` and the examples' plugins that no
+  pass read line by line, or read only in part, with their sizes. Read the largest first, and say
+  which you still did not cover.
+- **The seams.** The contracts several passes saw from different sides, checked from both ends: a value
+  one side sends that the other refuses or reads otherwise. At least the page's API client
+  (`gui/src/api`) against the server (`src/ddd/gui/api.py`, `server.py`); the edit engine
+  (`editing.py`, `gui/session.py`) against the language server's view of the same files; the command
+  line's options against the CMake module's arguments (`cmake/Ddd.cmake`); the analysis against the
+  GUI's queries; the dictionary writer against its readers (`ddd tool`, plugins, the page); the C and
+  the A2L written for one object.
+- **The split, measured.** Passes 2 and 3 judged it by reading. Measure what reading could not: the
+  import graph of `src/ddd`, from a script that reads the imports (which package imports which, and
+  any cycle), against the layers the developer documentation describes; and every rule implemented
+  more than once (a check, a limit, a name rule or a default, in the CLI, the server, the language
+  server, the CMake module or the page), with whether the copies agree.
+- **The leads.** The first section of `SCRATCH/notes/coordinator-todo.md` holds what verifiers saw in
+  passing and never verified: settle each, as a finding or as nothing.
+
+### Pass 25: the documents sweep
+
+- **The inventory.** Every surface a user or an integrator meets: each command and option (`ddd --help`
+  and each command's), each check (`ddd checks`), each key of the description files (the committed
+  schemas), each output and its options (C, A2L, dictionary, manifest), each CMake keyword, each
+  language-server feature and each setting of the extension, each plugin hook, each screen and action
+  of `ddd gui`, each environment variable and each exit code. For each, where the user documentation
+  (`README.md`, `docs/*.rst`, `SPEC.md`, `CHANGELOG.md`, `editors/vscode/README.md`, the page's own
+  words) states it. Report what is stated nowhere, stated only in `docs/superpowers` (specs and plans
+  are not user documentation) or stated wrongly, and give the inventory's counts under Scope covered.
+  Pass 4 asked what the documentation misses, and pass 20 read the remaining documents: read both
+  reports whole, and say what the inventory finds that they did not.
+- **What no pass read closely.** From the Scope covered sections, the documents no pass read whole:
+  read them.
+- **The seams.** Where two documents state one fact (SPEC.md, a reference page, README.md,
+  CHANGELOG.md, `--help`, the schemas' descriptions, docstrings a page renders), check that they agree.
+
 ## Afterwards
 
 - **Verification**: every candidate gets CONFIRMED, PLAUSIBLE or REFUTED, from a reader who did not
   find it, by reproducing it on the tree; the grade may change. Groups of two to three passes each.
 - **Sweeps**: a code sweep and a documents sweep, each reading only what no pass looked at closely and
-  what several passes touched from different sides.
+  what several passes touched from different sides: passes 24 and 25 (part E), verified as group V12.
 - **Summary**: the maintainer's questions answered in order, what to fix first, decisions only the
   maintainer can take.

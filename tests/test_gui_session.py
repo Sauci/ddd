@@ -12,13 +12,13 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import ddd.gui.session as session_module
 from conftest import (
     EXAMPLES,
-    MEMBERSHIP,
     Gated,
     begun,
     build_record,
@@ -27,6 +27,8 @@ from conftest import (
     declare,
     first_revision,
     landed,
+    lying_under,
+    membership,
     offered_beside,
     project,
     stopped,
@@ -1932,12 +1934,15 @@ class TestCreatingAFile:
 
 def collected_sources(root: Path) -> list[Path]:
     """The two components of the source tree a build collects into
-    :func:`conftest.collected_project`'s project: a producer and a consumer of one variable."""
+    :func:`conftest.collected_project`'s project, a producer and a consumer of one variable, each
+    registered by the CMakeLists.txt beside it, as the module's own example lays one out."""
     write_tree(
         root / "src",
         {
             "pump/pump.ddd.json": component("Pump", declare("output", "Pressure", unit="bar")),
+            "pump/CMakeLists.txt": "ddd_add_component(pump JSON pump.ddd.json)\n",
             "valve/valve.ddd.json": component("Valve", declare("input", "Pressure", unit="bar")),
+            "valve/CMakeLists.txt": "ddd_add_component(valve JSON valve.ddd.json)\n",
         },
     )
     return [root / "src" / "pump" / "pump.ddd.json", root / "src" / "valve" / "valve.ddd.json"]
@@ -1952,18 +1957,35 @@ def an_include_taken_out(described: Path) -> FileChange:
     )
 
 
+def refusal_of(session: Session, changes: Sequence[FileChange]) -> tuple[str, str]:
+    """The code and the sentence ``session`` refuses the edit ``changes`` with."""
+    with pytest.raises(EditError) as refused:
+        session.edit(changes, "a change")
+    return refused.value.code, str(refused.value)
+
+
+def a_unit_set(path: Path, unit: str) -> FileChange:
+    """The unit of the first declaration of the component ``path`` set to ``unit``."""
+    pointer = "component.interface[0].definition.unit"
+    return FileChange(
+        path, fingerprint(path.read_bytes()), (Operation("set", pointer, f'"{unit}"'),)
+    )
+
+
 class TestAProjectTheBuildGenerates:
     """A project ``ddd_generate`` collected out of an image's link closure, its build record
     beside it naming it (:func:`conftest.collected_project`): the build writes it again at every
-    configure, out of what ``ddd_add_component`` registers. Its revision names that record, and
-    the session writes nothing in its directory - a change of the description is taken back by
-    that configure, and a file created beside it falls out of the project - while the components
-    the build collects from the source tree are written as in any other project."""
+    configure, out of what ``ddd_add_component`` registers. Its revision says which build that is
+    and the tree it builds in, and the session writes nothing under that tree - a change of the
+    description is undone by that configure, a file created beside it falls out of the project,
+    and whatever else the tree holds goes with it - while the components the build collects from
+    the source tree are written as in any other project."""
 
-    def test_its_revision_names_the_build_record_beside_it(self, tmp_path: Path) -> None:
+    def test_its_revision_names_its_image_and_build_tree(self, tmp_path: Path) -> None:
         described = collected_project(tmp_path, *collected_sources(tmp_path))
-        revision = first_revision(tmp_path, described)
-        assert revision.generated_by == BuildInfo(project=described.as_posix(), image="fw")
+        generated = first_revision(tmp_path, described).generated
+        assert generated is not None
+        assert (generated.image, generated.tree) == ("fw", (tmp_path / "b").resolve())
 
     def test_a_project_a_record_elsewhere_names_is_one_somebody_wrote(self, shared: Path) -> None:
         """``ddd_generate(... PROJECT p.ddd.json)``: its record lies in the build tree and names a
@@ -1971,7 +1993,7 @@ class TestAProjectTheBuildGenerates:
         build_record(shared.parent, shared, image="fw")
         revision = first_revision(shared.parent, shared)
         assert revision.builds != ()
-        assert revision.generated_by is None
+        assert revision.generated is None
 
     def test_a_record_beside_it_naming_another_description_does_not_make_it_the_builds(
         self, tmp_path: Path
@@ -1979,14 +2001,59 @@ class TestAProjectTheBuildGenerates:
         described = collected_project(tmp_path, *collected_sources(tmp_path))
         other = BuildInfo(project=(described.parent / "Other.ddd.json").as_posix(), image="fw")
         (described.parent / "ddd-build.json").write_text(build_info_text(other), encoding="utf-8")
-        assert first_revision(tmp_path, described).generated_by is None
+        assert first_revision(tmp_path, described).generated is None
 
-    def test_a_record_beside_it_that_does_not_read_as_one_does_not_either(
-        self, tmp_path: Path
+    @pytest.mark.parametrize(
+        "record",
+        ["{", '{"format": 1, "image": "fw"}', '{"format": 1, "project": 7, "image": "fw"}'],
+    )
+    def test_a_record_beside_it_naming_no_description_does_not_either(
+        self, tmp_path: Path, record: str
     ) -> None:
+        """One that does not parse, one naming no project, and one naming it by no path."""
         described = collected_project(tmp_path, *collected_sources(tmp_path))
-        (described.parent / "ddd-build.json").write_text("{", encoding="utf-8")
-        assert first_revision(tmp_path, described).generated_by is None
+        (described.parent / "ddd-build.json").write_text(record, encoding="utf-8")
+        assert first_revision(tmp_path, described).generated is None
+
+    @pytest.mark.parametrize(
+        "unusable",
+        [{"format": 99, "kept": "by a newer DDD"}, {"severity": ["no-such-check=error"]}],
+    )
+    def test_a_record_this_version_does_not_apply_still_makes_it_the_builds(
+        self, tmp_path: Path, unusable: dict[str, object]
+    ) -> None:
+        """A record a newer DDD wrote - a format past this one's, a key this one does not know -
+        and one naming a check this one has not got: neither is applied, its severities being
+        unknown here, and the description beside each is written again at every configure all
+        the same."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        record = described.parent / "ddd-build.json"
+        written = {**json.loads(record.read_text(encoding="utf-8")), **unusable}
+        record.write_text(json.dumps(written), encoding="utf-8")
+        session = Session(tmp_path, [tmp_path / "b"])
+        session.open(described)
+        revision = session.revision
+        assert revision is not None
+        assert revision.builds == ()
+        before = described.read_bytes()
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", membership(tmp_path))
+        assert described.read_bytes() == before
+
+    @pytest.mark.parametrize("image", ["", 7])
+    def test_a_record_naming_no_image_is_said_to_be_the_builds(
+        self, tmp_path: Path, image: str | int
+    ) -> None:
+        """``ddd build-info`` without ``--image`` writes ``"image": ""``; a record naming its
+        image by no string - by a number - names none either."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        record = described.parent / "ddd-build.json"
+        written = {**json.loads(record.read_text(encoding="utf-8")), "image": image}
+        record.write_text(json.dumps(written), encoding="utf-8")
+        session = Session(tmp_path)
+        session.open(described)
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", membership(tmp_path, build="the build"))
 
     def test_an_edit_of_its_description_is_refused_and_writes_nothing(self, tmp_path: Path) -> None:
         """Taking a component out of its includes, which the next configure would put back."""
@@ -1994,9 +2061,8 @@ class TestAProjectTheBuildGenerates:
         session = Session(tmp_path)
         session.open(described)
         before = described.read_bytes()
-        with pytest.raises(EditError) as refused:
-            session.edit([an_include_taken_out(described)], "an include taken out")
-        assert (refused.value.code, str(refused.value)) == ("generated", MEMBERSHIP)
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", membership(tmp_path))
         assert described.read_bytes() == before
         assert (session.edits, session.undoable) == (0, None)
 
@@ -2009,13 +2075,9 @@ class TestAProjectTheBuildGenerates:
         described = collected_project(tmp_path, *sources)
         session = Session(tmp_path)
         session.open(described)
-        with pytest.raises(EditError) as refused:
-            session.edit(adoption(described), "the vocabulary adopted")
         pump = sources[0].resolve().as_posix()
-        assert (refused.value.code, str(refused.value)) == (
-            "generated",
-            offered_beside("units.ddd.json", pump),
-        )
+        refused = refusal_of(session, adoption(described))
+        assert refused == ("generated", offered_beside(tmp_path, "units.ddd.json", pump))
         assert not (described.parent / "units.ddd.json").exists()
 
     def test_a_file_created_beside_it_alone_is_refused_as_the_builds(self, tmp_path: Path) -> None:
@@ -2027,13 +2089,9 @@ class TestAProjectTheBuildGenerates:
         session = Session(tmp_path)
         session.open(described)
         created, _ = adoption(described)
-        with pytest.raises(EditError) as refused:
-            session.edit([created], "the vocabulary adopted")
         pump = sources[0].resolve().as_posix()
-        assert (refused.value.code, str(refused.value)) == (
-            "generated",
-            offered_beside("units.ddd.json", pump),
-        )
+        refused = refusal_of(session, [created])
+        assert refused == ("generated", offered_beside(tmp_path, "units.ddd.json", pump))
         assert not (described.parent / "units.ddd.json").exists()
 
     def test_a_component_of_the_source_tree_is_written(self, tmp_path: Path) -> None:
@@ -2042,10 +2100,7 @@ class TestAProjectTheBuildGenerates:
         session = Session(tmp_path)
         session.open(described)
         pump = sources[0]
-        unit = Operation("set", "component.interface[0].definition.unit", '"kPa"')
-        _, written = session.edit(
-            [FileChange(pump, fingerprint(pump.read_bytes()), (unit,))], "the unit of Pressure"
-        )
+        _, written = session.edit([a_unit_set(pump, "kPa")], "the unit of Pressure")
         assert [file.path for file in written] == [pump.resolve()]
         assert '"unit": "kPa"' in pump.read_text(encoding="utf-8")
 
@@ -2061,24 +2116,89 @@ class TestAProjectTheBuildGenerates:
         renamed = FileChange(
             units, fingerprint(units.read_bytes()), (Operation("set", "units[0]", '"kPa"'),)
         )
-        with pytest.raises(EditError) as refused:
-            session.edit([renamed], "a unit renamed")
-        assert str(refused.value) == (
-            f"units.ddd.json lies in the directory of Fw.ddd.json, and {MEMBERSHIP}"
-        )
+        refused = refusal_of(session, [renamed])
+        assert refused == ("generated", lying_under(tmp_path, "units.ddd.json"))
 
-    def test_a_record_naming_no_image_is_said_to_be_the_builds(self, tmp_path: Path) -> None:
-        """``ddd build-info`` without ``--image`` writes ``"image": ""``, which names no image."""
-        described = collected_project(tmp_path, *collected_sources(tmp_path))
-        unnamed = BuildInfo(project=described.as_posix())
-        (described.parent / "ddd-build.json").write_text(build_info_text(unnamed), encoding="utf-8")
+    def test_a_description_generated_elsewhere_in_its_build_tree_is_refused_naming_it(
+        self, tmp_path: Path
+    ) -> None:
+        """A description a custom command writes into a directory of the build tree of its own,
+        registered with ``ddd_add_component`` as the module allows: under the tree, where the
+        build writes it again, so an edit of it is refused, naming it, and nothing is written."""
+        sources = collected_sources(tmp_path)
+        write_tree(
+            tmp_path / "b" / "gen",
+            {"gauge.ddd.json": component("Gauge", declare("input", "Pressure", unit="bar"))},
+        )
+        gauge = tmp_path / "b" / "gen" / "gauge.ddd.json"
+        described = collected_project(tmp_path, *sources, gauge)
         session = Session(tmp_path)
         session.open(described)
-        with pytest.raises(EditError) as refused:
-            session.edit([an_include_taken_out(described)], "an include taken out")
-        assert str(refused.value) == MEMBERSHIP.replace("the build of fw", "the build")
+        before = gauge.read_bytes()
+        refused = refusal_of(session, [a_unit_set(gauge, "kPa")])
+        assert refused == ("generated", lying_under(tmp_path, "gauge.ddd.json"))
+        assert gauge.read_bytes() == before
 
-    def test_with_no_description_outside_its_directory_a_new_file_goes_in_the_source_tree(
+    @pytest.mark.parametrize("source", ["", "project"])
+    def test_a_build_tree_holding_its_source_tree_is_the_builds_in_its_output_directory_alone(
+        self, tmp_path: Path, source: str
+    ) -> None:
+        """An in-source build, the cache in the source tree's own top directory, and a source tree
+        configured inside its build tree: refusing the whole tree would refuse every component, so
+        the build's is the directory it generates the description into, and the components are
+        written."""
+        sources = collected_sources(tmp_path / source)
+        described = collected_project(tmp_path, *sources, build=".", source=tmp_path / source)
+        session = Session(tmp_path)
+        session.open(described)
+        revision = session.revision
+        assert revision is not None
+        assert revision.generated is not None
+        assert revision.generated.tree == described.parent.resolve()
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", membership(tmp_path, tree="ddd/fw"))
+        _, written = session.edit([a_unit_set(sources[0], "kPa")], "the unit of Pressure")
+        assert [file.path for file in written] == [sources[0].resolve()]
+
+    def test_with_no_cmake_cache_above_it_its_output_directory_is_the_builds(
+        self, tmp_path: Path
+    ) -> None:
+        """A record no CMake build tree holds: ``ddd build-info`` run by another build system, or
+        an output directory outside the build tree."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path), cache=False)
+        generated = first_revision(tmp_path, described).generated
+        assert generated is not None
+        assert generated.tree == described.parent.resolve()
+
+    def test_a_cache_naming_no_source_tree_leaves_its_output_directory_the_builds(
+        self, tmp_path: Path
+    ) -> None:
+        """A ``CMakeCache.txt`` without ``CMAKE_HOME_DIRECTORY`` cannot say that the source tree
+        is not under it."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path), cache=False)
+        cache = tmp_path / "b" / "CMakeCache.txt"
+        cache.write_text("# This is the CMakeCache file.\n", encoding="utf-8")
+        generated = first_revision(tmp_path, described).generated
+        assert generated is not None
+        assert generated.tree == described.parent.resolve()
+
+    def test_a_cache_that_cannot_be_read_leaves_its_output_directory_the_builds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        read_text = Path.read_text
+
+        def refusing(path: Path, *arguments: Any, **keywords: Any) -> str:
+            if path.name == "CMakeCache.txt":
+                raise PermissionError(f"{path} cannot be read")
+            return read_text(path, *arguments, **keywords)
+
+        monkeypatch.setattr(Path, "read_text", refusing)
+        generated = first_revision(tmp_path, described).generated
+        assert generated is not None
+        assert generated.tree == described.parent.resolve()
+
+    def test_with_no_description_outside_its_build_tree_a_new_file_goes_in_the_source_tree(
         self, tmp_path: Path
     ) -> None:
         """An image linking no registered component is collected into a description with no
@@ -2086,11 +2206,11 @@ class TestAProjectTheBuildGenerates:
         described = collected_project(tmp_path)
         session = Session(tmp_path)
         session.open(described)
-        with pytest.raises(EditError) as refused:
-            session.edit(adoption(described), "the vocabulary adopted")
-        assert str(refused.value) == (
-            f"{MEMBERSHIP}; create units.ddd.json in the source tree instead, and add "
-            "ddd_add_component(<target> JSON units.ddd.json) to the CMakeLists.txt beside it"
+        assert refusal_of(session, adoption(described)) == (
+            "generated",
+            f"{membership(tmp_path)}; create units.ddd.json in the source tree instead, and add "
+            "ddd_add_component(<target> JSON units.ddd.json) to the CMakeLists.txt beside it, "
+            "replacing <target> with your component's target",
         )
 
     def test_a_component_beside_it_is_not_where_a_new_file_is_offered(self, tmp_path: Path) -> None:
@@ -2104,19 +2224,91 @@ class TestAProjectTheBuildGenerates:
         described = collected_project(tmp_path, *sources, newcomp)
         session = Session(tmp_path)
         session.open(described)
-        with pytest.raises(EditError) as refused:
-            session.edit(adoption(described), "the vocabulary adopted")
-        assert str(refused.value) == offered_beside(
-            "units.ddd.json", sources[0].resolve().as_posix()
+        pump = sources[0].resolve().as_posix()
+        refused = refusal_of(session, adoption(described))
+        assert refused == ("generated", offered_beside(tmp_path, "units.ddd.json", pump))
+
+    def test_a_description_of_its_build_tree_is_not_where_a_new_file_is_offered(
+        self, tmp_path: Path
+    ) -> None:
+        """A dependency fetched into the build tree, ``FetchContent`` style, its own CMakeLists.txt
+        beside its description, which sorts ahead of every other file: under the tree, where the
+        new file would go with the tree. Passed over for the first description of the source
+        tree."""
+        sources = collected_sources(tmp_path)
+        fetched = tmp_path / "b" / "_deps" / "lib-src"
+        write_tree(
+            fetched,
+            {
+                "lib.ddd.json": component("Lib"),
+                "CMakeLists.txt": "ddd_add_component(lib JSON lib.ddd.json)\n",
+            },
         )
+        described = collected_project(tmp_path, fetched / "lib.ddd.json", *sources)
+        session = Session(tmp_path)
+        session.open(described)
+        revision = session.revision
+        assert revision is not None
+        assert revision.files[0].path.name == "lib.ddd.json"
+        pump = sources[0].resolve().as_posix()
+        refused = refusal_of(session, adoption(described))
+        assert refused == ("generated", offered_beside(tmp_path, "units.ddd.json", pump))
+
+    def test_a_description_outside_what_is_served_is_not_where_a_new_file_is_offered(
+        self, tmp_path: Path
+    ) -> None:
+        """A checkout beside this one, added to the build with its own CMakeLists.txt, outside the
+        directory ``ddd gui`` was started in, and sorting ahead of the source tree's: no place to
+        send a reader the page does not reach. Passed over for the first description it
+        serves."""
+        work = tmp_path / "work"
+        sources = collected_sources(work)
+        write_tree(
+            tmp_path / "vendor",
+            {
+                "vendor.ddd.json": component("Vendor"),
+                "CMakeLists.txt": "ddd_add_component(vendor JSON vendor.ddd.json)\n",
+            },
+        )
+        described = collected_project(work, tmp_path / "vendor" / "vendor.ddd.json", *sources)
+        session = Session(work)
+        session.open(described)
+        revision = session.revision
+        assert revision is not None
+        assert revision.files[0].path.name == "vendor.ddd.json"
+        pump = sources[0].resolve().as_posix()
+        refused = refusal_of(session, adoption(described))
+        assert refused == ("generated", offered_beside(work, "units.ddd.json", pump))
+
+    def test_a_description_no_cmakelists_lies_beside_is_not_where_a_new_file_is_offered(
+        self, tmp_path: Path
+    ) -> None:
+        """A description generated into a ``build`` directory beside the source tree, which no
+        CMake cache marks as a build tree, and sorting ahead of it: no CMakeLists.txt beside it
+        for the line to go into. Passed over for the first description that has one."""
+        sources = collected_sources(tmp_path)
+        write_tree(tmp_path / "build" / "gen", {"gen.ddd.json": component("Gen")})
+        gen = tmp_path / "build" / "gen" / "gen.ddd.json"
+        described = collected_project(tmp_path, gen, *sources)
+        session = Session(tmp_path)
+        session.open(described)
+        revision = session.revision
+        assert revision is not None
+        assert [file.path.name for file in revision.files][:2] == ["Fw.ddd.json", "gen.ddd.json"]
+        pump = sources[0].resolve().as_posix()
+        refused = refusal_of(session, adoption(described))
+        assert refused == ("generated", offered_beside(tmp_path, "units.ddd.json", pump))
 
     def test_a_plugin_is_not_where_a_new_file_is_offered(self, tmp_path: Path) -> None:
         """``ddd_generate(fw ... PLUGINS plugins/demo_plugin.py)``: the plugin is a file of the
-        project, sorting ahead of its descriptions, and named by ``PLUGINS`` rather than
-        registered by ``ddd_add_component``, so no call beside it registers a file. Passed over
-        for the first description the build collects from the source tree."""
+        project sorting ahead of its descriptions, a CMakeLists.txt beside it, and no description:
+        ``PLUGINS`` names it, no ``ddd_add_component`` call. Passed over for the first description
+        the build collects from the source tree."""
         sources = collected_sources(tmp_path)
-        write_tree(tmp_path / "plugins", {"demo_plugin.py": REGISTERING_PLUGIN})
+        write_tree(
+            tmp_path / "plugins",
+            {"demo_plugin.py": REGISTERING_PLUGIN, "CMakeLists.txt": "# the plugins' own\n"},
+        )
         plugin = tmp_path / "plugins" / "demo_plugin.py"
         described = collected_project(tmp_path, *sources, plugins=[plugin])
         session = Session(tmp_path)
@@ -2128,11 +2320,9 @@ class TestAProjectTheBuildGenerates:
             "demo_plugin.py",
             "pump.ddd.json",
         ]
-        with pytest.raises(EditError) as refused:
-            session.edit(adoption(described), "the vocabulary adopted")
-        assert str(refused.value) == offered_beside(
-            "units.ddd.json", sources[0].resolve().as_posix()
-        )
+        pump = sources[0].resolve().as_posix()
+        refused = refusal_of(session, adoption(described))
+        assert refused == ("generated", offered_beside(tmp_path, "units.ddd.json", pump))
 
 
 class TestUndoing:

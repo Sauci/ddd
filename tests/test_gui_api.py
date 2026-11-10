@@ -20,7 +20,6 @@ import ddd.gui.queries as queries_module
 import ddd.gui.session as session_module
 from conftest import (
     EXAMPLES,
-    MEMBERSHIP,
     Gated,
     begun,
     build_record,
@@ -30,6 +29,8 @@ from conftest import (
     directory_link,
     landed,
     looped,
+    lying_under,
+    membership,
     offered_beside,
     project,
     scalar_type,
@@ -7315,18 +7316,20 @@ class TestAProjectTheBuildCollected:
 
     The build writes that description again at every configure, so an entry added or taken out
     here does not outlive the next one, and a file created beside it, in the build tree, is no
-    longer included after it and is deleted with the build tree. Every change writing there is
-    refused, saying that membership is ``ddd_add_component``'s, a new file offered beside a
-    description of the source tree instead, with the line that registers it; the components
+    longer included after it and is deleted with the build tree. Every change writing under that
+    tree is refused, saying that membership is ``ddd_add_component``'s, a new file offered beside
+    a description of the source tree instead, with the line that registers it; the components
     themselves are changed as in any other project."""
 
     SOURCES: Final[dict[str, Any]] = {
         "pump/pump.ddd.json": component("Pump", declare("output", "Pressure", unit="bar")),
+        "pump/CMakeLists.txt": "ddd_add_component(pump JSON pump.ddd.json)\n",
         "valve/valve.ddd.json": component("Valve", declare("input", "Pressure", unit="bar")),
+        "valve/CMakeLists.txt": "ddd_add_component(valve JSON valve.ddd.json)\n",
         "spare/spare.ddd.json": component("Spare"),
     }
-    """The source tree: the two components registered on what ``fw`` links, and a description
-    nothing registers."""
+    """The source tree: the two components registered on what ``fw`` links, each by the
+    CMakeLists.txt beside it, and a description nothing registers."""
 
     @classmethod
     def collected(cls, root: Path) -> Path:
@@ -7362,7 +7365,7 @@ class TestAProjectTheBuildCollected:
             component="NewComp",
         )
         pump = posix(root, "src/pump/pump.ddd.json")
-        assert reply == refused_as_generated(offered_beside("newcomp.ddd.json", pump))
+        assert reply == refused_as_generated(offered_beside(root, "newcomp.ddd.json", pump))
 
     def test_an_include_is_refused_saying_that_membership_is_ddd_add_components(
         self, opened: tuple[Api, Path]
@@ -7373,7 +7376,7 @@ class TestAProjectTheBuildCollected:
         reply = get(
             api, "/api/files-plan", action="add", path=posix(root, "src/spare/spare.ddd.json")
         )
-        assert reply == refused_as_generated(MEMBERSHIP)
+        assert reply == refused_as_generated(membership(root))
 
     def test_taking_an_include_out_is_refused_the_same_way(self, opened: tuple[Api, Path]) -> None:
         """A component the build collects is taken out where it is registered: an entry taken
@@ -7382,7 +7385,7 @@ class TestAProjectTheBuildCollected:
         reply = get(
             api, "/api/files-plan", action="remove", path=posix(root, "src/valve/valve.ddd.json")
         )
-        assert reply == refused_as_generated(MEMBERSHIP)
+        assert reply == refused_as_generated(membership(root))
 
     def test_a_create_posted_beside_it_is_refused_and_nothing_is_written(
         self, opened: tuple[Api, Path]
@@ -7420,7 +7423,7 @@ class TestAProjectTheBuildCollected:
             },
         )
         pump = posix(root, "src/pump/pump.ddd.json")
-        assert reply == refused_as_generated(offered_beside("newcomp.ddd.json", pump))
+        assert reply == refused_as_generated(offered_beside(root, "newcomp.ddd.json", pump))
         assert contents(root) == before
         assert get(api, "/api/state").body["undoable"] is None
 
@@ -7447,7 +7450,7 @@ class TestAProjectTheBuildCollected:
                 "label": "an include",
             },
         )
-        assert reply == refused_as_generated(MEMBERSHIP)
+        assert reply == refused_as_generated(membership(root))
         assert contents(root) == before
 
     def test_adopting_a_vocabulary_is_refused_and_offered_beside_a_source_file(
@@ -7457,7 +7460,7 @@ class TestAProjectTheBuildCollected:
         api, root = opened
         pump = posix(root, "src/pump/pump.ddd.json")
         reply = get(api, "/api/unit-plan", action="adopt")
-        assert reply == refused_as_generated(offered_beside("units.ddd.json", pump))
+        assert reply == refused_as_generated(offered_beside(root, "units.ddd.json", pump))
 
     @pytest.mark.parametrize(
         ("route", "query", "created"),
@@ -7479,7 +7482,7 @@ class TestAProjectTheBuildCollected:
         api, root = opened
         pump = posix(root, "src/pump/pump.ddd.json")
         reply = get(api, route, action="add", **query)
-        assert reply == refused_as_generated(offered_beside(created, pump))
+        assert reply == refused_as_generated(offered_beside(root, created, pump))
 
     def test_a_component_the_build_collects_is_changed_as_in_any_other_project(
         self, opened: tuple[Api, Path]
@@ -7496,6 +7499,30 @@ class TestAProjectTheBuildCollected:
         assert applied(api, preview.body).status == 200
         pump = (root / "src" / "pump" / "pump.ddd.json").read_text(encoding="utf-8")
         assert '"unit": "kPa"' in pump
+
+    def test_a_plan_reaching_a_description_generated_in_the_build_tree_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A component a custom command writes into a directory of the build tree of its own,
+        registered with ``ddd_add_component`` as the module allows: settling a unit every reader
+        of ``Pressure`` states reaches it beside the two of the source tree, and is refused,
+        naming it, since the build writes it again."""
+        write_tree(tmp_path / "src", self.SOURCES)
+        write_tree(
+            tmp_path / "b" / "gen",
+            {"gauge.ddd.json": component("Gauge", declare("input", "Pressure", unit="bar"))},
+        )
+        described = collected_project(
+            tmp_path,
+            tmp_path / "src" / "pump" / "pump.ddd.json",
+            tmp_path / "src" / "valve" / "valve.ddd.json",
+            tmp_path / "b" / "gen" / "gauge.ddd.json",
+        )
+        session = Session(tmp_path, [tmp_path / "b"])
+        session.open(described)
+        api = Api(session, described)
+        reply = get(api, "/api/settle", name="Pressure", key="unit", raw='"kPa"')
+        assert reply == refused_as_generated(lying_under(tmp_path, "gauge.ddd.json"))
 
     def test_the_project_is_still_read(self, opened: tuple[Api, Path]) -> None:
         api, root = opened
@@ -7522,14 +7549,14 @@ class TestAProjectTheBuildCollected:
         reply = get(
             api, "/api/files-plan", action="add", path=posix(tmp_path, "src/spare/spare.ddd.json")
         )
-        assert reply == refused_as_generated(MEMBERSHIP)
+        assert reply == refused_as_generated(membership(tmp_path))
 
 
 class TestAPlanWritingBesideAProjectTheBuildCollected:
-    """Every plan route over files of a collected project lying beside its description, in the
+    """Every plan route over files of a collected project lying beside its description, under its
     build tree - put there and listed by hand, entries the next configure drops: refused, naming
-    the first of them; and the same plans over the same files in the source tree, where
-    ``ddd_add_component`` registers them, made as in any other project."""
+    the first of them and the tree; and the same plans over the same files in the source tree,
+    where ``ddd_add_component`` registers them, made as in any other project."""
 
     FILES: Final[dict[str, Any]] = {
         "units.ddd.json": {"units": ["Nm", {"unit": "rpm", "description": "speed"}, "spare"]},
@@ -7653,9 +7680,7 @@ class TestAPlanWritingBesideAProjectTheBuildCollected:
         if where == "src":
             assert reply.status == 200, reply.body
         else:
-            assert reply == refused_as_generated(
-                f"{file} lies in the directory of Fw.ddd.json, and {MEMBERSHIP}"
-            )
+            assert reply == refused_as_generated(lying_under(tmp_path, file))
 
 
 class TestWhatAComponentMayAdd:

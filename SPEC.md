@@ -2134,7 +2134,7 @@ project and the same severities; serving the checks to an editor over the Langua
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); editing a project's description
 files in a browser on the developer's own computer, or, from a container, on its host once a
 fixed port is published there (`ddd gui`, a preview whose options are not yet part of this
-interface, which writes nothing in the directory of a project description a build generates,
+interface, which writes nothing under the build tree a project description is generated in,
 its build record beside it ([section 3.6](#36-build-record)): which files belong to such a
 project is `ddd_add_component`'s to say, [section 7.1](#71-build-system-integration)); listing
 the available checks

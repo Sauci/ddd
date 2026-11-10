@@ -1558,10 +1558,10 @@ class Api:
     def _refuse_generated(
         self, revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
     ) -> None:
-        """Refuse a plan writing where a build generates the open project
+        """Refuse a plan writing under the build tree a build generates the open project in
         (:func:`ddd.gui.session.generated_refusal`): its description, a file created beside it,
-        or any other file in its directory, each the build's and taken back or lost at its next
-        configure. ``written`` is every file the plan changes, ``created`` the ones of them it
+        or any other file the tree holds, each the build's, and undone or lost when the build
+        writes it again. ``written`` is every file the plan changes, ``created`` the ones of them it
         creates, which only a plan making a file - New file, adopting a vocabulary, a first
         shared file - has.
 

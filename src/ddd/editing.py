@@ -59,7 +59,8 @@ UNVERIFIED: Final = "unverified"
 """The edited text did not read back as the intended document."""
 
 STALE: Final = "stale"
-"""A file's fingerprint is not the one on disk: it changed since the edit was computed."""
+"""A file's fingerprint is not the one on disk: it changed since the edit was computed, or while
+the edit was being written."""
 
 UNWRITABLE: Final = "unwritable"
 """A file could not be written; the ones already written were put back where they could be."""
@@ -793,9 +794,12 @@ def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
 
     Every file is checked against its fingerprint and edited in memory before anything is
     written, so a refusal leaves every file as it was. Each write is staged beside its file, under
-    a name of its own, and renamed onto it; when one fails, the files already written are written
-    back from the bytes read before the edit, a file the edit created is taken away again, and
-    the refusal names any that could not be.
+    a name of its own, and renamed onto it - but only after the file is read once more, right
+    before the rename, and found to hold still the bytes the edit was made from: a file saved
+    since is somebody else's, which the rename would overwrite, and is refused as stale. When
+    one fails or is refused, the files already written are written back from the bytes read
+    before the edit - each one that still holds what the edit wrote - a file the edit created is
+    taken away again, and the refusal names any that could not be.
     """
     staged: list[tuple[FileChange, bytes | None, bytes]] = []
     for pending in changes:
@@ -803,24 +807,26 @@ def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
             raise EditError(INVALID, f"{pending.path} is named twice in one edit")
         original, new = edited(pending)
         staged.append((pending, original, new))
-    written: list[tuple[Path, bytes | None]] = []
+    written: list[tuple[Path, bytes | None, bytes]] = []
     for pending, original, new in staged:
         # A file that exists keeps its own access; one the edit creates takes the access of the
         # file it is like, or the access any new file gets when it is like none.
         like = pending.path if original is not None else pending.like
         try:
-            _stage_and_replace(pending.path, new, like)
-        except OSError as error:
-            lost = [done for done, before in written if not _put_back(done, before)]
+            _stage_and_replace(pending.path, new, like, original)
+        except (OSError, EditError) as error:
+            lost = _not_put_back(written)
             outcome = (
                 "these could not be put back: " + ", ".join(str(done) for done in lost)
                 if lost
                 else "the files already written were put back"
             )
+            if isinstance(error, EditError):
+                raise EditError(error.code, f"{error}; {outcome}") from None
             raise EditError(
                 UNWRITABLE, f"{pending.path} could not be written ({error}); {outcome}"
             ) from None
-        written.append((pending.path, original))
+        written.append((pending.path, original, new))
     return tuple(
         Written(pending.path, original, fingerprint(new)) for pending, original, new in staged
     )
@@ -847,22 +853,28 @@ def restore(written: Sequence[Written]) -> None:
 
     Every file is checked against the fingerprint the edit left it at before anything is
     written, so a refusal leaves every file as it stands. Each previous version is written
-    through the stage-and-rename :func:`apply_changes` uses, a file the edit created is taken
-    away again, and when one cannot be written the files already put back are written forward
-    to what the edit had left them - and the refusal names any that could not be.
+    through the stage-and-rename :func:`apply_changes` uses, which looks at the file once more
+    right before it is renamed over - or taken away, for a file the edit created - and refuses
+    as stale one that was saved since that first check. When one cannot be written, or is
+    refused, the files already put back are written forward to what the edit had left them, each
+    one that still holds what was put back - and the refusal names any that could not be.
     """
     ahead = [(entry, unchanged(entry)) for entry in written]
-    undone: list[tuple[Path, bytes]] = []
+    undone: list[tuple[Path, bytes, bytes | None]] = []
     for entry, current in ahead:
-        if not _put_back(entry.path, entry.before):
-            lost = [path for path, forward in undone if not _put_back(path, forward)]
+        try:
+            _put_back(entry.path, entry.before, current)
+        except (OSError, EditError) as error:
+            lost = _not_put_back(undone)
             outcome = (
                 "these could not be written forward again: " + ", ".join(str(p) for p in lost)
                 if lost
                 else "the files already put back were written forward again"
             )
-            raise EditError(UNWRITABLE, f"{entry.path} could not be put back; {outcome}")
-        undone.append((entry.path, current))
+            if isinstance(error, EditError):
+                raise EditError(error.code, f"{error}; {outcome}") from None
+            raise EditError(UNWRITABLE, f"{entry.path} could not be put back; {outcome}") from None
+        undone.append((entry.path, current, entry.before))
 
 
 def edited(pending: FileChange) -> tuple[bytes | None, bytes]:
@@ -917,21 +929,57 @@ def _created(pending: FileChange) -> bytes:
     return only.raw.encode("utf-8")
 
 
-def _stage_and_replace(path: Path, data: bytes, like: Path | None) -> None:
+def _stage_and_replace(path: Path, data: bytes, like: Path | None, expected: bytes | None) -> None:
     """Write ``data`` to ``path`` through a file staged beside it under a name of its own
     (:func:`_new_stage`), which takes the access of ``like``, the file itself when it exists,
-    before it is renamed into place. A write that fails takes its own stage away, and no other."""
+    before it is renamed into place.
+
+    The file is read once more right before the rename (:func:`_unless_changed`): it has to
+    hold ``expected`` still, the bytes ``data`` was made from - or not be there, for ``None``.
+    The check made when the change was computed does not see a save that lands afterwards,
+    while this and the other writes of the edit are made, and the rename would overwrite it. It
+    is made after the stage is written rather than before, so that the time the write itself
+    takes is not left outside it. A write that fails, or is refused, takes its own stage away,
+    and no other."""
     staging, handle = _new_stage(path)
     try:
         with handle:
             handle.write(data)
         if like is not None:
             _keep_access(like, staging)
-        _patiently(lambda: staging.replace(path))
-    except OSError:
+        _patiently(_unless_changed(path, expected, lambda: staging.replace(path)))
+    except (OSError, EditError):
         with contextlib.suppress(OSError):
             staging.unlink()
         raise
+
+
+def _unless_changed(
+    path: Path, expected: bytes | None, act: Callable[[], object]
+) -> Callable[[], None]:
+    """``act``, a write onto ``path`` - the rename of a stage over it, or taking it away - made to
+    look at the file once more first, every time it is tried.
+
+    :func:`_patiently` tries it again where Windows refuses it access, a second after the first
+    try at the most, and a save that lands between two tries is one the next would overwrite, or
+    delete, unless the file is looked at again before that one too. Refused as stale where the
+    file does not hold ``expected`` any more, ``None`` standing for no file at all: one somebody
+    saved, took away or created since the bytes were read. A file that cannot be read is no more
+    the bytes that were read than one that holds others."""
+
+    def checked() -> None:
+        if expected is None:
+            holds = not path.exists()
+        else:
+            try:
+                holds = path.read_bytes() == expected
+            except OSError:
+                holds = False
+        if not holds:
+            raise EditError(STALE, f"{path} changed on disk while it was being written")
+        act()
+
+    return checked
 
 
 def _new_stage(path: Path) -> tuple[Path, BinaryIO]:
@@ -991,20 +1039,36 @@ def _keep_access(original: Path, staged: Path) -> None:
             chown(staged, status.st_uid, status.st_gid)
 
 
-def _put_back(path: Path, data: bytes | None) -> bool:
+def _put_back(path: Path, data: bytes | None, expected: bytes | None) -> None:
     """Give a file the bytes it held at some earlier point - written back, or the file taken
-    away when it held none - and say whether that could be done.
+    away when it held none - provided it still holds ``expected``, the bytes it was left with,
+    or ``None`` where it was left not there.
 
     Both directions of a rollback: the bytes a file held before an edit, and, for one an undo
     has already taken away when something else refuses, the bytes that edit had left. A file
     that is not there any more takes the access a new file gets, there being none of its own
     left to copy.
+
+    Written back or taken away like any other write, which looks at the file once more right
+    before (:func:`_unless_changed`): one saved since is somebody else's, and putting back
+    what it held before would lose the save. Raises :class:`OSError` for a file that cannot be
+    written, and the refusal :func:`_unless_changed` makes for one that was saved.
     """
-    try:
-        if data is None:
-            _patiently(path.unlink)
-        else:
-            _stage_and_replace(path, data, path if path.exists() else None)
-    except OSError:
-        return False
-    return True
+    if data is None:
+        _patiently(_unless_changed(path, expected, path.unlink))
+    else:
+        _stage_and_replace(path, data, path if path.exists() else None, expected)
+
+
+def _not_put_back(steps: Sequence[tuple[Path, bytes | None, bytes | None]]) -> list[Path]:
+    """Put back each of ``steps`` - a file, the bytes to give it, and the bytes it has to hold
+    still for that (:func:`_put_back`) - and answer the files that could not be: written to and
+    refused, or saved since. A file that cannot be put back never keeps the ones after it from
+    being."""
+    lost: list[Path] = []
+    for path, data, expected in steps:
+        try:
+            _put_back(path, data, expected)
+        except (OSError, EditError):
+            lost.append(path)
+    return lost

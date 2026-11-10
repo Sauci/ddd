@@ -1181,6 +1181,14 @@ creates takes the mode, and where the process may set them the owner and group, 
 project description beside it, so ``ddd gui`` running in a container leaves the developer a
 file of their own rather than root's.
 
+Every write of the engine, an edit's and an undo's alike, looks at its file once more after
+the stage is written and right before the rename - or the removal, for a file an edit
+created. A file that no longer holds the bytes the write was made from, or that exists
+where the write creates it, was changed by somebody else since the edit read it, and is
+refused as ``stale`` rather than overwritten, taken away or brought back; the files
+already written are put back, each one that still holds what the write left, and the
+refusal names any that could not be.
+
 Undo is the same engine read backwards. ``ddd.editing.apply_changes`` answers a
 :class:`~ddd.editing.Written` per file - the bytes it held before, ``None`` for a file the
 edit created, and the fingerprint of the bytes it left - and ``ddd.editing.restore`` writes

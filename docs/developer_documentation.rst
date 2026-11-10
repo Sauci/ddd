@@ -1207,12 +1207,21 @@ access, after its second of retries, and left that stage beside the file; Linux,
 rename asks the permission of the folder and not of the file, wrote the file through and kept
 it read-only. A stage that is to take a file's access is created ``0600``, for its owner
 alone, and a stage a write refused is made writable before it is taken away, Windows not
-deleting a read-only file. The stage's bytes are synced to the disk before the rename. What
-an edit is made all at once against is a refusal and not a stop: a server killed while it
-writes - a closed terminal, a ``kill`` - leaves the files it had renamed as the edit made them
-and the others as they were, the stage it was writing beside one of them, and nothing to undo
-once it is started again, and ``Changes`` in ``ddd.gui.contract`` says so. A power cut leaves
-each file as it was or as the edit made it, and not empty.
+deleting a read-only file.
+
+An edit stages every one of its files before it renames any. The stages are written and
+closed, then synced together - on up to ``SYNC_WORKERS`` threads, a sync waiting for the disk
+and a disk taking many at once, where one after the other cost milliseconds a file - and only
+then renamed, one file after the other, each given its file's access and its file looked at
+once more right before. A sync the file system has none to offer, ``EINVAL`` or ``ENOTSUP``,
+is let by, and any other error refuses the write; one that fails refuses the edit before any
+file is renamed. An undo, and the put-back of an edit that is refused, write one file at a
+time. What an edit is made all at once against is a refusal and not a stop: a server killed
+while it writes - a closed terminal, a ``kill`` - can leave some of the files it had renamed
+as the edit made them, the others as they were, the stages it was writing beside them, and
+nothing to undo once it is started again, and ``Changes`` in ``ddd.gui.contract`` says so. On
+a journaling file system that has a sync to offer, a power cut leaves each file as it was or
+as the edit made it, and not empty.
 
 Undo is the same engine read backwards. ``ddd.editing.apply_changes`` answers a
 :class:`~ddd.editing.Written` per file - the bytes it held before, ``None`` for a file the

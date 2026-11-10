@@ -352,19 +352,20 @@ The commands
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was
-       planned, or is read-only - on every system, though Linux would write through
-       it - and where a file cannot be written the ones already written are put back,
-       the sentence naming any that cannot be. Each file's new bytes reach the disk
-       before they are renamed onto it, so that a power cut leaves a file as it was or
-       as the change made it, never empty. A refusal is what a change is made all at
-       once against: a server stopped while it writes, by a closed terminal or a
-       ``kill``, leaves the files it had renamed as the change made them, the others as
-       they were and, beside one of them, the ``.ddd-staging`` file it was writing, and
-       the next ``ddd gui`` has nothing of it to undo. A change applied here can be
-       undone while the server runs, from a button beside the project's name naming
-       what it would put back: the files are shown first, the lines on request, and a
-       file that changed on disk since is named and left alone. The list of what can
-       be undone lives in the running server and ends with it.
+       planned, or is read-only, on every system alike - and where a file cannot be
+       written the ones already written are put back, the sentence naming any that
+       cannot be. Each file's new bytes are synced to the disk before they are renamed
+       onto it, where the file system has a sync to offer, so that on a journaling
+       file system a power cut leaves a file as it was or as the change made it, and
+       not empty. A refusal is what a change is made all at once against: a server
+       stopped while it writes, by a closed terminal or a ``kill``, can leave some of
+       the files renamed as the change made them, the others as they were and, beside
+       them, the ``.ddd-staging`` files it was writing, and the next ``ddd gui`` has
+       nothing of it to undo. A change applied here can be undone while the server
+       runs, from a button beside the project's name naming what it would put back:
+       the files are shown first, the lines on request, and a file that changed on
+       disk since is named and left alone. The list of what can be undone lives in
+       the running server and ends with it.
        The Compare tab's baseline is a dumped dictionary, or a project or component
        description, at a path under the directory ``ddd gui`` was started in, refused, and
        told why, when it is outside that directory, unreadable, not valid json, a

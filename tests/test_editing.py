@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import codecs
+import errno
 import os
+import re
 import stat
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -36,7 +39,7 @@ from ddd.editing import (
     restore,
     unchanged,
 )
-from ddd.file_names import STAGING_SUFFIX
+from ddd.file_names import CREATED_NAME_MAX, NAME_MAX, STAGING_SUFFIX
 from ddd.lsp.ranges import Document
 
 
@@ -715,8 +718,147 @@ class TestWritingFiles:
             apply_changes([change(path, Operation("set", "x", "1"))])
         assert not list(tmp_path.glob(f"*{STAGING_SUFFIX}"))
 
-    def test_edits_stage_under_the_name_every_other_writer_stages_under(self):
+    def test_a_stage_ends_in_the_suffix_the_artefact_writer_stages_under(self):
+        """A spelling and nothing more: what a stage a killed process left behind is known by,
+        whichever writer it was."""
         assert STAGING_SUFFIX == ARTEFACT_STAGING_SUFFIX
+
+    def test_what_an_edit_answers_is_true_of_the_file_when_another_writer_stages(
+        self, tmp_path, monkeypatch
+    ):
+        """The engine staged every write under one name beside the file, so a second writer
+        applying its own change to the same file at the same instant wrote its bytes into this
+        edit's stage, and the rename put them in place under an answer that said this edit's - or
+        took the stage away from under the rename, which on Windows left no file at all. The
+        second writer here stages under that one name, between this edit's stage and its
+        rename."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        pending = change(path, Operation("set", "x", "2"))
+        real = editing._keep_access
+
+        def another_writer_stages(original: Path, staged: Path) -> None:
+            # A second writer, applying its own change to the same file at this instant, writes
+            # its stage - under the one name the engine used to stage every write under.
+            (path.parent / (path.name + STAGING_SUFFIX)).write_bytes(b'{"x": 3}')
+            real(original, staged)
+
+        monkeypatch.setattr(editing, "_keep_access", another_writer_stages)
+        written = apply_changes([pending])
+        meant = b'{"x": 2}'
+        assert written[0].fingerprint == fingerprint(meant)
+        assert fingerprint(path.read_bytes()) == written[0].fingerprint, (
+            f"answered written {meant!r}, the file holds {path.read_bytes()!r}"
+        )
+
+    def test_each_write_stages_under_a_name_of_its_own(self, tmp_path, monkeypatch):
+        """No two writes of one file share a stage, whether or not the one before left its own
+        behind: the file's name, eight random hexadecimal digits and the suffix, beside the
+        file."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        stages: list[Path] = []
+        real = Path.replace
+
+        def watching(self, target):
+            stages.append(self)
+            return real(self, target)
+
+        monkeypatch.setattr(Path, "replace", watching)
+        apply_changes([change(path, Operation("set", "x", "2"))])
+        apply_changes([change(path, Operation("set", "x", "3"))])
+        assert len(stages) == 2
+        assert stages[0] != stages[1]
+        shape = re.escape(path.name) + r"\.[0-9a-f]{8}" + re.escape(STAGING_SUFFIX)
+        for stage in stages:
+            assert stage.parent == tmp_path
+            assert re.fullmatch(shape, stage.name), stage.name
+            # As much longer than the file's name as the longest name a file is created under
+            # leaves room for.
+            assert len(stage.name) - len(path.name) == NAME_MAX - CREATED_NAME_MAX
+
+    def test_a_stage_another_writer_holds_under_the_name_drawn_is_left_alone(
+        self, tmp_path, monkeypatch
+    ):
+        """A name is taken only where nothing is: the stage of another writer, or one a killed
+        process left, is neither written over nor taken away, and the name is drawn again."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        held = tmp_path / f"a.ddd.json.aaaaaaaa{STAGING_SUFFIX}"
+        held.write_bytes(b"another writer's bytes")
+        drawn = iter(["aaaaaaaa", "bbbbbbbb"])
+        monkeypatch.setattr(
+            editing, "secrets", types.SimpleNamespace(token_hex=lambda nbytes: next(drawn))
+        )
+        apply_changes([change(path, Operation("set", "x", "2"))])
+        assert path.read_bytes() == b'{"x": 2}'
+        assert held.read_bytes() == b"another writer's bytes"
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [path.name, held.name]
+
+    def test_a_write_that_fails_takes_away_its_own_stage_and_no_other(self, tmp_path, monkeypatch):
+        """The stage of the write that failed is the one file it deletes: another writer's - here
+        under the name the engine used to stage every write under, in the middle of its own
+        write - is still there, still holding its bytes."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b"{}")
+        other = tmp_path / (path.name + STAGING_SUFFIX)
+        other.write_bytes(b"another writer's bytes")
+
+        def refuse(self, target):
+            raise OSError("held open by an editor")
+
+        monkeypatch.setattr(Path, "replace", refuse)
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("set", "x", "1"))])
+        assert refused.value.code == UNWRITABLE
+        assert other.read_bytes() == b"another writer's bytes"
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [path.name, other.name]
+
+    def test_a_write_that_dies_partway_leaves_no_stage_behind(self, tmp_path, monkeypatch):
+        """A disk that fills up halfway through the stage's bytes: the half stage is taken
+        away, and the file is as it was."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"x": 1}')
+        real = editing._new_stage
+
+        class FillingUp:
+            def __init__(self, handle):
+                self.handle = handle
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exception):
+                self.handle.close()
+
+            def write(self, data):
+                self.handle.write(data[: len(data) // 2])
+                raise OSError(errno.ENOSPC, "No space left on device")
+
+        def filling_up(target):
+            staging, handle = real(target)
+            return staging, FillingUp(handle)
+
+        monkeypatch.setattr(editing, "_new_stage", filling_up)
+        with pytest.raises(EditError) as refused:
+            apply_changes([change(path, Operation("set", "x", "2"))])
+        assert refused.value.code == UNWRITABLE
+        assert path.read_bytes() == b'{"x": 1}'
+        assert [entry.name for entry in tmp_path.iterdir()] == [path.name]
+
+    def test_a_file_kept_readable_by_everyone_stays_so_under_a_strict_umask(self, tmp_path):
+        """What a stage is created with is the umask's and the writer's alone, ``0600`` under a
+        strict one: the edited file takes its own mode back before the rename."""
+        path = tmp_path / "a.ddd.json"
+        path.write_bytes(b'{"a": 1}')
+        path.chmod(0o644)
+        before = stat.S_IMODE(path.stat().st_mode)
+        strict = os.umask(0o077)
+        try:
+            apply_changes([change(path, Operation("set", "a", "2"))])
+        finally:
+            os.umask(strict)
+        assert stat.S_IMODE(path.stat().st_mode) == before
 
     def test_a_file_a_reader_holds_open_is_written_once_the_reader_lets_go(
         self, tmp_path, monkeypatch
@@ -870,19 +1012,29 @@ class TestCreatingAFile:
         assert not path.exists()
 
     def test_a_file_is_never_created_under_a_name_too_long_to_stage(self, tmp_path):
-        """244 bytes, 256 once staged: past the 255 a file system takes. ``ddd gui`` refuses the
+        """235 bytes, 256 once staged: past the 255 a file system takes. ``ddd gui`` refuses the
         name before this is asked (``ddd.gui.session``); this is the engine's own rule, for any
         other caller."""
-        path = tmp_path / ("n" * 235 + ".ddd.json")
+        path = tmp_path / ("n" * 226 + ".ddd.json")
         with pytest.raises(EditError) as refused:
             apply_changes([created(path, UNITS_FILE)])
         assert refused.value.code == INVALID
         assert str(refused.value) == (
-            f"{path} cannot be created: its name is 244 bytes long, and a name is at most 243 - "
-            "the file is staged under the name and '.ddd-staging' first, and ext4 takes a name of "
-            "at most 255 bytes, NTFS one of at most 255 UTF-16 units, which 255 bytes never exceed"
+            f"{path} cannot be created: its name is 235 bytes long, and a name is at most 234 - "
+            "the file is staged under the name, a dot, 8 hexadecimal digits of its own and "
+            "'.ddd-staging' first, and ext4 takes a name of at most 255 bytes, NTFS one of at "
+            "most 255 UTF-16 units, which 255 bytes never exceed"
         )
         assert list(tmp_path.iterdir()) == []
+
+    def test_a_file_is_created_under_the_longest_name_its_stage_leaves_room_for(self, tmp_path):
+        """234 bytes, 255 once staged: the most a file system takes, so that the stage - a name
+        of its own, 21 bytes longer than the file's - is created, and renamed away."""
+        path = tmp_path / ("n" * 225 + ".ddd.json")
+        assert len(path.name.encode("utf-8")) == 234
+        apply_changes([created(path, UNITS_FILE)])
+        assert path.read_bytes() == UNITS_FILE.encode("utf-8")
+        assert [entry.name for entry in tmp_path.iterdir()] == [path.name]
 
     def test_a_file_is_never_created_under_a_name_windows_keeps_for_a_device(self, tmp_path):
         """On every system: Windows reads ``com1.ddd.json`` as its first serial port."""
@@ -961,6 +1113,19 @@ class TestCreatingAFile:
         apply_changes([created(path, UNITS_FILE)])
         assert path.read_bytes() == UNITS_FILE.encode("utf-8")
         assert given == []
+
+    def test_a_file_created_like_no_file_gets_the_mode_any_new_file_gets(self, tmp_path):
+        """The umask's, as a file written the ordinary way has it - not the ``0600`` a stage
+        created for its owner alone would carry over."""
+        path = tmp_path / "units.ddd.json"
+        ordinary = tmp_path / "ordinary"
+        previous = os.umask(0o027)
+        try:
+            ordinary.write_bytes(b"{}")
+            apply_changes([created(path, UNITS_FILE)])
+        finally:
+            os.umask(previous)
+        assert stat.S_IMODE(path.stat().st_mode) == stat.S_IMODE(ordinary.stat().st_mode)
 
     def test_a_file_that_exists_keeps_its_own_mode_whatever_it_is_said_to_be_like(self, tmp_path):
         path = tmp_path / "a.ddd.json"

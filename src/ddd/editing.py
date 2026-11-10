@@ -33,15 +33,16 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import stat
 import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, BinaryIO, Final
 
-from ddd.file_names import STAGING_SUFFIX, uncreatable
+from ddd.file_names import STAGING_SUFFIX, STAGING_TOKEN_BYTES, uncreatable
 from ddd.loading import NESTED_TOO_DEEPLY, parse_json_text
 from ddd.pointers import parent_pointer, segments
 
@@ -791,10 +792,10 @@ def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
     now.
 
     Every file is checked against its fingerprint and edited in memory before anything is
-    written, so a refusal leaves every file as it was. Each write is staged beside its file and
-    renamed onto it; when one fails, the files already written are written back from the bytes
-    read before the edit, a file the edit created is taken away again, and the refusal names
-    any that could not be.
+    written, so a refusal leaves every file as it was. Each write is staged beside its file, under
+    a name of its own, and renamed onto it; when one fails, the files already written are written
+    back from the bytes read before the edit, a file the edit created is taken away again, and
+    the refusal names any that could not be.
     """
     staged: list[tuple[FileChange, bytes | None, bytes]] = []
     for pending in changes:
@@ -917,11 +918,13 @@ def _created(pending: FileChange) -> bytes:
 
 
 def _stage_and_replace(path: Path, data: bytes, like: Path | None) -> None:
-    """Write ``data`` to ``path`` through a file staged beside it, which takes the access of
-    ``like``, the file itself when it exists, before it is renamed into place."""
-    staging = path.with_name(path.name + STAGING_SUFFIX)
+    """Write ``data`` to ``path`` through a file staged beside it under a name of its own
+    (:func:`_new_stage`), which takes the access of ``like``, the file itself when it exists,
+    before it is renamed into place. A write that fails takes its own stage away, and no other."""
+    staging, handle = _new_stage(path)
     try:
-        staging.write_bytes(data)
+        with handle:
+            handle.write(data)
         if like is not None:
             _keep_access(like, staging)
         _patiently(lambda: staging.replace(path))
@@ -929,6 +932,31 @@ def _stage_and_replace(path: Path, data: bytes, like: Path | None) -> None:
         with contextlib.suppress(OSError):
             staging.unlink()
         raise
+
+
+def _new_stage(path: Path) -> tuple[Path, BinaryIO]:
+    """A file created beside ``path`` and open for writing, under a name no other write holds:
+    ``path``'s name, a dot, :data:`STAGING_TOKEN_BYTES` random bytes in hexadecimal and
+    :data:`STAGING_SUFFIX`.
+
+    The engine used to stage every write under one name, the file's and :data:`STAGING_SUFFIX`,
+    so that two writers applying a change to one file at one instant wrote their bytes into the
+    same stage, or took it away from under each other's rename - and on Windows the file was
+    gone. The file is created only where nothing is: a stage another writer holds, or a killed
+    process left, is never written over, its name is drawn again, and what the failure of a
+    write takes away is the stage it created itself.
+
+    Created as any new file is, with the access the umask leaves it, rather than by
+    :func:`tempfile.mkstemp`, which creates it for its owner alone: a file created like no file
+    gets the access any new file gets (:func:`apply_changes`).
+    """
+    while True:
+        name = f"{path.name}.{secrets.token_hex(STAGING_TOKEN_BYTES)}{STAGING_SUFFIX}"
+        staging = path.with_name(name)
+        try:
+            return staging, staging.open("xb")
+        except FileExistsError:
+            continue
 
 
 def _patiently(act: Callable[[], object]) -> None:

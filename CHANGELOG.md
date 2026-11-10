@@ -203,7 +203,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   path with a NUL character or a lone surrogate, a number thousands of digits long, json nested
   more than 64 levels deep or holding a number too large to be finite (an edit's own value among
   it), a network path outside what `ddd gui` serves, on Windows a path holding a name Windows
-  keeps for a device, a file to create under a name longer than 243 bytes, holding a character
+  keeps for a device, a file to create under a name longer than 234 bytes, holding a character
   Windows keeps out of a file's name, ending in a dot or a space, or one Windows keeps for a
   device - is refused with a plain `400`, `404` or `409`, the long poll's `?after=` excepted,
   which answers at once whatever else it is given.  No malformed input - in a query, a body or a

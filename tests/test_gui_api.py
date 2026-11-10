@@ -493,9 +493,10 @@ def unit_edit(
     }
 
 
-LONGEST_NAME: Final = 243
-"""The longest name a file can be created under, in bytes: staged under it and ``.ddd-staging``
-first, 255 bytes, the most ext4 takes - and never more than the 255 UTF-16 units NTFS takes."""
+LONGEST_NAME: Final = 234
+"""The longest name a file can be created under, in bytes: staged under it, a dot, eight
+hexadecimal digits and ``.ddd-staging`` first, 255 bytes, the most ext4 takes - and never more than
+the 255 UTF-16 units NTFS takes."""
 
 
 def too_long(name: str, length: int) -> str:
@@ -503,9 +504,9 @@ def too_long(name: str, length: int) -> str:
     as the edit names the file, or its name, as the plan of a new file does."""
     return (
         f"{name} cannot be created: its name is {length} bytes long, and a name is at most "
-        f"{LONGEST_NAME} - the file is staged under the name and '.ddd-staging' first, and ext4 "
-        "takes a name of at most 255 bytes, NTFS one of at most 255 UTF-16 units, which 255 bytes "
-        "never exceed"
+        f"{LONGEST_NAME} - the file is staged under the name, a dot, 8 hexadecimal digits of its "
+        "own and '.ddd-staging' first, and ext4 takes a name of at most 255 bytes, NTFS one of at "
+        "most 255 UTF-16 units, which 255 bytes never exceed"
     )
 
 
@@ -2653,7 +2654,7 @@ class TestEdit:
     @pytest.mark.parametrize(
         ("name", "length"),
         [
-            pytest.param("n" * 235 + ".ddd.json", 244, id="a-byte-longer"),
+            pytest.param("n" * 226 + ".ddd.json", 235, id="a-byte-longer"),
             pytest.param("n" * 291 + ".ddd.json", 300, id="longer-than-a-file-system-takes"),
             pytest.param("\u00e9" * 118 + ".ddd.json", 245, id="counted-in-bytes"),
         ],
@@ -2710,7 +2711,7 @@ class TestEdit:
         [
             pytest.param("COM1.ddd.json", lambda path: a_device(path, "COM1"), id="a-device"),
             pytest.param(
-                "n" * 235 + ".ddd.json", lambda path: too_long(path, 244), id="a-byte-too-long"
+                "n" * 226 + ".ddd.json", lambda path: too_long(path, 235), id="a-byte-too-long"
             ),
         ],
     )
@@ -8521,7 +8522,7 @@ class TestCreatingAFile:
         assert (root / f"{name}.ddd.json").is_file()
 
     @pytest.mark.parametrize(
-        "letters", [235, 300], ids=["a-byte-longer", "longer-than-a-file-system-takes"]
+        "letters", [226, 300], ids=["a-byte-longer", "longer-than-a-file-system-takes"]
     )
     def test_a_longer_name_is_refused_before_the_disk_is_asked_about_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, letters: int

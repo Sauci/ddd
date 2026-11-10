@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ddd.file_names import uncreatable
+from ddd.file_names import CREATED_NAME_MAX, uncreatable
 
 KEPT_OUT = "which Windows keeps out of a file's name"
 
@@ -74,4 +74,18 @@ def test_a_device_is_named_before_a_character_kept_out() -> None:
     graver of the two, and the sentence the page already shows for one."""
     assert uncreatable("con.a<b") == (
         "Windows reads its name as the device CON, which it would open instead of a file"
+    )
+
+
+def test_a_name_is_created_up_to_the_longest_its_stage_leaves_room_for() -> None:
+    """The stage of a name of :data:`CREATED_NAME_MAX` bytes is the 255 a file system takes: the
+    name, a dot, eight hexadecimal digits of the write's own and ``.ddd-staging``, 21 bytes
+    more."""
+    assert CREATED_NAME_MAX == 255 - 21
+    assert uncreatable("n" * CREATED_NAME_MAX) is None
+    assert uncreatable("n" * (CREATED_NAME_MAX + 1)) == (
+        "its name is 235 bytes long, and a name is at most 234 - the file is staged under the "
+        "name, a dot, 8 hexadecimal digits of its own and '.ddd-staging' first, and ext4 takes a "
+        "name of at most 255 bytes, NTFS one of at most 255 UTF-16 units, which 255 bytes never "
+        "exceed"
     )

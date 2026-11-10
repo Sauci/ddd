@@ -5,8 +5,8 @@ name leaves it.
 A project is checked out on more than one system, so a name one of them cannot hold a file
 under is refused on all of them alike: by ``ddd gui``'s server of a page's path, and of a path a
 request names on Windows (:func:`device_named`), and by every edit or plan that creates a file
-(:func:`uncreatable`). Apart from the edit engine, which stages every write under
-:data:`STAGING_SUFFIX`: what reads a name's rule need not import the engine for it.
+(:func:`uncreatable`). Apart from the edit engine, which stages every write under a name of its
+own ending in :data:`STAGING_SUFFIX`: what reads a name's rule need not import the engine for it.
 """
 
 from __future__ import annotations
@@ -14,16 +14,24 @@ from __future__ import annotations
 from typing import Final
 
 STAGING_SUFFIX: Final = ".ddd-staging"
-"""What a file's new bytes are staged under beside it: the name ``ddd id`` and the artefact
-writer stage under, which no project gives a file of its own."""
+"""What the name of every staged file ends in, a suffix no project gives a file of its own: a
+stage a killed process left behind is known by it, whichever writer left it. The edit engine
+stages each write under the file's name, a dot, a token of the write's own
+(:data:`STAGING_TOKEN_BYTES`) and this suffix."""
+
+STAGING_TOKEN_BYTES: Final = 4
+"""How many random bytes the name of a write's stage holds of its own, spelled as two hexadecimal
+digits each: no two writes of one file stage under one name, and a name that is taken all the same
+- a stage another writer holds, or a killed process left - is drawn again."""
 
 NAME_MAX: Final = 255
 """The longest name of a file a file system takes, in the bytes utf-8 spells it with: what ext4
 counts, and never fewer than the utf-16 units NTFS counts, so a name within it is one both take."""
 
-CREATED_NAME_MAX: Final = NAME_MAX - len(STAGING_SUFFIX)
-"""The longest name a file can be created under: staged first under the name and
-:data:`STAGING_SUFFIX`, it must fit :data:`NAME_MAX`."""
+CREATED_NAME_MAX: Final = NAME_MAX - len(".") - 2 * STAGING_TOKEN_BYTES - len(STAGING_SUFFIX)
+"""The longest name a file can be created under: staged first under the name, a dot, the digits
+of the write's own (:data:`STAGING_TOKEN_BYTES`) and :data:`STAGING_SUFFIX`, it must fit
+:data:`NAME_MAX`."""
 
 DEVICE_NAMES: Final = frozenset(
     {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
@@ -80,9 +88,10 @@ def uncreatable(name: str) -> str | None:
     if length > CREATED_NAME_MAX:
         return (
             f"its name is {length} bytes long, and a name is at most {CREATED_NAME_MAX} - the "
-            f"file is staged under the name and '{STAGING_SUFFIX}' first, and ext4 takes a name of "
-            f"at most {NAME_MAX} bytes, NTFS one of at most {NAME_MAX} UTF-16 units, which "
-            f"{NAME_MAX} bytes never exceed"
+            f"file is staged under the name, a dot, {2 * STAGING_TOKEN_BYTES} hexadecimal digits "
+            f"of its own and '{STAGING_SUFFIX}' first, and ext4 takes a name of at most "
+            f"{NAME_MAX} bytes, NTFS one of at most {NAME_MAX} UTF-16 units, which {NAME_MAX} "
+            "bytes never exceed"
         )
     return None
 

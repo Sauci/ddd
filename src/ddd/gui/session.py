@@ -20,6 +20,16 @@ preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
+
+A project a build generates is the exception to the description files being the project.
+``ddd_generate`` without ``PROJECT`` writes the description into its output directory, beside the
+build record naming it, out of what ``ddd_add_component`` registers on what the image links, and
+writes it again at every configure: which files belong to it is the build's. A revision of one
+names that record (:attr:`Revision.generated_by`), and nothing in the description's directory is
+written - the description, a file created beside it, any file there - each such change refused
+:data:`GENERATED`, in a sentence saying where membership is decided
+(:func:`generated_refusal`). The components it collects from the source tree are edited as in any
+other project.
 """
 
 from __future__ import annotations
@@ -33,7 +43,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Final
 
-from ddd.build_info import BuildInfo
+from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
 from ddd.deliveries import Resolved
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
 from ddd.editing import (
@@ -58,7 +68,7 @@ from ddd.loading import (
     top_level_kind,
 )
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
-from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
+from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover, load_builds
 from ddd.lsp.navigation import LOAD_CHECKS, Index
 from ddd.lsp.ranges import Document
 
@@ -78,6 +88,12 @@ it stamped so, and the next poll asks again."""
 MAX_UNDO: Final = 50
 """How many edits the stack keeps, the oldest falling off: a session that runs all day does not
 grow without bound, and fifty is far past what a reader walks back by hand."""
+
+GENERATED: Final = "generated"
+"""The refusal of a change writing where a build generates the open project
+(:func:`generated_refusal`): its description, a file created beside it, or any other file in its
+directory, every one the build's. Answered 409, and refused again for as long as the build record
+beside the description names it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +206,13 @@ class Revision:
     again, a system call for each directory of the path, each of which waits out any busy
     thread's turn of the interpreter. Empty for a revision made any other way - a test's - whose
     paths are resolved when they are first asked about (:func:`ddd.gui.derived.derived`)."""
+
+    generated_by: BuildInfo | None = None
+    """The build record beside the project's description that names it, where there is one
+    (:func:`_generated_by`): the project is then one a build generates - ``ddd_generate``
+    collecting it out of an image's link closure - and nothing in its description's directory is
+    written (:func:`generated_refusal`). ``None`` for a project somebody wrote, its record, where
+    a build has one, lying in a build tree it is not in."""
 
     @property
     def dictionary(self) -> DataDictionary | None:
@@ -492,12 +515,18 @@ class Session:
         vocabulary writes: one beside the project description, in an edit whose change of that
         description includes it. Any other is refused before a file is touched.
 
+        Nothing is written in the directory of a description a build generates
+        (:attr:`Revision.generated_by`): an edit changing that description, creating a file
+        beside it or changing any other file there is refused :data:`GENERATED`, before a file
+        is touched (:func:`generated_refusal`).
+
         ``label`` is what the page calls this edit - "the unit of ValueA" - and is what an undo
         of it offers to put back.
         """
         with self._lock:
             revision = self._required()
             _creatable(changes)
+            _refuse_generated(revision, changes)
             confined = [_confined(revision, pending, changes) for pending in changes]
             written = apply_changes(confined)
             self._edits += 1
@@ -613,6 +642,7 @@ class Session:
             index=next((run.index for run in runs if run.index is not None), None),
             served=served,
             resolved_paths=_resolved_paths(files, findings),
+            generated_by=_generated_by(project),
         )
 
     def _request(self) -> None:
@@ -879,6 +909,97 @@ def _creatable(changes: Sequence[FileChange]) -> None:
                 raise EditError(INVALID, f"{pending.path} cannot be created: {refused}")
 
 
+def generated_refusal(
+    revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
+) -> str | None:
+    """Why a change writing the files ``written`` - each resolved, ``created`` the ones of them it
+    creates - cannot be made, where ``revision``'s project is one a build generates
+    (:attr:`Revision.generated_by`) and one of them lies in the directory its description is in;
+    ``None`` otherwise, which is every change of a project somebody wrote.
+
+    Every file in that directory is the build's. The description is written again at every
+    configure out of what ``ddd_add_component`` registers, so an entry added or taken out here
+    does not outlive that configure, and no other change of it does either; a file created beside
+    it is in no ``ddd_add_component`` call, so the project no longer includes it after that
+    configure, and it is deleted with the build tree. The sentence says so, naming the
+    description, where the change writes it or creates a file - membership being what both are
+    about - and otherwise the first file it writes there, which the reader asked to change. Where
+    it creates one, it offers the file in the source tree instead (:func:`_instead`).
+    """
+    record = revision.generated_by
+    if record is None:
+        return None
+    directory = revision.project.parent
+    there: list[Path] = []
+    for path in written:
+        if path.is_relative_to(directory):
+            there.append(path)
+    if not there:
+        return None
+    # Two statements rather than a conditional expression, which coverage.py counts no branch in:
+    # a record written without --image names no image.
+    build = "the build"
+    if record.image:
+        build = f"the build of {record.image}"
+    name = revision.project.name
+    said = (
+        f"{name} is generated by {build} at every configure, so which files belong to it is "
+        "ddd_add_component's to say, and nothing in its directory is written from here"
+    )
+    new = next(iter(created), None)
+    if new is not None:
+        return f"{said}{_instead(revision, new.name)}"
+    if revision.project in there:
+        return said
+    return f"{min(there).name} lies in the directory of {name}, and {said}"
+
+
+def _instead(revision: Revision, filename: str) -> str:
+    """Where a new file ``filename`` goes rather than beside a description a build generates:
+    beside the first description of ``revision`` outside that description's directory - one the
+    build collects from the source tree, registered by a ``ddd_add_component`` call - and into
+    such a call of the CMakeLists.txt there, by its name, which the call reads against the
+    directory it is made in. A plugin is no description: ``ddd_generate`` names it with
+    ``PLUGINS``, and nothing registers a file beside it. A project collecting no description from
+    the source tree is pointed at the source tree alone.
+
+    ``<target>`` stands for the target whose code the new file describes, which no file DDD reads
+    names."""
+    line = f"ddd_add_component(<target> JSON {filename})"
+    directory = revision.project.parent
+    for file in revision.files:
+        if file.kind == "plugin":
+            continue
+        path = resolve_path(file.path)
+        if path.is_relative_to(directory):
+            continue
+        return (
+            f"; create {filename} beside {path.as_posix()} instead, and add {line} to the "
+            "CMakeLists.txt there"
+        )
+    return (
+        f"; create {filename} in the source tree instead, and add {line} to the CMakeLists.txt "
+        "beside it"
+    )
+
+
+def _refuse_generated(revision: Revision, changes: Sequence[FileChange]) -> None:
+    """Refuse an edit writing where a build generates the open project
+    (:func:`generated_refusal`), each change's file resolved as the loader resolves one.
+
+    Before any change of it is confined: :func:`_confined` refuses a file created beside the
+    description that the same edit does not include, saying it is created only by an edit
+    including it there - which, in the directory of a description the build writes, is a change
+    refused too."""
+    refused = generated_refusal(
+        revision,
+        (resolve_path(change.path) for change in changes),
+        (resolve_path(change.path) for change in changes if change.fingerprint is None),
+    )
+    if refused is not None:
+        raise EditError(GENERATED, refused)
+
+
 def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileChange]) -> FileChange:
     """One change of an edit, its file resolved and allowed: a description file of the open
     project, or a file the edit may create, which takes the access of the project description.
@@ -1059,6 +1180,24 @@ def _named_by(project: Path) -> set[Path]:
         for entry in listed:
             named.update(included_files(project, entry))
     return named
+
+
+def _generated_by(project: Path) -> BuildInfo | None:
+    """The build record beside the project description ``project`` that names it, or ``None``.
+
+    What ``ddd_generate`` leaves where it collects a project out of an image's link closure: the
+    description and the record of that build, written into one directory, its output directory.
+    A project somebody wrote has no such record beside it: given with ``PROJECT``, its record lies
+    in the build tree and names it from there. Looked for beside the description whatever build
+    directories the session was given, which are where it finds the builds whose severities
+    apply: a build tree under any other name is the build's all the same.
+
+    Read as every reader of a record reads one (:func:`ddd.lsp.discovery.load_builds`), so a
+    record that does not read as one, or that this version cannot use, names nothing here."""
+    for record in load_builds([project.parent / BUILD_INFO_FILENAME]):
+        if resolve_path(Path(record.project)) == project:
+            return record
+    return None
 
 
 def _name_in(data: Any, kind: str) -> str | None:

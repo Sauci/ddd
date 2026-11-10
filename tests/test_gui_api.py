@@ -20,14 +20,17 @@ import ddd.gui.queries as queries_module
 import ddd.gui.session as session_module
 from conftest import (
     EXAMPLES,
+    MEMBERSHIP,
     Gated,
     begun,
     build_record,
+    collected_project,
     component,
     declare,
     directory_link,
     landed,
     looped,
+    offered_beside,
     project,
     scalar_type,
     stopped,
@@ -7296,6 +7299,363 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
         assert component_file.read_bytes() != read
         reply = get(api, "/api/value-plan", name="Table", at="[1]", raw="5")
         assert reply == self.refused("a.ddd.json", "the values of 'Table' cannot be set")
+
+
+def refused_as_generated(sentence: str) -> Reply:
+    """The answer refusing a change that would write where the build generates the open
+    project."""
+    return Reply(409, {"error": "generated", "message": sentence})
+
+
+class TestAProjectTheBuildCollected:
+    """``ddd_generate(fw NAME Fw)`` with no ``PROJECT``: ``Fw.ddd.json`` collected into the build
+    tree ``b`` out of what ``ddd_add_component`` registers on what ``fw`` links - two components
+    of the source tree - and opened by ``ddd gui -b b b/ddd/fw/Fw.ddd.json``, the start page
+    offering no other project of that build.
+
+    The build writes that description again at every configure, so an entry added or taken out
+    here does not outlive the next one, and a file created beside it, in the build tree, is no
+    longer included after it and is deleted with the build tree. Every change writing there is
+    refused, saying that membership is ``ddd_add_component``'s, a new file offered beside a
+    description of the source tree instead, with the line that registers it; the components
+    themselves are changed as in any other project."""
+
+    SOURCES: Final[dict[str, Any]] = {
+        "pump/pump.ddd.json": component("Pump", declare("output", "Pressure", unit="bar")),
+        "valve/valve.ddd.json": component("Valve", declare("input", "Pressure", unit="bar")),
+        "spare/spare.ddd.json": component("Spare"),
+    }
+    """The source tree: the two components registered on what ``fw`` links, and a description
+    nothing registers."""
+
+    @classmethod
+    def collected(cls, root: Path) -> Path:
+        """:attr:`SOURCES` under ``root / "src"``, and the description the build collects out of
+        the two components registered."""
+        write_tree(root / "src", cls.SOURCES)
+        return collected_project(
+            root, root / "src" / "pump" / "pump.ddd.json", root / "src" / "valve" / "valve.ddd.json"
+        )
+
+    @pytest.fixture
+    def opened(self, tmp_path: Path) -> tuple[Api, Path]:
+        """The api over the collected project, opened as ``ddd gui -b b`` opens it."""
+        described = self.collected(tmp_path)
+        session = Session(tmp_path, [tmp_path / "b"])
+        session.open(described)
+        return Api(session, described), tmp_path
+
+    def test_a_new_component_is_refused_and_offered_beside_a_source_file(
+        self, opened: tuple[Api, Path]
+    ) -> None:
+        """New file's component, planned as in a project somebody wrote: ``newcomp.ddd.json``
+        beside ``Fw.ddd.json``, in the build tree, and an entry for it there. Offered instead
+        beside the first description the build collects from the source tree, with the line that
+        registers it."""
+        api, root = opened
+        reply = get(
+            api,
+            "/api/files-plan",
+            action="create",
+            kind="component",
+            name="newcomp",
+            component="NewComp",
+        )
+        pump = posix(root, "src/pump/pump.ddd.json")
+        assert reply == refused_as_generated(offered_beside("newcomp.ddd.json", pump))
+
+    def test_an_include_is_refused_saying_that_membership_is_ddd_add_components(
+        self, opened: tuple[Api, Path]
+    ) -> None:
+        """Add a file: a description of the source tree that no target registers, appended to
+        the includes, an entry the next configure would drop."""
+        api, root = opened
+        reply = get(
+            api, "/api/files-plan", action="add", path=posix(root, "src/spare/spare.ddd.json")
+        )
+        assert reply == refused_as_generated(MEMBERSHIP)
+
+    def test_taking_an_include_out_is_refused_the_same_way(self, opened: tuple[Api, Path]) -> None:
+        """A component the build collects is taken out where it is registered: an entry taken
+        out here is written again by the next configure."""
+        api, root = opened
+        reply = get(
+            api, "/api/files-plan", action="remove", path=posix(root, "src/valve/valve.ddd.json")
+        )
+        assert reply == refused_as_generated(MEMBERSHIP)
+
+    def test_a_create_posted_beside_it_is_refused_and_nothing_is_written(
+        self, opened: tuple[Api, Path]
+    ) -> None:
+        """``POST /api/edit`` with the changes New file plans in a project somebody wrote, which
+        were answered 200 and written here too: the file created beside the description and
+        its entry appended there."""
+        api, root = opened
+        described = root / "b" / "ddd" / "fw" / "Fw.ddd.json"
+        before = contents(root)
+        created = json.dumps(component("NewComp"), indent=2) + "\n"
+        reply = post(
+            api,
+            "/api/edit",
+            {
+                "changes": [
+                    {
+                        "file": (described.parent / "newcomp.ddd.json").as_posix(),
+                        "fingerprint": None,
+                        "operations": [{"op": "set", "pointer": "", "raw": created}],
+                    },
+                    {
+                        "file": described.as_posix(),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {
+                                "op": "insert",
+                                "pointer": "project.includes[2]",
+                                "raw": '"newcomp.ddd.json"',
+                            }
+                        ],
+                    },
+                ],
+                "label": "a new component",
+            },
+        )
+        pump = posix(root, "src/pump/pump.ddd.json")
+        assert reply == refused_as_generated(offered_beside("newcomp.ddd.json", pump))
+        assert contents(root) == before
+        assert get(api, "/api/state").body["undoable"] is None
+
+    def test_an_include_posted_by_hand_is_refused_and_nothing_is_written(
+        self, opened: tuple[Api, Path]
+    ) -> None:
+        api, root = opened
+        described = root / "b" / "ddd" / "fw" / "Fw.ddd.json"
+        before = contents(root)
+        spare = json.dumps(posix(root, "src/spare/spare.ddd.json"))
+        reply = post(
+            api,
+            "/api/edit",
+            {
+                "changes": [
+                    {
+                        "file": described.as_posix(),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {"op": "insert", "pointer": "project.includes[2]", "raw": spare}
+                        ],
+                    }
+                ],
+                "label": "an include",
+            },
+        )
+        assert reply == refused_as_generated(MEMBERSHIP)
+        assert contents(root) == before
+
+    def test_adopting_a_vocabulary_is_refused_and_offered_beside_a_source_file(
+        self, opened: tuple[Api, Path]
+    ) -> None:
+        """Adopting writes ``units.ddd.json`` beside the description, listing the unit in use."""
+        api, root = opened
+        pump = posix(root, "src/pump/pump.ddd.json")
+        reply = get(api, "/api/unit-plan", action="adopt")
+        assert reply == refused_as_generated(offered_beside("units.ddd.json", pump))
+
+    @pytest.mark.parametrize(
+        ("route", "query", "created"),
+        [
+            ("/api/constant-plan", {"name": "CELLS", "raw": "3"}, "constants.ddd.json"),
+            (
+                "/api/section-plan",
+                {"name": ".fast", "access": '"read-write"', "alignment": "4"},
+                "sections.ddd.json",
+            ),
+            ("/api/raster-plan", {"name": "10ms", "event": "1"}, "rasters.ddd.json"),
+        ],
+    )
+    def test_a_first_shared_file_is_refused_and_offered_beside_a_source_file(
+        self, opened: tuple[Api, Path], route: str, query: dict[str, str], created: str
+    ) -> None:
+        """A project declaring its first entry of a vocabulary writes that vocabulary's file
+        beside its description."""
+        api, root = opened
+        pump = posix(root, "src/pump/pump.ddd.json")
+        reply = get(api, route, action="add", **query)
+        assert reply == refused_as_generated(offered_beside(created, pump))
+
+    def test_a_component_the_build_collects_is_changed_as_in_any_other_project(
+        self, opened: tuple[Api, Path]
+    ) -> None:
+        """The source tree is where a collected project's components are written: a unit both
+        state, renamed, is planned and written there."""
+        api, root = opened
+        preview = get(api, "/api/unit-plan", action="rename", unit="bar", to="kPa")
+        assert preview.status == 200, preview.body
+        assert [Path(change["file"]).name for change in preview.body["changes"]] == [
+            "pump.ddd.json",
+            "valve.ddd.json",
+        ]
+        assert applied(api, preview.body).status == 200
+        pump = (root / "src" / "pump" / "pump.ddd.json").read_text(encoding="utf-8")
+        assert '"unit": "kPa"' in pump
+
+    def test_the_project_is_still_read(self, opened: tuple[Api, Path]) -> None:
+        api, root = opened
+        files = get(api, "/api/files")
+        assert files.status == 200, files.body
+        assert [Path(entry["key"]).name for entry in files.body["entries"]] == [
+            "pump.ddd.json",
+            "valve.ddd.json",
+        ]
+        read = get(api, "/api/file", path=posix(root, "b/ddd/fw/Fw.ddd.json"))
+        assert read.status == 200, read.body
+
+    def test_the_record_beside_it_says_so_without_the_build_directory_named(
+        self, tmp_path: Path
+    ) -> None:
+        """``b`` is no name a build directory is looked for under, so without ``-b b`` the
+        session finds no build of the project and analyses it under the defaults: the record
+        beside the description still says that the build generates it."""
+        described = self.collected(tmp_path)
+        session = Session(tmp_path)
+        session.open(described)
+        api = Api(session, described)
+        assert get(api, "/api/session").body["builds"] == []
+        reply = get(
+            api, "/api/files-plan", action="add", path=posix(tmp_path, "src/spare/spare.ddd.json")
+        )
+        assert reply == refused_as_generated(MEMBERSHIP)
+
+
+class TestAPlanWritingBesideAProjectTheBuildCollected:
+    """Every plan route over files of a collected project lying beside its description, in the
+    build tree - put there and listed by hand, entries the next configure drops: refused, naming
+    the first of them; and the same plans over the same files in the source tree, where
+    ``ddd_add_component`` registers them, made as in any other project."""
+
+    FILES: Final[dict[str, Any]] = {
+        "units.ddd.json": {"units": ["Nm", {"unit": "rpm", "description": "speed"}, "spare"]},
+        "types.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
+        "constants.ddd.json": {
+            "constants": [{"name": "CELLS", "value": 3}, {"name": "SPARE", "value": 2}]
+        },
+        "a.ddd.json": component(
+            "A",
+            declare("output", "Speed", unit="rpm"),
+            declare("output", "Torque", unit="Nm"),
+            declare(
+                "output",
+                "Table",
+                kind="value_block",
+                dimensions=["CELLS"],
+                init=[1, 2, 3],
+            ),
+        ),
+        "b.ddd.json": component(
+            "B", declare("input", "Speed", unit="rpm"), declare("local", "Count")
+        ),
+    }
+    """Something for each plan to point at: a unit stated and listed, one listed alone, a type, a
+    constant a shape names and one nothing names, an object with values, a variable two
+    components declare and one a component could read, and a local to take out."""
+
+    @pytest.mark.parametrize(
+        ("route", "query", "file"),
+        [
+            ("/api/unit-plan", {"action": "rename", "unit": "rpm", "to": "rev/min"}, "a.ddd.json"),
+            (
+                "/api/unit-plan",
+                {"action": "describe", "unit": "rpm", "description": "revolutions"},
+                "units.ddd.json",
+            ),
+            ("/api/unit-plan", {"action": "remove", "unit": "spare"}, "units.ddd.json"),
+            ("/api/unit-plan", {"action": "add", "unit": "kPa"}, "units.ddd.json"),
+            (
+                "/api/type-plan",
+                {"action": "rename", "name": "Speed_t", "to": "Rate_t"},
+                "types.ddd.json",
+            ),
+            (
+                "/api/type-plan",
+                {"action": "set", "name": "Speed_t", "key": "unit", "raw": '"Nm"'},
+                "types.ddd.json",
+            ),
+            (
+                "/api/constant-plan",
+                {"action": "set", "name": "SPARE", "key": "value", "raw": "4"},
+                "constants.ddd.json",
+            ),
+            (
+                "/api/constant-plan",
+                {"action": "rename", "name": "SPARE", "to": "SPARE_CELLS"},
+                "constants.ddd.json",
+            ),
+            ("/api/constant-plan", {"action": "remove", "name": "SPARE"}, "constants.ddd.json"),
+            (
+                "/api/constant-plan",
+                {"action": "add", "name": "FRESH", "raw": "5"},
+                "constants.ddd.json",
+            ),
+            ("/api/settle", {"name": "Speed", "key": "unit", "raw": '"Nm"'}, "a.ddd.json"),
+            (
+                "/api/fix",
+                {
+                    "file": "a.ddd.json",
+                    "pointer": "component.interface[0].definition.name",
+                    "check": "missing-id",
+                },
+                "a.ddd.json",
+            ),
+            (
+                "/api/declaration-plan",
+                {"action": "read", "file": "b.ddd.json", "name": "Torque", "scope": "input"},
+                "b.ddd.json",
+            ),
+            (
+                "/api/declaration-plan",
+                {
+                    "action": "declare",
+                    "file": "b.ddd.json",
+                    "scope": "local",
+                    "definition": json.dumps(
+                        {
+                            "name": "Fresh",
+                            "kind": "measurement",
+                            "datatype": "uint8",
+                            "conversion": {"kind": "identity"},
+                            "volatile": False,
+                        }
+                    ),
+                },
+                "b.ddd.json",
+            ),
+            (
+                "/api/declaration-plan",
+                {"action": "remove", "file": "b.ddd.json", "name": "Count"},
+                "b.ddd.json",
+            ),
+            ("/api/value-plan", {"name": "Table", "at": "[1]", "raw": "5"}, "a.ddd.json"),
+            ("/api/values-plan", {"name": "Table", "raw": "4,5,6"}, "a.ddd.json"),
+        ],
+    )
+    @pytest.mark.parametrize("where", ["src", "b/ddd/fw"])
+    def test_each_plan(
+        self, tmp_path: Path, where: str, route: str, query: dict[str, str], file: str
+    ) -> None:
+        write_tree(tmp_path / where, self.FILES)
+        described = collected_project(tmp_path, *(tmp_path / where / name for name in self.FILES))
+        session = Session(tmp_path, [tmp_path / "b"])
+        session.open(described)
+        api = Api(session, described)
+        asked = {
+            key: posix(tmp_path / where, value) if key == "file" else value
+            for key, value in query.items()
+        }
+        reply = get(api, route, **asked)
+        if where == "src":
+            assert reply.status == 200, reply.body
+        else:
+            assert reply == refused_as_generated(
+                f"{file} lies in the directory of Fw.ddd.json, and {MEMBERSHIP}"
+            )
 
 
 class TestWhatAComponentMayAdd:

@@ -1176,7 +1176,12 @@ creates its file, one ``set`` of the whole document at the root pointer, and is 
 place like any other write, and taken away again if a later file of the same edit fails. The
 session of ``ddd gui`` accepts such a change only beside the open project's description, and
 only when the same edit's change to that description leaves the new file among its
-``includes``; any other is refused as ``invalid`` before anything is written. The file it
+``includes``; any other is refused as ``invalid`` before anything is written. Where a build
+generates that description - the ``ddd-build.json`` beside it naming it, as ``ddd_generate()``
+leaves one without ``PROJECT`` - it accepts none, nor any change of the description or of
+another file in its directory, each refused as ``generated``: the build writes the description
+again at every configure, and which files belong to the project is ``ddd_add_component()``'s to
+say. The file it
 creates takes the mode, and where the process may set them the owner and group, of the
 project description beside it, so ``ddd gui`` running in a container leaves the developer a
 file of their own rather than root's.

@@ -125,8 +125,8 @@ from ddd.gui.queries import (
     outside_served,
 )
 from ddd.gui.routes import Policy, Route, one_value_each
-from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
+    GENERATED,
     Filed,
     NoProjectError,
     NotAnalysedError,
@@ -142,8 +142,10 @@ from ddd.gui.session import (
     _source,
     find_projects,
     findings_with,
+    generated_refusal,
     kind_of,
 )
+from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.ir import DataDictionary
 from ddd.loading import fingerprint, resolve_path
 from ddd.lsp.edits import settle
@@ -230,7 +232,7 @@ ANALYSING: Final = "analysing"
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
 yet. Answered 409, and answered differently once the analysis lands."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
+REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
@@ -815,6 +817,11 @@ class Api:
             return _error(status, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in plan.edits),
+                (edit.path for edit in plan.edits if edit.creates),
+            )
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -936,6 +943,7 @@ class Api:
             return _error(status, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1120,13 +1128,20 @@ class Api:
         own working directory, a relative one named another file. Past that, each refusal is the
         plan's own or :func:`_addition`'s and :func:`_removal`'s, in the order they ask them,
         ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
-        revision would falsify is refused ``stale``.
+        revision would falsify is refused ``stale``. Every one of the three writes the project's
+        description, so where a build generates it each is refused ``generated`` once the plan's
+        own refusals are asked, and before anything is judged.
         """
         revision = self._opened()
         cache: dict[Path, Document] = {}
 
-        def refuse(paths: Iterable[Path]) -> None:
-            self._refuse_unanalysed(revision, paths)
+        def refuse(edits: Sequence[PlannedEdit]) -> None:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in edits),
+                (edit.path for edit in edits if edit.creates),
+            )
+            self._refuse_unanalysed(revision, (edit.path for edit in edits))
 
         try:
             plan = _files_plan_of(query.root, revision, cache, refuse)
@@ -1202,6 +1217,11 @@ class Api:
             return _error(status, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in plan.edits),
+                (edit.path for edit in plan.edits if edit.creates),
+            )
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             made = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1232,6 +1252,7 @@ class Api:
             return _error(409, code, message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (change.site.path for change in settlement.changes))
             self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
             planned = preview(settlement, key, derived.stamps)
         except EditError as refused:
@@ -1262,6 +1283,7 @@ class Api:
         offered = []
         for fix in fixes_for(check, source.path, pointer, cache, built):
             try:
+                self._refuse_generated(revision, (edit.path for edit in fix.changes))
                 self._refuse_unanalysed(revision, (edit.path for edit in fix.changes))
                 made = [planned(edit.path, edit.operations, derived.stamps) for edit in fix.changes]
             except EditError as refused:
@@ -1335,6 +1357,7 @@ class Api:
             return _error(status, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1416,6 +1439,7 @@ class Api:
             return _error(409, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1446,6 +1470,7 @@ class Api:
             return _error(409, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1529,6 +1554,28 @@ class Api:
                 f"an edit that wrote {', '.join(named)} has not been analysed yet, "
                 "so this change can be planned once it has",
             )
+
+    def _refuse_generated(
+        self, revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
+    ) -> None:
+        """Refuse a plan writing where a build generates the open project
+        (:func:`ddd.gui.session.generated_refusal`): its description, a file created beside it,
+        or any other file in its directory, each the build's and taken back or lost at its next
+        configure. ``written`` is every file the plan changes, ``created`` the ones of them it
+        creates, which only a plan making a file - New file, adopting a vocabulary, a first
+        shared file - has.
+
+        The session refuses the same edit on arrival; asked here, the reader reads why before
+        choosing it, and before :meth:`_refuse_unanalysed`, since no analysis landing changes this
+        answer."""
+        derived = self._derive(revision)
+        refused = generated_refusal(
+            revision,
+            (derived.resolve(path) for path in written),
+            (derived.resolve(path) for path in created),
+        )
+        if refused is not None:
+            raise EditError(GENERATED, refused)
 
     def _derive(self, revision: Revision) -> Derived:
         """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`): the one kept
@@ -2079,7 +2126,7 @@ def _files_plan_of(
     asked: CreateFile | AddFile | RemoveFile,
     revision: Revision,
     cache: dict[Path, Document],
-    refuse: Callable[[Iterable[Path]], None],
+    refuse: Callable[[Sequence[PlannedEdit]], None],
 ) -> _FilesPlanned:
     """The plan ``asked`` names, over the parts its model read. A row's key is passed on as it
     arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
@@ -2087,13 +2134,15 @@ def _files_plan_of(
     instead, a key ending in a link would be named by what the link leads to, which may lie
     outside what is served.
 
-    ``refuse`` is asked of the files each plan's edits change, once the plan's own refusals have
-    been asked and before anything is judged (:meth:`Api._refuse_unanalysed`): judged, a
-    description an edit wrote and no analysis has read yet would be refused ``stale`` instead,
-    for the very write the reader made."""
+    ``refuse`` is asked of each plan's edits, once the plan's own refusals have been asked and
+    before anything is judged: a description a build generates is refused there
+    (:meth:`Api._refuse_generated`), and judging it would run the analysis again for a change
+    that cannot be made; and judged, a description an edit wrote and no analysis has read yet
+    would be refused ``stale`` instead, for the very write the reader made
+    (:meth:`Api._refuse_unanalysed`)."""
     if isinstance(asked, CreateFile):
         edits = _creation(revision, asked.kind, asked.name, asked.component, cache)
-        refuse(edit.path for edit in edits)
+        refuse(edits)
         return _FilesPlanned(edits)
     if isinstance(asked, AddFile):
         return _addition(revision, asked.path, cache, refuse)
@@ -2144,7 +2193,7 @@ def _addition(
     revision: Revision,
     entry: str,
     cache: dict[Path, Document],
-    refuse: Callable[[Iterable[Path]], None],
+    refuse: Callable[[Sequence[PlannedEdit]], None],
 ) -> _FilesPlanned:
     """An existing file appended to the includes, and the errors it is counted to bring -
     previewed, never refused for them.
@@ -2155,7 +2204,7 @@ def _addition(
     then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
     finds no kind of description in: a python file, which a project names among its plugins,
     or one the loader could not read as a description of any kind; then by ``refuse``, a
-    description an edit wrote that no analysis has read yet.
+    description a build generates, or one an edit wrote that no analysis has read yet.
 
     Judged where every run of the revision analysed the project, and otherwise answered with
     the sentence saying why it could not be, true of both ways a run stops short: its read
@@ -2189,7 +2238,7 @@ def _addition(
             f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
             f"{DESCRIPTION_KINDS[-1]}",
         )
-    refuse(edit.path for edit in plan.edits)
+    refuse(plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -2203,18 +2252,18 @@ def _removal(
     revision: Revision,
     path: Path,
     cache: dict[Path, Document],
-    refuse: Callable[[Iterable[Path]], None],
+    refuse: Callable[[Sequence[PlannedEdit]], None],
 ) -> _FilesPlanned:
     """Every entry whose key ``path`` resolves to taken out, refused where the project without
     them would have an error more than it has now at its place.
 
-    :func:`ddd.file_plans.remove_plan`'s own refusals first, then ``refuse``'s, a description an
-    edit wrote that no analysis has read yet. Then judged only where every run of the revision
-    analysed the project: a project any run of which stopped at its read, or at a
-    plugin raising, has no complete "now" to compare with, and judged, removing the very file
-    that stopped it would be refused for errors of an analysis the reader never saw. It is
-    allowed then, with the sentence saying why it was not judged, true of both ways a run stops
-    short.
+    :func:`ddd.file_plans.remove_plan`'s own refusals first, then ``refuse``'s, a description a
+    build generates or one an edit wrote that no analysis has read yet. Then judged only where
+    every run of the revision analysed the project: a project any run of which stopped at its
+    read, or at a plugin raising, has no complete "now" to compare with, and judged, removing the
+    very file that stopped it would be refused for errors of an analysis the reader never saw. It
+    is allowed then, with the sentence saying why it was not judged, true of both ways a run
+    stops short.
 
     The refusal counts what :func:`ddd.file_plans.new_errors` counts, and says so: errors the
     project would have more of than it has now, at the places they are - a whole file's, and
@@ -2229,7 +2278,7 @@ def _removal(
     link to a directory, a path no entry spells."""
     plan = remove_plan(revision.project, path, cache)
     removing = plan.removed[0]
-    refuse(edit.path for edit in plan.edits)
+    refuse(plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,

@@ -2134,7 +2134,10 @@ project and the same severities; serving the checks to an editor over the Langua
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); editing a project's description
 files in a browser on the developer's own computer, or, from a container, on its host once a
 fixed port is published there (`ddd gui`, a preview whose options are not yet part of this
-interface); listing the available checks
+interface, which writes nothing in the directory of a project description a build generates,
+its build record beside it ([section 3.6](#36-build-record)): which files belong to such a
+project is `ddd_add_component`'s to say, [section 7.1](#71-build-system-integration)); listing
+the available checks
 (`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
 need every component of a project marked `(project)` and the ones that grade a delivery
 comparison marked `(comparison)`; in JSON a list rather than an object, one entry per check

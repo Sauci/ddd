@@ -2136,7 +2136,9 @@ files in a browser on the developer's own computer, or, from a container, on its
 fixed port is published there (`ddd gui`, a preview whose options are not yet part of this
 interface, which writes nothing under the build tree a project description is generated in,
 its build record beside it ([section 3.6](#36-build-record)): which files belong to such a
-project is `ddd_add_component`'s to say, [section 7.1](#71-build-system-integration)); listing
+project is `ddd_add_component`'s to say, [section 7.1](#71-build-system-integration); it
+writes no file that is read-only, on any system, and makes an edit in every file or in none
+against a refusal, though not against being killed while it writes); listing
 the available checks
 (`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
 need every component of a project marked `(project)` and the ones that grade a delivery

@@ -546,7 +546,9 @@ class Session:
         Nothing is written under the build tree a description a build generates is in
         (:attr:`Revision.generated`): an edit changing that description, creating a file beside
         it or changing any other file of the tree is refused :data:`GENERATED`, before a file is
-        touched (:func:`generated_refusal`).
+        touched (:func:`generated_refusal`). A file this process may not write - one kept
+        read-only, on any system - is refused ``unwritable`` as well, before any file of the
+        edit is written or staged (:func:`ddd.editing.apply_changes`).
 
         ``label`` is what the page calls this edit - "the unit of ValueA" - and is what an undo
         of it offers to put back.

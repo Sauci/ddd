@@ -1654,10 +1654,13 @@ class Change(_Request):
 
 
 class Changes(_Request):
-    """What ``POST /api/edit`` takes: every file it changes, in one all-or-nothing edit."""
+    """What ``POST /api/edit`` takes: every file it changes, in one edit that is refused as a
+    whole."""
 
     changes: tuple[Change, ...] = Field(min_length=1)
-    """Every file this edit changes; made all at once, or not at all."""
+    """Every file this edit changes. A refusal leaves every one of them as it was, or names the
+    ones it could not put back; a server killed while it writes - a closed terminal, ``kill``, a
+    power cut - can leave some of them written and the rest not, with nothing to undo."""
 
     label: str = Field(min_length=1, max_length=120)
     """What this edit is, as a noun phrase: "the unit of ValueA", "the rename of 'rpm' to

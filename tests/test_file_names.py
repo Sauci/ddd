@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from ddd.file_names import CREATED_NAME_MAX, uncreatable
+from ddd.file_names import (
+    CREATED_NAME_MAX,
+    NAME_MAX,
+    STAGING_EXTRA,
+    staged_name,
+    uncreatable,
+)
 
 KEPT_OUT = "which Windows keeps out of a file's name"
 
@@ -75,6 +81,21 @@ def test_a_device_is_named_before_a_character_kept_out() -> None:
     assert uncreatable("con.a<b") == (
         "Windows reads its name as the device CON, which it would open instead of a file"
     )
+
+
+def test_a_stage_is_named_by_one_function() -> None:
+    """The edit engine builds the name of every stage with it, and the room a stage takes is
+    measured from what it builds rather than stated again beside it."""
+    assert staged_name("a.ddd.json", "0a1b2c3d") == "a.ddd.json.0a1b2c3d.ddd-staging"
+
+
+def test_the_room_a_stage_takes_is_what_the_function_adds_to_a_name() -> None:
+    assert STAGING_EXTRA == len(staged_name("", "0" * 8)) == 21
+    assert CREATED_NAME_MAX == NAME_MAX - STAGING_EXTRA
+
+
+def test_the_stage_of_the_longest_name_created_is_the_longest_a_file_system_takes() -> None:
+    assert len(staged_name("n" * CREATED_NAME_MAX, "0" * 8)) == NAME_MAX
 
 
 def test_a_name_is_created_up_to_the_longest_its_stage_leaves_room_for() -> None:

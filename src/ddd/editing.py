@@ -29,6 +29,7 @@ from __future__ import annotations
 import codecs
 import contextlib
 import copy
+import errno
 import json
 import os
 import re
@@ -41,7 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, Final
 
-from ddd.file_names import STAGING_SUFFIX, STAGING_TOKEN_BYTES, uncreatable
+from ddd.file_names import STAGING_TOKEN_BYTES, staged_name, uncreatable
 from ddd.loading import NESTED_TOO_DEEPLY, fingerprint, parse_json_text
 from ddd.pointers import parent_pointer, segments
 
@@ -66,8 +67,9 @@ written, or put back, for it: a refusal that could not put every file it had wri
 :data:`UNWRITABLE` instead, whose sentence names the files it could not."""
 
 UNWRITABLE: Final = "unwritable"
-"""A file could not be written, or could not be put back after the edit was refused as stale; the
-ones already written were put back where they could be."""
+"""A file could not be written - it is read-only, which is refused before any file of the edit is
+staged (:func:`_refuse_read_only`), or the disk refused it, and the ones already written were put
+back where they could be - or could not be put back after the edit was refused as stale."""
 
 REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
 """How many times a file is renamed into place, or taken away, before a refusal stands.
@@ -80,6 +82,16 @@ On posix neither waits on a reader, and a refusal is final at once."""
 
 REPLACE_PAUSE: Final = 0.02
 """Seconds between two tries: fifty wait a second at most."""
+
+STAGE_TRIES: Final = 16
+"""How many names are drawn for a stage while each one drawn is taken - by a stage another writer
+holds, or a killed process left - before the write is refused. Two draws alike are a matter of
+chance, four random bytes each; sixteen taken in a row are the file system's doing, and would
+have been drawn for for ever."""
+
+_WRITE_PERMISSIONS: Final = stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
+"""Every permission to write a file. A file holding none of them is read-only to everyone, as a
+file with windows' read-only flag is: python reports its mode as ``0444``."""
 
 _WHITESPACE: Final = " \t\r\n"
 _STRUCTURE: Final = "{}[]:,"
@@ -792,20 +804,31 @@ def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
     now.
 
     Every file is checked against its fingerprint and edited in memory before anything is
-    written, so a refusal leaves every file as it was. Each write is staged beside its file, under
-    a name of its own, and renamed onto it - but only after the file is read once more, right
+    written, and every file this process may not write - one kept read-only - is refused
+    (:func:`_refuse_read_only`), so that a refusal of either kind leaves every file as it was
+    and nothing staged. Each write is staged beside its file, under a name of its own, its bytes
+    synced to the disk, and renamed onto it - but only after the file is read once more, right
     before the rename, and found to hold still the bytes the edit was made from: a file saved
     since is somebody else's, which the rename would overwrite, and is refused as stale. When
     one fails or is refused, the files already written are written back from the bytes read
     before the edit - each one that still holds what the edit wrote - and a file the edit created
     is taken away again. A refusal as stale says that every one went back: where one could not,
     whatever refused the edit, the refusal is ``unwritable`` and names the files that could not.
+
+    What an edit is made all at once against is a refusal, not a stop. A process killed while it
+    writes - a closed terminal, a ``kill`` - has no refusal to put the files back with: the
+    ones it had renamed stay as the edit made them, the others as they were, and the stage it
+    was writing beside its file; nothing records any of it. A power cut leaves each file as it
+    was or as the edit made it, and not empty, the bytes of every stage being synced before it
+    is renamed.
     """
     staged: list[tuple[FileChange, bytes | None, bytes]] = []
     for pending in changes:
         if any(done.path == pending.path for done, _, _ in staged):
             raise EditError(INVALID, f"{pending.path} is named twice in one edit")
         original, new = edited(pending)
+        if original is not None:
+            _refuse_read_only(pending.path, "written")
         staged.append((pending, original, new))
     written: list[tuple[Path, bytes | None, bytes]] = []
     for pending, original, new in staged:
@@ -853,16 +876,19 @@ def unchanged(entry: Written) -> bytes:
 def restore(written: Sequence[Written]) -> None:
     """Put every file of an edit back where it was, or none of them.
 
-    Every file is checked against the fingerprint the edit left it at before anything is
-    written, so a refusal leaves every file as it stands. Each previous version is written
-    through the stage-and-rename :func:`apply_changes` uses, which looks at the file once more
-    right before it is renamed over - or taken away, for a file the edit created - and refuses
-    as stale one that was saved since that first check. When one cannot be written, or is
-    refused, the files already put back are written forward to what the edit had left them, each
-    one that still holds what was put back. A refusal as stale says that every one went forward
-    again: where one could not, the refusal is ``unwritable`` and names the files that could not.
+    Every file is checked against the fingerprint the edit left it at, and for the permission to
+    write it (:func:`_refuse_read_only`), before anything is written, so a refusal leaves every
+    file as it stands. Each previous version is written through the stage-and-rename
+    :func:`apply_changes` uses, which looks at the file once more right before it is renamed over
+    - or taken away, for a file the edit created - and refuses as stale one that was saved since
+    that first check. When one cannot be written, or is refused, the files already put back are
+    written forward to what the edit had left them, each one that still holds what was put back.
+    A refusal as stale says that every one went forward again: where one could not, the refusal
+    is ``unwritable`` and names the files that could not.
     """
     ahead = [(entry, unchanged(entry)) for entry in written]
+    for entry, _ in ahead:
+        _refuse_read_only(entry.path, "put back")
     undone: list[tuple[Path, bytes, bytes | None]] = []
     for entry, current in ahead:
         try:
@@ -936,29 +962,64 @@ def _created(pending: FileChange) -> bytes:
     return only.raw.encode("utf-8")
 
 
+def _refuse_read_only(path: Path, outcome: str) -> None:
+    """Refuse a file this process may not write, before any file of the edit is staged. Two
+    kinds are refused: a file kept read-only - nobody has the permission to write it, which
+    stops even a process that may write anything, as root may - and one the system says this
+    process may not write, as it does for a file of another user's or on a read-only mount.
+    ``outcome`` is what was not done: ``written`` or ``put back``.
+
+    Asked on every system. Windows refused the rename of a stage over a read-only file, after
+    its second of tries, and left the stage behind; where a rename asks the permission of the
+    folder and not of the file, a read-only checkout was written through, and kept read-only. A
+    file that has gone since :func:`edited` read it is refused as stale, as there."""
+    try:
+        mode = path.stat().st_mode
+    except OSError:
+        raise EditError(STALE, f"{path} can no longer be read") from None
+    if not mode & _WRITE_PERMISSIONS or not os.access(path, os.W_OK):
+        raise EditError(UNWRITABLE, f"{path} is read-only, so nothing was {outcome}")
+
+
 def _stage_and_replace(path: Path, data: bytes, like: Path | None, expected: bytes | None) -> None:
     """Write ``data`` to ``path`` through a file staged beside it under a name of its own
     (:func:`_new_stage`), which takes the access of ``like``, the file itself when it exists,
     before it is renamed into place.
+
+    The stage's bytes are synced to the disk first: a rename can reach it ahead of the bytes it
+    moves, and a power cut then leaves an empty file where there was a file. A write the disk
+    reports failed only now is refused, like any other.
 
     The file is read once more right before the rename (:func:`_unless_changed`): it has to
     hold ``expected`` still, the bytes ``data`` was made from - or not be there, for ``None``.
     The check made when the change was computed does not see a save that lands afterwards,
     while this and the other writes of the edit are made, and the rename would overwrite it. It
     is made after the stage is written rather than before, so that the time the write itself
-    takes is not left outside it. A write that fails, or is refused, takes its own stage away,
-    and no other."""
-    staging, handle = _new_stage(path)
+    takes is not left outside it. A write that fails, or is refused, takes its own stage away
+    (:func:`_discard`), and no other."""
+    staging, handle = _new_stage(path, like)
     try:
         with handle:
             handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
         if like is not None:
             _keep_access(like, staging)
         _patiently(_unless_changed(path, expected, lambda: staging.replace(path)))
     except (OSError, EditError):
-        with contextlib.suppress(OSError):
-            staging.unlink()
+        _discard(staging)
         raise
+
+
+def _discard(staging: Path) -> None:
+    """Take a stage away, made writable first: it took the access of a read-only file, and
+    Windows refuses to delete a read-only file, so that each write refused beside one left its
+    stage behind. A stage that is gone already, or that cannot be taken away, is left as it is:
+    the refusal that brought the write here is the one to say."""
+    with contextlib.suppress(OSError):
+        staging.chmod(stat.S_IREAD | stat.S_IWRITE)
+    with contextlib.suppress(OSError):
+        staging.unlink()
 
 
 def _unless_changed(
@@ -989,29 +1050,37 @@ def _unless_changed(
     return checked
 
 
-def _new_stage(path: Path) -> tuple[Path, BinaryIO]:
+def _new_stage(path: Path, like: Path | None) -> tuple[Path, BinaryIO]:
     """A file created beside ``path`` and open for writing, under a name no other write holds:
-    ``path``'s name, a dot, :data:`STAGING_TOKEN_BYTES` random bytes in hexadecimal and
-    :data:`STAGING_SUFFIX`.
+    ``path``'s name, a dot, :data:`~ddd.file_names.STAGING_TOKEN_BYTES` random bytes in
+    hexadecimal and the staging suffix (:func:`~ddd.file_names.staged_name`).
 
-    The engine used to stage every write under one name, the file's and :data:`STAGING_SUFFIX`,
-    so that two writers applying a change to one file at one instant wrote their bytes into the
-    same stage, or took it away from under each other's rename - and on Windows the file was
-    gone. The file is created only where nothing is: a stage another writer holds, or a killed
-    process left, is never written over, its name is drawn again, and what the failure of a
-    write takes away is the stage it created itself.
+    The engine used to stage every write under one name, the file's and the suffix, so that two
+    writers applying a change to one file at one instant wrote their bytes into the same stage,
+    or took it away from under each other's rename - and on Windows the file was gone. The file
+    is created only where nothing is: a stage another writer holds, or a killed process left, is
+    never written over, its name is drawn again - :data:`STAGE_TRIES` times, and then the write
+    is refused, ``FileExistsError`` - and what the failure of a write takes away is the stage it
+    created itself.
 
-    Created as any new file is, with the access the umask leaves it, rather than by
-    :func:`tempfile.mkstemp`, which creates it for its owner alone: a file created like no file
-    gets the access any new file gets (:func:`apply_changes`).
+    A stage that is to take the access of ``like`` (:func:`_keep_access`) is created for its
+    owner alone, ``0600``, as :func:`tempfile.mkstemp` would create it: it holds a file's new
+    bytes, which that file's own mode may keep from every other user, and they are not to be
+    readable for as long as it takes to narrow it. A stage with no ``like`` is created as any
+    new file is, with the access the umask leaves it - which is why :func:`tempfile.mkstemp` is
+    not used: a file created like no file gets the access any new file gets
+    (:func:`apply_changes`).
     """
-    while True:
-        name = f"{path.name}.{secrets.token_hex(STAGING_TOKEN_BYTES)}{STAGING_SUFFIX}"
-        staging = path.with_name(name)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    mode = 0o666 if like is None else 0o600
+    for _ in range(STAGE_TRIES):
+        staging = path.with_name(staged_name(path.name, secrets.token_hex(STAGING_TOKEN_BYTES)))
         try:
-            return staging, staging.open("xb")
+            descriptor = os.open(staging, flags, mode)
         except FileExistsError:
             continue
+        return staging, os.fdopen(descriptor, "wb")
+    raise FileExistsError(errno.EEXIST, "every name drawn for its stage is taken", str(path))
 
 
 def _patiently(act: Callable[[], object]) -> None:

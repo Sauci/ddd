@@ -1198,6 +1198,22 @@ says that every one went back - the page tells a person that nothing was written
 where one could not, the refusal is ``unwritable`` and its sentence names the files it
 could not put back.
 
+A file this process may not write is refused ``unwritable`` before the first file of an edit,
+or of an undo, is staged, on every system: one with no permission to write it at all - a
+mode of ``0444``, which is what Windows' read-only flag reads as - for root as for anyone, or
+one the system says this process may not write, as it does for a file of another user's or on
+a read-only mount. Windows refused the rename of a stage that had taken a read-only file's
+access, after its second of retries, and left that stage beside the file; Linux, where a
+rename asks the permission of the folder and not of the file, wrote the file through and kept
+it read-only. A stage that is to take a file's access is created ``0600``, for its owner
+alone, and a stage a write refused is made writable before it is taken away, Windows not
+deleting a read-only file. The stage's bytes are synced to the disk before the rename. What
+an edit is made all at once against is a refusal and not a stop: a server killed while it
+writes - a closed terminal, a ``kill`` - leaves the files it had renamed as the edit made them
+and the others as they were, the stage it was writing beside one of them, and nothing to undo
+once it is started again, and ``Changes`` in ``ddd.gui.contract`` says so. A power cut leaves
+each file as it was or as the edit made it, and not empty.
+
 Undo is the same engine read backwards. ``ddd.editing.apply_changes`` answers a
 :class:`~ddd.editing.Written` per file - the bytes it held before, ``None`` for a file the
 edit created, and the fingerprint of the bytes it left - and ``ddd.editing.restore`` writes

@@ -2466,6 +2466,26 @@ class TestEdit:
         reply = post(api, "/api/edit", unit_edit(api, root, "Hz"))
         assert (reply.status, reply.body["error"]) == (500, "unwritable")
 
+    def test_an_edit_of_a_read_only_file_is_refused_in_a_sentence_saying_nothing_was_written(
+        self, api: Api, root: Path
+    ) -> None:
+        """A checkout kept read-only is refused on every system, as the rename of a stage over
+        it was on Windows alone, after a second and with its stage left beside the file: the
+        sentence is the engine's, which the page shows as it stands, and nothing is written, or
+        staged, or left to undo."""
+        edit = unit_edit(api, root, "Hz")
+        target = root / "b.ddd.json"
+        before = target.read_bytes()
+        target.chmod(0o444)
+        reply = post(api, "/api/edit", edit)
+        assert reply == Reply(
+            500,
+            {"error": "unwritable", "message": f"{target} is read-only, so nothing was written"},
+        )
+        assert target.read_bytes() == before
+        assert not [entry for entry in root.iterdir() if entry.name.endswith(".ddd-staging")]
+        assert api.session.undoable is None
+
     def test_an_edit_that_does_not_read_back_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch
     ) -> None:

@@ -549,10 +549,10 @@ The commands
        against was analysed is refused until that edit's own analysis has landed, naming
        the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
        change can be planned once it has``. Renaming, describing or taking out a unit,
-       renaming a type, changing, renaming or taking out a constant, a section or a raster,
-       setting an object's values and reading a variable into a component are refused
-       ``stale`` where a file no longer holds, at a place the plan points at, what the
-       analysis found there - the file saved from elsewhere since, an entry or a
+       changing or renaming a type, changing, renaming or taking out a constant, a section
+       or a raster, setting an object's values and reading a variable into a component are
+       refused ``stale`` where a file no longer holds, at a place the plan points at, what
+       the analysis found there - the file saved from elsewhere since, an entry or a
        declaration put in above or taken out - until the project is analysed again, naming
        the file - ``units.ddd.json changed since the project was analysed, so renaming
        'rpm' cannot be planned until the project is analysed again`` - rather than made

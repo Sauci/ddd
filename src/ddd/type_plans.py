@@ -11,8 +11,10 @@ makes and one undo puts it back.
 ``rename_edits``'s own ``drifted`` has its counterpart here, the same question asked of the disk
 rather than of a buffer (:func:`~ddd.lsp.navigation.drift`): the index is of the files as the last
 analysis read them, and a file saved since may have moved the entry or a declaration naming it.
-A rename is refused then, rather than planned at places now holding another type's name, or none;
-the fingerprint the edit carries, of the bytes that analysis read, refuses its Apply as well.
+A rename is refused then, and so is setting a key, the entry asked as its panel asks it
+(:func:`~ddd.project_types.type_in_place`), rather than planned at places now holding another
+type, or none; the fingerprint the edit carries, of the bytes that analysis read, refuses its
+Apply as well.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from ddd.editing import Operation
 from ddd.lsp.navigation import Index, Site, changed_since, drift, rename_problem, rename_sites
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
-from ddd.project_types import kind_of
+from ddd.project_types import kind_of, type_in_place
 
 SETTABLE: Final[Mapping[str, frozenset[str]]] = {
     "scalar": frozenset({"description", "datatype", "unit", "conversion", "limits"}),
@@ -76,8 +78,15 @@ def set_key(
     left out answers no edit at all rather than a removal: there is nothing to remove, and a
     reader who has only selected the row - not typed anything - must not be refused before they
     have done anything.
+
+    Refused ``stale``, before anything is read at the type's entry, while the place the index
+    recorded for it no longer names it (:func:`~ddd.project_types.type_in_place`): an entry put
+    in above it or taken out moves it, and both the kind that decides which keys may be set and
+    the key set would be another type's.
     """
     site = _entry(built, name)
+    if not type_in_place(built, name, cache):
+        raise TypeRefusalError("stale", changed_since((site.path,), f"'{name}' cannot be changed"))
     document = read(site.path, cache)
     allowed = SETTABLE.get(kind_of(built, name, cache), frozenset())
     if key not in allowed:

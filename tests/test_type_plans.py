@@ -88,6 +88,36 @@ class TestSettingAKey:
             set_key(built, "Nothing_t", "unit", '"K"', cache)
         assert refused.value.code == "not-found"
 
+    def test_a_type_its_file_no_longer_holds_where_the_index_found_it_is_stale(
+        self, tmp_path, cache
+    ) -> None:
+        """A type put in at the top of the file after the index was built: where the index
+        recorded ``B_t``, the file holds ``A_t``, whose key the plan would set - and whose kind
+        would decide which keys may be set at all."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(
+                    scalar_type("A_t", unit="rpm"), scalar_type("B_t", unit="Nm")
+                ),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        moved = types(
+            scalar_type("X_t", unit="V"),
+            scalar_type("A_t", unit="rpm"),
+            scalar_type("B_t", unit="Nm"),
+        )
+        write_tree(tmp_path, {"types.ddd.json": moved})
+        with pytest.raises(TypeRefusalError) as refused:
+            set_key(built, "B_t", "unit", '"K"', cache)
+        assert (refused.value.code, refused.value.message) == (
+            "stale",
+            "types.ddd.json changed since the project was analysed, so 'B_t' cannot be changed "
+            "until the project is analysed again",
+        )
+
 
 class TestRenaming:
     def test_the_type_and_every_name_reaching_it_are_rewritten(self, built, cache) -> None:

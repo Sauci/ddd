@@ -7211,6 +7211,12 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
                 "renaming 'Speed_t' cannot be planned",
             ),
             (
+                "/api/type-plan",
+                {"action": "set", "name": "Speed_t", "key": "unit", "raw": '"rev/min"'},
+                "types.ddd.json",
+                "'Speed_t' cannot be changed",
+            ),
+            (
                 "/api/constant-plan",
                 {"action": "set", "name": "SPARE", "key": "value", "raw": "4"},
                 "constants.ddd.json",

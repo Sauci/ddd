@@ -17,6 +17,7 @@ import pytest
 
 import ddd.gui.api as api_module
 import ddd.gui.queries as queries_module
+import ddd.gui.session as session_module
 from conftest import (
     EXAMPLES,
     Gated,
@@ -7106,6 +7107,189 @@ class TestAnEntryMovedSinceTheAnalysis:
         api.session.gate.set()
         landed(api.session)
         assert described(rows()) == (2, listed)
+
+
+class TestAPlanWhosePlaceMovedSinceTheAnalysis:
+    """Every plan pointing into a file by the index, asked after that file was saved with an
+    entry or a declaration put in at its top and before an analysis reads it again: refused
+    ``stale``, naming the file, rather than made at the place the index recorded - which holds
+    what was put in - and answered with that one's lines.
+
+    Each plan asks of every place it points at the question its panel's route asks of the entry
+    (``TestAnEntryMovedSinceTheAnalysis``). On a session never started, so a file written after
+    the analysis stays unread by it, and each plan is asked once before the save, so that the
+    refusal is the save's.
+    """
+
+    FILES: Final[dict[str, Any]] = {
+        "units.ddd.json": {"units": ["Nm", {"unit": "rpm", "description": "speed"}, "spare"]},
+        "types.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
+        "constants.ddd.json": {
+            "constants": [{"name": "CELLS", "value": 3}, {"name": "SPARE", "value": 2}]
+        },
+        "a.ddd.json": component(
+            "A",
+            declare("output", "Speed", unit="rpm"),
+            declare(
+                "output",
+                "Table",
+                kind="value_block",
+                dimensions=["CELLS"],
+                init=[1, 2, 3],
+            ),
+        ),
+        "b.ddd.json": component("B"),
+    }
+    """A project with something for each plan to point at: a unit stated and listed, one listed
+    alone, a type, a constant a shape names and one nothing names, an object with values, and a
+    component to read one into."""
+
+    MOVED: Final[dict[str, Any]] = {
+        "units.ddd.json": {
+            "units": ["kPa", "Nm", {"unit": "rpm", "description": "speed"}, "spare"]
+        },
+        "types.ddd.json": types(scalar_type("Above_t"), scalar_type("Speed_t", unit="rpm")),
+        "constants.ddd.json": {
+            "constants": [
+                {"name": "ABOVE", "value": 1},
+                {"name": "CELLS", "value": 3},
+                {"name": "SPARE", "value": 2},
+            ]
+        },
+        "a.ddd.json": component(
+            "A",
+            declare("output", "Above", unit="Nm"),
+            *FILES["a.ddd.json"]["component"]["interface"],
+        ),
+    }
+    """Each of those files saved with one more entry, or one more declaration, at its top."""
+
+    @classmethod
+    def written(cls, base: Path) -> Path:
+        """:attr:`FILES` under ``base``, with a project description including each of them."""
+        write_tree(base, {"p.ddd.json": project("P", *cls.FILES), **cls.FILES})
+        return base
+
+    @staticmethod
+    def refused(file: str, consequence: str) -> Reply:
+        return Reply(
+            409,
+            {
+                "error": "stale",
+                "message": (
+                    f"{file} changed since the project was analysed, so {consequence} until the "
+                    "project is analysed again"
+                ),
+            },
+        )
+
+    @pytest.mark.parametrize(
+        ("route", "query", "file", "consequence"),
+        [
+            (
+                "/api/unit-plan",
+                {"action": "rename", "unit": "rpm", "to": "rev/min"},
+                "a.ddd.json",
+                "renaming 'rpm' cannot be planned",
+            ),
+            (
+                "/api/unit-plan",
+                {"action": "describe", "unit": "rpm", "description": "revolutions"},
+                "units.ddd.json",
+                "the description of 'rpm' cannot be set",
+            ),
+            (
+                "/api/unit-plan",
+                {"action": "remove", "unit": "spare"},
+                "units.ddd.json",
+                "'spare' cannot be taken out of the vocabulary",
+            ),
+            (
+                "/api/type-plan",
+                {"action": "rename", "name": "Speed_t", "to": "Rate_t"},
+                "types.ddd.json",
+                "renaming 'Speed_t' cannot be planned",
+            ),
+            (
+                "/api/constant-plan",
+                {"action": "set", "name": "SPARE", "key": "value", "raw": "4"},
+                "constants.ddd.json",
+                "'SPARE' cannot be changed",
+            ),
+            (
+                "/api/constant-plan",
+                {"action": "rename", "name": "SPARE", "to": "SPARE_CELLS"},
+                "constants.ddd.json",
+                "renaming 'SPARE' cannot be planned",
+            ),
+            (
+                "/api/constant-plan",
+                {"action": "remove", "name": "SPARE"},
+                "constants.ddd.json",
+                "'SPARE' cannot be removed",
+            ),
+            (
+                "/api/value-plan",
+                {"name": "Table", "at": "[1]", "raw": "5"},
+                "a.ddd.json",
+                "the values of 'Table' cannot be set",
+            ),
+            (
+                "/api/values-plan",
+                {"name": "Table", "raw": "4,5,6"},
+                "a.ddd.json",
+                "the values of 'Table' cannot be set",
+            ),
+            (
+                "/api/declaration-plan",
+                {"action": "read", "file": "b.ddd.json", "name": "Speed", "scope": "input"},
+                "a.ddd.json",
+                "'Speed' cannot be declared here",
+            ),
+        ],
+    )
+    def test_each_plan_is_refused_as_stale(
+        self, tmp_path: Path, route: str, query: dict[str, str], file: str, consequence: str
+    ) -> None:
+        root = self.written(tmp_path)
+        asked = {
+            key: posix(root, value) if key == "file" else value for key, value in query.items()
+        }
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json")
+        planned = get(api, route, **asked)
+        assert planned.status == 200, planned.body
+        write_tree(root, {file: self.MOVED[file]})
+        assert get(api, route, **asked) == self.refused(file, consequence)
+
+    def test_a_save_landing_while_the_analysis_runs_is_refused_the_same_way(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A declaration put in at the top of a component once the analysis has read it, before
+        the revision is published: the revision gives the file the fingerprint of the bytes the
+        analysis read, and a value's plan, asked as the revision lands, is refused where it
+        would have set the declaration put in."""
+        root = self.written(tmp_path)
+        component_file = root / "a.ddd.json"
+        read = component_file.read_bytes()
+        real = session_module.run_project
+
+        def saving(project_file: Path, *, includes: Any = None) -> Any:
+            answer = real(project_file, includes=includes)
+            write_tree(root, {"a.ddd.json": self.MOVED["a.ddd.json"]})
+            return answer
+
+        monkeypatch.setattr(session_module, "run_project", saving)
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        monkeypatch.undo()
+        api = Api(session, root / "p.ddd.json")
+        files = {Path(f["path"]).name: f for f in get(api, "/api/state").body["files"]}
+        assert files["a.ddd.json"]["fingerprint"] == fingerprint(read)
+        assert component_file.read_bytes() != read
+        reply = get(api, "/api/value-plan", name="Table", at="[1]", raw="5")
+        assert reply == self.refused("a.ddd.json", "the values of 'Table' cannot be set")
 
 
 class TestWhatAComponentMayAdd:

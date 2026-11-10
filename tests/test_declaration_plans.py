@@ -379,6 +379,31 @@ class TestReadingWhatTheProjectHas:
             "the project declares no 'X'",
         )
 
+    def test_an_owner_whose_place_holds_another_declaration_since_the_index_was_built_is_stale(
+        self, tmp_path, cache
+    ) -> None:
+        """A declaration put in above the owner after the index was built: read at the pointer
+        the index recorded, the reader would carry that one's definition - its name too - into a
+        file no fingerprint of the owner's guards, being the only file written."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X", unit="rpm")),
+                "b.ddd.json": component("B"),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        above = declare("output", "Y", unit="Nm")
+        write_tree(tmp_path, {"a.ddd.json": component("A", above, declare("output", "X"))})
+        with pytest.raises(DeclarationRefusalError) as refused:
+            read_object(built, tmp_path / "b.ddd.json", "X", "input", cache)
+        assert (refused.value.code, refused.value.message) == (
+            "stale",
+            "a.ddd.json changed since the project was analysed, so 'X' cannot be declared here "
+            "until the project is analysed again",
+        )
+
 
 class TestDeclaringSomethingNew:
     def test_a_producer_is_stamped_with_a_fresh_id_after_its_name(self, demo, cache) -> None:

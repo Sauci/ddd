@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import project, scalar_type, types, write_tree
+from conftest import component, declare, project, scalar_type, types, write_tree
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
@@ -138,3 +138,52 @@ class TestRenaming:
         with pytest.raises(TypeRefusalError) as refused:
             rename_type(built, "Nothing_t", "Reading_t", cache)
         assert refused.value.code == "not-found"
+
+    def test_a_type_its_file_no_longer_holds_where_the_index_found_it_is_stale(
+        self, tmp_path, cache
+    ) -> None:
+        """A type put in at the top of the file after the index was built: renamed at the place
+        the index recorded, the type now sitting there would take the new name instead."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json"),
+                "types.ddd.json": types(scalar_type("A_t"), scalar_type("B_t")),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        moved = types(scalar_type("X_t"), scalar_type("A_t"), scalar_type("B_t"))
+        write_tree(tmp_path, {"types.ddd.json": moved})
+        with pytest.raises(TypeRefusalError) as refused:
+            rename_type(built, "B_t", "C_t", cache)
+        assert (refused.value.code, refused.value.message) == (
+            "stale",
+            "types.ddd.json changed since the project was analysed, so renaming 'B_t' cannot be "
+            "planned until the project is analysed again",
+        )
+
+    def test_a_declaration_naming_the_type_moved_since_is_stale_as_well(
+        self, tmp_path, cache
+    ) -> None:
+        """The type's own entry where it was, and a component naming it given a declaration
+        above: every place the rename writes is asked, the declaration's ``typename`` too."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "types.ddd.json", "a.ddd.json"),
+                "types.ddd.json": types(scalar_type("A_t")),
+                "a.ddd.json": component("A", declare("output", "Speed", typename="A_t")),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        moved = component(
+            "A", declare("output", "Other"), declare("output", "Speed", typename="A_t")
+        )
+        write_tree(tmp_path, {"a.ddd.json": moved})
+        with pytest.raises(TypeRefusalError) as refused:
+            rename_type(built, "A_t", "C_t", cache)
+        assert (refused.value.code, refused.value.message) == (
+            "stale",
+            "a.ddd.json changed since the project was analysed, so renaming 'A_t' cannot be "
+            "planned until the project is analysed again",
+        )

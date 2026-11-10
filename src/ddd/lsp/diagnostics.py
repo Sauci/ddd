@@ -18,8 +18,8 @@ Two choices shape the rest:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -36,7 +36,7 @@ from ddd.diagnostics import (
     UnknownCheckError,
 )
 from ddd.ir import DataDictionary
-from ddd.loading import load_workspace
+from ddd.loading import FileRead, load_workspace
 from ddd.lsp.navigation import Index, Loaded, resolve_projects
 from ddd.lsp.navigation import index as index_of
 from ddd.lsp.ranges import Document, read
@@ -70,12 +70,18 @@ class Run:
     ``index`` is the language server's own index of where the project writes each name, built
     from the same read, or ``None`` when the project could not be read at all - which is a
     weaker condition than the above, so it is kept apart rather than folded in.
+
+    ``files_read`` is what each file the read opened was read as - the fingerprint of the bytes
+    parsed, and what their top level says the file is - the root's included where the project
+    could not be read past it: the read ``index`` was built from, which is what ``ddd gui``
+    describes the files of a revision by (:class:`~ddd.loading.FileRead`).
     """
 
     bag: DiagnosticBag
     covered: frozenset[Path]
     resolved: Resolved | None
     index: Index | None = None
+    files_read: Mapping[Path, FileRead] = field(default_factory=dict)
 
     @property
     def dictionary(self) -> DataDictionary | None:
@@ -197,10 +203,11 @@ def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = Non
     covered = frozenset({root})
     resolved: Resolved | None = None
     built: Index | None = None
+    files_read: dict[Path, FileRead] = {}
     try:
-        workspace = load_workspace(root, bag, includes=includes)
+        workspace = load_workspace(root, bag, includes=includes, files_read=files_read)
         if workspace is None:
-            return Run(bag, covered, None)
+            return Run(bag, covered, None, files_read=files_read)
         covered = frozenset(workspace.sources())
         built = index_of(workspace)
         if not bag.has_errors:
@@ -220,7 +227,7 @@ def _run(root: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = Non
         # check`` reports it as a usage error, but the server promises findings and never an
         # exception, so it is turned into one here, on the project file itself.
         bag.add("plugin-invalid", str(error), Location(root))
-    return Run(bag, covered, resolved, built)
+    return Run(bag, covered, resolved, built, files_read)
 
 
 def collect(

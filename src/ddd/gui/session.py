@@ -44,19 +44,27 @@ from ddd.editing import (
     Written,
     apply_changes,
     edited,
-    fingerprint,
     restore,
 )
 from ddd.file_names import uncreatable
 from ddd.ir import DataDictionary
-from ddd.loading import included_files, parse_json_text, resolve_path
+from ddd.loading import (
+    FILE_KINDS,
+    FileRead,
+    fingerprint,
+    included_files,
+    parse_json_text,
+    resolve_path,
+    top_level_kind,
+)
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
 from ddd.lsp.navigation import LOAD_CHECKS, Index
 from ddd.lsp.ranges import Document
 
-KINDS: Final = ("project", "component", "types", "units", "sections", "constants", "rasters")
-"""The top-level keys that say what a description file is, as the loader reads them."""
+KINDS: Final = FILE_KINDS
+"""The top-level keys that say what a description file is, as the loader reads them: the
+loader's own, which :func:`kind_of` tells a file's kind by."""
 
 SEARCH_DEPTH: Final = 4
 """How many directories below the start the search for project descriptions goes."""
@@ -101,6 +109,11 @@ class SourceFile:
     name: str | None
     loaded: bool
     fingerprint: str
+    """Of the bytes the analysis read (:class:`~ddd.loading.FileRead`), never of the disk once it
+    is over: what every plan made from the revision carries, so that an Apply after the file
+    changed - while the analysis ran, too - is refused as stale. A file no run's read parsed, a
+    plugin, is fingerprinted as it stands once the analysis is over."""
+
     errors: int
     warnings: int
     infos: int
@@ -579,7 +592,10 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
-        files = tuple(_described(path, grouped.get(path, ())) for path in sorted(covered))
+        read = _files_read(runs)
+        files = tuple(
+            _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
+        )
         findings = _filed(grouped)
         return Revision(
             # Numbered when it is published (`_finished`): an analysis thrown away takes none.
@@ -696,15 +712,16 @@ class Session:
         nothing is published and every file it stamped is stamped unknown, so that the next poll
         asks again.
 
-        Before, never after: stamped after the analysis, a save landing while it ran was already
-        in the stamps, so no poll ever saw it and the page kept the findings of bytes no longer
-        on disk. A file with no stamp from before - a sub-project's file or a plugin, when the
-        project was just opened, or a file the analysis found newly included - is stamped
-        :data:`UNKNOWN`, and the revision is published asking for the next analysis: one
-        analysis more, which catches a save made to that file while this one ran. Asked here
-        rather than left to the next poll, which asked for it up to ``poll_interval`` later, so
-        that the session says it is analysing until that analysis lands, rather than that it is
-        done and then, a poll later, that it is analysing again.
+        Before, never after: stamped after the analysis, a save landing while it ran was already in
+        the stamps, so no poll ever saw it and the page kept the findings of bytes no longer on
+        disk. The revision's fingerprints are of what its analysis read for the same reason
+        (:func:`_described`), never of the disk once it is over. A file with no stamp from before -
+        a sub-project's file or a plugin, when the project was just opened, or a file the analysis
+        found newly included - is stamped :data:`UNKNOWN`, and the revision is published asking for
+        the next analysis: one analysis more, which catches a save made to that file while this one
+        ran. Asked here rather than left to the next poll, which asked for it up to
+        ``poll_interval`` later, so that the session says it is analysing until that analysis
+        lands, rather than that it is done and then, a poll later, that it is analysing again.
 
         A revision published lets go of the files every edit it includes wrote: none of them is
         waiting for an analysis any more. Whatever it leaves, the version moves, since what the
@@ -908,41 +925,76 @@ def _included(project: Path, change: FileChange) -> frozenset[Path]:
     )
 
 
-def _described(path: Path, findings: Iterable[Diagnostic]) -> SourceFile:
+def _files_read(runs: Sequence[Run]) -> dict[Path, FileRead]:
+    """What each file the runs read was read as, by the first run reading it.
+
+    Every run of one project reads the same files, and reads the same bytes of each unless a save
+    lands between two of them. The revision's index is the first run's (:attr:`Revision.index`) -
+    or a later run's, where the first read no further than the root - so the first run's
+    fingerprint of a file is never of bytes newer than the ones the index was built from: a plan
+    made from the index, changing a file a save has reached since, is refused as stale rather than
+    applied to bytes the index does not describe."""
+    read: dict[Path, FileRead] = {}
+    for run in runs:
+        for path, file in run.files_read.items():
+            read.setdefault(path, file)
+    return read
+
+
+def _described(path: Path, findings: Iterable[Diagnostic], read: FileRead | None) -> SourceFile:
+    """One file of a revision, as its analysis read it (``read``) and never as the disk holds it
+    once the analysis is over: a save landing in between holds other bytes than the ones the
+    findings and the index are of. A file no run's read parsed has no such record and is read as
+    it stands (:func:`_as_it_stands`)."""
     listed = list(findings)
-    try:
-        data = path.read_bytes()
-    except (OSError, ValueError):
-        # Read as empty, a path the system refuses even to look at - a NUL byte - as much as one
-        # that cannot be read: the loader has said why already, and the revision carries it.
-        data = b""
-    parsed = None if path.suffix == ".py" else _parsed(data)
-    kind = kind_of(path, parsed)
+    if read is None:
+        read = _as_it_stands(path)
     return SourceFile(
         path=path,
-        kind=kind,
-        name=_name_in(parsed, kind),
+        kind=_kind_shown(path, read.kind),
+        name=read.name,
         loaded=not any(f.check in LOAD_CHECKS and f.severity is Severity.ERROR for f in listed),
-        fingerprint=fingerprint(data),
+        fingerprint=read.fingerprint,
         errors=sum(1 for f in listed if f.severity is Severity.ERROR),
         warnings=sum(1 for f in listed if f.severity is Severity.WARNING),
         infos=sum(1 for f in listed if f.severity is Severity.INFO),
     )
 
 
+def _as_it_stands(path: Path) -> FileRead:
+    """A file no run's read parsed, as it stands: a plugin, which the loader imports and never
+    parses, so its bytes alone; or a file only a finding names."""
+    try:
+        data = path.read_bytes()
+    except (OSError, ValueError):
+        # Read as empty, a path the system refuses even to look at - a NUL byte - as much as one
+        # that cannot be read: the run has said why already, and the revision carries it.
+        data = b""
+    if path.suffix == ".py":
+        return FileRead.of(data, None)
+    return FileRead.of(data, _parsed(data))
+
+
 def kind_of(path: Path, parsed: Any) -> str:
     """What a file is, as ``State.files`` tells the page: ``plugin`` for a file whose name ends
     ``.py``, whatever it holds; otherwise the first of :data:`KINDS` at the top level of
-    ``parsed`` - the file read by the loader's own rule, ``None`` where it does not parse - and
-    ``unknown`` where none is.
+    ``parsed`` (:func:`~ddd.loading.top_level_kind`) - the file read by the loader's own rule,
+    ``None`` where it does not parse - and ``unknown`` where none is.
 
     Public for ``GET /api/files-plan``, which asks it of a file a reader would add to the
-    project, so that the Files tab refuses a file by the very rule its rows are shown by."""
+    project, so that the Files tab refuses a file by the very rule its rows are shown by: a
+    revision's files are shown by the kind their analysis read (:func:`_described`), told by the
+    same rule."""
+    return _kind_shown(path, top_level_kind(parsed))
+
+
+def _kind_shown(path: Path, stated: str | None) -> str:
+    """What :func:`kind_of` shows a file as, its top level stating ``stated``."""
     if path.suffix == ".py":
         return "plugin"
-    if isinstance(parsed, dict):
-        return next((key for key in KINDS if key in parsed), "unknown")
-    return "unknown"
+    if stated is None:
+        return "unknown"
+    return stated
 
 
 def _descriptions(root: Path) -> list[Path]:

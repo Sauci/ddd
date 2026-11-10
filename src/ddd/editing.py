@@ -29,7 +29,6 @@ from __future__ import annotations
 import codecs
 import contextlib
 import copy
-import hashlib
 import json
 import os
 import re
@@ -43,7 +42,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, Final
 
 from ddd.file_names import STAGING_SUFFIX, STAGING_TOKEN_BYTES, uncreatable
-from ddd.loading import NESTED_TOO_DEEPLY, parse_json_text
+from ddd.loading import NESTED_TOO_DEEPLY, fingerprint, parse_json_text
 from ddd.pointers import parent_pointer, segments
 
 if TYPE_CHECKING:
@@ -786,11 +785,6 @@ class Written:
     fingerprint: str
     """The fingerprint of the bytes the edit left, which says whether it may still be put back:
     a file that has changed since is somebody else's now."""
-
-
-def fingerprint(data: bytes) -> str:
-    """What says whether a file changed since it was read: the SHA-256 of its bytes, in hex."""
-    return hashlib.sha256(data).hexdigest()
 
 
 def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field, fields
+from io import BytesIO, TextIOWrapper
 from pathlib import Path, PurePath
 from typing import Any, Protocol
 
@@ -184,6 +186,64 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError(msg)
         result[key] = value
     return result
+
+
+def fingerprint(data: bytes) -> str:
+    """What says whether a file changed since it was read: the SHA-256 of its bytes, in hex.
+
+    Here beside :func:`parse_json_text`, and public for the same reason: the loader records it of
+    every file it reads (:class:`FileRead`) and the edit engine checks an edit against it
+    (:mod:`ddd.editing`), so that the fingerprint ``ddd gui`` publishes of a file and the one an
+    edit of that file is checked against are one rule.
+    """
+    return hashlib.sha256(data).hexdigest()
+
+
+def top_level_kind(data: Any) -> str | None:
+    """The first of :data:`FILE_KINDS` at the top level of a document as :func:`parse_json_text`
+    reads one, or ``None`` where it is no object or holds none of them.
+
+    Tolerant where the loader's own reading of a kind is not: a file stating two kinds is refused
+    with a ``file-kind`` finding, and still named by the first of them here. What ``ddd gui``
+    shows a file as (:func:`ddd.gui.session.kind_of`), by this one rule whether the file is one an
+    analysis read (:class:`FileRead`) or one a reader would add to the project.
+    """
+    if isinstance(data, dict):
+        return next((key for key in FILE_KINDS if key in data), None)
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class FileRead:
+    """One file as the loader read it: the fingerprint of its bytes and what its top level says
+    it is.
+
+    What ``ddd gui`` describes each file of a revision by, so that a revision says of a file what
+    its own analysis parsed rather than what the disk holds once that analysis is over. Read again
+    afterwards, a file saved in between was fingerprinted as saved, beside an index of the bytes
+    read before the save, and a plan pointing by that index carried the new fingerprint: it passed
+    the edit's stale check and changed whatever the save had moved into the place the index
+    recorded.
+    """
+
+    fingerprint: str
+    """:func:`fingerprint` of the bytes read: of none at all, for a file that could not be read."""
+
+    kind: str | None
+    """:func:`top_level_kind` of the document the bytes parsed to; ``None`` where they parsed to
+    none."""
+
+    name: str | None
+    """The string ``name`` of the block :attr:`kind` names, where it has one."""
+
+    @classmethod
+    def of(cls, data: bytes, parsed: Any) -> FileRead:
+        """What a file holding ``data`` is read as, ``parsed`` being the document those bytes
+        parsed to, or ``None`` where they parsed to none."""
+        kind = top_level_kind(parsed)
+        block = parsed[kind] if kind is not None else None
+        named = block.get("name") if isinstance(block, dict) else None
+        return cls(fingerprint(data), kind, named if isinstance(named, str) else None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -606,7 +666,11 @@ def _dictionary_format_is_supported(data: dict[str, Any], path: Path, bag: Diagn
 
 
 def load_workspace(
-    path: Path, bag: DiagnosticBag, *, includes: Sequence[str] | None = None
+    path: Path,
+    bag: DiagnosticBag,
+    *,
+    includes: Sequence[str] | None = None,
+    files_read: dict[Path, FileRead] | None = None,
 ) -> Workspace | None:
     """Load ``path`` (a project or a single component file) and everything it includes.
 
@@ -617,14 +681,26 @@ def load_workspace(
     ``includes`` replaces the root project's own list for this one read, and the root's only:
     what the Files tab judges a removal by is the project exactly as it would be, every file
     read from disk and one list differing. Never taken from a request - the server computes it.
+
+    ``files_read``, where given, is filled with what each file the loader opened was read as
+    (:class:`FileRead`), whatever came of it - the root's too, where no workspace comes back. What
+    ``ddd gui`` describes the files of a revision by; a caller that does not ask fingerprints
+    nothing.
     """
-    return _Loader(bag, includes=includes).load(path)
+    return _Loader(bag, includes=includes, files_read=files_read).load(path)
 
 
 class _Loader:
-    def __init__(self, bag: DiagnosticBag, *, includes: Sequence[str] | None = None) -> None:
+    def __init__(
+        self,
+        bag: DiagnosticBag,
+        *,
+        includes: Sequence[str] | None = None,
+        files_read: dict[Path, FileRead] | None = None,
+    ) -> None:
         self._bag = bag
         self._root_includes = includes
+        self._files_read = files_read
         self._components: list[LoadedComponent] = []
         self._projects: list[LoadedProject] = []
         self._components_by_name: dict[str, LoadedComponent] = {}
@@ -718,10 +794,26 @@ class _Loader:
         # unreadable, malformed or rejected is still one this project is built out of, and a
         # build system has to run DDD again when it changes - especially then.
         self._read_paths.add(path)
-        text = _read_text(path, self._bag, origin)
-        if text is None:
+        # Read as bytes first, so that what is noted of the file is of the very bytes parsed: a
+        # file that could not be read as read empty, as ddd gui has always described one, and
+        # one whose bytes are no text by those bytes.
+        data = _read_bytes(path, self._bag, origin)
+        if data is None:
+            self._noted(path, b"", None)
             return None
-        return _parse_json(text, path, self._bag)
+        text = _text_of(data, path, self._bag, origin)
+        if text is None:
+            self._noted(path, data, None)
+            return None
+        parsed = _parse_json(text, path, self._bag)
+        self._noted(path, data, parsed)
+        return parsed
+
+    def _noted(self, path: Path, data: bytes, parsed: dict[str, Any] | None) -> None:
+        """What ``path`` was read as, kept where the caller asked for each file's
+        :class:`FileRead`."""
+        if self._files_read is not None:
+            self._files_read[path] = FileRead.of(data, parsed)
 
     def _check_extension(self, path: Path) -> None:
         if not path.name.lower().endswith(DDD_SUFFIX):
@@ -1259,15 +1351,51 @@ class _Loader:
 
 
 def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str | None:
-    """Read a file, reporting anything that stops it instead of raising.
+    """Read a file's text, reporting anything that stops it instead of raising: its bytes, by
+    :func:`_read_bytes`, and the text they hold, by :func:`_text_of`."""
+    data = _read_bytes(path, bag, origin)
+    if data is None:
+        return None
+    return _text_of(data, path, bag, origin)
 
-    Every failure has to come back as a located finding: the loader's promise is that one
-    run reports as much as it can, and an exception escaping from here would end the run
-    with a bare python message and throw away everything already collected.
+
+def _text_of(data: bytes, path: Path, bag: DiagnosticBag, origin: Location | None) -> str | None:
+    """The text a file's bytes hold, or a finding saying why they hold none.
 
     ``utf-8-sig`` rather than ``utf-8``: a byte order mark is what several Windows editors
     and PowerShell redirection put in front of a file, and refusing those would be pedantry
     about a file that is otherwise perfectly good json.
+
+    Decoded by :class:`io.TextIOWrapper`, as reading the file as text decodes it, rather than by
+    ``bytes.decode``: the wrapper reads a line ended by a carriage return, alone or before a line
+    feed, as ended by a line feed, and the start of a byte order mark with nothing after it as no
+    text at all, where ``bytes.decode`` keeps the one and refuses the other. So the text parsed
+    is the text parsed before the loader came to read the bytes first, and every finding of the
+    read stands where it stood. Whatever stops it is a finding, as every failure of the read is
+    (:func:`_read_bytes`): a file whose text is too large to be held, too.
+    """
+    where = origin or Location(path)
+    try:
+        with TextIOWrapper(BytesIO(data), encoding="utf-8-sig") as text:
+            return text.read()
+    except UnicodeDecodeError as error:
+        bag.add(
+            "json-syntax",
+            f"'{path.as_posix()}' is not valid utf-8 (byte {error.start}): DDD description "
+            f"files are utf-8, so save it in that encoding",
+            where,
+        )
+    except MemoryError:
+        bag.add("file-not-found", f"'{path.as_posix()}' is too large to read into memory", where)
+    return None
+
+
+def _read_bytes(path: Path, bag: DiagnosticBag, origin: Location | None) -> bytes | None:
+    """Read a file's bytes, reporting anything that stops it instead of raising.
+
+    Every failure has to come back as a located finding: the loader's promise is that one
+    run reports as much as it can, and an exception escaping from here would end the run
+    with a bare python message and throw away everything already collected.
     """
     where = origin or Location(path)
     try:
@@ -1278,16 +1406,9 @@ def _read_text(path: Path, bag: DiagnosticBag, origin: Location | None) -> str |
                 where,
             )
             return None
-        return path.read_text(encoding="utf-8-sig")
+        return path.read_bytes()
     except FileNotFoundError:
         bag.add("file-not-found", f"file '{path.as_posix()}' does not exist", where)
-    except UnicodeDecodeError as error:
-        bag.add(
-            "json-syntax",
-            f"'{path.as_posix()}' is not valid utf-8 (byte {error.start}): DDD description "
-            f"files are utf-8, so save it in that encoding",
-            where,
-        )
     except OSError as error:
         bag.add(
             "file-not-found",

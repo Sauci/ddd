@@ -29,6 +29,7 @@ from conftest import (
     stopped,
     write_tree,
 )
+from ddd.build_info import BuildInfo
 from ddd.diagnostics import Severity, SeverityPolicy, UnknownCheckError
 from ddd.editing import (
     INVALID,
@@ -326,8 +327,30 @@ class TestOpening:
         assert revision.dictionary is None
 
     def test_a_file_that_cannot_be_read_is_described_as_empty(self, tmp_path: Path) -> None:
-        described = module._described(tmp_path / "gone.ddd.json", [])
+        described = module._described(tmp_path / "gone.ddd.json", [], None)
         assert (described.kind, described.fingerprint) == ("unknown", fingerprint(b""))
+
+    def test_a_plugin_which_no_read_parses_is_fingerprinted_as_it_stands(
+        self, tmp_path: Path
+    ) -> None:
+        """A plugin is imported, never parsed, so no run's read records its bytes: it is read
+        once the analysis is over, and named by nothing in it."""
+        write_tree(
+            tmp_path,
+            {
+                "tools/demo_plugin.py": REGISTERING_PLUGIN,
+                "p.ddd.json": project("P", "a.ddd.json", plugins=["tools/demo_plugin.py"]),
+                "a.ddd.json": component("A", declare("output", "Unread")),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        plugin = next(f for f in revision.files if f.path.name == "demo_plugin.py")
+        source = (tmp_path / "tools" / "demo_plugin.py").read_bytes()
+        assert (plugin.kind, plugin.name, plugin.fingerprint) == (
+            "plugin",
+            None,
+            fingerprint(source),
+        )
 
     def test_a_description_of_no_known_kind_is_unknown(self) -> None:
         assert module.kind_of(Path("x.ddd.json"), {"other": 1}) == "unknown"
@@ -376,6 +399,140 @@ class TestFollowingTheDisk:
         assert mismatches(session) == 0
         assert session.poll() is True
         assert mismatches(session) == 2
+
+    def test_a_revision_fingerprints_the_bytes_its_analysis_read(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A file is fingerprinted as the analysis read it, never as the disk holds it once the
+        analysis is over: the fingerprint is what every plan made from the revision's index
+        carries, and of bytes saved after the read it would let a plan pointing into the bytes
+        that were read be applied to the ones saved."""
+        consumer = shared.parent / "b.ddd.json"
+        read = consumer.read_bytes()
+        monkeypatch.setattr(module, "run_project", saving_while_analysing(consumer, b'"Hz"'))
+        session = Session(shared.parent)
+        session.open(shared)
+        monkeypatch.undo()
+        revision = session.revision
+        assert revision is not None
+        described = next(f for f in revision.files if f.path.name == "b.ddd.json")
+        assert consumer.read_bytes() != read
+        assert described.fingerprint == fingerprint(read)
+
+    def test_an_edit_planned_from_that_revision_is_refused_as_stale(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An edit carrying the fingerprint that revision gives the file meets the save on disk
+        and is refused as stale, the save kept as it was written: what the edit was planned from
+        is not what the file holds."""
+        consumer = shared.parent / "b.ddd.json"
+        monkeypatch.setattr(module, "run_project", saving_while_analysing(consumer, b'"Hz"'))
+        session = Session(shared.parent)
+        session.open(shared)
+        monkeypatch.undo()
+        revision = session.revision
+        assert revision is not None
+        described = next(f for f in revision.files if f.path.name == "b.ddd.json")
+        saved = consumer.read_bytes()
+        change = FileChange(
+            consumer,
+            described.fingerprint,
+            (Operation("set", "component.interface[0].definition.unit", '"V"'),),
+        )
+        with pytest.raises(EditError) as refused:
+            session.edit([change], "the unit of Speed")
+        assert refused.value.code == STALE
+        assert consumer.read_bytes() == saved
+
+    def test_a_file_two_builds_read_differently_is_fingerprinted_as_the_first_read_it(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Each build naming the project is a run of its own, and each reads every file: a save
+        landing between two of them makes them read it differently. The first run's read is the
+        one the revision's index comes from, and so the fingerprint the revision gives the file,
+        which a plan made from that index carries."""
+        build_record(shared.parent, shared, image="one.elf")
+        build_record(shared.parent, shared, image="two.elf")
+        consumer = shared.parent / "b.ddd.json"
+        read = consumer.read_bytes()
+        real = module.run_build
+        ran: list[str] = []
+
+        def run(info: BuildInfo, *, includes: Sequence[str] | None = None) -> Run:
+            answer = real(info, includes=includes)
+            ran.append(info.image)
+            if len(ran) == 1:
+                consumer.write_bytes(read.replace(b'"rpm"', b'"Hz"'))
+            return answer
+
+        monkeypatch.setattr(module, "run_build", run)
+        session = Session(shared.parent)
+        session.open(shared)
+        monkeypatch.undo()
+        revision = session.revision
+        assert revision is not None and len(ran) == 2
+        described = next(f for f in revision.files if f.path.name == "b.ddd.json")
+        assert described.fingerprint == fingerprint(read)
+
+    def test_a_root_read_no_further_is_fingerprinted_as_read_though_saved_since(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A project description the loader reads no further than - its ``includes`` no list -
+        still makes a revision, of that one file: described as the analysis read it, though
+        saved before the revision lands."""
+        root = tmp_path / "p.ddd.json"
+        write_tree(tmp_path, {"p.ddd.json": {"project": {"name": "P", "includes": 7}}})
+        read = root.read_bytes()
+        real = module.run_project
+
+        def run(project_file: Path, *, includes: Sequence[str] | None = None) -> Run:
+            answer = real(project_file, includes=includes)
+            write_tree(tmp_path, {"p.ddd.json": project("Q")})
+            return answer
+
+        monkeypatch.setattr(module, "run_project", run)
+        session = Session(tmp_path)
+        session.open(root)
+        monkeypatch.undo()
+        revision = session.revision
+        assert revision is not None and revision.index is None
+        (described,) = revision.files
+        assert (described.kind, described.name, described.fingerprint) == (
+            "project",
+            "P",
+            fingerprint(read),
+        )
+
+    def test_a_file_the_analysis_found_missing_is_described_as_found_though_saved_since(
+        self, shared: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Missing when the analysis read it, and saved before the revision lands: the revision
+        describes it as the analysis found it, of no kind and fingerprinted of no bytes at all,
+        so that nothing takes it for a file read as it now stands - the analysis's findings say
+        it does not exist."""
+        consumer = shared.parent / "b.ddd.json"
+        saved = consumer.read_bytes()
+        consumer.unlink()
+        real = module.run_project
+
+        def run(project_file: Path, *, includes: Sequence[str] | None = None) -> Run:
+            answer = real(project_file, includes=includes)
+            consumer.write_bytes(saved)
+            return answer
+
+        monkeypatch.setattr(module, "run_project", run)
+        session = Session(shared.parent)
+        session.open(shared)
+        monkeypatch.undo()
+        revision = session.revision
+        assert revision is not None
+        described = next(f for f in revision.files if f.path.name == "b.ddd.json")
+        assert (described.kind, described.name, described.fingerprint) == (
+            "unknown",
+            None,
+            fingerprint(b""),
+        )
+        assert "file-not-found" in {filed.diagnostic.check for filed in revision.findings}
 
     def test_a_save_made_while_a_poll_analyses_is_picked_up_by_the_next_poll(
         self, shared: Path, monkeypatch: pytest.MonkeyPatch

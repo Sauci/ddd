@@ -2972,6 +2972,21 @@ class TestAUnitPlanAsTextEdits:
         assert unit_drift(built, "rpm", {units: moved}) == (units,)
         assert unit_drift(built, "Nm", {units: moved}) == (units,)
 
+    def test_the_files_a_name_drifted_in_are_named_once_each_in_path_order(
+        self, tmp_path: Path
+    ) -> None:
+        """What every plan pointing by the index asks of the places it points at: each file
+        whose text no longer holds the name at one of them, once however many of its places
+        moved, in the order of the files' paths whatever the order of the places."""
+        files = [tmp_path / f"{letter}.ddd.json" for letter in "fedcba"]
+        held = Document(json.dumps({"name": "X", "typename": "X"}))
+        moved = Document(json.dumps({"name": "Y", "typename": "Y"}))
+        sites = [navigation.Site(path, key) for path in files for key in ("name", "typename")]
+        assert navigation.drift(sites, "X", dict.fromkeys(files, moved)) == tuple(reversed(files))
+        some = {**dict.fromkeys(files, held), files[0]: moved, files[3]: moved}
+        assert navigation.drift(sites, "X", some) == (files[3], files[0])
+        assert navigation.drift(sites, "X", dict.fromkeys(files, held)) == ()
+
 
 class TestPropagating:
     """Giving the other declarations of one object the value under the cursor."""

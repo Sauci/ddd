@@ -22,7 +22,7 @@ from pydantic import TypeAdapter, ValidationError
 from ddd.analysis import PRODUCER_KEYS
 from ddd.editing import Operation
 from ddd.identity import new_id
-from ddd.lsp.navigation import Index, rename_problem
+from ddd.lsp.navigation import Index, changed_since, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.component import Scope
@@ -141,15 +141,17 @@ class DeclarationPlan:
 class DeclarationRefusalError(Exception):
     """A change of an interface that cannot be planned, and the code both clients refuse with."""
 
-    code: Literal["invalid", "not-found"]
+    code: Literal["invalid", "not-found", "stale"]
     """``invalid``: the change cannot be made - a name that may not be used, a key the kind has
     not, a required key left out, a scope this name may not take, a value the models themselves
-    refuse. ``not-found``: the file declares no interface, or no declaration of that name."""
+    refuse. ``not-found``: the file declares no interface, or no declaration of that name.
+    ``stale``: the declaration read from holds another object where the index found it, its file
+    having changed since the analysis read it."""
 
     message: str
     """The sentence the refusal is shown with."""
 
-    def __init__(self, code: Literal["invalid", "not-found"], message: str) -> None:
+    def __init__(self, code: Literal["invalid", "not-found", "stale"], message: str) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -170,6 +172,12 @@ def read_object(
     ``output`` exactly while nothing produces the name - so the declaration written is stamped,
     as :func:`declare_object` stamps one. Without it the verb would trade a ``missing-producer``
     for a ``missing-id``, which is not a repair.
+
+    The definition carried is read where the index recorded it, and refused ``stale`` where that
+    place holds another object's - a declaration put in above it, or taken out, since the analysis
+    read the file - rather than carried under this name: the question
+    :func:`ddd.variables.declarations_of` asks before it reads a declaration. The write goes to
+    ``file`` alone, so no fingerprint the edit carries is of the file read from.
     """
     here, entries = _interface(file, cache)
     sites = built.declarations.get(name)
@@ -183,6 +191,10 @@ def read_object(
     stated = read(owner.path, cache).value_at(owner.pointer)
     if not isinstance(stated, dict):
         raise DeclarationRefusalError("not-found", f"the project declares no '{name}'")
+    if stated.get("name") != name:
+        raise DeclarationRefusalError(
+            "stale", changed_since((owner.path,), f"'{name}' cannot be declared here")
+        )
     definition = {key: value for key, value in stated.items() if key not in CARRIED_BY_A_READER}
     if scope in PRODUCING_SCOPES:
         definition = _stamped(name, definition)

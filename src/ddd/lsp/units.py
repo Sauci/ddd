@@ -36,7 +36,7 @@ from ddd.editing import (
     replacement,
 )
 from ddd.loading import included_files, resolve_path
-from ddd.lsp.navigation import Index, Site
+from ddd.lsp.navigation import Index, Site, changed_since, drift
 from ddd.lsp.ranges import Document, read
 from ddd.pointers import parent_pointer
 
@@ -160,15 +160,19 @@ def created_beside(
 class UnitRefusalError(Exception):
     """A change of a unit that cannot be planned, and the code both clients refuse it with."""
 
-    code: Literal["unreadable", "invalid", "not-found"]
+    code: Literal["unreadable", "invalid", "not-found", "stale"]
     """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
     be made - a spelling no unit has, a unit something still states, a vocabulary the project
-    has already. ``not-found``: the project neither states the unit nor lists it."""
+    has already. ``not-found``: the project neither states the unit nor lists it. ``stale``: a
+    file the change points into no longer holds the unit where the index found it, having changed
+    since the analysis read it."""
 
     message: str
     """The sentence the refusal is shown with, naming the file it concerns."""
 
-    def __init__(self, code: Literal["unreadable", "invalid", "not-found"], message: str) -> None:
+    def __init__(
+        self, code: Literal["unreadable", "invalid", "not-found", "stale"], message: str
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -228,6 +232,9 @@ def rename_unit(
     ``old`` is renamed, keeping its description, where no entry lists ``new``; where one does,
     the rename is a merge, and the entries listing ``old`` are taken out, leaving the entry of
     ``new`` with its own description. A unit listed twice has every entry treated so.
+
+    Refused while a file no longer holds ``old`` where the index found it (:func:`unit_drift`):
+    each operation is made at the index's pointer, and would respell whatever sits there now.
     """
     _spelling(new)
     if new == old:
@@ -239,6 +246,7 @@ def rename_unit(
             "place it is stated",
         )
     _known(built, old)
+    _in_place(unit_drift(built, old, cache), f"renaming '{old}' cannot be planned")
     raw = _raw(new)
     operations: dict[Path, list[Operation]] = {}
     for stated in built.units.get(old, ()):
@@ -290,7 +298,10 @@ def describe_unit(
 ) -> UnitPlan:
     """The vocabulary's description of ``unit`` set to ``description``: an object entry's
     ``description``, added where it has none, and an entry that is the spelling alone turned into
-    an object that holds one. A unit listed twice has every entry described."""
+    an object that holds one. A unit listed twice has every entry described.
+
+    Refused while an entry the index recorded listing ``unit`` lists it there no longer
+    (:func:`_unlisted`) - and only then: a declaration stating the unit is no place this writes."""
     _vocabulary_loaded(built, project, unit, "its description cannot be set there")
     _known(built, unit)
     entries = built.vocabulary.get(unit)
@@ -298,6 +309,7 @@ def describe_unit(
         raise UnitRefusalError(
             "invalid", f"'{unit}' is not in the vocabulary, so it has no description to set"
         )
+    _in_place(_unlisted(built, unit, cache), f"the description of '{unit}' cannot be set")
     operations: dict[Path, list[Operation]] = {}
     for entry in entries:
         if isinstance(read(entry.path, cache).value_at(entry.pointer), dict):
@@ -316,8 +328,9 @@ def remove_unit(
 
     Only a unit nothing states: taking out one that is stated would turn every place stating it
     into an ``unknown-unit`` finding. The last unit of a file goes like any other, leaving a file
-    that lists none. ``cache`` is taken for the shape every plan here shares, and nothing in this
-    one reads it now that no file's entries have to be counted first.
+    that lists none. ``cache`` is read for one question alone, whether each entry still lists the
+    unit where the index found it (:func:`_unlisted`): no file's entries have to be counted
+    first, and taken out at an entry that moved, the removal would take out another unit.
     """
     _vocabulary_loaded(built, project, unit, "it cannot be taken out of it")
     stated = built.units.get(unit)
@@ -331,6 +344,7 @@ def remove_unit(
     entries = built.vocabulary.get(unit)
     if entries is None:
         raise UnitRefusalError("not-found", f"no file of this project states or lists '{unit}'")
+    _in_place(_unlisted(built, unit, cache), f"'{unit}' cannot be taken out of the vocabulary")
     return _plan(_taken_out(entries))
 
 
@@ -473,6 +487,16 @@ def _vocabulary_loaded(built: Index, project: UnitProject, unit: str, consequenc
         raise UnitRefusalError("unreadable", f"{_names(unread)} did not load, so {consequence}")
 
 
+def _in_place(moved: Sequence[Path], consequence: str) -> None:
+    """Refuse a plan while ``moved`` names a file that no longer holds the unit where the index
+    found it - a file changed since the analysis read it, an entry or a declaration put in or
+    taken out above the one recorded - so that no operation is made at a place now holding another
+    unit, or none. ``stale``: the next analysis reads the file again, and the plan asked then is
+    made where the unit now is."""
+    if moved:
+        raise UnitRefusalError("stale", changed_since(moved, consequence))
+
+
 def _taken_out(entries: Sequence[Site]) -> dict[Path, list[Operation]]:
     """The removals taking every entry of ``unit`` out of the vocabulary, file by file.
 
@@ -550,20 +574,25 @@ def unit_drift(built: Index, unit: str, cache: dict[Path, Document]) -> tuple[Pa
     The index is read off the disk, and a buffer an editor has open may have moved or respelled
     what it recorded since. A plan's pointers are the index's, so made in that buffer they would
     respell whatever sits there now: the language server refuses the rename instead, naming
-    these files, and offers none as a quick fix.
+    these files, and offers none as a quick fix. :func:`rename_unit` asks it as well, for
+    ``ddd gui``, whose index is of the files as its last analysis read them: a file saved since
+    is the same hazard, met on disk.
     """
-    stated = [
-        found.site.path
-        for found in built.units.get(unit, ())
-        if read(found.site.path, cache).value_at(found.site.pointer) != unit
-    ]
-    listed = [
+    stated = drift((found.site for found in built.units.get(unit, ())), unit, cache)
+    return tuple(sorted({*stated, *_unlisted(built, unit, cache)}, key=Path.as_posix))
+
+
+def _unlisted(built: Index, unit: str, cache: dict[Path, Document]) -> tuple[Path, ...]:
+    """The units files whose entry the index recorded listing ``unit`` lists it there no longer -
+    as the spelling alone, or as an object whose ``unit`` it is - sorted: the vocabulary's half of
+    :func:`unit_drift`, which is the whole of it for a plan writing the entries alone."""
+    moved = {
         entry.path
         for entry in built.vocabulary.get(unit, ())
         if read(entry.path, cache).value_at(entry.pointer) != unit
         and read(entry.path, cache).value_at(f"{entry.pointer}.unit") != unit
-    ]
-    return tuple(sorted({*stated, *listed}, key=Path.as_posix))
+    }
+    return tuple(sorted(moved, key=Path.as_posix))
 
 
 def _simultaneous(document: Document, operations: Sequence[Operation]) -> list[TextEdit]:

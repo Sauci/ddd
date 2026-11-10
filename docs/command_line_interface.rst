@@ -548,7 +548,15 @@ The commands
        A plan that would change a file an edit wrote since the revision it is judged
        against was analysed is refused until that edit's own analysis has landed, naming
        the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
-       change can be planned once it has``. Opening a project answers at once with its
+       change can be planned once it has``. Renaming, describing or taking out a unit,
+       renaming a type, changing, renaming or taking out a constant, a section or a raster,
+       setting an object's values and reading a variable into a component are refused
+       ``stale`` where a file no longer holds, at a place the plan points at, what the
+       analysis found there - the file saved from elsewhere since, an entry or a
+       declaration put in above or taken out - until the project is analysed again, naming
+       the file - ``units.ddd.json changed since the project was analysed, so renaming
+       'rpm' cannot be planned until the project is analysed again`` - rather than made
+       where another now stands. Opening a project answers at once with its
        name, read from its description as it stands and kept in the heading from then on;
        ``Analysing the project…`` stands where the tab's own content goes, until the first
        analysis lands, and every answer needing a revision is refused until then, in the

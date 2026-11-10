@@ -3706,18 +3706,18 @@ class TestWhatOneRunReads:
 
         reads: list[str] = []
         parses: list[int] = []
-        reading = Path.read_text
+        reading = Path.read_bytes
         loading = json.loads
 
-        def counted_read(self: Path, *args: Any, **kwargs: Any) -> str:
+        def counted_read(self: Path) -> bytes:
             reads.append(self.name)
-            return str(reading(self, *args, **kwargs))
+            return reading(self)
 
         def counted_parse(text: Any, *args: Any, **kwargs: Any) -> Any:
             parses.append(len(text))
             return loading(text, *args, **kwargs)
 
-        monkeypatch.setattr(Path, "read_text", counted_read)
+        monkeypatch.setattr(Path, "read_bytes", counted_read)
         monkeypatch.setattr(json, "loads", counted_parse)
         assert main(["compare", str(dump), str(dump)]) == EXIT_OK
         assert reads.count("baseline.json") == 2, reads  # one per side

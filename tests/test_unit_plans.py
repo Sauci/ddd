@@ -345,6 +345,26 @@ class TestRename:
         assert code == "unreadable"
         assert "broken.ddd.json" in message
 
+    def test_while_a_file_no_longer_states_the_unit_where_the_index_found_it_a_rename_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """A declaration put in at the top of two components after the index was built: renamed
+        at the places the index recorded, the unit of the declaration now sitting there would be
+        respelled instead, so the rename is refused, naming both files."""
+        files = drifted()
+        idx, where = opened(tmp_path, files)
+        above = declare("input", "Other", unit="Nm")
+        moved: dict[str, Any] = {}
+        for name in ("a.ddd.json", "b.ddd.json"):
+            described = files[name]["component"]
+            moved[name] = component(described["name"], above, *described["interface"])
+        write_tree(tmp_path, moved)
+        assert refusal(lambda: rename_unit(idx, where, "RPM", "rev/min", {})) == (
+            "stale",
+            "a.ddd.json, b.ddd.json changed since the project was analysed, so renaming 'RPM' "
+            "cannot be planned until the project is analysed again",
+        )
+
 
 class TestAdd:
     def test_a_unit_is_appended_as_a_spelling_where_every_entry_is_one(
@@ -462,6 +482,52 @@ class TestDescribe:
         idx, where = opened(tmp_path, drifted(["rpm"]), unread=["units.ddd.json"])
         assert refusal(lambda: describe_unit(idx, where, "RPM", "shouted", {}))[0] == "unreadable"
 
+    def test_while_an_entry_no_longer_lists_the_unit_where_the_index_found_it_it_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """An entry put in at the top of the units file after the index was built: described at
+        the place the index recorded, the description would be another unit's."""
+        idx, where = opened(tmp_path, drifted(["rpm", {"unit": "Nm", "description": "torque"}]))
+        write_tree(
+            tmp_path,
+            {"units.ddd.json": {"units": ["kPa", "rpm", {"unit": "Nm", "description": "torque"}]}},
+        )
+        assert refusal(lambda: describe_unit(idx, where, "Nm", "newton metre", {})) == (
+            "stale",
+            "units.ddd.json changed since the project was analysed, so the description of 'Nm' "
+            "cannot be set until the project is analysed again",
+        )
+
+    def test_entries_moved_in_several_units_files_name_each_in_path_order(
+        self, tmp_path: Path
+    ) -> None:
+        """The unit listed by five units files, included last first, each given an entry above
+        it since: every file is named, in the order of their paths rather than the order the
+        project includes them."""
+        names = [f"{letter}.ddd.json" for letter in "zyxwv"]
+        idx, where = opened(tmp_path, {name: {"units": ["rpm"]} for name in names})
+        write_tree(tmp_path, {name: {"units": ["kPa", "rpm"]} for name in names})
+        assert refusal(lambda: describe_unit(idx, where, "rpm", "speed", {})) == (
+            "stale",
+            "v.ddd.json, w.ddd.json, x.ddd.json, y.ddd.json, z.ddd.json changed since the "
+            "project was analysed, so the description of 'rpm' cannot be set until the project "
+            "is analysed again",
+        )
+
+    def test_a_declaration_stating_the_unit_that_moved_since_stops_no_description(
+        self, tmp_path: Path
+    ) -> None:
+        """A description writes the vocabulary's entries alone: a component stating the unit,
+        changed since the index was built, is no place it writes, and no reason to refuse it."""
+        files = drifted(["rpm", {"unit": "Nm", "description": "torque"}])
+        idx, where = opened(tmp_path, files)
+        declared = files["a.ddd.json"]["component"]["interface"]
+        above = declare("output", "Other", unit="kPa")
+        write_tree(tmp_path, {"a.ddd.json": component("A", above, *declared)})
+        assert after(describe_unit(idx, where, "Nm", "newton metre", {})) == {
+            "units.ddd.json": {"units": ["rpm", {"unit": "Nm", "description": "newton metre"}]}
+        }
+
 
 class TestRemove:
     def test_a_unit_nothing_states_is_taken_out_in_either_form(self, tmp_path: Path) -> None:
@@ -540,6 +606,19 @@ class TestRemove:
         code, message = refusal(lambda: remove_unit(idx, where, "kPa", {}))
         assert code == "unreadable"
         assert "units.ddd.json" in message
+
+    def test_while_an_entry_no_longer_lists_the_unit_where_the_index_found_it_it_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """Where the index recorded ``kPa``, the file lists ``rpm`` now, an entry put in above
+        both: taken out there, it would be ``rpm`` that went."""
+        idx, where = opened(tmp_path, drifted(["rpm", "kPa"]))
+        write_tree(tmp_path, {"units.ddd.json": {"units": ["Nm", "rpm", "kPa"]}})
+        assert refusal(lambda: remove_unit(idx, where, "kPa", {})) == (
+            "stale",
+            "units.ddd.json changed since the project was analysed, so 'kPa' cannot be taken out "
+            "of the vocabulary until the project is analysed again",
+        )
 
 
 class TestAdopt:

@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from conftest import component, declare, project, write_tree
+from conftest import component, declare, first_revision, project, write_tree
 from ddd.diagnostics import DiagnosticBag
 from ddd.editing import edit_text
-from ddd.gui.session import Session
+from ddd.gui.session import Revision, Session
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.object_values import (
@@ -665,7 +665,7 @@ class TestChangingOne:
 class TestSetValues:
     def test_a_curve_is_written_whole_in_one_operation(self, demo) -> None:
         dictionary, built = demo
-        plan = set_values(dictionary, built, "CurveA", [[1300, 950, 850, 800, 750, 700]])
+        plan = set_values(dictionary, built, "CurveA", [[1300, 950, 850, 800, 750, 700]], {})
         (operation,) = plan.edits[0].operations
         assert operation.pointer.endswith(".definition.init")
         assert json.loads(operation.raw or "") == [1300, 950, 850, 800, 750, 700]
@@ -681,14 +681,14 @@ class TestSetValues:
             [13, 14, 15, 16, 17, 18],
             [19, 20, 21, 22, 23, 24],
         ]
-        plan = set_values(dictionary, built, "MapA", rows)
+        plan = set_values(dictionary, built, "MapA", rows, {})
         (operation,) = plan.edits[0].operations
         assert json.loads(operation.raw or "") == rows
 
     def test_a_block_of_the_wrong_shape_says_what_it_wanted(self, demo) -> None:
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "CurveA", [[1, 2, 3]])
+            set_values(dictionary, built, "CurveA", [[1, 2, 3]], {})
         assert refused.value.code == "invalid"
         assert refused.value.message == "'CurveA' takes 1 row of 6 values, and this is 1 row of 3"
 
@@ -705,7 +705,7 @@ class TestSetValues:
             [6, 10, 14, 16, 18, 16],
         ]
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", rows)
+            set_values(dictionary, built, "MapA", rows, {})
         assert refused.value.message == (
             "3 elements of 'MapA' are refused: "
             "element 1, 1 because 200 does not fit into sint8 (-128 .. 127); "
@@ -726,7 +726,7 @@ class TestSetValues:
             [6, 10, 14, 16, 18, 16],
         ]
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", rows)
+            set_values(dictionary, built, "MapA", rows, {})
         assert refused.value.message == (
             "2 elements of 'MapA' are refused: "
             "element 1, 1 because 200 does not fit into sint8 (-128 .. 127); "
@@ -737,7 +737,7 @@ class TestSetValues:
     def test_a_name_the_project_has_not_is_not_found(self, demo) -> None:
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "Nope", [[1]])
+            set_values(dictionary, built, "Nope", [[1]], {})
         assert refused.value.code == "not-found"
 
     def test_an_object_no_single_declaration_produces_is_refused(self, tmp_path) -> None:
@@ -779,7 +779,7 @@ class TestSetValues:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         try:
             with pytest.raises(ValueRefusalError) as refused:
-                set_values(revision.dictionary, built, "Twice", [[1, 2, 3]])
+                set_values(revision.dictionary, built, "Twice", [[1, 2, 3]], {})
             with pytest.raises(ValueRefusalError) as cell:
                 set_cell(revision.dictionary, built, "Twice", "[0]", 1, {})
         finally:
@@ -797,7 +797,7 @@ class TestSetValues:
         # an object whose producer writes text.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "SoftwareLabel", [[1]])
+            set_values(dictionary, built, "SoftwareLabel", [[1]], {})
         assert refused.value.message == "'SoftwareLabel' is initialised with text, not with a grid"
 
     def test_a_shapeless_object_has_no_table_to_paste_into(self, demo) -> None:
@@ -805,7 +805,7 @@ class TestSetValues:
         # a value, so no table of them either.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "ValueA", [[1]])
+            set_values(dictionary, built, "ValueA", [[1]], {})
         assert refused.value.message == "'ValueA' has no cell for a value to sit in"
 
     def test_a_value_nothing_produces_cannot_take_a_pasted_table(self, tmp_path) -> None:
@@ -827,7 +827,7 @@ class TestSetValues:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         try:
             with pytest.raises(ValueRefusalError) as refused:
-                set_values(revision.dictionary, built, "Orphan", [[1, 2]])
+                set_values(revision.dictionary, built, "Orphan", [[1, 2]], {})
         finally:
             session.stop()
         assert refused.value.message == "nothing produces 'Orphan', so it has no values to set"
@@ -839,7 +839,7 @@ class TestSetValues:
         # singular verb - "is refused", not "are".
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "CurveA", [[1200, 900, 800, 750, 700, 70000]])
+            set_values(dictionary, built, "CurveA", [[1200, 900, 800, 750, 700, 70000]], {})
         assert refused.value.message == (
             "element 6 of 'CurveA' is refused: 70000 does not fit into uint16 (0 .. 65535)"
         )
@@ -857,7 +857,7 @@ class TestSetValues:
             [6, 10, 14, 16, 18, 16],
         ]
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", rows)
+            set_values(dictionary, built, "MapA", rows, {})
         says = "200 does not fit into sint8 (-128 .. 127)"
         assert refused.value.message == (
             f"6 elements of 'MapA' are refused: element 1, 1 because {says}; "
@@ -905,9 +905,9 @@ class TestSetValues:
         built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
         try:
             with pytest.raises(ValueRefusalError) as fractional:
-                set_values(revision.dictionary, built, "Ints", [[1.5, 2.5]])
+                set_values(revision.dictionary, built, "Ints", [[1.5, 2.5]], {})
             with pytest.raises(ValueRefusalError) as boolean:
-                set_values(revision.dictionary, built, "Flags", [[2]])
+                set_values(revision.dictionary, built, "Flags", [[2]], {})
         finally:
             session.stop()
         assert fractional.value.message == (
@@ -923,7 +923,7 @@ class TestSetValues:
         # coverage gate could not see the gap either.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]])
+            set_values(dictionary, built, "MapA", [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]], {})
         assert refused.value.message == "'MapA' takes 4 rows of 6 values, and this is 2 rows of 6"
 
     def test_a_ragged_block_is_told_that_its_rows_differ(self, demo) -> None:
@@ -935,7 +935,7 @@ class TestSetValues:
         dictionary, built = demo
         rows = [[1, 2, 3, 4, 5, 6], [1, 2, 3], [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]]
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "MapA", rows)
+            set_values(dictionary, built, "MapA", rows, {})
         assert refused.value.message == (
             "'MapA' takes 4 rows of 6 values, and this block's rows are not all the same length"
         )
@@ -946,7 +946,7 @@ class TestSetValues:
         # answers an empty list of rows.
         dictionary, built = demo
         with pytest.raises(ValueRefusalError) as refused:
-            set_values(dictionary, built, "CurveA", [])
+            set_values(dictionary, built, "CurveA", [], {})
         assert refused.value.message == "'CurveA' takes 1 row of 6 values, and this is 0 rows of 0"
 
     def test_an_object_that_is_both_shapeless_and_text_is_told_one_thing(self, tmp_path) -> None:
@@ -975,11 +975,52 @@ class TestSetValues:
             with pytest.raises(ValueRefusalError) as by_cell:
                 set_cell(revision.dictionary, built, "Label", "[0]", 1, {})
             with pytest.raises(ValueRefusalError) as by_table:
-                set_values(revision.dictionary, built, "Label", [[1]])
+                set_values(revision.dictionary, built, "Label", [[1]], {})
         finally:
             session.stop()
         assert by_cell.value.message == "'Label' has no cell for a value to sit in"
         assert by_table.value.message == by_cell.value.message
+
+
+class TestAProducerMovedSinceTheAnalysis:
+    """A cell set, or a table pasted, after a declaration was put in above the one producing the
+    object and before an analysis reads the file again: the place the index recorded holds the
+    declaration that was put in, whose ``init`` it would be, so both are refused ``stale``."""
+
+    TABLE = declare(
+        "output", "Table", kind="value_block", datatype="uint8", dimensions=[3], init=[1, 2, 3]
+    )
+    OTHER = declare(
+        "output", "Other", kind="value_block", datatype="uint8", dimensions=[3], init=[7, 8, 9]
+    )
+    REFUSED = (
+        "stale",
+        "a.ddd.json changed since the project was analysed, so the values of 'Table' cannot be "
+        "set until the project is analysed again",
+    )
+
+    @pytest.fixture
+    def moved(self, tmp_path: Path) -> Revision:
+        """A revision of a project producing ``Table``, its file given ``Other`` above it since."""
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A", self.TABLE)},
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        write_tree(tmp_path, {"a.ddd.json": component("A", self.OTHER, self.TABLE)})
+        return revision
+
+    def test_a_cell_is_refused(self, moved: Revision) -> None:
+        assert moved.dictionary is not None and moved.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(moved.dictionary, moved.index, "Table", "[1]", 5, {})
+        assert (refused.value.code, refused.value.message) == self.REFUSED
+
+    def test_a_table_is_refused(self, moved: Revision) -> None:
+        assert moved.dictionary is not None and moved.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_values(moved.dictionary, moved.index, "Table", [[4, 5, 6]], {})
+        assert (refused.value.code, refused.value.message) == self.REFUSED
 
 
 def _definition_of(text: str, name: str) -> dict[str, object]:

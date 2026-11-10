@@ -8,9 +8,11 @@ why a name may not be used, in the sentence the editor shows. What is not borrow
 pointers, the way part 4's identity fix does, so that one engine writes every change ``ddd gui``
 makes and one undo puts it back.
 
-``rename_edits``'s own ``drifted`` has no counterpart here. It exists because an editor's buffer
-may have moved a declaration out from under the index; this reads the disk the index described,
-and a file that changed since is refused by the fingerprint the edit carries.
+``rename_edits``'s own ``drifted`` has its counterpart here, the same question asked of the disk
+rather than of a buffer (:func:`~ddd.lsp.navigation.drift`): the index is of the files as the last
+analysis read them, and a file saved since may have moved the entry or a declaration naming it.
+A rename is refused then, rather than planned at places now holding another type's name, or none;
+the fingerprint the edit carries, of the bytes that analysis read, refuses its Apply as well.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from pathlib import Path
 from typing import Final, Literal
 
 from ddd.editing import Operation
-from ddd.lsp.navigation import Index, Site, rename_problem, rename_sites
+from ddd.lsp.navigation import Index, Site, changed_since, drift, rename_problem, rename_sites
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.project_types import kind_of
@@ -42,14 +44,16 @@ not load. ``unit``, ``limits`` and ``description`` may be left out, and the pane
 class TypeRefusalError(Exception):
     """A change of a type that cannot be planned, and the code both clients refuse it with."""
 
-    code: Literal["invalid", "not-found"]
+    code: Literal["invalid", "not-found", "stale"]
     """``invalid``: the change cannot be made - a key this kind has not, a required key left out,
-    a name that may not be used. ``not-found``: the project declares no type of that name."""
+    a name that may not be used. ``not-found``: the project declares no type of that name.
+    ``stale``: a file the change points into no longer names the type where the index found it,
+    having changed since the analysis read it."""
 
     message: str
     """The sentence the refusal is shown with."""
 
-    def __init__(self, code: Literal["invalid", "not-found"], message: str) -> None:
+    def __init__(self, code: Literal["invalid", "not-found", "stale"], message: str) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -95,14 +99,22 @@ def rename_type(built: Index, name: str, to: str, cache: dict[Path, Document]) -
 
     Refused in the editor's own words for a name that may not be used, before a file is touched -
     a rename writes into every file naming the type, and a name that turns out to be unusable
-    would leave the project broken across all of them at once.
+    would leave the project broken across all of them at once. Refused too while a file no longer
+    names the type at a place the index recorded (:func:`~ddd.lsp.navigation.drift`): the
+    rename would write the new name over whatever sits there now.
     """
     _entry(built, name)
     problem = rename_problem(built, to, "type")
     if problem is not None:
         raise TypeRefusalError("invalid", problem)
+    sites = rename_sites(built, "type", name)
+    moved = drift(sites, name, cache)
+    if moved:
+        raise TypeRefusalError(
+            "stale", changed_since(moved, f"renaming '{name}' cannot be planned")
+        )
     by_file: dict[Path, list[Operation]] = {}
-    for site in rename_sites(built, "type", name):
+    for site in sites:
         by_file.setdefault(site.path, []).append(Operation("set", site.pointer, json.dumps(to)))
     return TypePlan(
         tuple(PlannedEdit(path, tuple(operations)) for path, operations in sorted(by_file.items()))

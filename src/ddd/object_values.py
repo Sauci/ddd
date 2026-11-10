@@ -22,7 +22,7 @@ from typing import Final, Literal, cast
 
 from ddd.editing import Operation
 from ddd.ir import DataDictionary
-from ddd.lsp.navigation import Index
+from ddd.lsp.navigation import Index, Site, changed_since, drift
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.common import Datatype
@@ -41,17 +41,18 @@ grid laid against every reference would draw that measurement as the axis's own 
 class ValueRefusalError(Exception):
     """A grid that cannot be shown or changed, and the code both clients refuse it with."""
 
-    code: Literal["invalid", "not-found"]
+    code: Literal["invalid", "not-found", "stale"]
     """``not-found``: the project declares no object of that name. ``invalid``: the grid cannot
     be drawn - a shape of more dimensions than rows of cells, an init with a list where a number
     belongs or a number where a row belongs - or the change cannot be made: an element outside
     the shape, a value the datatype cannot hold, an object whose init is text, or no one
-    declaration to write into."""
+    declaration to write into. ``stale``: the producing declaration's file no longer holds it
+    where the index found it, having changed since the analysis read it."""
 
     message: str
     """The sentence the refusal is shown with."""
 
-    def __init__(self, code: Literal["invalid", "not-found"], message: str) -> None:
+    def __init__(self, code: Literal["invalid", "not-found", "stale"], message: str) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -306,6 +307,9 @@ def set_cell(
     A shapeless object - a plain measurement or a parameter, most of a project - has no cell
     for a value to sit in, the same as :func:`grid_of` finds when it lays one out; refused
     here before ``at`` is checked against the empty shape, rather than left to crash on one.
+
+    Refused while the producing declaration's file no longer holds it where the index found it
+    (:func:`_in_place`): the cell set there would be another declaration's.
     """
     grid = grid_of(dictionary, built, name)
     if not grid.shape:
@@ -327,6 +331,7 @@ def set_cell(
     found = _element(at, grid.shape)
     _acceptable(raw, Datatype(grid.datatype), name)
     site = sites[0]
+    _in_place(site, name, cache)
     written = read(site.path, cache).value_at(f"{site.pointer}.init")
     if isinstance(written, list):
         operation = Operation("set", f"{site.pointer}.init{at}", json.dumps(raw))
@@ -361,6 +366,7 @@ def set_values(
     built: Index,
     name: str,
     rows: Sequence[Sequence[float]],
+    cache: dict[Path, Document],
 ) -> ValuePlan:
     """What replacing every value of an object takes: one ``set`` of the whole ``init``.
 
@@ -368,9 +374,10 @@ def set_values(
     edit and one entry in the undo stack. The shape is checked here as well as on the page,
     because the page is not the only thing that can call this.
 
-    No document cache is taken, unlike :func:`set_cell`: that one reads whether the file already
-    holds an array, to decide between setting one element and setting the whole ``init``, and
-    this one always writes the whole ``init`` - so there is nothing for it to read.
+    It always writes the whole ``init``, so where :func:`set_cell` reads whether the file already
+    holds an array, this reads one thing alone through ``cache``: whether the producing
+    declaration is still where the index found it (:func:`_in_place`), the table pasted over
+    another declaration's values otherwise.
     """
     grid = grid_of(dictionary, built, name)
     # Shape before text, the order :func:`set_cell` asks them in: an object that is both - a
@@ -411,6 +418,7 @@ def set_values(
     if offenders:
         raise ValueRefusalError("invalid", _all_of_them(offenders, name))
     site = sites[0]
+    _in_place(site, name, cache)
     whole: list[float] | list[list[float]] = (
         list(rows[0]) if len(grid.shape) == 1 else [list(row) for row in rows]
     )
@@ -476,6 +484,20 @@ def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
     if any(index >= size for index, size in zip(found, shape, strict=True)):
         raise ValueRefusalError("invalid", f"'{at}' is past the end of this object")
     return found
+
+
+def _in_place(site: Site, name: str, cache: dict[Path, Document]) -> None:
+    """Refuse a change of ``name``'s values while the declaration the index recorded producing
+    it, at ``site``, no longer names it, its file read as it now stands: a declaration put in
+    above it or taken out moves it, and an ``init`` set at the recorded place would be another's.
+    The question :func:`ddd.variables.declarations_of` asks of a declaration before it reads one.
+    ``stale``: the next analysis reads the file again, and the plan asked then is made where the
+    declaration now is."""
+    moved = drift((Site(site.path, f"{site.pointer}.name"),), name, cache)
+    if moved:
+        raise ValueRefusalError(
+            "stale", changed_since(moved, f"the values of '{name}' cannot be set")
+        )
 
 
 def _acceptable(raw: float, datatype: Datatype, name: str) -> None:

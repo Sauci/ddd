@@ -48,7 +48,6 @@ from ddd.editing import (
     EditError,
     FileChange,
     Operation,
-    fingerprint,
     unchanged,
 )
 from ddd.file_plans import (
@@ -146,7 +145,7 @@ from ddd.gui.session import (
     kind_of,
 )
 from ddd.ir import DataDictionary
-from ddd.loading import resolve_path
+from ddd.loading import fingerprint, resolve_path
 from ddd.lsp.edits import settle
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
@@ -1438,7 +1437,7 @@ class Api:
             return _error(409, UNREADABLE, _NOTHING_RESOLVED)
         try:
             flat = [_number(piece) for piece in query.raw.split(",")]
-            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name))
+            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), {})
         except ValueRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
             # refusal. A statement rather than a ternary, so the gate can see both arms.

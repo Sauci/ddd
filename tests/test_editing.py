@@ -717,7 +717,9 @@ class TestWritingFiles:
         """Putting a file back is a write like any other: one another editor saved after the
         edit renamed it, and before the refusal of a later file came to put it back, is not
         overwritten with the bytes it held before the edit - and the refusal names it, while
-        the file after it is put back all the same."""
+        the file after it is put back all the same. A file that was not put back makes the
+        refusal ``unwritable``, whose sentence the page shows: ``stale`` is the one it answers
+        with "nothing was written"."""
         a, b, c = (tmp_path / f"{name}.ddd.json" for name in "abc")
         for path in (a, b, c):
             path.write_bytes(b'{"x": 1}')
@@ -725,7 +727,7 @@ class TestWritingFiles:
         saves_while_staging(monkeypatch, c, {a: b'{"x": 7}', c: b'{"x": 9}'})
         with pytest.raises(EditError) as refused:
             apply_changes(changes)
-        assert refused.value.code == STALE
+        assert refused.value.code == UNWRITABLE
         assert str(refused.value) == (
             f"{c} changed on disk while it was being written; these could not be put back: {a}"
         )
@@ -733,6 +735,30 @@ class TestWritingFiles:
         assert b.read_bytes() == b'{"x": 1}'
         assert c.read_bytes() == b'{"x": 9}'
         assert sorted(entry.name for entry in tmp_path.iterdir()) == [a.name, b.name, c.name]
+
+    def test_a_save_landing_is_answered_unwritable_when_a_file_written_cannot_be_put_back(
+        self, tmp_path, monkeypatch
+    ):
+        """``stale`` tells a person nothing was written, which holds only when every file the
+        edit wrote went back. Here the disk refuses the put-back of the first file after the
+        second is found saved: the first still holds the edit's bytes, and the refusal that says
+        so, and names it, is ``unwritable``."""
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        changes = [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+        saves_while_staging(monkeypatch, b, {b: b'{"x": 9}'})
+        monkeypatch.setattr(editing, "_stage_and_replace", _refusing({a: 2}))
+        with pytest.raises(EditError) as refused:
+            apply_changes(changes)
+        assert refused.value.code == UNWRITABLE
+        assert str(refused.value) == (
+            f"{b} changed on disk while it was being written; these could not be put back: {a}"
+        )
+        assert a.read_bytes() == b'{"x": 2}'
+        assert b.read_bytes() == b'{"x": 9}'
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [a.name, b.name]
 
     def test_a_file_taken_away_during_an_edit_is_refused_as_stale(self, tmp_path, monkeypatch):
         """Deleted after the check and before the rename - by a branch switch, say: the rename
@@ -1469,7 +1495,9 @@ class TestPuttingAnEditBack:
         self, tmp_path, monkeypatch
     ):
         """The first file was put back and saved after, when the third is found saved: the
-        refusal names it and leaves it, while the second is written forward all the same."""
+        refusal names it and leaves it, while the second is written forward all the same. A
+        file that was not written forward leaves the undo half made, so the refusal is
+        ``unwritable``, whose sentence the page shows, and not ``stale``."""
         a, b, c = (tmp_path / f"{name}.ddd.json" for name in "abc")
         for path in (a, b, c):
             path.write_bytes(b'{"x": 1}')
@@ -1477,7 +1505,7 @@ class TestPuttingAnEditBack:
         saves_while_staging(monkeypatch, c, {a: b'{"x": 7}', c: b'{"x": 9}'})
         with pytest.raises(EditError) as refused:
             restore(written)
-        assert refused.value.code == STALE
+        assert refused.value.code == UNWRITABLE
         assert str(refused.value) == (
             f"{c} changed on disk while it was being written; "
             f"these could not be written forward again: {a}"
@@ -1485,6 +1513,33 @@ class TestPuttingAnEditBack:
         assert a.read_bytes() == b'{"x": 7}'
         assert b.read_bytes() == b'{"x": 2}'
         assert c.read_bytes() == b'{"x": 9}'
+
+    def test_a_save_landing_is_answered_unwritable_when_a_file_put_back_cannot_be_written_forward(
+        self, tmp_path, monkeypatch
+    ):
+        """``stale`` tells a person nothing was put back, which holds only when every file the
+        undo had put back went forward again. Here the disk refuses that for the first file after
+        the second is found saved: the first is left as it was before the edit, half the undo, and
+        the refusal that says so, and names it, is ``unwritable``."""
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        written = apply_changes(
+            [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+        )
+        saves_while_staging(monkeypatch, b, {b: b'{"x": 9}'})
+        monkeypatch.setattr(editing, "_stage_and_replace", _refusing({a: 2}))
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == UNWRITABLE
+        assert str(refused.value) == (
+            f"{b} changed on disk while it was being written; "
+            f"these could not be written forward again: {a}"
+        )
+        assert a.read_bytes() == b'{"x": 1}'
+        assert b.read_bytes() == b'{"x": 9}'
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [a.name, b.name]
 
     def test_a_save_landing_on_a_created_file_during_an_undo_keeps_it(self, tmp_path, monkeypatch):
         """A file the edit created is taken away with no stage to wait on, so the save lands

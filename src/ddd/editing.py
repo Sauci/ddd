@@ -60,10 +60,15 @@ UNVERIFIED: Final = "unverified"
 
 STALE: Final = "stale"
 """A file's fingerprint is not the one on disk: it changed since the edit was computed, or while
-the edit was being written."""
+the edit was being written.
+
+Answered only where nothing is left half made - ``ddd gui`` tells a person that nothing was
+written, or put back, for it: a refusal that could not put every file it had written back is
+:data:`UNWRITABLE` instead, whose sentence names the files it could not."""
 
 UNWRITABLE: Final = "unwritable"
-"""A file could not be written; the ones already written were put back where they could be."""
+"""A file could not be written, or could not be put back after the edit was refused as stale; the
+ones already written were put back where they could be."""
 
 REPLACE_TRIES: Final = 50 if os.name == "nt" else 1
 """How many times a file is renamed into place, or taken away, before a refusal stands.
@@ -798,8 +803,9 @@ def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
     before the rename, and found to hold still the bytes the edit was made from: a file saved
     since is somebody else's, which the rename would overwrite, and is refused as stale. When
     one fails or is refused, the files already written are written back from the bytes read
-    before the edit - each one that still holds what the edit wrote - a file the edit created is
-    taken away again, and the refusal names any that could not be.
+    before the edit - each one that still holds what the edit wrote - and a file the edit created
+    is taken away again. A refusal as stale says that every one went back: where one could not,
+    whatever refused the edit, the refusal is ``unwritable`` and names the files that could not.
     """
     staged: list[tuple[FileChange, bytes | None, bytes]] = []
     for pending in changes:
@@ -821,11 +827,13 @@ def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
                 if lost
                 else "the files already written were put back"
             )
+            code = UNWRITABLE
+            reason = f"{pending.path} could not be written ({error})"
             if isinstance(error, EditError):
-                raise EditError(error.code, f"{error}; {outcome}") from None
-            raise EditError(
-                UNWRITABLE, f"{pending.path} could not be written ({error}); {outcome}"
-            ) from None
+                reason = str(error)
+                if not lost:
+                    code = error.code
+            raise EditError(code, f"{reason}; {outcome}") from None
         written.append((pending.path, original, new))
     return tuple(
         Written(pending.path, original, fingerprint(new)) for pending, original, new in staged
@@ -857,7 +865,8 @@ def restore(written: Sequence[Written]) -> None:
     right before it is renamed over - or taken away, for a file the edit created - and refuses
     as stale one that was saved since that first check. When one cannot be written, or is
     refused, the files already put back are written forward to what the edit had left them, each
-    one that still holds what was put back - and the refusal names any that could not be.
+    one that still holds what was put back. A refusal as stale says that every one went forward
+    again: where one could not, the refusal is ``unwritable`` and names the files that could not.
     """
     ahead = [(entry, unchanged(entry)) for entry in written]
     undone: list[tuple[Path, bytes, bytes | None]] = []
@@ -871,9 +880,13 @@ def restore(written: Sequence[Written]) -> None:
                 if lost
                 else "the files already put back were written forward again"
             )
+            code = UNWRITABLE
+            reason = f"{entry.path} could not be put back"
             if isinstance(error, EditError):
-                raise EditError(error.code, f"{error}; {outcome}") from None
-            raise EditError(UNWRITABLE, f"{entry.path} could not be put back; {outcome}") from None
+                reason = str(error)
+                if not lost:
+                    code = error.code
+            raise EditError(code, f"{reason}; {outcome}") from None
         undone.append((entry.path, current, entry.before))
 
 

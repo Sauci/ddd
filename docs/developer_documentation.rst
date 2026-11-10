@@ -1186,8 +1186,10 @@ the stage is written and right before the rename - or the removal, for a file an
 created. A file that no longer holds the bytes the write was made from, or that exists
 where the write creates it, was changed by somebody else since the edit read it, and is
 refused as ``stale`` rather than overwritten, taken away or brought back; the files
-already written are put back, each one that still holds what the write left, and the
-refusal names any that could not be.
+already written are put back, each one that still holds what the write left. ``stale``
+says that every one went back - the page tells a person that nothing was written - and
+where one could not, the refusal is ``unwritable`` and its sentence names the files it
+could not put back.
 
 Undo is the same engine read backwards. ``ddd.editing.apply_changes`` answers a
 :class:`~ddd.editing.Written` per file - the bytes it held before, ``None`` for a file the

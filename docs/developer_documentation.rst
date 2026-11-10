@@ -1215,20 +1215,22 @@ and a disk taking many at once, where one after the other cost milliseconds a fi
 then renamed, one file after the other, each given its file's access and its file looked at
 once more right before. A sync the file system has none to offer, ``EINVAL`` or ``ENOTSUP``,
 is let by, and any other error refuses the write; one that fails refuses the edit before any
-file is renamed. An undo, and the put-back of an edit that is refused, write one file at a
-time. What an edit is made all at once against is a refusal and not a stop: a server killed
-while it writes - a closed terminal, a ``kill`` - can leave some of the files it had renamed
-as the edit made them, the others as they were, the stages it was writing beside them, and
-nothing to undo once it is started again, and ``Changes`` in ``ddd.gui.contract`` says so. On
-a journaling file system that has a sync to offer, a power cut leaves each file as it was or
-as the edit made it, and not empty.
+file is renamed. An undo is written the same way, the file an edit created taken away in its
+turn; only the put-back of a write that is refused - the files already renamed, or the ones an
+undo had put back - writes one file at a time, each stage synced as it is made, as it is rare.
+What an edit is made all at once against is a refusal and not a stop: a server killed while it
+writes - a closed terminal, a ``kill`` - can leave some of the files it had renamed as the edit
+made them, the others as they were, the stages it was writing beside them, and nothing to undo
+once it is started again, and ``Changes`` in ``ddd.gui.contract`` says so. On a journaling
+file system that has a sync to offer, a power cut leaves each file as it was or as the edit
+made it, and not empty.
 
 Undo is the same engine read backwards. ``ddd.editing.apply_changes`` answers a
 :class:`~ddd.editing.Written` per file - the bytes it held before, ``None`` for a file the
 edit created, and the fingerprint of the bytes it left - and ``ddd.editing.restore`` writes
-those back through the same staging, taking away again a file the edit created and, when one
-file of several cannot be written, writing the ones already put back forward to what the
-edit had left them. ``ddd.editing.unchanged`` is what says an edit may still be put back: a
+those back through the same staging and sync, taking away again a file the edit created and,
+when one file of several cannot be written, writing the ones already put back forward to what
+the edit had left them. ``ddd.editing.unchanged`` is what says an edit may still be put back: a
 file whose bytes are no longer the ones it left is somebody else's now, and the whole undo
 is refused as ``stale`` rather than half of it applied. The session keeps one stack of
 ``Undoable`` entries per open project, numbered as it pushes and capped at ``MAX_UNDO`` -

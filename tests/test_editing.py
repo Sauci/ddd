@@ -1246,6 +1246,45 @@ class TestWritingFiles:
         assert path.read_bytes() == b'{"x": 1}'
         assert [entry.name for entry in tmp_path.iterdir()] == [path.name]
 
+    def test_a_file_put_back_after_a_refusal_is_synced_before_it_is_renamed(
+        self, tmp_path, monkeypatch
+    ):
+        """The put-back of a file an edit had renamed is the one write that is made one file at
+        a time, and its stage is synced like any other: after the two stages of the edit and the
+        rename of the first file, which the second's refusal sends back."""
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"x": 1}')
+        events = []
+        real_sync, real_rename = os.fsync, Path.replace
+
+        def syncing(descriptor):
+            events.append("sync")
+            real_sync(descriptor)
+
+        def renaming(self, target):
+            events.append(f"rename {Path(target).name}")
+            if Path(target) == b:
+                raise OSError("disk full")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(editing.os, "fsync", syncing)
+        monkeypatch.setattr(Path, "replace", renaming)
+        with pytest.raises(EditError):
+            apply_changes(
+                [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
+            )
+        assert events == [
+            "sync",
+            "sync",
+            f"rename {a.name}",
+            f"rename {b.name}",
+            "sync",
+            f"rename {a.name}",
+        ]
+        assert a.read_bytes() == b'{"x": 1}'
+
     @pytest.mark.parametrize("code", [errno.EINVAL, errno.ENOTSUP], ids=["einval", "enotsup"])
     def test_a_file_system_that_cannot_sync_is_written_all_the_same(
         self, tmp_path, monkeypatch, code
@@ -2122,7 +2161,7 @@ class TestPuttingAnEditBack:
             [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
         )
         saves_while_staging(monkeypatch, b, {b: b'{"x": 9}'})
-        monkeypatch.setattr(editing, "_stage_and_replace", _refusing({a: 2}))
+        monkeypatch.setattr(Path, "replace", _refusing_renames({a: 2}))
         with pytest.raises(EditError) as refused:
             restore(written)
         assert refused.value.code == UNWRITABLE
@@ -2180,14 +2219,7 @@ class TestPuttingAnEditBack:
                 change(project, Operation("set", "project.includes", '["units.ddd.json"]')),
             ]
         )
-        real = editing._stage_and_replace
-
-        def failing(path, data, like, expected):
-            if path == project:
-                raise OSError("disk full")
-            real(path, data, like, expected)
-
-        monkeypatch.setattr(editing, "_stage_and_replace", failing)
+        monkeypatch.setattr(Path, "replace", _refusing_renames({project: 1}))
         with pytest.raises(EditError) as refused:
             restore(written)
         assert refused.value.code == UNWRITABLE
@@ -2203,7 +2235,7 @@ class TestPuttingAnEditBack:
             [change(a, Operation("set", "x", "2")), change(b, Operation("set", "x", "2"))]
         )
         # b refuses at once; a's own put-back is let by, and its write forward refuses.
-        monkeypatch.setattr(editing, "_stage_and_replace", _refusing({b: 1, a: 2}))
+        monkeypatch.setattr(Path, "replace", _refusing_renames({b: 1, a: 2}))
         with pytest.raises(EditError) as refused:
             restore(written)
         assert refused.value.code == UNWRITABLE
@@ -2218,11 +2250,248 @@ class TestPuttingAnEditBack:
         assert stat.S_IMODE(path.stat().st_mode) == mode
 
 
+class TestAnUndoStagesEveryFileBeforeItPutsAnyBack:
+    """An undo is waited on as an edit is, and wrote the files of a rename across hundreds of
+    them one after the other, each stage synced just before its own rename, with the session's
+    lock held: it takes as long to put an edit back as it took to make it, and more. Its stages are
+    made first and synced together, as an edit's are, and only then is each file put back, one
+    after the other, looked at once more right before."""
+
+    @staticmethod
+    def edited_files(tmp_path, names="abc"):
+        paths = [tmp_path / f"{name}.ddd.json" for name in names]
+        for path in paths:
+            path.write_bytes(b'{"x": 1}')
+        written = apply_changes([change(path, Operation("set", "x", "2")) for path in paths])
+        return paths, written
+
+    def test_every_stage_is_made_and_synced_before_any_file_is_put_back(
+        self, tmp_path, monkeypatch
+    ):
+        paths, written = self.edited_files(tmp_path)
+        events = []
+        renamed = []
+        real_stage, real_sync, real_rename = editing._new_stage, os.fsync, Path.replace
+
+        def staging(target, *access):
+            events.append("stage")
+            return real_stage(target, *access)
+
+        def syncing(descriptor):
+            events.append("sync")
+            real_sync(descriptor)
+
+        def renaming(self, target):
+            events.append("rename")
+            renamed.append(Path(target))
+            return real_rename(self, target)
+
+        monkeypatch.setattr(editing, "_new_stage", staging)
+        monkeypatch.setattr(editing.os, "fsync", syncing)
+        monkeypatch.setattr(Path, "replace", renaming)
+        restore(written)
+        assert events == ["stage"] * 3 + ["sync"] * 3 + ["rename"] * 3
+        assert renamed == paths
+        assert [path.read_bytes() for path in paths] == [b'{"x": 1}'] * 3
+
+    def test_the_stages_are_synced_at_once_and_not_one_after_the_other(self, tmp_path, monkeypatch):
+        """Two syncs that each wait for the other to begin are both in flight at once, or the
+        barrier breaks."""
+        paths, written = self.edited_files(tmp_path, "ab")
+        barrier = threading.Barrier(2, timeout=2)
+        real = os.fsync
+
+        def meeting(descriptor):
+            barrier.wait()
+            real(descriptor)
+
+        monkeypatch.setattr(editing.os, "fsync", meeting)
+        restore(written)
+        assert [path.read_bytes() for path in paths] == [b'{"x": 1}'] * 2
+
+    def test_a_created_file_is_taken_away_once_every_stage_is_synced(self, tmp_path, monkeypatch):
+        """An adoption's undo takes the units file away, which has no stage and nothing to sync,
+        and writes the project back: the file is taken away where it comes in the undo, after the
+        sync of the project's stage."""
+        units = tmp_path / "units.ddd.json"
+        project = tmp_path / "p.ddd.json"
+        project.write_bytes(b'{"project": {"includes": []}}')
+        written = apply_changes(
+            [
+                created(units, UNITS_FILE, project),
+                change(project, Operation("set", "project.includes", '["units.ddd.json"]')),
+            ]
+        )
+        events = []
+        real_stage, real_sync = editing._new_stage, os.fsync
+        real_rename, real_unlink = Path.replace, Path.unlink
+
+        def staging(target, *access):
+            events.append(f"stage {target.name}")
+            return real_stage(target, *access)
+
+        def syncing(descriptor):
+            events.append("sync")
+            real_sync(descriptor)
+
+        def renaming(self, target):
+            events.append(f"rename {Path(target).name}")
+            return real_rename(self, target)
+
+        def unlinking(self, missing_ok=False):
+            events.append(f"unlink {self.name}")
+            return real_unlink(self, missing_ok)
+
+        monkeypatch.setattr(editing, "_new_stage", staging)
+        monkeypatch.setattr(editing.os, "fsync", syncing)
+        monkeypatch.setattr(Path, "replace", renaming)
+        monkeypatch.setattr(Path, "unlink", unlinking)
+        restore(written)
+        assert events == [
+            f"stage {project.name}",
+            "sync",
+            f"unlink {units.name}",
+            f"rename {project.name}",
+        ]
+        assert not units.exists()
+        assert project.read_bytes() == b'{"project": {"includes": []}}'
+
+    def test_a_sync_that_fails_for_a_later_file_refuses_the_undo_before_any_file_is_put_back(
+        self, tmp_path, monkeypatch
+    ):
+        """The file put back before the sync that failed had to be written forward again, on the
+        disk that has just failed. Nothing is put back, and the sentence is the one it was."""
+        a = tmp_path / "a.ddd.json"
+        b = tmp_path / "b.ddd.json"
+        a.write_bytes(b'{"x": 1}')
+        b.write_bytes(b'{"xx": 1}')
+        written = apply_changes(
+            [change(a, Operation("set", "x", "2")), change(b, Operation("set", "xx", "2"))]
+        )
+        renamed = []
+        real_rename = Path.replace
+
+        def failing(descriptor):
+            # b's previous bytes are one longer than a's, which is how this tells its stage.
+            if os.fstat(descriptor).st_size == len(b'{"xx": 1}'):
+                raise OSError(errno.EIO, "Input/output error")
+
+        def renaming(self, target):
+            renamed.append(Path(target))
+            return real_rename(self, target)
+
+        monkeypatch.setattr(editing.os, "fsync", failing)
+        monkeypatch.setattr(Path, "replace", renaming)
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == UNWRITABLE
+        assert str(refused.value) == (
+            f"{b} could not be put back; the files already put back were written forward again"
+        )
+        assert renamed == []
+        assert (a.read_bytes(), b.read_bytes()) == (b'{"x": 2}', b'{"xx": 2}')
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [a.name, b.name]
+
+    def test_a_sync_that_fails_in_an_undo_that_takes_a_file_away_names_the_file_it_failed_for(
+        self, tmp_path, monkeypatch
+    ):
+        """The file the edit created has no stage, so the stage that fails is the second file's
+        and the first stage's: the refusal names the project, and the units file is not yet
+        taken away - nothing is, before every stage is synced."""
+        units = tmp_path / "units.ddd.json"
+        project = tmp_path / "p.ddd.json"
+        project.write_bytes(b'{"project": {"includes": []}}')
+        written = apply_changes(
+            [
+                created(units, UNITS_FILE, project),
+                change(project, Operation("set", "project.includes", '["units.ddd.json"]')),
+            ]
+        )
+        unlinked = []
+        real_unlink = Path.unlink
+
+        def failing(descriptor):
+            raise OSError(errno.EIO, "Input/output error")
+
+        def unlinking(self, missing_ok=False):
+            unlinked.append(self.name)
+            return real_unlink(self, missing_ok)
+
+        monkeypatch.setattr(editing.os, "fsync", failing)
+        monkeypatch.setattr(Path, "unlink", unlinking)
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == UNWRITABLE
+        assert str(refused.value) == (
+            f"{project} could not be put back; "
+            "the files already put back were written forward again"
+        )
+        assert units.read_bytes() == UNITS_FILE.encode("utf-8")
+        assert project.read_bytes() == b'{"project": {"includes": ["units.ddd.json"]}}'
+        assert [name for name in unlinked if not name.endswith(STAGING_SUFFIX)] == []
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [project.name, units.name]
+
+    def test_a_stage_that_cannot_be_made_for_a_later_file_refuses_the_undo_before_any_rename(
+        self, tmp_path, monkeypatch
+    ):
+        paths, written = self.edited_files(tmp_path, "ab")
+        a, b = paths
+        renamed = []
+        real_stage, real_rename = editing._new_stage, Path.replace
+
+        def staging(target, *access):
+            if target == b:
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return real_stage(target, *access)
+
+        def renaming(self, target):
+            renamed.append(Path(target))
+            return real_rename(self, target)
+
+        monkeypatch.setattr(editing, "_new_stage", staging)
+        monkeypatch.setattr(Path, "replace", renaming)
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == UNWRITABLE
+        assert str(refused.value) == (
+            f"{b} could not be put back; the files already put back were written forward again"
+        )
+        assert renamed == []
+        assert [path.read_bytes() for path in paths] == [b'{"x": 2}'] * 2
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [a.name, b.name]
+
+    def test_an_undo_refused_takes_away_the_stages_of_the_files_not_put_back_and_no_other(
+        self, tmp_path, monkeypatch
+    ):
+        """The file put back goes forward again, and the stage of the refused one and the one
+        after it are taken away - the stage of the file put back is not, there being none."""
+        paths, written = self.edited_files(tmp_path)
+        a, b, c = paths
+        unlinked = []
+        real = Path.unlink
+
+        def unlinking(self, missing_ok=False):
+            unlinked.append(self.name)
+            return real(self, missing_ok)
+
+        monkeypatch.setattr(Path, "replace", _refusing_renames({b: 1}))
+        monkeypatch.setattr(Path, "unlink", unlinking)
+        with pytest.raises(EditError) as refused:
+            restore(written)
+        assert refused.value.code == UNWRITABLE
+        assert str(refused.value) == (
+            f"{b} could not be put back; the files already put back were written forward again"
+        )
+        assert [path.read_bytes() for path in paths] == [b'{"x": 2}'] * 3
+        assert sorted(entry.name for entry in tmp_path.iterdir()) == [a.name, b.name, c.name]
+        assert sorted(name.split(".")[0] for name in unlinked) == ["b", "c"]
+
+
 def _refusing_renames(after: dict[Path, int]):
     """``Path.replace`` that refuses a target once it has been asked for it that many times: 1
     refuses the first rename onto it outright, 2 lets the first by and refuses the second, which
-    is the put-back of a file the edit renamed. A refusal that is no refusal of access, as a
-    full disk is none, is final at once."""
+    is the put-back of a file an edit renamed, or the write forward of one an undo had put back.
+    A refusal that is no refusal of access, as a full disk is none, is final at once."""
     real = Path.replace
     seen: dict[Path, int] = {}
 
@@ -2234,19 +2503,3 @@ def _refusing_renames(after: dict[Path, int]):
         return real(self, target)
 
     return renaming
-
-
-def _refusing(after: dict[Path, int]):
-    """``_stage_and_replace`` that refuses a path once it has been asked for it that many
-    times: 1 refuses it outright, 2 lets the first write by and refuses the second. What an undo
-    writes goes through it, as does the put-back of an edit's files; an edit's own writes do not."""
-    real = editing._stage_and_replace
-    seen: dict[Path, int] = {}
-
-    def staged(path, data, like, expected):
-        seen[path] = seen.get(path, 0) + 1
-        if seen[path] >= after.get(path, seen[path] + 1):
-            raise OSError("disk full")
-        real(path, data, like, expected)
-
-    return staged

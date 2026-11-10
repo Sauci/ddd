@@ -41,7 +41,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO, Final
+from typing import TYPE_CHECKING, Any, BinaryIO, Final, NamedTuple
 
 from ddd.file_names import STAGING_TOKEN_BYTES, staged_name, uncreatable
 from ddd.loading import NESTED_TOO_DEEPLY, fingerprint, parse_json_text
@@ -91,10 +91,10 @@ chance, four random bytes each; sixteen taken in a row are the file system's doi
 have been drawn for for ever."""
 
 SYNC_WORKERS: Final = 64
-"""How many stages of one edit are synced at once. A sync waits for the disk and not for the
-processor, and a disk takes many at once: on a file system that journals, one sync after the
-other cost milliseconds a file - seconds for an edit of hundreds of files, under the session's
-lock - where syncs that overlap share the commits of the journal."""
+"""How many stages of one edit, or of one undo, are synced at once. A sync waits for the disk and
+not for the processor, and a disk takes many at once: on a file system that journals, one sync
+after the other cost milliseconds a file - seconds for an edit of hundreds of files, under the
+session's lock - where syncs that overlap share the commits of the journal."""
 
 _UNSYNCABLE: Final = frozenset({errno.EINVAL, errno.ENOTSUP})
 """What a file system that has no sync to offer answers one with - a network share, a virtual
@@ -810,6 +810,49 @@ class Written:
     a file that has changed since is somebody else's now."""
 
 
+@dataclass(frozen=True, slots=True)
+class _Step:
+    """One file of a write made all at once, an edit's or an undo's: the bytes to give it, the
+    bytes it has to hold still for that, and the file whose access its stage takes."""
+
+    path: Path
+
+    data: bytes | None
+    """What the file is given; ``None`` takes it away, which has no stage."""
+
+    expected: bytes | None
+    """What the file has to hold still, looked at once more right before it is given ``data`` or
+    taken away: ``None`` for a file that is not there. What a rollback gives it back."""
+
+    like: Path | None
+    """The file whose access the stage takes: none, for the access any new file gets."""
+
+
+class _Words(NamedTuple):
+    """What the refusal of a write made all at once says - an edit's, or an undo's."""
+
+    refused: str
+    """Of a file the disk refused, in which ``{path}`` and ``{error}`` stand for it."""
+
+    lost: str
+    """Leads the files that could not be put back after it."""
+
+    kept: str
+    """Says that the files already written were put back."""
+
+
+_WRITTEN: Final = _Words(
+    "{path} could not be written ({error})",
+    "these could not be put back: ",
+    "the files already written were put back",
+)
+_PUT_BACK: Final = _Words(
+    "{path} could not be put back",
+    "these could not be written forward again: ",
+    "the files already put back were written forward again",
+)
+
+
 def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
     """Make every change or none of them, and hand back what each file held before it and holds
     now.
@@ -843,69 +886,76 @@ def apply_changes(changes: Sequence[FileChange]) -> tuple[Written, ...]:
         if original is not None:
             _refuse_read_only(pending.path, "written")
         planned.append((pending, original, new))
-    _write_all(planned)
+    _write_all(
+        [
+            _Step(pending.path, new, original, _access_of(pending, original))
+            for pending, original, new in planned
+        ],
+        _WRITTEN,
+    )
     return tuple(
         Written(pending.path, original, fingerprint(new)) for pending, original, new in planned
     )
 
 
-def _write_all(planned: Sequence[tuple[FileChange, bytes | None, bytes]]) -> None:
-    """Write every file of an edit: stage them all, sync the stages together, rename them one
-    after the other. A file that cannot be written refuses the edit (:func:`_refused`), and every
-    stage that is not renamed is taken away.
+def _write_all(steps: Sequence[_Step], words: _Words) -> None:
+    """Write every file of an edit, or of an undo: stage them all, sync the stages together, and
+    give each file its bytes - or take it away - one after the other. A file that cannot be
+    written refuses the write (:func:`_refused`), and every stage that is not renamed is taken
+    away.
 
-    The stages are made one after the other, by this thread, which is what knows each of them;
-    synced on up to :data:`SYNC_WORKERS` threads, a sync waiting for the disk; and renamed one
-    after the other, each given the access of its file and looking at that file once more
-    right before the rename (:func:`_replace`). The first that fails, in the order of the
-    files, is the one the refusal names."""
-    stages: list[Path] = []
-    loose: set[Path] = set()
+    The stages are made one after the other, by this thread, which is what knows each of them; a
+    file that is to be taken away has none. They are synced on up to :data:`SYNC_WORKERS`
+    threads, a sync waiting for the disk. Each file is then renamed over, or taken away, in its
+    turn - given the access of its file, and looking at that file once more right before
+    (:func:`_replace`). The first that fails, in the order of the files, is the one the refusal
+    names."""
+    stages: dict[int, Path] = {}
     try:
-        for pending, original, new in planned:
-            try:
-                stage = _stage(pending.path, new, _access_of(pending, original))
-            except OSError as error:
-                raise _refused(pending.path, error, []) from None
-            stages.append(stage)
-            loose.add(stage)
+        for index, step in enumerate(steps):
+            if step.data is not None:
+                try:
+                    stages[index] = _stage(step.path, step.data, step.like)
+                except OSError as error:
+                    raise _refused(step.path, error, [], words) from None
         with ThreadPoolExecutor(SYNC_WORKERS) as pool:
+            owners = list(stages)
             synced = 0
             try:
-                for _ in pool.map(_sync, stages):
+                for _ in pool.map(_sync, stages.values()):
                     synced += 1
             except OSError as error:
-                raise _refused(planned[synced][0].path, error, []) from None
-        written: list[tuple[Path, bytes | None, bytes]] = []
-        for (pending, original, new), stage in zip(planned, stages, strict=True):
+                raise _refused(steps[owners[synced]].path, error, [], words) from None
+        done: list[tuple[Path, bytes | None, bytes | None]] = []
+        for index, step in enumerate(steps):
             try:
-                _replace(pending.path, stage, _access_of(pending, original), original)
+                if step.data is None:
+                    _put_back(step.path, None, step.expected)
+                else:
+                    _replace(step.path, stages[index], step.like, step.expected)
             except (OSError, EditError) as error:
-                raise _refused(pending.path, error, written) from None
-            loose.discard(stage)
-            written.append((pending.path, original, new))
+                raise _refused(step.path, error, done, words) from None
+            stages.pop(index, None)
+            done.append((step.path, step.expected, step.data))
     finally:
-        for stage in loose:
+        for stage in stages.values():
             _discard(stage)
 
 
 def _refused(
     path: Path,
     error: OSError | EditError,
-    written: Sequence[tuple[Path, bytes | None, bytes]],
+    done: Sequence[tuple[Path, bytes | None, bytes | None]],
+    words: _Words,
 ) -> EditError:
-    """The refusal of an edit whose file ``path`` could not be written, for ``error``, after the
-    files already ``written`` are put back (:func:`_not_put_back`): ``unwritable`` where one
-    could not be, and then the sentence names it; else the code of the refusal that stopped the
-    edit, ``unwritable`` for an error of the disk."""
-    lost = _not_put_back(written)
-    outcome = (
-        "these could not be put back: " + ", ".join(str(done) for done in lost)
-        if lost
-        else "the files already written were put back"
-    )
+    """The refusal of a write whose file ``path`` could not be written, for ``error``, after the
+    files ``done`` already are put back (:func:`_not_put_back`): ``unwritable`` where one could
+    not be, and then the sentence names it; else the code of the refusal that stopped the write,
+    ``unwritable`` for an error of the disk."""
+    lost = _not_put_back(done)
+    outcome = words.lost + ", ".join(str(file) for file in lost) if lost else words.kept
     code = UNWRITABLE
-    reason = f"{path} could not be written ({error})"
+    reason = words.refused.format(path=path, error=error)
     if isinstance(error, EditError):
         reason = str(error)
         if not lost:
@@ -941,37 +991,22 @@ def restore(written: Sequence[Written]) -> None:
 
     Every file is checked against the fingerprint the edit left it at, and for the permission to
     write it (:func:`_refuse_read_only`), before anything is written, so a refusal leaves every
-    file as it stands. Each previous version is written one file at a time, through the stage,
-    sync and rename of :func:`_stage_and_replace`, which looks at the file once more right
-    before it is renamed over - or taken away, for a file the edit created - and refuses as
-    stale one that was saved since that first check. When one cannot be written, or is refused,
-    the files already put back are written forward to what the edit had left them, each one
-    that still holds what was put back. A refusal as stale says that every one went forward
-    again: where one could not, the refusal is ``unwritable`` and names the files that could
-    not.
+    file as it stands. The previous versions are then written as an edit's files are: every file
+    staged and every stage synced before any is renamed, each file looked at once more right
+    before it is renamed over - or taken away, for a file the edit created
+    (:func:`_write_all`) - and refused as stale if it was saved since that first check. When one
+    cannot be written, or is refused, the files already put back are written forward to what
+    the edit had left them, each one that still holds what was put back. A refusal as stale
+    says that every one went forward again: where one could not, the refusal is ``unwritable``
+    and names the files that could not.
     """
     ahead = [(entry, unchanged(entry)) for entry in written]
     for entry, _ in ahead:
         _refuse_read_only(entry.path, "put back")
-    undone: list[tuple[Path, bytes, bytes | None]] = []
-    for entry, current in ahead:
-        try:
-            _put_back(entry.path, entry.before, current)
-        except (OSError, EditError) as error:
-            lost = _not_put_back(undone)
-            outcome = (
-                "these could not be written forward again: " + ", ".join(str(p) for p in lost)
-                if lost
-                else "the files already put back were written forward again"
-            )
-            code = UNWRITABLE
-            reason = f"{entry.path} could not be put back"
-            if isinstance(error, EditError):
-                reason = str(error)
-                if not lost:
-                    code = error.code
-            raise EditError(code, f"{reason}; {outcome}") from None
-        undone.append((entry.path, current, entry.before))
+    _write_all(
+        [_Step(entry.path, entry.before, current, entry.path) for entry, current in ahead],
+        _PUT_BACK,
+    )
 
 
 def edited(pending: FileChange) -> tuple[bytes | None, bytes]:
@@ -1101,10 +1136,11 @@ def _replace(path: Path, staging: Path, like: Path | None, expected: bytes | Non
 
 def _stage_and_replace(path: Path, data: bytes, like: Path | None, expected: bytes | None) -> None:
     """Write ``data`` to ``path`` through a file staged beside it, synced, and renamed into
-    place, one file at a time: what an undo writes, and the put-back of the files an edit had
-    renamed (:func:`_put_back`) - rare, so that the files are not staged together as an edit's
-    own are (:func:`_write_all`). A write that fails, or is refused, takes its own stage away
-    (:func:`_discard`), and no other."""
+    place, one file at a time: the put-back of the files an edit had renamed, or the write
+    forward of those an undo had put back (:func:`_put_back`) - when a write is refused, which is
+    rare, so that its files are not staged together as a write's own are (:func:`_write_all`).
+    A write that fails, or is refused, takes its own stage away (:func:`_discard`), and no
+    other."""
     staging = _stage(path, data, like)
     try:
         _sync(staging)

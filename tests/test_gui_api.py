@@ -1860,8 +1860,9 @@ class TestFiles:
         self, root: Path, described: Any, capsys
     ) -> None:
         """One level deeper, pydantic-core gives up writing the reply on Windows - ``Circular
-        reference detected (depth exceeded)``, answered ``500`` - so it is refused on every
-        system, the depth counted before anything writes it."""
+        reference detected (depth exceeded)`` before pydantic-core 2.50, ``Maximum serialization
+        depth exceeded`` from 2.50 on - answered ``500``, so it is refused on every system, the
+        depth counted before anything writes it."""
         deep = {"component": {"name": "B", "description": described}}
         (root / "b.ddd.json").write_text(json.dumps(deep), encoding="utf-8")
         session = Session(root)
@@ -2087,8 +2088,9 @@ class TestDictionaryAndChecks:
         self, tmp_path: Path, holder: str, depth: int, file: str, capsys
     ) -> None:
         """One level deeper, writing the reply fails on Windows - ``Circular reference detected
-        (depth exceeded)``, answered ``500`` - so every block is measured before anything writes
-        it, on every system, and the refusal names the file that states it."""
+        (depth exceeded)`` before pydantic-core 2.50, ``Maximum serialization depth exceeded``
+        from 2.50 on - answered ``500``, so every block is measured before anything writes it, on
+        every system, and the refusal names the file that states it."""
         api = carried(tmp_path, self.BLOCKED[holder](depth))
         assert get(api, "/api/dictionary") == Reply(
             409,

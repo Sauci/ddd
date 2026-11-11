@@ -43,6 +43,7 @@ from conftest import (
 )
 from ddd import __version__
 from ddd.cli import EXIT_OK, main
+from ddd.declaration_plans import PRODUCING_SCOPES
 from ddd.diagnostics import CHECKS, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.file_plans import CREATABLE
@@ -7376,9 +7377,10 @@ class TestAPlanWhileAFileDidNotLoad:
         declare("input", "Pace", typename="Speed_t"),
         declare("input", "Speed", unit="rpm"),
         declare("input", "Gone", unit="Nm"),
+        declare("output", "Torque", unit="Nm"),
     )
     """What ``b.ddd.json`` says once it is saved whole: it names the type, the unit and the
-    variables the other files declare."""
+    variables the other files declare, and produces the one ``a.ddd.json`` reads."""
 
     FILES: Final[dict[str, Any]] = {
         "units.ddd.json": {"units": ["Nm", {"unit": "rpm", "description": "speed"}, "spare"]},
@@ -7396,14 +7398,22 @@ class TestAPlanWhileAFileDidNotLoad:
             declare("output", "Speed", unit="rpm"),
             declare("output", "Table", kind="value_block", dimensions=["CELLS"], init=[1, 2, 3]),
             declare("output", "Gone", unit="Nm"),
+            declare("input", "Torque", unit="Nm"),
         ),
         "c.ddd.json": component("C"),
         "d.ddd.json": component("D"),
     }
     """What each plan has something to point at in: a unit listed and stated, one listed alone, a
     type, a constant a shape names and one nothing names, a section, a raster, an object with
-    values, a variable another file would read, a component to read one into, and a file a
-    reader might add."""
+    values, a variable another file would read, one nothing that loaded produces, a component to
+    read one into, and a file a reader might add."""
+
+    AN_OUTPUT: Final = "declaring an output could not tell whether anything already produces it"
+    A_LOCAL: Final = "declaring a local could not tell whether anything already declares it"
+    NOTHING_IN_IT: Final = "what it declares is unknown and nothing can be declared in it"
+    """What a declaration is refused with: ``NOTHING_IN_IT``, where the file it would be written
+    into is the one that did not load, and ``AN_OUTPUT`` or ``A_LOCAL``, where it is written into
+    a file that loaded and produces its name."""
 
     @classmethod
     def written(cls, base: Path, *, vocabulary: bool = True, whole: bool = False) -> Path:
@@ -7593,12 +7603,66 @@ class TestAPlanWhileAFileDidNotLoad:
             ),
             while_half_saved(
                 "/api/declaration-plan",
+                AN_OUTPUT,
+                "a variable only the file that did not load can produce is read as an output",
+                action="read",
+                file="ROOT/c.ddd.json",
+                name="Torque",
+                scope="output",
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
                 None,
-                "an object is declared",
+                "an object is declared as an input",
+                action="declare",
+                file="ROOT/c.ddd.json",
+                scope="input",
+                definition=json.dumps(declare("input", "Zed")["definition"]),
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                AN_OUTPUT,
+                "an object is declared as an output",
+                action="declare",
+                file="ROOT/c.ddd.json",
+                scope="output",
+                definition=json.dumps(declare("output", "Zed")["definition"]),
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                A_LOCAL,
+                "an object is declared as a local",
                 action="declare",
                 file="ROOT/c.ddd.json",
                 scope="local",
                 definition=json.dumps(declare("local", "Zed")["definition"]),
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                NOTHING_IN_IT,
+                "a variable is read into the file that did not load",
+                action="read",
+                file="ROOT/b.ddd.json",
+                name="Speed",
+                scope="input",
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                NOTHING_IN_IT,
+                "a variable is read as an output into the file that did not load",
+                action="read",
+                file="ROOT/b.ddd.json",
+                name="Torque",
+                scope="output",
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                NOTHING_IN_IT,
+                "an object is declared in the file that did not load",
+                action="declare",
+                file="ROOT/b.ddd.json",
+                scope="input",
+                definition=json.dumps(declare("input", "Zed")["definition"]),
             ),
             while_half_saved(
                 "/api/value-plan",
@@ -7671,6 +7735,12 @@ class TestAPlanWhileAFileDidNotLoad:
                 {"error": "unreadable", "message": f"b.ddd.json did not load, so {refusal}"},
             )
         assert contents(root) == before
+
+    def test_a_declaration_is_refused_for_each_scope_that_produces_and_for_none_other(self) -> None:
+        """The sentence each producing scope is refused with is the api's, and which scopes
+        produce is the models': a scope that began to produce would be answered 500 here, with
+        no sentence to give, rather than written as a second producer."""
+        assert set(api_module._PRODUCING) == PRODUCING_SCOPES
 
     def test_a_refused_shared_plan_has_found_no_file_of_the_project(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -7987,13 +8057,92 @@ class TestAPlanOfWhatNoFileThatLoadedDeclares:
             "/api/declaration-plan",
             action="declare",
             file=(tmp_path / "p.ddd.json").as_posix(),
-            scope="local",
-            definition=json.dumps(declare("local", "Zed")["definition"]),
+            scope="input",
+            definition=json.dumps(declare("input", "Zed")["definition"]),
         )
         assert (reply.status, reply.body) == (
             404,
             {"error": "not-found", "message": "p.ddd.json declares no interface"},
         )
+
+    def test_reading_a_name_the_index_holds_into_a_file_with_no_interface_is_not_found(
+        self, tmp_path: Path
+    ) -> None:
+        """``Speed`` is declared by a file that loaded, and the refusal is about the file it
+        would be read into: it is not said that no file that loaded declares it, which the
+        panel beside it says is false."""
+        api = opened(tmp_path, self.CUT)
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="read",
+            file=(tmp_path / "p.ddd.json").as_posix(),
+            name="Speed",
+            scope="input",
+        )
+        assert (reply.status, reply.body) == (
+            404,
+            {"error": "not-found", "message": "p.ddd.json declares no interface"},
+        )
+        assert get(api, "/api/variable", name="Speed").status == 200
+
+    def test_taking_a_declaration_out_of_a_file_changed_since_does_not_unsay_the_others(
+        self, tmp_path: Path
+    ) -> None:
+        """``a.ddd.json`` was saved without ``Gone`` after the analysis, and ``b.ddd.json``, which
+        did not change, still reads it: the panel lists that declaration, and the refusal is about
+        what ``a.ddd.json`` declares now, not that no file that has not changed declares it."""
+        files = {
+            "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "Gone", unit="Nm")),
+            "b.ddd.json": component("B", declare("input", "Gone", unit="Nm")),
+        }
+        api = opened(tmp_path, files)
+        write_tree(tmp_path, {"a.ddd.json": component("A")})
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="remove",
+            file=(tmp_path / "a.ddd.json").as_posix(),
+            name="Gone",
+        )
+        assert (reply.status, reply.body) == (
+            404,
+            {"error": "not-found", "message": "a.ddd.json declares no 'Gone'"},
+        )
+        panel = get(api, "/api/variable", name="Gone")
+        assert panel.status == 200
+        assert [Path(place["path"]).name for place in panel.body["declarations"]] == ["b.ddd.json"]
+
+    def test_taking_out_a_name_no_file_declares_says_which_file_changed_since(
+        self, tmp_path: Path
+    ) -> None:
+        """A removal is asked what the panel is asked, as a read is: ``Torque`` is in no index,
+        ``b.ddd.json`` was saved since the analysis and may declare it, and the panel's route says
+        which file changed - where the plan said only that ``a.ddd.json`` does not declare it."""
+        files = {
+            "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            "b.ddd.json": component("B"),
+        }
+        api = opened(tmp_path, files)
+        write_tree(tmp_path, {"b.ddd.json": component("B", declare("input", "Torque", unit="Nm"))})
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="remove",
+            file=(tmp_path / "a.ddd.json").as_posix(),
+            name="Torque",
+        )
+        assert (reply.status, reply.body) == (
+            409,
+            {
+                "error": "unreadable",
+                "message": "'Torque' is not declared in any file that has not changed since, "
+                "and b.ddd.json changed since it was read",
+            },
+        )
+        assert get(api, "/api/variable", name="Torque") == reply
 
     def test_a_plan_of_a_name_nobody_declares_is_not_found_while_every_file_loaded(
         self, tmp_path: Path

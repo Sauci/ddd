@@ -29,6 +29,7 @@ from pydantic_core import ErrorDetails
 from ddd import __version__
 from ddd.declaration_plans import (
     KINDS,
+    PRODUCING_SCOPES,
     SCOPES,
     DeclarationPlan,
     DeclarationRefusalError,
@@ -245,6 +246,16 @@ writes where the index says a name is spelled, a removal rests on the index sayi
 it, and a file that did not load is in no index. A key set or an entry added is not here: it writes
 where it points, and asks nothing of the files it does not write. A unit's own plans refuse in the
 words of :mod:`ddd.lsp.units`."""
+
+_PRODUCING: Final = {
+    "output": "declaring an output could not tell whether anything already produces it",
+    "local": "declaring a local could not tell whether anything already declares it",
+}
+"""What declaring a name as something that produces it could not tell while a file did not load,
+by the scope - the end of the sentence ``b.ddd.json did not load, so ...`` - for each of
+:data:`ddd.declaration_plans.PRODUCING_SCOPES`: that file may produce the name already, which is a
+``multiple-producers`` once it loads, or declare it beside a local, which is a ``local-conflict``.
+A declaration that only reads is not here: it adds no second producer, and is answered."""
 
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
@@ -1351,7 +1362,7 @@ class Api:
         built = revision.index
         if built is None:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
-        described = next(entry for entry in revision.files if entry.path == file)
+        described = _file_of(revision, file)
         if described.kind != "component":
             if not described.loaded:
                 # Cut short, a file reads as no kind at all, and which kind it is is not known.
@@ -1403,15 +1414,18 @@ class Api:
         built = revision.index
         if built is None:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
+        unseen = _declaring_refusal(revision, asked, file)
+        if unseen is not None:
+            return unseen
+        # A refusal that nothing is found is about the name only where the index lacks it, as
+        # `_settle` asks: where the index holds the name, it is about a file - one that declares
+        # no interface, or no longer declares the name - and the plan's own sentence stands.
         named = None
-        if isinstance(asked, ReadDeclaration | RemoveDeclaration):
-            # Taking a declaration out leaves the components that read it with no producer, and
-            # one that did not load may be among them (`_UNSEEN`); both actions name the variable
-            # a refusal about it is answered for.
+        if (
+            isinstance(asked, ReadDeclaration | RemoveDeclaration)
+            and asked.name not in built.declarations
+        ):
             named = asked.name
-            unseen = _unseen_refusal(revision, asked)
-            if unseen is not None:
-                return unseen
         cache: dict[Path, Document] = {}
         try:
             plan = _declaration_plan_of(asked, built, file, cache)
@@ -1913,6 +1927,37 @@ def _while_unread(revision: Revision, consequence: str) -> Reply | None:
     return _error(409, UNREADABLE, f"{', '.join(unread)} did not load, so {consequence}")
 
 
+def _declaring_refusal(
+    revision: Revision, asked: ReadDeclaration | DeclareObject | RemoveDeclaration, file: Path
+) -> Reply | None:
+    """The refusal of a change of the interface of ``file`` while a file did not load, or ``None``.
+
+    A removal is :data:`_UNSEEN`'s. A declaration - an object declared, a variable read - is
+    written into ``file``, and is refused, naming that file alone, where it is the one that did
+    not load: what it declares is unknown, and so is whether it declares the name already, the
+    index holding none of its declarations. Written into a file that loaded, it is refused,
+    naming every file that did not, where it produces its name (:data:`_PRODUCING`), and answered
+    where it only reads."""
+    if isinstance(asked, RemoveDeclaration):
+        return _unseen_refusal(revision, asked)
+    if not _file_of(revision, file).loaded:
+        return _error(
+            409,
+            UNREADABLE,
+            f"{file.name} did not load, so what it declares is unknown and nothing can be "
+            "declared in it",
+        )
+    if asked.scope in PRODUCING_SCOPES:
+        return _while_unread(revision, _PRODUCING[asked.scope])
+    return None
+
+
+def _file_of(revision: Revision, file: Path) -> SourceFile:
+    """The revision's record of ``file``, a path :func:`_source` resolved and allowed: a file of
+    the revision's, so one is found."""
+    return next(entry for entry in revision.files if entry.path == file)
+
+
 def _unseen_refusal(revision: Revision, asked: _OfAnEntry) -> Reply | None:
     """The refusal of ``asked`` while a file did not load, where its action is one that has to
     see every file (:data:`_UNSEEN`), or ``None``."""
@@ -1941,8 +1986,8 @@ def _refusal(revision: Revision, code: str, message: str, name: str | None) -> R
 
     A name only such a file declares is in no index, and a plan saying that no file declares it
     contradicts the panel the reader took the name from. Where every file loaded and none changed,
-    the plan's own sentence stands. ``name`` is ``None`` for a refusal about no name an index
-    holds - a file that declares no interface."""
+    the plan's own sentence stands. ``name`` is ``None`` where the refusal is not about a name the
+    index lacks: a file that declares no interface, or no longer declares a name the index holds."""
     if code == "not-found":
         if name is not None:
             said = _undeclared(revision, name)

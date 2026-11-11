@@ -602,10 +602,13 @@ The commands
        declaration of a variable, is refused ``unreadable``, naming each file that did
        not - ``b.ddd.json did not load, so renaming 'Speed_t' could not reach every place
        that names it`` - rather than made over the files that did, which would leave the
-       old name in the one that did not, or take out what it still names. A plan for a
-       name only such a file declares says what its panel says, that no file that loaded
-       declares it and which did not load, and not that no file declares it. Opening a
-       project answers at once with its
+       old name in the one that did not, or take out what it still names. So is a plan that
+       declares an object, or reads a variable, as an output or a local, which a file that
+       did not load may produce or declare already, and one that writes into the file that
+       did not load, whatever its scope; one that declares or reads an input into a file
+       that loaded is answered. A plan for a name only such a file declares says what its
+       panel says, that no file that loaded declares it and which did not load, and not
+       that no file declares it. Opening a project answers at once with its
        name, read from its description as it stands and kept in the heading from then on;
        ``Analysing the project…`` stands where the tab's own content goes, until the first
        analysis lands, and every answer needing a revision is refused until then, in the

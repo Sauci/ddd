@@ -21,7 +21,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 from pydantic_core import ErrorDetails
@@ -235,6 +235,17 @@ yet. Answered 409, and answered differently once the analysis lands."""
 REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
+_UNSEEN: Final = {
+    "rename": "renaming '{name}' could not reach every place that names it",
+    "remove": "taking out '{name}' could not tell whether anything still names it",
+}
+"""What each action that has to see every file of the project could not do while one did not load,
+by the action's name, as the end of the sentence ``b.ddd.json did not load, so ...``: a rename
+writes where the index says a name is spelled, a removal rests on the index saying nothing names
+it, and a file that did not load is in no index. A key set or an entry added is not here: it writes
+where it points, and asks nothing of the files it does not write. A unit's own plans refuse in the
+words of :mod:`ddd.lsp.units`."""
+
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
 _NOTHING_RESOLVED: Final = "the open project did not resolve, so no object's values can be read"
@@ -244,6 +255,18 @@ _NOTHING_COMPARABLE: Final = (
 )
 
 type Query = Mapping[str, Sequence[str]]
+
+
+class _OfAnEntry(Protocol):
+    """What every action of a route about a named entry has: the action it is and the entry it
+    names."""
+
+    @property
+    def action(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
 
 type SharedPlanner[A] = Callable[[A, Index, SharedProject, dict[Path, Document]], SharedPlan]
 """What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
@@ -810,11 +833,14 @@ class Api:
         project = unit_project(
             revision.project, [file.path for file in revision.files if not file.loaded], cache
         )
+        asked = query.root
         try:
-            plan = _unit_plan_of(query.root, built, project, cache)
+            plan = _unit_plan_of(asked, built, project, cache)
         except UnitRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            named = None
+            if isinstance(asked, RenameUnit | DescribeUnit | RemoveUnit):
+                named = asked.unit
+            return _refusal(revision, refused.code, refused.message, named)
         derived = self._derive(revision)
         try:
             self._refuse_generated(
@@ -935,12 +961,15 @@ class Api:
                 f"{', '.join(unread) or revision.project.name} did not load, "
                 "so no type of the project can be changed",
             )
+        asked = query.root
+        unseen = _unseen_refusal(revision, asked)
+        if unseen is not None:
+            return unseen
         cache: dict[Path, Document] = {}
         try:
-            plan = _type_plan_of(query.root, built, cache)
+            plan = _type_plan_of(asked, built, cache)
         except TypeRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            return _refusal(revision, refused.code, refused.message, asked.name)
         derived = self._derive(revision)
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
@@ -1180,7 +1209,9 @@ class Api:
     def _raster_plan(self, query: RasterPlanQuery, body: None) -> Reply:
         return self._shared_plan(RASTERS, query.root, _raster_plan_of)
 
-    def _shared_plan[A](self, vocabulary: Vocabulary, asked: A, plan_of: SharedPlanner[A]) -> Reply:
+    def _shared_plan[A: _OfAnEntry](
+        self, vocabulary: Vocabulary, asked: A, plan_of: SharedPlanner[A]
+    ) -> Reply:
         """One change of one entry of ``vocabulary``, ``asked`` as its route's query read it,
         previewed and never written.
 
@@ -1192,6 +1223,11 @@ class Api:
         anything asked for the project: a request that is not json is a mistake about the
         request, not a refusal about the project, so it answers 400 rather than being folded into
         a :class:`~ddd.shared_plans.SharedRefusalError`.
+
+        A rename or a removal is refused, naming the files, while any file of the project did not
+        load (:func:`_unseen_refusal`), before the files are read to plan it; and a refusal that
+        no file declares the entry is the panel's own answer where a file did not load
+        (:func:`_refusal`).
         """
         revision = self._opened()
         built = revision.index
@@ -1203,6 +1239,9 @@ class Api:
                 f"{', '.join(unread) or revision.project.name} did not load, "
                 f"so no {vocabulary.kind} of the project can be changed",
             )
+        unseen = _unseen_refusal(revision, asked)
+        if unseen is not None:
+            return unseen
         cache: dict[Path, Document] = {}
         project = project_of(
             vocabulary,
@@ -1213,8 +1252,7 @@ class Api:
         try:
             plan = plan_of(asked, built, project, cache)
         except SharedRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            return _refusal(revision, refused.code, refused.message, asked.name)
         derived = self._derive(revision)
         try:
             self._refuse_generated(
@@ -1243,6 +1281,14 @@ class Api:
         built = revision.index
         if built is None or name not in built.declarations:
             return _undeclared(revision, name)
+        # Every declaration of the variable is settled or none is, so a declaration in a file
+        # that did not load - in no index - is one the settlement would leave stating what it
+        # did: refused, naming the file, as a rename is.
+        unseen = _while_unread(
+            revision, f"settling the {key} of '{name}' could not reach every declaration of it"
+        )
+        if unseen is not None:
+            return unseen
         # One cache for both reads below, so a declaration `settle` already read for this
         # request is not read from disk a second time to narrow what it comes to.
         cache: dict[Path, Document] = {}
@@ -1305,7 +1351,15 @@ class Api:
         built = revision.index
         if built is None:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
-        if not any(entry.path == file and entry.kind == "component" for entry in revision.files):
+        described = next(entry for entry in revision.files if entry.path == file)
+        if described.kind != "component":
+            if not described.loaded:
+                # Cut short, a file reads as no kind at all, and which kind it is is not known.
+                return _error(
+                    409,
+                    UNREADABLE,
+                    f"{file.name} did not load, so it cannot be told whether it is a component",
+                )
             return _error(409, "invalid", f"{file.name} is not a component of the open project")
         cache: dict[Path, Document] = {}
         return Reply(
@@ -1349,12 +1403,20 @@ class Api:
         built = revision.index
         if built is None:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
+        named = None
+        if isinstance(asked, ReadDeclaration | RemoveDeclaration):
+            # Taking a declaration out leaves the components that read it with no producer, and
+            # one that did not load may be among them (`_UNSEEN`); both actions name the variable
+            # a refusal about it is answered for.
+            named = asked.name
+            unseen = _unseen_refusal(revision, asked)
+            if unseen is not None:
+                return unseen
         cache: dict[Path, Document] = {}
         try:
             plan = _declaration_plan_of(asked, built, file, cache)
         except DeclarationRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            return _refusal(revision, refused.code, refused.message, named)
         derived = self._derive(revision)
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
@@ -1376,7 +1438,7 @@ class Api:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
-            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+            return _unresolved(revision)
         try:
             grid = grid_of(dictionary, built, name)
         except ValueRefusalError as refused:
@@ -1425,7 +1487,7 @@ class Api:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
-            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+            return _unresolved(revision)
         try:
             raw = _number(query.raw)
             plan = set_cell(dictionary, built, query.name, query.at, raw, {})
@@ -1458,7 +1520,7 @@ class Api:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
-            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+            return _unresolved(revision)
         try:
             flat = [_number(piece) for piece in query.raw.split(",")]
             plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), {})
@@ -1832,6 +1894,62 @@ def _undeclared(revision: Revision, name: str) -> Reply:
             f"and {', '.join(changed)} changed since it was read",
         )
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
+
+
+def _while_unread(revision: Revision, consequence: str) -> Reply | None:
+    """The refusal of a change that has to see every file of the project while one did not load:
+    ``unreadable``, naming each file that did not, and ``consequence``, what could not be done
+    for that - or ``None`` where every file loaded.
+
+    The rule :func:`ddd.lsp.units.rename_unit` states for a unit, asked of the plans of every
+    other name. A project is indexed from the files that loaded, so a file that did not is in no
+    index: a rename planned from it leaves the old spelling in that file, in a project the change
+    said it had rewritten, and a removal finds nothing naming what that file may still name -
+    ``ddd check`` fails the project once the file loads. Refused whole rather than done in part,
+    as the language server refuses (:meth:`ddd.lsp.server.Server._unreadable`), until it does."""
+    unread = [file.path.name for file in revision.files if not file.loaded]
+    if not unread:
+        return None
+    return _error(409, UNREADABLE, f"{', '.join(unread)} did not load, so {consequence}")
+
+
+def _unseen_refusal(revision: Revision, asked: _OfAnEntry) -> Reply | None:
+    """The refusal of ``asked`` while a file did not load, where its action is one that has to
+    see every file (:data:`_UNSEEN`), or ``None``."""
+    consequence = _UNSEEN.get(asked.action)
+    if consequence is None:
+        return None
+    return _while_unread(revision, consequence.format(name=asked.name))
+
+
+def _unresolved(revision: Revision) -> Reply:
+    """The refusal of a request for the values of an object while the project is not resolved:
+    ``unreadable``, naming each file that did not load, where one did not, and otherwise that the
+    project did not resolve - a read that reported an error without a file failing to load, a
+    plugin that raised."""
+    unread = _while_unread(revision, "no object's values can be read")
+    if unread is not None:
+        return unread
+    return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+
+
+def _refusal(revision: Revision, code: str, message: str, name: str | None) -> Reply:
+    """A plan's refusal as its route answers it: ``404`` for ``not-found`` and ``409`` for every
+    other, except that a ``not-found`` about ``name`` is first asked what its panel's route asks
+    (:func:`_undeclared`), and answered as that is where the truth is that a file did not load, or
+    changed since the analysis read it.
+
+    A name only such a file declares is in no index, and a plan saying that no file declares it
+    contradicts the panel the reader took the name from. Where every file loaded and none changed,
+    the plan's own sentence stands. ``name`` is ``None`` for a refusal about no name an index
+    holds - a file that declares no interface."""
+    if code == "not-found":
+        if name is not None:
+            said = _undeclared(revision, name)
+            if said.status != 404:
+                return said
+        return _error(404, code, message)
+    return _error(409, code, message)
 
 
 def _appeared_since(revision: Revision) -> list[str]:

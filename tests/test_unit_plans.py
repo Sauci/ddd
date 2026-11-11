@@ -231,6 +231,37 @@ class TestTheProject:
         assert unit_project(tmp_path / "p.ddd.json", (), cache).units_files == ()
         assert (tmp_path / "units.ddd.json").resolve() not in cache
 
+    def test_a_file_that_spells_the_key_and_does_not_parse_might_be_a_units_file(
+        self, tmp_path: Path
+    ) -> None:
+        """Cut short, it is no units file the project can find, and it is not nothing either:
+        what it is cannot be told. Named once however many entries reach it, in the order the
+        description lists them, and beside the files that parse, which are still found. A file
+        whose text cannot spell the key is never one of them, parsed or not."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P",
+                    "late.ddd.json",
+                    "a.ddd.json",
+                    "cut.ddd.json",
+                    "*.ddd.json",
+                    "also.ddd.json",
+                ),
+                "late.ddd.json": {"units": ["rpm"]},
+                "a.ddd.json": '{"component": {"name": "A", "interface": [',
+                "cut.ddd.json": '{"units": ["rpm", {"unit": "',
+                "also.ddd.json": '{"un\\u0069ts": [',
+            },
+        )
+        found = unit_project(tmp_path / "p.ddd.json", (), {})
+        assert found.units_files == ((tmp_path / "late.ddd.json").resolve(),)
+        assert found.untold == (
+            (tmp_path / "cut.ddd.json").resolve(),
+            (tmp_path / "also.ddd.json").resolve(),
+        )
+
     def test_a_file_already_read_is_what_its_read_says_it_is(self, tmp_path: Path) -> None:
         """The request's cache is what every other question of it reads, so a file read already
         is judged as read, not as its text on disk now says."""
@@ -404,6 +435,33 @@ class TestAdd:
             "p.ddd.json includes no units file to add 'RPM' to",
         )
 
+    def test_a_units_file_nobody_could_parse_may_be_the_one_the_project_includes(
+        self, tmp_path: Path
+    ) -> None:
+        """Cut short, the project's one units file reads as no units file at all, and the
+        project is not told it includes none: that is not what is known."""
+        files = {**drifted(), "units.ddd.json": '{"units": ["rpm", {"unit": "'}
+        idx, where = opened(tmp_path, files, unread=["units.ddd.json"])
+        assert refusal(lambda: add_unit(idx, where, "RPM", {})) == (
+            "unreadable",
+            "units.ddd.json did not parse, so whether p.ddd.json includes a units file is "
+            "unknown and 'RPM' cannot be added to one",
+        )
+
+    def test_a_units_file_nobody_could_parse_stops_no_addition_to_one_that_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal belongs to a project with no units file that parsed: where one did,
+        that is where the unit goes."""
+        files = {
+            "first.ddd.json": {"units": ["kPa"]},
+            **drifted(),
+            "cut.ddd.json": '{"units": ["rpm", {"unit": "',
+        }
+        idx, where = opened(tmp_path, files, unread=["cut.ddd.json"])
+        plan = add_unit(idx, where, "RPM", {})
+        assert [edit.path.name for edit in plan.edits] == ["first.ddd.json"]
+
     def test_a_unit_the_vocabulary_lists_already_is_invalid(self, tmp_path: Path) -> None:
         files = {"first.ddd.json": {"units": ["kPa"]}, **drifted(["rpm"])}
         idx, where = opened(tmp_path, files)
@@ -481,6 +539,18 @@ class TestDescribe:
         vocabulary would be a guess."""
         idx, where = opened(tmp_path, drifted(["rpm"]), unread=["units.ddd.json"])
         assert refusal(lambda: describe_unit(idx, where, "RPM", "shouted", {}))[0] == "unreadable"
+
+    def test_a_unit_no_loaded_entry_lists_is_unreadable_while_a_units_file_is_cut_short(
+        self, tmp_path: Path
+    ) -> None:
+        """A file that does not parse is no units file the project can find, and may be the one
+        listing the unit all the same: it is not said to be outside the vocabulary."""
+        files = {**drifted(), "units.ddd.json": '{"units": ["rpm", {"unit": "'}
+        idx, where = opened(tmp_path, files, unread=["units.ddd.json"])
+        assert refusal(lambda: describe_unit(idx, where, "RPM", "shouted", {})) == (
+            "unreadable",
+            "units.ddd.json did not load, so its description cannot be set there",
+        )
 
     def test_while_an_entry_no_longer_lists_the_unit_where_the_index_found_it_it_is_stale(
         self, tmp_path: Path
@@ -606,6 +676,29 @@ class TestRemove:
         code, message = refusal(lambda: remove_unit(idx, where, "kPa", {}))
         assert code == "unreadable"
         assert "units.ddd.json" in message
+
+    def test_while_any_file_of_the_project_does_not_load_a_removal_is_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing states ``kPa`` in a file that loaded, and the one that did not may: taken
+        out, the spelling would be an ``unknown-unit`` there once the file loads, as a rename
+        would leave the old spelling in it."""
+        files = {**drifted(["rpm", "kPa"]), "broken.ddd.json": '{"component": '}
+        idx, where = opened(tmp_path, files, unread=["broken.ddd.json"])
+        assert refusal(lambda: remove_unit(idx, where, "kPa", {})) == (
+            "unreadable",
+            "broken.ddd.json did not load, so taking out 'kPa' could not tell whether anything "
+            "still states it",
+        )
+
+    def test_the_files_that_did_not_load_are_named_before_a_place_that_still_states_the_unit(
+        self, tmp_path: Path
+    ) -> None:
+        """Asked first, as a rename's is: the files are named whatever else is wrong with the
+        removal, so that a reader repairs them before reading what else refuses it."""
+        files = {**drifted(["RPM"]), "broken.ddd.json": '{"component": '}
+        idx, where = opened(tmp_path, files, unread=["broken.ddd.json"])
+        assert refusal(lambda: remove_unit(idx, where, "RPM", {}))[0] == "unreadable"
 
     def test_while_an_entry_no_longer_lists_the_unit_where_the_index_found_it_it_is_stale(
         self, tmp_path: Path
@@ -761,14 +854,14 @@ class TestAdopt:
     [
         lambda idx, where: add_unit(idx, where, "Hz", {}),
         lambda idx, where: describe_unit(idx, where, "rpm", "speed", {}),
-        lambda idx, where: remove_unit(idx, where, "kPa", {}),
     ],
 )
-def test_a_component_that_does_not_load_stops_no_change_to_the_vocabulary(
+def test_a_component_that_does_not_load_stops_no_addition_or_description_to_the_vocabulary(
     tmp_path: Path, plan: Callable[[Index, UnitProject], UnitPlan]
 ) -> None:
     """Only the units file matters to these: a component that did not load may state units, and
-    no entry of the vocabulary changes with what it states."""
+    no entry of the vocabulary changes with what it states. A removal is not among them: it is
+    made on the strength of what nothing states, which that component may."""
     files = {**drifted(["rpm", "kPa"]), "broken.ddd.json": '{"component": '}
     idx, where = opened(tmp_path, files, unread=["broken.ddd.json"])
     assert list(after(plan(idx, where))) == ["units.ddd.json"]

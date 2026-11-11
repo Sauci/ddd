@@ -12,7 +12,7 @@ it again.
 
 A plan refuses before it reads a file it would not write. A file that did not load may state the
 unit, and a rename that cannot see it leaves the old spelling there, in a project the rename
-said it had rewritten.
+said it had rewritten; so does a removal, which takes out a spelling that file may still state.
 """
 
 from __future__ import annotations
@@ -58,6 +58,15 @@ class UnitProject:
 
     unread: tuple[Path, ...]
     """The project's files that did not load, resolved and sorted."""
+
+    untold: tuple[Path, ...] = ()
+    """The files it includes that do not parse and might be units files - whose text can spell
+    ``units`` (:func:`_may_list_units`) - in the order they are found, each listed once: what each
+    is cannot be told.
+
+    Kept apart from ``units_files`` because a unit is never added to a file nobody could read, and
+    kept at all because ``units_files`` being empty otherwise reads as "this project has no units
+    file" - which a project whose one units file was cut short by a save has not said."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,12 +194,14 @@ def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Docume
     The units files are read out of the description's own ``includes``, each entry expanded by
     the loader's rule, so that the first of them is the first a run of ``ddd check`` reads. A
     units file is a document with ``units`` at its top, which is how the loader tells one; a file
-    that does not parse is none, since what it is cannot be told. A file whose text cannot spell
-    that key is not parsed at all (:func:`_may_list_units`).
+    that does not parse is none, since what it is cannot be told - and is named in ``untold``
+    where its text spells the key, since it might be one. A file whose text cannot spell that key
+    is not parsed at all (:func:`_may_list_units`).
     """
     path = resolve_path(project)
     listed = read(path, cache).value_at("project.includes")
     found: list[Path] = []
+    untold: list[Path] = []
     for entry in listed if isinstance(listed, list) else ():
         for file in included_files(path, entry):
             if not _may_list_units(file, cache):
@@ -198,10 +209,13 @@ def unit_project(project: Path, unread: Sequence[Path], cache: dict[Path, Docume
             document = read(file, cache).data
             if file not in found and isinstance(document, dict) and "units" in document:
                 found.append(file)
+            elif document is None and file not in untold:
+                untold.append(file)
     return UnitProject(
         path,
         tuple(found),
         tuple(sorted({resolve_path(file) for file in unread}, key=Path.as_posix)),
+        tuple(untold),
     )
 
 
@@ -274,6 +288,12 @@ def add_unit(
     empty description where any entry is written as an object."""
     _spelling(unit)
     if not project.units_files:
+        if project.untold:
+            raise UnitRefusalError(
+                "unreadable",
+                f"{_names(project.untold)} did not parse, so whether {project.project.name} "
+                f"includes a units file is unknown and '{unit}' cannot be added to one",
+            )
         raise UnitRefusalError(
             "invalid", f"{project.project.name} includes no units file to add '{unit}' to"
         )
@@ -331,8 +351,18 @@ def remove_unit(
     that lists none. ``cache`` is read for one question alone, whether each entry still lists the
     unit where the index found it (:func:`_unlisted`): no file's entries have to be counted
     first, and taken out at an entry that moved, the removal would take out another unit.
+
+    Refused ``unreadable`` first, as :func:`rename_unit` is, while any file of the project did not
+    load: what nothing states is said of every file, and the one that did not load may state it -
+    the spelling would be an ``unknown-unit`` there the moment the file loads. Any file, and not
+    the units files alone: a component states a unit as much as a vocabulary lists one.
     """
-    _vocabulary_loaded(built, project, unit, "it cannot be taken out of it")
+    if project.unread:
+        raise UnitRefusalError(
+            "unreadable",
+            f"{_names(project.unread)} did not load, so taking out '{unit}' could not tell "
+            "whether anything still states it",
+        )
     stated = built.units.get(unit)
     if stated is not None:
         places = f"{len(stated)} place{'s' if len(stated) != 1 else ''}"
@@ -479,9 +509,11 @@ def _known(built: Index, unit: str) -> None:
 def _vocabulary_loaded(built: Index, project: UnitProject, unit: str, consequence: str) -> None:
     """Refuse to change the entries listing ``unit`` while a units file holding one did not load
     - or, for a unit no entry that loaded lists, while any units file did not, since that may be
-    the one listing it. A component that did not load is no concern of the vocabulary's."""
+    the one listing it: one that did not parse as much as one that did not load, which
+    :attr:`UnitProject.untold` names. A component that did not load is no concern of the
+    vocabulary's."""
     entries = built.vocabulary.get(unit)
-    files = _paths(entries) if entries is not None else project.units_files
+    files = _paths(entries) if entries is not None else [*project.units_files, *project.untold]
     unread = [file for file in files if file in project.unread]
     if unread:
         raise UnitRefusalError("unreadable", f"{_names(unread)} did not load, so {consequence}")

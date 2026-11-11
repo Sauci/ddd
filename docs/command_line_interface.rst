@@ -596,7 +596,16 @@ The commands
        declaration put in above or taken out - until the project is analysed again, naming
        the file - ``units.ddd.json changed since the project was analysed, so renaming
        'rpm' cannot be planned until the project is analysed again`` - rather than made
-       where another now stands. Opening a project answers at once with its
+       where another now stands. While a file of the project did not load, a plan that
+       renames a type, a constant, a section, a raster or a unit, takes out a constant,
+       a section, a raster, a unit or a declaration, or settles a key on every
+       declaration of a variable, is refused ``unreadable``, naming each file that did
+       not - ``b.ddd.json did not load, so renaming 'Speed_t' could not reach every place
+       that names it`` - rather than made over the files that did, which would leave the
+       old name in the one that did not, or take out what it still names. A plan for a
+       name only such a file declares says what its panel says, that no file that loaded
+       declares it and which did not load, and not that no file declares it. Opening a
+       project answers at once with its
        name, read from its description as it stands and kept in the heading from then on;
        ``Analysing the project…`` stands where the tab's own content goes, until the first
        analysis lands, and every answer needing a revision is refused until then, in the

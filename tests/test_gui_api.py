@@ -7348,6 +7348,690 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
         assert reply == self.refused("a.ddd.json", "the values of 'Table' cannot be set")
 
 
+def while_half_saved(
+    route: str, refusal: str | None, id: str, *, vocabulary: bool = True, **query: str
+) -> Any:
+    """One case of :meth:`TestAPlanWhileAFileDidNotLoad.test_each_plan_route`: ``route`` asked
+    with ``query`` and answered ``refusal`` - the sentence after ``b.ddd.json did not load, so`` -
+    or answered, for ``None``; over the project with a vocabulary, or without one."""
+    return pytest.param(route, query, refusal, vocabulary, id=id)
+
+
+class TestAPlanWhileAFileDidNotLoad:
+    """Every plan route, asked while ``b.ddd.json`` was saved half way, as an editor saves a file
+    being typed into: it no longer parses, so what it names is in no index.
+
+    A plan that renames or takes out a name, or settles a key on every declaration of a variable,
+    has to see every file that may name it: made over the files that loaded, it rewrites some and
+    leaves the old spelling in the one it could not see, or takes out what that file still names,
+    and the project fails ``ddd check`` once the file is repaired. Each such plan is refused
+    ``unreadable``, naming the file, as a unit's rename always was. A plan that writes only where
+    it points - a key set, an entry or an object added, a variable read into a component - does
+    not need what the file says, and is answered; so is a change of the project's own files,
+    which the Files tab answers with what it could not judge.
+    """
+
+    FULL: Final = component(
+        "B",
+        declare("input", "Pace", typename="Speed_t"),
+        declare("input", "Speed", unit="rpm"),
+        declare("input", "Gone", unit="Nm"),
+    )
+    """What ``b.ddd.json`` says once it is saved whole: it names the type, the unit and the
+    variables the other files declare."""
+
+    FILES: Final[dict[str, Any]] = {
+        "units.ddd.json": {"units": ["Nm", {"unit": "rpm", "description": "speed"}, "spare"]},
+        "types.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
+        "constants.ddd.json": {
+            "constants": [{"name": "CELLS", "value": 3}, {"name": "SPARE", "value": 2}]
+        },
+        "sections.ddd.json": {
+            "sections": [{"section": ".fast", "access": "read-write", "alignment": 4}]
+        },
+        "rasters.ddd.json": {"rasters": [{"raster": "10ms", "event": 1}]},
+        "a.ddd.json": component(
+            "A",
+            declare("output", "Pace", typename="Speed_t"),
+            declare("output", "Speed", unit="rpm"),
+            declare("output", "Table", kind="value_block", dimensions=["CELLS"], init=[1, 2, 3]),
+            declare("output", "Gone", unit="Nm"),
+        ),
+        "c.ddd.json": component("C"),
+        "d.ddd.json": component("D"),
+    }
+    """What each plan has something to point at in: a unit listed and stated, one listed alone, a
+    type, a constant a shape names and one nothing names, a section, a raster, an object with
+    values, a variable another file would read, a component to read one into, and a file a
+    reader might add."""
+
+    @classmethod
+    def written(cls, base: Path, *, vocabulary: bool = True, whole: bool = False) -> Path:
+        """:attr:`FILES` under ``base``, the units file left out where ``vocabulary`` is false,
+        and ``b.ddd.json`` beside them, cut short - or saved whole, for ``whole`` - with a
+        description including every file but ``d``."""
+        files = {
+            name: found
+            for name, found in cls.FILES.items()
+            if vocabulary or name != "units.ddd.json"
+        }
+        included = [name for name in files if name != "d.ddd.json"]
+        saved = json.dumps(cls.FULL, indent=2)
+        files["b.ddd.json"] = cls.FULL if whole else saved[:60]
+        write_tree(base, {"p.ddd.json": project("P", *included, "b.ddd.json"), **files})
+        return base
+
+    @staticmethod
+    def asked(root: Path, query: dict[str, str]) -> dict[str, str]:
+        """``query`` with each ``ROOT`` in it - a file's absolute path - made this project's."""
+        return {
+            key: value.replace("ROOT", root.resolve().as_posix()) for key, value in query.items()
+        }
+
+    @pytest.mark.parametrize(
+        ("route", "query", "refusal", "vocabulary"),
+        [
+            while_half_saved(
+                "/api/unit-plan",
+                "renaming 'rpm' could not reach every place it is stated",
+                "a unit is renamed",
+                action="rename",
+                unit="rpm",
+                to="Hz",
+            ),
+            while_half_saved(
+                "/api/unit-plan",
+                "taking out 'spare' could not tell whether anything still states it",
+                "a unit is taken out",
+                action="remove",
+                unit="spare",
+            ),
+            while_half_saved("/api/unit-plan", None, "a unit is added", action="add", unit="Hz"),
+            while_half_saved(
+                "/api/unit-plan",
+                None,
+                "a unit is described",
+                action="describe",
+                unit="rpm",
+                description="speed",
+            ),
+            while_half_saved(
+                "/api/unit-plan",
+                "adopting could not list every unit in use",
+                "a vocabulary is adopted",
+                vocabulary=False,
+                action="adopt",
+            ),
+            while_half_saved(
+                "/api/type-plan",
+                "renaming 'Speed_t' could not reach every place that names it",
+                "a type is renamed",
+                action="rename",
+                name="Speed_t",
+                to="Rate_t",
+            ),
+            while_half_saved(
+                "/api/type-plan",
+                None,
+                "a type has a key set",
+                action="set",
+                name="Speed_t",
+                key="unit",
+                raw='"Hz"',
+            ),
+            while_half_saved(
+                "/api/constant-plan",
+                "renaming 'CELLS' could not reach every place that names it",
+                "a constant is renamed",
+                action="rename",
+                name="CELLS",
+                to="SLOTS",
+            ),
+            while_half_saved(
+                "/api/constant-plan",
+                "taking out 'SPARE' could not tell whether anything still names it",
+                "a constant is taken out",
+                action="remove",
+                name="SPARE",
+            ),
+            while_half_saved(
+                "/api/constant-plan",
+                None,
+                "a constant has a key set",
+                action="set",
+                name="SPARE",
+                key="value",
+                raw="5",
+            ),
+            while_half_saved(
+                "/api/constant-plan", None, "a constant is added", action="add", name="NEW", raw="1"
+            ),
+            while_half_saved(
+                "/api/section-plan",
+                "renaming '.fast' could not reach every place that names it",
+                "a section is renamed",
+                action="rename",
+                name=".fast",
+                to=".faster",
+            ),
+            while_half_saved(
+                "/api/section-plan",
+                "taking out '.fast' could not tell whether anything still names it",
+                "a section is taken out",
+                action="remove",
+                name=".fast",
+            ),
+            while_half_saved(
+                "/api/section-plan",
+                None,
+                "a section has a key set",
+                action="set",
+                name=".fast",
+                key="alignment",
+                raw="8",
+            ),
+            while_half_saved(
+                "/api/section-plan",
+                None,
+                "a section is added",
+                action="add",
+                name=".new",
+                access='"read-only"',
+                alignment="4",
+            ),
+            while_half_saved(
+                "/api/raster-plan",
+                "renaming '10ms' could not reach every place that names it",
+                "a raster is renamed",
+                action="rename",
+                name="10ms",
+                to="20ms",
+            ),
+            while_half_saved(
+                "/api/raster-plan",
+                "taking out '10ms' could not tell whether anything still names it",
+                "a raster is taken out",
+                action="remove",
+                name="10ms",
+            ),
+            while_half_saved(
+                "/api/raster-plan",
+                None,
+                "a raster has a key set",
+                action="set",
+                name="10ms",
+                key="event",
+                raw="3",
+            ),
+            while_half_saved(
+                "/api/raster-plan", None, "a raster is added", action="add", name="20ms", event="2"
+            ),
+            while_half_saved(
+                "/api/settle",
+                "settling the unit of 'Speed' could not reach every declaration of it",
+                "a key is settled",
+                name="Speed",
+                key="unit",
+                raw='"Hz"',
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                "taking out 'Gone' could not tell whether anything still names it",
+                "a declaration is taken out",
+                action="remove",
+                file="ROOT/a.ddd.json",
+                name="Gone",
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                None,
+                "a variable is read into a component",
+                action="read",
+                file="ROOT/c.ddd.json",
+                name="Speed",
+                scope="input",
+            ),
+            while_half_saved(
+                "/api/declaration-plan",
+                None,
+                "an object is declared",
+                action="declare",
+                file="ROOT/c.ddd.json",
+                scope="local",
+                definition=json.dumps(declare("local", "Zed")["definition"]),
+            ),
+            while_half_saved(
+                "/api/value-plan",
+                "no object's values can be read",
+                "a value is set",
+                name="Table",
+                at="[1]",
+                raw="5",
+            ),
+            while_half_saved(
+                "/api/values-plan",
+                "no object's values can be read",
+                "values are set",
+                name="Table",
+                raw="4,5,6",
+            ),
+            while_half_saved(
+                "/api/files-plan",
+                None,
+                "a file is created",
+                action="create",
+                kind="constants",
+                name="more",
+            ),
+            while_half_saved(
+                "/api/files-plan", None, "a file is added", action="add", path="d.ddd.json"
+            ),
+            while_half_saved(
+                "/api/files-plan",
+                None,
+                "a file is taken out",
+                action="remove",
+                path="ROOT/units.ddd.json",
+            ),
+            while_half_saved(
+                "/api/files-plan",
+                None,
+                "the file that did not load is taken out",
+                action="remove",
+                path="ROOT/b.ddd.json",
+            ),
+        ],
+    )
+    def test_each_plan_route(
+        self,
+        tmp_path: Path,
+        route: str,
+        query: dict[str, str],
+        refusal: str | None,
+        vocabulary: bool,
+    ) -> None:
+        """A plan that has to see every file is refused ``unreadable``, naming ``b.ddd.json``
+        and what could not be done without it; the rest are answered, the Files tab's included,
+        and so is taking ``b.ddd.json`` itself out of the project, which is how a reader leaves a
+        file they will not repair. Nothing is written either way: a plan only previews."""
+        root = self.written(tmp_path, vocabulary=vocabulary)
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        assert [file.path.name for file in api.session.current().files if not file.loaded] == [
+            "b.ddd.json"
+        ]
+        before = contents(root)
+        reply = get(api, route, **self.asked(root, query))
+        if refusal is None:
+            assert reply.status == 200, reply.body
+        else:
+            assert (reply.status, reply.body) == (
+                409,
+                {"error": "unreadable", "message": f"b.ddd.json did not load, so {refusal}"},
+            )
+        assert contents(root) == before
+
+    def test_a_refused_shared_plan_has_found_no_file_of_the_project(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Refused before the project's own files are found, which reads every file it includes:
+        a project too large to plan in a second is not read whole to be told it cannot be."""
+        root = self.written(tmp_path)
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+
+        def found(*_: object) -> None:
+            raise AssertionError("the files of the project were found for a plan refused")
+
+        monkeypatch.setattr(api_module, "project_of", found)
+        for route, query in (
+            ("/api/constant-plan", {"action": "rename", "name": "CELLS", "to": "SLOTS"}),
+            ("/api/section-plan", {"action": "remove", "name": ".fast"}),
+            ("/api/raster-plan", {"action": "rename", "name": "10ms", "to": "20ms"}),
+        ):
+            assert get(api, route, **query).status == 409
+
+    def test_a_rename_refused_for_the_file_is_made_once_it_is_saved_whole(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal lasts as long as the file does not load: saved whole, the rename is planned
+        and reaches the name that file spells - the one a plan made without it would have left,
+        the project failing ``ddd check`` once it loaded - and nothing is reported once the rename
+        is applied."""
+        root = self.written(tmp_path)
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json", wait_seconds=0.05)
+        ask = {"action": "rename", "name": "Speed_t", "to": "Rate_t"}
+        assert get(api, "/api/type-plan", **ask).status == 409
+        write_tree(root, {"b.ddd.json": self.FULL})
+        assert api.session.poll() is True
+        preview = get(api, "/api/type-plan", **ask)
+        assert preview.status == 200, preview.body
+        assert {Path(change["file"]).name for change in preview.body["changes"]} == {
+            "a.ddd.json",
+            "b.ddd.json",
+            "types.ddd.json",
+        }
+        assert applied(api, preview.body, "Speed_t renamed").status == 200
+        assert errors_in(api) == []
+        assert (root / "b.ddd.json").read_text(encoding="utf-8").count("Rate_t") == 1
+
+    def test_a_project_that_did_not_resolve_with_every_file_loaded_says_so(
+        self, tmp_path: Path
+    ) -> None:
+        """A unit listed twice is an error of the read, and no file of the project failed to load
+        for it: there is none to name, and the project resolved to no dictionary all the same."""
+        api = opened(tmp_path, LISTED_TWICE)
+        assert api.session.current().dictionary is None
+        assert [file.path.name for file in api.session.current().files if not file.loaded] == []
+        for reply in (
+            get(api, "/api/values", name="Speed"),
+            get(api, "/api/value-plan", name="Speed", at="[0]", raw="5"),
+            get(api, "/api/values-plan", name="Speed", raw="4"),
+        ):
+            assert (reply.status, reply.body) == (
+                409,
+                {
+                    "error": "unreadable",
+                    "message": "the open project did not resolve, so no object's values can be "
+                    "read",
+                },
+            )
+
+
+class TestAPlanOfWhatNoFileThatLoadedDeclares:
+    """A name only a file that did not load declares is in no index, and a plan asked about it
+    has to say why: that a file did not load, naming it, in the words its panel's route answers
+    with - never that no file of the project declares it. Over a project whose every vocabulary
+    file, and one component, was cut short, as an editor leaves a file being typed into.
+    """
+
+    CUT: Final[dict[str, Any]] = {
+        "p.ddd.json": project(
+            "P",
+            "units.ddd.json",
+            "types.ddd.json",
+            "constants.ddd.json",
+            "sections.ddd.json",
+            "rasters.ddd.json",
+            "a.ddd.json",
+            "c.ddd.json",
+        ),
+        "units.ddd.json": '{"units": ["Hz", {"unit": "',
+        "types.ddd.json": '{"types": [{"type": "scalar", "name": "',
+        "constants.ddd.json": '{"constants": [{"name": "',
+        "sections.ddd.json": '{"sections": [{"section": "',
+        "rasters.ddd.json": '{"rasters": [{"raster": "',
+        "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+        "c.ddd.json": json.dumps(component("C", declare("input", "Torque", unit="Nm")), indent=2)[
+            :60
+        ],
+    }
+
+    NOT_LOADED: Final = (
+        "c.ddd.json, constants.ddd.json, rasters.ddd.json, sections.ddd.json, types.ddd.json, "
+        "units.ddd.json did not load"
+    )
+
+    @pytest.mark.parametrize(
+        ("plan", "query", "read", "named"),
+        [
+            pytest.param(
+                "/api/type-plan",
+                {"action": "set", "name": "Speed_t", "key": "unit", "raw": '"rpm"'},
+                "/api/type",
+                "Speed_t",
+                id="a type",
+            ),
+            pytest.param(
+                "/api/constant-plan",
+                {"action": "set", "name": "CELLS", "key": "value", "raw": "4"},
+                "/api/constant",
+                "CELLS",
+                id="a constant",
+            ),
+            pytest.param(
+                "/api/section-plan",
+                {"action": "set", "name": ".fast", "key": "alignment", "raw": "8"},
+                "/api/section",
+                ".fast",
+                id="a section",
+            ),
+            pytest.param(
+                "/api/raster-plan",
+                {"action": "set", "name": "10ms", "key": "event", "raw": "3"},
+                "/api/raster",
+                "10ms",
+                id="a raster",
+            ),
+            pytest.param(
+                "/api/declaration-plan",
+                {"action": "read", "file": "ROOT/a.ddd.json", "name": "Torque", "scope": "input"},
+                "/api/variable",
+                "Torque",
+                id="a variable",
+            ),
+        ],
+    )
+    def test_a_plan_says_what_the_panel_beside_it_says(
+        self, tmp_path: Path, plan: str, query: dict[str, str], read: str, named: str
+    ) -> None:
+        api = opened(tmp_path, self.CUT)
+        said = get(api, read, name=named)
+        assert (said.status, said.body) == (
+            409,
+            {
+                "error": "unreadable",
+                "message": f"'{named}' is not declared in any file that loaded, and "
+                f"{self.NOT_LOADED}",
+            },
+        )
+        asked = {
+            key: value.replace("ROOT", tmp_path.resolve().as_posix())
+            for key, value in query.items()
+        }
+        assert get(api, plan, **asked) == said
+
+    @pytest.mark.parametrize(
+        ("plan", "query"),
+        [
+            pytest.param(
+                "/api/type-plan",
+                {"action": "rename", "name": "Speed_t", "to": "Rate_t"},
+                id="a type",
+            ),
+            pytest.param(
+                "/api/constant-plan",
+                {"action": "rename", "name": "CELLS", "to": "SLOTS"},
+                id="a constant is renamed",
+            ),
+            pytest.param(
+                "/api/constant-plan",
+                {"action": "remove", "name": "CELLS"},
+                id="a constant is removed",
+            ),
+            pytest.param(
+                "/api/section-plan",
+                {"action": "rename", "name": ".fast", "to": ".faster"},
+                id="a section is renamed",
+            ),
+            pytest.param(
+                "/api/section-plan",
+                {"action": "remove", "name": ".fast"},
+                id="a section is removed",
+            ),
+            pytest.param(
+                "/api/raster-plan",
+                {"action": "rename", "name": "10ms", "to": "20ms"},
+                id="a raster is renamed",
+            ),
+            pytest.param(
+                "/api/raster-plan", {"action": "remove", "name": "10ms"}, id="a raster is removed"
+            ),
+            pytest.param(
+                "/api/unit-plan",
+                {"action": "rename", "unit": "Mx", "to": "Wb"},
+                id="a unit is renamed",
+            ),
+            pytest.param(
+                "/api/unit-plan", {"action": "remove", "unit": "Mx"}, id="a unit is removed"
+            ),
+            pytest.param(
+                "/api/declaration-plan",
+                {"action": "remove", "file": "ROOT/a.ddd.json", "name": "Torque"},
+                id="a declaration is removed",
+            ),
+        ],
+    )
+    def test_a_rename_or_a_removal_of_one_is_refused_for_the_files_not_loaded(
+        self, tmp_path: Path, plan: str, query: dict[str, str]
+    ) -> None:
+        """The refusal a rename or a removal gets while any file did not load comes before the
+        one about a name nothing declares, which named no file."""
+        api = opened(tmp_path, self.CUT)
+        asked = {
+            key: value.replace("ROOT", tmp_path.resolve().as_posix())
+            for key, value in query.items()
+        }
+        reply = get(api, plan, **asked)
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+        assert reply.body["message"].startswith(f"{self.NOT_LOADED}, so ")
+
+    def test_a_unit_is_said_as_its_panel_says_it_while_a_component_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        """What no file that loaded states or lists may be stated by the component that did not:
+        the vocabulary's own file loaded, so what it lists is known, and the unit's description
+        is refused for the unit being nowhere the project can see."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "units.ddd.json", "c.ddd.json"),
+                "units.ddd.json": {"units": ["rpm"]},
+                "c.ddd.json": self.CUT["c.ddd.json"],
+            },
+        )
+        said = get(api, "/api/unit", name="Mx")
+        assert (said.status, said.body) == (
+            409,
+            {
+                "error": "unreadable",
+                "message": "'Mx' is not declared in any file that loaded, and c.ddd.json did not "
+                "load",
+            },
+        )
+        planned = get(api, "/api/unit-plan", action="describe", unit="Mx", description="flux")
+        assert planned == said
+
+    def test_a_unit_is_not_added_to_a_units_file_nobody_could_parse(self, tmp_path: Path) -> None:
+        """The project includes ``units.ddd.json``, which says it is a units file and does not
+        parse: saying that it includes no units file would be false."""
+        reply = get(opened(tmp_path, self.CUT), "/api/unit-plan", action="add", unit="Mx")
+        assert (reply.status, reply.body) == (
+            409,
+            {
+                "error": "unreadable",
+                "message": "units.ddd.json did not parse, so whether p.ddd.json includes a "
+                "units file is unknown and 'Mx' cannot be added to one",
+            },
+        )
+
+    def test_a_unit_is_not_said_missing_from_a_vocabulary_nobody_could_parse(
+        self, tmp_path: Path
+    ) -> None:
+        """``rpm`` is stated by a component that loaded and listed by no file that did: the
+        file that did not parse may list it, so it is not said to be outside the vocabulary."""
+        reply = get(
+            opened(tmp_path, self.CUT),
+            "/api/unit-plan",
+            action="describe",
+            unit="rpm",
+            description="speed",
+        )
+        assert (reply.status, reply.body) == (
+            409,
+            {
+                "error": "unreadable",
+                "message": "units.ddd.json did not load, so its description cannot be set there",
+            },
+        )
+
+    def test_a_component_that_did_not_load_is_not_said_to_be_no_component(
+        self, tmp_path: Path
+    ) -> None:
+        """What its kind is cannot be told, so what it may declare cannot be listed: the answer
+        says the file did not load, where a file that did is refused for being another kind."""
+        half = get(
+            opened(tmp_path, self.CUT), "/api/declarable", file=(tmp_path / "c.ddd.json").as_posix()
+        )
+        assert (half.status, half.body) == (
+            409,
+            {
+                "error": "unreadable",
+                "message": "c.ddd.json did not load, so it cannot be told whether it is a "
+                "component",
+            },
+        )
+
+    def test_declaring_into_a_file_that_declares_no_interface_is_not_found(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal is about a file and no name an index holds, so it is the plan's own: the
+        project description is a file of the project, and holds no component."""
+        api = opened(tmp_path, self.CUT)
+        reply = get(
+            api,
+            "/api/declaration-plan",
+            action="declare",
+            file=(tmp_path / "p.ddd.json").as_posix(),
+            scope="local",
+            definition=json.dumps(declare("local", "Zed")["definition"]),
+        )
+        assert (reply.status, reply.body) == (
+            404,
+            {"error": "not-found", "message": "p.ddd.json declares no interface"},
+        )
+
+    def test_a_plan_of_a_name_nobody_declares_is_not_found_while_every_file_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """What a plan says of a name no file declares is unchanged where no file failed to
+        load, and no file changed since the analysis."""
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "types.ddd.json"), "types.ddd.json": types(scalar_type())},
+        )
+        reply = get(api, "/api/type-plan", action="set", name="Nope", key="unit", raw='"rpm"')
+        assert (reply.status, reply.body) == (
+            404,
+            {"error": "not-found", "message": "this project declares no type called 'Nope'"},
+        )
+
+    def test_a_plan_of_a_name_nobody_declares_says_which_file_changed_since(
+        self, tmp_path: Path
+    ) -> None:
+        """The other half of the same sentence: a file saved since the analysis may be the one
+        that declares it, which the panel's route says and the plan's did not."""
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", "types.ddd.json"), "types.ddd.json": types(scalar_type())},
+        )
+        write_tree(tmp_path, {"types.ddd.json": types(scalar_type(), scalar_type("Nope"))})
+        reply = get(api, "/api/type-plan", action="set", name="Nope", key="unit", raw='"rpm"')
+        assert (reply.status, reply.body) == (
+            409,
+            {
+                "error": "unreadable",
+                "message": "'Nope' is not declared in any file that has not changed since, and "
+                "types.ddd.json changed since it was read",
+            },
+        )
+        assert get(api, "/api/type", name="Nope") == reply
+
+
 def refused_as_generated(sentence: str) -> Reply:
     """The answer refusing a change that would write where the build generates the open
     project."""

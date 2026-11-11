@@ -2,11 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTROLLER,
+  driftDatatypeIn,
   driftFactor,
   driftMax,
   driftMaxUnseen,
   openPanel,
   PUMP,
+  readAsText,
   restamp,
   SENSOR_HUB,
 } from "./demo";
@@ -235,6 +237,35 @@ test("a key a declared type fixes is refused, and nothing is written", async ({
   await expect(panel.getByText("which fixes its unit")).toBeVisible();
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
   expect(readFileSync(join(vocabularyGui.directory, PUMP)).equals(before)).toBe(true);
+});
+
+test("a value that would leave a file unable to load is previewed with why, and applied all the same", async ({
+  page,
+  copiedGui,
+}) => {
+  // SensorHub now produces ValueA as a uint16, and Controller reads it as text, which only a byte
+  // can hold: the datatype the producer states is a value in play on the panel's own row, and
+  // settling it on Controller is a change the loader refuses ("a string conversion needs a byte
+  // datatype"). The reader chose it, so the panel previews it - and says so.
+  const gui = await copiedGui("demo", (directory) => {
+    driftDatatypeIn(directory, SENSOR_HUB, "ValueA", "uint16");
+    readAsText(directory, CONTROLLER, "ValueA");
+  });
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await panel.getByRole("row", { name: /^datatype/ }).click();
+  await expect(panel.getByRole("combobox", { name: "Datatype of ValueA" })).toHaveValue("uint16");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  // The server's own sentence, drawn beside the plan before anything is written.
+  await expect(
+    panel.getByText(
+      "the declaration of 'ValueA' in controller.ddd.json would not load with that datatype: a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'",
+    ),
+  ).toBeVisible();
+  // It stands in no one's way: the value is the reader's to apply.
+  const apply = panel.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect.poll(() => valueA(gui.directory, CONTROLLER).datatype).toBe("uint16");
 });
 
 test("a key that may be left unstated goes from every declaration", async ({ page, gui }) => {

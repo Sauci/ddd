@@ -1114,7 +1114,9 @@ declaration out of an action that reaches several, as it leaves out one a type f
 page drops a fix that cannot reach every declaration. The variable's panel is the one client that
 chooses otherwise: ``GET /api/settle`` settles with ``withholding=False``, its reader chose the
 value, and ``unloadable`` in its reply says which declarations would not load and why, in the
-models' sentence, which ``ddd check`` files as ``schema`` once the change is written.
+models' sentence, which ``ddd check`` files as ``schema`` once the change is written. The page
+draws each sentence as it comes, above Apply, which stays available: ``unloadableOf``, in
+``gui/src/lib/units.ts`` and under the page's own tests, says which.
 
 What a key of a variable offers the panel is worked out in ``ddd.variable_keys``: per key,
 and per declaration, whether that declaration's kind has the key at all and whether it

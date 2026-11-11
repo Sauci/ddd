@@ -165,6 +165,17 @@ export function consequence(changes: readonly PlannedChange[]): string {
   return `Changes ${files.length} file${files.length === 1 ? "" : "s"}: ${files.join(", ")}`;
 }
 
+/** What a settlement's plan says of the files it would leave unable to load, as the panel draws it
+ * beside the plan, before Apply: the server's own sentences, in its words and its order. The
+ * reader chose the value, so they warn and stand in no way of applying it. Nothing for no plan, and
+ * nothing while the panel says why the plan cannot be applied instead of drawing it. */
+export function unloadableOf(
+  preview: SettleReply | null,
+  refusal: string | null,
+): readonly string[] {
+  return preview === null || refusal !== null ? [] : preview.unloadable;
+}
+
 /** One file's lines as `Changes` prints them: what it changes, and the word standing where its
  * line number would when it has none of its own - a file that is about to appear or go. */
 export interface ShownChange {

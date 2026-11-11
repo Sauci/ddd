@@ -323,7 +323,9 @@ The commands
        ``datatype``, ``conversion`` or ``typename`` its own storage is made of. Nor is a button
        ever the cause of a ``schema`` error, which no severity turns down: the writer's
        ``float32`` is not offered under a reader's enumeration, nor a unit beside a string,
-       because the loader refuses the file that writes. A component's page
+       because the loader refuses the file that writes. The panel, whose reader chose the value,
+       previews such a change all the same: a sentence above Apply names each declaration that
+       would not load and why, in the loader's own words, and Apply writes it. A component's page
        adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and

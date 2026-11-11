@@ -14,6 +14,7 @@ import {
   textOf,
   unitLabel,
   unitOfDeclaration,
+  unloadableOf,
 } from "./units";
 
 const HUB = "C:/w/components/sensor_hub.ddd.json";
@@ -275,6 +276,26 @@ group("what a preview says and sends", () => {
     const two = [...ONE_FILE.changes, { ...ONE_FILE_CHANGE, file: HUB }];
     expect(consequence(two)).toBe("Changes 2 files: controller.ddd.json, sensor_hub.ddd.json");
     expect(baseName("a.ddd.json")).toBe("a.ddd.json");
+  });
+
+  test("a plan says which files it would leave unable to load, in the server's words and order", () => {
+    const said = [
+      "the declaration of 'ValueA' in controller.ddd.json would not load with that datatype: a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'",
+      "the declaration of 'ValueA' in sensor_hub.ddd.json would not load with that datatype: enum conversion 'Mode_t' requires an integer datatype, got 'uint16'",
+    ];
+    expect(unloadableOf({ ...ONE_FILE, unloadable: said }, null)).toEqual(said);
+  });
+
+  test("a plan every file of which still loads says nothing of it, and neither does no plan", () => {
+    expect(unloadableOf(ONE_FILE, null)).toEqual([]);
+    expect(unloadableOf(null, null)).toEqual([]);
+  });
+
+  test("nothing is said of a plan the panel does not draw: it says why it cannot be applied", () => {
+    const said = [
+      "the declaration of 'ValueA' in controller.ddd.json would not load with that datatype: x",
+    ];
+    expect(unloadableOf({ ...ONE_FILE, unloadable: said }, "A file changed on disk")).toEqual([]);
   });
 
   test("names a file a change creates as new, and every other by its line", () => {

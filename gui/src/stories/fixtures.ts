@@ -385,6 +385,84 @@ export const MIXED_KINDS: VariableReply = {
   findings: [],
 };
 
+/** ValueA with a reader of text: SensorHub produces it as a uint16, and Controller reads it as a
+ * string - a byte datatype and one dimension of eight - which a uint16 cannot hold. Its datatype,
+ * conversion and dimensions disagree, and the plan that settles the producer's datatype on
+ * Controller (PREVIEW_UNLOADABLE) is one the loader refuses. */
+export const TEXT_READER: VariableReply = {
+  revision: 7,
+  name: "ValueA",
+  declarations: [
+    {
+      path: SENSOR_HUB,
+      pointer: "component.interface[2].definition",
+      component: "SensorHub",
+      role: "produces",
+      stated: {
+        kind: '"measurement"',
+        datatype: '"uint16"',
+        conversion: '{"factor": 0.5}',
+        volatile: "true",
+      },
+      type: null,
+      fixed: {},
+    },
+    {
+      path: CONTROLLER,
+      pointer: "component.interface[0].definition",
+      component: "Controller",
+      role: "reads",
+      stated: {
+        kind: '"measurement"',
+        datatype: '"uint8"',
+        conversion: '{"kind": "string"}',
+        dimensions: "[8]",
+        volatile: "true",
+      },
+      type: null,
+      fixed: {},
+    },
+  ],
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true), carried(true)],
+      values: [inPlay('"uint16"', ["SensorHub"], true), inPlay('"uint8"', ["Controller"], false)],
+      disagrees: true,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "conversion",
+      carried: [carried(true), carried(true)],
+      values: [
+        inPlay('{"factor": 0.5}', ["SensorHub"], true),
+        inPlay('{"kind": "string"}', ["Controller"], false),
+      ],
+      disagrees: true,
+      editor: "none",
+      choices: [],
+    },
+    {
+      key: "dimensions",
+      carried: [carried(false), carried(false)],
+      values: [inPlay("[8]", ["Controller"], false)],
+      disagrees: true,
+      editor: "none",
+      choices: [],
+    },
+    {
+      key: "volatile",
+      carried: [carried(true), carried(true)],
+      values: [inPlay("true", ["SensorHub", "Controller"], true)],
+      disagrees: false,
+      editor: "volatile",
+      choices: [],
+    },
+  ],
+  findings: [],
+};
+
 /** A preview that settles ValueA's conversion onto Controller too, beside DISAGREEING's own
  * unit mismatch: the table's "will change" tag, and Show changes, have something to draw. */
 export const PREVIEW_CONVERSION: SettleReply = {
@@ -437,6 +515,35 @@ export const PREVIEW_LIMITS: SettleReply = {
     },
   ],
   unloadable: [],
+};
+
+/** TEXT_READER's datatype settled on the producer's value, which Controller's string cannot hold:
+ * the plan writes it all the same, and says in the server's words that the file would not load. */
+export const PREVIEW_UNLOADABLE: SettleReply = {
+  revision: 7,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "5f2d6ae7b5c19a3d0e4b8f7a1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[0].definition.datatype",
+          raw: '"uint16"',
+        },
+      ],
+      hunks: [
+        {
+          line: 13,
+          before: ['          "datatype": "uint8",'],
+          after: ['          "datatype": "uint16",'],
+        },
+      ],
+    },
+  ],
+  unloadable: [
+    "the declaration of 'ValueA' in controller.ddd.json would not load with that datatype: a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'",
+  ],
 };
 
 /** A row of the Units tab, which the variable panel does not read: a unit variables state. */

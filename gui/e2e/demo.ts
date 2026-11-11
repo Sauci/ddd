@@ -73,6 +73,28 @@ export function driftDatatypeIn(
   return before;
 }
 
+/** A variable's declaration in one file of a copy turned into one that reads text - a byte
+ * datatype, the string conversion and one dimension of eight - so stating no unit and no limits,
+ * which text has none of. A producer's datatype wider than a byte, settled onto it, is then a
+ * change the loader refuses (`driftDatatypeIn` makes one). Saved from outside, before the server
+ * starts. */
+export function readAsText(directory: string, file: string, variable: string): void {
+  const path = join(directory, file);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  const entry = data.component.interface.find(
+    (declaration: { definition: { name: string } }) => declaration.definition.name === variable,
+  );
+  entry.definition = {
+    ...Object.fromEntries(
+      Object.entries(entry.definition).filter(([key]) => key !== "unit" && key !== "limits"),
+    ),
+    datatype: "uint8",
+    conversion: { kind: "string" },
+    dimensions: [8],
+  };
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 /** ValueA renamed from outside in every file of the demo that declares or names it. */
 export function renameValueA(directory: string, name: string): void {
   for (const file of [CONTROLLER, SENSOR_HUB]) {

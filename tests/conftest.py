@@ -100,6 +100,18 @@ UNIT_BESIDE_TEXT: Final = {
 """A writer stating a unit and a reader that reads text, which has none to state: the unit written
 into the reader, and the text into the writer, stop a file loading."""
 
+DOUBLE_BESIDE_SCALED: Final = {
+    "w.ddd.json": component("W", declare("output", "V", "float64")),
+    "r.ddd.json": component(
+        "R", declare("input", "V", "uint16", conversion={"kind": "linear", "factor": 2})
+    ),
+}
+"""A writer storing a double and a reader that doubles a 16 bit integer: each loads, and the
+double under the reader's factor - or the factor over the double - has limits past the largest
+float there is. The models take either file; the analysis refuses it (``schema``, which no
+severity turns down), and only a rule it applies to the definition alone tells the fix that
+writes it from one that loads."""
+
 
 # One family for the other half of a description - the types a declaration names. Five test
 # modules each had their own spelling of these four builders (`val`/`value`/`value_member`,

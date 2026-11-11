@@ -1148,3 +1148,136 @@ class TestWhatTheLoaderWouldRefuseOfADefinition:
         before = {**written}
         definition_problem(written)
         assert written == before
+
+
+class TestWhatTheAnalysisRefusesOfADefinitionAlone:
+    """The rules of the analysis that file ``schema`` and ask nothing of the project.
+
+    The loader's own checks are not all the file's: the analysis refuses two more things from a
+    definition alone - a datatype and conversion whose derived limits are not finite, and a shape
+    of numbers past the caps - and files them as ``schema`` as well, which no severity turns down
+    and which ``ddd gui`` counts as a file that did not load. ``definition_problem`` says them
+    after the models, in the analysis's own sentence, so that nothing that writes a definition
+    offers one the analysis would then refuse.
+    """
+
+    WRITTEN: ClassVar[dict[str, Any]] = {
+        "name": "X",
+        "kind": "measurement",
+        "datatype": "uint16",
+        "conversion": {"kind": "identity"},
+        "volatile": False,
+    }
+
+    @pytest.mark.parametrize(
+        ("changed", "datatype"),
+        [
+            ({"datatype": "float64", "conversion": {"kind": "linear", "factor": 2}}, "float64"),
+            (
+                {
+                    "datatype": "float64",
+                    "conversion": {"kind": "linear", "factor": 1, "offset": 1e308},
+                },
+                "float64",
+            ),
+            (
+                {
+                    "datatype": "float64",
+                    "conversion": {"kind": "linear", "factor": 1, "offset": -1e308},
+                },
+                "float64",
+            ),
+            ({"datatype": "float32", "conversion": {"kind": "linear", "factor": 1e300}}, "float32"),
+        ],
+    )
+    def test_limits_that_are_not_finite_are_refused(
+        self, changed: dict[str, Any], datatype: str
+    ) -> None:
+        assert definition_problem({**self.WRITTEN, **changed}) == (
+            f"the limits derived from '{datatype}' and this conversion are not finite"
+        )
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            {"datatype": "float64"},
+            {"datatype": "float64", "conversion": {"kind": "linear", "factor": 0.5}},
+            {"datatype": "float32", "conversion": {"kind": "linear", "factor": 1e200}},
+            {"conversion": {"kind": "linear", "factor": 2}},
+        ],
+    )
+    def test_limits_that_stay_finite_are_taken(self, changed: dict[str, Any]) -> None:
+        assert definition_problem({**self.WRITTEN, **changed}) is None
+
+    def test_a_declaration_naming_a_type_has_the_limits_of_the_type(self) -> None:
+        """Its datatype and conversion are the type's, which only the project can tell: the
+        definition states none, and the analysis refuses the type where it is written."""
+        named = {"name": "X", "kind": "measurement", "typename": "Sample_t", "volatile": False}
+        assert definition_problem(named) is None
+
+    def test_the_models_are_asked_first(self) -> None:
+        """A definition both break rules of is said in the models' sentence: the loader refuses
+        the file before the analysis reads it."""
+        written = {
+            **self.WRITTEN,
+            "datatype": "float64",
+            "conversion": {"kind": "linear", "factor": 2},
+            "limits": {"min": 10, "max": 1},
+        }
+        assert definition_problem(written) == "min (10) is greater than max (1)"
+        assert definition_problem({**written, "limits": {"min": 1, "max": 10}}) == (
+            "the limits derived from 'float64' and this conversion are not finite"
+        )
+
+    def test_the_limits_are_said_before_the_shape(self) -> None:
+        """The order the analysis files them in: a declaration whose limits are refused is
+        dropped, and its shape is never weighed."""
+        written = {
+            **self.WRITTEN,
+            "datatype": "float64",
+            "conversion": {"kind": "linear", "factor": 2},
+            "dimensions": [1] * 65,
+        }
+        assert definition_problem(written) == (
+            "the limits derived from 'float64' and this conversion are not finite"
+        )
+        assert definition_problem({**written, "datatype": "uint16"}) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+
+    def test_more_dimensions_than_the_analysis_carries_are_refused(self) -> None:
+        assert definition_problem({**self.WRITTEN, "dimensions": [1] * 65}) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+        assert definition_problem({**self.WRITTEN, "dimensions": [1] * 64}) is None
+
+    def test_more_elements_than_the_analysis_carries_are_refused(self) -> None:
+        assert definition_problem({**self.WRITTEN, "dimensions": [10_000, 1_001]}) == (
+            "'X' has 10010000 elements; DDD carries at most 10000000"
+        )
+        assert definition_problem({**self.WRITTEN, "dimensions": [10_000, 1_000]}) is None
+
+    def test_an_axis_of_more_points_than_the_analysis_carries_is_refused(self) -> None:
+        axis = {**self.WRITTEN, "name": "Ax", "kind": "axis", "size": 10_000_001}
+        assert definition_problem(axis) == (
+            "'Ax' has 10000001 elements; DDD carries at most 10000000"
+        )
+        assert definition_problem({**axis, "size": 10_000_000}) is None
+
+    def test_a_shape_naming_a_constant_has_a_number_of_elements_only_the_project_knows(
+        self,
+    ) -> None:
+        """The constant's value is the project's to say, and so is the product it makes: the
+        number of dimensions is the definition's, and is asked all the same."""
+        assert definition_problem({**self.WRITTEN, "dimensions": ["CELLS", 100_000, 100_000]}) is (
+            None
+        )
+        assert definition_problem({**self.WRITTEN, "dimensions": ["CELLS", *[1] * 64]}) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+
+    def test_a_curve_is_shaped_by_its_axis_and_a_map_by_its_two(self) -> None:
+        curve = {**self.WRITTEN, "name": "C", "kind": "curve", "axis": "Ax"}
+        assert definition_problem(curve) is None
+        axes = {"name": "M", "kind": "map", "x_axis": "Ax", "y_axis": "Ay"}
+        assert definition_problem({**self.WRITTEN, **axes}) is None

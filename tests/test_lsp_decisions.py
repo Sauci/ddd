@@ -6,6 +6,7 @@ import copy
 from pathlib import Path
 
 from conftest import (
+    DOUBLE_BESIDE_SCALED,
     FLOAT_BESIDE_ENUM,
     TEXT,
     UNIT_BESIDE_TEXT,
@@ -187,6 +188,82 @@ class TestWhatTheModelsSay:
             == "a string has no unit, got 'rpm'"
         )
         assert loading_problem(document, DEFINITION, "unit", None) is None
+
+
+class TestWhatTheAnalysisSays:
+    """The models take a definition whose derived limits are not finite, and the analysis files
+    it as ``schema`` all the same - from the definition alone. A declaration does not take the
+    value that leaves it so, and the sentence is the analysis's own."""
+
+    LIMITS = "the limits derived from 'float64' and this conversion are not finite"
+
+    def test_a_datatype_that_makes_the_limits_infinite_is_refused(self, tmp_path: Path) -> None:
+        """The first fix of the reader: the writer's double under the reader's factor of two."""
+        built, root = built_of(tmp_path, **DOUBLE_BESIDE_SCALED)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        refused = settled_at(built, reader, "V", "datatype", '"float64"', {})
+        assert (refused.site, refused.reason, refused.problem) == (reader, "load", self.LIMITS)
+
+    def test_a_conversion_that_makes_the_limits_infinite_is_refused(self, tmp_path: Path) -> None:
+        """The other way: the reader's factor of two over the writer's double."""
+        built, root = built_of(tmp_path, **DOUBLE_BESIDE_SCALED)
+        writer = Site(root / "w.ddd.json", DEFINITION)
+        raw = '{"kind": "linear", "factor": 2}'
+        refused = settled_at(built, writer, "V", "conversion", raw, {})
+        assert (refused.site, refused.reason, refused.problem) == (writer, "load", self.LIMITS)
+
+    def test_a_value_that_keeps_the_limits_finite_is_taken(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **DOUBLE_BESIDE_SCALED)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        decided = settled_at(built, reader, "V", "conversion", '{"kind": "identity"}', {})
+        assert (decided.site, decided.raw) == (reader, '{"kind": "identity"}')
+
+    def test_the_panel_settles_it_all_the_same(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **DOUBLE_BESIDE_SCALED)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        decided = settled_at(built, reader, "V", "datatype", '"float64"', {}, withholding=False)
+        assert (decided.site, decided.raw) == (reader, '"float64"')
+
+    def test_what_is_asked_is_the_definition_as_the_key_leaves_it(self, tmp_path: Path) -> None:
+        """Not the definition as it stands: the reader loads, and stops loading with the double."""
+        _, root = built_of(tmp_path, **DOUBLE_BESIDE_SCALED)
+        document = read(root / "r.ddd.json", {})
+        assert loading_problem(document, DEFINITION, "volatile", "false") is None
+        assert loading_problem(document, DEFINITION, "datatype", '"float64"') == self.LIMITS
+        assert loading_problem(document, DEFINITION, "datatype", '"float32"') is None
+
+
+class TestAValueTheLoaderWouldRefuseAsJson:
+    """A value is the text of one declaration, and an editor's buffer or a file on disk is read as
+    python reads json, which takes what the loader refuses: a key written twice, ``NaN``. Writing
+    that text into another declaration is a file the loader refuses as ``json-syntax``, so it is
+    said as the problem it is and not raised, which ended the language server's run."""
+
+    def test_a_key_written_twice_is_said_and_not_raised(self, tmp_path: Path) -> None:
+        _, root = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
+        document = read(root / "r.ddd.json", {})
+        problem = loading_problem(document, DEFINITION, "limits", '{"min": 0, "max": 5, "max": 6}')
+        assert problem == (
+            "key 'max' appears twice in one object; json would silently keep the last spelling, "
+            "so decide which one stays"
+        )
+
+    def test_a_constant_json_has_no_spelling_for_is_said_and_not_raised(
+        self, tmp_path: Path
+    ) -> None:
+        _, root = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
+        document = read(root / "r.ddd.json", {})
+        problem = loading_problem(document, DEFINITION, "limits", '{"min": 0, "max": NaN}')
+        assert problem == "'NaN' is not valid json; DDD has no representation for it"
+
+    def test_a_declaration_is_refused_the_value_with_the_reason_load(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        typed = '{"kind": "linear", "factor": 2, "factor": 3}'
+        refused = settled_at(built, reader, "V", "conversion", typed, {})
+        assert (refused.site, refused.reason) == (reader, "load")
+        assert refused.problem is not None
+        assert refused.problem.startswith("key 'factor' appears twice in one object")
 
 
 class TestOneDeclaration:

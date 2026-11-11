@@ -23,6 +23,7 @@ from generate_project import generate
 
 from conftest import (
     DEMO,
+    DOUBLE_BESIDE_SCALED,
     EXAMPLES,
     FLOAT_BESIDE_ENUM,
     INCONSISTENT,
@@ -6960,6 +6961,87 @@ class TestAFixThatWouldNotLoad:
         (removal,) = [entry for entry in offered if entry["title"].startswith("Remove the")]
         assert removal["title"] == "Remove the dimensions from 1 other declaration of 'V'"
         assert [uri_to_path(uri).name for uri in removal["edit"]["changes"]] == ["r2.ddd.json"]
+
+    def test_a_datatype_is_not_taken_from_a_double_writer_beside_a_scaled_reader(
+        self, tmp_path: Path
+    ) -> None:
+        """The models take the writer's float64 under the reader's factor of two, and the analysis
+        files it as ``schema`` - 'the limits derived from 'float64' and this conversion are not
+        finite' - which no severity turns down: the reader's first fix, and not one to offer."""
+        assert "Use the datatype declared in w" not in self.titles(
+            tmp_path, "r.ddd.json", **DOUBLE_BESIDE_SCALED
+        )
+
+    def test_a_scaling_is_not_given_to_the_double_writer(self, tmp_path: Path) -> None:
+        assert "Apply this conversion to 1 other declaration of 'V'" not in self.titles(
+            tmp_path, "r.ddd.json", **DOUBLE_BESIDE_SCALED
+        )
+
+    def test_a_double_is_not_given_to_the_scaled_reader(self, tmp_path: Path) -> None:
+        assert "Apply this datatype to 1 other declaration of 'V'" not in self.titles(
+            tmp_path, "w.ddd.json", **DOUBLE_BESIDE_SCALED
+        )
+
+    def test_the_fixes_that_keep_the_limits_finite_are_still_offered(self, tmp_path: Path) -> None:
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **DOUBLE_BESIDE_SCALED) == [
+            "Apply this datatype to 1 other declaration of 'V'",
+            "Use the conversion declared in w",
+        ]
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **DOUBLE_BESIDE_SCALED) == [
+            "Apply this conversion to 1 other declaration of 'V'"
+        ]
+
+    def test_a_buffer_holding_a_key_twice_is_answered_and_the_server_goes_on(
+        self, tmp_path: Path
+    ) -> None:
+        """The buffer is read as python reads json, which takes a key typed twice and keeps the
+        last; the value an action would spread is its text, and the loader refuses that text as
+        ``json-syntax``. What the server used to do about it was exit: it answers, leaves that
+        action out, and the next request is read."""
+        files = {
+            "w.ddd.json": component(
+                "W", declare("output", "V", "float32", limits={"min": 0, "max": 100})
+            ),
+            "r.ddd.json": component(
+                "R", declare("input", "V", "float32", limits={"min": 0, "max": 50})
+            ),
+        }
+        write_tree(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        reader = tmp_path / "r.ddd.json"
+        typed = reader.read_text(encoding="utf-8").replace('"max": 50', '"max": 50, "max": 60')
+        assert typed != reader.read_text(encoding="utf-8")
+        writer = io.BytesIO()
+        server_module.Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didOpen",
+                    "params": {
+                        "textDocument": {"uri": reader.as_uri(), "version": 1, "text": typed}
+                    },
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "id": 15,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": reader.as_uri()},
+                        "range": Document(typed).range_of(self.AT_A_DECLARATION),
+                        "context": {"diagnostics": []},
+                    },
+                },
+                {"jsonrpc": "2.0", "id": 99, "method": "shutdown"},
+                {"jsonrpc": "2.0", "method": "exit"},
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        replies = {message["id"]: message for message in answered(writer) if "id" in message}
+        assert [action["title"] for action in replies[15]["result"]] == [
+            "Use the limits declared in w"
+        ]
+        assert 99 in replies, "the server read the request after it"
 
 
 class TestMessagesTheClientGetsWrong:

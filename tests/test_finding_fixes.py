@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from conftest import (
+    DOUBLE_BESIDE_SCALED,
     FLOAT_BESIDE_ENUM,
     TEXT,
     UNIT_BESIDE_TEXT,
@@ -692,6 +693,60 @@ class TestAMismatchThatWouldNotLoad:
             "r2.ddd.json": component("R2", declare("input", "V", "uint32")),
         }
         assert self.titles(tmp_path / "second", "r2.ddd.json", **files) == []
+
+    def test_a_datatype_is_not_taken_from_a_double_by_a_scaled_reader(self, tmp_path: Path) -> None:
+        # The first button of the reader, until the analysis refused what it wrote: the writer's
+        # float64 under a factor of two has limits past the largest float, 'the limits derived
+        # from 'float64' and this conversion are not finite' - a ``schema`` the models do not say,
+        # because it is the analysis that derives the limits. What is left settles the same
+        # disagreement by the writer's conversion.
+        assert self.titles(tmp_path, "r.ddd.json", **DOUBLE_BESIDE_SCALED) == [
+            "Use the conversion declared in w"
+        ]
+
+    def test_a_double_is_not_sent_to_a_scaled_reader(self, tmp_path: Path) -> None:
+        assert self.titles(tmp_path, "w.ddd.json", **DOUBLE_BESIDE_SCALED) == [
+            "Apply this conversion to 1 other declaration of 'V'"
+        ]
+
+    def test_what_is_offered_for_that_pair_leaves_the_project_analysable(
+        self, tmp_path: Path
+    ) -> None:
+        # What is offered is applied, and the project is analysed again: either button above,
+        # taken, would file the ``schema`` the models did not say, and what stays files none.
+        built, root = built_of(tmp_path, **DOUBLE_BESIDE_SCALED)
+        offered = fixes_for("definition-mismatch", root / "r.ddd.json", DEFINITION, {}, built)
+        for fix in offered:
+            for edit in fix.changes:
+                text = edit.path.read_text(encoding="utf-8")
+                edit.path.write_text(edit_text(text, edit.operations), encoding="utf-8", newline="")
+        bag = DiagnosticBag()
+        workspace = load_workspace(root / "p.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        analyze(workspace, bag)
+        assert "schema" not in checks(bag), messages(bag)
+
+    def test_a_key_written_twice_since_the_index_was_built_leaves_the_fix_out(
+        self, tmp_path: Path
+    ) -> None:
+        # The files are read as they stand now, as python reads json, which takes a key typed
+        # twice and keeps the last; the loader refuses the text that would be spread as
+        # ``json-syntax``, and the fix that spreads it is dropped rather than raised.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", "float32", limits={"min": 0, "max": 100})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", "float32", limits={"min": 0, "max": 50})
+                ),
+            },
+        )
+        producer = root / "a.ddd.json"
+        typed = producer.read_text(encoding="utf-8").replace('"max": 100', '"max": 100, "max": 200')
+        producer.write_text(typed, encoding="utf-8", newline="")
+        assert fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built) == ()
 
     def test_what_is_wrong_only_in_context_is_still_offered_and_is_reported(
         self, tmp_path: Path

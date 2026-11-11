@@ -217,7 +217,9 @@ def declare_object(
     Stamped, the definition is asked of the models (:func:`~ddd.models.definition_problem`) - a
     rule crossing two keys, a ``datatype`` wanting a ``conversion`` among them, is not something
     a key-by-key check above can see, and is refused in the model's own sentence rather than
-    left for the file it is written into to refuse back.
+    left for the file it is written into to refuse back. The same question asks the rules of the
+    analysis that need nothing but the definition - limits that run past the largest float, a
+    shape past the caps - and refuses them in the analysis's own sentence.
     """
     here, entries = _interface(file, cache)
     name, kind = definition.get("name"), definition.get("kind")

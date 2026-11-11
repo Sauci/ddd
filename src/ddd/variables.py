@@ -323,8 +323,8 @@ def unloadable(
     What the plan of a value its reader chose says, where a button offering the same value is
     withheld (:func:`ddd.lsp.edits.settled_at`): the reader may still apply it, and the next
     analysis reports the file as ``schema``, but the plan says first which file would stop loading
-    and why, in the models' own sentence (:func:`ddd.models.definition_problem`), which ``ddd
-    check`` files inside that finding. Asked of the definition each change leaves
+    and why, in the sentence of the models or the analysis (:func:`ddd.models.definition_problem`),
+    which ``ddd check`` files inside that finding. Asked of the definition each change leaves
     (:func:`ddd.lsp.edits.loading_problem`), from the documents the settlement was decided on -
     ``cache`` is the one it was given - so that no file is read again, and ordered by file as the
     settlement's preview is.
@@ -341,8 +341,9 @@ def unloadable(
 
 
 def _would_not_load(site: Site, name: str, key: str, problem: str | None) -> str:
-    """The sentence of a declaration that would not load with a key written, as the models say it:
-    the one words for the refusal of a settlement and for what a plan tells its reader."""
+    """The sentence of a declaration that would not load with a key written, as the models or the
+    analysis say it: the one words for the refusal of a settlement and for what a plan tells its
+    reader."""
     return (
         f"the declaration of '{name}' in {site.path.name} would not load with that {key}: {problem}"
     )

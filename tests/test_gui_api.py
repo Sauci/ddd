@@ -19,6 +19,7 @@ import ddd.gui.api as api_module
 import ddd.gui.queries as queries_module
 import ddd.gui.session as session_module
 from conftest import (
+    DOUBLE_BESIDE_SCALED,
     EXAMPLES,
     FLOAT_BESIDE_ENUM,
     TEXT,
@@ -45,6 +46,7 @@ from conftest import (
     write_tree,
 )
 from ddd import __version__
+from ddd.analysis import analyze
 from ddd.cli import EXIT_OK, main
 from ddd.declaration_plans import PRODUCING_SCOPES
 from ddd.diagnostics import CHECKS, DiagnosticBag, Location, Severity
@@ -3925,6 +3927,62 @@ class TestSettle:
             messages(bag)
         )
 
+    def test_a_value_that_makes_the_limits_infinite_is_planned_with_a_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """The panel's datatype row offers the writer's float64, which is in play, and the reader
+        doubles a 16 bit integer: the models take the pair and the analysis files it as ``schema``,
+        after which ``ddd gui`` counts the file as one that did not load and settles nothing
+        further. The reader chose the value, so it is planned, and says what the file will do."""
+        files = {"p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"), **DOUBLE_BESIDE_SCALED}
+        api = opened(tmp_path, files)
+        reply = get(api, "/api/settle", name="V", key="datatype", raw='"float64"')
+        assert reply.status == 200
+        assert [change["file"] for change in reply.body["changes"]] == [
+            posix(tmp_path, "r.ddd.json")
+        ]
+        assert reply.body["unloadable"] == [
+            "the declaration of 'V' in r.ddd.json would not load with that datatype: "
+            "the limits derived from 'float64' and this conversion are not finite"
+        ]
+
+    def test_that_sentence_is_what_the_analysis_says_once_the_value_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        files = {"p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"), **DOUBLE_BESIDE_SCALED}
+        api = opened(tmp_path, files)
+        preview = get(api, "/api/settle", name="V", key="datatype", raw='"float64"').body
+        assert applied(api, preview).status == 200
+        bag = DiagnosticBag()
+        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
+        assert workspace is not None
+        analyze(workspace, bag)
+        assert "the limits derived from 'float64' and this conversion are not finite" in (
+            messages(bag)
+        )
+        assert "schema" in [diagnostic.check for diagnostic in bag]
+
+    def test_a_shape_past_what_the_analysis_carries_is_planned_with_a_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """The two files of a variable, each with the one dimension the panel's row would write
+        past the cap: both are planned, and both are named."""
+        files = {
+            "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+            "w.ddd.json": component("W", declare("output", "V", "uint8", dimensions=[8])),
+            "r.ddd.json": component("R", declare("input", "V", "uint8", dimensions=[8])),
+        }
+        reply = get(
+            opened(tmp_path, files), "/api/settle", name="V", key="dimensions", raw="[4000, 4000]"
+        )
+        assert reply.status == 200
+        assert reply.body["unloadable"] == [
+            "the declaration of 'V' in r.ddd.json would not load with that dimensions: "
+            "'V' has 16000000 elements; DDD carries at most 10000000",
+            "the declaration of 'V' in w.ddd.json would not load with that dimensions: "
+            "'V' has 16000000 elements; DDD carries at most 10000000",
+        ]
+
     def test_taking_a_key_out_that_a_declaration_cannot_do_without_is_planned_with_a_sentence(
         self, tmp_path: Path
     ) -> None:
@@ -4117,6 +4175,58 @@ class TestFix:
         workspace = load_workspace(tmp_path / "p.ddd.json", bag)
         assert workspace is not None
         assert "schema" not in [diagnostic.check for diagnostic in bag], messages(bag)
+
+    def test_a_fix_whose_result_the_analysis_would_refuse_is_not_offered(
+        self, tmp_path: Path
+    ) -> None:
+        """The first button of the reader, until the analysis refused what it wrote: the writer's
+        float64 under a factor of two has limits that are not finite, a ``schema`` the models did
+        not say and which left the file counted as one that did not load."""
+        files = {"p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"), **DOUBLE_BESIDE_SCALED}
+        api = opened(tmp_path, files)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(tmp_path, "r.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert reply.status == 200
+        assert [fix["title"] for fix in reply.body["fixes"]] == ["Use the conversion declared in w"]
+        assert applied(api, reply.body["fixes"][0]).status == 200
+        bag = DiagnosticBag()
+        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
+        assert workspace is not None
+        analyze(workspace, bag)
+        assert "schema" not in [diagnostic.check for diagnostic in bag], messages(bag)
+
+    def test_a_key_written_twice_since_the_analysis_is_a_fix_left_out_and_not_an_error(
+        self, tmp_path: Path
+    ) -> None:
+        """The fix is read from the file as it stands now, and a file edited since the analysis may
+        say a key twice, which python reads and the loader refuses: the answer is the fixes there
+        are, and none of them spreads that text."""
+        files = {
+            "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+            "a.ddd.json": component(
+                "A", declare("output", "Speed", "float32", limits={"min": 0, "max": 100})
+            ),
+            "b.ddd.json": component(
+                "B", declare("input", "Speed", "float32", limits={"min": 0, "max": 50})
+            ),
+        }
+        api = opened(tmp_path, files)
+        producer = tmp_path / "a.ddd.json"
+        typed = producer.read_text(encoding="utf-8").replace('"max": 100', '"max": 100, "max": 200')
+        producer.write_text(typed, encoding="utf-8", newline="")
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(tmp_path, "b.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert (reply.status, reply.body["fixes"]) == (200, [])
 
     def test_a_fix_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch

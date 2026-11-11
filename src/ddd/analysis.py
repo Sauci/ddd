@@ -38,6 +38,7 @@ from ddd.ir import (
 from ddd.loading import LoadedComponent, LoadedRaster, LoadedType, Workspace
 from ddd.models import (
     COUNTED_KINDS,
+    MAX_ELEMENTS,
     MEMBER_OBJECT_KINDS,
     Axis,
     Conversion,
@@ -65,8 +66,12 @@ from ddd.models import (
     conversion_identity,
     conversion_interface_value,
     conversion_range,
+    derived_range_is_finite,
+    dimensions_problem,
+    elements_problem,
     format_number,
     format_shape,
+    infinite_limits_message,
     is_above,
     is_below,
     is_reserved_identifier,
@@ -112,41 +117,15 @@ def _is_length(value: int | float) -> bool:
     return isinstance(value, int) and value >= 1
 
 
-_MAX_ELEMENTS = 10_000_000
-"""How many elements one array holds.
-
-The dictionary, the a2l and the generated code carry every element, so a shape is not a
-number DDD can hold at arm's length: the c backend broadcasts a scalar ``init`` into one
-literal per element, and every element of an array of structures is spread out into leaves of
-its own. An array of a billion is a run that writes no file and reports no finding for as
-long as anybody cares to wait, so the shape is refused where it is written instead. The limit
-sits well past any array a description means to state, and already past what a build would
-enjoy - ten million literals is a generated file no compiler is happy with - because a shape
-larger than this is a constant that resolved to the wrong number rather than storage anybody
-planned.
-"""
-
-_MAX_DIMENSIONS = 64
-"""How many dimensions one shape states.
-
-Nothing about the storage: sixty-four dimensions of one element each are one element, so
-:data:`_MAX_ELEMENTS` never sees them. What the number bounds is the descent - the walks that
-expand a shape take one call per dimension, so a scalar ``init`` over a few hundred of them
-ended ``ddd generate c`` in python's ``RecursionError``, a traceback where the conventions
-ask for a finding. The same limit :data:`_MAX_TYPE_NESTING` puts on a chain of structures,
-for the same reason, and as far past any array a description means to state: the a2l already
-says out loud that it carries three.
-"""
-
 _MAX_LEAVES = 100_000
 """How many leaves an array of structures contributes.
 
 A leaf is one value member of one element, and it reaches the dictionary as an object of its
 own, the a2l as a record of its own and ``ddd list`` as a row of its own, because no single
 address describes ``cell[0].raw`` and ``cell[1].raw`` at once. Far below
-:data:`_MAX_ELEMENTS`, and for the reason the two differ in the outputs: an array of values
-is one declaration and one ``MATRIX_DIM`` however long it is, where an array of structures
-costs the outputs one entry per member per element.
+:data:`~ddd.models.MAX_ELEMENTS`, and for the reason the two differ in the outputs: an array
+of values is one declaration and one ``MATRIX_DIM`` however long it is, where an array of
+structures costs the outputs one entry per member per element.
 """
 
 _INT_MIN, _INT_MAX = -(2**31), 2**31 - 1
@@ -1651,16 +1630,13 @@ class _Analysis:
         declared = entry.declared
         if isinstance(declared, ScalarType):
             datatype = declared.datatype
-            if not _derived_range_is_finite(
-                declared.conversion, datatype.raw_min, datatype.raw_max
-            ):
+            if not derived_range_is_finite(declared.conversion, datatype.raw_min, datatype.raw_max):
                 location = entry.location("conversion")
                 # What the bag made of the finding, rather than what this check's severity is
                 # today: a variable of the type is to say what nobody said, and whether
                 # anybody did is the bag's answer to give.
                 reported = (
-                    self._bag.add("schema", _infinite_limits_message(datatype), location)
-                    is not None
+                    self._bag.add("schema", infinite_limits_message(datatype), location) is not None
                 )
                 self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
             return
@@ -1672,10 +1648,10 @@ class _Analysis:
                 continue
             assert member.conversion is not None
             storage = _Storage.of_member(member)
-            if not _derived_range_is_finite(member.conversion, storage.raw_min, storage.raw_max):
+            if not derived_range_is_finite(member.conversion, storage.raw_min, storage.raw_max):
                 location = entry.location(f"members[{index}].conversion")
                 reported = (
-                    self._bag.add("schema", _infinite_limits_message(member.datatype), location)
+                    self._bag.add("schema", infinite_limits_message(member.datatype), location)
                     is not None
                 )
                 self._poisoned_types.setdefault(entry.name, _Cause("schema", reported, location))
@@ -2096,18 +2072,22 @@ class _Analysis:
         end rather than a finding.
 
         Three limits, because an array costs the outputs three ways. An array of values is one
-        declaration and one ``MATRIX_DIM`` however long it is, so only :data:`_MAX_ELEMENTS`
-        speaks about it; an array of structures is spread out, so it is weighed in leaves
-        first - the tighter and the more telling of the two answers - and by its elements
-        after, which is what still bounds the element paths of a structure whose members are
-        every one of them opaque and so contributes no leaf at all. :data:`_MAX_DIMENSIONS`
-        is about neither: it bounds how far the walks that expand a shape descend, and it
-        comes first because a shape of a thousand dimensions of one element is under both of
-        the other two.
+        declaration and one ``MATRIX_DIM`` however long it is, so only
+        :data:`~ddd.models.MAX_ELEMENTS` speaks about it; an array of structures is spread out,
+        so it is weighed in leaves first - the tighter and the more telling of the two answers -
+        and by its elements after, which is what still bounds the element paths of a structure
+        whose members are every one of them opaque and so contributes no leaf at all.
+        :data:`~ddd.models.MAX_DIMENSIONS` is about neither: it bounds how far the walks that
+        expand a shape descend, and it comes first because a shape of a thousand dimensions of
+        one element is under both of the other two.
 
         Reported where the shape is written, which is ``size`` on an axis and ``dimensions``
         everywhere else, and routed through :meth:`_refuse` so that the declaration is
-        dropped and the objects referring to it follow it out.
+        dropped and the objects referring to it follow it out. The two limits that need only
+        the definition - the dimensions it states, and its elements where it states every one
+        as a number - are the models' to say as well (:func:`ddd.models.definition_problem`),
+        in these sentences, so that nothing writing a definition offers one that is refused
+        here.
         """
         definition = ref.definition
         spelled = definition.declared_shape
@@ -2121,14 +2101,9 @@ class _Analysis:
         location = ref.location(
             "definition.size" if isinstance(definition, Axis) else "definition.dimensions"
         )
-        if len(spelled) > _MAX_DIMENSIONS:
-            self._refuse(
-                "schema",
-                f"'{ref.name}' has {len(spelled)} dimensions; DDD carries at most "
-                f"{_MAX_DIMENSIONS}",
-                location,
-                ref,
-            )
+        problem = dimensions_problem(ref.name, spelled)
+        if problem is not None:
+            self._refuse("schema", problem, location, ref)
             return False
         elements = math.prod(self._numeric_shape(spelled))
         named = definition.declared_type
@@ -2145,13 +2120,9 @@ class _Analysis:
                     ref,
                 )
                 return False
-        if elements > _MAX_ELEMENTS:
-            self._refuse(
-                "schema",
-                f"'{ref.name}' has {elements} elements; DDD carries at most {_MAX_ELEMENTS}",
-                location,
-                ref,
-            )
+        problem = elements_problem(ref.name, elements)
+        if problem is not None:
+            self._refuse("schema", problem, location, ref)
             return False
         return True
 
@@ -2161,7 +2132,7 @@ class _Analysis:
         shapes: dict[str, tuple[Shape, WrittenShape]],
         owners: dict[str, DeclarationRef | None],
     ) -> list[tuple[str, list[DeclarationRef]]]:
-        """Drop a map whose two axes multiply past `_MAX_ELEMENTS`, keeping everything else.
+        """Drop a map whose two axes multiply past `MAX_ELEMENTS`, keeping everything else.
 
         `_shape_fits` weighs every other shape while a declaration is still being collected,
         but a curve and a map write no `declared_shape` of their own and pass through it
@@ -2187,14 +2158,14 @@ class _Analysis:
             if definition.declared_shape is not None:
                 continue
             elements = math.prod(shapes[name][0])
-            if elements <= _MAX_ELEMENTS:
+            if elements <= MAX_ELEMENTS:
                 continue
             oversized.add(name)
             owner = owners[name] or refs[0]
             self._refuse(
                 "schema",
                 f"{definition.kind.value} '{name}' would hold {elements} elements over its "
-                f"axes; DDD carries at most {_MAX_ELEMENTS}",
+                f"axes; DDD carries at most {MAX_ELEMENTS}",
                 owner.location("definition"),
                 owner,
             )
@@ -2385,19 +2356,22 @@ class _Analysis:
         infinity are not a range the dictionary, the a2l or a calibration tool can carry, so
         the pair is refused where it is written rather than resolved into an object every
         output would choke on; the declaration is dropped and the run reports the rest.
+
+        The question needs nothing of the project, so whatever writes a definition asks it first
+        (:func:`ddd.models.definition_problem`), with the same predicate and the same sentence.
         """
         definition = ref.declaration.definition
         datatype = definition.datatype
         assert datatype is not None
         assert definition.conversion is not None
-        if _derived_range_is_finite(definition.conversion, datatype.raw_min, datatype.raw_max):
+        if derived_range_is_finite(definition.conversion, datatype.raw_min, datatype.raw_max):
             return True
         # Not routed through _refuse: schema cannot be overridden, so the second finding
         # _refuse writes when a cause is silenced would describe what cannot happen here.
         # Whether the drop is explained is still read off the call rather than assumed.
         self._dropped[ref.key] = (
             self._bag.add(
-                "schema", _infinite_limits_message(datatype), ref.location("definition.conversion")
+                "schema", infinite_limits_message(datatype), ref.location("definition.conversion")
             )
             is not None
         )
@@ -3679,14 +3653,3 @@ def _documentation_rank(conversion: EnumConversion) -> tuple[int, tuple[str, ...
     """How well an enum is documented, as a totally ordered, order independent key."""
     descriptions = tuple(e.description for e in conversion.enumerators)
     return (sum(1 for text in descriptions if text), descriptions)
-
-
-def _derived_range_is_finite(conversion: Conversion, raw_min: float, raw_max: float) -> bool:
-    """Whether the physical range of that raw range under that conversion stays finite."""
-    low, high = physical_range(conversion, raw_min, raw_max)
-    return math.isfinite(low) and math.isfinite(high)
-
-
-def _infinite_limits_message(datatype: Datatype) -> str:
-    """One spelling for the three places a datatype and conversion pair can be written."""
-    return f"the limits derived from '{datatype.value}' and this conversion are not finite"

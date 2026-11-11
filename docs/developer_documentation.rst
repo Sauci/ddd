@@ -1102,21 +1102,26 @@ the two can never disagree about it - as ``ddd.lsp.edits.settle`` already does f
 variable's keys, one rule the language server's reconcile quick fix and ``ddd gui``'s
 variable panel both read.
 
-That rule includes what the loader would say of the declaration once a key is written. A rule
+That rule includes what the project would say of the declaration once a key is written. A rule
 between keys - an enumeration wants an integer datatype, a string a byte, one dimension and no
-unit - is held by the models and by no list of keys, so ``settled_at`` asks them, of the
-definition as the key would leave it (``ddd.lsp.edits.loading_problem``, over
-``ddd.models.definition_problem``, which ``ddd.declaration_plans`` asks of a declared object too),
-and a declaration whose answer is a problem is ``Unsettled`` with the reason ``load``. Every
-button - a quick fix, and the page's fix of a ``definition-mismatch`` - is built from
-``reconciliations``, so none of them leaves a file unable to load: the editor leaves such a
-declaration out of an action that reaches several, as it leaves out one a type fixes, and the
-page drops a fix that cannot reach every declaration. The variable's panel is the one client that
-chooses otherwise: ``GET /api/settle`` settles with ``withholding=False``, its reader chose the
-value, and ``unloadable`` in its reply says which declarations would not load and why, in the
-models' sentence, which ``ddd check`` files as ``schema`` once the change is written. The page
-draws each sentence as it comes, above Apply, which stays available: ``unloadableOf``, in
-``gui/src/lib/units.ts`` and under the page's own tests, says which.
+unit - is held by the models and by no list of keys, and the analysis files two more ``schema``
+findings from a definition alone: limits derived from a datatype and a conversion that are not
+finite, and a shape of numbers past the caps. ``settled_at`` asks all of them, of the definition
+as the key would leave it (``ddd.lsp.edits.loading_problem``, over
+``ddd.models.definition_problem``, which ``ddd.declaration_plans`` asks of a declared object too;
+the analysis takes the two rules from the models, so that the sentence is one), and a declaration
+whose answer is a problem is ``Unsettled`` with the reason ``load``. A text ``json.loads`` takes
+and the loader refuses - a key written twice, which an editor's buffer may hold - is such an
+answer as well, in the loader's words, and never an exception. Every button - a quick fix, and the
+page's fix of a ``definition-mismatch`` - is built from ``reconciliations``, so none of them leaves
+a file unable to load: the editor leaves such a declaration out of an action that reaches several,
+as it leaves out one a type fixes, and the page drops a fix that cannot reach every declaration.
+The variable's panel is the one client that chooses otherwise: ``GET /api/settle`` settles with
+``withholding=False``, its reader chose the value, and ``unloadable`` in its reply says which
+declarations would not load and why, in the sentence of the models or the analysis, which ``ddd
+check`` files as ``schema`` once the change is written. The page draws each sentence as it comes,
+above Apply, which stays available: ``unloadableOf``, in ``gui/src/lib/units.ts`` and under the
+page's own tests, says which.
 
 What a key of a variable offers the panel is worked out in ``ddd.variable_keys``: per key,
 and per declaration, whether that declaration's kind has the key at all and whether it

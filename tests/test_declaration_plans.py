@@ -563,6 +563,30 @@ class TestDeclaringSomethingNew:
             '({"kind": "identity"}) is an answer to state, not a default to fall into',
         )
 
+    def test_limits_that_are_not_finite_are_refused_rather_than_planned(self, demo, cache) -> None:
+        # The models take a float64 under a factor of two; the analysis files it as `schema` from
+        # the definition alone, so it is refused here, in the analysis's sentence, before a plan
+        # is made - not left for the file it is written into to be counted as one that did not
+        # load.
+        with pytest.raises(DeclarationRefusalError) as refused:
+            declare_object(
+                demo,
+                CONTROLLER,
+                "output",
+                {
+                    "name": "Pressure",
+                    "kind": "measurement",
+                    "datatype": "float64",
+                    "conversion": {"kind": "linear", "factor": 2},
+                    "volatile": False,
+                },
+                cache,
+            )
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "the limits derived from 'float64' and this conversion are not finite",
+        )
+
     def test_a_stated_datatype_with_its_conversion_is_planned(self, demo, cache) -> None:
         # The same definition, complete - the models have nothing left to refuse, so this is
         # the plan the test above's definition was one key away from.

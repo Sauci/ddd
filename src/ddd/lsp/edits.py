@@ -22,12 +22,15 @@ Four rules keep the writing safe:
   removed from the others to match here. Removing takes exactly one comma with it - the one
   after the member, or the one before it when the member is last - which is the fiddly part
   and the reason this came last.
-* **A fix that would leave a file the loader refuses is not offered.** What a definition is,
-  once the key is written, is asked of the models (:func:`loading_problem`): a rule between keys -
-  an enumeration wants an integer, a string wants a byte and no unit - is theirs and no list of
-  keys says it, and a lightbulb that stops the project loading takes every further fix with it.
-  The variable's panel in ``ddd gui`` is the one client that may write such a value - its reader
-  chose it - and its plan says so (:func:`ddd.variables.unloadable`).
+* **A fix that would leave a file the project refuses is not offered.** What a definition is,
+  once the key is written, is asked of the models and of the rules of the analysis that need
+  nothing but the definition (:func:`loading_problem`): a rule between keys - an enumeration
+  wants an integer, a string wants a byte and no unit - is the models', limits that run past
+  the largest float and a shape past the caps are the analysis's, and no list of keys says any
+  of them. Each is a ``schema`` error, and a lightbulb that stops the project loading takes
+  every further fix with it. The variable's panel in ``ddd gui`` is the one client that may
+  write such a value - its reader chose it - and its plan says so
+  (:func:`ddd.variables.unloadable`).
 
 Every key is offered at most two ways: somebody else's answer brought here, and this one's
 answer sent out. Either may be a value or its absence. They are ordered by which component owns
@@ -495,8 +498,8 @@ class Unsettled:
     reads as json. ``kind``: its kind has no such key, or requires the one being taken out.
     ``type``: it names a declared type that fixes the key to another value. ``storage``: the
     key is the storage it named, or would name it a second way - what
-    :func:`ddd.models.objects.storage_keys` answers. ``load``: the models refuse its definition
-    with the key written, by a rule between keys none of the others holds -
+    :func:`ddd.models.objects.storage_keys` answers. ``load``: the models or the analysis refuse
+    its definition with the key written, by a rule none of the others holds -
     :func:`loading_problem`."""
 
     type_name: str | None = None
@@ -528,20 +531,31 @@ def _type_named(document: Document, definition: str) -> str | None:
 
 
 def loading_problem(document: Document, definition: str, key: str, raw: str | None) -> str | None:
-    """What the loader would refuse of the definition at ``definition`` once ``key`` states
+    """What the project would refuse of the definition at ``definition`` once ``key`` states
     ``raw`` - or states nothing, for ``None`` - or ``None`` where it still loads.
 
-    The definition as the key would leave it, asked of the models
-    (:func:`ddd.models.definition_problem`), and in their words. The declaration is read and
-    never changed: a copy of its members is what is asked, so that a question about a value
-    leaves the document it was asked of as it was. ``definition`` names an object - the
-    precondition :func:`settled_at` checks first and a settlement's sites keep.
+    The definition as the key would leave it, asked of the models and of the rules of the
+    analysis that need nothing but the definition (:func:`ddd.models.definition_problem`), and
+    in their words: what ``ddd check`` files as ``schema``, which ``ddd gui`` counts as a file
+    that did not load. The declaration is read and never changed: a copy of its members is what
+    is asked, so that a question about a value leaves the document it was asked of as it was.
+    ``definition`` names an object - the precondition :func:`settled_at` checks first and a
+    settlement's sites keep.
+
+    ``raw`` is the text of a value in some document, and a document is read as python reads
+    json - an editor's buffer as much as a file - which takes what the loader refuses: a key
+    written twice, ``NaN``. Written into another file that text is a ``json-syntax`` error, so
+    it is answered as the problem it is, in the loader's words, and not raised: a request that
+    raised here ended the language server's run.
     """
     left = {
         member: value for member, value in document.value_at(definition).items() if member != key
     }
     if raw is not None:
-        left[key] = parse_json_text(raw)
+        try:
+            left[key] = parse_json_text(raw)
+        except ValueError as refused:
+            return str(refused)
     return definition_problem(left)
 
 
@@ -578,7 +592,8 @@ def settled_at(
 
     Nor does a declaration take a value that leaves its definition unable to load: what none of
     the rules above can say - an enumeration beside a float, a string beside a unit, limits or
-    anything but one dimension - is the models' to say (:func:`loading_problem`), asked last, of
+    anything but one dimension, limits that run past the largest float - is the models' to say, or
+    the analysis's where it needs nothing of the project (:func:`loading_problem`), asked last, of
     the definition as the key leaves it. A fix whose declaration is refused so is withheld, in the
     editor and in ``ddd gui`` alike, and the project is spared the ``schema`` error that no severity
     turns down. ``withholding=False`` is the one client that chooses otherwise, the variable's

@@ -38,6 +38,7 @@ from conftest import (
     struct_type,
     types,
     value_member,
+    without_ids,
     write_tree,
 )
 from ddd import __version__
@@ -3949,6 +3950,31 @@ class TestFix:
         # Named by the pointer alone: the declaration `/api/fix` was not asked about is left as
         # it was, which a fixture with only one unstamped declaration could not have shown.
         assert "id" not in stamped["component"]["interface"][1]["definition"]
+
+    def test_the_fix_applied_writes_what_ddd_id_writes(self, tmp_path: Path) -> None:
+        """One id, one diff: the page applies the operations it was previewed, and the file is
+        what ``ddd id`` makes of the same description - the id after the name it identifies. The
+        fix used to put it after the last member, and a project's diff showed which of the two
+        had stamped a declaration."""
+        files = {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+        }
+        api = opened(tmp_path / "gui", files)
+        write_tree(tmp_path / "cli", files)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(tmp_path / "gui", "a.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="missing-id",
+        )
+        assert applied(api, reply.body["fixes"][0]).status == 200
+        assert main(["id", "--assign", str(tmp_path / "cli" / "a.ddd.json")]) == EXIT_OK
+        by_the_fix = (tmp_path / "gui" / "a.ddd.json").read_bytes().decode("utf-8")
+        by_the_command = (tmp_path / "cli" / "a.ddd.json").read_bytes().decode("utf-8")
+        assert '"id": "' in by_the_fix
+        assert without_ids(by_the_fix) == without_ids(by_the_command)
 
     def test_a_mismatch_is_previewed(self, tmp_path: Path) -> None:
         # Not applied here too, unlike the missing-id test above: applying is `POST /api/edit`

@@ -15,7 +15,8 @@ Three rules keep that safe:
   its spelling.
 * **An edit follows the file.** A member added to an object written on one line stays on that
   line; one added to an object written one member per line gets a line of its own, indented
-  like the member before it and ended like the line it follows.
+  like the member before it and ended like the line it follows. It goes after the last member -
+  an id after the ``name`` it identifies, as ``ddd id`` has always written it (:data:`_FOLLOWS`).
 * **Every edit is verified.** The operations are applied to the parsed document as well, and
   the edited text has to read back as exactly that document, or nothing is written.
 
@@ -37,7 +38,7 @@ import secrets
 import stat
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -110,6 +111,15 @@ _OPENING: Final = ("{", "[")
 
 DEFAULT_INDENT_UNIT: Final = "  "
 """The indentation unit of a file that nests nothing on a line of its own."""
+
+_FOLLOWS: Final = {"id": "name"}
+"""The member a new member is written after, by its key, where its object states that member: an
+id goes right after the ``name`` it identifies, where ``ddd id`` has always written it and the
+examples spell it. Any other member goes after the last (:func:`member_addition`).
+
+Decided here, where a member's place is decided, rather than by each writer that gives an object
+an id: ``ddd id`` and the fix ``ddd gui`` offers for ``missing-id`` set the same key, and a place
+left to each of them showed in a file's diff which of the two had stamped it."""
 
 _INDEXED: Final = re.compile(r"(.*)\[(\d+)\]")
 
@@ -291,7 +301,8 @@ class TextEdit:
 class Operation:
     """One change at one pointer.
 
-    ``set`` writes ``raw`` at ``pointer``, adding the member when its object lacks it; ``remove``
+    ``set`` writes ``raw`` at ``pointer``, adding the member when its object lacks it - after the
+    last member, or an ``id`` after the ``name`` it identifies (:data:`_FOLLOWS`); ``remove``
     takes the entry away; ``insert`` puts ``raw`` into an array before the index ``pointer``
     ends in, which may be the array's length; ``move`` moves an array's element to index ``to``.
     """
@@ -330,7 +341,8 @@ def replacement(document: Document, pointer: str, raw: str) -> TextEdit:
 def member_addition(
     document: Document, pointer: str, key: str, raw: str, *, verbatim: bool = False
 ) -> TextEdit:
-    """The edit adding ``key: raw`` to the object at ``pointer``, after its last member.
+    """The edit adding ``key: raw`` to the object at ``pointer``, after its last member - or,
+    for an ``id``, after the ``name`` the object states (:data:`_FOLLOWS`).
 
     ``verbatim`` writes ``raw`` exactly as given - a value copied out of another file the way
     its author wrote it - where otherwise it is laid out to fit.
@@ -341,7 +353,15 @@ def member_addition(
     if key in members:
         raise EditError(INVALID, f"{_child(pointer, key)} is already written")
     prefix = f"{json.dumps(key, ensure_ascii=False)}: "
-    return _added(document, pointer, prefix, raw, None, verbatim=verbatim)
+    after = _follows(key, members)
+    return _added(document, pointer, prefix, raw, None, verbatim=verbatim, after=after)
+
+
+def _follows(key: str, members: Mapping[str, Any]) -> str | None:
+    """The member of ``members`` a new member ``key`` is written after, or ``None`` for after the
+    last: the one :data:`_FOLLOWS` names for it, where the object states that."""
+    after = _FOLLOWS.get(key)
+    return after if after in members else None
 
 
 def insertion(document: Document, pointer: str, raw: str, *, verbatim: bool = False) -> TextEdit:
@@ -588,8 +608,11 @@ def _added(
     index: int | None,
     *,
     verbatim: bool,
+    after: str | None = None,
 ) -> TextEdit:
-    """The edit putting ``prefix`` and ``raw`` into a container, before entry ``index`` or last."""
+    """The edit putting ``prefix`` and ``raw`` into a container: before entry ``index``, or after
+    the last entry - or, for an object's member that follows another (``after``), right after
+    that one."""
     text = document.text
     unit = indent_unit(document)
     start, end = _span(document.value_span_of(container))
@@ -608,7 +631,8 @@ def _added(
         return TextEdit(start, end, whole)
     one_line = _on_one_line(document, container)
     if index is None or index == len(entries):
-        at = _span(document.span_of(entries[-1]))[1]
+        preceding = entries[-1] if after is None else _child(container, after)
+        at = _span(document.span_of(preceding))[1]
     else:
         at = _span(document.span_of(entries[index]))[0]
     indent = indent_of_line_at(text, at)
@@ -757,10 +781,25 @@ def _container(document: Any, pointer: str) -> tuple[Any, Any]:
 
 
 def _set_value(document: Any, pointer: str, value: Any) -> Any:
+    """The parsed document with ``value`` set at ``pointer``: replaced where it is, and added
+    where it is not - in the place the text writes a member (:func:`member_addition`), because
+    what an edit is verified against is a document as the text reads back, its members in the
+    order it spells them."""
     if not pointer:
         return value
     container, last = _container(document, pointer)
-    container[last] = value
+    after = (
+        _follows(last, container) if isinstance(container, dict) and last not in container else None
+    )
+    if after is None:
+        container[last] = value
+        return document
+    members = list(container.items())
+    container.clear()
+    for key, held in members:
+        container[key] = held
+        if key == after:
+            container[last] = value
     return document
 
 

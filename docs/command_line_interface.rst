@@ -261,11 +261,15 @@ The commands
        dumps a component on its own, as it does for ``list``.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that
-       has none, as one added line each: the file keeps its byte order mark, its line endings
-       and its formatting, and the new text is staged beside it and renamed onto it, so a run
-       that dies leaves a hand-authored description as it was. A declaration that has one is
-       left alone, so a second run changes nothing. The identity is what lets ``ddd compare`` report a rename as a
-       rename, and what ``missing-id`` asks for.
+       has none, as one added line each, right after the declaration's ``name``: the file keeps
+       its byte order mark, its line endings, its formatting and its mode, and the new text is
+       staged beside it, under a name of its own, and renamed onto it - onto the file a
+       symbolic link names, which stays a link - so a run that dies leaves a hand-authored
+       description as it was. A declaration that has one is left alone, so a second run changes
+       nothing. A file that is read-only, or that is not json as ``ddd check`` reads it - one
+       that spells a key twice in an object, or holds ``NaN`` - is reported and left as it is,
+       and the others are stamped. The identity is what lets ``ddd compare`` report a rename as
+       a rename, and what ``missing-id`` asks for.
    * - ``ddd schema KIND``
      - print the json schema of ``component``, ``constants``, ``dictionary``, ``project``,
        ``rasters``, ``sections``, ``types`` or ``units``, for an editor that offers completion

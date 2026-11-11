@@ -40,9 +40,11 @@ from conftest import (
     struct_type,
     types,
     value_member,
+    without_ids,
     write_tree,
 )
 from ddd.build_info import BUILD_INFO_FILENAME, BUILD_INFO_FORMAT, BuildInfo
+from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.editing import INVALID, EditError, Operation, edit_text
 from ddd.loading import load_workspace
@@ -6263,6 +6265,46 @@ class TestOfferingAnIdentity:
         written = json.loads(apply_edits(path, edits))
         stamped = written["component"]["interface"][0]["definition"]["id"]
         assert re.fullmatch(OBJECT_ID_PATTERN, stamped)
+
+    def test_an_id_stated_as_null_is_replaced_by_the_offer(self, tmp_path: Path) -> None:
+        """What ``ddd dump`` writes of an unstamped object, and what ``missing-id`` reports as it
+        reports the key's absence: the offer fills the ``null`` in rather than adding a second
+        ``id``."""
+        from ddd.lsp.edits import actions
+        from ddd.models.common import OBJECT_ID_PATTERN
+
+        built = self.built(
+            tmp_path, **{"a.ddd.json": component("A", declare("local", "Speed", id=None))}
+        )
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "a.ddd.json"
+        offered = actions(
+            built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
+        )
+        (giving,) = [entry for entry in offered if "id" in entry["title"]]
+        (edits,) = giving["edit"]["changes"].values()
+        written = apply_edits(path, edits)
+        assert "null" not in written
+        stamped = json.loads(written)["component"]["interface"][0]["definition"]["id"]
+        assert re.fullmatch(OBJECT_ID_PATTERN, stamped)
+
+    def test_the_offer_writes_what_ddd_id_writes(self, tmp_path: Path) -> None:
+        """The editor, the page and the command put an id in one place: right after the name."""
+        from ddd.lsp.edits import actions
+
+        files = {"a.ddd.json": component("A", declare("local", "Speed"))}
+        built = self.built(tmp_path / "editor", **files)
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "editor" / "a.ddd.json"
+        offered = actions(
+            built, path, read(path, cache), "component.interface[0].definition", cache, UNSTAMPED
+        )
+        (giving,) = [entry for entry in offered if "id" in entry["title"]]
+        (edits,) = giving["edit"]["changes"].values()
+        write_tree(tmp_path / "command", files)
+        assert main(["id", "--assign", str(tmp_path / "command" / "a.ddd.json")]) == EXIT_OK
+        by_the_command = (tmp_path / "command" / "a.ddd.json").read_text(encoding="utf-8")
+        assert without_ids(apply_edits(path, edits)) == without_ids(by_the_command)
 
     def test_the_offer_carries_the_finding_it_settles(self, tmp_path: Path) -> None:
         """Which is what puts the lightbulb on the squiggle rather than leaving it to be found."""

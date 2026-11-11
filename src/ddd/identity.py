@@ -6,6 +6,13 @@ read is exactly what makes a tool that edits hand-authored sources dangerous. Wh
 this command is that the project is in git - the tool proposes, the diff is reviewed, a
 checkout undoes it - and that justification only holds while the diff is one line per object.
 
+The writing is the edit engine's (:mod:`ddd.editing`), the one every description ``ddd gui``
+changes is written by: :func:`assign` hands it one operation for each declaration that wants an
+id (:func:`stamp`), and gets a file that keeps its mode, written through a link to the file the
+link names, staged under a name of its own and looked at once more right before it is renamed
+into place - and one the loader refuses, a key spelled twice or ``NaN``, left as it is. The
+engine writes the key right after the declaration's ``name``.
+
 The text positions come from :mod:`ddd.lsp.ranges`, which is a json-pointer-to-text utility
 that happens to live under the language server; the command reuses it rather than growing a
 second scanner that would drift from it.
@@ -20,14 +27,21 @@ touches the filesystem; everything above it works on a document it is handed.
 
 from __future__ import annotations
 
-import codecs
-import contextlib
+import json
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ddd.editing import indent_of_line_at, newline_at
+from ddd.editing import (
+    EditError,
+    FileChange,
+    Operation,
+    apply_changes,
+    indent_of_line_at,
+    newline_at,
+)
+from ddd.loading import fingerprint, parse_json_text, resolve_path
 from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 from ddd.models.component import Scope
 
@@ -46,31 +60,25 @@ an exception this module has no business raising.
 """
 
 UNREADABLE = -1
-"""What :func:`assign` returns for a file it could not read as json, which is not zero.
+"""What :func:`assign` returns for a file DDD does not read as json, which is not zero.
 
-``ranges.read`` answers an unreadable or half-written file with an empty document rather than
-an exception, so "nothing to do" and "could not read it" arrive here looking identical. The
-command exits non-zero on the second and says nothing about the first.
+That is a file that is not json at all, and one the loader refuses although python's parser
+reads it - a key spelled twice in one object, ``NaN`` - which ``ddd check`` reports as
+``json-syntax``. ``ranges.read`` answers an unreadable or half-written file with an empty
+document rather than an exception, so "nothing to do" and "could not read it" arrive here
+looking identical. The command exits non-zero on the second and says nothing about the first.
 """
 
 UNWRITABLE = -2
-"""What :func:`assign` returns for a file it read, had ids for, and could not write back.
+"""What :func:`assign` returns for a file it read, had ids for, and the edit engine would not
+write back, or could not.
 
-A read-only file in a checkout, or one an editor is holding: the command is given a list of
-files and stamps what it can, so a write that fails is reported like a read that failed and
-the files after it are still stamped. Collapsed into one answer the way :data:`UNREADABLE`
-collapses the several reasons a file cannot be read: what the caller does about either is to
-look at that one file.
-"""
-
-STAGING_SUFFIX = ".ddd-staging"
-"""What :func:`assign` appends to a description's name to stage its new bytes beside it.
-
-The same spelling the artefact writer stages under, and for the same reason it gives: a name
-no project gives a file of its own, so a leftover of a run that died is ours by construction
-and overwriting it is right. Spelled here rather than imported from
-:mod:`ddd.backends.base`, which would put jinja2 and every backend behind ``ddd id``; a test
-pins the two together.
+A read-only file in a checkout, or one an editor is holding; one saved while the command was at
+it, which the engine refuses rather than write over; a full disk. The command is given a list of
+files and stamps what it can, so a write that fails is reported like a read that failed and the
+files after it are still stamped. Collapsed into one answer the way :data:`UNREADABLE` collapses
+the several reasons a file cannot be read: what the caller does about either is to look at that
+one file.
 """
 
 
@@ -112,12 +120,13 @@ def unstamped(document: Document) -> list[tuple[str, bool]]:
 
 @dataclass(frozen=True, slots=True)
 class Insertion:
-    """Where an id belongs in a description's text, and what to write there.
+    """Where an id belongs in a description's text, and what to write there: the language
+    server's quick fix, which offers the edit on one declaration as a text edit with a range.
 
-    Two callers need this answer and must not disagree about it: :func:`assign` rewrites the
-    file, and the language server offers the same edit on one declaration. Both read it from
-    here rather than each working out where the key goes - the reasoning this module already
-    applies to reusing one scanner rather than growing a second of its own.
+    The command and the page's fix state the same edit as an operation for the edit engine
+    (:func:`stamp`), which writes the key in the same place, right after the name, and in the
+    same layout where the object is written one member to a line; a test holds the two to one
+    text.
     """
 
     pointer: str
@@ -161,49 +170,61 @@ def insertions(document: Document) -> list[Insertion]:
     return found
 
 
+def stamp(definition: str) -> Operation:
+    """The operation giving the declaration at the pointer ``definition`` a fresh identity.
+
+    What the command and the page's fix for ``missing-id`` each hand the edit engine, which
+    writes the ``id`` right after the declaration's ``name`` - or, where the declaration states
+    one as ``null``, in place of that ``null`` - in the layout of the file around it
+    (:func:`ddd.editing.member_addition`). Spelled once, here, so that the two cannot ask for
+    one edit in two ways; a fresh id per call, so a caller applies the answer it was given
+    rather than asking again.
+    """
+    return Operation("set", f"{definition}.id", json.dumps(new_id()))
+
+
 def assign(path: Path) -> int:
     """Write an id into every producing declaration of ``path`` that lacks one.
 
-    Returns how many were written, :data:`UNREADABLE` for a file that is not json, or
-    :data:`UNWRITABLE` for one that could not be written back. A file that reads but declares
-    no data objects is left exactly as it was and reports zero: the loader is what has
-    something to say about a description, and this command must not rewrite one it could not
-    read.
+    Returns how many were written, :data:`UNREADABLE` for a file DDD does not read as json, or
+    :data:`UNWRITABLE` for one the edit engine refused or could not write back. A file that
+    reads but declares no data objects is left exactly as it was and reports zero: the loader is
+    what has something to say about a description, and this command must not rewrite one it
+    could not read.
+
+    The file is the one ``path`` names, followed through a symbolic link: the engine stages the
+    new bytes beside the file it writes and renames them onto it, which on the link's own name
+    replaces the link with a copy and leaves the file the link names as it was - a description
+    shared between projects, forked in silence. Resolved as the loader and ``ddd gui`` resolve
+    a path (:func:`ddd.loading.resolve_path`).
     """
     from ddd.lsp.ranges import Document
 
-    # The bytes as they are, not the text ``read`` would normalise them into: the document is
-    # scanned with every line ending as written, so an edit lands between the same bytes it
-    # was computed against, and writing the rest back unchanged is what turns a command that
-    # edits hand-authored sources into a one line diff per object.
+    path = resolve_path(path)
+    # The bytes as they are: their fingerprint is what the engine checks the edit against, and
+    # a byte order mark is the engine's to keep. Read as the loader reads a description, not as
+    # python's parser does - which takes a key spelled twice and ``NaN`` - because what the
+    # loader refuses this command must not rewrite, and the engine would refuse to edit it.
     try:
         raw = path.read_bytes()
         text = raw.decode("utf-8-sig")
-    except (OSError, UnicodeDecodeError):
+        parse_json_text(text)
+    except (OSError, ValueError):  # a decoding error is one
         return UNREADABLE
     document = Document(text)
     if document.data is None:
         return UNREADABLE
-    wanted = insertions(document)
+    wanted = unstamped(document)
     if not wanted:
         return 0
-    # Back to front, so an insertion never moves the offset of the one before it.
-    for entry in reversed(wanted):
-        text = f"{text[: entry.offset]}{entry.text}{text[entry.offset + entry.length :]}"
-    mark = codecs.BOM_UTF8 if raw.startswith(codecs.BOM_UTF8) else b""
-    # Staged beside the file and renamed onto it, the way every artefact DDD writes is. What
-    # this command edits is hand-authored and under review rather than regenerated, so a
-    # write that dies partway through - a full disk, a kill between the truncation and the
-    # write - has nothing to put back: the one copy of those bytes was the file itself.
-    staging = path.with_name(path.name + STAGING_SUFFIX)
     try:
-        staging.write_bytes(mark + text.encode("utf-8"))
-        staging.replace(path)
-    except OSError:
+        apply_changes(
+            [FileChange(path, fingerprint(raw), tuple(stamp(found) for found, _ in wanted))]
+        )
+    except EditError:
         # The command is handed a list of files and stamps what it can: a file it may not
-        # write - read-only in the checkout, held open by an editor - is one file to report,
-        # not a reason to leave the rest of the list untouched and print no total.
-        with contextlib.suppress(OSError):
-            staging.unlink()
+        # write - read-only in the checkout, held open by an editor, saved while it worked - is
+        # one file to report, not a reason to leave the rest of the list untouched and print
+        # no total.
         return UNWRITABLE
     return len(wanted)

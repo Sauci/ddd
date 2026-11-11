@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -30,6 +31,7 @@ from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.protocol import read_message, write_message
+from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 DEMO = EXAMPLES / "demo" / "demo.ddd.json"
@@ -132,6 +134,16 @@ def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
         written = content if isinstance(content, str) else json.dumps(content, indent=2)
         path.write_text(written, encoding="utf-8", newline="")
     return base
+
+
+def without_ids(text: str) -> str:
+    """A description with every id it states, twelve characters, spelled as one placeholder.
+
+    What two writers made of one file differs in nothing but the ids they minted, when each put
+    its id in the same place: the text of the one is the text of the other once those are
+    taken out.
+    """
+    return re.sub(rf'"id": "[{OBJECT_ID_ALPHABET}]{{{OBJECT_ID_LENGTH}}}"', '"id": "<id>"', text)
 
 
 def built_of(tmp_path: Path, **files: Any) -> tuple[Index, Path]:

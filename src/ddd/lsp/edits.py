@@ -167,10 +167,12 @@ def _give_an_identity(
 ) -> dict[str, Any] | None:
     """Offer this declaration an identity, when it produces the object and states none.
 
-    The same answer ``ddd id --assign`` would give, decided in the same place: which
-    declarations want one, and where the key goes, are :mod:`ddd.identity`'s to say, so the
-    editor and the command cannot drift about it. Only the applying differs - the command
-    rewrites the file, this returns an edit and lets the client do it.
+    The same answer ``ddd id --assign`` would give. Which declarations want one is
+    :mod:`ddd.identity`'s to say (:func:`~ddd.identity.unstamped`), and the key goes right after
+    the name, where the edit engine writes it for the command and for the page's fix and
+    :func:`~ddd.identity.insertions` computes it here; a test holds the three to one text. Only
+    the applying differs - the command rewrites the file, this returns an edit and lets the
+    client do it.
     """
     wanted = next(
         (

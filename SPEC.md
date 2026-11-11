@@ -2108,14 +2108,17 @@ errors included, which is where it parts from `generate` ([section 5](#5-generat
 and a build archiving a delivery therefore gates on the exit code rather than on the file
 appearing); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
-description files textually - the new key is staged in a sibling file and renamed onto the
-description, so a run that dies leaves it as it was), so that a later `ddd compare`
+description files textually, as `ddd gui` writes an edit - the new key goes right after the
+declaration's `name`, and is staged in a sibling file under a name of its own and renamed onto
+the description, which keeps its mode and, for a symbolic link, is the file the link names,
+so a run that dies leaves it as it was), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing, an explicit `"id": null` is filled in place, a file that is not a component
-description is left alone, and a file that cannot be parsed, that nests more deeply than
-a position in it can be located, or that cannot be written back, is reported while the
-others are stamped, the run exiting 1;
+description is left alone, and a file that is not json as `ddd check` reads it - one that
+spells a key twice in an object, or holds `NaN`, among them - that nests more deeply than
+a position in it can be located, or that cannot be written back, a read-only file among
+them, is reported while the others are stamped, the run exiting 1;
 printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`

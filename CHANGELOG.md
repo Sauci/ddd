@@ -16,6 +16,23 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
+* **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
+  the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
+  Linux a file kept `0600` came out with the mode a new file gets, a file kept read-only was
+  rewritten and left writable, and a symbolic link was replaced by a regular file holding the id,
+  while the file it named stayed as it was, so a description shared between projects by a link was
+  forked in silence; and a description was read by python's parser, so one that spells a key twice
+  in an object, or holds `NaN`, which `ddd check` refuses as `json-syntax`, was stamped - `wrote 1
+  id`, exit 0.  It now writes by the engine `ddd gui` writes with: the file keeps its mode, a
+  read-only file is reported as one that cannot be written and left as it was, a link is written
+  through to the file it names and stays a link, and a file `ddd check` would refuse to read is
+  reported as not readable as json and left alone, whether or not it had an id to give.  Each is
+  reported while the other files are stamped, and the run exits 1, as for any file it could not
+  stamp.  The key goes right after the declaration's `name`, as it always did, and so now does the
+  key the `missing-id` fix of `ddd gui` writes, which went after the object's last key.  A
+  description that spells a key twice has to be corrected first, as `ddd check` has always asked.
+  No file format changes.
+
 * **A toolbox, and its first tool: `ddd tool from-elf`.**  It reads a linked ELF image and its
   DWARF debug information and prints the DDD declarations of the C variables named or matched
   on the command line - kind, datatype, shape, enumerators, structure members, initial value

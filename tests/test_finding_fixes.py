@@ -5,8 +5,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import built_of, checks, component, declare, messages, scalar_type, types
+import pytest
+
+from conftest import (
+    built_of,
+    checks,
+    component,
+    declare,
+    messages,
+    scalar_type,
+    types,
+    without_ids,
+)
 from ddd.analysis import analyze
+from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import DiagnosticBag
 from ddd.editing import edit_text
 from ddd.finding_fixes import fixes_for
@@ -65,6 +77,79 @@ class TestAnIdentity:
         )
         (fix,) = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built)
         assert fix.changes[0].operations[0].pointer == f"{DEFINITION}.id"
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            pytest.param(
+                json.dumps(component("A", declare("output", "Speed", unit="rpm")), indent=2),
+                id="indented-two-spaces",
+            ),
+            pytest.param(
+                json.dumps(component("A", declare("output", "Speed", unit="rpm")), indent="\t"),
+                id="indented-with-tabs",
+            ),
+            pytest.param(
+                json.dumps(
+                    component("A", declare("output", "Speed", unit="rpm")), indent=2
+                ).replace("\n", "\r\n"),
+                id="crlf",
+            ),
+            pytest.param(
+                json.dumps(
+                    component("A", declare("output", "Speed", unit="rpm", id=None)), indent=2
+                ),
+                id="stated-as-null",
+            ),
+            pytest.param(
+                '{"component": {"name": "A", "interface": [{"scope": "output", "definition": '
+                '{ "name": "Speed", "kind": "measurement", "datatype": "uint8", '
+                '"conversion": {"kind": "identity"}, "volatile": false }}]}}',
+                id="written-on-one-line",
+            ),
+            pytest.param(
+                json.dumps(
+                    {
+                        "component": {
+                            "name": "A",
+                            "interface": [
+                                {
+                                    "scope": "output",
+                                    "definition": {
+                                        "kind": "measurement",
+                                        "name": "Speed",
+                                        "unit": "rpm",
+                                        "datatype": "uint8",
+                                        "conversion": {"kind": "identity"},
+                                        "volatile": False,
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                    indent=2,
+                ),
+                id="name-not-first",
+            ),
+        ],
+    )
+    def test_the_fix_writes_what_ddd_id_writes(self, tmp_path: Path, description: str) -> None:
+        """Which declarations want an id is decided once, and so is where it goes: the page's fix
+        and the command leave one description in one text, the id after the name it identifies
+        whatever the file's layout - or, stated as ``null``, in place of it."""
+        built, root = built_of(tmp_path / "page", **{"a.ddd.json": description})
+        page = root / "a.ddd.json"
+        (fix,) = fixes_for("missing-id", page, DEFINITION, {}, built)
+        (edit,) = fix.changes
+        by_the_fix = edit_text(page.read_bytes().decode("utf-8"), edit.operations)
+        command = tmp_path / "command" / "a.ddd.json"
+        command.parent.mkdir()
+        command.write_bytes(description.encode("utf-8"))
+        assert main(["id", "--assign", str(command)]) == EXIT_OK
+        by_the_command = command.read_bytes().decode("utf-8")
+        assert by_the_fix != description
+        assert '"id": "' in by_the_fix
+        assert without_ids(by_the_fix) == without_ids(by_the_command)
 
     def test_a_lone_declaration_has_nothing_to_reconcile(self, tmp_path: Path) -> None:
         # A variable one component declares has no mismatch and no fix: there is nobody to

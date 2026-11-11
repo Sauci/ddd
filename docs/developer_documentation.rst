@@ -84,8 +84,9 @@ project and a pre-commit hook once per file - are answered without building a si
 contract. ``names.py`` is what makes that possible: the handful of spellings argparse reads
 while it is still deciding what was asked for, in a module that imports nothing, each of them
 the one definition of its name. ``identity.py`` makes an object
-identity and writes one into a description file textually, so that ``ddd id --assign``
-produces a diff of one line per object rather than a reformatted document. ``build_info.py``
+identity and hands the edit engine the operation that writes one into a description file
+textually, so that ``ddd id --assign`` produces a diff of one line per object rather than a
+reformatted document, and writes a file as ``ddd gui`` does. ``build_info.py``
 is the hand-off from a build to an editor: which project description was configured, and
 under which severity policy, neither of which any ``*.ddd.json`` file records.
 
@@ -1126,7 +1127,8 @@ among them. ``GET /api/findings``, ``GET /api/variable``, ``GET /api/unit`` and 
 /api/type`` all carry that answer on every finding they list. ``ddd.finding_fixes`` plans
 the one fix a finding has nowhere else to offer: a ``missing-id`` finding's identity, from
 the same walk ``ddd.identity.unstamped`` gives ``ddd id`` and the language server's own
-quick fix, written as the operations ``POST /api/edit`` takes rather than as a text edit;
+quick fix, written as the operations ``POST /api/edit`` takes rather than as a text edit - the
+operation ``ddd id`` hands the engine too (``ddd.identity.stamp``);
 ``GET /api/fix`` previews it, as ``GET /api/settle`` previews a settlement.
 ``ddd.lsp.edits.settle`` itself now compares what a value means rather than its own text,
 the same ``ddd.value_identity.same_value`` the panel's values in play already read - which

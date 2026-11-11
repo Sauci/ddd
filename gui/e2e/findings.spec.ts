@@ -143,8 +143,9 @@ test("a missing id is fixed", async ({ page, gui }) => {
 
   await panel.getByRole("button", { name: "Give 'ValueH' an id" }).click();
   await panel.getByRole("button", { name: "Show changes" }).click();
+  // Written right after the name, where `ddd id` writes it, so another member follows it.
   const added = panel.locator(".hunk .added").filter({ hasText: '"id":' });
-  await expect(added).toHaveText(/^\+\s*"id": "[abcdefghjkmnpqrstvwxyz0-9]{12}"$/);
+  await expect(added).toHaveText(/^\+\s*"id": "[abcdefghjkmnpqrstvwxyz0-9]{12}",$/);
 
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();

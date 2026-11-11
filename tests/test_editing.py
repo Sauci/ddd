@@ -258,6 +258,99 @@ class TestSet:
         assert refused.value.code == INVALID
 
 
+UNSTAMPED = (
+    "{\n"
+    '  "component": {\n'
+    '    "name": "A",\n'
+    '    "interface": [\n'
+    "      {\n"
+    '        "scope": "output",\n'
+    '        "definition": {\n'
+    '          "name": "S",\n'
+    '          "kind": "measurement",\n'
+    '          "volatile": false\n'
+    "        }\n"
+    "      }\n"
+    "    ]\n"
+    "  }\n"
+    "}\n"
+)
+"""A component whose one declaration states its name first and no id."""
+
+STAMPED_AS = '          "name": "S",\n          "id": "k7m2q9xr4t8w",\n'
+"""The lines of :data:`UNSTAMPED` an id given to the declaration goes into: right after its name."""
+
+
+class TestAnIdentity:
+    """An id is written after the ``name`` it identifies, where ``ddd id`` has always written it
+    and the examples spell it, and where the page's fix and the editor's must put it as well:
+    which of them gave a declaration its id is not something its file should show."""
+
+    def test_an_id_goes_after_the_name_and_not_after_the_last_member(self):
+        stamped = edited(UNSTAMPED, Operation("set", f"{DEFINITION}.id", '"k7m2q9xr4t8w"'))
+        assert stamped == UNSTAMPED.replace('          "name": "S",\n', STAMPED_AS)
+
+    def test_the_line_it_adds_ends_like_the_line_it_follows(self):
+        crlf = UNSTAMPED.replace("\n", "\r\n")
+        stamped = edited(crlf, Operation("set", f"{DEFINITION}.id", '"k7m2q9xr4t8w"'))
+        assert stamped == crlf.replace(
+            '          "name": "S",\r\n', STAMPED_AS.replace("\n", "\r\n")
+        )
+
+    def test_an_id_joins_an_object_written_on_one_line_after_its_name_on_that_line(self):
+        stamped = edited(MULTI, Operation("set", f"{DEFINITION}.id", '"k7m2q9xr4t8w"'))
+        assert stamped == MULTI.replace(
+            '"name": "S", "kind"', '"name": "S", "id": "k7m2q9xr4t8w", "kind"'
+        )
+
+    def test_an_id_goes_last_in_an_object_with_no_name_to_follow(self):
+        stamped = edited('{"a": 1, "b": 2}', Operation("set", "id", '"k7m2q9xr4t8w"'))
+        assert stamped == '{"a": 1, "b": 2, "id": "k7m2q9xr4t8w"}'
+
+    def test_an_id_stated_as_null_is_replaced_where_it_stands(self):
+        text = '{ "name": "S", "kind": "measurement", "id": null, "volatile": false }'
+        stamped = edited(text, Operation("set", "id", '"k7m2q9xr4t8w"'))
+        assert stamped == text.replace("null", '"k7m2q9xr4t8w"')
+
+    def test_any_other_member_still_goes_after_the_last(self):
+        """The rule is the id's: a key that identifies nothing is written where the file ends
+        its object."""
+        stamped = edited(UNSTAMPED, Operation("set", f"{DEFINITION}.unit", '"rpm"'))
+        assert stamped == UNSTAMPED.replace(
+            '          "volatile": false\n',
+            '          "volatile": false,\n          "unit": "rpm"\n',
+        )
+
+    def test_the_ids_of_two_declarations_and_the_edit_after_them_are_made_in_one_batch(self):
+        """Each is verified against the document it was meant to leave, in the order the file
+        spells it: an id written after the name and expected after the last member would read
+        back as another document, and nothing would be written."""
+        two = UNSTAMPED.replace(
+            "      }\n    ]",
+            "      },\n      {\n"
+            '        "scope": "output",\n'
+            '        "definition": {\n'
+            '          "name": "T",\n'
+            '          "kind": "measurement",\n'
+            '          "volatile": false\n'
+            "        }\n"
+            "      }\n    ]",
+        )
+        stamped = edited(
+            two,
+            Operation("set", "component.interface[0].definition.id", '"k7m2q9xr4t8w"'),
+            Operation("set", "component.interface[1].definition.id", '"b3n5p8s2v6y9"'),
+            Operation("set", "component.interface[1].definition.unit", '"rpm"'),
+        )
+        name = '          "name": "T",\n'
+        last = '          "volatile": false\n        }\n      }\n    ]'
+        assert stamped == (
+            two.replace('          "name": "S",\n', STAMPED_AS)
+            .replace(name, name + '          "id": "b3n5p8s2v6y9",\n')
+            .replace(last, last.replace("false\n", 'false,\n          "unit": "rpm"\n', 1))
+        )
+
+
 class TestTabs:
     """A file indented with tabs is edited with tabs."""
 

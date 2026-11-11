@@ -185,6 +185,17 @@ class TestIndentationUnit:
     def test_the_unit_is_read_off_the_first_entry_on_a_line_of_its_own(self, text, unit):
         assert indent_unit(Document(text)) == unit
 
+    def test_the_unit_is_read_where_a_key_holding_a_dot_takes_the_walk_back(self):
+        """The scan records the member ``"b.x"`` under the pointer of the ``x`` nested in ``b``,
+        the last spelling winning: the walk reaches it from ``b``, on the last line, and from the
+        value it holds goes back up into the ``x`` of ``b``, whose ``a`` opens on a line indented
+        by two and holds ``b`` on one indented by four - a unit of two. The lines are read
+        forward, and from the start of the text again for an entry behind the last one asked
+        about: read on from the last line, the line ``a`` opens on was taken for the last line,
+        indented by nothing, and the unit for four."""
+        text = '{\n"b":{\n  "x":{\n  "a":{\n    "b":1}}},\n"b.x":{}}'
+        assert indent_unit(Document(text)) == "  "
+
 
 class TestSet:
     def test_a_value_is_replaced_and_nothing_else_moves(self):

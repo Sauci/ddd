@@ -31,7 +31,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   stamp.  The key goes right after the declaration's `name`, as it always did, and so now does the
   key the `missing-id` fix of `ddd gui` writes, which went after the object's last key.  A
   description that spells a key twice has to be corrected first, as `ddd check` has always asked.
-  No file format changes.
+  The time a file takes to stamp grows with the file, where it grew with its square.  No file
+  format changes.
 
 * **A toolbox, and its first tool: `ddd tool from-elf`.**  It reads a linked ELF image and its
   DWARF debug information and prints the DDD declarations of the C variables named or matched
@@ -45,8 +46,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 * **`ddd gui` stays responsive on large projects.**  An edit shows at once and its findings
   follow once the project has been analysed again; a change replacing many plain values in one
-  large file, as renaming a unit its declarations state does, is planned and written from one
-  reading of that file rather than one per value; its Findings tab reads its findings a page
+  large file, as renaming a unit its declarations state does, or giving many of its objects a
+  plain value they lack, is planned and written from one reading of that file rather than one per
+  value, and a key added to a file written on one line costs a time that grows with the file,
+  where it grew with its square; its Findings tab reads its findings a page
   at a time as the reader scrolls it, rather than every one at once; and its component table,
   Types, Units, Shared files and Files tabs, a component's own declarations, a unit's own
   places and a variable's keys draw only the rows in view.

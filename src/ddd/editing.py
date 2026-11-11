@@ -109,6 +109,9 @@ _WHITESPACE: Final = " \t\r\n"
 _STRUCTURE: Final = "{}[]:,"
 _OPENING: Final = ("{", "[")
 
+_INK: Final = re.compile(r"\S")
+"""A character that is not whitespace, as ``str.strip`` reads whitespace."""
+
 DEFAULT_INDENT_UNIT: Final = "  "
 """The indentation unit of a file that nests nothing on a line of its own."""
 
@@ -169,10 +172,13 @@ def newline_at(text: str, offset: int) -> str:
     ``\\n`` alone answered "line feed" for a file written with bare carriage returns, which has
     none at all. A text with no line break after ``offset`` is given ``\\n``, there being
     nothing to copy.
+
+    The carriage return is looked for no further than the line feed: in a file of line feeds
+    alone the search for one went on to the end of the text, for every id ``ddd id`` gave it.
     """
-    carriage = text.find("\r", offset)
     feed = text.find("\n", offset)
-    if carriage >= 0 and (feed < 0 or carriage < feed):
+    carriage = text.find("\r", offset, len(text) if feed < 0 else feed)
+    if carriage >= 0:
         return "\r\n" if carriage + 1 == feed else "\r"
     return "\n"
 
@@ -184,8 +190,16 @@ def indent_of_line_at(text: str, offset: int) -> str:
     four spaces gets four. A line is what ``\\n`` ends, the way every position DDD hands out
     counts lines.
     """
-    start = text.rfind("\n", 0, offset) + 1
-    return text[start : len(text) - len(text[start:].lstrip())]
+    return _indentation(text, text.rfind("\n", 0, offset) + 1)
+
+
+def _indentation(text: str, start: int) -> str:
+    """The whitespace ``text`` holds from ``start`` on, as ``str.lstrip`` strips it, read forward
+    to the first character that is not whitespace. It was read by stripping it off the rest of
+    the text, which copied all of that: for every id ``ddd id`` gave a file, and for every entry
+    of a file written on one line looked at for its indentation unit (:func:`indent_unit`)."""
+    ink = _INK.search(text, start)
+    return text[start : len(text) if ink is None else ink.start()]
 
 
 @dataclass(slots=True)
@@ -319,7 +333,7 @@ def indent_unit(document: Document) -> str:
     The first entry written on a line of its own, less the indentation of the line its
     container opens on; :data:`DEFAULT_INDENT_UNIT` for a file that nests nothing that way.
     """
-    return _unit_below(document, "") or DEFAULT_INDENT_UNIT
+    return _unit_below(document, "", _Lines(document.text)) or DEFAULT_INDENT_UNIT
 
 
 def replacement(document: Document, pointer: str, raw: str) -> TextEdit:
@@ -410,10 +424,13 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
     A batch none of whose operations can depend on another (:func:`_independent`) is made from
     the one reading instead, and the text it leaves is read once and compared as the text one
     operation leaves is. A unit is renamed by a set at every declaration stating it, hundreds of
-    places in one component file of a large project, and the file was read again after each of
-    them. A batch made at once that is refused, or does not read back as the document it was
-    meant to leave, is made again one operation at a time, which answers what it always has: the
-    same text, or the same refusal.
+    places in one component file of a large project, and ``ddd id`` gives every declaration of a
+    file an id, thousands of members added to one file; the file was read again after each of
+    them. One reading compares the whole document every operation was meant to leave, so an
+    operation whose edit wrote what it was not meant to fails it as the reading after that
+    operation would have. A batch made at once that is refused, or does not read back as the
+    document it was meant to leave, is made again one operation at a time, which answers what it
+    always has: the same text, or the same refusal.
     """
     unreadable = "the file is not json DDD reads, so no pointer names a place in it"
     document = _read(text, UNREADABLE, unreadable)
@@ -426,38 +443,74 @@ def edit_text(text: str, operations: Sequence[Operation]) -> str:
 
 def _independent(document: Document, operations: Sequence[Operation]) -> bool:
     """Whether every operation can be tried on the text as it was read, none depending on what
-    another one writes: each a ``set`` of a value the document holds, at a pointer spelled the way
-    the scan spells one, which is no other operation's pointer and nests within none of them, to
-    a value given as text that opens neither an object nor an array - a literal, or text that is
-    no json at all and is refused when it is made.
+    another one writes: each a ``set`` at a pointer spelled the way the scan spells one, which is
+    no other operation's pointer and nests within none of them, to a value given as text that
+    opens neither an object nor an array - a literal, or text that is no json at all and is
+    refused when it is made. Each sets a value the document holds, or adds a member to an object
+    that holds members already and is given no other one, under a pointer the scan recorded
+    nothing at (:func:`_gaining`); and a batch that adds a member sets no literal in place of an
+    object or an array.
 
     Anything else may depend on what another operation leaves. An ``insert`` or a ``remove``
     writes or takes a comma beside its neighbours, and in an array moves the elements after it to
     other indices; a ``move`` is both; and a set within a value another set replaces, and the same
-    pointer set twice, answer otherwise in another order. A member added to an object, and an
-    object or an array set in place of a value, are laid out to fit the lines around them, which
-    a set beside them can change: replacing a value an object writes over several lines with a
-    literal can put the object on one line, which a member added to it then joins, and the
-    indentation unit is read off the first entry the file writes on a line of its own, which may
-    be inside a value another set replaces. A literal is written as it is spelled, whatever lines
-    are around it.
+    pointer set twice, answer otherwise in another order. An object or an array set in place of a
+    value is laid out to fit the lines around it, in the indentation unit read off the first
+    entry the file writes on a line of its own, which may be inside a value another set replaces.
+    A literal is written as it is spelled, whatever lines are around it.
+
+    A member added is laid out to fit the lines around it as well: on the line of an object
+    written on one line, or on a line of its own indented like the line the member before it ends
+    on, and ended like it. A literal set in place of another leaves every line as it was, and so
+    does a member added to another object, which joins a line or splits one into two indented
+    alike. A literal set in place of an object or an array can take lines away: replacing a value
+    an object writes over several lines can put the object on one line, which a member added to
+    it then joins. Two members added to one object are laid out one after the other, the second
+    after the first; and the member added to an object holding none, in a container written over
+    lines, goes on a line of its own indented by the file's unit, which is read off the first
+    entry on a line of its own - a member added before it can be that entry.
     """
     pointers = {operation.pointer for operation in operations}
     if len(pointers) < len(operations):
         return False
+    gaining: set[str] = set()
+    replaces_a_container = False
     for operation in operations:
         if operation.op != "set" or not isinstance(operation.raw, str):
             return False
-        if operation.raw.lstrip(_WHITESPACE)[:1] in _OPENING:
+        if _structured(operation.raw) or not _spelled(operation.pointer):
             return False
-        if not _spelled(operation.pointer) or not _holds(document, operation.pointer):
-            return False
+        if _holds(document, operation.pointer):
+            replaced = document.value_at(operation.pointer)
+            replaces_a_container = replaces_a_container or isinstance(replaced, dict | list)
+        else:
+            gains = _gaining(document, operation.pointer)
+            if gains is None or gains in gaining:
+                return False
+            gaining.add(gains)
         within = operation.pointer
         while within:
             within = parent_pointer(within)
             if within in pointers:
                 return False
-    return True
+    return not (gaining and replaces_a_container)
+
+
+def _gaining(document: Document, pointer: str) -> str | None:
+    """The object a set at ``pointer`` adds a member to, where the pointer names a member that an
+    object holding members already has not got, and no text the scan recorded; ``None`` for any
+    other place the document holds nothing at - an element past the end of an array, a member of
+    what is not an object, or of an object holding none.
+
+    The scan records a member whose key holds a dot under the pointer the grammar reads it as,
+    which may be the one a member added takes: ``{"b.c": 1, "b": {...}}`` records ``b.c``, and
+    once ``b`` is given a ``c`` the pointer names that one, for every operation made after it -
+    one at a time, and not at once."""
+    if _indexed(pointer) is not None or document.span_of(pointer) is not None:
+        return None
+    parent = parent_pointer(pointer)
+    members = document.value_at(parent)
+    return parent if isinstance(members, dict) and members else None
 
 
 def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | None:
@@ -466,19 +519,26 @@ def _made_at_once(document: Document, operations: Sequence[Operation]) -> str | 
     operation was meant to leave, for :func:`_made_in_turn` to answer as it answers any batch.
 
     Only for a batch :func:`_independent` lets through, each of whose edits is a literal as
-    spelled, over where the value it replaces sits. :func:`replacement` measures the lines around
-    the value first, which a literal never reads, copying the text from the value's line to its
-    end for every operation.
+    spelled, over where the value it replaces sits, or a member added to an object the way
+    :func:`member_addition` adds one to the text as it was read - which no other edit of the batch
+    changes where the member reads it. :func:`replacement` measures the lines around the value
+    first, which a literal never reads, copying the text from the value's line to its end for
+    every operation.
     """
     expected = copy.deepcopy(document.data)
     edits: list[TextEdit] = []
     try:
         for operation in operations:
             raw = _raw_of(operation)
-            start, end = _span(document.value_span_of(operation.pointer))
-            # A literal is the one token it is spelled as, so the layout given here is never read.
-            literal = lay_out(raw, one_line=True, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
-            edits.append(TextEdit(start, end, literal))
+            if _holds(document, operation.pointer):
+                start, end = _span(document.value_span_of(operation.pointer))
+                # A literal is the one token it is spelled as, so the layout given is never read.
+                literal = lay_out(
+                    raw, one_line=True, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n"
+                )
+                edits.append(TextEdit(start, end, literal))
+            else:
+                edits.append(_set_edit(document, operation.pointer, raw))
             expected = _set_value(expected, operation.pointer, parse_raw(raw))
         made = _read(
             _all_applied(document.text, edits), UNVERIFIED, "an edit left the file unreadable"
@@ -612,33 +672,44 @@ def _added(
 ) -> TextEdit:
     """The edit putting ``prefix`` and ``raw`` into a container: before entry ``index``, or after
     the last entry - or, for an object's member that follows another (``after``), right after
-    that one."""
+    that one.
+
+    The lines around the place are measured only where the layout reads them. An entry joining
+    a container written on one line is laid out on that line, whatever the lines say, and only a
+    value that opens an object or an array is laid out in the file's indentation unit, over lines
+    of its own (:func:`_structured`). Measured for every entry, they cost ``ddd id`` a search of
+    the rest of the file for each id it gave, and a file written on one line a look at every entry
+    it holds for the unit, for each member added to it."""
     text = document.text
-    unit = indent_unit(document)
     start, end = _span(document.value_span_of(container))
     entries = _entries(document, container)
     if not entries:
         # Rewritten whole, holding its one entry, in the layout of the container around it.
-        base = indent_of_line_at(text, start)
-        newline = newline_at(text, start)
         if _around_on_one_line(document, container):
-            value = _value(raw, verbatim, one_line=True, indent=base, unit=unit, newline=newline)
+            value = _value_on_one_line(raw, verbatim)
             inner = f" {prefix}{value} " if text[start] == "{" else f"{prefix}{value}"
             return TextEdit(start, end, f"{text[start]}{inner}{text[end - 1]}")
+        base = indent_of_line_at(text, start)
+        newline = newline_at(text, start)
+        unit = indent_unit(document)
         deeper = base + unit
         value = _value(raw, verbatim, one_line=False, indent=deeper, unit=unit, newline=newline)
         whole = f"{text[start]}{newline}{deeper}{prefix}{value}{newline}{base}{text[end - 1]}"
         return TextEdit(start, end, whole)
-    one_line = _on_one_line(document, container)
     if index is None or index == len(entries):
         preceding = entries[-1] if after is None else _child(container, after)
         at = _span(document.span_of(preceding))[1]
     else:
         at = _span(document.span_of(entries[index]))[0]
-    indent = indent_of_line_at(text, at)
-    newline = newline_at(text, at)
-    value = _value(raw, verbatim, one_line=one_line, indent=indent, unit=unit, newline=newline)
-    separator = ", " if one_line else f",{newline}{indent}"
+    if _on_one_line(document, container):
+        value = _value_on_one_line(raw, verbatim)
+        separator = ", "
+    else:
+        indent = indent_of_line_at(text, at)
+        newline = newline_at(text, at)
+        unit = indent_unit(document) if _structured(raw) else DEFAULT_INDENT_UNIT
+        value = _value(raw, verbatim, one_line=False, indent=indent, unit=unit, newline=newline)
+        separator = f",{newline}{indent}"
     if index is None or index == len(entries):
         return TextEdit(at, at, f"{separator}{prefix}{value}")
     return TextEdit(at, at, f"{prefix}{value}{separator}")
@@ -651,6 +722,18 @@ def _value(
         parse_raw(raw)
         return raw.strip()
     return lay_out(raw, one_line=one_line, indent=indent, unit=unit, newline=newline)
+
+
+def _value_on_one_line(raw: str, verbatim: bool) -> str:
+    """``raw`` as an entry joining a line writes it: laid out on one line, which reads nothing of
+    the lines around it - neither their indentation, nor how they end, nor the file's unit."""
+    return _value(raw, verbatim, one_line=True, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
+
+
+def _structured(raw: str) -> bool:
+    """Whether a value given as json text opens an object or an array: the only kind
+    :func:`lay_out` can write over lines, a literal being the one token it is spelled as."""
+    return raw.lstrip(_WHITESPACE)[:1] in _OPENING
 
 
 def _entries(document: Document, pointer: str) -> list[str]:
@@ -684,19 +767,66 @@ def _around_on_one_line(document: Document, pointer: str) -> bool:
     return _on_one_line(document, parent_pointer(pointer) if pointer else "")
 
 
-def _unit_below(document: Document, pointer: str) -> str | None:
-    text = document.text
+def _unit_below(document: Document, pointer: str, lines: _Lines) -> str | None:
+    """The unit :func:`indent_unit` reads off the first entry under ``pointer`` written on a line
+    of its own - a line feed between its container's opening and it - and indented deeper than
+    the line its container opens on; ``None`` for a value holding no such entry. The entries are
+    taken in the order the text writes them, each before the ones it holds, which is the order
+    ``lines`` is asked about them in."""
     opening = _span(document.value_span_of(pointer))[0]
-    outer = indent_of_line_at(text, opening)
+    outer = lines.indent_at(opening)
     for entry in _entries(document, pointer):
         start = _span(document.span_of(entry))[0]
-        inner = indent_of_line_at(text, start)
-        if "\n" in text[opening:start] and len(inner) > len(outer) and inner.startswith(outer):
-            return inner[len(outer) :]
-        found = _unit_below(document, entry)
+        if lines.start_at(start) > opening:
+            inner = lines.indent_at(start)
+            if len(inner) > len(outer) and inner.startswith(outer):
+                return inner[len(outer) :]
+        found = _unit_below(document, entry, lines)
         if found is not None:
             return found
     return None
+
+
+class _Lines:
+    """Where the lines of a text start, and how each is indented, for offsets asked in the order
+    the text writes them (:func:`_unit_below`): the text between two offsets is searched once for
+    a line feed, and a line's indentation read once, however many entries sit there.
+
+    Each entry used to be asked for the line it sits on by searching back from it to the line's
+    start, and for that line's indentation by copying the rest of the text: in a file written on
+    one line, where no entry has a line of its own and every one is asked, the square of its size.
+    """
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self._reached = 0
+        self._start = 0
+        """Where the line holding ``_reached`` starts."""
+        self._indented = (-1, "")
+        """The start of the line last asked for its indentation, and that indentation."""
+
+    def start_at(self, offset: int) -> int:
+        """Where the line ``offset`` sits on starts: just past the line feed before it, or at the
+        start of the text.
+
+        An offset before the last one asked starts the search again from the start of the text.
+        Only a key holding a dot asks one: the scan records such a member under the pointer of
+        the member nested in its neighbour that the pointer spells, and the walk goes from the one
+        to the other and back (``tests/test_editing.py``)."""
+        if offset < self._reached:
+            self._reached = self._start = 0
+        feed = self._text.rfind("\n", self._reached, offset)
+        if feed >= 0:
+            self._start = feed + 1
+        self._reached = offset
+        return self._start
+
+    def indent_at(self, offset: int) -> str:
+        """The leading whitespace of the line ``offset`` sits on (:func:`indent_of_line_at`)."""
+        start = self.start_at(offset)
+        if self._indented[0] != start:
+            self._indented = (start, _indentation(self._text, start))
+        return self._indented[1]
 
 
 def _holds(document: Document, pointer: str) -> bool:

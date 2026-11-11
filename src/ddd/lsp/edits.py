@@ -9,7 +9,7 @@ that too" - so this is a code action, offered where the cursor is rather than ap
 one. That is the better shape anyway: a client shows a multi-file code action in a preview
 first, so nobody's files change without being seen.
 
-Three rules keep the writing safe:
+Four rules keep the writing safe:
 
 * **The value is copied as source text, never re-serialised.** ``{ "kind": "linear", "factor":
   0.5 }`` arrives in the other file looking the way its author wrote it. Round-tripping it
@@ -22,6 +22,12 @@ Three rules keep the writing safe:
   removed from the others to match here. Removing takes exactly one comma with it - the one
   after the member, or the one before it when the member is last - which is the fiddly part
   and the reason this came last.
+* **A fix that would leave a file the loader refuses is not offered.** What a definition is,
+  once the key is written, is asked of the models (:func:`loading_problem`): a rule between keys -
+  an enumeration wants an integer, a string wants a byte and no unit - is theirs and no list of
+  keys says it, and a lightbulb that stops the project loading takes every further fix with it.
+  The variable's panel in ``ddd gui`` is the one client that may write such a value - its reader
+  chose it - and its plan says so (:func:`ddd.variables.unloadable`).
 
 Every key is offered at most two ways: somebody else's answer brought here, and this one's
 answer sent out. Either may be a value or its absence. They are ordered by which component owns
@@ -47,6 +53,7 @@ from typing import Any, Final, Literal
 from ddd.analysis import close_units
 from ddd.editing import EditError, TextEdit, member_addition, removal
 from ddd.identity import insertions
+from ddd.loading import parse_json_text
 from ddd.lsp.navigation import Index, Site, renameable_at
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
@@ -57,7 +64,7 @@ from ddd.lsp.units import (
     text_edits,
     unit_drift,
 )
-from ddd.models import definition_keys
+from ddd.models import definition_keys, definition_problem
 from ddd.models.objects import FIXED_BY_A_TYPE, STORAGE_NAMES, storage_keys
 from ddd.value_identity import same_value
 
@@ -483,15 +490,20 @@ class Unsettled:
     """One declaration a settlement cannot change, and why not."""
 
     site: Site
-    reason: Literal["unreachable", "kind", "type", "storage"]
+    reason: Literal["unreachable", "kind", "type", "storage", "load"]
     """``unreachable``: its file no longer names the variable at that pointer, or no longer
     reads as json. ``kind``: its kind has no such key, or requires the one being taken out.
     ``type``: it names a declared type that fixes the key to another value. ``storage``: the
     key is the storage it named, or would name it a second way - what
-    :func:`ddd.models.objects.storage_keys` answers."""
+    :func:`ddd.models.objects.storage_keys` answers. ``load``: the models refuse its definition
+    with the key written, by a rule between keys none of the others holds -
+    :func:`loading_problem`."""
 
     type_name: str | None = None
     """The declared type that fixes the key, when ``reason`` is ``type``."""
+
+    problem: str | None = None
+    """What the models say of the definition with the key written, when ``reason`` is ``load``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -515,8 +527,33 @@ def _type_named(document: Document, definition: str) -> str | None:
     return typename if isinstance(typename, str) else None
 
 
+def loading_problem(document: Document, definition: str, key: str, raw: str | None) -> str | None:
+    """What the loader would refuse of the definition at ``definition`` once ``key`` states
+    ``raw`` - or states nothing, for ``None`` - or ``None`` where it still loads.
+
+    The definition as the key would leave it, asked of the models
+    (:func:`ddd.models.definition_problem`), and in their words. The declaration is read and
+    never changed: a copy of its members is what is asked, so that a question about a value
+    leaves the document it was asked of as it was. ``definition`` names an object - the
+    precondition :func:`settled_at` checks first and a settlement's sites keep.
+    """
+    left = {
+        member: value for member, value in document.value_at(definition).items() if member != key
+    }
+    if raw is not None:
+        left[key] = parse_json_text(raw)
+    return definition_problem(left)
+
+
 def settled_at(
-    built: Index, site: Site, name: str, key: str, raw: str | None, cache: dict[Path, Document]
+    built: Index,
+    site: Site,
+    name: str,
+    key: str,
+    raw: str | None,
+    cache: dict[Path, Document],
+    *,
+    withholding: bool = True,
 ) -> Settled | Unsettled | None:
     """What one declaration does about ``raw`` for ``key``: take it, refuse it, or nothing.
 
@@ -538,6 +575,15 @@ def settled_at(
     out, or a ``typename`` written beside one, leaves storage named twice or not at all - by what
     the two keys mean, the same way :func:`_type_named` reads ``typename`` above, so an explicit
     ``null`` beside a stated ``datatype`` is a plain declaration and not one caught here either.
+
+    Nor does a declaration take a value that leaves its definition unable to load: what none of
+    the rules above can say - an enumeration beside a float, a string beside a unit, limits or
+    anything but one dimension - is the models' to say (:func:`loading_problem`), asked last, of
+    the definition as the key leaves it. A fix whose declaration is refused so is withheld, in the
+    editor and in ``ddd gui`` alike, and the project is spared the ``schema`` error that no severity
+    turns down. ``withholding=False`` is the one client that chooses otherwise, the variable's
+    panel: its reader chose the value, so it is settled, and what the loader will say of it is told
+    before it is written (:func:`ddd.variables.unloadable`).
     """
     document = _at_site(site, name, cache)
     if document is None:
@@ -559,11 +605,21 @@ def settled_at(
     accepted, required = _keys_of(document, site.pointer)
     if (raw is None and key in required) or (raw is not None and key not in accepted):
         return Unsettled(site, "kind")
+    if withholding:
+        problem = loading_problem(document, site.pointer, key, raw)
+        if problem is not None:
+            return Unsettled(site, "load", problem=problem)
     return Settled(site, raw)
 
 
 def settle(
-    built: Index, name: str, key: str, raw: str | None, cache: dict[Path, Document]
+    built: Index,
+    name: str,
+    key: str,
+    raw: str | None,
+    cache: dict[Path, Document],
+    *,
+    withholding: bool = True,
 ) -> Settlement:
     """Which declarations of ``name`` change for every one of them to state ``raw`` as ``key``,
     and which of them cannot.
@@ -573,11 +629,14 @@ def settle(
     instead, because its reader chose a value for the variable and a change that reaches only
     some of its declarations is not the one they chose. Deciding here, once, is what keeps the
     editor and the page from disagreeing about what a change touches.
+
+    ``withholding`` is :func:`settled_at`'s, passed to every declaration: ``False`` settles a
+    value that leaves a definition unable to load, which only the panel's reader may ask for.
     """
     changes: list[Settled] = []
     unsettled: list[Unsettled] = []
     for site in built.declarations.get(name, ()):
-        decided = settled_at(built, site, name, key, raw, cache)
+        decided = settled_at(built, site, name, key, raw, cache, withholding=withholding)
         if isinstance(decided, Settled):
             changes.append(decided)
         elif decided is not None:

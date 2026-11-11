@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Container, Iterable
+from collections.abc import Container, Iterable, Mapping
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, cast, get_args
 
@@ -12,6 +12,8 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    TypeAdapter,
+    ValidationError,
     model_validator,
 )
 
@@ -951,8 +953,10 @@ def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:
     between models cannot be left behind in a copy of the answer.
 
     The caller is an editor offering to change one key of one definition. Both halves are what
-    stops it offering an edit that produces a file the loader then refuses - removing a key the
-    kind requires, or writing one the kind does not have.
+    stops it offering an edit that removes a key the kind requires, or writes one the kind does
+    not have: the keys one at a time, which is the cheap half of what keeps it from offering an
+    edit that produces a file the loader then refuses. The other half is the rules between keys,
+    which no list of keys can express and :func:`definition_problem` asks the models.
     """
     variant = _VARIANTS.get(kind)
     if variant is None:
@@ -965,6 +969,37 @@ def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:
         frozenset(fields),
         frozenset(name for name, field in fields.items() if field.is_required()),
     )
+
+
+_DEFINITION: Final[TypeAdapter[AnyDataObject]] = TypeAdapter(AnyDataObject)
+"""The union :class:`~ddd.models.component.Declaration` validates a ``definition`` against, built
+once: compiling a discriminated union's schema is not free, and every plan asks it."""
+
+
+def definition_problem(definition: Mapping[str, object]) -> str | None:
+    """The first thing the loader would refuse of a definition written like this, in one
+    sentence, or ``None`` where the model of its ``kind`` takes it.
+
+    The question an edit has to ask of the definition *as it would leave it*, before it is
+    offered or made: a key written against another - an enumeration beside a float, a string
+    beside a unit - is a ``schema`` error, which no severity setting turns down and which stops
+    the project being analysed at all. What the models do not hold, because only the project
+    knows it - a ``typename`` naming a type nobody declares, an axis that is not there - is no
+    answer of theirs, and stays a finding the analysis reports.
+
+    A rule crossing keys raises one english sentence, which pydantic wraps as ``"Value error,
+    <that sentence>"``: unwrapped here, rather than shown wrapped, since it is what a person can
+    act on. A key of the wrong shape has no such sentence to unwrap, and is said as pydantic
+    says it - the first of what ``ddd check`` files, in the order it files them. The caller's
+    mapping is read and not changed.
+    """
+    try:
+        _DEFINITION.validate_python(definition)
+    except ValidationError as error:
+        first = error.errors(include_url=False)[0]
+        cause = first.get("ctx", {}).get("error")
+        return str(cause) if isinstance(cause, Exception) else first["msg"]
+    return None
 
 
 def discriminator_tags(*unions: Any) -> frozenset[str]:

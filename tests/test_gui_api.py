@@ -20,6 +20,8 @@ import ddd.gui.queries as queries_module
 import ddd.gui.session as session_module
 from conftest import (
     EXAMPLES,
+    FLOAT_BESIDE_ENUM,
+    TEXT,
     Gated,
     begun,
     build_record,
@@ -31,6 +33,7 @@ from conftest import (
     looped,
     lying_under,
     membership,
+    messages,
     offered_beside,
     project,
     scalar_type,
@@ -44,7 +47,7 @@ from conftest import (
 from ddd import __version__
 from ddd.cli import EXIT_OK, main
 from ddd.declaration_plans import PRODUCING_SCOPES
-from ddd.diagnostics import CHECKS, Location, Severity
+from ddd.diagnostics import CHECKS, DiagnosticBag, Location, Severity
 from ddd.editing import UNREADABLE, UNVERIFIED, UNWRITABLE, EditError, fingerprint
 from ddd.file_plans import CREATABLE
 from ddd.findings_by_file import FindingsByFile
@@ -63,6 +66,7 @@ from ddd.gui.derived import Derived
 from ddd.gui.queries import AddRaster, AddSection
 from ddd.gui.routes import Policy
 from ddd.gui.session import Filed, Revision, Session
+from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document
 from ddd.object_values import grid_of
@@ -82,6 +86,14 @@ TYPED = {
     "types.ddd.json": types(scalar_type("Speed_t", unit="rpm")),
     "a.ddd.json": component("A", declare("output", "Speed", typename="Speed_t")),
     "b.ddd.json": component("B", declare("input", "Speed", "uint16", unit="%")),
+}
+
+# A writer storing uint16 and a reader that reads text, which only a byte can hold: the writer's
+# datatype is a value in play on the panel, and the reader would stop loading with it.
+TEXT_READER = {
+    "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+    "w.ddd.json": component("W", declare("output", "V", "uint16")),
+    "r.ddd.json": component("R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])),
 }
 
 # A project whose one file declaring `Torque` was saved half-edited, as an editor saves a file
@@ -3755,7 +3767,7 @@ class TestSettle:
 
     def test_when_every_declaration_agrees_there_is_nothing_to_change(self, api: Api) -> None:
         reply = get(api, "/api/settle", name="Speed", key="unit", raw='"rpm"')
-        assert reply.body == {"revision": 1, "changes": []}
+        assert reply.body == {"revision": 1, "changes": [], "unloadable": []}
 
     def test_without_a_value_the_key_is_taken_out(self, api: Api) -> None:
         changes = get(api, "/api/settle", name="Speed", key="unit").body["changes"]
@@ -3881,6 +3893,86 @@ class TestSettle:
         assert "b.ddd.json" in reply.body["message"]
         assert contents(tmp_path) == before
 
+    def test_a_value_that_would_leave_a_file_unable_to_load_is_planned_with_a_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """The panel's datatype row offers the writer's uint16, which is in play, and the reader
+        reads text: a string conversion needs a byte datatype. The reader chose the value, so it is
+        planned, and says what the file will do - written and reported, where the same fix of a
+        finding is withheld (``TestFix``)."""
+        api = opened(tmp_path, TEXT_READER)
+        reply = get(api, "/api/settle", name="V", key="datatype", raw='"uint16"')
+        assert reply.status == 200
+        assert [change["file"] for change in reply.body["changes"]] == [
+            posix(tmp_path, "r.ddd.json")
+        ]
+        assert reply.body["unloadable"] == [
+            "the declaration of 'V' in r.ddd.json would not load with that datatype: "
+            "a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'"
+        ]
+
+    def test_that_sentence_is_what_the_loader_says_once_the_value_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        """Applied all the same: the plan said the file would not load, and the next analysis
+        reports it, in the same words."""
+        api = opened(tmp_path, TEXT_READER)
+        preview = get(api, "/api/settle", name="V", key="datatype", raw='"uint16"').body
+        assert applied(api, preview).status == 200
+        bag = DiagnosticBag()
+        assert load_workspace(tmp_path / "p.ddd.json", bag) is not None
+        assert "a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'" in (
+            messages(bag)
+        )
+
+    def test_taking_a_key_out_that_a_declaration_cannot_do_without_is_planned_with_a_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """A string states one dimension, and settling the key on none takes it from the reader
+        as well as the writer: both files change, and one of them stops loading."""
+        files = {
+            "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+            "w.ddd.json": component("W", declare("output", "V", "uint8", dimensions=[8])),
+            "r.ddd.json": component(
+                "R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+        }
+        reply = get(opened(tmp_path, files), "/api/settle", name="V", key="dimensions")
+        assert reply.status == 200
+        assert len(reply.body["changes"]) == 2
+        assert reply.body["unloadable"] == [
+            "the declaration of 'V' in r.ddd.json would not load with that dimensions: "
+            "a string states exactly one dimension, its length in bytes, got none; an array of "
+            "strings is written as an array of structures with a string member"
+        ]
+
+    def test_the_sentences_follow_the_files_and_not_the_order_the_project_includes_them_in(
+        self, tmp_path: Path
+    ) -> None:
+        files = {
+            "p.ddd.json": project("P", "w.ddd.json", "r2.ddd.json", "r1.ddd.json"),
+            "w.ddd.json": component("W", declare("output", "V", "uint16")),
+            "r1.ddd.json": component(
+                "R1", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+            "r2.ddd.json": component(
+                "R2", declare("input", "V", "sint8", conversion=TEXT, dimensions=[4])
+            ),
+        }
+        reply = get(
+            opened(tmp_path, files), "/api/settle", name="V", key="datatype", raw='"uint16"'
+        )
+        why = "a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'"
+        assert reply.body["unloadable"] == [
+            f"the declaration of 'V' in r1.ddd.json would not load with that datatype: {why}",
+            f"the declaration of 'V' in r2.ddd.json would not load with that datatype: {why}",
+        ]
+
+    def test_a_value_that_loads_is_planned_with_no_sentence(self, api: Api) -> None:
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"%"')
+        assert reply.status == 200
+        assert reply.body["unloadable"] == []
+
     def test_a_container_value_spelled_differently_but_meaning_the_producers_is_settled(
         self, tmp_path: Path
     ) -> None:
@@ -4004,6 +4096,27 @@ class TestFix:
         (change,) = reply.body["fixes"][0]["changes"]
         assert change["file"] == posix(root, "b.ddd.json")
         assert change["hunks"], "the reader is shown the line it would change"
+
+    def test_a_fix_whose_result_would_not_load_is_not_offered(self, tmp_path: Path) -> None:
+        """The first button of the reader, until the loader refused the file it wrote: it took the
+        writer's float32 under an enumeration. The next fix is the one that settles the same
+        mismatch by the writer's conversion, and leaves both files loading."""
+        files = {"p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"), **FLOAT_BESIDE_ENUM}
+        api = opened(tmp_path, files)
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(tmp_path, "r.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert reply.status == 200
+        assert [fix["title"] for fix in reply.body["fixes"]] == ["Use the conversion declared in w"]
+        assert applied(api, reply.body["fixes"][0]).status == 200
+        bag = DiagnosticBag()
+        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
+        assert workspace is not None
+        assert "schema" not in [diagnostic.check for diagnostic in bag], messages(bag)
 
     def test_a_fix_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, api: Api, root: Path, monkeypatch: pytest.MonkeyPatch

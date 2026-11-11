@@ -9,7 +9,7 @@ import re
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
@@ -70,6 +70,35 @@ def declare(
     if condition is not None:
         entry["condition"] = condition
     return entry
+
+
+MODE_T: Final = {
+    "kind": "enum",
+    "name": "Mode_t",
+    "enumerators": [{"name": "MODE_OFF", "value": 0}, {"name": "MODE_ON", "value": 1}],
+}
+"""An enumeration, which storage that is not an integer cannot hold exactly: a float32 that is
+given it stops loading."""
+
+TEXT: Final = {"kind": "string"}
+"""Bytes read as text: stated on a byte datatype and one dimension, and with no unit and no limits -
+anything else a declaration is given beside it stops loading."""
+
+
+FLOAT_BESIDE_ENUM: Final = {
+    "w.ddd.json": component("W", declare("output", "V", "float32")),
+    "r.ddd.json": component("R", declare("input", "V", "uint8", conversion=MODE_T)),
+}
+"""A writer storing a float and a reader whose enumeration needs an integer to hold it: of the
+fixes the two of them are offered, one writes the float under the enumeration, another the
+enumeration into the float writer, and the rest leave both files loading."""
+
+UNIT_BESIDE_TEXT: Final = {
+    "w.ddd.json": component("W", declare("output", "V", "uint8", unit="rpm", dimensions=[8])),
+    "r.ddd.json": component("R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])),
+}
+"""A writer stating a unit and a reader that reads text, which has none to state: the unit written
+into the reader, and the text into the writer, stop a file loading."""
 
 
 # One family for the other half of a description - the types a declaration names. Five test

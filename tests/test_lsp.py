@@ -24,7 +24,10 @@ from generate_project import generate
 from conftest import (
     DEMO,
     EXAMPLES,
+    FLOAT_BESIDE_ENUM,
     INCONSISTENT,
+    TEXT,
+    UNIT_BESIDE_TEXT,
     answered,
     build_record,
     built_of,
@@ -6776,6 +6779,187 @@ class TestWhatAReconcileActionSettles:
         assert answer["result"], "the unit disagreement is still offered a fix"
         for action in answer["result"]:
             assert [entry["code"] for entry in action["diagnostics"]] == ["definition-mismatch"]
+
+
+class TestAFixThatWouldNotLoad:
+    """A quick fix is offered only where every file it writes still loads.
+
+    What the loader refuses of a definition is the models' to say - an enumeration on a float, a
+    string beside a unit - and no kind's key list and no storage rule says it: a fix that writes
+    one leaves a file that stops loading, the project is no longer analysed, and every further
+    fix is refused until somebody mends it by hand.
+    """
+
+    AT_A_DECLARATION = "component.interface[0].definition"
+
+    def offered(self, tmp_path: Path, source: str, **files: Any) -> list[dict[str, Any]]:
+        """What the editor offers on the declaration of ``source``, over the whole of it."""
+        from ddd.lsp.edits import actions
+
+        built, _ = built_of(tmp_path, **files)
+        cache: dict[Path, Document] = {}
+        path = tmp_path / source
+        return actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache)
+
+    def titles(self, tmp_path: Path, source: str, **files: Any) -> list[str]:
+        return [action["title"] for action in self.offered(tmp_path, source, **files)]
+
+    def test_a_datatype_is_not_taken_from_a_float_writer_beside_an_enumeration(
+        self, tmp_path: Path
+    ) -> None:
+        """The preferred fix of the reader, and one the loader then refuses: 'enum conversion
+        'Mode_t' requires an integer datatype, got 'float32''."""
+        assert "Use the datatype declared in w" not in self.titles(
+            tmp_path, "r.ddd.json", **FLOAT_BESIDE_ENUM
+        )
+
+    def test_an_enumeration_is_not_given_to_the_float_writer(self, tmp_path: Path) -> None:
+        assert "Apply this conversion to 1 other declaration of 'V'" not in self.titles(
+            tmp_path, "r.ddd.json", **FLOAT_BESIDE_ENUM
+        )
+
+    def test_a_float_is_not_given_to_the_reader_of_an_enumeration(self, tmp_path: Path) -> None:
+        assert "Apply this datatype to 1 other declaration of 'V'" not in self.titles(
+            tmp_path, "w.ddd.json", **FLOAT_BESIDE_ENUM
+        )
+
+    def test_a_unit_is_not_taken_by_a_string_reader(self, tmp_path: Path) -> None:
+        """'a string has no unit, got 'rpm''."""
+        assert "Use the unit declared in w" not in self.titles(
+            tmp_path, "r.ddd.json", **UNIT_BESIDE_TEXT
+        )
+
+    def test_a_string_is_not_given_to_a_writer_stating_a_unit(self, tmp_path: Path) -> None:
+        assert "Apply this conversion to 1 other declaration of 'V'" not in self.titles(
+            tmp_path, "r.ddd.json", **UNIT_BESIDE_TEXT
+        )
+
+    def test_the_fixes_that_leave_every_file_loading_are_still_offered(
+        self, tmp_path: Path
+    ) -> None:
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **FLOAT_BESIDE_ENUM) == [
+            "Apply this datatype to 1 other declaration of 'V'",
+            "Use the conversion declared in w",
+        ]
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **FLOAT_BESIDE_ENUM) == [
+            "Apply this conversion to 1 other declaration of 'V'"
+        ]
+
+    def test_the_preferred_fix_is_one_that_loads(self, tmp_path: Path) -> None:
+        """The slot goes to the first fix left: the one the lightbulb applies on its own."""
+        from ddd.lsp.edits import actions
+
+        built, _ = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
+        cache: dict[Path, Document] = {}
+        path = tmp_path / "r.ddd.json"
+        reported = [{"code": "definition-mismatch", "source": "ddd", "message": "differs"}]
+        offered = actions(built, path, read(path, cache), self.AT_A_DECLARATION, cache, reported)
+        (preferred,) = [entry for entry in offered if entry.get("isPreferred")]
+        assert preferred["title"] == "Apply this datatype to 1 other declaration of 'V'"
+
+    def test_a_fix_is_offered_for_the_declarations_that_load_and_not_for_the_one_that_does_not(
+        self, tmp_path: Path
+    ) -> None:
+        """An editor offers what it can: of two readers, one reads text and the writer's datatype
+        would stop it loading, so the fix reaches the other and says so."""
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint16")),
+            "r1.ddd.json": component(
+                "R1", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+            "r2.ddd.json": component("R2", declare("input", "V", "uint32")),
+        }
+        offered = self.offered(tmp_path, "w.ddd.json", **files)
+        (spread,) = [entry for entry in offered if "datatype" in entry["title"]]
+        assert spread["title"] == "Apply this datatype to 1 other declaration of 'V'"
+        assert [uri_to_path(uri).name for uri in spread["edit"]["changes"]] == ["r2.ddd.json"]
+
+    def test_a_dimension_is_not_taken_away_from_a_string(self, tmp_path: Path) -> None:
+        """'a string states exactly one dimension, its length in bytes, got none': the writer
+        states no dimension, so the reader is its only declaration that does, and taking it away
+        settles the disagreement on paper."""
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint8")),
+            "r.ddd.json": component(
+                "R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+        }
+        assert self.titles(tmp_path, "r.ddd.json", **files) == [
+            "Use the conversion declared in w",
+            "Apply this dimensions to 1 other declaration of 'V'",
+        ]
+
+    def test_the_lightbulb_the_server_answers_offers_only_what_loads(self, tmp_path: Path) -> None:
+        """Through the protocol, as an editor asks: the reader's declaration, with the finding it
+        carries, is offered what still loads - the preferred fix among them."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", *FLOAT_BESIDE_ENUM), **FLOAT_BESIDE_ENUM})
+        build_record(tmp_path, tmp_path / "p.ddd.json")
+        reader = tmp_path / "r.ddd.json"
+        span = Document(reader.read_text(encoding="utf-8")).range_of(self.AT_A_DECLARATION)
+        writer = io.BytesIO()
+        server_module.Server(
+            session(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 15,
+                    "method": "textDocument/codeAction",
+                    "params": {
+                        "textDocument": {"uri": reader.as_uri()},
+                        "range": span,
+                        "context": {"diagnostics": [{"code": "definition-mismatch"}]},
+                    },
+                }
+            ),
+            writer,
+            root=tmp_path,
+        ).run()
+        (answer,) = answered(writer)
+        assert [action["title"] for action in answer["result"]] == [
+            "Apply this datatype to 1 other declaration of 'V'",
+            "Use the conversion declared in w",
+        ]
+        assert [action["title"] for action in answer["result"] if action.get("isPreferred")] == [
+            "Apply this datatype to 1 other declaration of 'V'"
+        ]
+
+    def test_a_value_the_other_readers_agree_on_is_not_adopted_by_a_string(
+        self, tmp_path: Path
+    ) -> None:
+        """The reader that states no unit may adopt one the others state - until it reads text.
+        What is offered instead is what still loads: the writer's conversion, the text sent to
+        the one declaration that can hold it, and the unit taken out of the reader that states
+        it."""
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint8", dimensions=[8])),
+            "r.ddd.json": component(
+                "R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+            "q.ddd.json": component(
+                "Q", declare("input", "V", "uint8", dimensions=[8], unit="rpm")
+            ),
+        }
+        assert self.titles(tmp_path, "r.ddd.json", **files) == [
+            "Use the conversion declared in w",
+            "Apply this conversion to 1 other declaration of 'V'",
+            "Remove the unit from 1 other declaration of 'V'",
+        ]
+
+    def test_a_key_is_taken_out_of_the_declarations_that_can_do_without_it(
+        self, tmp_path: Path
+    ) -> None:
+        """A writer stating no dimension may ask the others to state none, and the one that reads
+        text is not asked: it is left to state the one dimension a string is."""
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint8")),
+            "r1.ddd.json": component(
+                "R1", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+            "r2.ddd.json": component("R2", declare("input", "V", "uint8", dimensions=[8])),
+        }
+        offered = self.offered(tmp_path, "w.ddd.json", **files)
+        (removal,) = [entry for entry in offered if entry["title"].startswith("Remove the")]
+        assert removal["title"] == "Remove the dimensions from 1 other declaration of 'V'"
+        assert [uri_to_path(uri).name for uri in removal["edit"]["changes"]] == ["r2.ddd.json"]
 
 
 class TestMessagesTheClientGetsWrong:

@@ -145,6 +145,15 @@ written over four lines and the same conversion written on one are one value, as
 have always counted them. The value is copied as source text rather than re-serialised, so
 the project's formatting survives the fix.
 
+A fix is offered only where every file it writes still loads. Some rules hold between keys, and
+only the models say them: an enumeration needs an integer datatype, and a string a byte datatype,
+one dimension, no unit and no limits. A fix that would write a ``float32`` under an enumeration,
+or a unit beside a string, would leave a file the loader refuses - a ``schema`` error, which no
+severity turns down, after which the project is no longer analysed and every further fix is
+refused - so it is not offered, and the next one in the list takes the preferred place. A fix
+that reaches several declarations is offered for those that load. What is wrong only in the
+project's context, a range wider than the datatype, loads, and is reported by the next analysis.
+
 A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
 key ``ddd id --assign`` would write, in the same place - right after the declaration's ``name``
 - and which declarations want one is decided by the same code: the command stamps a whole file,

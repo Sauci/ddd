@@ -2,6 +2,7 @@ import type {
   Changes,
   Hunk,
   PlannedChange,
+  PlanReply,
   SettleReply,
   UnitsReply,
   VariableDeclaration,
@@ -204,8 +205,9 @@ export function hunkLines(hunk: Hunk): HunkLine[] {
 }
 
 /** The edit a preview comes to, exactly as `POST /api/edit` takes it, under the label an undo
- * of it would offer; `null` when there is nothing to change. */
-export function editOf(preview: SettleReply, label: string): Changes | null {
+ * of it would offer; `null` when there is nothing to change. A settlement's preview and a plan's
+ * come to their edit the same way: only their `changes` are read. */
+export function editOf(preview: SettleReply | PlanReply, label: string): Changes | null {
   const changes = nonEmpty(
     preview.changes.flatMap(({ file, fingerprint, operations }) => {
       const made = nonEmpty(operations);

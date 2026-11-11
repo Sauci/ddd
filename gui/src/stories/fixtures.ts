@@ -409,6 +409,7 @@ export const PREVIEW_CONVERSION: SettleReply = {
       ],
     },
   ],
+  unloadable: [],
 };
 
 /** A preview that settles Rpm_Axis's limits onto Controller too, resolving SHAPED's own
@@ -435,6 +436,7 @@ export const PREVIEW_LIMITS: SettleReply = {
       ],
     },
   ],
+  unloadable: [],
 };
 
 /** A row of the Units tab, which the variable panel does not read: a unit variables state. */
@@ -496,10 +498,11 @@ export const ONE_FILE: SettleReply = {
       ],
     },
   ],
+  unloadable: [],
 };
 
 /** Every declaration already agrees: nothing to change. */
-export const NOTHING: SettleReply = { revision: 7, changes: [] };
+export const NOTHING: SettleReply = { revision: 7, changes: [], unloadable: [] };
 
 // The Units tab of part 2's mockups (docs/superpowers/specs/2026-09-19-gui-units-project/), whose
 // DemoDevice states nine units, two of them outside its vocabulary.

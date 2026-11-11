@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -21,6 +21,7 @@ from ddd.models import (
     Measurement,
     ProjectFile,
     broadcast,
+    definition_problem,
     format_shape,
     is_reserved_identifier,
 )
@@ -1055,3 +1056,95 @@ class TestDictionaryFormat:
         read_back = DataDictionary.model_validate(payload).by_name["Label"]
         assert read_back.conversion.describe() == "string"
         assert read_back.init == "V1.2"
+
+
+class TestWhatTheLoaderWouldRefuseOfADefinition:
+    """``definition_problem`` asks the model of a definition's kind about one written like this:
+    what ``ddd check`` would file as ``schema`` of it, in a sentence, or nothing where it loads.
+
+    The one place the editor's quick fixes and the page's panel ask what a definition would be
+    once a key is written, and the one a declared object is asked in before it is planned.
+    """
+
+    WRITTEN: ClassVar[dict[str, Any]] = {
+        "name": "X",
+        "kind": "measurement",
+        "datatype": "uint16",
+        "conversion": {"kind": "identity"},
+        "volatile": False,
+    }
+
+    def test_a_definition_the_loader_takes_has_no_problem(self) -> None:
+        assert definition_problem(self.WRITTEN) is None
+
+    @pytest.mark.parametrize(
+        ("changed", "says"),
+        [
+            (
+                {
+                    "datatype": "float32",
+                    "conversion": {
+                        "kind": "enum",
+                        "name": "Mode_t",
+                        "enumerators": [{"name": "OFF", "value": 0}],
+                    },
+                },
+                "enum conversion 'Mode_t' requires an integer datatype, got 'float32'",
+            ),
+            (
+                {"conversion": {"kind": "string"}, "dimensions": [8]},
+                "a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'",
+            ),
+            (
+                {
+                    "datatype": "uint8",
+                    "conversion": {"kind": "string"},
+                    "dimensions": [8],
+                    "unit": "rpm",
+                },
+                "a string has no unit, got 'rpm'",
+            ),
+            (
+                {"datatype": "uint8", "conversion": {"kind": "string"}},
+                "a string states exactly one dimension, its length in bytes, got none; an array "
+                "of strings is written as an array of structures with a string member",
+            ),
+            ({"limits": {"min": 10, "max": 1}}, "min (10) is greater than max (1)"),
+            ({"conversion": {"kind": "linear", "factor": 0}}, "factor must not be zero"),
+        ],
+    )
+    def test_a_rule_between_keys_is_said_in_its_own_sentence(
+        self, changed: dict[str, Any], says: str
+    ) -> None:
+        """A rule the models hold of keys together raises one english sentence, which pydantic
+        wraps as 'Value error, ...': unwrapped, the sentence a person can act on."""
+        assert definition_problem({**self.WRITTEN, **changed}) == says
+
+    def test_a_key_of_the_wrong_shape_is_said_as_pydantic_says_it(self) -> None:
+        problem = definition_problem({**self.WRITTEN, "datatype": "uint7"})
+        assert problem is not None
+        assert problem.startswith("Input should be 'boolean', 'uint8', 'sint8'")
+
+    def test_a_key_the_definition_needs_is_said_to_be_required(self) -> None:
+        assert definition_problem({**self.WRITTEN, "kind": "value_block"}) == "Field required"
+
+    def test_a_key_the_kind_does_not_have_is_not_permitted(self) -> None:
+        assert (
+            definition_problem({**self.WRITTEN, "axis": "Ax"}) == "Extra inputs are not permitted"
+        )
+
+    def test_a_kind_nobody_declares_is_refused_as_the_loader_refuses_it(self) -> None:
+        problem = definition_problem({**self.WRITTEN, "kind": "measuremen"})
+        assert problem is not None
+        assert problem.startswith("Input tag 'measuremen' found using 'kind'")
+
+    def test_what_is_said_is_the_first_thing_wrong_in_the_order_the_loader_files_it(self) -> None:
+        problem = definition_problem({**self.WRITTEN, "datatype": "uint7", "unit": 5})
+        assert problem is not None
+        assert problem.startswith("Input should be 'boolean'")
+
+    def test_a_definition_is_not_changed_by_being_asked_about(self) -> None:
+        written = {**self.WRITTEN, "dimensions": [3]}
+        before = {**written}
+        definition_problem(written)
+        assert written == before

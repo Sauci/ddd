@@ -216,6 +216,7 @@ from ddd.variables import (
     preview,
     refusal,
     units_in_use,
+    unloadable,
     vocabulary_of,
 )
 
@@ -1303,7 +1304,9 @@ class Api:
         # One cache for both reads below, so a declaration `settle` already read for this
         # request is not read from disk a second time to narrow what it comes to.
         cache: dict[Path, Document] = {}
-        settlement = settle(built, name, key, raw, cache)
+        # The reader chose this value, so a declaration it would leave unable to load is not
+        # left out: it is planned, and told (`unloadable`) - where a button offering it is withheld.
+        settlement = settle(built, name, key, raw, cache, withholding=False)
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
             return _error(409, code, message)
@@ -1318,7 +1321,9 @@ class Api:
             200,
             written(
                 contract.SettleReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                    revision=revision.number,
+                    changes=_planned_changes(revision, derived, planned),
+                    unloadable=unloadable(settlement, name, key, cache),
                 )
             ),
         )

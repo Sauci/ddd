@@ -1102,6 +1102,20 @@ the two can never disagree about it - as ``ddd.lsp.edits.settle`` already does f
 variable's keys, one rule the language server's reconcile quick fix and ``ddd gui``'s
 variable panel both read.
 
+That rule includes what the loader would say of the declaration once a key is written. A rule
+between keys - an enumeration wants an integer datatype, a string a byte, one dimension and no
+unit - is held by the models and by no list of keys, so ``settled_at`` asks them, of the
+definition as the key would leave it (``ddd.lsp.edits.loading_problem``, over
+``ddd.models.definition_problem``, which ``ddd.declaration_plans`` asks of a declared object too),
+and a declaration whose answer is a problem is ``Unsettled`` with the reason ``load``. Every
+button - a quick fix, and the page's fix of a ``definition-mismatch`` - is built from
+``reconciliations``, so none of them leaves a file unable to load: the editor leaves such a
+declaration out of an action that reaches several, as it leaves out one a type fixes, and the
+page drops a fix that cannot reach every declaration. The variable's panel is the one client that
+chooses otherwise: ``GET /api/settle`` settles with ``withholding=False``, its reader chose the
+value, and ``unloadable`` in its reply says which declarations would not load and why, in the
+models' sentence, which ``ddd check`` files as ``schema`` once the change is written.
+
 What a key of a variable offers the panel is worked out in ``ddd.variable_keys``: per key,
 and per declaration, whether that declaration's kind has the key at all and whether it
 must state it - ``ddd.models.definition_keys``, plus the storage keys a declaration cannot

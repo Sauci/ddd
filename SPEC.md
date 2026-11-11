@@ -2365,7 +2365,8 @@ allow, a type name spelling a base datatype, or one the project already uses, wh
 another object, an enum, an enumerator, a type or a constant, because a rename that silently
 merges two objects compiles, links, and shares storage nobody intended to share; and quick
 fixes that reconcile one key across the declarations of one object, in either direction,
-including removing a key the others do not have; and, on a `missing-id`, a fix that gives the
+including removing a key the others do not have, none of which is offered where writing it
+would leave a file the loader refuses; and, on a `missing-id`, a fix that gives the
 declaration an identity, writing what `ddd id --assign` would write and offered only where
 that finding is reported.
 

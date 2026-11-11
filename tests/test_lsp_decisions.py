@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
-from conftest import built_of, component, declare, scalar_type, types
-from ddd.lsp.edits import _propagate, reconciliations, settled_at
+from conftest import (
+    FLOAT_BESIDE_ENUM,
+    TEXT,
+    UNIT_BESIDE_TEXT,
+    built_of,
+    component,
+    declare,
+    scalar_type,
+    types,
+)
+from ddd.lsp.edits import _propagate, loading_problem, reconciliations, settled_at
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
 
@@ -92,6 +102,91 @@ class TestWhatItsStorageNeeds:
         built, _, b = drifted(tmp_path)
         decided = settled_at(built, b, "Speed", "unit", None, {})
         assert (decided.site, decided.raw) == (b, None)
+
+
+class TestWhatTheModelsSay:
+    """A declaration takes a value only if the definition, with it written, still loads.
+
+    Storage and kind above are two rules the models hold; every other rule between keys - an
+    enumeration wants an integer, a string wants a byte and no unit and one dimension - is theirs
+    alone, and a key written against one leaves a file the loader refuses. Asked of the models,
+    and answered ``load`` with their sentence rather than ``Settled``.
+    """
+
+    def test_a_value_the_definition_cannot_hold_beside_the_others_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        built, root = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        refused = settled_at(built, reader, "V", "datatype", '"float32"', {})
+        assert (refused.site, refused.reason) == (reader, "load")
+        assert (
+            refused.problem
+            == "enum conversion 'Mode_t' requires an integer datatype, got 'float32'"
+        )
+
+    def test_a_key_taken_out_that_the_definition_cannot_do_without_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A kind that does not require a key does not say a string does: `dimensions` is the
+        optional key of a measurement, and the one thing a string measurement needs."""
+        built, root = built_of(tmp_path, **UNIT_BESIDE_TEXT)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        refused = settled_at(built, reader, "V", "dimensions", None, {})
+        assert (refused.site, refused.reason) == (reader, "load")
+        assert refused.problem is not None
+        assert refused.problem.startswith("a string states exactly one dimension")
+
+    def test_a_value_that_leaves_the_definition_loading_is_taken(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        decided = settled_at(built, reader, "V", "conversion", '{"kind": "identity"}', {})
+        assert (decided.site, decided.raw) == (reader, '{"kind": "identity"}')
+
+    def test_the_panel_settles_what_the_models_refuse_and_says_so_elsewhere(
+        self, tmp_path: Path
+    ) -> None:
+        """The reader chose the value; the page plans it and says that the file will not load
+        (``ddd.variables.unloadable``) where a button for it is withheld."""
+        built, root = built_of(tmp_path, **FLOAT_BESIDE_ENUM)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        decided = settled_at(built, reader, "V", "datatype", '"float32"', {}, withholding=False)
+        assert (decided.site, decided.raw) == (reader, '"float32"')
+
+    def test_the_rules_asked_first_keep_their_own_reasons(self, tmp_path: Path) -> None:
+        """Storage and kind say why in a sentence of the panel's own, which an answer from the
+        models would replace with theirs: they are asked first."""
+        built, root = built_of(tmp_path, **UNIT_BESIDE_TEXT)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        assert settled_at(built, reader, "V", "datatype", None, {}).reason == "storage"
+        assert settled_at(built, reader, "V", "size", "4", {}).reason == "kind"
+
+    def test_what_is_asked_is_the_definition_as_the_key_leaves_it(self, tmp_path: Path) -> None:
+        """Not the definition as it stands: the reader reads text and states no unit, so it
+        loads - until the writer's unit is given to it."""
+        _, root = built_of(tmp_path, **UNIT_BESIDE_TEXT)
+        document = read(root / "r.ddd.json", {})
+        before = copy.deepcopy(document.value_at(DEFINITION))
+        assert loading_problem(document, DEFINITION, "volatile", "false") is None
+        assert (
+            loading_problem(document, DEFINITION, "unit", '"rpm"')
+            == "a string has no unit, got 'rpm'"
+        )
+        assert loading_problem(document, DEFINITION, "unit", None) is None
+        assert loading_problem(document, DEFINITION, "dimensions", None) is not None
+        assert document.value_at(DEFINITION) == before, "what is asked about is not changed"
+
+    def test_a_key_stated_as_null_is_replaced_like_any_other(self, tmp_path: Path) -> None:
+        stated = component(
+            "R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8], unit=None)
+        )
+        _, root = built_of(tmp_path, **{"r.ddd.json": stated})
+        document = read(root / "r.ddd.json", {})
+        assert (
+            loading_problem(document, DEFINITION, "unit", '"rpm"')
+            == "a string has no unit, got 'rpm'"
+        )
+        assert loading_problem(document, DEFINITION, "unit", None) is None
 
 
 class TestOneDeclaration:

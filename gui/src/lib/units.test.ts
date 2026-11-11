@@ -92,6 +92,7 @@ const ONE_FILE: SettleReply = {
       hunks: [{ line: 14, before: ['  "unit": "rpm",'], after: ['  "unit": "%",'] }],
     },
   ],
+  unloadable: [],
 };
 const ONE_FILE_CHANGE = ONE_FILE.changes[0];
 if (ONE_FILE_CHANGE === undefined) throw new Error("ONE_FILE must have one change");

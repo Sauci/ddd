@@ -12,6 +12,7 @@ import pytest
 
 from conftest import (
     FLOAT_BESIDE_ENUM,
+    STRING_TYPE_BESIDE_SCALAR,
     TEXT,
     UNIT_BESIDE_TEXT,
     component,
@@ -346,6 +347,26 @@ class TestUnloadable:
         assert said.startswith(
             "the declaration of 'V' in r.ddd.json would not load with that dimensions: "
             "a string states exactly one dimension"
+        )
+
+    def test_the_type_a_declaration_names_is_asked_where_the_project_is_given(
+        self, tmp_path: Path
+    ) -> None:
+        """A reader naming a string type states one dimension, and settling none takes it: the
+        models take that, and the analysis does not - with the types of the project beside it."""
+        from ddd.lsp.edits import type_conversions
+
+        idx = built(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        cache: dict[Path, Document] = {}
+        settlement = settle(idx, "V", "dimensions", None, cache, withholding=False)
+        assert unloadable(settlement, "V", "dimensions", cache) == ()
+        assert unloadable(
+            settlement, "V", "dimensions", cache, types=type_conversions(idx, cache)
+        ) == (
+            "the declaration of 'V' in r.ddd.json would not load with that dimensions: "
+            "'V' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got none; an array of strings is written as an "
+            "array of structures with a string member",
         )
 
 

@@ -20,6 +20,7 @@ from typing import Final, Literal
 from ddd.analysis import PRODUCER_KEYS
 from ddd.editing import Operation
 from ddd.identity import new_id
+from ddd.lsp.edits import type_conversions
 from ddd.lsp.navigation import Index, changed_since, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
@@ -218,8 +219,9 @@ def declare_object(
     rule crossing two keys, a ``datatype`` wanting a ``conversion`` among them, is not something
     a key-by-key check above can see, and is refused in the model's own sentence rather than
     left for the file it is written into to refuse back. The same question asks the rules of the
-    analysis that need nothing but the definition - limits that run past the largest float, a
-    shape past the caps - and refuses them in the analysis's own sentence.
+    analysis that need no more of the project than the declaration and the type it names - limits
+    that run past the largest float, a shape past the caps, a string type named with none or with
+    two dimensions - and refuses them in the analysis's own sentence.
     """
     here, entries = _interface(file, cache)
     name, kind = definition.get("name"), definition.get("kind")
@@ -242,7 +244,7 @@ def declare_object(
     stated = dict(definition)
     if scope in PRODUCING_SCOPES:
         stated = _stamped(name, stated)
-    problem = definition_problem(stated)
+    problem = definition_problem(stated, type_conversions(built, cache))
     if problem is not None:
         raise DeclarationRefusalError("invalid", problem)
     return _appended(here, entries, scope, stated)

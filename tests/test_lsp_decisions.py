@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 from conftest import (
     DOUBLE_BESIDE_SCALED,
     FLOAT_BESIDE_ENUM,
+    STRING_TYPE_BESIDE_GRID,
+    STRING_TYPE_BESIDE_SCALAR,
     TEXT,
+    TEXT_TYPE,
     UNIT_BESIDE_TEXT,
     built_of,
     component,
     declare,
     scalar_type,
+    struct_type,
     types,
 )
 from ddd.lsp.edits import _propagate, loading_problem, reconciliations, settled_at
@@ -231,6 +236,123 @@ class TestWhatTheAnalysisSays:
         assert loading_problem(document, DEFINITION, "volatile", "false") is None
         assert loading_problem(document, DEFINITION, "datatype", '"float64"') == self.LIMITS
         assert loading_problem(document, DEFINITION, "datatype", '"float32"') is None
+
+
+class TestAStringTypeBesideTheDeclaration:
+    """A declaration naming a string type states one dimension, and the type is the project's.
+
+    The models take the declaration without it, and the analysis files ``schema`` once it knows
+    the type. ``settled_at`` knows the type - it reads the project's types through the index - so
+    a declaration does not take a value that leaves its string with none, or with two, and says
+    so in the analysis's own sentence.
+    """
+
+    NONE = (
+        "'V' is declared as 'Text_t', which is a string: a string states exactly one dimension, "
+        "its length in bytes, got none; an array of strings is written as an array of structures "
+        "with a string member"
+    )
+
+    def test_a_dimension_is_not_taken_out_of_a_string(self, tmp_path: Path) -> None:
+        """The page's only fix of the reader: 'Remove this dimensions, which w does not declare'."""
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        refused = settled_at(built, reader, "V", "dimensions", None, {})
+        assert (refused.site, refused.reason, refused.problem) == (reader, "load", self.NONE)
+
+    def test_two_dimensions_are_not_given_to_a_string(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_GRID)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        refused = settled_at(built, reader, "V", "dimensions", "[2, 4]", {})
+        assert (refused.site, refused.reason) == (reader, "load")
+        assert refused.problem is not None
+        assert refused.problem.startswith(
+            "'V' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got 2;"
+        )
+
+    def test_a_string_type_is_not_given_to_a_declaration_stating_two_dimensions(
+        self, tmp_path: Path
+    ) -> None:
+        """The key written is the ``typename``: the declaration is the same one, the type it names
+        is the string, and the dimensions it states were a number's."""
+        files = {
+            "t.ddd.json": types(TEXT_TYPE, scalar_type("Level_t", "uint8")),
+            "w.ddd.json": component("W", declare("output", "V", typename="Text_t", dimensions=[8])),
+            "r.ddd.json": component(
+                "R", declare("input", "V", typename="Level_t", dimensions=[2, 4])
+            ),
+        }
+        built, root = built_of(tmp_path, **files)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        refused = settled_at(built, reader, "V", "typename", '"Text_t"', {})
+        assert (refused.site, refused.reason) == (reader, "load")
+        assert refused.problem is not None
+        assert "which is a string" in refused.problem
+
+    def test_a_dimension_a_string_can_hold_is_taken(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        decided = settled_at(built, reader, "V", "dimensions", "[4]", {})
+        assert (decided.site, decided.raw) == (reader, "[4]")
+
+    def test_the_panel_settles_it_all_the_same(self, tmp_path: Path) -> None:
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        reader = Site(root / "r.ddd.json", DEFINITION)
+        decided = settled_at(built, reader, "V", "dimensions", None, {}, withholding=False)
+        assert (decided.site, decided.raw) == (reader, None)
+
+    def test_the_types_asked_are_the_ones_the_project_declares(self, tmp_path: Path) -> None:
+        """What the declaration would be: asked of the types the index names, as they stand."""
+        from ddd.lsp.edits import type_conversions
+
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        document = read(root / "r.ddd.json", {})
+        types_of = type_conversions(built, {})
+        assert loading_problem(document, DEFINITION, "volatile", "false", types=types_of) is None
+        assert (
+            loading_problem(document, DEFINITION, "dimensions", None, types=types_of) == self.NONE
+        )
+        assert loading_problem(document, DEFINITION, "dimensions", None) is None, "no types given"
+
+    def test_what_the_project_says_of_a_type_is_what_a_scalar_type_fixes(
+        self, tmp_path: Path
+    ) -> None:
+        from ddd.lsp.edits import type_conversions
+        from ddd.models import StringConversion
+
+        files = {
+            **STRING_TYPE_BESIDE_SCALAR,
+            "t.ddd.json": types(
+                TEXT_TYPE,
+                scalar_type("Level_t", "uint8"),
+                struct_type("Frame_t"),
+            ),
+        }
+        built, _ = built_of(tmp_path, **files)
+        types_of = type_conversions(built, {})
+        assert types_of("Text_t") == StringConversion(kind="string")
+        assert types_of("Level_t") is not None
+        assert types_of("Level_t") != StringConversion(kind="string")
+        assert types_of("Frame_t") is None, "a structure fixes no conversion"
+        assert types_of("Nothing_t") is None, "a name nobody declares fixes nothing"
+
+    def test_a_type_that_has_moved_since_the_index_was_built_is_not_read_as_the_one_there(
+        self, tmp_path: Path
+    ) -> None:
+        """The index names a place, and a types file edited since may hold another entry there: it
+        says nothing of this type, as a declaration that has drifted is treated as absent."""
+        from ddd.lsp.edits import type_conversions
+
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        moved = types(scalar_type("Level_t", "uint8"), TEXT_TYPE)
+        (root / "t.ddd.json").write_text(json.dumps(moved), encoding="utf-8")
+        types_of = type_conversions(built, {})
+        assert types_of("Text_t") is None
+        document = read(root / "r.ddd.json", {})
+        assert loading_problem(document, DEFINITION, "dimensions", None, types=types_of) is None, (
+            "what is not told is not asked"
+        )
 
 
 class TestAValueTheLoaderWouldRefuseAsJson:

@@ -27,6 +27,8 @@ from conftest import (
     EXAMPLES,
     FLOAT_BESIDE_ENUM,
     INCONSISTENT,
+    STRING_TYPE_BESIDE_GRID,
+    STRING_TYPE_BESIDE_SCALAR,
     TEXT,
     UNIT_BESIDE_TEXT,
     answered,
@@ -6990,6 +6992,27 @@ class TestAFixThatWouldNotLoad:
         assert self.titles(tmp_path / "writer", "w.ddd.json", **DOUBLE_BESIDE_SCALED) == [
             "Apply this conversion to 1 other declaration of 'V'"
         ]
+
+    def test_a_dimension_is_not_taken_out_of_a_declaration_naming_a_string_type(
+        self, tmp_path: Path
+    ) -> None:
+        """The type says the bytes are text, which no definition does: the models take a
+        declaration of it with no dimension, and the analysis files ``schema`` once it is written -
+        'a string states exactly one dimension, its length in bytes, got none'."""
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **STRING_TYPE_BESIDE_SCALAR) == [
+            "Apply this dimensions to 1 other declaration of 'V'"
+        ]
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **STRING_TYPE_BESIDE_SCALAR) == [
+            "Take the dimensions the other declarations of 'V' state"
+        ]
+
+    def test_the_dimensions_of_a_grid_are_not_given_to_a_declaration_naming_a_string_type(
+        self, tmp_path: Path
+    ) -> None:
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **STRING_TYPE_BESIDE_GRID) == [
+            "Apply this dimensions to 1 other declaration of 'V'"
+        ]
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **STRING_TYPE_BESIDE_GRID) == []
 
     def test_a_buffer_holding_a_key_twice_is_answered_and_the_server_goes_on(
         self, tmp_path: Path

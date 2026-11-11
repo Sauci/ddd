@@ -149,7 +149,7 @@ from ddd.gui.session import (
 from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.ir import DataDictionary
 from ddd.loading import fingerprint, resolve_path
-from ddd.lsp.edits import settle
+from ddd.lsp.edits import settle, type_conversions
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
@@ -1323,7 +1323,9 @@ class Api:
                 contract.SettleReply(
                     revision=revision.number,
                     changes=_planned_changes(revision, derived, planned),
-                    unloadable=unloadable(settlement, name, key, cache),
+                    unloadable=unloadable(
+                        settlement, name, key, cache, types=type_conversions(built, cache)
+                    ),
                 )
             ),
         )

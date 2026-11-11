@@ -145,18 +145,22 @@ written over four lines and the same conversion written on one are one value, as
 have always counted them. The value is copied as source text rather than re-serialised, so
 the project's formatting survives the fix.
 
-A fix is offered only where every file it writes still loads. Some rules hold between keys, and
-only the models say them: an enumeration needs an integer datatype, and a string a byte datatype,
-one dimension, no unit and no limits. Two more are the analysis's, and need nothing of the
-project to be asked: the limits a datatype and a conversion derive have to stay finite, which a
-``float64`` under a factor of two does not, and a shape written in numbers stays within the caps
-on its dimensions and elements. A fix that would write a ``float32`` under an enumeration, a unit
-beside a string, or a ``float64`` under a factor of two would leave a file the project refuses - a
-``schema`` error, which no severity turns down, after which the project is no longer analysed and
-every further fix is refused - so it is not offered, and the next one in the list takes the
-preferred place. A fix that reaches several declarations is offered for those that load. What is
-wrong only in the project's context, a range wider than the datatype, loads, and is reported by
-the next analysis.
+A fix is offered only where every file it writes still loads, as far as the declaration and the
+type it names can say. Some rules hold between keys, and the models say them: an enumeration needs
+an integer datatype, and a string a byte datatype, one dimension, no unit and no limits. Three
+more are the analysis's, and need no more of the project to be asked: the limits a datatype and a
+conversion derive have to stay finite, which a ``float64`` under a factor of two does not; a shape
+written in numbers stays within the caps on its dimensions and elements; and a declaration naming
+a string type states exactly one dimension and no display format, which only the type says. A fix
+that would write a ``float32`` under an enumeration, a unit beside a string, or a ``float64``
+under a factor of two, or take the one dimension out of a declaration naming a string type, would
+leave a file the project refuses - a ``schema`` error, which no severity turns down, after which
+the project is no longer analysed and every further fix is refused - so it is not offered, and the
+next one in the list takes the preferred place. A fix that reaches several declarations is
+offered for those that load. What needs more of the project than the declaration and its type is
+not asked: the leaves of an array of structures, the elements of a map over its axes, the
+constant a dimension names, a plugin's ``extensions``. A fix may reach one of those, and the next
+analysis reports it - as it reports a range wider than the datatype, which only loads.
 
 A ``missing-id`` offers one fix of its own: give this object an identity. It writes the same
 key ``ddd id --assign`` would write, in the same place - right after the declaration's ``name``

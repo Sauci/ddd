@@ -62,7 +62,6 @@ from ddd.models import (
     bitfield_range,
     check_shape,
     check_string_member_shape,
-    check_string_shape,
     conversion_identity,
     conversion_interface_value,
     conversion_range,
@@ -80,6 +79,7 @@ from ddd.models import (
     resolve_export,
     spelled_dimensions,
     stored_counts,
+    string_type_problem,
 )
 from ddd.plugins import resolve_blocks, run_check_hooks
 
@@ -2270,27 +2270,22 @@ class _Analysis:
         with the type it names beside it; a display format is refused for the same reason
         the contract refuses one. Refused rather than resolved: a string with no dimension
         or on a table kind is nothing the a2l backend has a record for.
+
+        The rule needs the declaration and the type it names, so it is the models' to say as well
+        (:func:`ddd.models.string_type_problem`), in this sentence, to whatever writes a
+        definition with the project's types beside it.
         """
-        definition = ref.declaration.definition
-        try:
-            check_string_shape(definition.kind, definition.declared_shape)
-            refuse_string_misuse(
-                None,
-                entry.conversion,
-                unit="",
-                limits=None,
-                display_format=definition.a2l.format,
-            )
-        except ValueError as error:
-            self._refuse(
-                "schema",
-                f"'{ref.name}' is declared as '{named}', which is a string: {error}",
-                ref.location("definition"),
-                ref,
-                notes=[("declared here", declared.location())],
-            )
-            return False
-        return True
+        problem = string_type_problem(ref.declaration.definition, named, entry.conversion)
+        if problem is None:
+            return True
+        self._refuse(
+            "schema",
+            problem,
+            ref.location("definition"),
+            ref,
+            notes=[("declared here", declared.location())],
+        )
+        return False
 
     def _drop_for_type(self, ref: DeclarationRef, named: str) -> None:
         """Drop a declaration of a poisoned type, and say so when nothing else did.

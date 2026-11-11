@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import component, declare, project, write_tree
+from conftest import STRING_TYPE_BESIDE_SCALAR, built_of, component, declare, project, write_tree
 from ddd.analysis import PRODUCER_KEYS, analyze
 from ddd.declaration_plans import (
     CARRIED_BY_A_READER,
@@ -586,6 +586,34 @@ class TestDeclaringSomethingNew:
             "invalid",
             "the limits derived from 'float64' and this conversion are not finite",
         )
+
+    def test_a_string_type_without_its_one_dimension_is_refused_rather_than_planned(
+        self, tmp_path, cache
+    ) -> None:
+        # The type is the project's, so the models take the definition and the analysis refuses
+        # the file it is written into (`schema`). The plan knows the project, and says so first.
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        stated = {"name": "Label", "kind": "measurement", "typename": "Text_t", "volatile": False}
+        with pytest.raises(DeclarationRefusalError) as refused:
+            declare_object(built, root / "w.ddd.json", "local", stated, cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "'Label' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got none; an array of strings is written as an "
+            "array of structures with a string member",
+        )
+
+    def test_a_string_type_with_its_one_dimension_is_planned(self, tmp_path, cache) -> None:
+        built, root = built_of(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        stated = {
+            "name": "Label",
+            "kind": "measurement",
+            "typename": "Text_t",
+            "dimensions": [8],
+            "volatile": False,
+        }
+        plan = declare_object(built, root / "w.ddd.json", "local", stated, cache)
+        assert json.loads(plan.edits[0].operations[0].raw or "")["definition"]["dimensions"] == [8]
 
     def test_a_stated_datatype_with_its_conversion_is_planned(self, demo, cache) -> None:
         # The same definition, complete - the models have nothing left to refuse, so this is

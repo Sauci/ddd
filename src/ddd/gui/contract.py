@@ -821,8 +821,8 @@ class SettleReply(_Frozen):
 
     unloadable: tuple[str, ...]
     """One sentence for each declaration the change would leave unable to load, by file: which
-    declaration, in which file, and why, in the words of the models - what ``ddd check`` files as
-    ``schema`` once the change is written. The reader chose the value, so the change is planned
+    declaration, in which file, and why, in the words ``ddd check`` files it in - as ``schema``,
+    once the change is written. The reader chose the value, so the change is planned
     all the same and applying it writes it; a button offering the same value is withheld instead
     (``GET /api/fix``). Empty where every declaration still loads."""
 

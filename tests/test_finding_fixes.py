@@ -11,6 +11,8 @@ import pytest
 from conftest import (
     DOUBLE_BESIDE_SCALED,
     FLOAT_BESIDE_ENUM,
+    STRING_TYPE_BESIDE_GRID,
+    STRING_TYPE_BESIDE_SCALAR,
     TEXT,
     UNIT_BESIDE_TEXT,
     built_of,
@@ -725,6 +727,22 @@ class TestAMismatchThatWouldNotLoad:
         assert workspace is not None, messages(bag)
         analyze(workspace, bag)
         assert "schema" not in checks(bag), messages(bag)
+
+    def test_a_dimension_is_not_taken_out_of_a_declaration_naming_a_string_type(
+        self, tmp_path: Path
+    ) -> None:
+        # The reader's one fix, "Remove this dimensions, which w does not declare", leaves a
+        # string of none; the writer's, "Remove the dimensions from 1 other declaration", the
+        # same. The type is the project's, so the models take both and the analysis refuses the
+        # file once it is written (`schema`): there is no button left to press.
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **STRING_TYPE_BESIDE_SCALAR) == []
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **STRING_TYPE_BESIDE_SCALAR) == []
+
+    def test_the_dimensions_of_a_grid_are_not_taken_by_a_declaration_naming_a_string_type(
+        self, tmp_path: Path
+    ) -> None:
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **STRING_TYPE_BESIDE_GRID) == []
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **STRING_TYPE_BESIDE_GRID) == []
 
     def test_a_key_written_twice_since_the_index_was_built_leaves_the_fix_out(
         self, tmp_path: Path

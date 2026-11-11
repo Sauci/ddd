@@ -20,6 +20,7 @@ from ddd.models import (
     LinearConversion,
     Measurement,
     ProjectFile,
+    StringConversion,
     broadcast,
     definition_problem,
     format_shape,
@@ -1281,3 +1282,146 @@ class TestWhatTheAnalysisRefusesOfADefinitionAlone:
         assert definition_problem(curve) is None
         axes = {"name": "M", "kind": "map", "x_axis": "Ax", "y_axis": "Ay"}
         assert definition_problem({**self.WRITTEN, **axes}) is None
+
+
+class TestWhatTheAnalysisRefusesBesideTheTypeADeclarationNames:
+    """A declaration naming a string type has a rule of its own, which asks the type.
+
+    The type fixes that the bytes are text, and what the declaration states beside it - exactly
+    one dimension, no display format, a kind that has dimensions - is the analysis's to refuse,
+    as ``schema``, once it knows the type: no definition holds it, so ``definition_problem`` says
+    it only where it is told what the project's types fix, and in the analysis's own sentence.
+    """
+
+    NAMED: ClassVar[dict[str, Any]] = {
+        "name": "X",
+        "kind": "measurement",
+        "typename": "Text_t",
+        "dimensions": [8],
+        "volatile": False,
+    }
+    SAYS_NONE = (
+        "'X' is declared as 'Text_t', which is a string: a string states exactly one dimension, "
+        "its length in bytes, got none; an array of strings is written as an array of structures "
+        "with a string member"
+    )
+
+    CONVERSIONS: ClassVar[dict[str, Any]] = {
+        "Text_t": StringConversion(kind="string"),
+        "Level_t": IdentityConversion(kind="identity"),
+    }
+    """What a project declaring ``Text_t`` as a string and ``Level_t`` as a number says of them."""
+
+    @classmethod
+    def project_types(cls, name: str) -> Any:
+        return cls.CONVERSIONS.get(name)
+
+    def asked(self, **changed: Any) -> str | None:
+        return definition_problem({**self.NAMED, **changed}, self.project_types)
+
+    def test_one_dimension_is_what_a_string_states(self) -> None:
+        assert self.asked() is None
+
+    def test_no_dimension_is_refused(self) -> None:
+        assert self.asked(dimensions=[]) == self.SAYS_NONE
+
+    def test_two_dimensions_are_refused(self) -> None:
+        assert self.asked(dimensions=[2, 4]) == (
+            "'X' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got 2; an array of strings is written as an array "
+            "of structures with a string member"
+        )
+
+    def test_a_display_format_is_refused(self) -> None:
+        assert self.asked(a2l={"format": "%8.3"}) == (
+            "'X' is declared as 'Text_t', which is a string: a string has no display format, "
+            "got a2l.format '%8.3'"
+        )
+
+    def test_a_kind_that_has_no_dimensions_is_refused(self) -> None:
+        named = {"name": "X", "kind": "parameter", "typename": "Text_t", "volatile": False}
+        assert definition_problem(named, self.project_types) == (
+            "'X' is declared as 'Text_t', which is a string: a string is a one dimensional "
+            "array of bytes, which a 'parameter' is not; declare it as a 'measurement' or a "
+            "'value_block'"
+        )
+
+    def test_nothing_is_asked_of_what_the_project_does_not_say(self) -> None:
+        """No types given, or a name the project does not declare as a scalar type: the question
+        is one the project answers, and a definition alone has none."""
+        assert definition_problem({**self.NAMED, "dimensions": []}) is None
+        assert definition_problem({**self.NAMED, "dimensions": []}, lambda name: None) is None
+
+    def test_a_type_that_is_no_string_has_no_such_rule(self) -> None:
+        """A number named by ``Level_t`` is an array of any dimensions, or none."""
+        assert self.asked(typename="Level_t", dimensions=[]) is None
+        assert self.asked(typename="Level_t", dimensions=[2, 4]) is None
+
+    def test_a_declaration_that_states_its_own_conversion_is_the_models_to_say(self) -> None:
+        """Not asked twice: a string stated on the definition is refused by the model of its kind,
+        in the models' sentence, and a type is not consulted."""
+        stated = {**self.NAMED, "dimensions": [], "typename": None}
+        stated |= {"datatype": "uint8", "conversion": {"kind": "string"}}
+        problem = definition_problem(stated, self.project_types)
+        assert problem is not None
+        assert problem.startswith("a string states exactly one dimension")
+
+    def test_the_string_is_said_before_the_shape_as_the_analysis_files_them(self) -> None:
+        """A declaration the type refuses is dropped, and its shape is never weighed."""
+        assert self.asked(dimensions=[1] * 65) == (
+            "'X' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got 65; an array of strings is written as an array "
+            "of structures with a string member"
+        )
+        assert self.asked(typename="Level_t", dimensions=[1] * 65) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+
+
+class TestWhatAScalarTypeFixes:
+    """The conversion a type fixes for what names it: read through the model of its entry, as the
+    loader reads it, and nothing for what is no scalar type the loader takes."""
+
+    SCALAR: ClassVar[dict[str, Any]] = {"type": "scalar", "name": "Text_t", "datatype": "uint8"}
+
+    def test_a_scalar_type_fixes_its_conversion(self) -> None:
+        from ddd.models import scalar_conversion
+
+        text = {**self.SCALAR, "conversion": {"kind": "string"}}
+        assert scalar_conversion(text) == StringConversion(kind="string")
+        assert scalar_conversion({**self.SCALAR, "conversion": {"kind": "identity"}}) == (
+            IdentityConversion(kind="identity")
+        )
+
+    def test_a_structure_and_an_external_type_fix_none(self) -> None:
+        from ddd.models import scalar_conversion
+
+        member = {
+            "name": "a",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+        }
+        assert scalar_conversion({"type": "struct", "name": "Frame_t", "members": [member]}) is None
+        assert scalar_conversion({"type": "external", "name": "Os_t", "header": "os.h"}) is None
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            None,
+            "Text_t",
+            {"type": "scalar", "name": "Text_t"},
+            {
+                "type": "scalar",
+                "name": "Text_t",
+                "datatype": "uint16",
+                "conversion": {"kind": "string"},
+            },
+        ],
+        ids=["nothing", "a name", "no storage", "a string of two bytes a character"],
+    )
+    def test_an_entry_the_loader_would_not_take_fixes_none(self, entry: object) -> None:
+        """Whether a type loads is its own file's finding: what names it is told nothing."""
+        from ddd.models import scalar_conversion
+
+        assert scalar_conversion(entry) is None

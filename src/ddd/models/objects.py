@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Container, Iterable, Mapping
+from collections.abc import Callable, Container, Iterable, Mapping
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, cast, get_args
 
@@ -107,6 +107,14 @@ target's memory long before it exhausted this bound.
 
 type WrittenShape = tuple[int | str, ...]
 """An array shape as it is written: each dimension a number or the name of a constant."""
+
+type TypeConversions = Callable[[str], Conversion | None]
+"""What a project says of the types a declaration may name: the conversion the scalar type of
+that name fixes, or ``None`` for a name that is no scalar type the project declares.
+
+A definition does not hold it - the type is somebody else's entry - so whatever asks a question
+of a definition that names one (:func:`definition_problem`) is handed this, by whoever has the
+project in front of it."""
 
 MAX_ELEMENTS: Final = 10_000_000
 """How many elements one array holds.
@@ -1030,10 +1038,12 @@ _DEFINITION: Final[TypeAdapter[AnyDataObject]] = TypeAdapter(AnyDataObject)
 once: compiling a discriminated union's schema is not free, and every plan asks it."""
 
 
-def definition_problem(definition: Mapping[str, object]) -> str | None:
+def definition_problem(
+    definition: Mapping[str, object], types: TypeConversions | None = None
+) -> str | None:
     """The first thing the project would refuse of a definition written like this, in one
     sentence, or ``None`` where it takes it: the model of its ``kind`` first, and then the rules
-    of the analysis that ask nothing of the project.
+    of the analysis that ask nothing of the project beyond the declaration and its type.
 
     The question an edit has to ask of the definition *as it would leave it*, before it is
     offered or made: a key written against another - an enumeration beside a float, a string
@@ -1041,11 +1051,16 @@ def definition_problem(definition: Mapping[str, object]) -> str | None:
     the project being analysed at all. So is what the analysis files as ``schema`` from the
     definition alone: a datatype and conversion whose derived limits run past the largest float,
     and a shape of numbers past the caps (:func:`dimensions_problem`, :func:`elements_problem`)
-    - which the models take, because they derive no limit and count no element. And ``ddd gui``
-    counts a file with one as a file that did not load, and settles nothing further until it is
-    mended. What none of them holds, because only the project knows it - a ``typename`` naming
-    a type nobody declares, an axis that is not there, a shape naming a constant - is no answer
-    of theirs, and stays a finding the analysis reports.
+    - which the models take, because they derive no limit and count no element. And so is what
+    the type a declaration names asks of it, when that type is a string: exactly one dimension,
+    no display format (:func:`string_type_problem`) - which no definition holds, the type being
+    another entry. ``types`` is how it is told (:data:`TypeConversions`); a caller that does not
+    have the project in front of it passes none, and nothing is asked of a type. And ``ddd gui``
+    counts a file with one of them as a file that did not load, and settles nothing further
+    until it is mended. What these do not hold, because they need more of the project than the
+    declaration and the type it names - a ``typename`` naming a type nobody declares, an axis
+    that is not there, a shape naming a constant, the leaves of a structure - is no answer of
+    theirs, and stays a finding the analysis reports.
 
     A rule crossing keys raises one english sentence, which pydantic wraps as ``"Value error,
     <that sentence>"``: unwrapped here, rather than shown wrapped, since it is what a person can
@@ -1060,22 +1075,51 @@ def definition_problem(definition: Mapping[str, object]) -> str | None:
         first = error.errors(include_url=False)[0]
         cause = first.get("ctx", {}).get("error")
         return str(cause) if isinstance(cause, Exception) else first["msg"]
-    return _refused_by_the_analysis(accepted)
+    return _refused_by_the_analysis(accepted, types)
 
 
-def _refused_by_the_analysis(definition: DataObject) -> str | None:
+def string_type_problem(
+    definition: DataObject, named: str, conversion: Conversion | None
+) -> str | None:
+    """Why a declaration naming the string type ``named`` is refused, or ``None``.
+
+    A string is a one dimensional array of bytes, which a ``parameter``, an axis, a curve and a
+    map are not, and it has no display format - what the contract answers of a definition that
+    states the conversion itself (:func:`check_string_shape`, :func:`refuse_string_misuse`),
+    answered here of one that names a scalar type carrying it, which is only known once the type
+    is. ``conversion`` is the type's: anything but a string is no business of this rule, and
+    nothing is said of it. The unit and the limits the type fixes are the type's own and are
+    refused where it is written, so none is asked here.
+
+    The analysis files the sentence as ``schema`` at the declaration, and whatever writes a
+    definition says it first, in the same words.
+    """
+    if not isinstance(conversion, StringConversion):
+        return None
+    try:
+        check_string_shape(definition.kind, definition.declared_shape)
+        refuse_string_misuse(
+            None, conversion, unit="", limits=None, display_format=definition.a2l.format
+        )
+    except ValueError as error:
+        return f"'{definition.name}' is declared as '{named}', which is a string: {error}"
+    return None
+
+
+def _refused_by_the_analysis(definition: DataObject, types: TypeConversions | None) -> str | None:
     """The first ``schema`` the analysis files of a definition the models took, from the
-    definition alone, or ``None``.
+    definition and the type it names, or ``None``.
 
     In the order the analysis files them: the limits of a declaration that states its own
-    datatype and conversion - resolved first, since a declaration whose limits are refused is
-    dropped and its shape never weighed - and then the dimensions its shape states and, where it
-    states every one as a number, the elements they come to.
+    datatype and conversion, or what the type a declaration names asks of it when that type is
+    a string - either resolves the declaration, and one that is refused is dropped and its shape
+    never weighed - and then the dimensions its shape states and, where it states every one as a
+    number, the elements they come to.
 
-    What the analysis weighs with the project beside it is left out, because the definition does
-    not hold it: the limits of a type a declaration names, a shape naming a constant, the leaves
-    of a structure, the elements a map's two axes come to. ``ddd check`` reports those, and
-    nothing that writes a definition can say them first.
+    What the analysis weighs with more of the project beside it is left out, because neither the
+    definition nor its type holds it: a shape naming a constant, the leaves of a structure, the
+    elements a map's two axes come to. ``ddd check`` reports those, and nothing that writes a
+    definition can say them first.
     """
     datatype, conversion = definition.datatype, definition.conversion
     if (
@@ -1084,6 +1128,11 @@ def _refused_by_the_analysis(definition: DataObject) -> str | None:
         and not derived_range_is_finite(conversion, datatype.raw_min, datatype.raw_max)
     ):
         return infinite_limits_message(datatype)
+    named = definition.declared_type
+    if named is not None and types is not None:
+        problem = string_type_problem(definition, named, types(named))
+        if problem is not None:
+            return problem
     shape = definition.declared_shape
     if shape is None:
         return None

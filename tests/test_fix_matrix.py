@@ -17,7 +17,18 @@ from typing import Any
 
 import pytest
 
-from conftest import MODE_T, TEXT, built_of, component, declare, project, write_tree
+from conftest import (
+    MODE_T,
+    TEXT,
+    TEXT_TYPE,
+    built_of,
+    component,
+    declare,
+    project,
+    scalar_type,
+    types,
+    write_tree,
+)
 from ddd.analysis import analyze
 from ddd.diagnostics import DiagnosticBag, Severity
 from ddd.editing import Operation, edit_text
@@ -54,12 +65,19 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "conversion": {"kind": "linear", "factor": 0.5},
     },
     "u16-double": {"datatype": "uint16", "conversion": {"kind": "linear", "factor": 2}},
+    "u8-grid": {"datatype": "uint8", "dimensions": [2, 4]},
+    "text-type": {"typename": "Text_t", "dimensions": [8]},
+    "level-type": {"typename": "Level_t"},
 }
 """Declarations of one variable that load, each in a corner of what a definition may not say: a
 float beside an enumeration, a string beside a unit or limits or without its dimension, an array
-and a scalar, a scaling and an identity - and a double beside a scaling, whose limits run past
-the largest float there is, which the models take and the analysis refuses. Every pair of them is
-a writer and a reader that disagree about something."""
+and a scalar, a scaling and an identity - a double beside a scaling, whose limits run past the
+largest float there is, which the models take and the analysis refuses - and a declaration that
+names a type, of which one is a string whose one dimension is nobody's to see but the project's.
+Every pair of them is a writer and a reader that disagree about something."""
+
+TYPES = types(TEXT_TYPE, scalar_type("Level_t", "uint8"))
+"""What the variants that name a type name: a string, and a number."""
 
 
 def not_loaded(text: str, where: Path) -> list[str]:
@@ -69,11 +87,19 @@ def not_loaded(text: str, where: Path) -> list[str]:
 
     The loader and the analysis both, because ``schema`` is filed by both: the models say what the
     keys of a definition may hold together, and the analysis says the rest that asks nothing of
-    the project - limits that are not finite, a shape past the caps - and no severity turns either
-    down. The description is the one file of a project of its own, written under ``where``, so that
-    what is judged is the definition.
+    the project - limits that are not finite, a shape past the caps - and, with the types beside
+    the declaration, what a string type asks of what names it. No severity turns any of them down.
+    The description is the one file of a project of its own, with :data:`TYPES`, written under
+    ``where``, so that what is judged is the definition.
     """
-    write_tree(where, {"p.ddd.json": project("P", "c.ddd.json"), "c.ddd.json": text})
+    write_tree(
+        where,
+        {
+            "p.ddd.json": project("P", "c.ddd.json", "t.ddd.json"),
+            "c.ddd.json": text,
+            "t.ddd.json": TYPES,
+        },
+    )
     bag = DiagnosticBag()
     workspace = load_workspace(where / "p.ddd.json", bag)
     if workspace is not None and not _refusals(bag):
@@ -110,6 +136,19 @@ def test_the_oracle_refuses_what_the_analysis_alone_refuses(tmp_path: Path) -> N
     ComponentFile.model_validate(refused)
     assert not_loaded(json.dumps(refused), tmp_path) == [
         "the limits derived from 'float64' and this conversion are not finite"
+    ]
+
+
+def test_the_oracle_refuses_what_only_a_type_refuses(tmp_path: Path) -> None:
+    """A declaration naming a string type with no dimension is a file the models take, and the
+    analysis refuses once the type is beside it: the oracle has the project's types, or it would
+    judge every declaration that names one by what a definition alone says."""
+    stated = component("C", declare("output", "V", typename="Text_t"))
+    ComponentFile.model_validate(stated)
+    assert not_loaded(json.dumps(stated), tmp_path) == [
+        "'V' is declared as 'Text_t', which is a string: a string states exactly one dimension, "
+        "its length in bytes, got none; an array of strings is written as an array of "
+        "structures with a string member"
     ]
 
 
@@ -158,6 +197,7 @@ def test_every_fix_offered_leaves_every_file_it_writes_loading(tmp_path: Path, w
         built, root = built_of(
             tmp_path / reader,
             **{
+                "t.ddd.json": TYPES,
                 "w.ddd.json": component("W", declare("output", "V", **VARIANTS[writer])),
                 "r.ddd.json": component("R", declare("input", "V", **VARIANTS[reader])),
             },
@@ -188,6 +228,15 @@ def test_what_a_declaration_would_be_is_judged_as_the_project_judges_it(tmp_path
     text the edit engine leaves, are one - in both directions, so a rule the models or the
     analysis hold that the answer misses fails here as surely as a file it refuses without cause -
     and what it says is among what the project files."""
+    from ddd.lsp.edits import type_conversions
+
+    # The types of the project, as the editor reads them: the one place a declaration naming a
+    # type is told what the type fixes.
+    built, _ = built_of(
+        tmp_path / "types",
+        **{"t.ddd.json": TYPES, "c.ddd.json": component("C", declare("input", "V"))},
+    )
+    types_of = type_conversions(built, {})
     would_load = would_not = 0
     disagreed: list[str] = []
     for target in VARIANTS:
@@ -202,7 +251,7 @@ def test_what_a_declaration_would_be_is_judged_as_the_project_judges_it(tmp_path
                     continue
                 operation = Operation("remove" if raw is None else "set", pointer, raw)
                 filed = not_loaded(edit_text(text, [operation]), tmp_path)
-                problem = loading_problem(document, DEFINITION, key, raw)
+                problem = loading_problem(document, DEFINITION, key, raw, types=types_of)
                 would_load += not filed
                 would_not += bool(filed)
                 if (problem is None) != (not filed):

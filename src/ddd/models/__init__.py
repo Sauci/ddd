@@ -50,6 +50,7 @@ from ddd.models.objects import (
     Parameter,
     PointCounts,
     Shape,
+    TypeConversions,
     ValueBlock,
     WrittenShape,
     broadcast,
@@ -66,6 +67,7 @@ from ddd.models.objects import (
     resolve_export,
     spelled_dimensions,
     stored_counts,
+    string_type_problem,
 )
 from ddd.models.project import Project, ProjectFile
 from ddd.models.rasters import RasterDeclaration, RastersFile
@@ -83,6 +85,7 @@ from ddd.models.types import (
     TypesFile,
     bitfield_range,
     check_string_member_shape,
+    scalar_conversion,
 )
 from ddd.models.units import Unit, UnitDeclaration, UnitsFile
 
@@ -140,6 +143,7 @@ __all__ = [
     "Shape",
     "StringConversion",
     "StructType",
+    "TypeConversions",
     "TypeName",
     "TypesFile",
     "Unit",
@@ -173,6 +177,8 @@ __all__ = [
     "refuse_string_misuse",
     "resolve_export",
     "round_physical",
+    "scalar_conversion",
     "spelled_dimensions",
     "stored_counts",
+    "string_type_problem",
 ]

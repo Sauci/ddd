@@ -22,6 +22,8 @@ from conftest import (
     DOUBLE_BESIDE_SCALED,
     EXAMPLES,
     FLOAT_BESIDE_ENUM,
+    STRING_TYPE_BESIDE_GRID,
+    STRING_TYPE_BESIDE_SCALAR,
     TEXT,
     Gated,
     begun,
@@ -3962,6 +3964,38 @@ class TestSettle:
         )
         assert "schema" in [diagnostic.check for diagnostic in bag]
 
+    def test_a_dimension_taken_out_of_a_string_type_is_planned_with_a_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """The type is the project's: the reader's declaration of ``Text_t`` states one dimension,
+        the writer states none, and the panel's row for no dimension at all is the one the reader
+        chose. It is planned, and says what the analysis will file once it is written."""
+        files = {
+            "p.ddd.json": project("P", *STRING_TYPE_BESIDE_SCALAR),
+            **STRING_TYPE_BESIDE_SCALAR,
+        }
+        api = opened(tmp_path, files)
+        reply = get(api, "/api/settle", name="V", key="dimensions")
+        assert reply.status == 200
+        assert [change["file"] for change in reply.body["changes"]] == [
+            posix(tmp_path, "r.ddd.json")
+        ]
+        said = (
+            "'V' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got none; an array of strings is written as an "
+            "array of structures with a string member"
+        )
+        assert reply.body["unloadable"] == [
+            f"the declaration of 'V' in r.ddd.json would not load with that dimensions: {said}"
+        ]
+        assert applied(api, reply.body).status == 200
+        bag = DiagnosticBag()
+        workspace = load_workspace(tmp_path / "p.ddd.json", bag)
+        assert workspace is not None
+        analyze(workspace, bag)
+        assert said in messages(bag)
+        assert "schema" in [diagnostic.check for diagnostic in bag]
+
     def test_a_shape_past_what_the_analysis_carries_is_planned_with_a_sentence(
         self, tmp_path: Path
     ) -> None:
@@ -4199,6 +4233,25 @@ class TestFix:
         assert workspace is not None
         analyze(workspace, bag)
         assert "schema" not in [diagnostic.check for diagnostic in bag], messages(bag)
+
+    @pytest.mark.parametrize(
+        "files", [STRING_TYPE_BESIDE_SCALAR, STRING_TYPE_BESIDE_GRID], ids=["scalar", "grid"]
+    )
+    def test_a_fix_that_leaves_a_string_type_without_its_one_dimension_is_not_offered(
+        self, tmp_path: Path, files: dict[str, Any]
+    ) -> None:
+        """The page's only fix of the reader, until the analysis refused what it wrote: the
+        reader names a string type, which the models cannot see into, and the writer's
+        dimensions - none, or two - leave it a string of none or of two."""
+        api = opened(tmp_path, {"p.ddd.json": project("P", *files), **files})
+        reply = get(
+            api,
+            "/api/fix",
+            file=posix(tmp_path, "r.ddd.json"),
+            pointer="component.interface[0].definition",
+            check="definition-mismatch",
+        )
+        assert (reply.status, reply.body["fixes"]) == (200, [])
 
     def test_a_key_written_twice_since_the_analysis_is_a_fix_left_out_and_not_an_error(
         self, tmp_path: Path

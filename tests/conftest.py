@@ -160,6 +160,30 @@ def types(*entries: dict[str, Any]) -> dict[str, Any]:
     return {"types": list(entries)}
 
 
+TEXT_TYPE: Final = scalar_type("Text_t", "uint8", conversion=TEXT)
+"""A type that says its bytes are text. What a declaration naming it has to state - exactly one
+dimension, and no display format - is the analysis's to say, with the type beside the declaration:
+no definition holds it."""
+
+STRING_TYPE_BESIDE_SCALAR: Final = {
+    "t.ddd.json": types(TEXT_TYPE),
+    "w.ddd.json": component("W", declare("output", "V", "uint8")),
+    "r.ddd.json": component("R", declare("input", "V", typename="Text_t", dimensions=[8])),
+}
+"""A writer storing one byte and a reader naming a string type, with the one dimension it states.
+Each loads. Taking that dimension out of the reader, which the writer does not state, leaves a
+string of none: the models take it, for the type is nobody's but the project's, and the analysis
+files ``schema`` once the file is written."""
+
+STRING_TYPE_BESIDE_GRID: Final = {
+    "t.ddd.json": types(TEXT_TYPE),
+    "w.ddd.json": component("W", declare("output", "V", "uint8", dimensions=[2, 4])),
+    "r.ddd.json": component("R", declare("input", "V", typename="Text_t", dimensions=[8])),
+}
+"""The same reader beside a writer that states two dimensions: giving the reader the writer's
+dimensions leaves a string of two, which an array of strings is not allowed to be."""
+
+
 def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
     """Write a mapping of relative path -> json document (or raw string).
 

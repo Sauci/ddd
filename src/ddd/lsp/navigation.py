@@ -149,7 +149,7 @@ class Index:
     """Name -> every declaration of it, whichever way round."""
 
     types: dict[str, Site] = field(default_factory=dict)
-    """Structure name -> where it is declared."""
+    """Type name -> where it is declared: a structure, a scalar type or an external type."""
 
     type_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Structure name -> every member that nests it."""

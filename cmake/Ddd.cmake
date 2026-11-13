@@ -115,6 +115,48 @@ function(_ddd_require_transitive_properties context)
     endif()
 endfunction()
 
+# Watches the "includes" wildcards of a project description, so that a file one starts or stops matching re-runs
+# configure: CMAKE_CONFIGURE_DEPENDS holds the files that were listed, and a new file touches none of them, nor does a
+# file that was removed. Each include is globbed with CONFIGURE_DEPENDS - the build then looks at it again before it
+# does anything else - and the answer is not used, the tool being the one that resolves the includes. A pattern with
+# "**" is watched at every depth of the directory before its first wildcard, by its last segment: more than it matches,
+# which costs a configure and nothing more. A file that is no project has nothing to watch.
+function(_ddd_watch_includes description)
+    file(READ "${description}" content)
+    string(JSON count ERROR_VARIABLE error LENGTH "${content}" "project" "includes")
+    if(error OR count EQUAL 0)
+        return()
+    endif()
+    cmake_path(GET description PARENT_PATH base)
+    math(EXPR last "${count} - 1")
+    foreach(index RANGE 0 ${last})
+        string(JSON entry GET "${content}" "project" "includes" ${index})
+        cmake_path(ABSOLUTE_PATH entry BASE_DIRECTORY "${base}" NORMALIZE)
+        if(entry MATCHES "\\*\\*")
+            string(REGEX MATCH "^[^*?[]*/" directory "${entry}")
+            string(REGEX REPLACE "^.*/" "" final "${entry}")
+            file(GLOB_RECURSE ignored CONFIGURE_DEPENDS "${directory}${final}")
+        else()
+            file(GLOB ignored CONFIGURE_DEPENDS "${entry}")
+        endif()
+    endforeach()
+endfunction()
+
+# Keeps the list of files a project is made of in the build tree, and rewrites it only when it differs: the generation
+# depends on it, so that a list that changed - a file added to a wildcard, or one removed from it, which leaves every
+# other input of the generation and its command line as they were - runs it again, and one that did not leaves the
+# build with nothing to do.
+function(_ddd_write_source_list file sources)
+    string(REPLACE ";" "\n" listed "${sources}")
+    set(current "")
+    if(EXISTS "${file}")
+        file(READ "${file}" current)
+    endif()
+    if(NOT "${current}" STREQUAL "${listed}\n")
+        file(WRITE "${file}" "${listed}\n")
+    endif()
+endfunction()
+
 # Asks the tool which files a project description is built out of. A hand written project pulls its components in
 # through "includes" - possibly with wildcards - so the project file alone is a wholly insufficient dependency: edit a
 # component and the build would happily link yesterday's globals and a2l. The list is resolved at configure time and
@@ -152,6 +194,13 @@ function(_ddd_project_sources variable project_file)
     string(REPLACE "\n" ";" sources "${output}")
     list(REMOVE_ITEM sources "")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${sources})
+    # Every file listed that is a project, the root and the sub-projects it includes, has wildcards of its own.
+    foreach(source IN LISTS sources)
+        string(TOLOWER "${source}" spelled)
+        if(spelled MATCHES "\\.json$")
+            _ddd_watch_includes("${source}")
+        endif()
+    endforeach()
     set(${variable} "${sources}" PARENT_SCOPE)
 endfunction()
 
@@ -728,12 +777,16 @@ function(ddd_generate image)
     endforeach()
 
     set(descriptions "")
+    set(source_list "")
     if(arg_PROJECT)
         _ddd_absolute_input(arg_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
         set(project_file "${arg_PROJECT}")
         # A hand written project includes its components itself, so the files to watch have to be asked for; its
         # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.
         _ddd_project_sources(descriptions "${project_file}" ${common_options})
+        # The list itself is an input of the generation, so that it runs again for a file that left the list.
+        set(source_list "${CMAKE_CURRENT_BINARY_DIR}/${image_stem}_ddd_sources.txt")
+        _ddd_write_source_list("${source_list}" "${descriptions}")
         _ddd_project_plugins(plugin_specs "${project_file}")
         # Whose per-component files the generation declares: the project's components, which it names itself.
         _ddd_project_component_names(project_components "${descriptions}")
@@ -861,7 +914,7 @@ function(ddd_generate image)
                  --output-dir "${arg_OUTPUT_DIRECTORY}"
                  --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options})
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_DEPENDS
-                 "${project_file}" ${descriptions} ${plugin_files} ${arg_DEPENDS}
+                 "${project_file}" ${source_list} ${descriptions} ${plugin_files} ${arg_DEPENDS}
                  ${template_files} "${DDD_EXECUTABLE}")
     set_property(TARGET ${image} PROPERTY DDD_COMPONENT_FILES "${component_files}")
     cmake_language(EVAL CODE "cmake_language(DEFER CALL _ddd_add_generation [==[${image}]==])")
@@ -902,7 +955,8 @@ function(ddd_generate image)
                            COMMAND ${DDD_EXECUTABLE} generate a2l "${project_file}"
                                    --output-dir "${arg_OUTPUT_DIRECTORY}"
                                    ${address_source} ${a2l_options}
-                           DEPENDS ${image} ${map_dependency} "${project_file}" ${descriptions} ${plugin_files}
+                           DEPENDS ${image} ${map_dependency} "${project_file}" ${source_list} ${descriptions}
+                                   ${plugin_files}
                                    "${DDD_EXECUTABLE}"
                            COMMENT "${reading}"
                            COMMAND_EXPAND_LISTS

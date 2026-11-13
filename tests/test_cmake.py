@@ -991,6 +991,16 @@ class TestTheBuildAfterAnEdit:
         assert "Configuring done" not in edited.output, edited.output
 
 
+WILDCARDS = {
+    "a wildcard": (("components/*.ddd.json",), "components"),
+    "a recursive wildcard": (("components/**/*.ddd.json",), "components/deeper/still"),
+    "a wildcard of a sub-project": (("sub.ddd.json",), "components"),
+}
+"""A hand written project including the descriptions of ``components/`` by a wildcard - its
+own, a recursive one, or one of a project it includes - and the directory a file the wildcard
+matches is written into. ``project.ddd.json`` and ``spare.ddd.json`` beside the components are
+matched by none."""
+
 STAMP_PLUGIN = """from __future__ import annotations
 
 from pydantic import BaseModel, field_validator
@@ -1045,6 +1055,80 @@ def plugged(root: Path, generator: str, body: str = "pass") -> Story:
     story.write_plugin(STAMP_PLUGIN.format(body=body))
     story.configured = story.reconfigure()
     return story
+
+
+class TestAWildcardThatStartsOrStopsMatching:
+    """A file an ``includes`` wildcard starts matching is a component of the project, and one
+    it stops matching is not: the build that follows each says so. Both used to leave the build
+    with nothing to do - the files watched were the ones listed, which a new file is none of,
+    and a file removed left a generation whose command and inputs were the same or fewer."""
+
+    @pytest.mark.parametrize(
+        ("includes", "directory"),
+        [pytest.param(*case, id=name) for name, case in WILDCARDS.items()],
+    )
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_the_next_build_follows_the_file_in_and_out_of_the_match(
+        self, tmp_path: Path, generator: str, includes: tuple[str, ...], directory: str
+    ) -> None:
+        shape = Shape(project=True, registered=False, includes=includes)
+        story = Story(tmp_path, shape, generator, configured=False)
+        (tmp_path / "sub.ddd.json").write_text(
+            json.dumps({"project": {"name": "Sub", "includes": ["components/*.ddd.json"]}}),
+            encoding="utf-8",
+        )
+        story.configured = story.reconfigure()
+        assert story.build().code == 0
+        # A configure finding the same files leaves the list alone, and the build nothing to do.
+        story.reconfigure()
+        assert story.build().did_nothing()
+        globals_c = story.images() / "ddd" / "img" / "ddd_globals.c"
+        assert "LateCount" not in globals_c.read_text(encoding="utf-8")
+        late = tmp_path / directory / "late.ddd.json"
+        late.parent.mkdir(parents=True, exist_ok=True)
+        late.write_text(
+            json.dumps(
+                {"component": {"name": "Late", "interface": [declare("local", "LateCount")]}}
+            ),
+            encoding="utf-8",
+        )
+        started = story.build()
+        assert started.code == 0 and started.generated(), started.output
+        assert "LateCount" in globals_c.read_text(encoding="utf-8")
+        assert story.build().did_nothing()
+        late.unlink()
+        stopped = story.build()
+        assert stopped.code == 0 and stopped.generated(), stopped.output
+        assert "LateCount" not in globals_c.read_text(encoding="utf-8")
+        assert story.build().did_nothing()
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_vocabulary_file_gained_or_lost_reaches_the_a2l_written_after_the_link(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A units file adds no object, so the c is as it was and the image is not linked
+        again, and a file that left leaves every input of the a2l step as it was: the list of the
+        project's files is what tells it, and it reads the map again all the same."""
+        shape = Shape(
+            project=True,
+            registered=False,
+            address_map=True,
+            includes=("components/*.ddd.json",),
+        )
+        story = Story(tmp_path, shape, generator)
+        assert story.build().code == 0
+        spare = {"units": [{"unit": "mph", "description": "road speed"}]}
+        (story.components / "more.ddd.json").write_text(json.dumps(spare), encoding="utf-8")
+        gained = story.build()
+        assert gained.code == 0, gained.output
+        assert "Reading the addresses of the a2l out of the address map" in gained.output
+        assert "Linking" not in gained.output, gained.output
+        assert story.build().did_nothing()
+        (story.components / "more.ddd.json").unlink()
+        lost = story.build()
+        assert lost.code == 0, lost.output
+        assert "Reading the addresses of the a2l out of the address map" in lost.output
+        assert story.build().did_nothing()
 
 
 class TestAPluginThatBreaksStillWatchedByTheBuild:

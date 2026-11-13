@@ -540,7 +540,8 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
     refuse.
     """
     described = resolve_path(project)
-    added = resolve_path(described.parent / entry)
+    typed = entry.replace("\\", "/")
+    added = resolve_path(described.parent / typed)
     # os.path's question, not pathlib's, as `ddd.gui.server` asks it of a page's path: on Python
     # 3.12 Path.is_file re-raises ENAMETOOLONG, a name past what a file system takes, where
     # os.path's answers false for whatever it cannot read, and never raises.
@@ -565,9 +566,18 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
             "invalid",
             f"{entry} is part of this project already: the pattern '{included.entry}' brings it in",
         )
+    if Path(typed).is_absolute():
+        try:
+            typed = Path(os.path.relpath(added, described.parent)).as_posix()
+        except ValueError:
+            # Windows, a file on another drive than the description: no relative path leads there.
+            raise FileRefusalError(
+                "invalid",
+                f"{entry} is on another drive than {described.name}, so no entry can name it",
+            ) from None
     return FilePlan(
-        (PlannedEdit(described, (entry_appended(described, entry, cache),)),),
-        (*(included.entry for included in entries), entry),
+        (PlannedEdit(described, (entry_appended(described, typed, cache),)),),
+        (*(included.entry for included in entries), typed),
     )
 
 

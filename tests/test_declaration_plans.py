@@ -403,6 +403,29 @@ class TestReadingWhatTheProjectHas:
         assert len(written["definition"]["id"]) == OBJECT_ID_LENGTH
         assert checks_after(tmp_path, plan) == []
 
+    def test_reading_an_object_a_condition_wraps_carries_the_condition(
+        self, tmp_path: Path, cache: dict[Path, Document]
+    ) -> None:
+        # The reader "agrees with its producer by construction", and the condition is the one
+        # part of the producer's entry that is no part of its definition: a plan copying the
+        # definition alone left `condition-mismatch` on both files.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "w.ddd.json", "r.ddd.json"),
+                "w.ddd.json": component(
+                    "W", declare("output", "Cond", id="aaaaaaaaaaaa", condition="defined(FEATURE)")
+                ),
+                "r.ddd.json": component("R"),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        plan = read_object(built, tmp_path / "r.ddd.json", "Cond", "input", cache)
+        written = json.loads(plan.edits[0].operations[0].raw or "")
+        assert written["condition"] == "defined(FEATURE)"
+        assert list(written) == ["scope", "condition", "definition"]
+        assert checks_after(tmp_path, plan) == []
+
     @pytest.mark.parametrize("scope", SCOPES)
     def test_a_name_another_component_keeps_local_is_refused_in_every_scope(
         self, tmp_path: Path, cache: dict[Path, Document], scope: str

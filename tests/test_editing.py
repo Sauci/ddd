@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import errno
+import json
 import os
 import re
 import stat
@@ -82,8 +83,30 @@ class TestLineEndingsAndIndentation:
         assert newline_at(text, 1) == ending
 
     @pytest.mark.parametrize(
+        ("text", "ending"),
+        [
+            ('{\r\n  "a": 1}', "\r\n"),
+            ('{\r  "a": 1}', "\r"),
+            ('{\n  "a": 1}', "\n"),
+            ('{\n  "a": 1,\r\n  "b": 2}', "\r\n"),
+        ],
+        ids=["crlf", "bare cr", "lf", "the last one before it"],
+    )
+    def test_a_line_added_where_no_line_break_follows_ends_like_the_one_before(self, text, ending):
+        """Nothing after the place to copy: the file's own ending, rather than a line feed in a
+        file that has none."""
+        assert newline_at(text, len(text) - 1) == ending
+
+    @pytest.mark.parametrize(
         ("text", "offset", "indent"),
-        [('{\n    "a": 1\n}', 8, "    "), ('{\n\t"a": 1\n}', 4, "\t"), ('{"a": 1}', 3, "")],
+        [
+            ('{\n    "a": 1\n}', 8, "    "),
+            ('{\n\t"a": 1\n}', 4, "\t"),
+            ('{"a": 1}', 3, ""),
+            ('{\r    "a": 1\r}', 8, "    "),
+            ('{\r\n    "a": 1\r\n}', 9, "    "),
+        ],
+        ids=["lf", "a tab", "one line", "a bare cr", "crlf"],
     )
     def test_the_indentation_is_the_one_of_the_line_the_offset_sits_on(self, text, offset, indent):
         assert indent_of_line_at(text, offset) == indent
@@ -241,6 +264,50 @@ class TestSet:
     def test_a_line_added_to_a_crlf_file_ends_with_crlf(self):
         assert edited('{\r\n  "a": 1\r\n}\r\n', Operation("set", "b", "2")) == (
             '{\r\n  "a": 1,\r\n  "b": 2\r\n}\r\n'
+        )
+
+    def test_a_member_added_with_no_line_break_after_it_ends_its_line_like_the_file(self):
+        """The place the member goes after is the end of the file, so no line break follows it to
+        copy: the one before is. A line feed went into a crlf file."""
+        assert edited('{\r\n  "a": 1}', Operation("set", "b", "2")) == (
+            '{\r\n  "a": 1,\r\n  "b": 2}'
+        )
+        assert edited('{\r\n  "a": {\r\n    "b": 1}}', Operation("set", "a.c", "{}")) == (
+            '{\r\n  "a": {\r\n    "b": 1,\r\n    "c": {}}}'
+        )
+
+    def test_a_bare_carriage_return_is_a_line_break(self):
+        """Read as one line, so a member added to a file written with them joined the line of the
+        member before it, and was indented by nothing."""
+        assert edited('{\r  "a": 1\r}', Operation("set", "b", "2")) == ('{\r  "a": 1,\r  "b": 2\r}')
+        assert edited('{\r  "a": [\r    1\r  ]\r}', Operation("set", "a", "[1, [2]]")) == (
+            '{\r  "a": [\r    1,\r    [2]\r  ]\r}'
+        )
+
+    def test_a_bare_carriage_return_ends_the_line_an_array_is_written_over(self):
+        assert indent_unit(Document('{\r    "a": 1\r}')) == "    "
+        assert edited("[\r  1,\r  2\r]", Operation("insert", "[1]", "9")) == (
+            "[\r  1,\r  9,\r  2\r]"
+        )
+
+    @pytest.mark.parametrize("key", ["", ".", "[", "]"])
+    @pytest.mark.parametrize(
+        "text", ['{{{key}: 1, "b": {{"y": 2}}}}', '{{"c": {{{key}: 1}}, "b": 2}}']
+    )
+    def test_a_key_no_pointer_can_spell_is_refused_where_it_cannot_be_laid_out_around(
+        self, key, text
+    ):
+        """``""``, ``.``, ``[`` and ``]`` spell no step of a pointer, so the scan has nothing to
+        name such a member by: the layout of the object holding one, read off its members, ended
+        in an ``AssertionError`` or a ``RecursionError``, which ``ddd gui`` answered ``500``."""
+        written = text.format(key=json.dumps(key))
+        with pytest.raises(EditError, match="spells no pointer") as refused:
+            edited(written, Operation("set", "b", '{"y": [1]}'))
+        assert refused.value.code == INVALID
+
+    def test_a_key_that_holds_a_dot_among_other_characters_is_still_laid_out_around(self):
+        assert edited('{"a.": 1, "b": 2}', Operation("set", "b", "[1, 2]")) == (
+            '{"a.": 1, "b": [1, 2]}'
         )
 
     def test_a_key_written_with_an_escape_is_found_by_its_meaning(self):

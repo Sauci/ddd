@@ -478,14 +478,17 @@ The commands
        opened by selecting a row. New file takes a
        kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
        ``rasters``, offered as ``GET /api/files`` sends the list, the page keeping no copy of
-       its own - and a name, creating the file beside the project description and adding it
+       its own - and a name, creating the file beside the project description, written in the
+       newline and the indentation the description is written in, and adding it
        to the includes in the same edit: a vocabulary file declares nothing and a component
        takes a second name of its own, while a units file is the exception, listing every
        unit the project states where no file of its tree is a units file already, so the one
        click cannot fail a passing project with ``unknown-unit`` at once, and created empty
        where a sub-project's own units file has opted the whole tree in already. Add a file
        takes a path, written from the project description's own directory or absolute,
-       appended to the includes exactly as written, and previews the errors the analysis
+       appended to the includes with ``/`` for every separator and relative to that
+       directory, since an entry naming a file absolutely or with a backslash names it on one
+       machine only, and previews the errors the analysis
        counts it bringing rather than refusing for them: it informs rather than refuses.
        Remove offers to take every entry of the selected row's own key out of the includes -
        the files stay on disk - refused where the analysis counts an error more at some place

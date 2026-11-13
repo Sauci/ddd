@@ -3699,18 +3699,18 @@ def test_assigning_ids_stamps_a_declaration_whose_name_key_is_escaped(tree, caps
 def test_assigning_ids_keeps_a_file_written_with_bare_carriage_returns(tree):
     """A file written with classic-Mac endings has no ``\\n`` at all, and none is written into it.
 
-    The engine counts lines by line feeds, so such a file is one line to it and the stamp joins
-    the line of the name rather than adding one of its own: what is held is the file's ending.
-    The search for a line feed once found none, and the line the stamp added was given the
-    ending the file does not use."""
+    A bare carriage return ends a line as much as a line feed does: the stamp goes on a line of
+    its own, indented like the name it follows and ended as the file ends its lines. Read as one
+    line, the stamp joined the line of the name; and the search for a line feed once found none,
+    and the line the stamp added was given the ending the file does not use."""
     text = json.dumps(component("A", declare("output", "X")), indent=2)
     path = tree / "a.ddd.json"
     path.write_bytes(text.replace("\n", "\r").encode("utf-8"))
     assert main(["id", "--assign", str(path)]) == EXIT_OK
     after = path.read_bytes()
     assert b"\n" not in after
-    assert after.count(b"\r") == text.count("\n")
-    assert re.search(rb'"id": "[a-z0-9]{12}"', after)
+    assert after.count(b"\r") == text.count("\n") + 1
+    assert re.search(rb'"name": "X",\r {10}"id": "[a-z0-9]{12}",\r', after)
 
 
 def test_assigning_ids_leaves_the_file_alone_when_the_write_fails(tree, monkeypatch, capsys):

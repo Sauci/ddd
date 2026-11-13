@@ -338,6 +338,78 @@ class TestChangingOne:
         written = _definition_of(after, "CurveA")["init"]
         assert written == [1200, 900, 750, 750, 700, 650]
 
+    @staticmethod
+    def _producing(tmp_path: Path, **definition: object) -> tuple[Session, Index, Path]:
+        """A project of one component stating ``Grid``, a ``value_block`` of ``uint8`` given
+        ``definition``: its session, its index, and the file stating it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Grid", kind="value_block", datatype="uint8", **definition),
+                ),
+            },
+        )
+        session = Session(tmp_path)
+        session.open(tmp_path / "p.ddd.json")
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        return session, built, tmp_path / "a.ddd.json"
+
+    def test_an_element_is_named_with_its_brackets_or_not_at_all(self, tmp_path) -> None:
+        # `1` was read as `[1]`: the plan's pointer was then `...definition.init1`, a key of its
+        # own, which the model refuses ("Extra inputs are not permitted") once it is written.
+        session, built, _ = self._producing(tmp_path, dimensions=[3], init=[1, 2, 3])
+        try:
+            revision = session.revision
+            assert revision is not None and revision.dictionary is not None
+            for at in ("1", "[1", "1]", "[1]x", "x[1]", "[1]]", "[]", "[1][1]"):
+                with pytest.raises(ValueRefusalError) as refused:
+                    set_cell(revision.dictionary, built, "Grid", at, 9, {})
+                assert refused.value.message == f"'{at}' is not an element of this object", at
+            plan = set_cell(revision.dictionary, built, "Grid", "[1]", 9, {})
+        finally:
+            session.stop()
+        assert plan.edits[0].operations[0].pointer.endswith(".definition.init[1]")
+
+    def test_a_cell_past_the_end_of_a_short_init_is_set_and_the_rest_filled_with_zeros(
+        self, tmp_path
+    ) -> None:
+        # A short init is drawn as written because "setting a cell or pasting a table is how the
+        # page repairs it"; the engine refused the cell as one that "is written nowhere".
+        session, built, file = self._producing(tmp_path, dimensions=[4], init=[1, 2])
+        try:
+            revision = session.revision
+            assert revision is not None and revision.dictionary is not None
+            inside = set_cell(revision.dictionary, built, "Grid", "[1]", 9, {})
+            past = set_cell(revision.dictionary, built, "Grid", "[3]", 7, {})
+        finally:
+            session.stop()
+        # A cell the init holds is still one line changed.
+        assert inside.edits[0].operations[0].pointer.endswith(".definition.init[1]")
+        (edit,) = past.edits
+        after = edit_text(file.read_text(encoding="utf-8"), edit.operations)
+        assert _definition_of(after, "Grid")["init"] == [1, 2, 0, 7]
+
+    def test_a_cell_of_a_short_map_is_set_whichever_row_or_column_is_missing(
+        self, tmp_path
+    ) -> None:
+        session, built, file = self._producing(tmp_path, dimensions=[3, 2], init=[[1, 2], [3]])
+        try:
+            revision = session.revision
+            assert revision is not None and revision.dictionary is not None
+            held = set_cell(revision.dictionary, built, "Grid", "[1][0]", 9, {})
+            column = set_cell(revision.dictionary, built, "Grid", "[1][1]", 8, {})
+            row = set_cell(revision.dictionary, built, "Grid", "[2][1]", 7, {})
+        finally:
+            session.stop()
+        assert held.edits[0].operations[0].pointer.endswith(".definition.init[1][0]")
+        for plan, wanted in ((column, [[1, 2], [3, 8], [0, 0]]), (row, [[1, 2], [3, 0], [0, 7]])):
+            (edit,) = plan.edits
+            after = edit_text(file.read_text(encoding="utf-8"), edit.operations)
+            assert _definition_of(after, "Grid")["init"] == wanted
+
     def test_a_map_cell_names_its_row_and_its_column(self, demo) -> None:
         dictionary, built = demo
         plan = set_cell(dictionary, built, "MapA", "[1][3]", 99, {})

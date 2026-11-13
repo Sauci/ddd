@@ -10391,15 +10391,16 @@ class TestAddingAFile:
             "uint16)",
         ) in errors_in(api)
 
-    def test_an_absolute_path_is_appended_as_typed(self, tmp_path: Path) -> None:
-        """A path need not be written from the description's directory: one inside what is
-        served may be absolute, and is appended so."""
+    def test_an_absolute_path_is_appended_relative_to_the_description(self, tmp_path: Path) -> None:
+        """A path need not be typed from the description's directory: one inside what is served
+        may be absolute, and is appended relative to it, as ``/`` writes it - an absolute entry
+        names the file on this machine alone."""
         api = opened(tmp_path, ADDABLE)
         typed = posix(tmp_path, "c.ddd.json")
         reply = files_plan(api, "add", path=typed)
         assert (reply.status, reply.body["unjudged"], reply.body["brings"]) == (200, None, [])
         assert reply.body["changes"][0]["operations"] == [
-            {"op": "insert", "pointer": "project.includes[2]", "raw": json.dumps(typed)}
+            {"op": "insert", "pointer": "project.includes[2]", "raw": '"c.ddd.json"'}
         ]
 
     def test_a_file_is_appended_with_the_errors_it_would_bring(self, tmp_path: Path) -> None:

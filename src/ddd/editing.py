@@ -109,6 +109,9 @@ _WHITESPACE: Final = " \t\r\n"
 _STRUCTURE: Final = "{}[]:,"
 _OPENING: Final = ("{", "[")
 
+_BREAK: Final = re.compile(r"[\r\n]")
+"""A line break of any spelling: a character either of them is made of."""
+
 _INK: Final = re.compile(r"\S")
 """A character that is not whitespace, as ``str.strip`` reads whitespace."""
 
@@ -170,8 +173,9 @@ def newline_at(text: str, offset: int) -> str:
 
     All three spellings, found by whichever of ``\\r`` and ``\\n`` comes first. Looking for
     ``\\n`` alone answered "line feed" for a file written with bare carriage returns, which has
-    none at all. A text with no line break after ``offset`` is given ``\\n``, there being
-    nothing to copy.
+    none at all. Where no line break follows ``offset`` - the last member of a file whose last
+    line has none - the last one before it is copied, the file's own ending; ``\\n`` is for a
+    text with no line break at all.
 
     The carriage return is looked for no further than the line feed: in a file of line feeds
     alone the search for one went on to the end of the text, for every id ``ddd id`` gave it.
@@ -180,17 +184,31 @@ def newline_at(text: str, offset: int) -> str:
     carriage = text.find("\r", offset, len(text) if feed < 0 else feed)
     if carriage >= 0:
         return "\r\n" if carriage + 1 == feed else "\r"
-    return "\n"
+    if feed >= 0:
+        return "\n"
+    feed = text.rfind("\n", 0, offset)
+    carriage = text.rfind("\r", 0, offset)
+    if carriage >= 0 and carriage + 1 == feed:
+        return "\r\n"
+    return "\r" if carriage > feed else "\n"
 
 
 def indent_of_line_at(text: str, offset: int) -> str:
     """The leading whitespace of the line ``offset`` sits on, so a new line lines up with it.
 
     Whatever the file is indented with: a file written with tabs gets a tab, one written with
-    four spaces gets four. A line is what ``\\n`` ends, the way every position DDD hands out
-    counts lines.
+    four spaces gets four. A line is what a line feed, a carriage return or both end.
     """
-    return _indentation(text, text.rfind("\n", 0, offset) + 1)
+    return _indentation(text, _line_start(text, offset))
+
+
+def _line_start(text: str, offset: int) -> int:
+    """Where the line ``offset`` sits on starts: just past the last line break before it, of
+    whichever spelling - a ``\\r\\n`` ends in the ``\\n``, the later of the two. The carriage
+    return is looked for no further back than the line feed, so that a file of line feeds alone
+    is not searched to its start for each line asked about."""
+    feed = text.rfind("\n", 0, offset)
+    return max(feed, text.rfind("\r", feed + 1, offset)) + 1
 
 
 def _indentation(text: str, start: int) -> str:
@@ -740,6 +758,13 @@ def _entries(document: Document, pointer: str) -> list[str]:
     """The pointers of a container's entries, in the order the text writes them."""
     value = document.value_at(pointer)
     if isinstance(value, dict):
+        for key in value:
+            if not segments(key):
+                raise EditError(
+                    INVALID,
+                    f"{_named(pointer)} has the key {json.dumps(key)}, which spells no pointer, "
+                    "so no member of it can be told from another by one",
+                )
         entries = [_child(pointer, key) for key in value]
     elif isinstance(value, list):
         entries = [f"{pointer}[{index}]" for index in range(len(value))]
@@ -758,7 +783,7 @@ def _on_one_line(document: Document, pointer: str) -> bool:
     entries = _entries(document, pointer)
     if entries:
         end = _span(document.span_of(entries[-1]))[1]
-    return "\n" not in document.text[start:end]
+    return _BREAK.search(document.text, start, end) is None
 
 
 def _around_on_one_line(document: Document, pointer: str) -> bool:
@@ -769,7 +794,7 @@ def _around_on_one_line(document: Document, pointer: str) -> bool:
 
 def _unit_below(document: Document, pointer: str, lines: _Lines) -> str | None:
     """The unit :func:`indent_unit` reads off the first entry under ``pointer`` written on a line
-    of its own - a line feed between its container's opening and it - and indented deeper than
+    of its own - a line break between its container's opening and it - and indented deeper than
     the line its container opens on; ``None`` for a value holding no such entry. The entries are
     taken in the order the text writes them, each before the ones it holds, which is the order
     ``lines`` is asked about them in."""
@@ -790,7 +815,7 @@ def _unit_below(document: Document, pointer: str, lines: _Lines) -> str | None:
 class _Lines:
     """Where the lines of a text start, and how each is indented, for offsets asked in the order
     the text writes them (:func:`_unit_below`): the text between two offsets is searched once for
-    a line feed, and a line's indentation read once, however many entries sit there.
+    a line break, and a line's indentation read once, however many entries sit there.
 
     Each entry used to be asked for the line it sits on by searching back from it to the line's
     start, and for that line's indentation by copying the rest of the text: in a file written on
@@ -806,8 +831,8 @@ class _Lines:
         """The start of the line last asked for its indentation, and that indentation."""
 
     def start_at(self, offset: int) -> int:
-        """Where the line ``offset`` sits on starts: just past the line feed before it, or at the
-        start of the text.
+        """Where the line ``offset`` sits on starts: just past the line break before it - a line
+        feed, a carriage return or both - or at the start of the text.
 
         An offset before the last one asked starts the search again from the start of the text.
         Only a key holding a dot asks one: the scan records such a member under the pointer of
@@ -815,9 +840,13 @@ class _Lines:
         to the other and back (``tests/test_editing.py``)."""
         if offset < self._reached:
             self._reached = self._start = 0
-        feed = self._text.rfind("\n", self._reached, offset)
-        if feed >= 0:
-            self._start = feed + 1
+        # A line feed or a carriage return, the later: a `\r\n` ends in the line feed.
+        end = max(
+            self._text.rfind("\n", self._reached, offset),
+            self._text.rfind("\r", self._reached, offset),
+        )
+        if end >= 0:
+            self._start = end + 1
         self._reached = offset
         return self._start
 

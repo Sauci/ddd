@@ -29,9 +29,11 @@ from ddd.editing import (
     EditError,
     Operation,
     TextEdit,
+    indent_unit,
     insertion,
     lay_out,
     member_addition,
+    newline_at,
     removal,
     replacement,
 )
@@ -145,6 +147,23 @@ def _lacks_includes(described: object) -> bool:
     return "includes" not in described
 
 
+def _written_like(project: Path) -> tuple[str, str]:
+    """The indentation unit and the newline ``project`` is written in, for a file added to it to
+    be written the same: a project laid out with tabs and ``\\r\\n`` has no line feeds and two
+    spaces in a file beside it.
+
+    Read from the bytes on disk, not through :func:`ddd.lsp.ranges.read`, which reads text as
+    python's universal newlines do and so loses the spelling. A description that cannot be read,
+    or does not parse, has no layout to copy: the defaults."""
+    try:
+        text = project.read_bytes().decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return DEFAULT_INDENT_UNIT, "\n"
+    document = Document(text)
+    unit = DEFAULT_INDENT_UNIT if document.data is None else indent_unit(document)
+    return unit, newline_at(text, 0)
+
+
 def created_beside(
     project: Path, filename: str, text: str, cache: dict[Path, Document]
 ) -> tuple[PlannedEdit, PlannedEdit]:
@@ -157,10 +176,13 @@ def created_beside(
     is applied. :func:`adopt_units`, :func:`ddd.shared_plans._created` and
     :func:`ddd.file_plans.create_plan` all create through this, and cannot drift apart.
     """
-    laid_out = lay_out(text, one_line=False, indent="", unit=DEFAULT_INDENT_UNIT, newline="\n")
+    unit, newline = _written_like(project)
+    laid_out = lay_out(text, one_line=False, indent="", unit=unit, newline=newline)
     return (
         PlannedEdit(
-            project.parent / filename, (Operation("set", "", f"{laid_out}\n"),), creates=True
+            project.parent / filename,
+            (Operation("set", "", f"{laid_out}{newline}"),),
+            creates=True,
         ),
         PlannedEdit(project, (entry_appended(project, filename, cache),)),
     )

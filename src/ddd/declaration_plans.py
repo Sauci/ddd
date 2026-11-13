@@ -26,6 +26,7 @@ from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.component import Scope
 from ddd.models.objects import definition_keys, definition_problem
+from ddd.pointers import parent_pointer
 from ddd.variable_keys import KEY_ORDER, KeyOffer, offer_for
 from ddd.variables import component_of
 
@@ -206,8 +207,11 @@ def read_object(
     The definition carried is read where the index recorded it, and refused ``stale`` where that
     place holds another object's - a declaration put in above it, or taken out, since the analysis
     read the file - rather than carried under this name: the question
-    :func:`ddd.variables.declarations_of` asks before it reads a declaration. The write goes to
-    ``file`` alone, so no fingerprint the edit carries is of the file read from.
+    :func:`ddd.variables.declarations_of` asks before it reads a declaration. The producer's entry
+    states what the declaration is compiled under as well - its ``condition``, which is no part of
+    the definition - and the reader carries it, the analysis comparing the two
+    (``condition-mismatch``). The write goes to ``file`` alone, so no fingerprint the edit
+    carries is of the file read from.
     """
     here, entries = _interface(file, cache)
     sites = built.declarations.get(name)
@@ -233,7 +237,10 @@ def read_object(
     definition = {key: value for key, value in stated.items() if key not in CARRIED_BY_A_READER}
     if scope in PRODUCING_SCOPES:
         definition = _stamped(name, definition)
-    return _appended(here, entries, scope, definition)
+    condition = read(owner.path, cache).value_at(f"{parent_pointer(owner.pointer)}.condition")
+    return _appended(
+        here, entries, scope, definition, condition if isinstance(condition, str) else None
+    )
 
 
 def declare_object(
@@ -338,9 +345,19 @@ def _interface(file: Path, cache: dict[Path, Document]) -> tuple[Path, list[obje
 
 
 def _appended(
-    here: Path, entries: list[object], scope: str, definition: Mapping[str, object]
+    here: Path,
+    entries: list[object],
+    scope: str,
+    definition: Mapping[str, object],
+    condition: str | None = None,
 ) -> DeclarationPlan:
-    """The plan that appends one declaration: an ``insert`` at the end of the interface."""
-    raw = json.dumps({"scope": scope, "definition": definition})
+    """The plan that appends one declaration: an ``insert`` at the end of the interface, its
+    ``condition`` - where it has one - between its scope and its definition, as the model orders
+    them."""
+    entry: dict[str, object] = {"scope": scope}
+    if condition is not None:
+        entry["condition"] = condition
+    entry["definition"] = definition
+    raw = json.dumps(entry)
     operation = Operation("insert", f"{INTERFACE}[{len(entries)}]", raw)
     return DeclarationPlan((PlannedEdit(here, (operation,)),))

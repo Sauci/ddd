@@ -913,6 +913,51 @@ class TestCreatedBeside:
         assert included.path == project
         assert included.operations == (Operation("insert", "project.includes[1]", '"u.ddd.json"'),)
 
+    @pytest.mark.parametrize(
+        ("newline", "unit"),
+        [("\r\n", "    "), ("\n", "\t"), ("\r", "  ")],
+        ids=["crlf and four spaces", "lf and a tab", "a bare cr and two spaces"],
+    )
+    def test_the_file_is_laid_out_as_the_project_is_written(
+        self, tmp_path: Path, newline: str, unit: str
+    ) -> None:
+        """A project is written in one newline and one indent, and a file added to it was laid
+        out in line feeds and two spaces whatever it was."""
+        project = tmp_path / "p.ddd.json"
+        written = json.dumps({"project": {"name": "P", "includes": ["a.ddd.json"]}}, indent=unit)
+        project.write_bytes(written.replace("\n", newline).encode("utf-8"))
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [{"unit": "x"}]}', {})
+        assert made.operations == (
+            Operation(
+                "set",
+                "",
+                (
+                    f'{{{newline}{unit}"units": [{newline}{unit}{unit}{{ "unit": "x" }}'
+                    f"{newline}{unit}]{newline}}}{newline}"
+                ),
+            ),
+        )
+
+    def test_a_project_written_on_one_line_gives_a_file_in_the_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        project = tmp_path / "p.ddd.json"
+        project.write_text('{"project": {"name": "P"}}')
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [1]}', {})
+        assert made.operations[0].raw == '{\n  "units": [1]\n}\n'
+
+    @pytest.mark.parametrize(
+        "content", [None, b'{"project": ', b"\xff\xfe"], ids=["missing", "unparsed", "not text"]
+    )
+    def test_a_project_that_cannot_be_read_has_no_layout_to_copy(
+        self, tmp_path: Path, content: bytes | None
+    ) -> None:
+        project = tmp_path / "p.ddd.json"
+        if content is not None:
+            project.write_bytes(content)
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [1]}', {})
+        assert made.operations[0].raw == '{\n  "units": [1]\n}\n'
+
     def test_an_includes_that_is_not_a_list_takes_the_entry_at_its_front(
         self, tmp_path: Path
     ) -> None:

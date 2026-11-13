@@ -15,6 +15,7 @@ as the name of a constant.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,11 @@ from ddd.lsp.units import PlannedEdit
 from ddd.models.common import Datatype
 from ddd.models.conversion import Conversion
 from ddd.models.objects import InitElement, InitValue, check_shape
+
+_ELEMENT: Final = re.compile(r"(?:\[[0-9]+\])+")
+"""An element's indices as the pointer writes them: each in brackets, ``[2]`` or ``[1][3]``."""
+
+_INDEX: Final = re.compile(r"\[([0-9]+)\]")
 
 AXIS_REFERENCES: Final = ("axis", "x_axis", "y_axis")
 """The references that name an axis, in the order a grid lays them out.
@@ -302,7 +308,9 @@ def set_cell(
     ``…init[1][3]`` for a map - so that changing one cell of a sixteen by sixteen map changes
     one line rather than reprinting two hundred and fifty six numbers. Where the array is not
     written yet, because the producer states one value for every element or states none at
-    all, the whole ``init`` is written instead and the preview shows the object gaining it.
+    all, the whole ``init`` is written instead and the preview shows the object gaining it. So
+    is one the array of which is too short to hold the cell: the cell past its end is set, the
+    elements before it that the array lacks being zeros, as the startup code makes them.
 
     A shapeless object - a plain measurement or a parameter, most of a project - has no cell
     for a value to sit in, the same as :func:`grid_of` finds when it lays one out; refused
@@ -333,10 +341,12 @@ def set_cell(
     site = sites[0]
     _in_place(site, name, cache)
     written = read(site.path, cache).value_at(f"{site.pointer}.init")
-    if isinstance(written, list):
+    if _has_cell(written, found):
         operation = Operation("set", f"{site.pointer}.init{at}", json.dumps(raw))
     else:
-        rows = [list(row) for row in grid.rows]
+        # The array is not written yet, or is shorter than the shape: written whole, a short
+        # one filled out with zeros - what the startup code makes of the elements it lacks.
+        rows = _filled_out(grid.rows, grid.shape)
         whole: list[float] | list[list[float]]
         if len(grid.shape) == 1:
             # A one dimensional object is one row, so its only index is the column.
@@ -475,10 +485,35 @@ def _all_of_them(offenders: Sequence[tuple[str, str]], name: str) -> str:
     return f"{len(offenders)} elements of '{name}' are refused: {'; '.join(clauses)}"
 
 
+def _has_cell(written: object, found: tuple[int, ...]) -> bool:
+    """Whether the ``init`` a producer writes - a list, or whatever else it is - holds the cell at
+    ``found`` (its column alone, for one row): the one place an element is set where it stands."""
+    if not isinstance(written, list):
+        return False
+    if len(found) == 1:
+        return found[0] < len(written)
+    row = written[found[0]] if found[0] < len(written) else None
+    return isinstance(row, list) and found[1] < len(row)
+
+
+def _filled_out(rows: tuple[tuple[float, ...], ...], shape: tuple[int, ...]) -> list[list[float]]:
+    """``rows`` as lists, each row and the rows themselves taken to the shape with zeros; one
+    longer than the shape is left as it is, for its own finding to say so."""
+    filled = [list(row) for row in rows]
+    width = shape[-1]
+    for row in filled:
+        row.extend([0] * (width - len(row)))
+    while len(filled) < shape[0] and len(shape) > 1:
+        filled.append([0] * width)
+    return filled
+
+
 def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
-    """The indices ``at`` names - ``[2]``, or ``[1][3]`` - checked against the shape."""
-    parts = [piece for piece in at.replace("]", "").split("[") if piece != ""]
-    if len(parts) != len(shape) or not all(piece.isdecimal() for piece in parts):
+    """The indices ``at`` names - ``[2]``, or ``[1][3]`` - checked against the shape. Each is in
+    brackets, as the pointer the edit is made at writes them: ``1`` is no element, where read as
+    one it planned a key of its own, ``init1``."""
+    parts = _INDEX.findall(at) if _ELEMENT.fullmatch(at) else []
+    if len(parts) != len(shape):
         raise ValueRefusalError("invalid", f"'{at}' is not an element of this object")
     found = tuple(int(piece) for piece in parts)
     if any(index >= size for index, size in zip(found, shape, strict=True)):

@@ -449,7 +449,9 @@ or an a2l file that does not do what the description says - or that does not com
      - error (fixed)
      - a plugin module raises while it is imported, exposes no ``PLUGIN``, exposes one that
        is not a well formed ``ddd.plugins.Plugin``, or claims a name another loaded plugin
-       already has. Fixed for the same reason as ``plugin-not-found``.
+       already has; and, in the language server and beside the listing of ``ddd sources`` and
+       ``ddd artefacts``, a hook or a model of a plugin that raises. Fixed for the same reason
+       as ``plugin-not-found``.
    * - ``unknown-extension``
      - error
      - an ``extensions`` block, on the project or on a definition, names a plugin the

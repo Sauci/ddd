@@ -1851,15 +1851,20 @@ class TestSources:
         assert PLUGIN_FILE.as_posix() in json.loads(capsys.readouterr().out)["sources"]
 
     @pytest.mark.parametrize(
-        ("body", "said"),
+        ("body", "check", "said"),
         [
-            pytest.param(None, "does not exist", id="missing"),
-            pytest.param("def broken(:\n", "invalid syntax", id="not importable"),
-            pytest.param("X = 1\n", "exposes no PLUGIN", id="no plugin"),
+            pytest.param(None, "plugin-not-found", "does not exist", id="missing"),
+            pytest.param("def broken(:\n", "plugin-invalid", "invalid syntax", id="not importable"),
+            pytest.param("X = 1\n", "plugin-invalid", "exposes no PLUGIN", id="no plugin"),
         ],
     )
     def test_a_plugin_that_did_not_load_is_listed_all_the_same(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], body: str | None, said: str
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        body: str | None,
+        check: str,
+        said: str,
     ) -> None:
         """What the project names is what a build watches, whether or not it loaded - as a
         missing include already is: left out of the list, the plugin that stopped importing
@@ -1871,7 +1876,7 @@ class TestSources:
         assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
         captured = capsys.readouterr()
         assert (tmp_path / "plug.py").resolve().as_posix() in captured.out.splitlines()
-        assert "error[plugin-invalid]" in captured.err or "error[plugin-not-found]" in captured.err
+        assert f"error[{check}]" in captured.err
         assert said in captured.err
 
     def test_a_plugin_that_did_not_load_is_listed_in_json_too(
@@ -1883,6 +1888,79 @@ class TestSources:
         document = json.loads(capsys.readouterr().out)
         assert (tmp_path / "plug.py").resolve().as_posix() in document["sources"]
         assert [entry["check"] for entry in document["diagnostics"]] == ["plugin-invalid"]
+
+    def test_a_package_that_stopped_importing_lists_every_module_of_it_still(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A module spelling that fails to import is in no ``sys.modules``, which the listing
+        read its file from: the breaking edit of a package under development dropped all of
+        it, and the repair was ``no work to do``. The finder locates it without running it."""
+        package = tmp_path / "site" / "broken_pkg"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("def broken(:\n", encoding="utf-8")
+        (package / "impl.py").write_text("", encoding="utf-8")
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["broken_pkg"])})
+        monkeypatch.syspath_prepend(str(tmp_path / "site"))
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert {
+            (package.resolve() / name).as_posix() for name in ("__init__.py", "impl.py")
+        } <= set(captured.out.splitlines())
+        assert "error[plugin-invalid]" in captured.err
+
+    def test_a_package_is_listed_once_per_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ddd.plugins import plugin_files
+
+        package = tmp_path / "once_pkg"
+        package.mkdir()
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "impl.py").write_text("", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        assert plugin_files("once_pkg", tmp_path) == (
+            (package / "__init__.py").resolve(),
+            (package / "impl.py").resolve(),
+        )
+
+    @pytest.mark.parametrize(
+        "spelling", ["no_such_module_zz", "sys", "namespace_dir", "bad_parent.child"]
+    )
+    def test_a_module_with_no_file_to_locate_lists_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spelling: str
+    ) -> None:
+        """Not found, built in, a namespace package, and a dotted name whose parent raises
+        when the finder imports it: each has no file, and none of them raises here."""
+        from ddd.plugins import plugin_files
+
+        (tmp_path / "namespace_dir").mkdir()
+        (tmp_path / "bad_parent").mkdir()
+        (tmp_path / "bad_parent" / "__init__.py").write_text("raise RuntimeError('x')\n", "utf-8")
+        (tmp_path / "bad_parent" / "child.py").write_text("", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        try:
+            assert plugin_files(spelling, tmp_path) == ()
+        finally:
+            sys.modules.pop("bad_parent", None)
+
+    def test_the_policy_of_the_build_grades_what_is_reported_beside_the_listing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``-W`` and ``--strict`` mean what they mean on ``check``: a check the build relaxed
+        is not reported, and the listing and the exit code are what they were."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "nothing/*.ddd.json")})
+        root = str(tmp_path / "p.ddd.json")
+        assert main(["sources", root]) == EXIT_OK
+        assert "error[include-empty]" in capsys.readouterr().err
+        assert main(["sources", root, "-W", "include-empty=ignore"]) == EXIT_OK
+        relaxed = capsys.readouterr()
+        assert relaxed.err == ""
+        assert relaxed.out.splitlines() == [(tmp_path / "p.ddd.json").resolve().as_posix()]
+        assert main(["sources", root, "-W", "include-empty=warning"]) == EXIT_OK
+        assert "warning[include-empty]" in capsys.readouterr().err
+        arguments = ["sources", root, "-W", "include-empty=warning", "--strict"]
+        assert main(arguments) == EXIT_OK
+        assert "error[include-empty]" in capsys.readouterr().err
 
     def test_a_plugin_that_is_a_package_lists_every_module_of_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

@@ -222,7 +222,8 @@ The models are the one place where raising is part of the contract. A ``@field_v
 ``ValueError`` or ``AssertionError`` pydantic turns into a ``ValidationError`` is how a model
 refuses a block: that verdict is a ``schema`` finding on the reader's file, located at the
 failing key. Anything else the model raises is the plugin's own defect and is reported the way
-a hook's is - one line naming the plugin, exit 2, ``plugin-invalid`` in the language server.
+a hook's is - one line naming the plugin, exit 2, ``plugin-invalid`` in the language server and
+beside the listing of ``ddd sources`` and ``ddd artefacts``, which exit 0.
 
 Writing a well-behaved plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

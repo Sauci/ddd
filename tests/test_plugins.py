@@ -1509,8 +1509,9 @@ class TestThePluginModelBoundary:
         finding was lost with the plugin's defect."""
         assert main(["check", self.broken_beside_a_finding(tree)]) == EXIT_USAGE
         captured = capsys.readouterr().err
+        defect = "ddd: plugin 'broken' failed validating an 'extensions' block"
         assert "error[schema]" in captured
-        assert "ddd: plugin 'broken' failed validating an 'extensions' block" in captured
+        assert captured.index("error[schema]") < captured.index(defect)
 
     def test_check_prints_its_document_when_a_model_raises(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -1557,9 +1558,9 @@ class TestThePluginModelBoundary:
         captured = capsys.readouterr()
         if output_format == "json":
             document = json.loads(captured.out)
-            assert "broken" in {entry["name"] for entry in document["artefacts"]} or (
-                "broken" in document["plugins_without_artefact"]
-            )
+            assert [entry["name"] for entry in document["artefacts"]] == ["c", "a2l"]
+            # The plugin has a model and no backend: named, not an artefact.
+            assert document["plugins_without_artefact"] == ["broken"]
             assert "plugin-invalid" in {entry["check"] for entry in document["diagnostics"]}
         else:
             assert "built-in" in captured.out

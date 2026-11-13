@@ -162,20 +162,38 @@ def plugin_files(spelling: str, base: Path) -> tuple[Path, ...]:
     file, which a build has to keep watching while it does not import - the edit that repairs
     it is the one to run the generation again - and a module spelling has the file its import
     recorded, which a module that failed to import, or one planted into ``sys.modules`` without
-    one, lacks. A package is every ``.py`` file under its directory, not its ``__init__.py``
-    alone: the module its ``PLUGIN`` comes from, and the shared code a plugin keeps beside it,
-    are plugin code as much as the file that imports them. Nothing is imported here.
+    one, lacks; where the import failed, the file the finder locates for it stands in, which
+    a top level name gives without running it. A package is every ``.py`` file under its
+    directory, not its ``__init__.py`` alone: the module its ``PLUGIN`` comes from, and the
+    shared code a plugin keeps beside it, are plugin code as much as the file that imports
+    them. Nothing of the plugin is imported here.
     """
     if spelling.endswith(".py"):
         source: Path | None = _path_of(spelling, base)
     else:
-        recorded = getattr(sys.modules.get(spelling), "__file__", None)
+        recorded = getattr(sys.modules.get(spelling), "__file__", None) or _located(spelling)
         source = Path(recorded).resolve() if recorded else None
     if source is None:
         return ()
     if source.name != "__init__.py":
         return (source,)
-    return (source, *sorted(path.resolve() for path in source.parent.rglob("*.py")))
+    return tuple(sorted(path.resolve() for path in source.parent.rglob("*.py")))
+
+
+def _located(spelling: str) -> str | None:
+    """Where the finder says the module ``spelling`` is, without running it.
+
+    A module that failed to import is in no ``sys.modules``, and the file it is in is what a
+    build has to go on watching. A dotted name imports its parents to be located, which runs
+    their code, so whatever that raises - a parent that does not import either - is no
+    location: nothing is known of it.
+    """
+    try:
+        found = importlib.util.find_spec(spelling)
+    except (Exception, SystemExit):
+        return None
+    origin = None if found is None else found.origin
+    return origin if origin is not None and origin.endswith(".py") else None
 
 
 def _path_of(spelling: str, base: Path) -> Path:

@@ -1327,8 +1327,9 @@ Errors:
   found. Fixed severity, because a project cannot be interpreted without the plugins it names.
 - `plugin-invalid`: a plugin module raises or exits the interpreter on import, exposes no
   `PLUGIN`, exposes one that is malformed, or claims a name another plugin already has, and, in
-  the language server only, a hook or a model of the plugin's own that raises or exits while a
-  file is checked or while a project is read to find out whether it contains an open file
+  the language server, and beside the listing of `ddd sources` and `ddd artefacts`, a hook or a
+  model of the plugin's own that raises or exits while a file is checked or while a project is
+  read to find out whether it contains an open file, or while a block is validated
   ([section 3.11](#311-plugins)). Fixed severity, for the same reason.
 - `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
   only means something to the plugin that owns it; relaxing the check is how a project
@@ -2139,9 +2140,12 @@ beside the findings, and in text the findings follow the listing on stderr the s
 the plugin modules the project names ([section 3.11](#311-plugins)) are among them,
 each by the file it was imported from, and every `.py` file of one that is a package,
 so that an edited plugin re-runs the generation as an edited component does; a plugin
-named by a `.py` path is listed whether or not it imports, as a missing include is, and a
-plugin that does not import or whose model raises is a `plugin-invalid` finding beside the
-listing, so that the edit repairing it is heard of); recording
+named by a `.py` path is listed whether or not it imports, as a missing include is, and so is
+one named as a module, by the file the finder locates for it; a plugin that does not import
+or whose model raises is a `plugin-invalid` finding beside the listing (a missing one,
+`plugin-not-found`), so that the edit repairing it is heard of; `-W` and `--strict` grade
+those findings as they grade `check`'s, so that a check a build relaxed is not reported
+by it, and change neither the listing nor the exit code); recording
 how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
@@ -2220,10 +2224,12 @@ the run whose findings its reader needs; the exit code is still 2.
 findings reported *as errors*: a run whose findings are all warnings is a clean run unless
 `--strict` says otherwise. `ddd sources`
 and `ddd artefacts` exit 0 whatever the findings, a plugin whose model raises among them,
-because what a project is built out
-of does not depend on whether it is consistent; they exit 1 only when the root cannot
-be read. A plugin's model that raises ends the other commands with exit 2 as a hook that
-raises does, the findings gathered first reported first, in json as the document. `ddd generate` with error findings writes nothing, because a stale artefact is
+because what a project is built out of does not depend on whether it is consistent; they
+exit 1 only when the root cannot be read. A plugin's model that raises ends the other
+commands with exit 2 as a hook that raises does, the findings gathered first reported
+first, in json as the document.
+
+`ddd generate` with error findings writes nothing, because a stale artefact is
 preferable to a wrong one written halfway into a build, unless `--force` asks for the
 outputs anyway; the exit stays a findings exit in either case. `ddd generate --dry-run`
 reports what it would write and writes nothing. A run that does write writes every artefact

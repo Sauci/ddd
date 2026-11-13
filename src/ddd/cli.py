@@ -509,6 +509,17 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     )
     sources.add_argument("project", type=Path, help="project or component description file")
     sources.add_argument("--format", choices=["text", "json"], default="text", help="output format")
+    sources.add_argument(
+        "-W",
+        "--severity",
+        action="append",
+        default=[],
+        metavar="CHECK=SEVERITY",
+        help="change the severity of a check the findings are reported with; repeatable",
+    )
+    sources.add_argument(
+        "--strict", action="store_true", help="report warnings as errors, as the build does"
+    )
     sources.set_defaults(handler=_command_sources)
 
     checks = subparsers.add_parser("checks", help="list the available consistency checks")
@@ -1807,13 +1818,17 @@ def _command_sources(args: argparse.Namespace) -> int:
     stderr in text, already carried by the diagnostics document in json.
 
     What the project names is listed whether or not it loaded: a plugin that stopped
-    importing, or one whose model raises, is a ``plugin-invalid`` finding beside the listing,
-    and its file stays among the sources, so that the build which hears of the defect also
-    hears of its repair.
+    importing (``plugin-invalid``), is missing (``plugin-not-found``), or whose model raises
+    (``plugin-invalid``) is a finding beside the listing, and its file stays among the
+    sources where one is known, so that the build which hears of the defect also hears of its
+    repair. ``-W`` and ``--strict`` mean what they mean on ``check``: they grade what is
+    reported, never what is listed, and the exit code stays 0.
     """
     from ddd.loading import load_workspace
 
-    bag = DiagnosticBag()
+    # The policy the build runs under, so that a check it relaxed is not reported here either:
+    # the findings only say what the other commands would say of the same project.
+    bag = DiagnosticBag(SeverityPolicy.from_strings(args.severity, strict=args.strict))
     workspace = load_workspace(args.project, bag, plugin_defects_are_findings=True)
     if args.format == "json":
         payload = {

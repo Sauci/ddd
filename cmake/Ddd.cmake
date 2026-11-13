@@ -60,7 +60,8 @@ function(_ddd_verify_tool_version)
                     OUTPUT_VARIABLE output
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
-                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_STRIP_TRAILING_WHITESPACE)
     if(NOT status EQUAL 0 OR NOT output MATCHES "ddd +([^ \t\r\n]+)")
         message(WARNING "Ddd.cmake: cannot tell which release \"${DDD_EXECUTABLE}\" is (${status}): "
                         "${error}${output}")
@@ -123,11 +124,14 @@ endfunction()
 # Tolerant on purpose, and never silent: what the tool lists is what the project names, whether or not it could be read
 # - a plugin that stopped importing is listed, and so is one whose model raises - so that the edit repairing it re-runs
 # configure. What it has to say about the project (stderr: a plugin that does not import, an include that is missing) is
-# printed as a warning, the configure being the one place that reaches a developer before the build does. If the tool
-# is missing or the root cannot be read yet, the result is empty, a warning says so, and the build falls back to
-# depending on the project file alone, as a configure dependency, rather than failing to configure at all.
+# printed as a warning, graded by the build's SEVERITY and STRICT, the configure being the one place that reaches a
+# developer before the build does. If the tool is missing or the root cannot be read yet, the result is empty, a
+# warning says so, and the build falls back to depending on the project file alone, as a configure dependency, rather
+# than failing to configure at all.
 function(_ddd_project_sources variable project_file)
-    execute_process(COMMAND "${DDD_EXECUTABLE}" sources "${project_file}"
+    # The rest of the arguments are the severity policy of the build (-W, --strict): what the tool says about the
+    # project is graded as the build grades it, so that a check the build relaxed is not warned of at every configure.
+    execute_process(COMMAND "${DDD_EXECUTABLE}" sources "${project_file}" ${ARGN}
                     OUTPUT_VARIABLE output
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
@@ -713,13 +717,23 @@ function(ddd_generate image)
         string(REGEX REPLACE "^([0-9])" "N\\1" arg_NAME "${arg_NAME}")
     endif()
 
+    # The severity policy applies to every subcommand; everything else only makes sense for "generate", and
+    # "check" would reject an unknown option.
+    set(common_options "")
+    if(arg_STRICT)
+        list(APPEND common_options --strict)
+    endif()
+    foreach(severity IN LISTS arg_SEVERITY)
+        list(APPEND common_options -W ${severity})
+    endforeach()
+
     set(descriptions "")
     if(arg_PROJECT)
         _ddd_absolute_input(arg_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
         set(project_file "${arg_PROJECT}")
         # A hand written project includes its components itself, so the files to watch have to be asked for; its
         # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.
-        _ddd_project_sources(descriptions "${project_file}")
+        _ddd_project_sources(descriptions "${project_file}" ${common_options})
         _ddd_project_plugins(plugin_specs "${project_file}")
         # Whose per-component files the generation declares: the project's components, which it names itself.
         _ddd_project_component_names(project_components "${descriptions}")
@@ -742,16 +756,6 @@ function(ddd_generate image)
     if(arg_SCHEMA_DIRECTORY)
         _ddd_write_schemas("${arg_SCHEMA_DIRECTORY}" "${plugin_specs}")
     endif()
-
-    # The severity policy applies to both subcommands; everything else only makes sense for "generate", and
-    # "check" would reject an unknown option.
-    set(common_options "")
-    if(arg_STRICT)
-        list(APPEND common_options --strict)
-    endif()
-    foreach(severity IN LISTS arg_SEVERITY)
-        list(APPEND common_options -W ${severity})
-    endforeach()
 
     _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${common_options}")
 

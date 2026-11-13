@@ -275,10 +275,12 @@ that adding a file matching an ``includes`` wildcard re-runs configure and picks
 component up; and as the files the names of the project's components are read from, for the
 headers the generation declares (see *The targets it creates* below). The list holds what the
 project names whether or not it loaded: a ``.py`` plugin that no longer imports, or whose
-model raises, is still listed, and every file of a package plugin is, so the edit that
-repairs it re-runs configure and the generation. What the tool says about the project on its
-standard error - that plugin's defect, a missing include - is printed by the configure as a
-warning. If the tool cannot resolve the project yet, the module warns and falls back to
+model raises, is still listed, and so is a module named plugin, by the file the finder
+locates for it, and every ``.py`` file of a package plugin, so the edit that repairs it
+re-runs configure and the generation. What the tool says about the project on its standard
+error - that plugin's defect, a missing include - is printed by the configure as a warning,
+graded by the ``SEVERITY`` and ``STRICT`` of the call, so a check the call relaxed is not
+warned of. If the tool cannot resolve the project yet, the module warns and falls back to
 depending on the project file alone, which stays a dependency of the configure, rather than
 refusing to configure at all.
 

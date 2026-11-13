@@ -65,9 +65,11 @@ PLUGIN = EXAMPLES / "plugins" / "ddd_layout.py"
 TEMPLATES = EXAMPLES / "templates"
 
 
-def cmake(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    """One cmake invocation, its output kept for the failure message."""
-    env = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "PYTHONUTF8": "1"}
+def cmake(*arguments: str, cwd: Path, site: Path | None = None) -> subprocess.CompletedProcess[str]:
+    """One cmake invocation, its output kept for the failure message. ``site`` is a directory
+    the tool may import modules from, as an installed plugin is."""
+    path = os.pathsep.join([str(ROOT / "src"), *([str(site)] if site else [])])
+    env = {**os.environ, "PYTHONPATH": path, "PYTHONUTF8": "1"}
     return subprocess.run(
         [CMAKE, *arguments], cwd=cwd, env=env, capture_output=True, text=True, check=False
     )
@@ -78,7 +80,11 @@ MAKE_PROGRAMS = {"Ninja": NINJA}
 
 
 def attempt(
-    source: Path, build: Path, *definitions: str, generator: str = "Ninja"
+    source: Path,
+    build: Path,
+    *definitions: str,
+    generator: str = "Ninja",
+    site: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """One configure, whether or not it is expected to succeed."""
     return cmake(
@@ -93,6 +99,7 @@ def attempt(
         *compiler(),
         *definitions,
         cwd=source,
+        site=site,
     )
 
 
@@ -405,6 +412,9 @@ class Shape:
     """The a2l takes its addresses from ``ADDRESS_MAP``, the map the build page's recipe extracts
     from the image once it is linked, the image based where an ``ECU_ADDRESS`` holds them."""
 
+    severity: tuple[str, ...] = ()
+    """``SEVERITY`` is given, each ``check=level`` of it."""
+
     strict: bool = False
     """``STRICT`` is given, so that a warning stops the build - ``address-missing`` among them."""
 
@@ -546,6 +556,8 @@ class Story:
         self, root: Path, shape: Shape, generator: str, *, configured: bool = True
     ) -> None:
         self.source = root
+        self.site: Path | None = None
+        """A directory the tool imports plugins from by their module name, where there is one."""
         self.components = root / "components"
         self.build_dir = root / "build"
         self.shape = shape
@@ -586,6 +598,8 @@ class Story:
             templates += ' ADDRESS_MAP "${address_map}"'
         if self.shape.strict:
             templates += " STRICT"
+        if self.shape.severity:
+            templates += f" SEVERITY {' '.join(self.shape.severity)}"
         if self.shape.project:
             generation = (
                 f'ddd_generate(img PROJECT "${{CMAKE_SOURCE_DIR}}/project.ddd.json" {templates})\n'
@@ -710,7 +724,7 @@ add_library(spare STATIC spare.c)
 
     def attempt(self) -> subprocess.CompletedProcess[str]:
         """A configure of the tree, whether or not it is expected to succeed."""
-        return attempt(self.source, self.build_dir, generator=self.generator)
+        return attempt(self.source, self.build_dir, generator=self.generator, site=self.site)
 
     def reconfigure(self) -> str:
         """Configures the tree again, and answers with what the configure printed."""
@@ -736,7 +750,7 @@ add_library(spare STATIC spare.c)
         return {symbol: found[symbol] for symbol in a2l_addresses(self.a2l())}
 
     def build(self) -> Step:
-        run = cmake("--build", str(self.build_dir), cwd=self.build_dir)
+        run = cmake("--build", str(self.build_dir), cwd=self.build_dir, site=self.site)
         output = run.stdout + run.stderr
         printed = ""
         if run.returncode == 0:
@@ -1004,6 +1018,24 @@ SYNTAX_ERROR = "def broken(:\n"
 PLUGIN_PROJECT = Shape(project=True, registered=False, plugins=("plug.py",))
 """A hand written project naming a plugin of its own, which the story writes."""
 
+MODULE_PROJECT = Shape(project=True, registered=False, plugins=("storypkg",))
+"""A hand written project naming a plugin by its module name, a package the story writes."""
+
+UNMATCHED = Shape(
+    project=True,
+    registered=False,
+    includes=(*Shape().includes, "nothing/*.ddd.json"),
+)
+"""A hand written project with an include that matches no file: an ``include-empty`` finding."""
+
+RELAXED = Shape(
+    project=True,
+    registered=False,
+    includes=UNMATCHED.includes,
+    severity=("include-empty=ignore",),
+)
+"""The same project, the call relaxing that check."""
+
 
 def plugged(root: Path, generator: str, body: str = "pass") -> Story:
     """A story of ``PLUGIN_PROJECT`` whose component carries a block of the plugin ``plug.py``
@@ -1044,6 +1076,7 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         """The edit is noticed: the configure it runs warns, the generation stops loudly, the
         repair is generated, and an edit of a component after that reaches the image."""
         story = plugged(tmp_path, generator)
+        assert "CMake Warning" not in story.configured, story.configured
         assert story.build().code == 0
         story.write_plugin(broken)
         edited = story.build()
@@ -1052,6 +1085,7 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         story.write_plugin(STAMP_PLUGIN.format(body="pass") + "\n# repaired\n")
         repaired = story.build()
         assert repaired.code == 0 and repaired.generated(), repaired.output
+        assert "CMake Warning" not in repaired.output, repaired.output
         assert story.build().did_nothing()
         story.describe("uint16", declare("local", "Ticks", extensions={"stamp": {"tag": "t"}}))
         story.write_sensor(1234)
@@ -1065,10 +1099,14 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
     ) -> None:
         """The first configure meets the defect: it prints a warning and exits 0, the build
         fails loudly, and once the plugin is mended a component's edit reaches the image
-        rather than ``no work to do`` - the project file the only thing watched until then."""
+        rather than ``no work to do``: the configure listed what the project names, the
+        plugin's file among it, so the mending ran it again."""
         story = plugged(tmp_path, generator, 'raise RuntimeError("validator defect")')
-        assert "CMake Warning" in story.configured, story.configured
-        assert "validator defect" in story.configured, story.configured
+        said = " ".join(story.configured.split())
+        assert "CMake Warning" in said, said
+        assert "validator defect" in said, said
+        # The tool's trailing newline is stripped, so the warning ends where its text does.
+        assert "1 error\nCall Stack" in story.configured, story.configured
         assert story.build().code != 0
         story.write_plugin(STAMP_PLUGIN.format(body="pass"))
         mended = story.build()
@@ -1110,6 +1148,51 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         repaired = story.build()
         assert repaired.code == 0 and repaired.printed == "logged 200", repaired.output
         assert "Configuring done" in repaired.output, repaired.output
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_package_named_by_its_module_stops_importing_and_is_mended(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A module spelling that fails to import is in no ``sys.modules``, so the file its
+        import recorded was never there to list: the configure the breaking edit ran dropped
+        the package, and the build after it, and after its repair, had nothing to do. The
+        finder locates it without running it, so every file of it stays listed - ``impl.py``,
+        where the shared code lives, as much as ``__init__.py``."""
+        site = tmp_path / "site"
+        package = site / "storypkg"
+        package.mkdir(parents=True)
+        init = "from storypkg.impl import PLUGIN\n"
+        story = Story(tmp_path, MODULE_PROJECT, generator, configured=False)
+        story.site = site
+        (package / "__init__.py").write_text(init, encoding="utf-8")
+        (package / "impl.py").write_text(STAMP_PLUGIN.format(body="pass"), encoding="utf-8")
+        story.configured = story.reconfigure()
+        assert story.build().code == 0
+        (package / "__init__.py").write_text("def broken(:\n", encoding="utf-8")
+        edited = story.build()
+        assert edited.code != 0, edited.output
+        assert "invalid syntax" in edited.output, edited.output
+        (package / "__init__.py").write_text(init + "# repaired\n", encoding="utf-8")
+        repaired = story.build()
+        assert repaired.code == 0 and repaired.generated(), repaired.output
+        assert story.build().did_nothing()
+        (package / "impl.py").write_text(
+            STAMP_PLUGIN.format(body="pass") + "\n# edited\n", encoding="utf-8"
+        )
+        again = story.build()
+        assert again.code == 0 and again.generated(), again.output
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_check_the_call_relaxes_is_not_warned_of_at_the_configure(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """``ddd sources`` grades what it says by the ``SEVERITY`` and ``STRICT`` of the call:
+        a project relaxing a load-time check there had a warning at every configure that it
+        could not silence."""
+        said = " ".join(Story(tmp_path / "loud", UNMATCHED, generator).configured.split())
+        assert "CMake Warning" in said and "include-empty" in said, said
+        relaxed = Story(tmp_path / "quiet", RELAXED, generator).configured
+        assert "CMake Warning" not in relaxed, relaxed
 
     def test_a_failed_build_is_not_a_build_with_nothing_to_do(self) -> None:
         """A CMake re-run that fails prints ``Configuring incomplete`` and compiles nothing,

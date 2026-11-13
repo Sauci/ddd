@@ -1091,6 +1091,26 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         returned = story.build()
         assert returned.code == 0 and returned.generated(), returned.output
 
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_project_the_tool_cannot_resolve_stays_a_dependency_of_the_configure(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A root that parses and fails its schema lists nothing: the configure warns, and the
+        project file is the one thing it can watch, so the edit repairing it configures again
+        and the build after it is the right one."""
+        story = Story(tmp_path, PLUGIN_PROJECT, generator, configured=False)
+        story.write_plugin(STAMP_PLUGIN.format(body="pass"))
+        project = tmp_path / "project.ddd.json"
+        named = project.read_text(encoding="utf-8")
+        project.write_text(named.replace('"includes"', '"included"'), encoding="utf-8")
+        configured = story.reconfigure()
+        assert "CMake Warning" in configured, configured
+        assert "cannot resolve the sources" in " ".join(configured.split()), configured
+        project.write_text(named, encoding="utf-8")
+        repaired = story.build()
+        assert repaired.code == 0 and repaired.printed == "logged 200", repaired.output
+        assert "Configuring done" in repaired.output, repaired.output
+
     def test_a_failed_build_is_not_a_build_with_nothing_to_do(self) -> None:
         """A CMake re-run that fails prints ``Configuring incomplete`` and compiles nothing,
         which read as a build that had nothing to do."""

@@ -2393,7 +2393,8 @@ the tool **shall** be one release: including the module runs `ddd --version` and
 naming both, a tool spelling another version than the module does, because every option the
 module passes is checked when the build runs it and a mismatch is otherwise an unrecognised
 argument at build time, or a silent build under the option set of a release nobody is
-running.
+running. The answer is not kept: every configure includes the module and asks again, so that a
+tool upgraded where it stands - another release installed at the same path - is refused too.
 
 In the collected mode the interface library carries the compile usage of every registered
 target - include directories, compile definitions and compile options, never link edges - so

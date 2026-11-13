@@ -38,7 +38,10 @@ installation - the one of a virtual environment, or a small wrapper script runni
 of another release than the module's own: the two are one release, and a project that copied
 ``Ddd.cmake`` into its tree - which the line above invites - otherwise finds out at build
 time, in an ``unrecognized arguments`` from the tool's argument parser, or does not find out
-at all and builds under the option set of a release nobody is running. The module needs CMake
+at all and builds under the option set of a release nobody is running. It asks at every
+configure, keeping no answer: a tool upgraded where it stands - ``pip install -U`` into the
+environment the path names - is another release at the same path, and is refused the same
+way. The module needs CMake
 3.20 and says so at include time; collecting the
 components through the link graph (below) needs CMake 3.30. A cross-compile toolchain file
 that sets ``CMAKE_FIND_ROOT_PATH_MODE_PROGRAM ONLY`` keeps ``find_program`` from seeing host

@@ -51,8 +51,13 @@ set(DDD_MODULE_VERSION "0.11.0")
 # two drift apart silently: every option this module passes is checked by argparse at *build* time, so a module newer
 # than its tool configures cleanly and then fails on "unrecognized arguments: --dictionary", which names the option
 # and not the mismatch behind it, while a module older than its tool builds happily with the option set of a release
-# nobody is running. Asked once, at include time, because it is a property of the pair rather than of anything a call
-# says.
+# nobody is running. Asked at include time, because it is a property of the pair rather than of anything a call says.
+#
+# And asked at every include, so at every configure, keeping no answer: the release answering at a path can change
+# while the path stays - "pip install -U" into the environment DDD_EXECUTABLE names, or an editable install whose
+# checkout moved on - and an answer the cache kept by the path skipped the question there, the one case it exists for,
+# until a fresh build tree asked it. "ddd --version" answers without loading the rest of the tool, so the question
+# costs next to nothing.
 #
 # Tolerant where it cannot tell - a tool that does not answer --version at all is broken in a way the next
 # execute_process() will say more about - and fatal where it can: a mismatch is a build that fails later, with less
@@ -79,13 +84,9 @@ function(_ddd_verify_tool_version)
                             "this release, or include the Ddd.cmake that ships with the tool - \"ddd cmake-dir\" "
                             "prints the directory it is in.")
     endif()
-    # Keyed on the pair, so that upgrading either side asks again while an ordinary re-configure does not pay for a
-    # subprocess that answered yesterday.
-    set(DDD_VERSION_HANDSHAKE "${DDD_EXECUTABLE}|${DDD_MODULE_VERSION}" CACHE INTERNAL
-        "The DDD_EXECUTABLE and module version last compared with each other.")
 endfunction()
 
-if(DDD_EXECUTABLE AND NOT DDD_VERSION_HANDSHAKE STREQUAL "${DDD_EXECUTABLE}|${DDD_MODULE_VERSION}")
+if(DDD_EXECUTABLE)
     _ddd_verify_tool_version()
 endif()
 

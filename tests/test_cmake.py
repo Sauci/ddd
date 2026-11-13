@@ -3222,6 +3222,42 @@ add_executable(img main.c)
         assert "0.0.1" in said and __version__ in said, said
         assert tool.as_posix() in said.replace("\\", "/"), "the message does not name the tool"
 
+    def test_a_tool_upgraded_where_it_stands_is_asked_again(self, tmp_path: Path) -> None:
+        """``pip install -U`` into the environment ``DDD_EXECUTABLE`` names, or an editable
+        install whose checkout moved on: the same path answers with another release. The
+        handshake was kept in the cache by the path, so the configure of the same tree went on
+        as if nothing had changed, and only a fresh build tree refused the pair. A wrapper
+        reading its release from a file beside it is that tool: the wrapper itself keeps its
+        size and its time, so nothing short of asking it tells the two answers apart."""
+        self.write(tmp_path)
+        if os.name == "nt":
+            tool = tmp_path / "ddd.bat"
+            tool.write_text('@type "%~dp0release.txt"\n', encoding="utf-8")
+        else:
+            tool = tmp_path / "ddd.sh"
+            tool.write_text('#!/bin/sh\ncat "$(dirname "$0")/release.txt"\n', encoding="utf-8")
+            tool.chmod(0o755)
+        release = tmp_path / "release.txt"
+        release.write_text(f"ddd {__version__}\n", encoding="utf-8")
+        arguments = (
+            "-S",
+            str(tmp_path),
+            "-B",
+            str(tmp_path / "build"),
+            "-G",
+            "Ninja",
+            f"-DCMAKE_MAKE_PROGRAM={NINJA}",
+            f"-DDDD_EXECUTABLE={tool.as_posix()}",
+            *compiler(),
+        )
+        first = cmake(*arguments, cwd=tmp_path)
+        assert first.returncode == 0, first.stdout + first.stderr
+        release.write_text("ddd 0.0.1\n", encoding="utf-8")
+        again = cmake(*arguments, cwd=tmp_path)
+        assert again.returncode != 0, "a tool upgraded in place configured without a word"
+        said = " ".join(again.stderr.split())
+        assert "0.0.1" in said and __version__ in said, said
+
 
 @pytest.mark.parametrize("tool", [CMAKE, NINJA, MAKE_PROGRAMS[MAKE], str(DDD)])
 def test_the_tools_this_module_runs_exist(tool: str) -> None:

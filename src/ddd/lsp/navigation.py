@@ -149,7 +149,7 @@ class Index:
     """Name -> every declaration of it, whichever way round."""
 
     types: dict[str, Site] = field(default_factory=dict)
-    """Structure name -> where it is declared."""
+    """Type name -> where it is declared: a structure, a scalar type or an external type."""
 
     type_uses: dict[str, list[Site]] = field(default_factory=dict)
     """Structure name -> every member that nests it."""
@@ -746,6 +746,31 @@ def rename_sites(built: Index, kind: str, name: str) -> list[Site]:
     if declared is None:
         return list(uses)
     return [Site(declared.path, f"{declared.pointer}.name"), *uses]
+
+
+def drift(sites: Iterable[Site], name: str, cache: dict[Path, Document]) -> tuple[Path, ...]:
+    """The files whose text no longer holds ``name`` at one of ``sites``, each once, sorted.
+
+    The index points into each file as the analysis read it. A declaration or an entry put in
+    above the one it recorded - or taken out, or put back by an undo - leaves another, or none, at
+    that place, and a plan made at the recorded pointer changes whatever sits there now: what a
+    panel's route asks before it reads an entry (:func:`ddd.project_types.type_in_place`,
+    :func:`ddd.project_shared.entry_in_place`), and what :func:`rename_edits` asks of a buffer,
+    asked of every place a plan points at.
+    """
+    moved = {site.path for site in sites if read(site.path, cache).value_at(site.pointer) != name}
+    return tuple(sorted(moved, key=Path.as_posix))
+
+
+def changed_since(files: Iterable[Path], consequence: str) -> str:
+    """Why a plan pointing by the index is refused while ``files`` no longer hold what it recorded
+    there, ``consequence`` saying what cannot be done: one sentence for every such plan, naming
+    each file, and the wait that clears it - the next analysis, which reads them again."""
+    names = ", ".join(file.name for file in files)
+    return (
+        f"{names} changed since the project was analysed, so {consequence} until the project is "
+        "analysed again"
+    )
 
 
 def rename_problem(built: Index, name: str, kind: str = "variable") -> str | None:

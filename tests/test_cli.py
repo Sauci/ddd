@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -28,7 +29,7 @@ from conftest import (
     value_member,
     write_tree,
 )
-from ddd import identity
+from ddd import editing, identity
 from ddd.backends import MANIFEST_NAME
 from ddd.backends.base import STAGING_SUFFIX
 from ddd.build_info import BUILD_INFO_FORMAT
@@ -3362,14 +3363,14 @@ def test_assigning_ids_reports_a_file_it_cannot_write_and_stamps_the_rest(
         for name in ("first", "locked", "last")
     }
     write_tree(tree, files)
-    writing = Path.write_bytes
+    staging = editing._new_stage
 
-    def refusing(self: Path, data: bytes) -> int:
-        if self.name.startswith("locked.ddd.json"):  # the file, or the sibling staged for it
-            raise PermissionError(errno.EACCES, "Permission denied", str(self))
-        return writing(self, data)
+    def refusing(target: Path, *access: Path | None) -> Any:
+        if target.name == "locked.ddd.json":  # the stage the engine writes beside the file
+            raise PermissionError(errno.EACCES, "Permission denied", str(target))
+        return staging(target, *access)
 
-    monkeypatch.setattr(Path, "write_bytes", refusing)
+    monkeypatch.setattr(editing, "_new_stage", refusing)
     named = [str(tree / name) for name in files]
     assert main(["id", "--assign", *named]) == EXIT_FINDINGS
     captured = capsys.readouterr().err
@@ -3377,6 +3378,153 @@ def test_assigning_ids_reports_a_file_it_cannot_write_and_stamps_the_rest(
     assert "wrote 2 ids" in captured
     assert '"id"' in (tree / "last.ddd.json").read_text(encoding="utf-8")
     assert '"id"' not in (tree / "locked.ddd.json").read_text(encoding="utf-8")
+
+
+def test_assigning_ids_reports_a_read_only_file_and_stamps_the_rest(tree, capsys):
+    """A checkout somebody kept read-only has no protection but the tool's refusal: the file was
+    replaced all the same, a rename asking the permission of the folder and not of the file,
+    and left with the mode a new file gets. Nobody has the permission to write it, which stops
+    even a process that may write anything - ``ddd id`` run as root, in a container."""
+    files = {
+        f"{name}.ddd.json": component(name.upper(), declare("local", f"X{name}"))
+        for name in ("first", "locked", "last")
+    }
+    write_tree(tree, files)
+    locked = tree / "locked.ddd.json"
+    locked.chmod(0o444)
+    before, mode = locked.read_bytes(), stat.S_IMODE(locked.stat().st_mode)
+    named = [str(tree / name) for name in files]
+    assert main(["id", "--assign", *named]) == EXIT_FINDINGS
+    captured = capsys.readouterr().err
+    assert f"{locked}: cannot be written, skipped" in captured
+    assert "wrote 2 ids" in captured
+    assert locked.read_bytes() == before
+    assert stat.S_IMODE(locked.stat().st_mode) == mode
+    assert '"id"' in (tree / "first.ddd.json").read_text(encoding="utf-8")
+    assert '"id"' in (tree / "last.ddd.json").read_text(encoding="utf-8")
+    assert list(tree.glob("*" + STAGING_SUFFIX)) == []
+
+
+def test_assigning_ids_does_not_touch_a_file_with_nothing_to_stamp(tree, capsys):
+    """A second run changes nothing: the file is not written again with the bytes it has - which
+    a checkout kept read-only would refuse, and report - but left as it is."""
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X", id="k7m2q9xr4t8w"))})
+    path.chmod(0o444)
+    before = path.stat()
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert "wrote 0 ids" in capsys.readouterr().err
+    after = path.stat()
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
+
+
+def test_assigning_ids_does_not_write_over_a_file_saved_while_it_worked(tree, monkeypatch, capsys):
+    """The bytes the ids were worked out for are the bytes the engine checks the file against:
+    one saved since the command read it is somebody's, and a rename over it would lose the save -
+    which the stamp, as good a description as the one read, would not have shown."""
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    saved = path.read_bytes().replace(b'"name": "A"', b'"name": "B"', 1)
+    assert saved != path.read_bytes()
+    walking = identity.unstamped
+
+    def saving(document: Any) -> list[tuple[str, bool]]:
+        wanted = walking(document)
+        path.write_bytes(saved)  # the editor's save, landing once the command has read the file
+        return wanted
+
+    monkeypatch.setattr(identity, "unstamped", saving)
+    assert main(["id", "--assign", str(path)]) == EXIT_FINDINGS
+    assert f"{path}: cannot be written, skipped" in capsys.readouterr().err
+    assert path.read_bytes() == saved
+    assert list(tree.glob("*" + STAGING_SUFFIX)) == []
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o640])
+def test_assigning_ids_keeps_the_mode_of_the_file(tree, mode):
+    """A file written afresh takes the umask's mode rather than its own: a description kept to
+    its owner came back readable by the group, and one kept group-writable came back without
+    it. A mode is what a checkout's owner chose, and a stamp is not a reason to change it."""
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    path.chmod(mode)
+    kept = stat.S_IMODE(path.stat().st_mode)
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    assert '"id"' in path.read_text(encoding="utf-8")
+    assert stat.S_IMODE(path.stat().st_mode) == kept
+
+
+def test_assigning_ids_writes_through_a_symbolic_link_and_leaves_it_a_link(tree, capsys):
+    """A description shared between projects by a link is one description: the id belongs in
+    the file the link names. The staged file was renamed onto the link's own name, which
+    replaced the link with a copy holding the id and left the shared file without one - each
+    project then minting an identity of its own for one object, and ``wrote 1 id`` said it was
+    done.
+
+    Made with ``symlink_to`` as the language server's own link test makes its: a file link
+    needs a privilege Windows gives an ordinary account only in developer mode, and the
+    continuous integration's runners have it."""
+    write_tree(tree, {"shared/common.ddd.json": component("A", declare("output", "X"))})
+    (tree / "proj").mkdir()
+    link = tree / "proj" / "common.ddd.json"
+    link.symlink_to(Path("..") / "shared" / "common.ddd.json")
+    shared = tree / "shared" / "common.ddd.json"
+    assert main(["id", "--assign", str(link)]) == EXIT_OK
+    assert "wrote 1 id" in capsys.readouterr().err
+    assert link.is_symlink()
+    assert link.resolve() == shared.resolve()
+    stamped = json.loads(shared.read_text(encoding="utf-8"))
+    assert re.fullmatch(OBJECT_ID_PATTERN, stamped["component"]["interface"][0]["definition"]["id"])
+    assert link.read_bytes() == shared.read_bytes()
+    assert [entry.name for entry in shared.parent.iterdir()] == [shared.name]
+    assert [entry.name for entry in link.parent.iterdir()] == [link.name]
+
+
+@pytest.mark.parametrize(
+    "spelled",
+    [
+        pytest.param(
+            ('"volatile": false', '"volatile": false, "volatile": false'), id="a-key-spelled-twice"
+        ),
+        pytest.param(('"volatile": false', '"volatile": false, "init": NaN'), id="nan"),
+    ],
+)
+def test_assigning_ids_refuses_a_file_the_loader_refuses(tree, capsys, spelled):
+    """Python reads both and DDD reads neither: ``ddd check`` reports each as ``json-syntax``.
+    A file it could not read is one this command must not rewrite, and it was stamped - ``wrote
+    1 id``, exit 0 - because it asked python's parser rather than the loader's."""
+    good = json.dumps(component("A", declare("local", "X")), indent=2)
+    files = {
+        "first.ddd.json": good,
+        "refused.ddd.json": good.replace(*spelled),
+        "last.ddd.json": good,
+    }
+    write_tree(tree, files)
+    refusing = tree / "refused.ddd.json"
+    before = refusing.read_bytes()
+    assert main(["check", str(refusing), "--standalone"]) == EXIT_FINDINGS
+    assert "json-syntax" in capsys.readouterr().err
+    named = [str(tree / name) for name in files]
+    assert main(["id", "--assign", *named]) == EXIT_FINDINGS
+    captured = capsys.readouterr().err
+    assert f"{refusing}: not readable as json, skipped" in captured
+    assert "wrote 2 ids" in captured
+    assert refusing.read_bytes() == before
+    assert '"id"' in (tree / "first.ddd.json").read_text(encoding="utf-8")
+    assert '"id"' in (tree / "last.ddd.json").read_text(encoding="utf-8")
+    assert list(tree.glob("*" + STAGING_SUFFIX)) == []
+
+
+def test_assigning_ids_reports_a_file_the_loader_refuses_even_with_nothing_to_stamp(tree, capsys):
+    """Said whatever the file holds: a description DDD does not read is skipped and reported
+    the way one that is not json at all is, not left to be found by the run that checks it."""
+    path = tree / "a.ddd.json"
+    stamped = json.dumps(component("A", declare("local", "X", id="k7m2q9xr4t8w")), indent=2)
+    path.write_text(stamped.replace('"volatile": false', '"volatile": false, "init": NaN'))
+    before = path.read_bytes()
+    assert main(["id", "--assign", str(path)]) == EXIT_FINDINGS
+    assert f"{path}: not readable as json, skipped" in capsys.readouterr().err
+    assert path.read_bytes() == before
 
 
 def test_assigning_ids_keeps_a_byte_order_mark(tree):
@@ -3549,15 +3697,20 @@ def test_assigning_ids_stamps_a_declaration_whose_name_key_is_escaped(tree, caps
 
 
 def test_assigning_ids_keeps_a_file_written_with_bare_carriage_returns(tree):
-    """A file written with classic-Mac endings has no ``\\n`` at all, so the search for one
-    found nothing and the line the stamp adds was given the ending the file does not use."""
+    """A file written with classic-Mac endings has no ``\\n`` at all, and none is written into it.
+
+    A bare carriage return ends a line as much as a line feed does: the stamp goes on a line of
+    its own, indented like the name it follows and ended as the file ends its lines. Read as one
+    line, the stamp joined the line of the name; and the search for a line feed once found none,
+    and the line the stamp added was given the ending the file does not use."""
     text = json.dumps(component("A", declare("output", "X")), indent=2)
     path = tree / "a.ddd.json"
     path.write_bytes(text.replace("\n", "\r").encode("utf-8"))
     assert main(["id", "--assign", str(path)]) == EXIT_OK
     after = path.read_bytes()
     assert b"\n" not in after
-    assert after.count(b"\r") == text.count("\n") + 1  # the line the stamp added
+    assert after.count(b"\r") == text.count("\n") + 1
+    assert re.search(rb'"name": "X",\r {10}"id": "[a-z0-9]{12}",\r', after)
 
 
 def test_assigning_ids_leaves_the_file_alone_when_the_write_fails(tree, monkeypatch, capsys):
@@ -3570,23 +3723,56 @@ def test_assigning_ids_leaves_the_file_alone_when_the_write_fails(tree, monkeypa
     path = tree / "a.ddd.json"
     write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
     before = path.read_bytes()
-    writing = Path.write_bytes
+    staging = editing._new_stage
 
-    def dying(self: Path, data: bytes) -> int:
-        writing(self, data[: len(data) // 2])
-        raise OSError(errno.ENOSPC, "No space left on device", str(self))
+    class FillingUp:
+        """A stage that takes half its bytes and then finds the disk full."""
 
-    monkeypatch.setattr(Path, "write_bytes", dying)
+        def __init__(self, handle: Any) -> None:
+            self.handle = handle
+
+        def __enter__(self) -> FillingUp:
+            return self
+
+        def __exit__(self, *exception: object) -> None:
+            self.handle.close()
+
+        def write(self, data: bytes) -> None:
+            self.handle.write(data[: len(data) // 2])
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    def filling_up(target: Path, *access: Path | None) -> tuple[Path, FillingUp]:
+        stage, handle = staging(target, *access)
+        return stage, FillingUp(handle)
+
+    monkeypatch.setattr(editing, "_new_stage", filling_up)
     assert main(["id", "--assign", str(path)]) == EXIT_FINDINGS
     assert f"{path}: cannot be written, skipped" in capsys.readouterr().err
     assert path.read_bytes() == before
     assert list(tree.glob("*" + STAGING_SUFFIX)) == []
 
 
-def test_the_id_command_stages_under_the_name_every_writer_stages_under():
-    """One spelling for the sibling nobody else may be keeping; :data:`STAGING_SUFFIX`
-    says why it is that one, and there is no use in the command picking a second."""
-    assert identity.STAGING_SUFFIX == STAGING_SUFFIX
+def test_the_id_command_stages_under_a_name_of_its_own_beside_the_file(tree, monkeypatch):
+    """What the command stages its bytes under is the edit engine's: the file's name, a token
+    of that write's own and the suffix every writer stages under - so that two writers of one
+    file never share a stage, as they did under the one fixed name the command used to give it."""
+    path = tree / "a.ddd.json"
+    write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+    renamed: list[tuple[Path, Path]] = []
+    replacing = Path.replace
+
+    def spying(self: Path, target: Path) -> Path:
+        renamed.append((self, Path(target)))
+        return replacing(self, target)
+
+    monkeypatch.setattr(Path, "replace", spying)
+    assert main(["id", "--assign", str(path)]) == EXIT_OK
+    ((stage, target),) = renamed
+    assert target == path.resolve()
+    assert stage.parent == target.parent
+    assert re.fullmatch(
+        re.escape(path.name) + r"\.[0-9a-f]{8}" + re.escape(STAGING_SUFFIX), stage.name
+    )
 
 
 def test_assigning_ids_keeps_mixed_line_endings(tree):
@@ -3706,18 +3892,18 @@ class TestWhatOneRunReads:
 
         reads: list[str] = []
         parses: list[int] = []
-        reading = Path.read_text
+        reading = Path.read_bytes
         loading = json.loads
 
-        def counted_read(self: Path, *args: Any, **kwargs: Any) -> str:
+        def counted_read(self: Path) -> bytes:
             reads.append(self.name)
-            return str(reading(self, *args, **kwargs))
+            return reading(self)
 
         def counted_parse(text: Any, *args: Any, **kwargs: Any) -> Any:
             parses.append(len(text))
             return loading(text, *args, **kwargs)
 
-        monkeypatch.setattr(Path, "read_text", counted_read)
+        monkeypatch.setattr(Path, "read_bytes", counted_read)
         monkeypatch.setattr(json, "loads", counted_parse)
         assert main(["compare", str(dump), str(dump)]) == EXIT_OK
         assert reads.count("baseline.json") == 2, reads  # one per side

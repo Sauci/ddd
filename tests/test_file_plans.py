@@ -41,7 +41,7 @@ from ddd.file_plans import (
     remove_plan,
 )
 from ddd.gui.session import Revision, Session, findings_with
-from ddd.loading import load_workspace
+from ddd.loading import included_files, load_workspace, resolve_path
 from ddd.lsp.diagnostics import finding_identity, run_project
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.units import PlannedEdit, unit_project
@@ -1675,8 +1675,10 @@ class TestAdd:
             ("a.ddd.json", path),
         )
 
-    def test_an_absolute_path_is_appended_as_written_too(self, tmp_path: Path) -> None:
-        """A path need not be written from the description's directory."""
+    def test_an_absolute_path_is_appended_relative_to_the_description(self, tmp_path: Path) -> None:
+        """A path need not be written from the description's directory, but an entry naming one
+        absolutely names the file on this machine only: ``C:/Users/...`` is a ``file-not-found``
+        on every other."""
         write_tree(
             tmp_path,
             {
@@ -1690,10 +1692,110 @@ class TestAdd:
             (
                 PlannedEdit(
                     described(tmp_path),
-                    (Operation("insert", "project.includes[1]", json.dumps(path)),),
+                    (Operation("insert", "project.includes[1]", '"sensors/b.ddd.json"'),),
                 ),
             ),
-            ("a.ddd.json", path),
+            ("a.ddd.json", "sensors/b.ddd.json"),
+        )
+
+    def test_a_path_through_a_link_is_written_by_the_link_and_not_its_target(
+        self, tmp_path: Path
+    ) -> None:
+        """Typed under the description's directory, through a directory that is a link: the
+        entry keeps the link's name, as typed, where the target may be a path another machine
+        has nothing at."""
+        write_tree(
+            tmp_path,
+            {"proj/p.ddd.json": project("P"), "elsewhere/x.ddd.json": component("X")},
+        )
+        directory_link(tmp_path / "proj" / "lnk", tmp_path / "elsewhere")
+        typed = (tmp_path.resolve() / "proj" / "lnk" / "x.ddd.json").as_posix()
+        plan = add_plan(tmp_path / "proj" / "p.ddd.json", typed, {})
+        assert plan.includes == ("lnk/x.ddd.json",)
+
+    def test_a_dot_dot_after_a_link_is_written_as_the_file_the_checks_found(
+        self, tmp_path: Path
+    ) -> None:
+        """``proj/lnk`` leads to ``elsewhere/sub``. Where ``..`` follows the link, ``lnk/../p2``
+        is ``elsewhere/p2``, which the text alone reads as ``proj/p2``; where the system reads it
+        by the text, as Windows does, there is no such file. What holds on both: the entry
+        written, read back by the loader, is the file the checks were asked of, or none is."""
+        write_tree(
+            tmp_path,
+            {"proj/p.ddd.json": project("P"), "elsewhere/p2/x.ddd.json": component("X")},
+        )
+        (tmp_path / "elsewhere" / "sub").mkdir()
+        directory_link(tmp_path / "proj" / "lnk", tmp_path / "elsewhere" / "sub")
+        described = tmp_path / "proj" / "p.ddd.json"
+        typed = (tmp_path.resolve() / "proj" / "lnk" / ".." / "p2" / "x.ddd.json").as_posix()
+        if not os.path.isfile(typed):  # noqa: PTH113
+            with pytest.raises(FileRefusalError) as refused:
+                add_plan(described, typed, {})
+            assert refused.value.code == "not-found"
+            return
+        (entry,) = add_plan(described, typed, {}).includes
+        assert [resolve_path(file) for file in included_files(described.resolve(), entry)] == [
+            resolve_path(Path(typed))
+        ]
+        assert entry == "../elsewhere/p2/x.ddd.json"
+
+    def test_a_file_above_the_description_is_written_relative_with_slashes(
+        self, tmp_path: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "sub/p.ddd.json": project("P", "a.ddd.json"),
+                "sub/a.ddd.json": component("A"),
+                "shared/b.ddd.json": component("B"),
+            },
+        )
+        path = (tmp_path / "shared" / "b.ddd.json").as_posix()
+        plan = add_plan(tmp_path / "sub" / "p.ddd.json", path, {})
+        assert plan.includes == ("a.ddd.json", "../shared/b.ddd.json")
+        assert plan.edits[0].operations[0].raw == '"../shared/b.ddd.json"'
+
+    def test_a_backslash_is_a_slash_in_the_entry_written(self, tmp_path: Path) -> None:
+        """``sub\\x.ddd.json`` is a path on Windows alone: written as typed it is a
+        ``file-not-found`` on any other system. The refusals still name it as it was sent."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "sub/x.ddd.json": component("X"),
+            },
+        )
+        plan = add_plan(tmp_path / "p.ddd.json", "sub\\x.ddd.json", {})
+        assert plan.includes == ("a.ddd.json", "sub/x.ddd.json")
+        assert plan.edits[0].operations[0].raw == '"sub/x.ddd.json"'
+        with pytest.raises(FileRefusalError) as refused:
+            add_plan(tmp_path / "p.ddd.json", "a\\.ddd.json", {})
+        assert refused.value.message.startswith("a\\.ddd.json names no file")
+
+    def test_a_file_on_another_drive_has_no_entry_to_name_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Windows' ``relpath`` has no answer across drives, and says so with a ``ValueError``;
+        no other system does, so the answer is given here as that one gives it."""
+        write_tree(
+            tmp_path,
+            {"proj/p.ddd.json": project("P"), "elsewhere/b.ddd.json": component("B")},
+        )
+
+        def across(path: str, start: str) -> str:
+            raise ValueError("path is on mount 'D:', start on mount 'C:'")
+
+        monkeypatch.setattr(file_plans.os.path, "relpath", across)
+        with pytest.raises(FileRefusalError) as refused:
+            add_plan(
+                tmp_path / "proj" / "p.ddd.json",
+                (tmp_path / "elsewhere" / "b.ddd.json").as_posix(),
+                {},
+            )
+        assert refused.value.code == "invalid"
+        assert refused.value.message.endswith(
+            "is on another drive than p.ddd.json, so no entry can name it"
         )
 
     @pytest.mark.parametrize(

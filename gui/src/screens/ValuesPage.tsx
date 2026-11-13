@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
-import { ApiError, getValuePlan, getValues, getValuesPlan, postEdit } from "../api/client";
+import { getValuePlan, getValues, getValuesPlan, postEdit } from "../api/client";
 import type { State, ValuesReply } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
@@ -8,7 +8,6 @@ import { useKept } from "../app/useKept";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
-import { type Refused, shownRefusal as staleRefusal } from "../lib/refusals";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valueLabel } from "../lib/undo";
 import {
@@ -101,15 +100,13 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const [physical, setPhysical] = useState(true);
   const [editing, setEditing] = useState<Editing>(null);
   const [changesShown, setChangesShown] = useState(false);
-  // A refused apply for a reason other than staleness, if any: cleared whenever the reader takes
-  // a fresh action - types into the cell again, or pastes a fresh table over it - exactly as
-  // `UnitPanel`'s own fields clear on a fresh choice. Without the paste side of that, a failure
-  // left over from an earlier cell apply would sit under a perfectly good pasted table.
+  // A refused apply, if any, in the page's own words (`refusalOf`), whatever its code, a file
+  // changed on disk included: held until the reader takes a fresh action - types into the cell
+  // again, pastes a fresh table over it, or applies again - exactly as `UnitPanel`'s own fields
+  // clear on a fresh choice, and never let go by a revision landing (`Refused`, lib/refusals.ts).
+  // Without the paste side of that, a failure left over from an earlier cell apply would sit under
+  // a perfectly good pasted table.
   const [failed, setFailed] = useState<string | null>(null);
-  // A refused apply because a file changed on disk, held to the revision it happened at - as
-  // `UnitPanel`'s own `staleFailed`, so a reader who applies again straight away is not refused a
-  // second time for fingerprints the next revision has already moved past.
-  const [staleFailed, setStaleFailed] = useState<Refused | null>(null);
   // A pasted table's counts, row-major, or `null` where nothing has been pasted; and the
   // sentence a pasted block was refused with, if any - the two ways `onPaste` below can answer,
   // from Task 2's `Pasted`. Held apart from `editing`'s own cell so a paste and a typed cell
@@ -183,16 +180,12 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // still loading would be.
   const shownPlan = pasting ? (table.data ?? null) : shownCell.plan;
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
-  // server's, for the one thing the parser cannot check - ahead of a stale or a plain apply
-  // failure either way. A typed cell's own refusal is `ValuesGridView`'s to find, from `editing`
+  // server's, for the one thing the parser cannot check - ahead of an apply refused either way. A typed cell's own refusal is `ValuesGridView`'s to find, from `editing`
   // directly (`typedRefusal`), so it is not repeated here - repeating it would only recompute
   // the same sentence a second time for no reader to see any sooner.
   const shownSentence = pasting
-    ? (pasteRefusal ??
-      staleRefusal(staleFailed, revision) ??
-      failed ??
-      (table.isError ? table.error.message : null))
-    : (staleRefusal(staleFailed, revision) ?? failed ?? shownCell.refusal);
+    ? (pasteRefusal ?? failed ?? (table.isError ? table.error.message : null))
+    : (failed ?? shownCell.refusal);
   // What either offer's own edit is called, for the undo stack: the whole object for a paste,
   // the one element for a cell - `pasteLabel`'s and `valueLabel`'s own difference.
   const label = pasting
@@ -217,7 +210,6 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     // values the grid showed when it was made, until an answer of a revision including it comes.
     onSuccess: (reply, applied) => {
       setHold(holdOf(reply.edit, applied.before, applied.written));
-      setStaleFailed(null);
       setEditing(null);
       setPastedRows(null);
       setPasteRefusal(null);
@@ -228,17 +220,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         queries.invalidateQueries({ queryKey: ["values-plan"] }),
       ]);
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so the grid never shows two different answers to the same Apply.
-    onError: (error) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setStaleFailed({ text: refusalOf(error), revision });
-        setFailed(null);
-      } else {
-        setFailed(refusalOf(error));
-        setStaleFailed(null);
-      }
-    },
+    onError: (error) => setFailed(refusalOf(error)),
   });
 
   if (answer === undefined) {

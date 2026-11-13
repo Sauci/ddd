@@ -231,6 +231,37 @@ class TestTheProject:
         assert unit_project(tmp_path / "p.ddd.json", (), cache).units_files == ()
         assert (tmp_path / "units.ddd.json").resolve() not in cache
 
+    def test_a_file_that_spells_the_key_and_does_not_parse_might_be_a_units_file(
+        self, tmp_path: Path
+    ) -> None:
+        """Cut short, it is no units file the project can find, and it is not nothing either:
+        what it is cannot be told. Named once however many entries reach it, in the order the
+        description lists them, and beside the files that parse, which are still found. A file
+        whose text cannot spell the key is never one of them, parsed or not."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project(
+                    "P",
+                    "late.ddd.json",
+                    "a.ddd.json",
+                    "cut.ddd.json",
+                    "*.ddd.json",
+                    "also.ddd.json",
+                ),
+                "late.ddd.json": {"units": ["rpm"]},
+                "a.ddd.json": '{"component": {"name": "A", "interface": [',
+                "cut.ddd.json": '{"units": ["rpm", {"unit": "',
+                "also.ddd.json": '{"un\\u0069ts": [',
+            },
+        )
+        found = unit_project(tmp_path / "p.ddd.json", (), {})
+        assert found.units_files == ((tmp_path / "late.ddd.json").resolve(),)
+        assert found.untold == (
+            (tmp_path / "cut.ddd.json").resolve(),
+            (tmp_path / "also.ddd.json").resolve(),
+        )
+
     def test_a_file_already_read_is_what_its_read_says_it_is(self, tmp_path: Path) -> None:
         """The request's cache is what every other question of it reads, so a file read already
         is judged as read, not as its text on disk now says."""
@@ -345,6 +376,26 @@ class TestRename:
         assert code == "unreadable"
         assert "broken.ddd.json" in message
 
+    def test_while_a_file_no_longer_states_the_unit_where_the_index_found_it_a_rename_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """A declaration put in at the top of two components after the index was built: renamed
+        at the places the index recorded, the unit of the declaration now sitting there would be
+        respelled instead, so the rename is refused, naming both files."""
+        files = drifted()
+        idx, where = opened(tmp_path, files)
+        above = declare("input", "Other", unit="Nm")
+        moved: dict[str, Any] = {}
+        for name in ("a.ddd.json", "b.ddd.json"):
+            described = files[name]["component"]
+            moved[name] = component(described["name"], above, *described["interface"])
+        write_tree(tmp_path, moved)
+        assert refusal(lambda: rename_unit(idx, where, "RPM", "rev/min", {})) == (
+            "stale",
+            "a.ddd.json, b.ddd.json changed since the project was analysed, so renaming 'RPM' "
+            "cannot be planned until the project is analysed again",
+        )
+
 
 class TestAdd:
     def test_a_unit_is_appended_as_a_spelling_where_every_entry_is_one(
@@ -383,6 +434,33 @@ class TestAdd:
             "invalid",
             "p.ddd.json includes no units file to add 'RPM' to",
         )
+
+    def test_a_units_file_nobody_could_parse_may_be_the_one_the_project_includes(
+        self, tmp_path: Path
+    ) -> None:
+        """Cut short, the project's one units file reads as no units file at all, and the
+        project is not told it includes none: that is not what is known."""
+        files = {**drifted(), "units.ddd.json": '{"units": ["rpm", {"unit": "'}
+        idx, where = opened(tmp_path, files, unread=["units.ddd.json"])
+        assert refusal(lambda: add_unit(idx, where, "RPM", {})) == (
+            "unreadable",
+            "units.ddd.json did not parse, so whether p.ddd.json includes a units file is "
+            "unknown and 'RPM' cannot be added to one",
+        )
+
+    def test_a_units_file_nobody_could_parse_stops_no_addition_to_one_that_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal belongs to a project with no units file that parsed: where one did,
+        that is where the unit goes."""
+        files = {
+            "first.ddd.json": {"units": ["kPa"]},
+            **drifted(),
+            "cut.ddd.json": '{"units": ["rpm", {"unit": "',
+        }
+        idx, where = opened(tmp_path, files, unread=["cut.ddd.json"])
+        plan = add_unit(idx, where, "RPM", {})
+        assert [edit.path.name for edit in plan.edits] == ["first.ddd.json"]
 
     def test_a_unit_the_vocabulary_lists_already_is_invalid(self, tmp_path: Path) -> None:
         files = {"first.ddd.json": {"units": ["kPa"]}, **drifted(["rpm"])}
@@ -462,6 +540,64 @@ class TestDescribe:
         idx, where = opened(tmp_path, drifted(["rpm"]), unread=["units.ddd.json"])
         assert refusal(lambda: describe_unit(idx, where, "RPM", "shouted", {}))[0] == "unreadable"
 
+    def test_a_unit_no_loaded_entry_lists_is_unreadable_while_a_units_file_is_cut_short(
+        self, tmp_path: Path
+    ) -> None:
+        """A file that does not parse is no units file the project can find, and may be the one
+        listing the unit all the same: it is not said to be outside the vocabulary."""
+        files = {**drifted(), "units.ddd.json": '{"units": ["rpm", {"unit": "'}
+        idx, where = opened(tmp_path, files, unread=["units.ddd.json"])
+        assert refusal(lambda: describe_unit(idx, where, "RPM", "shouted", {})) == (
+            "unreadable",
+            "units.ddd.json did not load, so its description cannot be set there",
+        )
+
+    def test_while_an_entry_no_longer_lists_the_unit_where_the_index_found_it_it_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """An entry put in at the top of the units file after the index was built: described at
+        the place the index recorded, the description would be another unit's."""
+        idx, where = opened(tmp_path, drifted(["rpm", {"unit": "Nm", "description": "torque"}]))
+        write_tree(
+            tmp_path,
+            {"units.ddd.json": {"units": ["kPa", "rpm", {"unit": "Nm", "description": "torque"}]}},
+        )
+        assert refusal(lambda: describe_unit(idx, where, "Nm", "newton metre", {})) == (
+            "stale",
+            "units.ddd.json changed since the project was analysed, so the description of 'Nm' "
+            "cannot be set until the project is analysed again",
+        )
+
+    def test_entries_moved_in_several_units_files_name_each_in_path_order(
+        self, tmp_path: Path
+    ) -> None:
+        """The unit listed by five units files, included last first, each given an entry above
+        it since: every file is named, in the order of their paths rather than the order the
+        project includes them."""
+        names = [f"{letter}.ddd.json" for letter in "zyxwv"]
+        idx, where = opened(tmp_path, {name: {"units": ["rpm"]} for name in names})
+        write_tree(tmp_path, {name: {"units": ["kPa", "rpm"]} for name in names})
+        assert refusal(lambda: describe_unit(idx, where, "rpm", "speed", {})) == (
+            "stale",
+            "v.ddd.json, w.ddd.json, x.ddd.json, y.ddd.json, z.ddd.json changed since the "
+            "project was analysed, so the description of 'rpm' cannot be set until the project "
+            "is analysed again",
+        )
+
+    def test_a_declaration_stating_the_unit_that_moved_since_stops_no_description(
+        self, tmp_path: Path
+    ) -> None:
+        """A description writes the vocabulary's entries alone: a component stating the unit,
+        changed since the index was built, is no place it writes, and no reason to refuse it."""
+        files = drifted(["rpm", {"unit": "Nm", "description": "torque"}])
+        idx, where = opened(tmp_path, files)
+        declared = files["a.ddd.json"]["component"]["interface"]
+        above = declare("output", "Other", unit="kPa")
+        write_tree(tmp_path, {"a.ddd.json": component("A", above, *declared)})
+        assert after(describe_unit(idx, where, "Nm", "newton metre", {})) == {
+            "units.ddd.json": {"units": ["rpm", {"unit": "Nm", "description": "newton metre"}]}
+        }
+
 
 class TestRemove:
     def test_a_unit_nothing_states_is_taken_out_in_either_form(self, tmp_path: Path) -> None:
@@ -540,6 +676,42 @@ class TestRemove:
         code, message = refusal(lambda: remove_unit(idx, where, "kPa", {}))
         assert code == "unreadable"
         assert "units.ddd.json" in message
+
+    def test_while_any_file_of_the_project_does_not_load_a_removal_is_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing states ``kPa`` in a file that loaded, and the one that did not may: taken
+        out, the spelling would be an ``unknown-unit`` there once the file loads, as a rename
+        would leave the old spelling in it."""
+        files = {**drifted(["rpm", "kPa"]), "broken.ddd.json": '{"component": '}
+        idx, where = opened(tmp_path, files, unread=["broken.ddd.json"])
+        assert refusal(lambda: remove_unit(idx, where, "kPa", {})) == (
+            "unreadable",
+            "broken.ddd.json did not load, so taking out 'kPa' could not tell whether anything "
+            "still states it",
+        )
+
+    def test_the_files_that_did_not_load_are_named_before_a_place_that_still_states_the_unit(
+        self, tmp_path: Path
+    ) -> None:
+        """Asked first, as a rename's is: the files are named whatever else is wrong with the
+        removal, so that a reader repairs them before reading what else refuses it."""
+        files = {**drifted(["RPM"]), "broken.ddd.json": '{"component": '}
+        idx, where = opened(tmp_path, files, unread=["broken.ddd.json"])
+        assert refusal(lambda: remove_unit(idx, where, "RPM", {}))[0] == "unreadable"
+
+    def test_while_an_entry_no_longer_lists_the_unit_where_the_index_found_it_it_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """Where the index recorded ``kPa``, the file lists ``rpm`` now, an entry put in above
+        both: taken out there, it would be ``rpm`` that went."""
+        idx, where = opened(tmp_path, drifted(["rpm", "kPa"]))
+        write_tree(tmp_path, {"units.ddd.json": {"units": ["Nm", "rpm", "kPa"]}})
+        assert refusal(lambda: remove_unit(idx, where, "kPa", {})) == (
+            "stale",
+            "units.ddd.json changed since the project was analysed, so 'kPa' cannot be taken out "
+            "of the vocabulary until the project is analysed again",
+        )
 
 
 class TestAdopt:
@@ -682,14 +854,14 @@ class TestAdopt:
     [
         lambda idx, where: add_unit(idx, where, "Hz", {}),
         lambda idx, where: describe_unit(idx, where, "rpm", "speed", {}),
-        lambda idx, where: remove_unit(idx, where, "kPa", {}),
     ],
 )
-def test_a_component_that_does_not_load_stops_no_change_to_the_vocabulary(
+def test_a_component_that_does_not_load_stops_no_addition_or_description_to_the_vocabulary(
     tmp_path: Path, plan: Callable[[Index, UnitProject], UnitPlan]
 ) -> None:
     """Only the units file matters to these: a component that did not load may state units, and
-    no entry of the vocabulary changes with what it states."""
+    no entry of the vocabulary changes with what it states. A removal is not among them: it is
+    made on the strength of what nothing states, which that component may."""
     files = {**drifted(["rpm", "kPa"]), "broken.ddd.json": '{"component": '}
     idx, where = opened(tmp_path, files, unread=["broken.ddd.json"])
     assert list(after(plan(idx, where))) == ["units.ddd.json"]
@@ -740,6 +912,83 @@ class TestCreatedBeside:
         assert made.operations == (Operation("set", "", '{\n  "units": []\n}\n'),)
         assert included.path == project
         assert included.operations == (Operation("insert", "project.includes[1]", '"u.ddd.json"'),)
+
+    @pytest.mark.parametrize(
+        ("newline", "unit"),
+        [("\r\n", "    "), ("\n", "\t"), ("\r", "  ")],
+        ids=["crlf and four spaces", "lf and a tab", "a bare cr and two spaces"],
+    )
+    def test_the_file_is_laid_out_as_the_project_is_written(
+        self, tmp_path: Path, newline: str, unit: str
+    ) -> None:
+        """A project is written in one newline and one indent, and a file added to it was laid
+        out in line feeds and two spaces whatever it was."""
+        project = tmp_path / "p.ddd.json"
+        written = json.dumps({"project": {"name": "P", "includes": ["a.ddd.json"]}}, indent=unit)
+        project.write_bytes(written.replace("\n", newline).encode("utf-8"))
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [{"unit": "x"}]}', {})
+        assert made.operations == (
+            Operation(
+                "set",
+                "",
+                (
+                    f'{{{newline}{unit}"units": [{newline}{unit}{unit}{{ "unit": "x" }}'
+                    f"{newline}{unit}]{newline}}}{newline}"
+                ),
+            ),
+        )
+
+    def test_a_project_written_on_one_line_gives_a_file_in_the_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        project = tmp_path / "p.ddd.json"
+        project.write_text('{"project": {"name": "P"}}')
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [1]}', {})
+        assert made.operations[0].raw == '{\n  "units": [1]\n}\n'
+
+    @pytest.mark.parametrize(
+        "content",
+        [None, b'{"project": ', b'{\r\n\t"project": ', b"\xff\xfe"],
+        ids=["missing", "unparsed", "unparsed over lines", "not text"],
+    )
+    def test_a_project_that_cannot_be_read_has_no_layout_to_copy(
+        self, tmp_path: Path, content: bytes | None
+    ) -> None:
+        project = tmp_path / "p.ddd.json"
+        if content is not None:
+            project.write_bytes(content)
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [1]}', {})
+        assert made.operations[0].raw == '{\n  "units": [1]\n}\n'
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            {"project": {".": 1, "name": "P"}},
+            {"project": {"": 1, "name": "P"}},
+            {"": 1, "project": {"name": "P"}},
+            {"a.": 1, "a": {"x": {"y": 1}}, "project": {"name": "P"}},
+            {"a]": 1, "a": {"x": {"y": 1}}, "project": {"name": "P"}},
+            {"[" + "7" * 4_301 + "]": 1, "project": {"name": "P"}},
+        ],
+        ids=[
+            "a dot",
+            "an empty key",
+            "an empty key at the top",
+            "a dot beside its object",
+            "a bracket",
+            "a long index",
+        ],
+    )
+    @pytest.mark.parametrize("indent", [None, 2], ids=["on one line", "over lines"])
+    def test_a_description_with_a_key_no_pointer_spells_is_still_given_a_file_beside_it(
+        self, tmp_path: Path, description: dict, indent: int | None
+    ) -> None:
+        """The layout is read off the description as the engine reads one, which a key such as
+        these ended in an ``AssertionError`` or an ``EditError``: no new file could be made."""
+        project = tmp_path / "p.ddd.json"
+        project.write_text(json.dumps(description, indent=indent))
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [1]}', {})
+        assert json.loads(made.operations[0].raw or "") == {"units": [1]}
 
     def test_an_includes_that_is_not_a_list_takes_the_entry_at_its_front(
         self, tmp_path: Path

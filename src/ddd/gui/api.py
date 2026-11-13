@@ -21,7 +21,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 from pydantic_core import ErrorDetails
@@ -29,6 +29,7 @@ from pydantic_core import ErrorDetails
 from ddd import __version__
 from ddd.declaration_plans import (
     KINDS,
+    PRODUCING_SCOPES,
     SCOPES,
     DeclarationPlan,
     DeclarationRefusalError,
@@ -48,7 +49,6 @@ from ddd.editing import (
     EditError,
     FileChange,
     Operation,
-    fingerprint,
     unchanged,
 )
 from ddd.file_plans import (
@@ -59,6 +59,7 @@ from ddd.file_plans import (
     included_entries,
     new_errors,
     remove_plan,
+    spelled_with_slashes,
 )
 from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route as FindingRoute
@@ -126,8 +127,8 @@ from ddd.gui.queries import (
     outside_served,
 )
 from ddd.gui.routes import Policy, Route, one_value_each
-from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.gui.session import (
+    GENERATED,
     Filed,
     NoProjectError,
     NotAnalysedError,
@@ -143,11 +144,13 @@ from ddd.gui.session import (
     _source,
     find_projects,
     findings_with,
+    generated_refusal,
     kind_of,
 )
+from ddd.gui.session import KINDS as DESCRIPTION_KINDS
 from ddd.ir import DataDictionary
-from ddd.loading import resolve_path
-from ddd.lsp.edits import settle
+from ddd.loading import fingerprint, resolve_path
+from ddd.lsp.edits import settle, type_conversions
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import (
@@ -214,6 +217,7 @@ from ddd.variables import (
     preview,
     refusal,
     units_in_use,
+    unloadable,
     vocabulary_of,
 )
 
@@ -231,8 +235,29 @@ ANALYSING: Final = "analysing"
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
 yet. Answered 409, and answered differently once the analysis lands."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING})
+REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
+
+_UNSEEN: Final = {
+    "rename": "renaming '{name}' could not reach every place that names it",
+    "remove": "taking out '{name}' could not tell whether anything still names it",
+}
+"""What each action that has to see every file of the project could not do while one did not load,
+by the action's name, as the end of the sentence ``b.ddd.json did not load, so ...``: a rename
+writes where the index says a name is spelled, a removal rests on the index saying nothing names
+it, and a file that did not load is in no index. A key set or an entry added is not here: it writes
+where it points, and asks nothing of the files it does not write. A unit's own plans refuse in the
+words of :mod:`ddd.lsp.units`."""
+
+_PRODUCING: Final = {
+    "output": "declaring an output could not tell whether anything already produces it",
+    "local": "declaring a local could not tell whether anything already declares it",
+}
+"""What declaring a name as something that produces it could not tell while a file did not load,
+by the scope - the end of the sentence ``b.ddd.json did not load, so ...`` - for each of
+:data:`ddd.declaration_plans.PRODUCING_SCOPES`: that file may produce the name already, which is a
+``multiple-producers`` once it loads, or declare it beside a local, which is a ``local-conflict``.
+A declaration that only reads is not here: it adds no second producer, and is answered."""
 
 _NOTHING_LOADED: Final = "the open project did not load, so no interface of it can be changed"
 
@@ -243,6 +268,18 @@ _NOTHING_COMPARABLE: Final = (
 )
 
 type Query = Mapping[str, Sequence[str]]
+
+
+class _OfAnEntry(Protocol):
+    """What every action of a route about a named entry has: the action it is and the entry it
+    names."""
+
+    @property
+    def action(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
 
 type SharedPlanner[A] = Callable[[A, Index, SharedProject, dict[Path, Document]], SharedPlan]
 """What :meth:`Api._shared_plan` asks for the plan itself: the action asked for, read as its own
@@ -809,13 +846,21 @@ class Api:
         project = unit_project(
             revision.project, [file.path for file in revision.files if not file.loaded], cache
         )
+        asked = query.root
         try:
-            plan = _unit_plan_of(query.root, built, project, cache)
+            plan = _unit_plan_of(asked, built, project, cache)
         except UnitRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            named = None
+            if isinstance(asked, RenameUnit | DescribeUnit | RemoveUnit):
+                named = asked.unit
+            return _refusal(revision, refused.code, refused.message, named)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in plan.edits),
+                (edit.path for edit in plan.edits if edit.creates),
+            )
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -929,14 +974,18 @@ class Api:
                 f"{', '.join(unread) or revision.project.name} did not load, "
                 "so no type of the project can be changed",
             )
+        asked = query.root
+        unseen = _unseen_refusal(revision, asked)
+        if unseen is not None:
+            return unseen
         cache: dict[Path, Document] = {}
         try:
-            plan = _type_plan_of(query.root, built, cache)
+            plan = _type_plan_of(asked, built, cache)
         except TypeRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            return _refusal(revision, refused.code, refused.message, asked.name)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1121,13 +1170,20 @@ class Api:
         own working directory, a relative one named another file. Past that, each refusal is the
         plan's own or :func:`_addition`'s and :func:`_removal`'s, in the order they ask them,
         ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
-        revision would falsify is refused ``stale``.
+        revision would falsify is refused ``stale``. Every one of the three writes the project's
+        description, so where a build generates it each is refused ``generated`` once the plan's
+        own refusals are asked, and before anything is judged.
         """
         revision = self._opened()
         cache: dict[Path, Document] = {}
 
-        def refuse(paths: Iterable[Path]) -> None:
-            self._refuse_unanalysed(revision, paths)
+        def refuse(edits: Sequence[PlannedEdit]) -> None:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in edits),
+                (edit.path for edit in edits if edit.creates),
+            )
+            self._refuse_unanalysed(revision, (edit.path for edit in edits))
 
         try:
             plan = _files_plan_of(query.root, revision, cache, refuse)
@@ -1166,7 +1222,9 @@ class Api:
     def _raster_plan(self, query: RasterPlanQuery, body: None) -> Reply:
         return self._shared_plan(RASTERS, query.root, _raster_plan_of)
 
-    def _shared_plan[A](self, vocabulary: Vocabulary, asked: A, plan_of: SharedPlanner[A]) -> Reply:
+    def _shared_plan[A: _OfAnEntry](
+        self, vocabulary: Vocabulary, asked: A, plan_of: SharedPlanner[A]
+    ) -> Reply:
         """One change of one entry of ``vocabulary``, ``asked`` as its route's query read it,
         previewed and never written.
 
@@ -1178,6 +1236,11 @@ class Api:
         anything asked for the project: a request that is not json is a mistake about the
         request, not a refusal about the project, so it answers 400 rather than being folded into
         a :class:`~ddd.shared_plans.SharedRefusalError`.
+
+        A rename or a removal is refused, naming the files, while any file of the project did not
+        load (:func:`_unseen_refusal`), before the files are read to plan it; and a refusal that
+        no file declares the entry is the panel's own answer where a file did not load
+        (:func:`_refusal`).
         """
         revision = self._opened()
         built = revision.index
@@ -1189,6 +1252,9 @@ class Api:
                 f"{', '.join(unread) or revision.project.name} did not load, "
                 f"so no {vocabulary.kind} of the project can be changed",
             )
+        unseen = _unseen_refusal(revision, asked)
+        if unseen is not None:
+            return unseen
         cache: dict[Path, Document] = {}
         project = project_of(
             vocabulary,
@@ -1199,10 +1265,14 @@ class Api:
         try:
             plan = plan_of(asked, built, project, cache)
         except SharedRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            return _refusal(revision, refused.code, refused.message, asked.name)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(
+                revision,
+                (edit.path for edit in plan.edits),
+                (edit.path for edit in plan.edits if edit.creates),
+            )
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             made = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1224,15 +1294,26 @@ class Api:
         built = revision.index
         if built is None or name not in built.declarations:
             return _undeclared(revision, name)
+        # Every declaration of the variable is settled or none is, so a declaration in a file
+        # that did not load - in no index - is one the settlement would leave stating what it
+        # did: refused, naming the file, as a rename is.
+        unseen = _while_unread(
+            revision, f"settling the {key} of '{name}' could not reach every declaration of it"
+        )
+        if unseen is not None:
+            return unseen
         # One cache for both reads below, so a declaration `settle` already read for this
         # request is not read from disk a second time to narrow what it comes to.
         cache: dict[Path, Document] = {}
-        settlement = settle(built, name, key, raw, cache)
+        # The reader chose this value, so a declaration it would leave unable to load is not
+        # left out: it is planned, and told (`unloadable`) - where a button offering it is withheld.
+        settlement = settle(built, name, key, raw, cache, withholding=False)
         if settlement.unsettled:
             code, message = refusal(settlement.unsettled[0], name, key)
             return _error(409, code, message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (change.site.path for change in settlement.changes))
             self._refuse_unanalysed(revision, (change.site.path for change in settlement.changes))
             planned = preview(settlement, key, derived.stamps)
         except EditError as refused:
@@ -1241,7 +1322,11 @@ class Api:
             200,
             written(
                 contract.SettleReply(
-                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                    revision=revision.number,
+                    changes=_planned_changes(revision, derived, planned),
+                    unloadable=unloadable(
+                        settlement, name, key, cache, types=type_conversions(built, cache)
+                    ),
                 )
             ),
         )
@@ -1263,6 +1348,7 @@ class Api:
         offered = []
         for fix in fixes_for(check, source.path, pointer, cache, built):
             try:
+                self._refuse_generated(revision, (edit.path for edit in fix.changes))
                 self._refuse_unanalysed(revision, (edit.path for edit in fix.changes))
                 made = [planned(edit.path, edit.operations, derived.stamps) for edit in fix.changes]
             except EditError as refused:
@@ -1284,7 +1370,15 @@ class Api:
         built = revision.index
         if built is None:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
-        if not any(entry.path == file and entry.kind == "component" for entry in revision.files):
+        described = _file_of(revision, file)
+        if described.kind != "component":
+            if not described.loaded:
+                # Cut short, a file reads as no kind at all, and which kind it is is not known.
+                return _error(
+                    409,
+                    UNREADABLE,
+                    f"{file.name} did not load, so it cannot be told whether it is a component",
+                )
             return _error(409, "invalid", f"{file.name} is not a component of the open project")
         cache: dict[Path, Document] = {}
         return Reply(
@@ -1328,14 +1422,26 @@ class Api:
         built = revision.index
         if built is None:
             return _error(409, UNREADABLE, _NOTHING_LOADED)
+        unseen = _declaring_refusal(revision, asked, file)
+        if unseen is not None:
+            return unseen
+        # A refusal that nothing is found is about the name only where the index lacks it, as
+        # `_settle` asks: where the index holds the name, it is about a file - one that declares
+        # no interface, or no longer declares the name - and the plan's own sentence stands.
+        named = None
+        if (
+            isinstance(asked, ReadDeclaration | RemoveDeclaration)
+            and asked.name not in built.declarations
+        ):
+            named = asked.name
         cache: dict[Path, Document] = {}
         try:
             plan = _declaration_plan_of(asked, built, file, cache)
         except DeclarationRefusalError as refused:
-            status = 404 if refused.code == "not-found" else 409
-            return _error(status, refused.code, refused.message)
+            return _refusal(revision, refused.code, refused.message, named)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1354,7 +1460,7 @@ class Api:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
-            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+            return _unresolved(revision)
         try:
             grid = grid_of(dictionary, built, name)
         except ValueRefusalError as refused:
@@ -1403,7 +1509,7 @@ class Api:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
-            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+            return _unresolved(revision)
         try:
             raw = _number(query.raw)
             plan = set_cell(dictionary, built, query.name, query.at, raw, {})
@@ -1417,6 +1523,7 @@ class Api:
             return _error(409, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1435,10 +1542,10 @@ class Api:
         revision = self._opened()
         built, dictionary = revision.index, revision.dictionary
         if built is None or dictionary is None:
-            return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+            return _unresolved(revision)
         try:
             flat = [_number(piece) for piece in query.raw.split(",")]
-            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name))
+            plan = set_values(dictionary, built, name, _folded(flat, dictionary, name), {})
         except ValueRefusalError as refused:
             # Both codes, as `_value_plan` above: a name the project has not, and every other
             # refusal. A statement rather than a ternary, so the gate can see both arms.
@@ -1447,6 +1554,7 @@ class Api:
             return _error(409, refused.code, refused.message)
         derived = self._derive(revision)
         try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
             planned = previewed(plan.edits, derived.stamps)
         except EditError as refused:
@@ -1530,6 +1638,28 @@ class Api:
                 f"an edit that wrote {', '.join(named)} has not been analysed yet, "
                 "so this change can be planned once it has",
             )
+
+    def _refuse_generated(
+        self, revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
+    ) -> None:
+        """Refuse a plan writing under the build tree a build generates the open project in
+        (:func:`ddd.gui.session.generated_refusal`): its description, a file created beside it,
+        or any other file the tree holds, each the build's, and undone or lost when the build
+        writes it again. ``written`` is every file the plan changes, ``created`` the ones of them it
+        creates, which only a plan making a file - New file, adopting a vocabulary, a first
+        shared file - has.
+
+        The session refuses the same edit on arrival; asked here, the reader reads why before
+        choosing it, and before :meth:`_refuse_unanalysed`, since no analysis landing changes this
+        answer."""
+        derived = self._derive(revision)
+        refused = generated_refusal(
+            revision,
+            (derived.resolve(path) for path in written),
+            (derived.resolve(path) for path in created),
+        )
+        if refused is not None:
+            raise EditError(GENERATED, refused)
 
     def _derive(self, revision: Revision) -> Derived:
         """What the api derives from ``revision`` (:func:`ddd.gui.derived.derived`): the one kept
@@ -1786,6 +1916,93 @@ def _undeclared(revision: Revision, name: str) -> Reply:
             f"and {', '.join(changed)} changed since it was read",
         )
     return _error(404, "not-found", f"'{name}' is not declared in the open project")
+
+
+def _while_unread(revision: Revision, consequence: str) -> Reply | None:
+    """The refusal of a change that has to see every file of the project while one did not load:
+    ``unreadable``, naming each file that did not, and ``consequence``, what could not be done
+    for that - or ``None`` where every file loaded.
+
+    The rule :func:`ddd.lsp.units.rename_unit` states for a unit, asked of the plans of every
+    other name. A project is indexed from the files that loaded, so a file that did not is in no
+    index: a rename planned from it leaves the old spelling in that file, in a project the change
+    said it had rewritten, and a removal finds nothing naming what that file may still name -
+    ``ddd check`` fails the project once the file loads. Refused whole rather than done in part,
+    as the language server refuses (:meth:`ddd.lsp.server.Server._unreadable`), until it does."""
+    unread = [file.path.name for file in revision.files if not file.loaded]
+    if not unread:
+        return None
+    return _error(409, UNREADABLE, f"{', '.join(unread)} did not load, so {consequence}")
+
+
+def _declaring_refusal(
+    revision: Revision, asked: ReadDeclaration | DeclareObject | RemoveDeclaration, file: Path
+) -> Reply | None:
+    """The refusal of a change of the interface of ``file`` while a file did not load, or ``None``.
+
+    A removal is :data:`_UNSEEN`'s. A declaration - an object declared, a variable read - is
+    written into ``file``, and is refused, naming that file alone, where it is the one that did
+    not load: what it declares is unknown, and so is whether it declares the name already, the
+    index holding none of its declarations. Written into a file that loaded, it is refused,
+    naming every file that did not, where it produces its name (:data:`_PRODUCING`), and answered
+    where it only reads."""
+    if isinstance(asked, RemoveDeclaration):
+        return _unseen_refusal(revision, asked)
+    if not _file_of(revision, file).loaded:
+        return _error(
+            409,
+            UNREADABLE,
+            f"{file.name} did not load, so what it declares is unknown and nothing can be "
+            "declared in it",
+        )
+    if asked.scope in PRODUCING_SCOPES:
+        return _while_unread(revision, _PRODUCING[asked.scope])
+    return None
+
+
+def _file_of(revision: Revision, file: Path) -> SourceFile:
+    """The revision's record of ``file``, a path :func:`_source` resolved and allowed: a file of
+    the revision's, so one is found."""
+    return next(entry for entry in revision.files if entry.path == file)
+
+
+def _unseen_refusal(revision: Revision, asked: _OfAnEntry) -> Reply | None:
+    """The refusal of ``asked`` while a file did not load, where its action is one that has to
+    see every file (:data:`_UNSEEN`), or ``None``."""
+    consequence = _UNSEEN.get(asked.action)
+    if consequence is None:
+        return None
+    return _while_unread(revision, consequence.format(name=asked.name))
+
+
+def _unresolved(revision: Revision) -> Reply:
+    """The refusal of a request for the values of an object while the project is not resolved:
+    ``unreadable``, naming each file that did not load, where one did not, and otherwise that the
+    project did not resolve - a read that reported an error without a file failing to load, a
+    plugin that raised."""
+    unread = _while_unread(revision, "no object's values can be read")
+    if unread is not None:
+        return unread
+    return _error(409, UNREADABLE, _NOTHING_RESOLVED)
+
+
+def _refusal(revision: Revision, code: str, message: str, name: str | None) -> Reply:
+    """A plan's refusal as its route answers it: ``404`` for ``not-found`` and ``409`` for every
+    other, except that a ``not-found`` about ``name`` is first asked what its panel's route asks
+    (:func:`_undeclared`), and answered as that is where the truth is that a file did not load, or
+    changed since the analysis read it.
+
+    A name only such a file declares is in no index, and a plan saying that no file declares it
+    contradicts the panel the reader took the name from. Where every file loaded and none changed,
+    the plan's own sentence stands. ``name`` is ``None`` where the refusal is not about a name the
+    index lacks: a file that declares no interface, or no longer declares a name the index holds."""
+    if code == "not-found":
+        if name is not None:
+            said = _undeclared(revision, name)
+            if said.status != 404:
+                return said
+        return _error(404, code, message)
+    return _error(409, code, message)
 
 
 def _appeared_since(revision: Revision) -> list[str]:
@@ -2080,7 +2297,7 @@ def _files_plan_of(
     asked: CreateFile | AddFile | RemoveFile,
     revision: Revision,
     cache: dict[Path, Document],
-    refuse: Callable[[Iterable[Path]], None],
+    refuse: Callable[[Sequence[PlannedEdit]], None],
 ) -> _FilesPlanned:
     """The plan ``asked`` names, over the parts its model read. A row's key is passed on as it
     arrived: :func:`ddd.file_plans.remove_plan` resolves it to compare, as
@@ -2088,13 +2305,15 @@ def _files_plan_of(
     instead, a key ending in a link would be named by what the link leads to, which may lie
     outside what is served.
 
-    ``refuse`` is asked of the files each plan's edits change, once the plan's own refusals have
-    been asked and before anything is judged (:meth:`Api._refuse_unanalysed`): judged, a
-    description an edit wrote and no analysis has read yet would be refused ``stale`` instead,
-    for the very write the reader made."""
+    ``refuse`` is asked of each plan's edits, once the plan's own refusals have been asked and
+    before anything is judged: a description a build generates is refused there
+    (:meth:`Api._refuse_generated`), and judging it would run the analysis again for a change
+    that cannot be made; and judged, a description an edit wrote and no analysis has read yet
+    would be refused ``stale`` instead, for the very write the reader made
+    (:meth:`Api._refuse_unanalysed`)."""
     if isinstance(asked, CreateFile):
         edits = _creation(revision, asked.kind, asked.name, asked.component, cache)
-        refuse(edit.path for edit in edits)
+        refuse(edits)
         return _FilesPlanned(edits)
     if isinstance(asked, AddFile):
         return _addition(revision, asked.path, cache, refuse)
@@ -2145,7 +2364,7 @@ def _addition(
     revision: Revision,
     entry: str,
     cache: dict[Path, Document],
-    refuse: Callable[[Iterable[Path]], None],
+    refuse: Callable[[Sequence[PlannedEdit]], None],
 ) -> _FilesPlanned:
     """An existing file appended to the includes, and the errors it is counted to bring -
     previewed, never refused for them.
@@ -2156,7 +2375,7 @@ def _addition(
     then a file :func:`ddd.gui.session.kind_of` - the rule ``State.files`` shows a kind by -
     finds no kind of description in: a python file, which a project names among its plugins,
     or one the loader could not read as a description of any kind; then by ``refuse``, a
-    description an edit wrote that no analysis has read yet.
+    description a build generates, or one an edit wrote that no analysis has read yet.
 
     Judged where every run of the revision analysed the project, and otherwise answered with
     the sentence saying why it could not be, true of both ways a run stops short: its read
@@ -2169,7 +2388,8 @@ def _addition(
     with the old owner over its unit into one with the new owner over its datatype, and only
     the writers' own conflict and disagreement are listed. The bound holds as it does for a
     removal: a project with no errors is never answered that an add bringing one brings none."""
-    added = resolve_path(revision.project.parent / entry)
+    typed = spelled_with_slashes(entry)
+    added = resolve_path(revision.project.parent / typed)
     try:
         _served(revision, added)
     except NotInProjectError:
@@ -2190,7 +2410,7 @@ def _addition(
             f"top level holds none of {', '.join(DESCRIPTION_KINDS[:-1])} and "
             f"{DESCRIPTION_KINDS[-1]}",
         )
-    refuse(edit.path for edit in plan.edits)
+    refuse(plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,
@@ -2204,18 +2424,18 @@ def _removal(
     revision: Revision,
     path: Path,
     cache: dict[Path, Document],
-    refuse: Callable[[Iterable[Path]], None],
+    refuse: Callable[[Sequence[PlannedEdit]], None],
 ) -> _FilesPlanned:
     """Every entry whose key ``path`` resolves to taken out, refused where the project without
     them would have an error more than it has now at its place.
 
-    :func:`ddd.file_plans.remove_plan`'s own refusals first, then ``refuse``'s, a description an
-    edit wrote that no analysis has read yet. Then judged only where every run of the revision
-    analysed the project: a project any run of which stopped at its read, or at a
-    plugin raising, has no complete "now" to compare with, and judged, removing the very file
-    that stopped it would be refused for errors of an analysis the reader never saw. It is
-    allowed then, with the sentence saying why it was not judged, true of both ways a run stops
-    short.
+    :func:`ddd.file_plans.remove_plan`'s own refusals first, then ``refuse``'s, a description a
+    build generates or one an edit wrote that no analysis has read yet. Then judged only where
+    every run of the revision analysed the project: a project any run of which stopped at its
+    read, or at a plugin raising, has no complete "now" to compare with, and judged, removing the
+    very file that stopped it would be refused for errors of an analysis the reader never saw. It
+    is allowed then, with the sentence saying why it was not judged, true of both ways a run
+    stops short.
 
     The refusal counts what :func:`ddd.file_plans.new_errors` counts, and says so: errors the
     project would have more of than it has now, at the places they are - a whole file's, and
@@ -2230,7 +2450,7 @@ def _removal(
     link to a directory, a path no entry spells."""
     plan = remove_plan(revision.project, path, cache)
     removing = plan.removed[0]
-    refuse(edit.path for edit in plan.edits)
+    refuse(plan.edits)
     if not revision.analysed:
         return _FilesPlanned(
             plan.edits,

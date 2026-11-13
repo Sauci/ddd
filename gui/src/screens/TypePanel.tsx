@@ -12,7 +12,7 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planShown } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
@@ -123,15 +123,11 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // The spelling chosen to rename the type to, `null` until one is typed.
   const [renameTo, setRenameTo] = useState<string | null>(null);
   const [changesShown, setChangesShown] = useState(false);
-  // The one write refused for a reason other than staleness, if any, and which of the panel's
-  // three write paths it belongs to - cleared whenever the reader chooses again, exactly as the
-  // unit and variable panels clear theirs.
-  const [refused, setRefused] = useState<{ kind: Kind; message: string } | null>(null);
-  // The one write refused because a file changed on disk, which write path it belongs to, and
-  // the revision it happened at. As in the other panels, a reader who chooses again straight
-  // away would otherwise send the same stale fingerprints the server just refused; `shownRefusal`
-  // keeps it shown until a later revision arrives.
-  const [stale, setStale] = useState<({ kind: Kind } & Refused) | null>(null);
+  // The one write refused, if any, and which of the panel's three write paths it belongs to: held
+  // until the reader chooses again, whatever its code, a file changed on disk included, exactly as
+  // the unit and variable panels hold theirs, and never let go by a revision landing (`Refused`,
+  // lib/refusals.ts).
+  const [refused, setRefused] = useState<Refused<Kind> | null>(null);
 
   // What the panel shows of that answer (`panelShows`): a type just renamed to this spelling is
   // refused until the rename is analysed, and the panel says the findings are updating meanwhile.
@@ -227,28 +223,15 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
     },
     onMutate: () => setRefused(null),
     // Renamed, the type is the new spelling now, and the tab opens its panel - not the type
-    // disappearing that spec 5.4 has the tab announce. A success is a definite answer, so it
-    // also clears a stale wait left over from an earlier attempt at this same write - `onMutate`
-    // above only ever clears the other refusal.
+    // disappearing that spec 5.4 has the tab announce.
     onSuccess: (_reply, kind) => {
-      setStale(null);
       setChangesShown(false);
       if (kind === "rename" && renameTo !== null) {
         moving.current = true;
         onMoved(renameTo);
       }
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so the panel never shows two different answers to the same Apply.
-    onError: (error, kind) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setStale({ kind, text: refusalOf(error), revision });
-        setRefused(null);
-      } else {
-        setRefused({ kind, message: refusalOf(error) });
-        setStale(null);
-      }
-    },
+    onError: (error, kind) => setRefused({ about: kind, text: refusalOf(error) }),
     // An Apply changes the type's own entry, every place naming it, the tab's rows and every
     // plan, whose fingerprints the edit spent: they are asked for again, and nothing can be
     // applied until they answer. The description saved is let go only then, so that the field
@@ -382,13 +365,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         if (active !== null) apply.mutate(active);
       }}
       onOpen={onOpen}
-      refusal={
-        active === null
-          ? null
-          : ((stale?.kind === active ? shownRefusal(stale, revision) : null) ??
-            (refused?.kind === active ? refused.message : null) ??
-            shown.refusal)
-      }
+      refusal={active === null ? null : refusalShown(refused, shown.refusal, active)}
       busy={stopped || apply.isPending}
       onClose={onClose}
     />

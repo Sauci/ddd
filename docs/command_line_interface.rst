@@ -261,11 +261,15 @@ The commands
        dumps a component on its own, as it does for ``list``.
    * - ``ddd id --assign FILE...``
      - write an ``id`` into every producing declaration of the given description files that
-       has none, as one added line each: the file keeps its byte order mark, its line endings
-       and its formatting, and the new text is staged beside it and renamed onto it, so a run
-       that dies leaves a hand-authored description as it was. A declaration that has one is
-       left alone, so a second run changes nothing. The identity is what lets ``ddd compare`` report a rename as a
-       rename, and what ``missing-id`` asks for.
+       has none, as one added line each, right after the declaration's ``name``: the file keeps
+       its byte order mark, its line endings, its formatting and its mode, and the new text is
+       staged beside it, under a name of its own, and renamed onto it - onto the file a
+       symbolic link names, which stays a link - so a run that dies leaves a hand-authored
+       description as it was. A declaration that has one is left alone, so a second run changes
+       nothing. A file that is read-only, or that is not json as ``ddd check`` reads it - one
+       that spells a key twice in an object, or holds ``NaN`` - is reported and left as it is,
+       and the others are stamped. The identity is what lets ``ddd compare`` report a rename as
+       a rename, and what ``missing-id`` asks for.
    * - ``ddd schema KIND``
      - print the json schema of ``component``, ``constants``, ``dictionary``, ``project``,
        ``rasters``, ``sections``, ``types`` or ``units``, for an editor that offers completion
@@ -312,16 +316,26 @@ The commands
        one is settled by taking it out of all of them, from either row.
        Nothing is offered where the variable has no single producer - several components
        writing it, or none, leaves no owner to take a direction from; the variable's own
-       panel, one click from the finding, still settles any value the reader chooses, unless
-       it would leave the file unable to load. A key is offered only where one change settles
-       it for every declaration: never ``kind``, the one key no edit may carry between
-       declarations, and not a key some declaration could neither take nor drop - one its
-       named type fixes, one its kind does not allow, or the ``datatype``, ``conversion`` or
-       ``typename`` its own storage is made of. A component's page
+       panel, one click from the finding, still settles any value the reader chooses. A key is
+       offered only where one change settles it for every declaration: never ``kind``, the one
+       key no edit may carry between declarations, and not a key some declaration could neither
+       take nor drop - one its named type fixes, one its kind does not allow, or the
+       ``datatype``, ``conversion`` or ``typename`` its own storage is made of. Nor is a button
+       the cause of a ``schema`` error that the declaration and the type it names can say, which
+       no severity turns down: the writer's ``float32`` is not offered under a reader's
+       enumeration, nor a unit beside a string, nor a ``float64`` under a factor of two, nor a
+       dimension taken out of a declaration naming a string type, because the file that writes it
+       would not load. What takes more of the project - the leaves of a structure, a map's axes,
+       a plugin's ``extensions`` - is reported by the next analysis, as it is for a change made by
+       hand. The panel, whose reader chose the value, previews such a change all the same: a
+       sentence above Apply names each declaration that would not load and why, in the words
+       ``ddd check`` files it in, and Apply writes it. A component's page
        adds a declaration to its interface - a variable
        already declared, carrying the producer's keys where there is one and the
        project's own where there is not, or a new object of one of six kinds - and
-       takes one away. Its table's Shape column opens the page of a curve, a map, an
+       takes one away. A variable another component declares ``local`` is not offered: no
+       other component may declare it in any scope, and writing the declaration would be a
+       ``local-conflict``. Its table's Shape column opens the page of a curve, a map, an
        axis or any other declaration shaped in one or two dimensions: its values as a
        grid, laid against its axes' breakpoints or plain indices and named with the axis
        on each edge, in physical or in raw by a toggle. A curve, a map and an axis are
@@ -350,11 +364,23 @@ The commands
        what a scalar type fixes is changed there, and renaming one rewrites every
        declaration and member naming it in one edit.
        Every change is written into the files in their own layout and checked
-       the way ``ddd check`` checks them. A change applied here can be undone while
-       the server runs, from a button beside the project's name naming what it would
-       put back: the files are shown first, the lines on request, and a file that
-       changed on disk since is named and left alone. The list of what can be undone
-       lives in the running server and ends with it.
+       the way ``ddd check`` checks them. A change is refused as a whole, every file
+       left as it was, where a file it changes was saved from elsewhere since it was
+       planned - all but a save landing in the instant between the last look at the file
+       and its rename, which is still written over - or is read-only, on every system
+       alike, and where a file cannot be written the ones already written are put back,
+       the sentence naming any that cannot be. Each file's new bytes are synced to the disk
+       before they are renamed onto it, where the file system has a sync to offer, so that
+       on a journaling file system a power cut leaves a file as it was or as the change
+       made it, and not empty. A refusal is what a change is made all at once against: a server
+       stopped while it writes, by a closed terminal or a ``kill``, can leave some of
+       the files renamed as the change made them, the others as they were and, beside
+       them, the ``.ddd-staging`` files it was writing, and the next ``ddd gui`` has
+       nothing of it to undo. A change applied here can be undone while the server
+       runs, from a button beside the project's name naming what it would put back:
+       the files are shown first, the lines on request, and a file that changed on
+       disk since is named and left alone. The list of what can be undone lives in
+       the running server and ends with it.
        The Compare tab's baseline is a dumped dictionary, or a project or component
        description, at a path under the directory ``ddd gui`` was started in, refused, and
        told why, when it is outside that directory, unreadable, not valid json, a
@@ -453,14 +479,17 @@ The commands
        opened by selecting a row. New file takes a
        kind - ``component``, ``types``, ``units``, ``constants``, ``sections`` or
        ``rasters``, offered as ``GET /api/files`` sends the list, the page keeping no copy of
-       its own - and a name, creating the file beside the project description and adding it
+       its own - and a name, creating the file beside the project description, written in the
+       newline and the indentation the description is written in, and adding it
        to the includes in the same edit: a vocabulary file declares nothing and a component
        takes a second name of its own, while a units file is the exception, listing every
        unit the project states where no file of its tree is a units file already, so the one
        click cannot fail a passing project with ``unknown-unit`` at once, and created empty
        where a sub-project's own units file has opted the whole tree in already. Add a file
        takes a path, written from the project description's own directory or absolute,
-       appended to the includes exactly as written, and previews the errors the analysis
+       appended to the includes with ``/`` for every separator and relative to that
+       directory, since an entry naming a file absolutely or with a backslash names it on one
+       machine only, and previews the errors the analysis
        counts it bringing rather than refusing for them: it informs rather than refuses.
        Remove offers to take every entry of the selected row's own key out of the includes -
        the files stay on disk - refused where the analysis counts an error more at some place
@@ -491,7 +520,9 @@ The commands
        what ddd gui serves, /home/you/project; start it in a directory holding this file
        to add it here``; one naming no file - ``missing.ddd.json names no file; a file not
        there yet is created, not added``; the project's own description - ``p.ddd.json is
-       this project's own description, which it cannot include``; a file the project has
+       this project's own description, which it cannot include``; on Windows, a file on
+       another drive than the description, which no entry can name - ``D:/x/b.ddd.json is on
+       another drive than p.ddd.json, so no entry can name it``; a file the project has
        already, naming the entry - ``./a.ddd.json is part of this project already, as the
        entry 'a.ddd.json'`` - or naming the pattern that brings it in - ``lib/l.ddd.json is
        part of this project already: the pattern 'lib/*.ddd.json' brings it in``; a python
@@ -526,6 +557,34 @@ The commands
        by the findings on it, but is not opened, edited or drawn into a preview here: the
        refusal names the directories served, and starting ``ddd gui`` in one that holds them all
        opens them together.
+       A project a build generates is changed in its components alone. Without ``PROJECT``,
+       ``ddd_generate()`` writes the project description into its output directory, beside the
+       ``ddd-build.json`` naming it, out of what ``ddd_add_component()`` registers on what the
+       image links, and writes it again at every configure: an entry added or taken out here
+       would be undone then, and a file created beside it would no longer be included, and be
+       deleted with the build tree. So nothing under that build tree is written - the nearest
+       directory at or above the record holding a ``CMakeCache.txt``, or the output directory
+       alone where none does, or where that cache's source tree lies under it, as an in-source
+       build's does. New file, Add a file, Remove, adopting a unit vocabulary, a first
+       constants, sections or rasters file, and any change of a file lying under the tree are
+       each refused, in the server's own words - ``Fw.ddd.json is generated by the build of fw
+       at every configure, so which files belong to it is ddd_add_component's to say, and
+       nothing under /home/you/project/build is written from here`` - the first file lying under
+       the tree named instead where the change leaves the description alone - ``gen.ddd.json
+       lies under /home/you/project/build, where Fw.ddd.json is generated by the build of fw at
+       every configure: which files belong to it is ddd_add_component's to say, and nothing
+       there is written from here`` - and a new file offered in the source tree instead, beside
+       the first description the build collects from it that ``ddd gui`` serves and that has a
+       ``CMakeLists.txt`` beside it, with the line that registers it there: ``; create
+       newcomp.ddd.json beside /home/you/project/src/pump/pump.ddd.json instead, and add
+       ddd_add_component(<target> JSON newcomp.ddd.json) to the CMakeLists.txt there, replacing
+       <target> with your component's target``. The record beside the description is what says
+       so, read for the project it names whatever its format and its severities, and whether or
+       not ``-b`` names the build directory. A project given to ``ddd_generate()`` with
+       ``PROJECT`` is edited as any other while its record lies in the build tree, and taken for
+       a generated one, every change of its files refused in that sentence, which then says
+       something untrue, where ``OUTPUT_DIRECTORY`` is the description's own directory and
+       leaves the record beside it: nothing yet tells the two apart.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until
@@ -548,7 +607,27 @@ The commands
        A plan that would change a file an edit wrote since the revision it is judged
        against was analysed is refused until that edit's own analysis has landed, naming
        the file - ``an edit that wrote pump.ddd.json has not been analysed yet, so this
-       change can be planned once it has``. Opening a project answers at once with its
+       change can be planned once it has``. Renaming, describing or taking out a unit,
+       changing or renaming a type, changing, renaming or taking out a constant, a section
+       or a raster, setting an object's values and reading a variable into a component are
+       refused ``stale`` where a file no longer holds, at a place the plan points at, what
+       the analysis found there - the file saved from elsewhere since, an entry or a
+       declaration put in above or taken out - until the project is analysed again, naming
+       the file - ``units.ddd.json changed since the project was analysed, so renaming
+       'rpm' cannot be planned until the project is analysed again`` - rather than made
+       where another now stands. While a file of the project did not load, a plan that
+       renames a type, a constant, a section, a raster or a unit, takes out a constant,
+       a section, a raster, a unit or a declaration, or settles a key on every
+       declaration of a variable, is refused ``unreadable``, naming each file that did
+       not - ``b.ddd.json did not load, so renaming 'Speed_t' could not reach every place
+       that names it`` - rather than made over the files that did, which would leave the
+       old name in the one that did not, or take out what it still names. So is a plan that
+       declares an object, or reads a variable, as an output or a local, which a file that
+       did not load may produce or declare already, and one that writes into the file that
+       did not load, whatever its scope; one that declares or reads an input into a file
+       that loaded is answered. A plan for a name only such a file declares says what its
+       panel says, that no file that loaded declares it and which did not load, and not
+       that no file declares it. Opening a project answers at once with its
        name, read from its description as it stands and kept in the heading from then on;
        ``Analysing the project…`` stands where the tab's own content goes, until the first
        analysis lands, and every answer needing a revision is refused until then, in the

@@ -98,6 +98,11 @@ def test_the_running_serializer_writes_every_bound_with_its_envelope() -> None:
     ).model_dump(mode="json")
 
 
+REFUSALS: Final = ("Circular reference detected", "Maximum serialization depth exceeded")
+"""The wordings of pydantic-core's refusal at its serialization depth limit: the first before
+pydantic-core 2.50, the second from 2.50 on. Each is escaped on its own, and either is accepted."""
+
+
 @pytest.mark.parametrize(
     "value",
     [0, "x", None, [], {}, [0], {"a": 0}, {"a": {"b": None}}, [[], [0]], ({"k": [1]},)],
@@ -123,7 +128,8 @@ def test_a_value_is_counted_as_the_serializer_counts_it(value: Any) -> None:
     for _ in range(limit - nesting(value)):
         wrapped = [wrapped]
     ANYTHING.dump_python(wrapped, mode="json")
-    with pytest.raises(ValueError, match=re.escape("Circular reference detected")):
+    refusal = "|".join(re.escape(wording) for wording in REFUSALS)
+    with pytest.raises(ValueError, match=refusal):
         ANYTHING.dump_python([wrapped], mode="json")
 
 

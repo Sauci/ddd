@@ -11,7 +11,17 @@ import json
 from pathlib import Path
 from typing import Any
 
-from conftest import component, declare, project, scalar_type, struct_type, types, write_tree
+from conftest import (
+    FLOAT_BESIDE_ENUM,
+    MODE_T,
+    component,
+    declare,
+    project,
+    scalar_type,
+    struct_type,
+    types,
+    write_tree,
+)
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.edits import Settled, Settlement, Unsettled, settle
@@ -216,6 +226,49 @@ class TestWhatRefuses:
         assert settled(idx, "unit", '"rpm"') == Settlement(
             (), (Unsettled(site_in(idx, "b.ddd.json"), "unreachable"),)
         )
+
+
+class TestWhatTheModelsRefuse:
+    """A declaration whose definition would not load with the value written cannot take it, as
+    one whose type fixes the key cannot: the reader of an enumeration is not given a float."""
+
+    def test_a_declaration_the_value_would_leave_unloadable_refuses_it(
+        self, tmp_path: Path
+    ) -> None:
+        idx = built(tmp_path, **FLOAT_BESIDE_ENUM)
+        assert settled(idx, "datatype", '"float32"', name="V") == Settlement(
+            (),
+            (
+                Unsettled(
+                    site_in(idx, "r.ddd.json", "V"),
+                    "load",
+                    problem="enum conversion 'Mode_t' requires an integer datatype, got 'float32'",
+                ),
+            ),
+        )
+
+    def test_the_declarations_that_load_are_still_settled(self, tmp_path: Path) -> None:
+        """Of two readers one cannot take the writer's datatype: the other still changes, and the
+        one that cannot is named, so that the page can refuse the whole as it refuses any partial
+        settlement and the editor can offer the part."""
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "float32")),
+            "r1.ddd.json": component("R1", declare("input", "V", "uint8", conversion=MODE_T)),
+            "r2.ddd.json": component("R2", declare("input", "V", "uint16")),
+        }
+        idx = built(tmp_path, **files)
+        decided = settled(idx, "datatype", '"float32"', name="V")
+        assert [change.site.path.name for change in decided.changes] == ["r2.ddd.json"]
+        assert [(refused.site.path.name, refused.reason) for refused in decided.unsettled] == [
+            ("r1.ddd.json", "load")
+        ]
+
+    def test_the_panel_asks_without_withholding_and_writes_what_it_is_given(
+        self, tmp_path: Path
+    ) -> None:
+        idx = built(tmp_path, **FLOAT_BESIDE_ENUM)
+        decided = settle(idx, "V", "datatype", '"float32"', {}, withholding=False)
+        assert decided == Settlement((Settled(site_in(idx, "r.ddd.json", "V"), '"float32"'),), ())
 
 
 def test_a_declaration_spelling_the_value_differently_is_nothing_to_change(

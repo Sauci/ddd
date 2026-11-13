@@ -113,11 +113,9 @@ test("an edit made from a page that is out of date is refused, and the file relo
   await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
   await chooseUnit(page, "rpm");
   // ValueB's unit changed on disk as the Apply goes out, unseen by the session's own watcher
-  // (`writeUnseen`): seen, it brought a revision of its own about a poll later, and the page
-  // holds a stale refusal only until the next revision (`shownRefusal`, lib/refusals.ts) - once
-  // gone before this journey read it (CI run 37705627501, windows msedge). Unseen, no revision
-  // can come, so the refusal stays for as long as it is looked for. `"unit":"mV"` is as many
-  // bytes as `"unit": "V"`, and reads the same.
+  // (`writeUnseen`), so that only the Apply's own fresh read of the bytes sees it; the refusal is
+  // held until the reader's next choice, whatever revision comes meanwhile (`Refused`,
+  // lib/refusals.ts). `"unit":"mV"` is as many bytes as `"unit": "V"`, and reads the same.
   await page.route("**/api/edit", async (route) => {
     const changed = readFileSync(file, "utf8").replace('"unit": "V"', '"unit":"mV"');
     writeUnseen(gui.directory, CONTROLLER, changed);
@@ -125,8 +123,9 @@ test("an edit made from a page that is out of date is refused, and the file relo
   });
   await page.getByRole("button", { name: "Apply to 2 files" }).click();
   await expect(page.getByRole("status").filter({ hasText: "changed on disk" })).toBeVisible();
-  // The file reloaded by the page itself, as the refusal says: with no revision to bring the
-  // change, its own reading of the file again is all that can show ValueB in mV.
+  // The file reloaded, as the refusal says: the watcher never sees the change, and the page's own
+  // reading of the file again, or the analysis the refusal asks for (`Session._refused`), is what
+  // shows ValueB in mV.
   await expect(page.getByRole("button", { name: "Set the unit of ValueB" })).toHaveText("mV");
   expect(readFileSync(file, "utf8")).toMatch(/"name": "ValueA"[\s\S]*?"unit": "%"/);
 });

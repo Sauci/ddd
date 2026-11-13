@@ -10,7 +10,18 @@ from typing import Any
 
 import pytest
 
-from conftest import component, declare, project, scalar_type, types, write_tree
+from conftest import (
+    FLOAT_BESIDE_ENUM,
+    STRING_TYPE_BESIDE_SCALAR,
+    TEXT,
+    UNIT_BESIDE_TEXT,
+    component,
+    declare,
+    project,
+    scalar_type,
+    types,
+    write_tree,
+)
 from ddd.diagnostics import Diagnostic, DiagnosticBag, Location, Severity
 from ddd.editing import UNREADABLE, EditError, Operation, fingerprint
 from ddd.loading import load_workspace
@@ -26,6 +37,7 @@ from ddd.variables import (
     preview,
     refusal,
     units_in_use,
+    unloadable,
     vocabulary_of,
 )
 
@@ -243,16 +255,118 @@ class TestRefusal:
                 "would not load with that unit: storage is named exactly once, and a "
                 "'datatype' comes with a 'conversion'",
             ),
+            (
+                "load",
+                "invalid",
+                "would not load with that unit: a string has no unit",
+            ),
             ("unreachable", "unreadable", "is no longer where the last analysis found it"),
         ],
     )
     def test_each_reason_has_its_code_and_names_the_declaration(
         self, reason: Any, code: str, says: str
     ) -> None:
-        refused = Unsettled(Site(Path("/w/b.ddd.json"), DEFINITION), reason, "Speed_t")
+        refused = Unsettled(
+            Site(Path("/w/b.ddd.json"), DEFINITION), reason, "Speed_t", "a string has no unit"
+        )
         assert refusal(refused, "Speed", "unit") == (
             code,
             f"the declaration of 'Speed' in b.ddd.json {says}",
+        )
+
+
+class TestUnloadable:
+    """What the panel says of a settlement its reader chose, which a button's is withheld for."""
+
+    def test_a_declaration_the_settlement_leaves_unloadable_is_said_to_be_one(
+        self, tmp_path: Path
+    ) -> None:
+        idx = built(tmp_path, **FLOAT_BESIDE_ENUM)
+        cache: dict[Path, Document] = {}
+        settlement = settle(idx, "V", "datatype", '"float32"', cache, withholding=False)
+        assert unloadable(settlement, "V", "datatype", cache) == (
+            "the declaration of 'V' in r.ddd.json would not load with that datatype: "
+            "enum conversion 'Mode_t' requires an integer datatype, got 'float32'",
+        )
+
+    def test_a_settlement_that_leaves_every_declaration_loading_says_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        idx = built(tmp_path, **FLOAT_BESIDE_ENUM)
+        cache: dict[Path, Document] = {}
+        settlement = settle(idx, "V", "conversion", '{"kind": "identity"}', cache)
+        assert settlement.changes
+        assert unloadable(settlement, "V", "conversion", cache) == ()
+
+    def test_only_the_declarations_that_would_not_load_are_said(self, tmp_path: Path) -> None:
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint16")),
+            "r1.ddd.json": component("R1", declare("input", "V", "uint32")),
+            "r2.ddd.json": component(
+                "R2", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+        }
+        idx = built(tmp_path, **files)
+        cache: dict[Path, Document] = {}
+        settlement = settle(idx, "V", "datatype", '"uint16"', cache, withholding=False)
+        assert [change.site.path.name for change in settlement.changes] == [
+            "r1.ddd.json",
+            "r2.ddd.json",
+        ]
+        assert unloadable(settlement, "V", "datatype", cache) == (
+            "the declaration of 'V' in r2.ddd.json would not load with that datatype: "
+            "a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'",
+        )
+
+    def test_the_sentences_follow_the_files_by_path(self, tmp_path: Path) -> None:
+        """The project lists its components in the order it includes them, which is not the order
+        the plan's own files are drawn in: sorted by path, as the preview's are."""
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint16")),
+            "r2.ddd.json": component(
+                "R2", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+            "r1.ddd.json": component(
+                "R1", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+        }
+        idx = built(tmp_path, **files)
+        cache: dict[Path, Document] = {}
+        settlement = settle(idx, "V", "datatype", '"uint16"', cache, withholding=False)
+        why = "a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'"
+        assert unloadable(settlement, "V", "datatype", cache) == (
+            f"the declaration of 'V' in r1.ddd.json would not load with that datatype: {why}",
+            f"the declaration of 'V' in r2.ddd.json would not load with that datatype: {why}",
+        )
+
+    def test_taking_a_key_out_is_said_as_writing_one_is(self, tmp_path: Path) -> None:
+        idx = built(tmp_path, **UNIT_BESIDE_TEXT)
+        cache: dict[Path, Document] = {}
+        settlement = settle(idx, "V", "dimensions", None, cache, withholding=False)
+        (said,) = unloadable(settlement, "V", "dimensions", cache)
+        assert said.startswith(
+            "the declaration of 'V' in r.ddd.json would not load with that dimensions: "
+            "a string states exactly one dimension"
+        )
+
+    def test_the_type_a_declaration_names_is_asked_where_the_project_is_given(
+        self, tmp_path: Path
+    ) -> None:
+        """A reader naming a string type states one dimension, and settling none takes it: the
+        models take that, and the analysis does not - with the types of the project beside it."""
+        from ddd.lsp.edits import type_conversions
+
+        idx = built(tmp_path, **STRING_TYPE_BESIDE_SCALAR)
+        cache: dict[Path, Document] = {}
+        settlement = settle(idx, "V", "dimensions", None, cache, withholding=False)
+        assert unloadable(settlement, "V", "dimensions", cache) == ()
+        assert unloadable(
+            settlement, "V", "dimensions", cache, types=type_conversions(idx, cache)
+        ) == (
+            "the declaration of 'V' in r.ddd.json would not load with that dimensions: "
+            "'V' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got none; an array of strings is written as an "
+            "array of structures with a string member",
         )
 
 

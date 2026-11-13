@@ -4,9 +4,28 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
-from conftest import built_of, checks, component, declare, messages, scalar_type, types
+import pytest
+
+from conftest import (
+    DOUBLE_BESIDE_SCALED,
+    FLOAT_BESIDE_ENUM,
+    STRING_TYPE_BESIDE_GRID,
+    STRING_TYPE_BESIDE_SCALAR,
+    TEXT,
+    UNIT_BESIDE_TEXT,
+    built_of,
+    checks,
+    component,
+    declare,
+    messages,
+    scalar_type,
+    types,
+    without_ids,
+)
 from ddd.analysis import analyze
+from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import DiagnosticBag
 from ddd.editing import edit_text
 from ddd.finding_fixes import fixes_for
@@ -65,6 +84,79 @@ class TestAnIdentity:
         )
         (fix,) = fixes_for("missing-id", root / "a.ddd.json", DEFINITION, {}, built)
         assert fix.changes[0].operations[0].pointer == f"{DEFINITION}.id"
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            pytest.param(
+                json.dumps(component("A", declare("output", "Speed", unit="rpm")), indent=2),
+                id="indented-two-spaces",
+            ),
+            pytest.param(
+                json.dumps(component("A", declare("output", "Speed", unit="rpm")), indent="\t"),
+                id="indented-with-tabs",
+            ),
+            pytest.param(
+                json.dumps(
+                    component("A", declare("output", "Speed", unit="rpm")), indent=2
+                ).replace("\n", "\r\n"),
+                id="crlf",
+            ),
+            pytest.param(
+                json.dumps(
+                    component("A", declare("output", "Speed", unit="rpm", id=None)), indent=2
+                ),
+                id="stated-as-null",
+            ),
+            pytest.param(
+                '{"component": {"name": "A", "interface": [{"scope": "output", "definition": '
+                '{ "name": "Speed", "kind": "measurement", "datatype": "uint8", '
+                '"conversion": {"kind": "identity"}, "volatile": false }}]}}',
+                id="written-on-one-line",
+            ),
+            pytest.param(
+                json.dumps(
+                    {
+                        "component": {
+                            "name": "A",
+                            "interface": [
+                                {
+                                    "scope": "output",
+                                    "definition": {
+                                        "kind": "measurement",
+                                        "name": "Speed",
+                                        "unit": "rpm",
+                                        "datatype": "uint8",
+                                        "conversion": {"kind": "identity"},
+                                        "volatile": False,
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                    indent=2,
+                ),
+                id="name-not-first",
+            ),
+        ],
+    )
+    def test_the_fix_writes_what_ddd_id_writes(self, tmp_path: Path, description: str) -> None:
+        """Which declarations want an id is decided once, and so is where it goes: the page's fix
+        and the command leave one description in one text, the id after the name it identifies
+        whatever the file's layout - or, stated as ``null``, in place of it."""
+        built, root = built_of(tmp_path / "page", **{"a.ddd.json": description})
+        page = root / "a.ddd.json"
+        (fix,) = fixes_for("missing-id", page, DEFINITION, {}, built)
+        (edit,) = fix.changes
+        by_the_fix = edit_text(page.read_bytes().decode("utf-8"), edit.operations)
+        command = tmp_path / "command" / "a.ddd.json"
+        command.parent.mkdir()
+        command.write_bytes(description.encode("utf-8"))
+        assert main(["id", "--assign", str(command)]) == EXIT_OK
+        by_the_command = command.read_bytes().decode("utf-8")
+        assert by_the_fix != description
+        assert '"id": "' in by_the_fix
+        assert without_ids(by_the_fix) == without_ids(by_the_command)
 
     def test_a_lone_declaration_has_nothing_to_reconcile(self, tmp_path: Path) -> None:
         # A variable one component declares has no mismatch and no fix: there is nobody to
@@ -516,3 +608,191 @@ class TestAMismatch:
             },
         )
         assert fixes_for("unknown-unit", root / "a.ddd.json", DEFINITION, {}, built) == ()
+
+
+class TestAMismatchThatWouldNotLoad:
+    """A button whose result would leave a file unable to load is not offered at all.
+
+    The page offers what the editor's quick fixes decide (``reconciliations``), so the two share
+    the rule: asking the models what a definition would be once the key is written. Where the
+    reader may still choose the value - the variable's own panel - it is planned with a sentence
+    saying so instead (``tests/test_gui_api.py``).
+    """
+
+    def titles(self, tmp_path: Path, source: str, **files: Any) -> list[str]:
+        built, root = built_of(tmp_path, **files)
+        offered = fixes_for("definition-mismatch", root / source, DEFINITION, {}, built)
+        return [fix.title for fix in offered]
+
+    def test_a_datatype_is_not_taken_from_a_float_writer_beside_an_enumeration(
+        self, tmp_path: Path
+    ) -> None:
+        # The first button of the reader, until the loader refused the file it wrote: 'enum
+        # conversion 'Mode_t' requires an integer datatype, got 'float32''. What is left is the
+        # other key, which settles the same disagreement by the writer's conversion.
+        assert self.titles(tmp_path, "r.ddd.json", **FLOAT_BESIDE_ENUM) == [
+            "Use the conversion declared in w"
+        ]
+
+    def test_a_float_is_not_sent_to_the_reader_of_an_enumeration(self, tmp_path: Path) -> None:
+        assert self.titles(tmp_path, "w.ddd.json", **FLOAT_BESIDE_ENUM) == [
+            "Apply this conversion to 1 other declaration of 'V'"
+        ]
+
+    def test_a_unit_is_not_taken_by_a_string(self, tmp_path: Path) -> None:
+        assert self.titles(tmp_path, "r.ddd.json", **UNIT_BESIDE_TEXT) == [
+            "Use the conversion declared in w"
+        ]
+
+    def test_a_unit_is_not_sent_to_a_string(self, tmp_path: Path) -> None:
+        assert self.titles(tmp_path, "w.ddd.json", **UNIT_BESIDE_TEXT) == [
+            "Apply this conversion to 1 other declaration of 'V'"
+        ]
+
+    def test_a_dimension_is_not_taken_out_of_a_string(self, tmp_path: Path) -> None:
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint8")),
+            "r.ddd.json": component(
+                "R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+        }
+        # The reader is the only declaration stating a dimension, and "Remove this dimensions,
+        # which w does not declare" would leave a string of none; the writer's silence about the
+        # conversion is settled the other way.
+        assert self.titles(tmp_path, "r.ddd.json", **files) == ["Use the conversion declared in w"]
+
+    def test_a_fix_that_would_leave_one_of_its_declarations_unloadable_is_dropped_whole(
+        self, tmp_path: Path
+    ) -> None:
+        # One press settles every declaration of the variable or none: a datatype the string
+        # reader cannot take is a settlement that reaches the other reader alone, which the page
+        # refuses as it refuses any partial one, so no button is drawn for it - where the editor
+        # offers what it can (`tests/test_lsp.py`). The conversion still settles both, by the
+        # identity the writer states.
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint16")),
+            "r1.ddd.json": component(
+                "R1", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+            "r2.ddd.json": component("R2", declare("input", "V", "uint32")),
+        }
+        assert self.titles(tmp_path, "w.ddd.json", **files) == [
+            "Apply this conversion to 1 other declaration of 'V'"
+        ]
+
+    def test_a_fix_widened_across_the_variable_is_dropped_when_another_reader_would_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        # A consumer's one press reaches every declaration of the variable, not the one the
+        # finding is filed on (`_across`): the writer's datatype is what the second reader holds
+        # on its own, and the first reader reads text, which only a byte can hold. The press
+        # would stop that file loading, so it is not offered.
+        files = {
+            "w.ddd.json": component("W", declare("output", "V", "uint16")),
+            "r1.ddd.json": component(
+                "R1", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])
+            ),
+            "r2.ddd.json": component("R2", declare("input", "V", "uint32")),
+        }
+        assert self.titles(tmp_path / "second", "r2.ddd.json", **files) == []
+
+    def test_a_datatype_is_not_taken_from_a_double_by_a_scaled_reader(self, tmp_path: Path) -> None:
+        # The first button of the reader, until the analysis refused what it wrote: the writer's
+        # float64 under a factor of two has limits past the largest float, 'the limits derived
+        # from 'float64' and this conversion are not finite' - a ``schema`` the models do not say,
+        # because it is the analysis that derives the limits. What is left settles the same
+        # disagreement by the writer's conversion.
+        assert self.titles(tmp_path, "r.ddd.json", **DOUBLE_BESIDE_SCALED) == [
+            "Use the conversion declared in w"
+        ]
+
+    def test_a_double_is_not_sent_to_a_scaled_reader(self, tmp_path: Path) -> None:
+        assert self.titles(tmp_path, "w.ddd.json", **DOUBLE_BESIDE_SCALED) == [
+            "Apply this conversion to 1 other declaration of 'V'"
+        ]
+
+    def test_what_is_offered_for_that_pair_leaves_the_project_analysable(
+        self, tmp_path: Path
+    ) -> None:
+        # What is offered is applied, and the project is analysed again: either button above,
+        # taken, would file the ``schema`` the models did not say, and what stays files none.
+        built, root = built_of(tmp_path, **DOUBLE_BESIDE_SCALED)
+        offered = fixes_for("definition-mismatch", root / "r.ddd.json", DEFINITION, {}, built)
+        for fix in offered:
+            for edit in fix.changes:
+                text = edit.path.read_text(encoding="utf-8")
+                edit.path.write_text(edit_text(text, edit.operations), encoding="utf-8", newline="")
+        bag = DiagnosticBag()
+        workspace = load_workspace(root / "p.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        analyze(workspace, bag)
+        assert "schema" not in checks(bag), messages(bag)
+
+    def test_a_dimension_is_not_taken_out_of_a_declaration_naming_a_string_type(
+        self, tmp_path: Path
+    ) -> None:
+        # The reader's one fix, "Remove this dimensions, which w does not declare", leaves a
+        # string of none; the writer's, "Remove the dimensions from 1 other declaration", the
+        # same. The type is the project's, so the models take both and the analysis refuses the
+        # file once it is written (`schema`): there is no button left to press.
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **STRING_TYPE_BESIDE_SCALAR) == []
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **STRING_TYPE_BESIDE_SCALAR) == []
+
+    def test_the_dimensions_of_a_grid_are_not_taken_by_a_declaration_naming_a_string_type(
+        self, tmp_path: Path
+    ) -> None:
+        assert self.titles(tmp_path / "reader", "r.ddd.json", **STRING_TYPE_BESIDE_GRID) == []
+        assert self.titles(tmp_path / "writer", "w.ddd.json", **STRING_TYPE_BESIDE_GRID) == []
+
+    def test_a_key_written_twice_since_the_index_was_built_leaves_the_fix_out(
+        self, tmp_path: Path
+    ) -> None:
+        # The files are read as they stand now, as python reads json, which takes a key typed
+        # twice and keeps the last; the loader refuses the text that would be spread as
+        # ``json-syntax``, and the fix that spreads it is dropped rather than raised.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", "float32", limits={"min": 0, "max": 100})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", "float32", limits={"min": 0, "max": 50})
+                ),
+            },
+        )
+        producer = root / "a.ddd.json"
+        typed = producer.read_text(encoding="utf-8").replace('"max": 100', '"max": 100, "max": 200')
+        producer.write_text(typed, encoding="utf-8", newline="")
+        assert fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built) == ()
+
+    def test_what_is_wrong_only_in_context_is_still_offered_and_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        # The models say what a definition holds on its own; what the project makes of it is the
+        # analysis's. The writer's limits are out of range for a reader storing a byte, which the
+        # file does not say: it loads, the fix settles the disagreement it was offered for, and
+        # `limits-out-of-range` is a finding of the next analysis, as it is for an edit by hand.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component(
+                    "A", declare("output", "Speed", "uint16", limits={"min": 0, "max": 300})
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Speed", "uint8", limits={"min": 0, "max": 100})
+                ),
+            },
+        )
+        offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
+        (fix,) = [fix for fix in offered if fix.title == "Use the limits declared in a"]
+        for edit in fix.changes:
+            text = edit.path.read_text(encoding="utf-8")
+            edit.path.write_text(edit_text(text, edit.operations), encoding="utf-8", newline="")
+
+        bag = DiagnosticBag()
+        workspace = load_workspace(root / "p.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        analyze(workspace, bag)
+        assert "schema" not in checks(bag), messages(bag)
+        assert "limits-out-of-range" in checks(bag), messages(bag)

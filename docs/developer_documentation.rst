@@ -84,8 +84,9 @@ project and a pre-commit hook once per file - are answered without building a si
 contract. ``names.py`` is what makes that possible: the handful of spellings argparse reads
 while it is still deciding what was asked for, in a module that imports nothing, each of them
 the one definition of its name. ``identity.py`` makes an object
-identity and writes one into a description file textually, so that ``ddd id --assign``
-produces a diff of one line per object rather than a reformatted document. ``build_info.py``
+identity and hands the edit engine the operation that writes one into a description file
+textually, so that ``ddd id --assign`` produces a diff of one line per object rather than a
+reformatted document, and writes a file as ``ddd gui`` does. ``build_info.py``
 is the hand-off from a build to an editor: which project description was configured, and
 under which severity policy, neither of which any ``*.ddd.json`` file records.
 
@@ -1007,8 +1008,8 @@ left to match nothing. ``restamp`` moves a file's modification time to now and c
 its bytes. The session's watcher compares a file's modification time and size alone
 (``stamped``, in ``src/ddd/gui/session.py``), so its next poll reads a new revision, and the long
 poll the page has open, which would otherwise wait out its ``WAIT_SECONDS``, answers at once: a
-journey needs it to let go a refusal held until the next revision, or to make the page's next
-read of the state the one ``failing`` fails.
+journey needs it to make the page's next read of the state the one ``failing`` fails, to read a
+revision whose answers ``failing`` fails, or to have a pattern expanded again.
 
 ``openedGui``, a fixture beside ``copiedGui``, serves a copy of the demo as a reader's own ``ddd
 gui`` serves it: started without ``--no-browser``, so that it opens a browser, with the
@@ -1101,6 +1102,31 @@ the two can never disagree about it - as ``ddd.lsp.edits.settle`` already does f
 variable's keys, one rule the language server's reconcile quick fix and ``ddd gui``'s
 variable panel both read.
 
+That rule includes what the project would say of the declaration once a key is written, as far as
+the declaration and the type it names can say it. A rule between keys - an enumeration wants an
+integer datatype, a string a byte, one dimension and no unit - is held by the models and by no
+list of keys, and the analysis files three more ``schema`` findings from the declaration and its
+type: limits derived from a datatype and a conversion that are not finite, a shape of numbers past
+the caps, and, for a declaration naming a string type, anything but one dimension and no display
+format. ``settled_at`` asks all of them, of the definition as the key would leave it
+(``ddd.lsp.edits.loading_problem``, over ``ddd.models.definition_problem``, which
+``ddd.declaration_plans`` asks of a declared object too), told what the project's types fix by
+``ddd.lsp.edits.type_conversions``; the analysis takes each rule from the models, so that the
+sentence is one. What needs more of the project - the leaves of a structure, a map's axes, the
+constant a dimension names, a plugin's ``extensions`` - is not asked, and stays a finding of the
+next analysis. A declaration whose answer is a problem is ``Unsettled`` with the reason ``load``. A
+text ``json.loads`` takes and the loader refuses - a key written twice, which an editor's buffer
+may hold - is such an answer as well, in the loader's words, and never an exception. Every button
+- a quick fix, and the page's fix of a ``definition-mismatch`` - is built from
+``reconciliations``, so none of them leaves a file unable to load by what is asked: the editor
+leaves such a declaration out of an action that reaches several, as it leaves out one a type
+fixes, and the page drops a fix that cannot reach every declaration. The variable's panel is the
+one client that chooses otherwise: ``GET /api/settle`` settles with ``withholding=False``, its
+reader chose the value, and ``unloadable`` in its reply says which declarations would not load and
+why, in the sentence ``ddd check`` files as ``schema`` once the change is written. The page draws
+each sentence as it comes, above Apply, which stays available: ``unloadableOf``, in
+``gui/src/lib/units.ts`` and under the page's own tests, says which.
+
 What a key of a variable offers the panel is worked out in ``ddd.variable_keys``: per key,
 and per declaration, whether that declaration's kind has the key at all and whether it
 must state it - ``ddd.models.definition_keys``, plus the storage keys a declaration cannot
@@ -1126,7 +1152,8 @@ among them. ``GET /api/findings``, ``GET /api/variable``, ``GET /api/unit`` and 
 /api/type`` all carry that answer on every finding they list. ``ddd.finding_fixes`` plans
 the one fix a finding has nowhere else to offer: a ``missing-id`` finding's identity, from
 the same walk ``ddd.identity.unstamped`` gives ``ddd id`` and the language server's own
-quick fix, written as the operations ``POST /api/edit`` takes rather than as a text edit;
+quick fix, written as the operations ``POST /api/edit`` takes rather than as a text edit - the
+operation ``ddd id`` hands the engine too (``ddd.identity.stamp``);
 ``GET /api/fix`` previews it, as ``GET /api/settle`` previews a settlement.
 ``ddd.lsp.edits.settle`` itself now compares what a value means rather than its own text,
 the same ``ddd.value_identity.same_value`` the panel's values in play already read - which
@@ -1149,7 +1176,11 @@ uses and its members, and ``GET /api/type-plan`` previews a change of either kin
 component may add a declaration of a variable the project already declares or of a new
 object of one of the six kinds, and its three verbs take a file, a name and a scope to
 read one; a file, a scope and a definition to declare one; and a file and a name to
-remove one.
+remove one. A variable another component declares ``local`` is not one it may read:
+``Index.producers`` counts a local among the producers of a name, so ``scopes_for`` asks the
+scope each declaration states instead and answers none, ``declarable`` leaves the name out,
+and ``read_object`` refuses it in any scope, since a declaration beside a local is the
+``local-conflict`` the analysis reports whatever its scope.
 
 ``ddd.object_values`` sits beside ``ddd.declaration_plans`` and ``ddd.type_plans``: what
 one object's grid shows - its kind, datatype, unit, conversion, resolved limits, shape,
@@ -1176,17 +1207,70 @@ creates its file, one ``set`` of the whole document at the root pointer, and is 
 place like any other write, and taken away again if a later file of the same edit fails. The
 session of ``ddd gui`` accepts such a change only beside the open project's description, and
 only when the same edit's change to that description leaves the new file among its
-``includes``; any other is refused as ``invalid`` before anything is written. The file it
-creates takes the mode, and where the process may set them the owner and group, of the
-project description beside it, so ``ddd gui`` running in a container leaves the developer a
-file of their own rather than root's.
+``includes``; any other is refused as ``invalid`` before anything is written. Where a build
+generates that description - the ``ddd-build.json`` beside it naming it, as ``ddd_generate()``
+leaves one without ``PROJECT`` - it accepts none, nor any change of the description or of
+another file under the build tree it is generated in, each refused as ``generated``: the build
+writes the description again at every configure, and which files belong to the project is
+``ddd_add_component()``'s to say. That tree is the nearest directory at or above the record
+holding a ``CMakeCache.txt``, unless the source tree that cache names lies under it, as an
+in-source build's does, and the description's own directory otherwise. The record is all that
+says a description is generated, so one given to ``ddd_generate()`` with ``PROJECT`` and an
+``OUTPUT_DIRECTORY`` of its own directory, the record written beside it and naming it, is taken
+for one the build generates: every change of its files is refused, in a sentence saying the
+build writes it, which it does not. Nothing in the record or the description tells the two
+apart yet. The file it creates takes the mode, and where the process may set them the owner
+and group, of the project description beside it, so ``ddd gui`` running in a container leaves
+the developer a file of their own rather than root's.
+
+Every write of the engine, an edit's and an undo's alike, looks at its file once more after
+the stage is written and right before the rename - or the removal, for a file an edit
+created. A file that no longer holds the bytes the write was made from, or that exists
+where the write creates it, was changed by somebody else since the edit read it, and is
+refused as ``stale`` rather than overwritten, taken away or brought back; the files
+already written are put back, each one that still holds what the write left. A save landing
+in the instant between that last look and the rename is still written over, and a file another
+writer creates there in that instant is replaced: no lock the file systems offer closes that
+moment. ``stale`` says that every one went back - the page tells a person that nothing was
+written - and where one could not, the refusal is ``unwritable`` and its sentence names the
+files it could not put back.
+
+A file this process may not write is refused ``unwritable`` before the first file of an edit,
+or of an undo, is staged, on every system: one with no permission to write it at all - a
+mode of ``0444``, which is what Windows' read-only flag reads as - for root as for anyone, or
+one the system says this process may not write, as it does for a file of another user's or on
+a read-only mount. On Windows that question reads the read-only flag and nothing else,
+``os.access`` leaving a file's permissions unasked: a file they forbid this process, or one on a
+share that keeps no such flag, passes it, and the edit is refused when that file's stage cannot
+replace it, once its retries are spent, with every file renamed before it put back. Windows
+refused the rename of a stage that had taken a read-only file's access, after its second of
+retries, and left that stage beside the file; Linux, where a rename asks the permission of the
+folder and not of the file, wrote the file through and kept it read-only. A stage that is to
+take a file's access is created ``0600``, for its owner alone, and a stage a write refused is
+made writable before it is taken away, Windows not deleting a read-only file.
+
+An edit stages every one of its files before it renames any. The stages are written and
+closed, then synced together - on up to ``SYNC_WORKERS`` threads, a sync waiting for the disk
+and a disk taking many at once, where one after the other cost milliseconds a file - and only
+then renamed, one file after the other, each given its file's access and its file looked at
+once more right before. A sync the file system has none to offer, ``EINVAL`` or ``ENOTSUP``,
+is let by, and any other error refuses the write; one that fails refuses the edit before any
+file is renamed. An undo is written the same way, the file an edit created taken away in its
+turn; only the put-back of a write that is refused - the files already renamed, or the ones an
+undo had put back - writes one file at a time, each stage synced as it is made, as it is rare.
+What an edit is made all at once against is a refusal and not a stop: a server killed while it
+writes - a closed terminal, a ``kill`` - can leave some of the files it had renamed as the edit
+made them, the others as they were, the stages it was writing beside them, and nothing to undo
+once it is started again, and ``Changes`` in ``ddd.gui.contract`` says so. On a journaling
+file system that has a sync to offer, a power cut leaves each file as it was or as the edit
+made it, and not empty.
 
 Undo is the same engine read backwards. ``ddd.editing.apply_changes`` answers a
 :class:`~ddd.editing.Written` per file - the bytes it held before, ``None`` for a file the
 edit created, and the fingerprint of the bytes it left - and ``ddd.editing.restore`` writes
-those back through the same staging, taking away again a file the edit created and, when one
-file of several cannot be written, writing the ones already put back forward to what the
-edit had left them. ``ddd.editing.unchanged`` is what says an edit may still be put back: a
+those back through the same staging and sync, taking away again a file the edit created and,
+when one file of several cannot be written, writing the ones already put back forward to what
+the edit had left them. ``ddd.editing.unchanged`` is what says an edit may still be put back: a
 file whose bytes are no longer the ones it left is somebody else's now, and the whole undo
 is refused as ``stale`` rather than half of it applied. The session keeps one stack of
 ``Undoable`` entries per open project, numbered as it pushes and capped at ``MAX_UNDO`` -

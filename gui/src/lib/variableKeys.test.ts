@@ -204,6 +204,7 @@ describe("the rows of the table", () => {
           hunks: [],
         },
       ],
+      unloadable: [],
     };
     const rows = keyRows(variable([offer("unit"), offer("datatype")]), preview);
     expect(rows.find((row) => row.key === "unit")?.cells.map((cell) => cell.changing)).toEqual([
@@ -231,6 +232,7 @@ describe("the rows of the table", () => {
           hunks: [],
         },
       ],
+      unloadable: [],
     };
     expect(willChangeKey(preview, controller, "unit")).toBe(true);
     expect(willChangeKey(preview, controller, "datatype")).toBe(false);

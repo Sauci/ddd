@@ -16,6 +16,145 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
+* **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
+  the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
+  Linux a file kept `0600` came out with the mode a new file gets, a file kept read-only was
+  rewritten and left writable, and a symbolic link was replaced by a regular file holding the id,
+  while the file it named stayed as it was, so a description shared between projects by a link was
+  forked in silence; and a description was read by python's parser, so one that spells a key twice
+  in an object, or holds `NaN`, which `ddd check` refuses as `json-syntax`, was stamped - `wrote 1
+  id`, exit 0.  It now writes by the engine `ddd gui` writes with: the file keeps its mode, a
+  read-only file is reported as one that cannot be written and left as it was, a link is written
+  through to the file it names and stays a link, and a file `ddd check` would refuse to read is
+  reported as not readable as json and left alone, whether or not it had an id to give.  Each is
+  reported while the other files are stamped, and the run exits 1, as for any file it could not
+  stamp.  The key goes right after the declaration's `name`, as it always did, and so now does the
+  key the `missing-id` fix of `ddd gui` writes, which went after the object's last key.  A
+  description that spells a key twice has to be corrected first, as `ddd check` has always asked.
+  The time a file takes to stamp grows with the file, where it grew with its square.  No file
+  format changes.
+
+* **An edit of `ddd gui` is written whole, or refused, however many people write at once.**  Each
+  write staged its files under a name every other write could take too, so two writers at the
+  same moment could remove each other's stage and a description lost its text.  Every write now
+  stages under a name of its own, beside the file.  And a file saved from outside while an edit
+  was being written, between the moment the page last read it and the rename, was overwritten
+  and the edit answered as written; each file is now read once more right before it replaces the
+  file, and a change since the analysis is refused as `stale`, with every file as it was - all but
+  a save landing in the instant between that last read and the rename, which is still written
+  over.  An undo, and the rollback of an edit that is refused, put back only the files that still
+  hold what the edit wrote: a file saved since is left as it was saved, and named.  A reader may
+  now meet a `stale` where the edit used to be written; the answer is to read the project again
+  and ask once more.  No file format changes.
+
+* **A plan made over a file saved during the analysis is refused as `stale`.**  The plan of an
+  edit, a rename or a settled value took the places the analysis recorded, and when a file had
+  been saved while that analysis ran, those places were where the old text had been: the plan
+  rewrote another declaration, value or entry than the one asked about, and applying it wrote
+  the wrong one.  The analysis now records a fingerprint of the bytes it read, and a plan
+  whose file reads differently, or whose recorded place no longer names what was asked about -
+  an entry of a type put in above it or taken out since - is refused as `stale`, and a settled
+  value whose declaration moved so as `unreadable`.  No file format changes.
+
+* **A refused `stale` edit or undo asks for the analysis that clears it.**  A file saved with
+  the size and the modification time it had before is a change the project's poll cannot see,
+  so no analysis was asked for, every plan kept the fingerprint of the old bytes, and every
+  edit was refused as `stale` for good while the revision never moved.  The refusal now asks
+  for the analysis itself, as the poll does for a change it sees, so that the next plan is made
+  over the bytes on disk.  The refusal stands whether or not that analysis succeeds, and one
+  that fails is printed as any other, and asked for again by the next poll.  On the page, the
+  sentence saying a file changed on disk now stays until the reader chooses again in its panel,
+  as every other refusal does, where it went with the next revision, which now comes at once.
+  No file format changes.
+
+* **`ddd gui` writes nothing under the build tree of a generated project.**  Where
+  `ddd_generate()` writes the project's description at every configure, `ddd gui` took it for
+  one somebody wrote: New file and Add a file, and Remove, changed it or created files beside it
+  in the build tree, were answered as done, and the next configure undid them, or the build
+  tree took them away.  It now refuses a change of any file under the build tree that holds the
+  record naming the description, as `generated`, whichever file it is, and the sentence says
+  that which files belong to the project is `ddd_add_component()`'s to say.  A new file is
+  offered instead beside the first description outside the build tree that has a
+  `CMakeLists.txt` beside it, with the `ddd_add_component()` line to add to it.  The
+  components themselves are edited as before.  A build record written by a newer DDD no longer
+  hides that the description is generated.  No file format changes.
+
+* **A file that cannot be written is refused before anything is, on every system, and what is
+  written is synced.**  On Windows a read-only file was staged, refused at the rename after
+  a second of tries, and left a read-only stage beside it for each refusal; on Linux the rename
+  asks the folder and not the file, so a read-only file was written through, silently.  Every
+  file an edit changes or an undo puts back is now asked whether this process may write it
+  before any is staged, and one it may not - read-only, another user's, on a read-only mount,
+  or to be written by root over a file nobody can write - is refused as `unwritable`, naming
+  it and saying nothing was written; on Windows the read-only flag is the one thing asked first,
+  so a file its permissions forbid this process passes, and is refused when its stage cannot
+  replace it, once the tries are spent, with the files renamed before it put back.  A stage is
+  created `0600` where it will take its file's mode, and a name already taken is tried sixteen
+  times, no more.  Every stage is synced to the disk before any file is replaced, at once for all
+  of them, so that an edit of hundreds of files and its undo still take a fraction of a second on
+  the NVMe disk of a Linux desktop, where that was measured, and a power cut leaves a file as it
+  was or as the edit made it, never empty, on a journaling file system that has a sync to offer.
+  A refusal leaves every file as it was or names those it could not put back; a server killed
+  while it writes can still leave part of an edit and the stages it was writing.  No file format
+  changes.
+
+* **A rename, a removal or a declaration that produces a name is refused while a file of the
+  project does not load.**  A project is indexed from the files that loaded, so a file saved
+  half way is in no index, and a rename, a removal or a key settled on every declaration of a
+  variable was planned over the others and answered as done: once the file was repaired, the
+  project failed `ddd check` for the old name it still held, or for a name it used that no
+  longer was declared.  Each is now refused as `unreadable`, naming every file that did not
+  load, before any file is read; so is a declaration that produces its name - an object
+  declared, a variable read as an output or a local - while one of those files may produce or
+  declare it already.  What only reads, writes only where it points, or takes the file that does
+  not load out of the project is answered as before.  A refusal that a name was declared nowhere,
+  said of a name only such a file declares, now says that the file did not load.  No file
+  format changes.
+
+* **A fix or a value that would leave a file unable to load is withheld, or said so.**  A quick
+  fix of the editor, and the button of the page for a definition mismatch, wrote one key into
+  every declaration of a variable without asking whether the result was a declaration the
+  loader accepts - an enumeration on a float32, a string beside a unit, limits that are not
+  finite, a shape past the caps.  The project then counted as not loaded and every further
+  fix was refused until the file was mended by hand.  A fix is now offered in the editor only
+  for the declarations it leaves loadable, and on the page only where it leaves every one of
+  them loadable, and a value the variable's panel would write that leaves one unable to load is
+  planned all the same, as the reader may mean it, with a sentence saying which declaration of
+  which file would not load and why, which the panel draws above Apply - all but a value that
+  would leave a declaration's storage named twice or a datatype without its conversion, or one
+  its kind does not take or cannot go without, which the panel refuses as it did.  A value that
+  is not json, an open buffer in the editor with a key typed twice, is answered with the loader's
+  own sentence rather than ending the language server.  What needs more of the project - a
+  constant a dimension names, a structure's leaves, a map's axes - is still a finding of the next
+  analysis.  No file format changes.
+
+* **A name another component keeps local is no longer offered to read.**  The add panel offered
+  a component every name of the project, including a local of another component, and reading
+  one wrote a declaration that is a `local-conflict` in a project that had reported nothing.  A
+  name any component declares local is now left out of what a component may read, and reading
+  it is refused, saying whose it is; the values grid and the editor still read it as the
+  producer.  No file format changes.
+
+* **`ddd gui`'s edits take time that grows with the file.**  A member added to a file written on
+  one line looked through every entry of the file to find its indentation, each by searching
+  back to the start of the text, so it took 1.7 s at 1.5 MB and 37 s at 6.1 MB; a file written
+  with bare carriage returns was searched in full for a line break for every id.  A line is now
+  looked for only as far as the nearest break, the layout of the lines around a place is read
+  only when the edit needs it, and the walk for the indentation unit searches between two
+  entries once.  No file format changes.
+
+* **Six small edges of the edit engine are settled.**  A pointer's element is spelled with its
+  brackets: `at` without them is refused, where `1` planned a key of its own.  A cell past the
+  end of a short init is set, filled out with zeros, as the grid promises.  A conditional object
+  is read with its producer's condition, so the two sides agree.  A bare carriage return ends a
+  line, an edit where no line break follows takes the file's own ending rather than a line
+  feed, and a file created takes the newline and the indentation the project uses.  The Files
+  tab writes an include with `/` and relative to the project, as a project is checked out on
+  more than one system, and a path typed through a link keeps the link's name where it resolves
+  to the file that was checked, and is refused where it does not.  A description holding a key
+  that spells no pointer, which ended an edit in a server error, is edited and laid out as any
+  other.  No file format changes.
+
 * **A toolbox, and its first tool: `ddd tool from-elf`.**  It reads a linked ELF image and its
   DWARF debug information and prints the DDD declarations of the C variables named or matched
   on the command line - kind, datatype, shape, enumerators, structure members, initial value
@@ -28,8 +167,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 * **`ddd gui` stays responsive on large projects.**  An edit shows at once and its findings
   follow once the project has been analysed again; a change replacing many plain values in one
-  large file, as renaming a unit its declarations state does, is planned and written from one
-  reading of that file rather than one per value; its Findings tab reads its findings a page
+  large file, as renaming a unit its declarations state does, or giving many of its objects a
+  plain value they lack, is planned and written from one reading of that file rather than one per
+  value, and a key added to a file written on one line costs a time that grows with the file,
+  where it grew with its square; its Findings tab reads its findings a page
   at a time as the reader scrolls it, rather than every one at once; and its component table,
   Types, Units, Shared files and Files tabs, a component's own declarations, a unit's own
   places and a variable's keys draw only the rows in view.
@@ -157,8 +298,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 * **A fix the server failed on can be chosen again.**  On the Findings tab, after the server
   failed on applying a finding's fix - an error of its own, not a file changed on disk - the
   panel went on saying so and drew no Apply, whichever fix was chosen next, until the finding
-  was pressed again.  Choosing a fix now takes that refusal away and offers its Apply.  A
-  refusal because a file changed on disk is still held until the analysis has caught up.
+  was pressed again.  Choosing a fix now takes that refusal away and offers its Apply, and it
+  takes a refusal because a file changed on disk away too.
 
 * **A baseline's finding names its file as the baseline's in its panel too.**  On the Compare
   tab, the table names the file of a finding the baseline itself reports as "the baseline's
@@ -203,7 +344,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   path with a NUL character or a lone surrogate, a number thousands of digits long, json nested
   more than 64 levels deep or holding a number too large to be finite (an edit's own value among
   it), a network path outside what `ddd gui` serves, on Windows a path holding a name Windows
-  keeps for a device, a file to create under a name longer than 243 bytes, holding a character
+  keeps for a device, a file to create under a name longer than 234 bytes, holding a character
   Windows keeps out of a file's name, ending in a dot or a space, or one Windows keeps for a
   device - is refused with a plain `400`, `404` or `409`, the long poll's `?after=` excepted,
   which answers at once whatever else it is given.  No malformed input - in a query, a body or a

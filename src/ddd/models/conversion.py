@@ -9,7 +9,7 @@ their tag: inheritance would put a ``kind`` field where each variant needs its o
 from __future__ import annotations
 
 from collections.abc import Iterable
-from math import isclose
+from math import isclose, isfinite
 from typing import Annotated, Any, Final, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
@@ -420,6 +420,24 @@ def physical_range(conversion: Conversion, raw_min: float, raw_max: float) -> tu
 def conversion_range(conversion: Conversion, datatype: Datatype) -> tuple[float, float]:
     """The physical range covered by the full raw range of ``datatype``."""
     return physical_range(conversion, datatype.raw_min, datatype.raw_max)
+
+
+def derived_range_is_finite(conversion: Conversion, raw_min: float, raw_max: float) -> bool:
+    """Whether the physical range of that raw range under that conversion stays finite.
+
+    ``float64`` under a factor of 1.8 runs past the largest float there is. Limits of infinity
+    are not a range the dictionary, the a2l or a calibration tool can carry, so the analysis
+    refuses the pair where it is written - ``schema``, which no severity turns down - and so does
+    whatever writes one (:func:`ddd.models.definition_problem`).
+    """
+    low, high = physical_range(conversion, raw_min, raw_max)
+    return isfinite(low) and isfinite(high)
+
+
+def infinite_limits_message(datatype: Datatype) -> str:
+    """One spelling for the three places a datatype and conversion pair can be written - a
+    declaration, a scalar type, a member of a structure - and for whatever says it beforehand."""
+    return f"the limits derived from '{datatype.value}' and this conversion are not finite"
 
 
 def raw_reading(conversion: Conversion, raw: float, unit: str = "") -> str | None:

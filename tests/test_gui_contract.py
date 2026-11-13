@@ -165,6 +165,26 @@ class TestThePageFollowsTheAnalyser:
         )
 
 
+class TestAnEditSaysWhatARefusalGuaranteesAndWhatAKillCanLeave:
+    """What ``npm run schemas`` turns into the page's own type of an edit: an edit was said to be
+    made all at once or not at all, which a refusal keeps to and a server killed while it writes
+    does not - the files it had renamed stay renamed, and the next server has nothing to say
+    about them."""
+
+    def test_an_edit_is_refused_as_a_whole_and_a_kill_can_leave_part_of_one(self) -> None:
+        edit = contract.api_schema()["$defs"]["Changes"]
+        assert " ".join(edit["description"].split()) == (
+            "What ``POST /api/edit`` takes: every file it changes, in one edit that is refused "
+            "as a whole."
+        )
+        assert _described("Changes")["changes"] == (
+            "Every file this edit changes. A refusal leaves every one of them as it was, or "
+            "names the ones it could not put back; a server killed while it writes - a closed "
+            "terminal, ``kill``, a power cut - can leave some of them written and the rest not, "
+            "with nothing to undo."
+        )
+
+
 class TestFindingsComeAPageAtATime:
     """What the page reads of a revision's findings now that ``GET /api/state`` counts them and
     ``GET /api/findings`` answers them a page at a time, each with a key of its own."""

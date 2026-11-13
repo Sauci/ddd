@@ -6,7 +6,8 @@ counts json text before anything parses it - a query's value, an edit's - agains
 :data:`MAX_DEPTH`. :func:`nesting` counts a value already parsed the way pydantic-core's serializer
 counts it, against :data:`SERIALIZED_DEPTH`: the most levels that serializer writes on every
 system ``ddd gui`` runs on, past which it gives up writing an answer - ``ValueError: Circular
-reference detected (depth exceeded)`` - which was answered ``500``.
+reference detected (depth exceeded)`` before pydantic-core 2.50, and ``ValueError: Maximum
+serialization depth exceeded`` from 2.50 on - which was answered ``500``.
 
 Every answer is written through :func:`written`, which counts it first and refuses one deeper than
 that. A test reads ``api.py``'s syntax tree, and fails on a ``Reply`` there whose body is neither

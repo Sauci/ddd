@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -20,7 +20,9 @@ from ddd.models import (
     LinearConversion,
     Measurement,
     ProjectFile,
+    StringConversion,
     broadcast,
+    definition_problem,
     format_shape,
     is_reserved_identifier,
 )
@@ -1055,3 +1057,371 @@ class TestDictionaryFormat:
         read_back = DataDictionary.model_validate(payload).by_name["Label"]
         assert read_back.conversion.describe() == "string"
         assert read_back.init == "V1.2"
+
+
+class TestWhatTheLoaderWouldRefuseOfADefinition:
+    """``definition_problem`` asks the model of a definition's kind about one written like this:
+    what ``ddd check`` would file as ``schema`` of it, in a sentence, or nothing where it loads.
+
+    The one place the editor's quick fixes and the page's panel ask what a definition would be
+    once a key is written, and the one a declared object is asked in before it is planned.
+    """
+
+    WRITTEN: ClassVar[dict[str, Any]] = {
+        "name": "X",
+        "kind": "measurement",
+        "datatype": "uint16",
+        "conversion": {"kind": "identity"},
+        "volatile": False,
+    }
+
+    def test_a_definition_the_loader_takes_has_no_problem(self) -> None:
+        assert definition_problem(self.WRITTEN) is None
+
+    @pytest.mark.parametrize(
+        ("changed", "says"),
+        [
+            (
+                {
+                    "datatype": "float32",
+                    "conversion": {
+                        "kind": "enum",
+                        "name": "Mode_t",
+                        "enumerators": [{"name": "OFF", "value": 0}],
+                    },
+                },
+                "enum conversion 'Mode_t' requires an integer datatype, got 'float32'",
+            ),
+            (
+                {"conversion": {"kind": "string"}, "dimensions": [8]},
+                "a string conversion needs a byte datatype, uint8 or sint8, got 'uint16'",
+            ),
+            (
+                {
+                    "datatype": "uint8",
+                    "conversion": {"kind": "string"},
+                    "dimensions": [8],
+                    "unit": "rpm",
+                },
+                "a string has no unit, got 'rpm'",
+            ),
+            (
+                {"datatype": "uint8", "conversion": {"kind": "string"}},
+                "a string states exactly one dimension, its length in bytes, got none; an array "
+                "of strings is written as an array of structures with a string member",
+            ),
+            ({"limits": {"min": 10, "max": 1}}, "min (10) is greater than max (1)"),
+            ({"conversion": {"kind": "linear", "factor": 0}}, "factor must not be zero"),
+        ],
+    )
+    def test_a_rule_between_keys_is_said_in_its_own_sentence(
+        self, changed: dict[str, Any], says: str
+    ) -> None:
+        """A rule the models hold of keys together raises one english sentence, which pydantic
+        wraps as 'Value error, ...': unwrapped, the sentence a person can act on."""
+        assert definition_problem({**self.WRITTEN, **changed}) == says
+
+    def test_a_key_of_the_wrong_shape_is_said_as_pydantic_says_it(self) -> None:
+        problem = definition_problem({**self.WRITTEN, "datatype": "uint7"})
+        assert problem is not None
+        assert problem.startswith("Input should be 'boolean', 'uint8', 'sint8'")
+
+    def test_a_key_the_definition_needs_is_said_to_be_required(self) -> None:
+        assert definition_problem({**self.WRITTEN, "kind": "value_block"}) == "Field required"
+
+    def test_a_key_the_kind_does_not_have_is_not_permitted(self) -> None:
+        assert (
+            definition_problem({**self.WRITTEN, "axis": "Ax"}) == "Extra inputs are not permitted"
+        )
+
+    def test_a_kind_nobody_declares_is_refused_as_the_loader_refuses_it(self) -> None:
+        problem = definition_problem({**self.WRITTEN, "kind": "measuremen"})
+        assert problem is not None
+        assert problem.startswith("Input tag 'measuremen' found using 'kind'")
+
+    def test_what_is_said_is_the_first_thing_wrong_in_the_order_the_loader_files_it(self) -> None:
+        problem = definition_problem({**self.WRITTEN, "datatype": "uint7", "unit": 5})
+        assert problem is not None
+        assert problem.startswith("Input should be 'boolean'")
+
+    def test_a_definition_is_not_changed_by_being_asked_about(self) -> None:
+        written = {**self.WRITTEN, "dimensions": [3]}
+        before = {**written}
+        definition_problem(written)
+        assert written == before
+
+
+class TestWhatTheAnalysisRefusesOfADefinitionAlone:
+    """The rules of the analysis that file ``schema`` and ask nothing of the project.
+
+    The loader's own checks are not all the file's: the analysis refuses two more things from a
+    definition alone - a datatype and conversion whose derived limits are not finite, and a shape
+    of numbers past the caps - and files them as ``schema`` as well, which no severity turns down
+    and which ``ddd gui`` counts as a file that did not load. ``definition_problem`` says them
+    after the models, in the analysis's own sentence, so that nothing that writes a definition
+    offers one the analysis would then refuse.
+    """
+
+    WRITTEN: ClassVar[dict[str, Any]] = {
+        "name": "X",
+        "kind": "measurement",
+        "datatype": "uint16",
+        "conversion": {"kind": "identity"},
+        "volatile": False,
+    }
+
+    @pytest.mark.parametrize(
+        ("changed", "datatype"),
+        [
+            ({"datatype": "float64", "conversion": {"kind": "linear", "factor": 2}}, "float64"),
+            (
+                {
+                    "datatype": "float64",
+                    "conversion": {"kind": "linear", "factor": 1, "offset": 1e308},
+                },
+                "float64",
+            ),
+            (
+                {
+                    "datatype": "float64",
+                    "conversion": {"kind": "linear", "factor": 1, "offset": -1e308},
+                },
+                "float64",
+            ),
+            ({"datatype": "float32", "conversion": {"kind": "linear", "factor": 1e300}}, "float32"),
+        ],
+    )
+    def test_limits_that_are_not_finite_are_refused(
+        self, changed: dict[str, Any], datatype: str
+    ) -> None:
+        assert definition_problem({**self.WRITTEN, **changed}) == (
+            f"the limits derived from '{datatype}' and this conversion are not finite"
+        )
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            {"datatype": "float64"},
+            {"datatype": "float64", "conversion": {"kind": "linear", "factor": 0.5}},
+            {"datatype": "float32", "conversion": {"kind": "linear", "factor": 1e200}},
+            {"conversion": {"kind": "linear", "factor": 2}},
+        ],
+    )
+    def test_limits_that_stay_finite_are_taken(self, changed: dict[str, Any]) -> None:
+        assert definition_problem({**self.WRITTEN, **changed}) is None
+
+    def test_a_declaration_naming_a_type_has_the_limits_of_the_type(self) -> None:
+        """Its datatype and conversion are the type's, which only the project can tell: the
+        definition states none, and the analysis refuses the type where it is written."""
+        named = {"name": "X", "kind": "measurement", "typename": "Sample_t", "volatile": False}
+        assert definition_problem(named) is None
+
+    def test_the_models_are_asked_first(self) -> None:
+        """A definition both break rules of is said in the models' sentence: the loader refuses
+        the file before the analysis reads it."""
+        written = {
+            **self.WRITTEN,
+            "datatype": "float64",
+            "conversion": {"kind": "linear", "factor": 2},
+            "limits": {"min": 10, "max": 1},
+        }
+        assert definition_problem(written) == "min (10) is greater than max (1)"
+        assert definition_problem({**written, "limits": {"min": 1, "max": 10}}) == (
+            "the limits derived from 'float64' and this conversion are not finite"
+        )
+
+    def test_the_limits_are_said_before_the_shape(self) -> None:
+        """The order the analysis files them in: a declaration whose limits are refused is
+        dropped, and its shape is never weighed."""
+        written = {
+            **self.WRITTEN,
+            "datatype": "float64",
+            "conversion": {"kind": "linear", "factor": 2},
+            "dimensions": [1] * 65,
+        }
+        assert definition_problem(written) == (
+            "the limits derived from 'float64' and this conversion are not finite"
+        )
+        assert definition_problem({**written, "datatype": "uint16"}) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+
+    def test_more_dimensions_than_the_analysis_carries_are_refused(self) -> None:
+        assert definition_problem({**self.WRITTEN, "dimensions": [1] * 65}) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+        assert definition_problem({**self.WRITTEN, "dimensions": [1] * 64}) is None
+
+    def test_more_elements_than_the_analysis_carries_are_refused(self) -> None:
+        assert definition_problem({**self.WRITTEN, "dimensions": [10_000, 1_001]}) == (
+            "'X' has 10010000 elements; DDD carries at most 10000000"
+        )
+        assert definition_problem({**self.WRITTEN, "dimensions": [10_000, 1_000]}) is None
+
+    def test_an_axis_of_more_points_than_the_analysis_carries_is_refused(self) -> None:
+        axis = {**self.WRITTEN, "name": "Ax", "kind": "axis", "size": 10_000_001}
+        assert definition_problem(axis) == (
+            "'Ax' has 10000001 elements; DDD carries at most 10000000"
+        )
+        assert definition_problem({**axis, "size": 10_000_000}) is None
+
+    def test_a_shape_naming_a_constant_has_a_number_of_elements_only_the_project_knows(
+        self,
+    ) -> None:
+        """The constant's value is the project's to say, and so is the product it makes: the
+        number of dimensions is the definition's, and is asked all the same."""
+        assert definition_problem({**self.WRITTEN, "dimensions": ["CELLS", 100_000, 100_000]}) is (
+            None
+        )
+        assert definition_problem({**self.WRITTEN, "dimensions": ["CELLS", *[1] * 64]}) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+
+    def test_a_curve_is_shaped_by_its_axis_and_a_map_by_its_two(self) -> None:
+        curve = {**self.WRITTEN, "name": "C", "kind": "curve", "axis": "Ax"}
+        assert definition_problem(curve) is None
+        axes = {"name": "M", "kind": "map", "x_axis": "Ax", "y_axis": "Ay"}
+        assert definition_problem({**self.WRITTEN, **axes}) is None
+
+
+class TestWhatTheAnalysisRefusesBesideTheTypeADeclarationNames:
+    """A declaration naming a string type has a rule of its own, which asks the type.
+
+    The type fixes that the bytes are text, and what the declaration states beside it - exactly
+    one dimension, no display format, a kind that has dimensions - is the analysis's to refuse,
+    as ``schema``, once it knows the type: no definition holds it, so ``definition_problem`` says
+    it only where it is told what the project's types fix, and in the analysis's own sentence.
+    """
+
+    NAMED: ClassVar[dict[str, Any]] = {
+        "name": "X",
+        "kind": "measurement",
+        "typename": "Text_t",
+        "dimensions": [8],
+        "volatile": False,
+    }
+    SAYS_NONE = (
+        "'X' is declared as 'Text_t', which is a string: a string states exactly one dimension, "
+        "its length in bytes, got none; an array of strings is written as an array of structures "
+        "with a string member"
+    )
+
+    CONVERSIONS: ClassVar[dict[str, Any]] = {
+        "Text_t": StringConversion(kind="string"),
+        "Level_t": IdentityConversion(kind="identity"),
+    }
+    """What a project declaring ``Text_t`` as a string and ``Level_t`` as a number says of them."""
+
+    @classmethod
+    def project_types(cls, name: str) -> Any:
+        return cls.CONVERSIONS.get(name)
+
+    def asked(self, **changed: Any) -> str | None:
+        return definition_problem({**self.NAMED, **changed}, self.project_types)
+
+    def test_one_dimension_is_what_a_string_states(self) -> None:
+        assert self.asked() is None
+
+    def test_no_dimension_is_refused(self) -> None:
+        assert self.asked(dimensions=[]) == self.SAYS_NONE
+
+    def test_two_dimensions_are_refused(self) -> None:
+        assert self.asked(dimensions=[2, 4]) == (
+            "'X' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got 2; an array of strings is written as an array "
+            "of structures with a string member"
+        )
+
+    def test_a_display_format_is_refused(self) -> None:
+        assert self.asked(a2l={"format": "%8.3"}) == (
+            "'X' is declared as 'Text_t', which is a string: a string has no display format, "
+            "got a2l.format '%8.3'"
+        )
+
+    def test_a_kind_that_has_no_dimensions_is_refused(self) -> None:
+        named = {"name": "X", "kind": "parameter", "typename": "Text_t", "volatile": False}
+        assert definition_problem(named, self.project_types) == (
+            "'X' is declared as 'Text_t', which is a string: a string is a one dimensional "
+            "array of bytes, which a 'parameter' is not; declare it as a 'measurement' or a "
+            "'value_block'"
+        )
+
+    def test_nothing_is_asked_of_what_the_project_does_not_say(self) -> None:
+        """No types given, or a name the project does not declare as a scalar type: the question
+        is one the project answers, and a definition alone has none."""
+        assert definition_problem({**self.NAMED, "dimensions": []}) is None
+        assert definition_problem({**self.NAMED, "dimensions": []}, lambda name: None) is None
+
+    def test_a_type_that_is_no_string_has_no_such_rule(self) -> None:
+        """A number named by ``Level_t`` is an array of any dimensions, or none."""
+        assert self.asked(typename="Level_t", dimensions=[]) is None
+        assert self.asked(typename="Level_t", dimensions=[2, 4]) is None
+
+    def test_a_declaration_that_states_its_own_conversion_is_the_models_to_say(self) -> None:
+        """Not asked twice: a string stated on the definition is refused by the model of its kind,
+        in the models' sentence, and a type is not consulted."""
+        stated = {**self.NAMED, "dimensions": [], "typename": None}
+        stated |= {"datatype": "uint8", "conversion": {"kind": "string"}}
+        problem = definition_problem(stated, self.project_types)
+        assert problem is not None
+        assert problem.startswith("a string states exactly one dimension")
+
+    def test_the_string_is_said_before_the_shape_as_the_analysis_files_them(self) -> None:
+        """A declaration the type refuses is dropped, and its shape is never weighed."""
+        assert self.asked(dimensions=[1] * 65) == (
+            "'X' is declared as 'Text_t', which is a string: a string states exactly one "
+            "dimension, its length in bytes, got 65; an array of strings is written as an array "
+            "of structures with a string member"
+        )
+        assert self.asked(typename="Level_t", dimensions=[1] * 65) == (
+            "'X' has 65 dimensions; DDD carries at most 64"
+        )
+
+
+class TestWhatAScalarTypeFixes:
+    """The conversion a type fixes for what names it: read through the model of its entry, as the
+    loader reads it, and nothing for what is no scalar type the loader takes."""
+
+    SCALAR: ClassVar[dict[str, Any]] = {"type": "scalar", "name": "Text_t", "datatype": "uint8"}
+
+    def test_a_scalar_type_fixes_its_conversion(self) -> None:
+        from ddd.models import scalar_conversion
+
+        text = {**self.SCALAR, "conversion": {"kind": "string"}}
+        assert scalar_conversion(text) == StringConversion(kind="string")
+        assert scalar_conversion({**self.SCALAR, "conversion": {"kind": "identity"}}) == (
+            IdentityConversion(kind="identity")
+        )
+
+    def test_a_structure_and_an_external_type_fix_none(self) -> None:
+        from ddd.models import scalar_conversion
+
+        member = {
+            "name": "a",
+            "member": "value",
+            "datatype": "uint8",
+            "conversion": {"kind": "identity"},
+        }
+        assert scalar_conversion({"type": "struct", "name": "Frame_t", "members": [member]}) is None
+        assert scalar_conversion({"type": "external", "name": "Os_t", "header": "os.h"}) is None
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            None,
+            "Text_t",
+            {"type": "scalar", "name": "Text_t"},
+            {
+                "type": "scalar",
+                "name": "Text_t",
+                "datatype": "uint16",
+                "conversion": {"kind": "string"},
+            },
+        ],
+        ids=["nothing", "a name", "no storage", "a string of two bytes a character"],
+    )
+    def test_an_entry_the_loader_would_not_take_fixes_none(self, entry: object) -> None:
+        """Whether a type loads is its own file's finding: what names it is told nothing."""
+        from ddd.models import scalar_conversion
+
+        assert scalar_conversion(entry) is None

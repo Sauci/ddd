@@ -13,7 +13,7 @@ import { useDebounced } from "../app/useDebounced";
 import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { isStale, panelShows, type Refused, refusalShown } from "../lib/refusals";
 import { planShown } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
@@ -135,23 +135,21 @@ export function VariablePanel({
   // wherever `edited` itself is, so it never outlives the row it was made for.
   const [typedLimits, setTypedLimits] = useState(false);
   const [changesShown, setChangesShown] = useState(false);
-  // A refusal for a reason other than staleness - a type fixing this key, a kind that cannot
-  // carry one, the engine's own rule - cleared whenever the reader chooses again, exactly as
-  // every other choice made here.
-  const [refused, setRefused] = useState<string | null>(null);
-  // A refusal because a file changed on disk, the key it was refused for, and the revision it
-  // happened at. A reader who chooses again straight away would send the very fingerprints that
-  // were just refused, since the analysis has not caught up yet - so this is not cleared then,
-  // only read through `shownRefusal`, which keeps it shown until a later revision arrives. Kept
-  // with the key's own name, the way `UnitPanel` keeps it with the action it belongs to: the
-  // wait is about the settlement that was refused, so another row selected in the meantime must
-  // not be given its sentence, nor have its own Apply taken away by it.
-  const [stale, setStale] = useState<({ key: string | undefined } & Refused) | null>(null);
-  // The removal's own "Show changes", refusal and stale wait - the same three the key chooser
-  // keeps for settling, kept apart because the two write paths must not answer for each other.
+  // A settlement refused - a file changed on disk (`STALE`), a type fixing this key, a kind that
+  // cannot carry one, the engine's own rule - and the key it was refused for: held until the
+  // reader chooses again, exactly as every other choice made here, and never let go by a revision
+  // landing (`Refused`, lib/refusals.ts). Kept with the key's own name, the way `UnitPanel` keeps
+  // its refusal with the action it belongs to: the row the panel opens by itself, the first that
+  // disagrees, can change as a revision lands, and another row is not given this one's sentence,
+  // nor has its own Apply taken away by it.
+  const [refused, setRefused] = useState<Refused<string | undefined> | null>(null);
+  // The removal's own "Show changes" and refusal - the two the key chooser keeps for settling,
+  // kept apart because the two write paths must not answer for each other. Its refusal, whatever
+  // its code, is held the way the offer always held one that was not stale: the offer withdraws
+  // Remove while it stands (P19b-24), so it goes when the reader settles a key, or closes the
+  // panel, the one choice left there - never with a revision.
   const [removalShown, setRemovalShown] = useState(false);
   const [removalRefused, setRemovalRefused] = useState<string | null>(null);
-  const [removalStale, setRemovalStale] = useState<Refused | null>(null);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
   // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
   const rows = reply === undefined ? [] : keyRows(reply, null).filter((row) => row.settleable);
@@ -251,24 +249,17 @@ export function VariablePanel({
     // The value chosen stays chosen: the panel then says there is nothing left to change. Let
     // go, it fell back on the producer's value in the declarations still on screen, which are
     // the ones the edit has just changed, and previewed undoing it. A success is a definite
-    // answer, so it clears both refusals, not only the one that clears on its own.
+    // answer, so it clears any refusal an earlier attempt left.
     onSuccess: () => {
       setTyped(undefined);
       setChangesShown(false);
       setRefused(null);
-      setStale(null);
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so the panel never shows two different answers to the same Apply.
-    onError: (error) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setStale({ key: selected, text: STALE, revision });
-        setRefused(null);
-      } else {
-        setRefused(`The change was refused: ${error.message}`);
-        setStale(null);
-      }
-    },
+    onError: (error) =>
+      setRefused({
+        about: selected,
+        text: isStale(error) ? STALE : `The change was refused: ${error.message}`,
+      }),
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
     // stays unavailable until they answer. It changes the same file the removal offer beside it
@@ -297,24 +288,14 @@ export function VariablePanel({
     // `select` is the very function letting a row go already calls, and closes the chooser the
     // same way, taking its refusal with it - the other half of the same part 6 lesson above.
     onMutate: () => select(undefined),
-    // A success is a definite answer, so it clears both of this offer's own refusals too, not
-    // only the one that clears on its own, mirroring `apply`'s onSuccess.
+    // A success is a definite answer, so it clears any refusal of this offer an earlier attempt
+    // left, mirroring `apply`'s onSuccess.
     onSuccess: () => {
       setRemovalRefused(null);
-      setRemovalStale(null);
       setRemovalShown(false);
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so the offer never shows two different answers to the same attempt.
-    onError: (error) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setRemovalStale({ text: STALE, revision });
-        setRemovalRefused(null);
-      } else {
-        setRemovalRefused(`The change was refused: ${error.message}`);
-        setRemovalStale(null);
-      }
-    },
+    onError: (error) =>
+      setRemovalRefused(isStale(error) ? STALE : `The change was refused: ${error.message}`),
     // Removing changes the same four queries a settle does, the variable's declarations chief
     // among them: with none of this file's left, `GET /api/variable` answers no declarations,
     // `undeclared` above turns true, and the effect near the top closes the panel through
@@ -338,10 +319,7 @@ export function VariablePanel({
   // where the edit wrote this file, until that edit's analysis has landed.
   const removalOffer: Offer = {
     plan: removal.data ?? null,
-    refusal:
-      removalStale !== null
-        ? shownRefusal(removalStale, revision)
-        : (removalRefused ?? removal.error?.message ?? null),
+    refusal: removalRefused ?? removal.error?.message ?? null,
     pending: false,
   };
 
@@ -417,11 +395,7 @@ export function VariablePanel({
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say - nor
       // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).
-      refusal={
-        (stale !== null && stale.key === selected ? shownRefusal(stale, revision) : null) ??
-        refused ??
-        (broken !== null ? null : shownSettle.refusal)
-      }
+      refusal={refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => apply.mutate()}

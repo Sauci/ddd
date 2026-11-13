@@ -21,10 +21,10 @@ from typing import Any, Final
 from ddd.diagnostics import Diagnostic
 from ddd.difflib_lock import ONE_THREAD_IN_DIFFLIB
 from ddd.editing import UNREADABLE, EditError, Operation, edit_text
-from ddd.lsp.edits import PROPAGATED_KEYS, Settlement, Unsettled
+from ddd.lsp.edits import PROPAGATED_KEYS, Settlement, Unsettled, loading_problem
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document, read
-from ddd.models.objects import FIXED_BY_A_TYPE
+from ddd.models.objects import FIXED_BY_A_TYPE, TypeConversions
 
 ROLES: Final = (("output", "produces"), ("input", "reads"), ("local", "local"))
 """What a declaration's scope says its component does with the variable."""
@@ -34,6 +34,7 @@ SETTLE_CODES: Final = {
     "type": "fixed-by-type",
     "kind": "invalid",
     "storage": "invalid",
+    "load": "invalid",
 }
 """The code ``ddd gui`` refuses a settlement with, for each reason a declaration cannot take it."""
 
@@ -307,9 +308,51 @@ def refusal(unsettled: Unsettled, name: str, key: str) -> tuple[str, str]:
             f"{where} would not load with that {key}: storage is named exactly once, and a "
             f"'datatype' comes with a 'conversion'"
         )
+    elif unsettled.reason == "load":
+        sentence = _would_not_load(unsettled.site, name, key, unsettled.problem)
     else:
         sentence = f"{where} is no longer where the last analysis found it"
     return SETTLE_CODES[unsettled.reason], sentence
+
+
+def unloadable(
+    settlement: Settlement,
+    name: str,
+    key: str,
+    cache: dict[Path, Document],
+    *,
+    types: TypeConversions | None = None,
+) -> tuple[str, ...]:
+    """One sentence for each declaration the settlement would leave unable to load, by file.
+
+    What the plan of a value its reader chose says, where a button offering the same value is
+    withheld (:func:`ddd.lsp.edits.settled_at`): the reader may still apply it, and the next
+    analysis reports the file as ``schema``, but the plan says first which file would stop loading
+    and why, in the sentence ``ddd check`` files it in (:func:`ddd.models.definition_problem`).
+    Asked of the definition each change leaves (:func:`ddd.lsp.edits.loading_problem`), from the
+    documents the settlement was decided on - ``cache`` is the one it was given - so that no file
+    is read again, and ordered by file as the settlement's preview is. ``types`` is what the
+    project's types fix (:func:`ddd.lsp.edits.type_conversions`), which a declaration naming a
+    string type is asked beside; without it nothing is asked of a type.
+    """
+    said: list[tuple[str, str]] = []
+    for change in settlement.changes:
+        document = read(change.site.path, cache)
+        problem = loading_problem(document, change.site.pointer, key, change.raw, types=types)
+        if problem is not None:
+            said.append(
+                (change.site.path.as_posix(), _would_not_load(change.site, name, key, problem))
+            )
+    return tuple(sentence for _, sentence in sorted(said))
+
+
+def _would_not_load(site: Site, name: str, key: str, problem: str | None) -> str:
+    """The sentence of a declaration that would not load with a key written, as the models or the
+    analysis say it: the one words for the refusal of a settlement and for what a plan tells its
+    reader."""
+    return (
+        f"the declaration of '{name}' in {site.path.name} would not load with that {key}: {problem}"
+    )
 
 
 def _entry(site: Site) -> str:

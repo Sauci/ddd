@@ -1,56 +1,53 @@
 import { ApiError } from "../api/client";
 
-/** What a panel refused, and the revision it was refused at. */
-export interface Refused {
-  text: string;
-  revision: number | undefined;
-}
-
 /**
- * The refusal a panel shows: the one stored, until the analysis has moved past the revision it
- * was refused at.
+ * What a panel of several writes holds of the server's refusal of one of them: which write it was
+ * - an action, a key - and the sentence it says. A panel of one write holds the sentence alone.
  *
- * A stale refusal is the reason this exists. The server refuses an edit whose file changed on
- * disk, and the panel says the files are shown as they are - but the analysis that noticed the
- * change has not finished yet, so everything on screen, the fingerprints included, is still the
- * revision that was refused. Choosing again straight away sends those same fingerprints and is
- * refused a second time. Holding the sentence until the next revision arrives makes it true:
- * the watcher answers within a second, and what comes back is a panel that can be applied.
+ * Either is held until the reader's next choice in the panel, whatever the refusal's code: what
+ * takes the panel's other refusals away takes it away too - another write chosen, a field typed
+ * into, a value picked, the write applied again, the strip closed - and a revision landing never
+ * does. A refusal because a file changed on disk used to go as the revision after the one it was
+ * refused at came, so that a reader would not send the refused fingerprints straight back before
+ * the analysis had caught up. Refusing one, the server now asks for that analysis itself
+ * (`ddd.gui.session.Session._refused`), and its revision reaches the page a few milliseconds from
+ * the refusal, sooner or later than it: tied to the revision, the sentence was gone as soon as it
+ * was drawn, or stayed until the revision after, and a reader was not told why nothing was
+ * written. Tied to their next choice, it stays for as long as they need it, and what it says of
+ * the panel - that it now shows the files as they are - holds once that revision has come, in
+ * whichever order the two reached the page, with nothing in the server's answer needed to say
+ * which.
  */
-export function shownRefusal(stored: Refused | null, revision: number | undefined): string | null {
-  if (stored === null) return null;
-  return stored.revision === revision ? stored.text : null;
+export interface Refused<A> {
+  about: A;
+  text: string;
 }
 
-/** Whether an Apply was refused because a file changed on disk since its plan was made - the one
- * refusal a panel holds until the analysis moves on (`shownRefusal`), where every other is cleared
- * by the reader's next choice. The server's own code for it, `ddd.editing.STALE`: never a word of
- * the sentence, which the server may reword. */
+/** Whether an Apply was refused because a file changed on disk since its plan was made: the
+ * refusal a panel says in a sentence of its own, that nothing was written. The server's own code
+ * for it, `ddd.editing.STALE`: never a word of the sentence, which the server may reword. */
 export function isStale(error: Error): boolean {
   return error instanceof ApiError && error.code === "stale";
 }
 
 /**
- * The one refusal an action shows, of the three it can have: an Apply refused as stale, while the
- * revision it was refused at stands; else an Apply refused for another reason; else why its plan
- * was refused when asked for, in the server's own words - `asked` reads that straight off
- * `planShown`'s own `refusal` (`lib/typing.ts`) at every call site now, never an `Error` of its
- * own: the one thing that could still be asked for once Task 11 debounced every plan is whether
- * the debounced request is trusted at all, which `planShown` has already judged by the time this
- * runs.
+ * The one refusal a panel of several writes shows beside its write `about`: the refusal it holds
+ * of that write's Apply (`Refused`), else why the write's plan was refused when asked for, in the
+ * server's own words - `asked`, read straight off `planShown`'s own `refusal` (`lib/typing.ts`) -
+ * else none. A panel of one write shows the sentence it holds, else its plan's, the same way.
  *
- * The precedence the other panels already have, kept rather than argued afresh: `UnitsPage`'s
- * adoption banner writes this very expression, and `ConstantPanel`'s own `offer` asks in the same
- * order - though once a stale refusal's revision has passed, that one shows nothing, where this, as
- * `UnitsPage`'s does, falls through to whichever of the other two there is.
+ * `asked` is the answer of the revision on screen, the plan being asked for again at every one, so
+ * a revision landing moves it - none while the new plan is asked for, then that plan's own answer -
+ * and never the refusal held, which only the reader's next choice takes away. A refusal held of
+ * another of the panel's writes is not shown beside this one, nor does it take this one's Apply
+ * away.
  */
-export function refusalShown(
-  stale: Refused | null,
-  refused: string | null,
+export function refusalShown<A>(
+  held: Refused<A> | null,
   asked: string | null,
-  revision: number | undefined,
+  about: A,
 ): string | null {
-  return shownRefusal(stale, revision) ?? refused ?? asked ?? null;
+  return held !== null && held.about === about ? held.text : asked;
 }
 
 /** What a panel about one entity shows of the server's answer about it: the answer, a refusal in

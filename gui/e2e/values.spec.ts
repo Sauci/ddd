@@ -407,8 +407,8 @@ const MAP_A_OVER_RANGE = [
 // journey. The out-of-range cell above ("a value the datatype cannot hold is refused, and nothing
 // is written") cannot reach one: `_value_plan` (`api.py`) runs `set_cell`'s own range check before
 // ever answering a plan, so a value out of range never renders an `Apply to` button at all - that
-// test's own `toHaveCount(0)` is exactly this - and `apply.mutate()`, the only place
-// `ValuesPage.tsx` sets its non-stale `failed`, is never reached. Nothing reachable through a
+// test's own `toHaveCount(0)` is exactly this - and `apply.mutate()`, whose refusal is the only
+// one `ValuesPage.tsx` sets its `failed` to, is never reached. Nothing reachable through a
 // cell's own Apply button fails non-stale without the file also changing underneath it, which is
 // staleness itself, unless the server is made to fail on the Apply's own request: the mechanism
 // of "a cell's apply the server fails on says so in its words, keeps its Apply, and is sent once",

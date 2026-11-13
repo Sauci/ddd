@@ -1005,8 +1005,8 @@ test("an Apply the server fails on is sent once, and refused in the Remove panel
   const remove = removing.getByRole("button", { name: "Remove from the includes" });
   await remove.click();
 
-  // Not a refusal of a file changed on disk, so it stays until the reader chooses again; and the
-  // plan, asked again once the Apply was answered, is drawn under it with its button.
+  // It stays until the reader chooses again, as every refusal of the tab does; and the plan,
+  // asked again once the Apply was answered, is drawn under it with its button.
   await expect(removing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(page.getByRole("row", { name: UNITS, exact: true })).toBeVisible();
   await expect(remove).toBeEnabled();

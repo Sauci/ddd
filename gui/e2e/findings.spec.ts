@@ -353,8 +353,8 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   const failed = await failing(page, "/api/edit", "http");
   await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
 
-  // Not a refusal of a file changed on disk, so it stays until the reader chooses again, and
-  // the panel draws it in place of the consequence and the Apply.
+  // It stays until the reader chooses again, as every refusal of the tab does, and the panel
+  // draws it in place of the consequence and the Apply.
   await expect(fixing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
   // The finding is still reported, and the panel still shows it.
@@ -365,8 +365,8 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
 
   // The reader chooses again - the fix pressed off and on - with the server answering as it does:
   // the refusal says nothing of what is chosen now, so it goes with the choice, and the fix is
-  // offered as it was before the server failed on it (`refusalsAfterChoice`). Left standing, it
-  // withdrew the Apply until the finding was pressed again.
+  // offered as it was before the server failed on it (`choose`, FindingsPage.tsx). Left standing,
+  // it withdrew the Apply until the finding was pressed again.
   await page.unrouteAll({ behavior: "wait" });
   const fix = panel.getByRole("button", { name: "Give 'ValueH' an id" });
   await fix.click();

@@ -486,12 +486,14 @@ class TestReadingWhatTheProjectHas:
             controller.write_text(original, encoding="utf-8", newline="")
         assert brings == {}
 
-    def test_an_owner_the_file_no_longer_declares_since_the_index_was_built_is_not_found(
+    def test_an_owner_the_file_no_longer_declares_since_the_index_was_built_is_stale(
         self, tmp_path, cache
     ) -> None:
-        # The index can be older than the file: built once, read from again on every call.
-        # A pointer it recorded that the owner's file no longer holds is exactly what "the
-        # project declares no X" already means - there is nothing left there to carry.
+        """The index can be older than the file: built once, read from again on every call. A
+        place it recorded that the owner's file no longer holds an object at is the owner's file
+        changed since the analysis, as a place holding another object is, below: the index still
+        names the producer, and a reader who took the name from it is told to wait for the
+        analysis, never that the project declares no such name."""
         write_tree(
             tmp_path,
             {
@@ -505,8 +507,9 @@ class TestReadingWhatTheProjectHas:
         with pytest.raises(DeclarationRefusalError) as refused:
             read_object(built, tmp_path / "b.ddd.json", "X", "input", cache)
         assert (refused.value.code, refused.value.message) == (
-            "not-found",
-            "the project declares no 'X'",
+            "stale",
+            "a.ddd.json changed since the project was analysed, so 'X' cannot be declared here "
+            "until the project is analysed again",
         )
 
     def test_an_owner_whose_place_holds_another_declaration_since_the_index_was_built_is_stale(

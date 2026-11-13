@@ -7597,6 +7597,31 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
         write_tree(root, {file: self.MOVED[file]})
         assert get(api, route, **asked) == self.refused(file, consequence)
 
+    def test_a_read_whose_producer_was_taken_out_is_refused_as_stale_too(
+        self, tmp_path: Path
+    ) -> None:
+        """The producer's file saved with its declarations taken out rather than one put in above
+        them: the place the index recorded holds no object any more, and the read is refused as
+        stale all the same - the index the reader took the name from still names it, so the 404
+        of a name the project does not declare would contradict the panel."""
+        root = self.written(tmp_path)
+        route = "/api/declaration-plan"
+        asked = {
+            "action": "read",
+            "file": posix(root, "b.ddd.json"),
+            "name": "Speed",
+            "scope": "input",
+        }
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        api = Api(session, root / "p.ddd.json")
+        planned = get(api, route, **asked)
+        assert planned.status == 200, planned.body
+        write_tree(root, {"a.ddd.json": component("A")})
+        assert get(api, route, **asked) == self.refused(
+            "a.ddd.json", "'Speed' cannot be declared here"
+        )
+
     def test_a_save_landing_while_the_analysis_runs_is_refused_the_same_way(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

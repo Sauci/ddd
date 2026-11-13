@@ -205,11 +205,12 @@ def read_object(
     for a ``missing-id``, which is not a repair.
 
     The definition carried is read where the index recorded it, and refused ``stale`` where that
-    place holds another object's - a declaration put in above it, or taken out, since the analysis
-    read the file - rather than carried under this name: the question
-    :func:`ddd.variables.declarations_of` asks before it reads a declaration. The producer's entry
-    states what the declaration is compiled under as well - its ``condition``, which is no part of
-    the definition - and the reader carries it, the analysis comparing the two
+    place holds another object's, or no object at all - a declaration put in above it, or taken
+    out, since the analysis read the file - rather than carried under this name, or answered as a
+    name the project does not declare, which the index the reader took it from still names: the
+    question :func:`ddd.variables.declarations_of` asks before it reads a declaration. The
+    producer's entry states what the declaration is compiled under as well - its ``condition``,
+    which is no part of the definition - and the reader carries it, the analysis comparing the two
     (``condition-mismatch``). The write goes to ``file`` alone, so no fingerprint the edit
     carries is of the file read from.
     """
@@ -228,9 +229,7 @@ def read_object(
         raise DeclarationRefusalError("invalid", f"'{name}' may not be declared '{scope}' here")
     owner = (built.producers.get(name) or sites)[0]
     stated = read(owner.path, cache).value_at(owner.pointer)
-    if not isinstance(stated, dict):
-        raise DeclarationRefusalError("not-found", f"the project declares no '{name}'")
-    if stated.get("name") != name:
+    if not isinstance(stated, dict) or stated.get("name") != name:
         raise DeclarationRefusalError(
             "stale", changed_since((owner.path,), f"'{name}' cannot be declared here")
         )

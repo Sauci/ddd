@@ -54,7 +54,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the wrong one.  The analysis now records a fingerprint of the bytes it read, and a plan
   whose file reads differently, or whose recorded place no longer names what was asked about -
   an entry of a type put in above it or taken out since - is refused as `stale`, and a settled
-  value whose declaration moved so as `unreadable`.  No file format changes.
+  value is refused as `unreadable` when its declaration moved.  No file format changes.
 
 * **A refused `stale` edit or undo asks for the analysis that clears it.**  A file saved with
   the size and the modification time it had before is a change the project's poll cannot see,

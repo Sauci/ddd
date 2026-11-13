@@ -180,9 +180,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // still loading would be.
   const shownPlan = pasting ? (table.data ?? null) : shownCell.plan;
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
-  // server's, for the one thing the parser cannot check - ahead of an apply refused either way. A typed cell's own refusal is `ValuesGridView`'s to find, from `editing`
-  // directly (`typedRefusal`), so it is not repeated here - repeating it would only recompute
-  // the same sentence a second time for no reader to see any sooner.
+  // server's, for the one thing the parser cannot check - ahead of an apply refused either way.
+  // A typed cell's own refusal is `ValuesGridView`'s to find, from `editing` directly
+  // (`typedRefusal`), so it is not repeated here - repeating it would only recompute the same
+  // sentence a second time for no reader to see any sooner.
   const shownSentence = pasting
     ? (pasteRefusal ?? failed ?? (table.isError ? table.error.message : null))
     : (failed ?? shownCell.refusal);

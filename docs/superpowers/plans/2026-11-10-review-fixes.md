@@ -1410,6 +1410,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   panel, and only then is Remove offered again. Drawing Remove under the sentence, as the other
   offers draw their Apply, is the question P19b-24 recorded for the maintainer. Branch 11 lists
   `screens/*` and `components/*`.
+- **A refused undo is tried again only by closing the strip** (R22): the Undo strip draws a
+  refusal in place of its preview and Put back, so an undo refused is asked again only once the
+  reader has closed and opened the strip, where a revision landing let a stale refusal go before
+  this branch. The refusal is of the entry pressed for, and another coming to the top while the
+  strip is open is offered whole (branch 2, D0). Branch 11 lists `screens/*`.
 - **A create racing another writer's create** (task 2, `13:I1`; R23): a file an edit creates is
   renamed into place, replacing one another writer created between the edit's last look and the
   rename, and a save landing in that instant is written over too, as the documents now say.
@@ -1430,9 +1435,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   its error dropped; and a file deleted just before the write, or during an undo's batch, is
   answered `unwritable` where `stale` is true. No branch owns `editing.py`.
 - **A folder a stage cannot be made in, and a umask without the owner's write bit** (task 5): the
-  first is refused only at its stage, after the files before it were written and then put back;
-  under the second every edit and undo is refused, the stage being opened again to write before
-  it is synced. No branch owns `editing.py`.
+  first is not refused before staging starts but at its own stage, which is made before any file
+  is renamed, so nothing is written or put back, though the refusal says otherwise (above); under
+  the second every edit and undo is refused, the stage being opened again to write before it is
+  synced. No branch owns `editing.py`.
 - **A plan an unanalysed edit moved reads as `stale`** (task 3): where an edit of the page's own
   moved the place a plan points at, the plan is refused `stale` before that edit's analysis lands,
   ahead of the `analysing` refusal the CLI page documents for the case. Branch 10 lists
@@ -1446,10 +1452,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   only, and rare. Branch 7 and branch 10 list `gui/session.py`.
 - **A generated project left unrecognised** (task 4): a record that does not parse is read as no
   record, and `ddd build-info --output` writes one unstaged, so a write that dies can leave it
-  half written; a build configured at another path, a container's mount, names a project the path
-  opened does not match; and an empty `CMAKE_HOME_DIRECTORY` reads as the working directory. Each
-  can leave a generated description editable. Branch 7 and branch 10 list `gui/session.py`, branch
-  12 `cli.py`.
+  half written; and a build configured at another path, a container's mount, names a project the
+  path opened does not match. Either can leave a generated description editable. An empty
+  `CMAKE_HOME_DIRECTORY` reads as the working directory besides: the description's own directory
+  is refused all the same, and only how much of the build tree around it is refused changes.
+  Branch 7 and branch 10 list `gui/session.py`, branch 12 `cli.py`.
 - **An existing description added to a generated project** (task 4): is refused without the
   `ddd_add_component()` line a new file is offered with. Branch 10 lists `gui/*.py`.
 - **The editor's own id fix** (tasks 6 and 10): the language server places an id with
@@ -1512,7 +1519,9 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   not by `tempfile.mkstemp`, whose `0600` would carry into a file the engine creates, which takes
   the access any new file gets; the name is as much its own either way.
 - **R4.** A branch's changelog entries for its fixes are written once, at the branch's end, not with
-  each task; a migration line stays with the task that makes it.
+  each task: the plan asks a task for an entry only where it changes the public interface, while
+  the Unreleased section names every fix of what `ddd gui` shipped in 0.11.0. A migration line
+  stays with the task that makes it.
 - **R5.** A fix for a dependency's drift joins branch 1 as task D1, after task 2: the depth test
   accepts both wordings pydantic-core gives its refusal, both cores lying in the range the
   requirements allow, so that no commit leaves a gate red.
@@ -1581,6 +1590,7 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 
 | Branch | Pull request | Merged | Notes |
 | --- | --- | --- | --- |
+| 1, `fix/edit-engine` | #84 | not merged | Its four Criticals and the edit engine's Importants; the re-review's residuals carried into branch 2's D0 |
 
 ## Self-review
 

@@ -1217,11 +1217,11 @@ holding a ``CMakeCache.txt``, unless the source tree that cache names lies under
 in-source build's does, and the description's own directory otherwise. The record is all that
 says a description is generated, so one given to ``ddd_generate()`` with ``PROJECT`` and an
 ``OUTPUT_DIRECTORY`` of its own directory, the record written beside it and naming it, is taken
-for one the build generates: every change of its files is refused, in a sentence saying the
-build writes it, which it does not. Nothing in the record or the description tells the two
-apart yet. The file it creates takes the mode, and where the process may set them the owner
-and group, of the project description beside it, so ``ddd gui`` running in a container leaves
-the developer a file of their own rather than root's.
+for one the build generates: every change of its files under that directory is refused, in a
+sentence saying the build writes it, which it does not. Nothing in the record or the
+description tells the two apart yet. The file it creates takes the mode, and where the process
+may set them the owner and group, of the project description beside it, so ``ddd gui`` running
+in a container leaves the developer a file of their own rather than root's.
 
 Every write of the engine, an edit's and an undo's alike, looks at its file once more after
 the stage is written and right before the rename - or the removal, for a file an edit
@@ -1229,11 +1229,12 @@ created. A file that no longer holds the bytes the write was made from, or that 
 where the write creates it, was changed by somebody else since the edit read it, and is
 refused as ``stale`` rather than overwritten, taken away or brought back; the files
 already written are put back, each one that still holds what the write left. A save landing
-in the instant between that last look and the rename is still written over, and a file another
-writer creates there in that instant is replaced: no lock the file systems offer closes that
-moment. ``stale`` says that every one went back - the page tells a person that nothing was
-written - and where one could not, the refusal is ``unwritable`` and its sentence names the
-files it could not put back.
+in the instant between that last look and the rename is still written over, no lock the file
+systems offer closing that moment; and a file another writer creates there in that instant is
+replaced, the rename taking whatever holds the name, where a write that refuses a name already
+taken would close it. ``stale`` says that every one went back - the page tells a person that
+nothing was written - and where one could not, the refusal is ``unwritable`` and its sentence
+names the files it could not put back.
 
 A file this process may not write is refused ``unwritable`` before the first file of an edit,
 or of an undo, is staged, on every system: one with no permission to write it at all - a

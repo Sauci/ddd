@@ -29,7 +29,7 @@ import re
 from collections import Counter
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Final, Literal
 
 from pydantic import TypeAdapter, ValidationError
@@ -520,6 +520,13 @@ def _stated_units(described: Path, units: UnitProject, built: Index | None) -> l
     return sorted(built.units)
 
 
+def spelled_with_slashes(entry: str) -> str:
+    """``entry`` with ``/`` for every separator: a backslash is one on Windows alone, and an entry
+    written with one is a ``file-not-found`` on any other system. Read before anything resolves
+    the entry, by every caller judging it - the one spelling that is checked, served and written."""
+    return entry.replace("\\", "/")
+
+
 def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan:
     """``entry`` - a path to an existing file, relative to the description or absolute, as the
     reader wrote it - appended to the root's ``includes`` as written. Always a literal: the loader
@@ -540,7 +547,7 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
     refuse.
     """
     described = resolve_path(project)
-    typed = entry.replace("\\", "/")
+    typed = spelled_with_slashes(entry)
     added = resolve_path(described.parent / typed)
     # os.path's question, not pathlib's, as `ddd.gui.server` asks it of a page's path: on Python
     # 3.12 Path.is_file re-raises ENAMETOOLONG, a name past what a file system takes, where
@@ -566,15 +573,23 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
             "invalid",
             f"{entry} is part of this project already: the pattern '{included.entry}' brings it in",
         )
-    if Path(typed).is_absolute():
-        try:
-            typed = Path(os.path.relpath(added, described.parent)).as_posix()
-        except ValueError:
-            # Windows, a file on another drive than the description: no relative path leads there.
-            raise FileRefusalError(
-                "invalid",
-                f"{entry} is on another drive than {described.name}, so no entry can name it",
-            ) from None
+    if PurePath(typed).anchor:
+        # Rooted, with a drive or without one: it names the file on this machine only. Written
+        # relative to the description where it lies under it as typed - a path through a link
+        # keeps the link's name, not its target's - and otherwise by where the file is.
+        joined = Path(os.path.normpath(described.parent / typed))
+        if joined.is_relative_to(described.parent):
+            typed = joined.relative_to(described.parent).as_posix()
+        else:
+            try:
+                typed = Path(os.path.relpath(added, described.parent)).as_posix()
+            except ValueError:
+                # Windows, a file on another drive than the description: no relative path leads
+                # there.
+                raise FileRefusalError(
+                    "invalid",
+                    f"{entry} is on another drive than {described.name}, so no entry can name it",
+                ) from None
     return FilePlan(
         (PlannedEdit(described, (entry_appended(described, typed, cache),)),),
         (*(included.entry for included in entries), typed),

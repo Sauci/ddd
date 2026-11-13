@@ -519,7 +519,9 @@ The commands
        what ddd gui serves, /home/you/project; start it in a directory holding this file
        to add it here``; one naming no file - ``missing.ddd.json names no file; a file not
        there yet is created, not added``; the project's own description - ``p.ddd.json is
-       this project's own description, which it cannot include``; a file the project has
+       this project's own description, which it cannot include``; on Windows, a file on
+       another drive than the description, which no entry can name - ``D:/x/b.ddd.json is on
+       another drive than p.ddd.json, so no entry can name it``; a file the project has
        already, naming the entry - ``./a.ddd.json is part of this project already, as the
        entry 'a.ddd.json'`` - or naming the pattern that brings it in - ``lib/l.ddd.json is
        part of this project already: the pattern 'lib/*.ddd.json' brings it in``; a python

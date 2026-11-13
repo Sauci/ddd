@@ -10538,6 +10538,35 @@ class TestAddingAFile:
             "; start it in a directory holding this file to add it here",
         )
 
+    def test_a_backslash_names_what_the_slash_does_where_it_is_asked_and_where_it_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        """The path is spelled with slashes once, before the served directories are asked about
+        it, the disk, and the kind of file: ``sub\\x.ddd.json`` names ``sub/x.ddd.json``, which is
+        what the entry reads, and none of those was asked of another path than the one written."""
+        api = opened(tmp_path, {**ADDABLE, "sub/x.ddd.json": component("X")})
+        reply = files_plan(api, "add", path="sub\\x.ddd.json")
+        assert reply.status == 200
+        assert reply.body["changes"][0]["operations"] == [
+            {"op": "insert", "pointer": "project.includes[2]", "raw": '"sub/x.ddd.json"'}
+        ]
+
+    def test_a_backslash_does_not_take_a_path_out_of_what_the_session_serves_unasked(
+        self, served_below: Api, tmp_path: Path
+    ) -> None:
+        """A file named with the backslashes, inside what is served, and the one the slashes name,
+        outside it: the entry written is the second, so the second is what is asked about."""
+        (tmp_path / "inside" / "..\\outside.ddd.json").write_text(
+            json.dumps(component("Z")), encoding="utf-8"
+        )
+        assert refused(files_plan(served_below, "add", path="..\\outside.ddd.json")) == (
+            409,
+            "invalid",
+            f"..\\outside.ddd.json lies outside what ddd gui serves, "
+            f"{(tmp_path / 'inside').resolve().as_posix()}"
+            "; start it in a directory holding this file to add it here",
+        )
+
     @pytest.mark.parametrize(
         "path",
         [

@@ -290,24 +290,45 @@ class TestSet:
             "[\r  1,\r  9,\r  2\r]"
         )
 
-    @pytest.mark.parametrize("key", ["", ".", "[", "]"])
     @pytest.mark.parametrize(
-        "text", ['{{{key}: 1, "b": {{"y": 2}}}}', '{{"c": {{{key}: 1}}, "b": 2}}']
+        "key", ["", ".", "[", "]", "a.", ".a", "a..", "a[", "a]"], ids=lambda key: repr(key)
     )
-    def test_a_key_no_pointer_can_spell_is_refused_where_it_cannot_be_laid_out_around(
-        self, key, text
-    ):
-        """``""``, ``.``, ``[`` and ``]`` spell no step of a pointer, so the scan has nothing to
-        name such a member by: the layout of the object holding one, read off its members, ended
-        in an ``AssertionError`` or a ``RecursionError``, which ``ddd gui`` answered ``500``."""
-        written = text.format(key=json.dumps(key))
-        with pytest.raises(EditError, match="spells no pointer") as refused:
-            edited(written, Operation("set", "b", '{"y": [1]}'))
-        assert refused.value.code == INVALID
+    @pytest.mark.parametrize(
+        "layout",
+        [
+            {"{key}": 1, "a": {"x": {"y": 1}}, "b": {"y": 2}},
+            {"a": {"x": {"y": 1}}, "b": {"y": 2}, "{key}": {"z": [1]}},
+            {"b": {"{key}": 1, "y": 2}, "a": {"x": {"y": 1}}},
+        ],
+        ids=["first", "last, holding a member", "inside the object edited"],
+    )
+    @pytest.mark.parametrize("indent", [2, None], ids=["over lines", "on one line"])
+    def test_a_key_no_pointer_spells_as_itself_ends_no_edit_in_a_crash(self, key, layout, indent):
+        """The indentation unit is read by walking the members a file writes, each by the pointer
+        the scan records it under. A key spelling no step of a pointer (``""``, ``.``) is recorded
+        under the pointer of its container; one spelling more than one (``a.``, ``.a``) under the
+        pointer of a member beside it: the walk went into the one for the other, ending in an
+        ``AssertionError`` or a ``RecursionError`` - ``ddd gui`` answered ``500``."""
+        document = json.loads(json.dumps(layout).replace("{key}", key))
+        text = json.dumps(document, indent=indent)
+        edit = Operation("set", "b.y", '{"q": [1]}')
+        assert json.loads(edited(text, edit)) == {
+            **document,
+            "b": {**document["b"], "y": {"q": [1]}},
+        }
 
-    def test_a_key_that_holds_a_dot_among_other_characters_is_still_laid_out_around(self):
-        assert edited('{"a.": 1, "b": 2}', Operation("set", "b", "[1, 2]")) == (
-            '{"a.": 1, "b": [1, 2]}'
+    def test_a_member_is_added_beside_a_key_holding_a_dot_and_another_taken_away(self):
+        """Edits that read nothing of the key's own member were made before, and still are."""
+        text = '{\n  "b": {\n    ".": 1,\n    "y": 2\n  }\n}'
+        assert edited(text, Operation("set", "b.z", "3")) == (
+            '{\n  "b": {\n    ".": 1,\n    "y": 2,\n    "z": 3\n  }\n}'
+        )
+        assert edited(text, Operation("remove", "b.y")) == '{\n  "b": {\n    ".": 1\n  }\n}'
+
+    def test_a_key_that_ends_in_a_dot_beside_the_object_of_that_name_is_walked_past(self):
+        text = '{"a.": 1, "a": {"x": {"y": 1}}, "b": {"y": 2}}'
+        assert edited(text, Operation("set", "b.y", '{"q": [1]}')) == (
+            '{"a.": 1, "a": {"x": {"y": 1}}, "b": {"y": { "q": [1] }}}'
         )
 
     def test_a_key_written_with_an_escape_is_found_by_its_meaning(self):

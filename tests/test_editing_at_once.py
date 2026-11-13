@@ -870,9 +870,14 @@ class TestTheWorkGrowsWithTheFile:
     4,000, and never timed."""
 
     @pytest.mark.parametrize(
+        "newline",
+        ["\n", "\r\n", "\r"],
+        ids=["line feeds", "carriage return and line feed", "carriage returns"],
+    )
+    @pytest.mark.parametrize(
         "indent", [2, None, 0], ids=["indented", "on one line", "on lines indented by nothing"]
     )
-    def test_ddd_id_over_one_file(self, tmp_path, work, indent):
+    def test_ddd_id_over_one_file(self, tmp_path, work, indent, newline):
         """``ddd id --assign`` hands the engine one batch for the file, an id for every
         declaration. Made one id after another, each verified, the file was read again for every
         id; and each id's line was measured by copying the rest of the text, and by searching it
@@ -882,7 +887,8 @@ class TestTheWorkGrowsWithTheFile:
 
         def stamped(count: int) -> None:
             path = tmp_path / f"{count}.ddd.json"
-            path.write_text(json.dumps(declarations(count), indent=indent), encoding="utf-8")
+            text = json.dumps(declarations(count), indent=indent).replace("\n", newline)
+            path.write_bytes(text.encode("utf-8"))
             assert identity.assign(path) == count
 
         grows_linearly(work, stamped)

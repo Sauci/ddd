@@ -947,7 +947,9 @@ class TestCreatedBeside:
         assert made.operations[0].raw == '{\n  "units": [1]\n}\n'
 
     @pytest.mark.parametrize(
-        "content", [None, b'{"project": ', b"\xff\xfe"], ids=["missing", "unparsed", "not text"]
+        "content",
+        [None, b'{"project": ', b'{\r\n\t"project": ', b"\xff\xfe"],
+        ids=["missing", "unparsed", "unparsed over lines", "not text"],
     )
     def test_a_project_that_cannot_be_read_has_no_layout_to_copy(
         self, tmp_path: Path, content: bytes | None
@@ -957,6 +959,34 @@ class TestCreatedBeside:
             project.write_bytes(content)
         made, _ = created_beside(project, "u.ddd.json", '{"units": [1]}', {})
         assert made.operations[0].raw == '{\n  "units": [1]\n}\n'
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            {"project": {".": 1, "name": "P"}},
+            {"project": {"": 1, "name": "P"}},
+            {"": 1, "project": {"name": "P"}},
+            {"a.": 1, "a": {"x": {"y": 1}}, "project": {"name": "P"}},
+            {"a]": 1, "a": {"x": {"y": 1}}, "project": {"name": "P"}},
+        ],
+        ids=[
+            "a dot",
+            "an empty key",
+            "an empty key at the top",
+            "a dot beside its object",
+            "a bracket",
+        ],
+    )
+    @pytest.mark.parametrize("indent", [None, 2], ids=["on one line", "over lines"])
+    def test_a_description_with_a_key_no_pointer_spells_is_still_given_a_file_beside_it(
+        self, tmp_path: Path, description: dict, indent: int | None
+    ) -> None:
+        """The layout is read off the description as the engine reads one, which a key such as
+        these ended in an ``AssertionError`` or an ``EditError``: no new file could be made."""
+        project = tmp_path / "p.ddd.json"
+        project.write_text(json.dumps(description, indent=indent))
+        made, _ = created_beside(project, "u.ddd.json", '{"units": [1]}', {})
+        assert json.loads(made.operations[0].raw or "") == {"units": [1]}
 
     def test_an_includes_that_is_not_a_list_takes_the_entry_at_its_front(
         self, tmp_path: Path

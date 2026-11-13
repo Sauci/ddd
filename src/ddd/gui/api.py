@@ -59,6 +59,7 @@ from ddd.file_plans import (
     included_entries,
     new_errors,
     remove_plan,
+    spelled_with_slashes,
 )
 from ddd.finding_fixes import fixes_for
 from ddd.finding_routes import Route as FindingRoute
@@ -2387,13 +2388,14 @@ def _addition(
     with the old owner over its unit into one with the new owner over its datatype, and only
     the writers' own conflict and disagreement are listed. The bound holds as it does for a
     removal: a project with no errors is never answered that an add bringing one brings none."""
-    added = resolve_path(revision.project.parent / entry)
+    typed = spelled_with_slashes(entry)
+    added = resolve_path(revision.project.parent / typed)
     try:
         _served(revision, added)
     except NotInProjectError:
         serves = (directory.as_posix() for directory in revision.served)
         raise FileRefusalError("invalid", outside_served(entry, serves)) from None
-    plan = add_plan(revision.project, entry, cache)
+    plan = add_plan(revision.project, typed, cache)
     kind = kind_of(added, _read_json(added))
     if kind == "plugin":
         raise FileRefusalError(

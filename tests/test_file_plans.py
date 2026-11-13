@@ -1698,6 +1698,21 @@ class TestAdd:
             ("a.ddd.json", "sensors/b.ddd.json"),
         )
 
+    def test_a_path_through_a_link_is_written_by_the_link_and_not_its_target(
+        self, tmp_path: Path
+    ) -> None:
+        """Typed under the description's directory, through a directory that is a link: the
+        entry keeps the link's name, as typed, where the target may be a path another machine
+        has nothing at."""
+        write_tree(
+            tmp_path,
+            {"proj/p.ddd.json": project("P"), "elsewhere/x.ddd.json": component("X")},
+        )
+        directory_link(tmp_path / "proj" / "lnk", tmp_path / "elsewhere")
+        typed = (tmp_path.resolve() / "proj" / "lnk" / "x.ddd.json").as_posix()
+        plan = add_plan(tmp_path / "proj" / "p.ddd.json", typed, {})
+        assert plan.includes == ("lnk/x.ddd.json",)
+
     def test_a_file_above_the_description_is_written_relative_with_slashes(
         self, tmp_path: Path
     ) -> None:
@@ -1739,7 +1754,7 @@ class TestAdd:
         no other system does, so the answer is given here as that one gives it."""
         write_tree(
             tmp_path,
-            {"p.ddd.json": project("P"), "elsewhere/b.ddd.json": component("B")},
+            {"proj/p.ddd.json": project("P"), "elsewhere/b.ddd.json": component("B")},
         )
 
         def across(path: str, start: str) -> str:
@@ -1748,7 +1763,9 @@ class TestAdd:
         monkeypatch.setattr(file_plans.os.path, "relpath", across)
         with pytest.raises(FileRefusalError) as refused:
             add_plan(
-                tmp_path / "p.ddd.json", (tmp_path / "elsewhere" / "b.ddd.json").as_posix(), {}
+                tmp_path / "proj" / "p.ddd.json",
+                (tmp_path / "elsewhere" / "b.ddd.json").as_posix(),
+                {},
             )
         assert refused.value.code == "invalid"
         assert refused.value.message.endswith(

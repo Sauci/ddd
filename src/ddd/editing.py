@@ -177,20 +177,57 @@ def newline_at(text: str, offset: int) -> str:
     line has none - the last one before it is copied, the file's own ending; ``\\n`` is for a
     text with no line break at all.
 
-    The carriage return is looked for no further than the line feed: in a file of line feeds
-    alone the search for one went on to the end of the text, for every id ``ddd id`` gave it.
+    Neither search goes further than the nearest break (:func:`_break_after`): looking for one
+    spelling alone ran to the end of a file written with the other, for every id ``ddd id`` gave.
     """
-    feed = text.find("\n", offset)
-    carriage = text.find("\r", offset, len(text) if feed < 0 else feed)
-    if carriage >= 0:
-        return "\r\n" if carriage + 1 == feed else "\r"
-    if feed >= 0:
-        return "\n"
-    feed = text.rfind("\n", 0, offset)
-    carriage = text.rfind("\r", 0, offset)
-    if carriage >= 0 and carriage + 1 == feed:
-        return "\r\n"
-    return "\r" if carriage > feed else "\n"
+    after = _break_after(text, offset)
+    if after >= 0:
+        return _spelled_at(text, after)
+    before = _break_before(text, offset)
+    return "\n" if before < 0 else _spelled_at(text, before)
+
+
+def _spelled_at(text: str, at: int) -> str:
+    """The line ending the break character at ``at`` is, or the end of: ``\\r\\n`` for either of
+    its characters."""
+    if text[at] == "\r":
+        return "\r\n" if text.startswith("\n", at + 1) else "\r"
+    return "\r\n" if at > 0 and text.startswith("\r", at - 1) else "\n"
+
+
+_WINDOW: Final = 64
+"""How many characters the first look for a line break covers, doubled on each miss: the nearest
+break is found having gone over about twice the way to it, however long the text and whichever
+spelling it holds."""
+
+
+def _break_after(text: str, offset: int) -> int:
+    """Where the first line break at or after ``offset`` is, of either spelling; ``-1`` for none.
+    Each spelling is looked for within a window, so that one the file does not use is not searched
+    for to the end of it."""
+    width = _WINDOW
+    while offset < len(text):
+        end = min(len(text), offset + width)
+        found = [
+            at for at in (text.find("\n", offset, end), text.find("\r", offset, end)) if at >= 0
+        ]
+        if found:
+            return min(found)
+        offset, width = end, width * 2
+    return -1
+
+
+def _break_before(text: str, offset: int) -> int:
+    """Where the last line break before ``offset`` is, of either spelling; ``-1`` for none,
+    searched back in windows as :func:`_break_after` is forward."""
+    width = _WINDOW
+    while offset > 0:
+        start = max(0, offset - width)
+        found = max(text.rfind("\n", start, offset), text.rfind("\r", start, offset))
+        if found >= 0:
+            return found
+        offset, width = start, width * 2
+    return -1
 
 
 def indent_of_line_at(text: str, offset: int) -> str:
@@ -199,16 +236,7 @@ def indent_of_line_at(text: str, offset: int) -> str:
     Whatever the file is indented with: a file written with tabs gets a tab, one written with
     four spaces gets four. A line is what a line feed, a carriage return or both end.
     """
-    return _indentation(text, _line_start(text, offset))
-
-
-def _line_start(text: str, offset: int) -> int:
-    """Where the line ``offset`` sits on starts: just past the last line break before it, of
-    whichever spelling - a ``\\r\\n`` ends in the ``\\n``, the later of the two. The carriage
-    return is looked for no further back than the line feed, so that a file of line feeds alone
-    is not searched to its start for each line asked about."""
-    feed = text.rfind("\n", 0, offset)
-    return max(feed, text.rfind("\r", feed + 1, offset)) + 1
+    return _indentation(text, _break_before(text, offset) + 1)
 
 
 def _indentation(text: str, start: int) -> str:
@@ -758,13 +786,6 @@ def _entries(document: Document, pointer: str) -> list[str]:
     """The pointers of a container's entries, in the order the text writes them."""
     value = document.value_at(pointer)
     if isinstance(value, dict):
-        for key in value:
-            if not segments(key):
-                raise EditError(
-                    INVALID,
-                    f"{_named(pointer)} has the key {json.dumps(key)}, which spells no pointer, "
-                    "so no member of it can be told from another by one",
-                )
         entries = [_child(pointer, key) for key in value]
     elif isinstance(value, list):
         entries = [f"{pointer}[{index}]" for index in range(len(value))]
@@ -795,12 +816,16 @@ def _around_on_one_line(document: Document, pointer: str) -> bool:
 def _unit_below(document: Document, pointer: str, lines: _Lines) -> str | None:
     """The unit :func:`indent_unit` reads off the first entry under ``pointer`` written on a line
     of its own - a line break between its container's opening and it - and indented deeper than
-    the line its container opens on; ``None`` for a value holding no such entry. The entries are
+    the line its container opens on; ``None`` for a value holding no such entry. A member of an
+    object whose key no pointer spells as itself (:func:`_names`) is passed over. The entries are
     taken in the order the text writes them, each before the ones it holds, which is the order
     ``lines`` is asked about them in."""
     opening = _span(document.value_span_of(pointer))[0]
     outer = lines.indent_at(opening)
+    members = document.value_at(pointer)
     for entry in _entries(document, pointer):
+        if isinstance(members, dict) and not _names(pointer, entry):
+            continue
         start = _span(document.span_of(entry))[0]
         if lines.start_at(start) > opening:
             inner = lines.indent_at(start)
@@ -810,6 +835,17 @@ def _unit_below(document: Document, pointer: str, lines: _Lines) -> str | None:
         if found is not None:
             return found
     return None
+
+
+def _names(container: str, entry: str) -> bool:
+    """Whether ``entry``, the pointer an object's member is recorded under, names that member
+    when the grammar reads it: a key spelling no step of one (``""``, ``.``), or reading as more
+    than the one (``a.``, ``.a``, ``a.b``), is recorded under a pointer that names the container
+    itself or a member of another. Walked into as it was, the walk read the one for the other and
+    ended in an ``AssertionError`` or a ``RecursionError``, which ``ddd gui`` answered ``500``;
+    left out of it, its line is no evidence of the file's unit."""
+    key = entry[len(container) + 1 :] if container else entry
+    return segments(entry) == [*segments(container), key]
 
 
 class _Lines:

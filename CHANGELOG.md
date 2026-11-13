@@ -16,21 +16,6 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
-* **`ddd gui` and `ddd id` follow a file's line endings and indentation to the last line, and
-  `ddd gui` refuses six edges it mis-planned.**  A member added where no line break follows kept
-  the ending of the file only when one did: a file with `\r\n` took a `\n`.  A bare carriage
-  return now ends a line, so a member added to a file written with them goes on a line of its own
-  and `ddd id` gives its stamp one - it was joined to the line of the name.  A file the page
-  creates takes the newline and the indentation the project description is written in, where it
-  was always `\n` and two spaces.  The Files tab's Add writes an entry with `/` for every
-  separator and relative to the description, where an absolute path or a backslash was written
-  as typed and named the file on one machine only.  A cell set with `at` spelled without
-  brackets is refused, where it was planned as a key of its own; a cell past the end of a short
-  `init` is set, the elements before it that the array lacks being zeros; reading an object whose
-  producer is declared under a `condition` carries the condition; and a file with a key that
-  spells no pointer (`""`, `.`, `[` or `]`) is refused where an edit has to lay out around it,
-  where the request ended in a server error.  No file format changes.
-
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
   Linux a file kept `0600` came out with the mode a new file gets, a file kept read-only was

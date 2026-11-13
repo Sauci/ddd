@@ -160,8 +160,9 @@ def _written_like(project: Path) -> tuple[str, str]:
     except (OSError, UnicodeDecodeError):
         return DEFAULT_INDENT_UNIT, "\n"
     document = Document(text)
-    unit = DEFAULT_INDENT_UNIT if document.data is None else indent_unit(document)
-    return unit, newline_at(text, 0)
+    if document.data is None:
+        return DEFAULT_INDENT_UNIT, "\n"
+    return indent_unit(document), newline_at(text, 0)
 
 
 def created_beside(

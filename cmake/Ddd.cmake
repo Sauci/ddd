@@ -115,29 +115,54 @@ function(_ddd_require_transitive_properties context)
     endif()
 endfunction()
 
-# Watches the "includes" wildcards of a project description, so that a file one starts or stops matching re-runs
-# configure: CMAKE_CONFIGURE_DEPENDS holds the files that were listed, and a new file touches none of them, nor does a
-# file that was removed. Each include is globbed with CONFIGURE_DEPENDS - the build then looks at it again before it
-# does anything else - and the answer is not used, the tool being the one that resolves the includes. A pattern with
-# "**" is watched at every depth of the directory before its first wildcard, by its last segment: more than it matches,
-# which costs a configure and nothing more. A file that is no project has nothing to watch.
+# Watches the "includes" wildcards of a project description, so that a file one starts or stops matching is noticed.
+# The files "ddd sources" lists are dependencies of the configure, which is a watch over the files there were when it
+# ran: one created later is not among them, and one deleted only leaves the generation with fewer inputs and the same
+# command. Each include is therefore globbed with CONFIGURE_DEPENDS, as the templates are, and the build looks at it again before it does
+# anything else, re-running configure when the files found differ. The result is not used: the tool is the one that
+# resolves the includes. A pattern with "**" is watched at every depth of the directory before its first wildcard, by
+# its last segment - more than it matches, so a file added anywhere below that directory runs configure, and every
+# build scans the whole tree below it, which an include of a large tree should keep in mind.
+#
+# A relative include is the tool's to read from the directory of the file naming it, whatever characters that
+# directory has, so those of the directory are escaped before the include is joined to it: a checkout in "proj [v2]"
+# is no character class. An absolute include is read whole as a pattern, by the tool as here. Tolerant like the call
+# asking for the list: a file that is missing - the tool lists an include that does not exist, and says so - or is no
+# project, or whose "includes" is no list, has nothing to watch, and is no reason to refuse to configure.
 function(_ddd_watch_includes description)
+    if(NOT EXISTS "${description}" OR IS_DIRECTORY "${description}")
+        return()
+    endif()
     file(READ "${description}" content)
-    string(JSON count ERROR_VARIABLE error LENGTH "${content}" "project" "includes")
-    if(error OR count EQUAL 0)
+    string(JSON kind ERROR_VARIABLE error TYPE "${content}" "project" "includes")
+    if(error OR NOT kind STREQUAL "ARRAY")
+        return()
+    endif()
+    string(JSON count LENGTH "${content}" "project" "includes")
+    if(count EQUAL 0)
         return()
     endif()
     cmake_path(GET description PARENT_PATH base)
+    string(REGEX REPLACE "([[*?])" "[\\1]" literal_base "${base}")
     math(EXPR last "${count} - 1")
     foreach(index RANGE 0 ${last})
         string(JSON entry GET "${content}" "project" "includes" ${index})
-        cmake_path(ABSOLUTE_PATH entry BASE_DIRECTORY "${base}" NORMALIZE)
+        if(WIN32)
+            string(REPLACE "\\" "/" entry "${entry}")
+        endif()
+        cmake_path(HAS_ROOT_NAME entry rooted)
+        cmake_path(HAS_ROOT_DIRECTORY entry has_root_directory)
+        if(rooted OR has_root_directory)
+            set(where "")
+        else()
+            set(where "${literal_base}/")
+        endif()
         if(entry MATCHES "\\*\\*")
             string(REGEX MATCH "^[^*?[]*/" directory "${entry}")
             string(REGEX REPLACE "^.*/" "" final "${entry}")
-            file(GLOB_RECURSE ignored CONFIGURE_DEPENDS "${directory}${final}")
+            file(GLOB_RECURSE ignored CONFIGURE_DEPENDS "${where}${directory}${final}")
         else()
-            file(GLOB ignored CONFIGURE_DEPENDS "${entry}")
+            file(GLOB ignored CONFIGURE_DEPENDS "${where}${entry}")
         endif()
     endforeach()
 endfunction()
@@ -160,8 +185,9 @@ endfunction()
 # Asks the tool which files a project description is built out of. A hand written project pulls its components in
 # through "includes" - possibly with wildcards - so the project file alone is a wholly insufficient dependency: edit a
 # component and the build would happily link yesterday's globals and a2l. The list is resolved at configure time and
-# also registered with CMAKE_CONFIGURE_DEPENDS, so that adding a component to an "includes" wildcard re-runs configure
-# and picks up the new file as well.
+# registered with CMAKE_CONFIGURE_DEPENDS, so that an edit of any of the files re-runs configure; the wildcards
+# themselves are globbed with CONFIGURE_DEPENDS (_ddd_watch_includes), which is what notices a file starting or
+# stopping to match, and the list is kept in the build tree for the generation to depend on (_ddd_write_source_list).
 #
 # Tolerant on purpose, and never silent: what the tool lists is what the project names, whether or not it could be read
 # - a plugin that stopped importing is listed, and so is one whose model raises - so that the edit repairing it re-runs

@@ -268,12 +268,20 @@ a2l and the dictionary are then named after the project name inside the descript
 A hand written project pulls its components in through ``includes``, possibly with wildcards,
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
 the tool which files the project is really built out of, with ``ddd sources`` (see
-:doc:`command_line_interface`), and uses the answer three times: as the dependencies of the
+:doc:`command_line_interface`), and uses the answer four times: as the dependencies of the
 generation step, so that editing a component - or a plugin the project names, whose module
 the answer lists too - regenerates the globals and the a2l; as ``CMAKE_CONFIGURE_DEPENDS``, so
-that adding a file matching an ``includes`` wildcard re-runs configure and picks the new
-component up; and as the files the names of the project's components are read from, for the
-headers the generation declares (see *The targets it creates* below). The list holds what the
+that editing any of the files runs configure again; as the files the names of the project's
+components are read from, for the headers the generation declares (see *The targets it
+creates* below); and as a list kept in the build tree, ``<stem>_ddd_sources.txt`` in the
+binary directory of the call, rewritten only when it differs, which the generation and the step
+writing the a2l after the link depend on. Each ``includes`` entry, those of the projects it
+includes among them, is also globbed with ``CONFIGURE_DEPENDS``, as the templates are, so that
+adding a file matching an ``includes`` wildcard re-runs configure and picks the new component
+up, and removing one makes the next build regenerate, its inputs being fewer and its command
+the same: the list is what tells it. A wildcard with ``**`` is scanned below the directory
+before its first wildcard at every build. A relative entry is read from the directory of the
+file naming it, whatever characters that directory has. The list holds what the
 project names whether or not it loaded: a ``.py`` plugin that no longer imports, or whose
 model raises, is still listed, and so is a module named plugin, by the file the finder
 locates for it, and every ``.py`` file of a package plugin, so the edit that repairs it

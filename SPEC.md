@@ -2317,7 +2317,14 @@ the generation ran, so the build after a description change compiles the compone
 header changed, and only those, rather than linking the new definitions with readers compiled
 against the old header. A component renamed in its description therefore needs the build
 configured again, until which the generation runs at every build; with `PROJECT` that happens
-by itself, the files of the project being dependencies of the configure step. A registered
+by itself, the files of the project being dependencies of the configure step. With `PROJECT`
+each `includes` entry is also globbed with `CONFIGURE_DEPENDS`, those of the projects it
+includes among them, so that a file a wildcard starts or stops matching runs the configure
+step, and the list of the files the project is made of, which the configure step keeps in the
+build tree, as `<stem>_ddd_sources.txt` and rewrites only when it differs, is an input of the
+generation: the build after a file left a wildcard regenerates, and the one after has nothing
+to do. A relative entry is read from the directory of the file naming it whatever characters
+that directory has. A registered
 file that does not parse when the build is configured names no component and is a dependency
 of the configure step until it does. One that does not exist yet, being generated into the
 build tree later, names no component either and is no dependency of the configure step, a file
@@ -2331,7 +2338,7 @@ the generation before the link leaves the A2L out, as `NO_A2L` does, and a secon
 the link runs `ddd generate a2l` over the image with `--image`, or over the map with
 `--address-map`, the A2L its output. The step depends on the image, on the map, and on what
 the project is read from - its description, the files it is collected or included from, the
-`.py` plugins and the tool - so it runs again when the image relinks, the map changes or a
+`.py` plugins, the list of those files that `PROJECT` keeps in the build tree, and the tool - so it runs again when the image relinks, the map changes or a
 description does, and under Ninja never otherwise; under Make it also runs at every build that
 follows a run of it leaving the A2L unchanged. A target `<stem>_ddd_a2l`, built by default,
 drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it into the

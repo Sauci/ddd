@@ -994,7 +994,15 @@ class TestTheBuildAfterAnEdit:
 WILDCARDS = {
     "a wildcard": (("components/*.ddd.json",), "components"),
     "a recursive wildcard": (("components/**/*.ddd.json",), "components/deeper/still"),
-    "a wildcard of a sub-project": (("sub.ddd.json",), "components"),
+    "a wildcard of a sub-project, spelled in capitals, in a directory of its own": (
+        ("parts/Sub.DDD.JSON",),
+        "components",
+    ),
+    "an absolute wildcard": (("{root}/components/*.ddd.json",), "components"),
+    "a wildcard spelled with the platform's separator": (
+        (f"components{os.sep}*.ddd.json",),
+        "components",
+    ),
 }
 """A hand written project including the descriptions of ``components/`` by a wildcard - its
 own, a recursive one, or one of a project it includes - and the directory a file the wildcard
@@ -1059,9 +1067,10 @@ def plugged(root: Path, generator: str, body: str = "pass") -> Story:
 
 class TestAWildcardThatStartsOrStopsMatching:
     """A file an ``includes`` wildcard starts matching is a component of the project, and one
-    it stops matching is not: the build that follows each says so. Both used to leave the build
-    with nothing to do - the files watched were the ones listed, which a new file is none of,
-    and a file removed left a generation whose command and inputs were the same or fewer."""
+    it stops matching is not: the build that follows each says so. Both left the build with
+    nothing to do while the wildcards went unwatched: the files watched were those the
+    configure listed, a file created later was not among them, and a deletion left the
+    generation with the same command and fewer inputs."""
 
     @pytest.mark.parametrize(
         ("includes", "directory"),
@@ -1071,10 +1080,12 @@ class TestAWildcardThatStartsOrStopsMatching:
     def test_the_next_build_follows_the_file_in_and_out_of_the_match(
         self, tmp_path: Path, generator: str, includes: tuple[str, ...], directory: str
     ) -> None:
+        includes = tuple(entry.format(root=tmp_path.as_posix()) for entry in includes)
         shape = Shape(project=True, registered=False, includes=includes)
         story = Story(tmp_path, shape, generator, configured=False)
-        (tmp_path / "sub.ddd.json").write_text(
-            json.dumps({"project": {"name": "Sub", "includes": ["components/*.ddd.json"]}}),
+        (tmp_path / "parts").mkdir()
+        (tmp_path / "parts" / "Sub.DDD.JSON").write_text(
+            json.dumps({"project": {"name": "Sub", "includes": ["../components/*.ddd.json"]}}),
             encoding="utf-8",
         )
         story.configured = story.reconfigure()
@@ -1101,6 +1112,89 @@ class TestAWildcardThatStartsOrStopsMatching:
         assert stopped.code == 0 and stopped.generated(), stopped.output
         assert "LateCount" not in globals_c.read_text(encoding="utf-8")
         assert story.build().did_nothing()
+
+    @pytest.mark.parametrize(
+        ("pattern", "directory"),
+        [
+            pytest.param("components/*.ddd.json", "components", id="a wildcard"),
+            pytest.param("components/**/*.ddd.json", "components/deeper", id="a recursive one"),
+        ],
+    )
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_checkout_in_a_directory_spelled_like_a_pattern_is_watched_all_the_same(
+        self, tmp_path: Path, generator: str, pattern: str, directory: str
+    ) -> None:
+        """The tool reads the directory of the project as a directory, so the watch does: a
+        checkout in ``proj [v2]`` is no character class, which matched nothing, and no wildcard
+        reaching the directory above it."""
+        root = tmp_path / "outer" / "proj [v2]"
+        shape = Shape(project=True, registered=False, includes=(pattern,))
+        story = Story(root, shape, generator)
+        assert story.build().code == 0
+        late = root / directory / "late.ddd.json"
+        late.parent.mkdir(parents=True, exist_ok=True)
+        late.write_text(
+            json.dumps(
+                {"component": {"name": "Late", "interface": [declare("local", "LateCount")]}}
+            ),
+            encoding="utf-8",
+        )
+        started = story.build()
+        assert started.code == 0 and started.generated(), started.output
+        globals_c = story.images() / "ddd" / "img" / "ddd_globals.c"
+        assert "LateCount" in globals_c.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_missing_include_is_a_warning_and_no_reason_to_refuse_to_configure(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """The tool lists an include that does not exist, and says so on its standard error:
+        the file is nothing to watch, and the configure warns and goes on, the build deciding
+        what the project is worth."""
+        shape = Shape(
+            project=True, registered=False, includes=("components/*.ddd.json", "later.ddd.json")
+        )
+        story = Story(tmp_path, shape, generator, configured=False)
+        configured = story.reconfigure()
+        assert "CMake Warning" in configured, configured
+        assert "later.ddd.json" in configured, configured
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_sub_project_whose_includes_is_no_list_is_a_warning_too(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """The tool reports the schema error and lists the file all the same, so the watch
+        reads a file whose ``includes`` is an object, and finds nothing in it to watch."""
+        shape = Shape(
+            project=True, registered=False, includes=("components/*.ddd.json", "sub.json")
+        )
+        story = Story(tmp_path, shape, generator, configured=False)
+        (tmp_path / "sub.json").write_text(
+            json.dumps({"project": {"name": "Sub", "includes": {"a": "b"}}}), encoding="utf-8"
+        )
+        configured = story.reconfigure()
+        assert "CMake Warning" in configured, configured
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_recursive_wildcard_is_watched_below_its_own_directory_alone(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A file the name of which fits ``**/*.ddd.json`` but which lies outside ``components/``
+        is no match, and the build after it has nothing to do."""
+        shape = Shape(project=True, registered=False, includes=("components/**/*.ddd.json",))
+        story = Story(tmp_path, shape, generator)
+        assert story.build().code == 0
+        (tmp_path / "elsewhere").mkdir()
+        (tmp_path / "elsewhere" / "other.ddd.json").write_text("{}", encoding="utf-8")
+        assert story.build().did_nothing()
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_project_including_nothing_has_nothing_to_watch_and_configures(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        shape = Shape(project=True, registered=False, includes=())
+        story = Story(tmp_path, shape, generator, configured=False)
+        story.reconfigure()
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_vocabulary_file_gained_or_lost_reaches_the_a2l_written_after_the_link(

@@ -6,8 +6,9 @@
 #   creates the on-demand <target>.ddd target checking that component on its own.
 # * ddd_generate(<image> ...): collects the descriptions of all components in the link closure of the given image,
 #   generates the global definition file, the per-component interface headers and the a2l, writes the resolved data
-#   dictionary beside them, and links the result into the image. With ADDRESSES_FROM_IMAGE the a2l is written after
-#   the link instead, every address it carries read out of the linked image.
+#   dictionary beside them, and links the result into the image. With ADDRESSES_FROM_IMAGE or ADDRESS_MAP the a2l is
+#   written after the link instead, every address it carries read out of the linked image, or out of the map a step
+#   of the project's extracts from it.
 #
 # The collection relies on the custom transitive property DDD_JSON, introduced with the TRANSITIVE_LINK_PROPERTIES
 # feature of CMake 3.30: the description files travel through the link graph like usage requirements, so an image
@@ -88,9 +89,9 @@ endif()
 # A keyword whose value expanded to nothing - ddd_generate(... ADDRESS_MAP ${DDD_MAP}) with DDD_MAP unset or empty,
 # the ordinary CMake mistake - reads to cmake_parse_arguments() as a keyword that was never given at all, and every
 # check below is written as if(arg_X), which cannot tell the two apart. Dropped in silence, each one changes what the
-# call does: ADDRESS_MAP generates an a2l with every ECU_ADDRESS 0x00000000 and makes no map a dependency, so the
-# two-run flow the map was configured for never happens; PROJECT falls into the collected mode and generates out of
-# the link closure instead of out of the file the caller named. Refused here, once, for both functions.
+# call does: ADDRESS_MAP writes the a2l before the link, with every ECU_ADDRESS 0x00000000, and adds no step reading
+# the map after it; PROJECT falls into the collected mode and generates out of the link closure instead of out of the
+# file the caller named. Refused here, once, for both functions.
 function(_ddd_refuse_empty_keywords context missing)
     if(missing)
         list(JOIN missing "\", \"" spelled)
@@ -574,7 +575,7 @@ endfunction()
 #              TEMPLATE_DIRECTORY <dir>      # jinja2 templates of the c sources, provided by the project
 #              [SCHEMA_DIRECTORY <dir>]      # write the json schemas here, for editor validation
 #              [PLUGINS <spec>...]           # the collected project's plugins: a .py path or a module name
-#              [ADDRESS_MAP <file>]          # symbol to address map filling in the a2l addresses
+#              [ADDRESS_MAP <file>]          # write the a2l after the link, its addresses read out of this map
 #              [ADDRESSES_FROM_IMAGE]        # write the a2l after the link, its addresses read out of the image
 #              [BYTE_ORDER little|big]       # byte order reported in the a2l
 #              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
@@ -599,8 +600,8 @@ endfunction()
 #                          without the artefacts
 # * <stem>_ddd_list        custom target printing the table of the image's variables - producer, consumers,
 #                          datatype, unit - for a developer asking who writes what, without generating anything
-# * <stem>_ddd_a2l         with ADDRESSES_FROM_IMAGE, custom target writing the a2l once the image is linked, out of
-#                          the image's debug information; built by default
+# * <stem>_ddd_a2l         with ADDRESSES_FROM_IMAGE or ADDRESS_MAP, custom target writing the a2l once the image is
+#                          linked, out of the image's debug information or out of the map; built by default
 #
 # <stem> is the image name without its extension, so an image named firmware.elf yields firmware_ddd_headers. The
 # path of the generated a2l is available as the DDD_A2L property of the image, and that of the dictionary written beside
@@ -615,7 +616,8 @@ endfunction()
 # components whose header changed are recompiled, and no others. A component renamed in its description therefore
 # needs a reconfigure in the collected mode: until then its header is not declared under the new name, and the
 # generation runs at every build for the one under the old name, which it no longer writes. <stem>_ddd_headers is what
-# carries the include directory, and what orders every consumer after the generation.
+# carries the include directory, and what orders every consumer after the generation. With ADDRESSES_FROM_IMAGE or
+# ADDRESS_MAP the a2l is the output of <stem>_ddd_a2l's step instead, which runs after the link.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
@@ -667,19 +669,18 @@ function(ddd_generate image)
                             "\"ddd templates-dir\" prints a working set to copy from.")
     endif()
     _ddd_absolute_input(arg_TEMPLATE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
-    # Only the a2l reads the map, so a call that subtracts the a2l neither seeds it nor depends
-    # on it: the map is rewritten after every link, and a dependency on it would re-render every
-    # c source each time for a file this run does not pass to the generator.
-    set(address_map_dependency "")
+    # Only the a2l reads the map, so a call that subtracts the a2l neither seeds it nor reads it. Otherwise the step
+    # writing the a2l after the link reads it (below), and nothing else does: the run before the link leaves the a2l
+    # out, and a dependency of that run on the map would re-render every c source after every link for a file it
+    # does not read.
     if(arg_ADDRESS_MAP AND NOT arg_NO_A2L)
         _ddd_absolute_input(arg_ADDRESS_MAP "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
-        set(address_map_dependency "${arg_ADDRESS_MAP}")
-        # The two-run flow: the map is typically extracted from the linked image by a build step, so on the very
-        # first build it does not exist yet - and ninja would refuse to run the generation for want of a file no
-        # rule produces. An absent map inside the build tree is therefore seeded empty at configure time; the
-        # first build runs with every address 0 and the second, once the extractor has written the real map,
-        # regenerates the a2l with the addresses filled in. A map in the source tree is not touched: there,
-        # a missing file is a mistake _ddd_absolute_input has already refused.
+        # The map is typically extracted from the linked image by a step of the project's after the link, so on the
+        # very first build it does not exist yet - and ninja refuses to run a step for want of an input no rule
+        # produces, before it has run anything. An absent map inside the build tree is therefore seeded empty at
+        # configure time; the step reading it runs after the link, by when the project's step has written the real
+        # one. A map in the source tree is not touched: there, a missing file is a mistake _ddd_absolute_input has
+        # already refused.
         cmake_path(IS_PREFIX CMAKE_BINARY_DIR "${arg_ADDRESS_MAP}" NORMALIZE map_is_generated)
         if(map_is_generated AND NOT EXISTS "${arg_ADDRESS_MAP}")
             file(WRITE "${arg_ADDRESS_MAP}" "{}\n")
@@ -749,19 +750,24 @@ function(ddd_generate image)
     # plugins' artefacts, so selecting c would silently drop them along with the a2l.
     set(artefact all)
     set(generate_options ${common_options})
-    # ADDRESSES_FROM_IMAGE subtracts the a2l as well: it is written after the link, below.
-    if(arg_NO_A2L OR arg_ADDRESSES_FROM_IMAGE)
+    # The image, and a map extracted from it, are there once the image is linked, so with either source the run
+    # before the link subtracts the a2l as well, and a step after the link writes it (below). Written before the link
+    # out of the map, the a2l was one link behind the image: it held the addresses of the image the build before had
+    # linked, and under STRICT an object new to a description stopped every build, the map lacking it being one only
+    # a link rewrites.
+    set(a2l_after_the_link FALSE)
+    if(NOT arg_NO_A2L AND (arg_ADDRESSES_FROM_IMAGE OR arg_ADDRESS_MAP))
+        set(a2l_after_the_link TRUE)
+    endif()
+    if(arg_NO_A2L OR a2l_after_the_link)
         list(APPEND generate_options --without a2l)
     endif()
     if(arg_CONST_INPUTS)
         list(APPEND generate_options --const-inputs)
     endif()
-    # Both options belong to the a2l, so a run that subtracts it has no use for either.
-    if(arg_BYTE_ORDER AND NOT arg_NO_A2L AND NOT arg_ADDRESSES_FROM_IMAGE)
+    # The byte order belongs to the a2l, so a run that subtracts it has no use for it.
+    if(arg_BYTE_ORDER AND NOT arg_NO_A2L AND NOT a2l_after_the_link)
         list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
-    endif()
-    if(arg_ADDRESS_MAP AND NOT arg_NO_A2L)
-        list(APPEND generate_options --address-map "${arg_ADDRESS_MAP}")
     endif()
 
     # The templates are collected with a glob which the build system re-evaluates
@@ -814,7 +820,7 @@ function(ddd_generate image)
     if(NOT arg_NO_A2L)
         set(a2l_file "${arg_OUTPUT_DIRECTORY}/${arg_NAME}.a2l")
         # Written before the link, or after it by the step below; the property names it either way.
-        if(NOT arg_ADDRESSES_FROM_IMAGE)
+        if(NOT a2l_after_the_link)
             list(APPEND generated_outputs "${a2l_file}")
         endif()
         set_property(TARGET ${image} PROPERTY DDD_A2L "${a2l_file}")
@@ -841,8 +847,7 @@ function(ddd_generate image)
                  --output-dir "${arg_OUTPUT_DIRECTORY}"
                  --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options})
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_DEPENDS
-                 "${project_file}" ${descriptions} ${plugin_files}
-                 ${address_map_dependency} ${arg_DEPENDS}
+                 "${project_file}" ${descriptions} ${plugin_files} ${arg_DEPENDS}
                  ${template_files} "${DDD_EXECUTABLE}")
     set_property(TARGET ${image} PROPERTY DDD_COMPONENT_FILES "${component_files}")
     cmake_language(EVAL CODE "cmake_language(DEFER CALL _ddd_add_generation [==[${image}]==])")
@@ -854,26 +859,38 @@ function(ddd_generate image)
     endif()
     add_custom_target(${image_stem}_ddd_generation DEPENDS ${generated_outputs})
 
-    # ADDRESSES_FROM_IMAGE: the a2l is written once the image is linked, by a second run reading every address it
-    # carries out of the image's debug information, so that one build gives the complete a2l - no map to extract,
-    # and no second build to read it. The run depends on the image and on what the project is read from - not on the
-    # templates or DEPENDS, which are the c's inputs, not the a2l's - so it runs again whenever the image relinks or a
-    # description changes, and under Ninja never otherwise; under Make also at every build that follows a run of it
-    # leaving the a2l unchanged. It writes into the directory the run before the link wrote, whose manifest keeps
-    # each run from taking back the files of the other. STRICT and SEVERITY apply to it as to that run, so that under
-    # STRICT a symbol the image cannot place stops the build rather than shipping an a2l with an address of 0; and
-    # BYTE_ORDER is its alone, held to the byte order the image states.
-    if(arg_ADDRESSES_FROM_IMAGE)
+    # ADDRESSES_FROM_IMAGE and ADDRESS_MAP: the a2l is written once the image is linked, by a second run reading every
+    # address it carries out of the image's debug information, or out of the map - which a step of the project's
+    # extracts from the image after the link, a POST_BUILD command running before anything that depends on the image
+    # - so that one build gives the complete a2l of the image it linked, and no second build has to read it. The run
+    # depends on the image and on what the project is read from, and on the map as well, which a project may write
+    # otherwise - not on the templates or DEPENDS, which are the c's inputs, not the a2l's - so it runs again whenever
+    # the image relinks or a description changes, and under Ninja never otherwise; under Make also at every build that
+    # follows a run of it leaving the a2l unchanged. It writes into the directory the run before the link wrote, whose
+    # manifest keeps each run from taking back the files of the other. STRICT and SEVERITY apply to it as to that
+    # run, so that under STRICT a symbol the image cannot place, or the map leaves out, stops the build rather than
+    # shipping an a2l with an address of 0; and BYTE_ORDER is its alone, held to the byte order an image states.
+    if(a2l_after_the_link)
         set(a2l_options ${common_options})
         if(arg_BYTE_ORDER)
             list(APPEND a2l_options --byte-order ${arg_BYTE_ORDER})
         endif()
+        if(arg_ADDRESSES_FROM_IMAGE)
+            set(address_source --image "$<TARGET_FILE:${image}>")
+            set(map_dependency "")
+            set(reading "Reading the addresses of the a2l out of ${image}")
+        else()
+            set(address_source --address-map "${arg_ADDRESS_MAP}")
+            set(map_dependency "${arg_ADDRESS_MAP}")
+            set(reading "Reading the addresses of the a2l out of the address map of ${image}")
+        endif()
         add_custom_command(OUTPUT "${a2l_file}"
                            COMMAND ${DDD_EXECUTABLE} generate a2l "${project_file}"
                                    --output-dir "${arg_OUTPUT_DIRECTORY}"
-                                   --image "$<TARGET_FILE:${image}>" ${a2l_options}
-                           DEPENDS ${image} "${project_file}" ${descriptions} ${plugin_files} "${DDD_EXECUTABLE}"
-                           COMMENT "Reading the addresses of the a2l out of ${image}"
+                                   ${address_source} ${a2l_options}
+                           DEPENDS ${image} ${map_dependency} "${project_file}" ${descriptions} ${plugin_files}
+                                   "${DDD_EXECUTABLE}"
+                           COMMENT "${reading}"
                            COMMAND_EXPAND_LISTS
                            VERBATIM)
         add_custom_target(${image_stem}_ddd_a2l ALL DEPENDS "${a2l_file}")

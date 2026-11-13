@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from conftest import component, declare, project, render_files, run_analysis
-from ddd.backends import ByteOrder, write
+from ddd.backends import A2lBackend, A2lOptions, ByteOrder, render, write
 from ddd.backends.a2l.model import a2l_string
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_dictionary
@@ -100,6 +100,27 @@ class TestMeasurements:
     def test_address_map(self, tree: Path) -> None:
         content = a2l(tree, declare("local", "X"), addresses={"X": 0x20000100})
         assert "ECU_ADDRESS 0x20000100" in content
+        assert "no address source" not in content
+
+    def test_options_naming_no_address_source_say_so_under_the_version(self, tree: Path) -> None:
+        """Options naming no source of addresses - the backend's defaults among them - write a
+        file whose every address is 0, which says so; options that had one write no such line."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X"), description="a component"),
+        }
+        dictionary, _ = run_analysis(tree, files)
+        assert dictionary is not None
+        for backend, said in (
+            (A2lBackend(), True),
+            (A2lBackend(A2lOptions(has_address_source=True)), False),
+        ):
+            (written,) = render(dictionary, [backend], tree / "gen")
+            head = written.content.splitlines()[1:3]
+            assert head[0] == "ASAP2_VERSION 1 61"
+            assert (
+                head[1] == "/* written with no address source: every address below is 0x00000000 */"
+            ) is said
 
     def test_limits_are_physical(self, tree: Path) -> None:
         """And are the decimals the factor implies, not the binary product of the raw end.

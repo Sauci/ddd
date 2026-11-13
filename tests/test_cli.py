@@ -3637,16 +3637,19 @@ class TestBaselineUnderStrict:
 
 class TestCmakeModule:
     def test_the_a2l_options_are_not_passed_to_a_c_only_generation(self) -> None:
-        """``ddd generate c`` has neither option; a rule carrying them fails on every build."""
+        """A run without the a2l refuses its options; a rule carrying them fails on every build.
+        The byte order reaches the run before the link only where that run writes the a2l, and
+        the map never does: the step after the link reads it."""
         from ddd.cli import cmake_module_directory
 
         directory = cmake_module_directory()
         assert directory is not None
         text = (directory / "Ddd.cmake").read_text(encoding="utf-8")
-        for option in ("--byte-order", "--address-map"):
-            appended = text.index(f"list(APPEND generate_options {option}")
-            guard = text[:appended].rsplit("if(", 1)[1]
-            assert "NOT arg_NO_A2L" in guard, f"{option} is appended without a NO_A2L guard"
+        appended = text.index("list(APPEND generate_options --byte-order")
+        guard = text[:appended].rsplit("if(", 1)[1]
+        assert "NOT arg_NO_A2L" in guard, "--byte-order is appended without a NO_A2L guard"
+        assert "NOT a2l_after_the_link" in guard, "--byte-order reaches a run without the a2l"
+        assert "generate_options --address-map" not in text
 
 
 def test_assigning_ids_fills_an_explicit_null(tree, capsys):
@@ -4660,6 +4663,9 @@ ADDRESS_ROWS = json.loads((ADDRESS_FIXTURES / "manifest.json").read_text(encodin
 of every variable, the compiler's ``offsetof`` of every member, and the target's byte order."""
 X86_ADDRESSES = ADDRESS_FIXTURES / "x86_64.elf"
 
+NO_ADDRESS_SOURCE = "/* written with no address source: every address below is 0x00000000 */"
+"""The line under ``ASAP2_VERSION`` of an a2l written with nothing to read its addresses from."""
+
 
 def a2l_addresses(text: str) -> dict[str, int]:
     """Every record of an a2l and the address it states, read back out of the file: a
@@ -4963,3 +4969,35 @@ class TestGenerateFromAnImage:
             if path.name not in (MANIFEST_NAME, a2l.name)
         }
         assert kept == written
+
+
+class TestAnA2lWrittenWithNoAddressSource:
+    """Every address of such a file is 0, and no ``address-missing`` can say so, there being
+    nothing to miss: the file says it itself, on the line under ``ASAP2_VERSION``. An empty
+    map is no source, being the one a build seeds before its first link; an image is one
+    whatever it places, the finding naming what it does not."""
+
+    @pytest.mark.parametrize(
+        ("source", "said"),
+        [
+            pytest.param(None, True, id="no address source"),
+            pytest.param("{}", True, id="an empty address map"),
+            pytest.param('{"ValueE": "0x20001000"}', False, id="a map with an entry"),
+            pytest.param(X86_ADDRESSES, False, id="an image placing none of its objects"),
+        ],
+    )
+    def test_it_says_so_under_its_version(
+        self, tmp_path: Path, source: str | Path | None, said: bool
+    ) -> None:
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        if isinstance(source, Path):
+            arguments += ["--image", str(source)]
+        elif source is not None:
+            addresses = tmp_path / "addresses.json"
+            addresses.write_text(source, encoding="utf-8")
+            arguments += ["--address-map", str(addresses)]
+        assert main(arguments) == EXIT_OK
+        head = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8").splitlines()
+        assert head[1] == "ASAP2_VERSION 1 61", "the version is no longer on the second line"
+        assert (head[2] == NO_ADDRESS_SOURCE) is said
+        assert NO_ADDRESS_SOURCE not in head[3:]

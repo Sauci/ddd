@@ -112,8 +112,9 @@ In the collected mode the image also has to be linked to its components by the t
 directory is done: a component it reaches only through a link made, or a library defined,
 later is a configure error naming the component (see *The targets it creates* below).
 The a2l is the one artefact that cannot be complete before the link, which decides every
-address it carries: with ``ADDRESSES_FROM_IMAGE`` the module writes it after the link instead,
-out of the linked image, and one build gives it whole (see *The a2l's addresses* below).
+address it carries: with ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` the module writes it after
+the link instead, out of the linked image or out of a map extracted from it, and one build gives
+it whole (see *The a2l's addresses* below).
 
 Besides the image it needs one thing: ``TEMPLATE_DIRECTORY``, the directory of jinja2 templates
 the generated c code is rendered from. It is required and has no default, because the
@@ -379,10 +380,9 @@ including the ones this image happens not to link.
      - what it is
    * - ``<stem>_ddd_generation``
      - custom target running the generator. It depends on the project description and the
-       files collected into it, on the templates, on a ``.py`` plugin the call names, on the
-       address map, on whatever ``DEPENDS`` adds and on the tool itself, so any of those
-       changing regenerates - and the c code the image is otherwise built from does not enter
-       into it.
+       files collected into it, on the templates, on a ``.py`` plugin the call names, on
+       whatever ``DEPENDS`` adds and on the tool itself, so any of those changing regenerates -
+       and the c code the image is otherwise built from does not enter into it.
    * - ``<stem>_ddd_headers``
      - interface library carrying the include directory of the generated headers, and
        depending on the generation. Every registered component links it, so a component
@@ -415,20 +415,21 @@ including the ones this image happens not to link.
        belong to and knows every producer and consumer, which a component listed on its own
        with ``ddd list --standalone`` cannot.
    * - ``<stem>_ddd_a2l``
-     - with ``ADDRESSES_FROM_IMAGE``, built by default: writes the a2l once the image is
-       linked, every address it carries read out of the image (see below). It depends on the
-       image, on the project description and the files collected into it, on a ``.py`` plugin
-       the call names and on the tool, and on nothing the c alone is rendered from.
+     - with ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP``, built by default: writes the a2l once
+       the image is linked, every address it carries read out of the image or out of the map
+       (see below). It depends on the image, on the map, on the project description and the
+       files collected into it, on a ``.py`` plugin the call names and on the tool, and on
+       nothing the c alone is rendered from.
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 
 The outputs declared for the generator are the files the template names already give away, plus
 the a2l and the dictionary - the a2l being the output of ``<stem>_ddd_a2l``'s step instead
-where ``ADDRESSES_FROM_IMAGE`` gives it one - and its byproducts are the files of the
-``{component}`` templates, one for each component of the image: in the collected mode each
-component it links, with ``PROJECT`` each component the project names, whatever the image
-links. Their names come from inside the description files, so the module reads them when the
-build is configured: ``ddd_add_component`` reads the component name of each file it
+where ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` gives it one - and its byproducts are the
+files of the ``{component}`` templates, one for each component of the image: in the collected
+mode each component it links, with ``PROJECT`` each component the project names, whatever the
+image links. Their names come from inside the description files, so the module reads them
+when the build is configured: ``ddd_add_component`` reads the component name of each file it
 registers, ``ddd_generate`` follows the image's link graph to the components it links once
 the directory calling it is done, and with ``PROJECT`` the names are read off the files
 ``ddd sources`` lists. A link the image makes behind a generator expression -
@@ -476,6 +477,11 @@ post-build step can pick it up without rebuilding the path by hand:
 
    get_target_property(a2l firmware.elf DDD_A2L)
    install(FILES "${a2l}" DESTINATION delivery)
+
+Where ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` has the a2l written after the link, a step
+that reads it in the course of the build depends on ``<stem>_ddd_a2l``: a ``POST_BUILD``
+command of the image runs before that target's step, and would read the a2l of the build
+before.
 
 Beside the artefacts the generation step writes ``<project name>.dictionary.json`` - the
 name the a2l takes, which beside ``PROJECT`` is the one written inside that file rather than
@@ -534,13 +540,16 @@ Options
        validates a plugin's block as it is typed. Writing them imports each plugin, at
        configure time, as the ``PLUGINS`` row above says.
    * - ``ADDRESS_MAP <file>``
-     - the symbol to address map filling the addresses into the a2l, written by a step of the
-       project's own (below). A map inside the build tree that does not exist at configure
-       time is seeded with an empty map (``{}``), so the first build of the two-run flow
-       succeeds with every address 0 and the second, once that step has written the real map,
-       fills the addresses in; a missing map in the source tree stays an error. An empty map
-       is a first run rather than a map with holes, so it raises no ``address-missing`` and
-       ``STRICT`` does not fail it; a map that names some objects and not others does, once.
+     - write the a2l once the image is linked, every address it carries read out of this
+       symbol to address map, which a step of the project's own extracts from the image after
+       the link (below): the run before the link leaves the a2l out, as ``NO_A2L`` does, and
+       ``<stem>_ddd_a2l``, built by default, writes it with the map the link has just
+       extracted - again whenever the image relinks, the map changes or a description does.
+       A map inside the build tree that does not exist at configure time is seeded with an
+       empty map (``{}``), since ninja refuses to start a build for want of an input nothing
+       produces; a missing map in the source tree stays an error. An empty map gives no
+       address and raises no ``address-missing``, so ``STRICT`` does not fail it, and the a2l
+       says so itself; a map that names some objects and not others raises it, once.
    * - ``ADDRESSES_FROM_IMAGE``
      - write the a2l once the image is linked, every address it carries read out of the
        image's debug information, so that one build gives the complete a2l: the run before the
@@ -586,7 +595,7 @@ A keyword given no value is a fatal error naming it, in both calls. ``ADDRESS_MA
 ${DDD_MAP}`` with ``DDD_MAP`` unset or empty - the ordinary CMake mistake - reads to
 ``cmake_parse_arguments()`` exactly like a keyword nobody gave, so it used to be dropped in
 silence: the a2l came out with every address ``0x00000000``, no map was seeded and none was a
-dependency, and the two-run flow below never happened.  ``PROJECT`` without a value fell into
+dependency, and the map below was never read.  ``PROJECT`` without a value fell into
 the collected mode and generated out of the link graph instead of out of the file the caller
 meant.
 
@@ -644,7 +653,8 @@ Under ``STRICT`` that is an error, and the build stops rather than ship an a2l w
 of 0. ``BYTE_ORDER`` is held to the byte order the image states: one that contradicts it stops
 the build as well. So does an image the reader cannot read, in the reader's own words - one
 built without ``-g`` is told to be, and one that is not ELF at all, as a host build on Windows
-links, is refused as such. A build like that keeps the address map below.
+links, is refused as such. A build like that reads an address map instead, in the same step
+(below).
 
 Where the address map comes from
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -697,11 +707,19 @@ symbol lister prints something else needs its own reader of that output.
    list(JOIN entries ",\n" body)
    file(WRITE "${OUTPUT}" "{\n${body}\n}\n")
 
-The first build then links with every address 0, this step writes the map, and the next build
-regenerates - the map is one of the generation's dependencies - and re-renders the a2l with
-the addresses in it. The c sources of that second run are byte identical, so nothing is
-recompiled, nothing is relinked, and the flow settles after one extra round rather than
-chasing its own tail.
+The map is read after the link, as ``ADDRESSES_FROM_IMAGE`` reads the image: the generation
+before the link leaves the a2l out, and ``<stem>_ddd_a2l``, built by default, runs ``ddd
+generate a2l --address-map`` once the image is linked. A ``POST_BUILD`` command runs as part of
+the link, before anything that depends on the image, so the step reads the map this very link
+extracted, and the first build of a clean tree gives the a2l of the image it linked. Read
+before the link, the map was the one the link before had extracted: the a2l held the addresses
+of the image before this one, every one of them 0 on a first build, and under ``STRICT`` an
+object new to a description, which that map could not name, stopped every build before the
+link that would have named it. The step runs again whenever the image relinks, the map changes
+or a description does - a map written by hand, or by a step that does not run as part of the
+link, has to be written before it runs - and it writes the a2l into the directory the
+generation before the link wrote, taking none of its files back (:ref:`what-a-run-owns`). The
+build after it has nothing to do: nothing is extracted, read, compiled or linked again.
 
 ``--extern-only`` keeps the file-local statics out: every object a dictionary describes is a
 global, and two translation units each defining a ``static`` of one name would otherwise hand

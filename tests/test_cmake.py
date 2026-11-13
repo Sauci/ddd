@@ -42,7 +42,7 @@ from build_address_fixtures import ORACLE, PROJECT, SYMBOLS, addresses_of, oracl
 
 from conftest import EXAMPLES, declare
 from ddd import __version__
-from test_cli import a2l_addresses
+from test_cli import NO_ADDRESS_SOURCE, a2l_addresses
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(sysconfig.get_path("scripts"))
@@ -190,6 +190,37 @@ def documented_block(opening: str) -> str:
             break
         block.append(line[indent:] if line.strip() else "")
     return "\n".join(block).rstrip() + "\n"
+
+
+def address_map_recipe(image: str) -> tuple[str, str]:
+    """The build page's address map recipe, for ``image`` where the page writes
+    ``firmware.elf``: what comes before the ``ddd_generate`` call, which names the map, and the
+    step after the link that extracts it, running the page's ``cmake/AddressMap.cmake``."""
+    recipe = documented_block("set(address_map")
+    assert 'ADDRESS_MAP "${address_map}"' in recipe, "the page no longer names the map so"
+    before = recipe.split("ddd_generate(")[0]
+    step = "add_custom_command(" + recipe.split("add_custom_command(", 1)[1]
+    return before.replace("firmware.elf", image), step.replace("firmware.elf", image)
+
+
+def based_low(image: str) -> str:
+    """The link options basing ``image`` where a 32 bit ``ECU_ADDRESS`` holds its addresses.
+
+    A 64 bit image is based above 4 GB - 0x140000000 on Windows, and wherever the loader cares
+    to put a position independent executable on linux - which no ECU_ADDRESS holds; an
+    embedded image is not, and it is an embedded image the a2l describes. A GNU toolchain from
+    end to end, since the recipe reads the nm of binutils as the page says, but the option is
+    the object format's rather than the toolchain's: `ld` writing PE takes a base to write at,
+    `ld` writing ELF places a non relocatable executable at 0x400000 on its own and has no
+    `--image-base` at all.
+    """
+    return (
+        "if(WIN32 AND NOT MSVC)\n"
+        f'    target_link_options({image} PRIVATE "-Wl,--image-base,0x400000")\n'
+        "elseif(NOT MSVC)\n"
+        f'    target_link_options({image} PRIVATE "-no-pie")\n'
+        "endif()\n"
+    )
 
 
 @dataclass(frozen=True)
@@ -370,6 +401,13 @@ class Shape:
     mind - though ``ddd_add_component`` does, so only a hand written project spells it
     otherwise."""
 
+    address_map: bool = False
+    """The a2l takes its addresses from ``ADDRESS_MAP``, the map the build page's recipe extracts
+    from the image once it is linked, the image based where an ``ECU_ADDRESS`` holds them."""
+
+    strict: bool = False
+    """``STRICT`` is given, so that a warning stops the build - ``address-missing`` among them."""
+
     def in_a_subdirectory(self) -> bool:
         """Whether the image is defined and generated in ``app/`` rather than at the top."""
         return self.subdirectory or self.linked in (
@@ -411,6 +449,10 @@ LINKED_LATE = {
     "through a library defined later": Shape(linked="through a library defined later"),
 }
 """The shapes whose image reaches its components only once the directory generating it is done."""
+
+MAPPED = Shape(address_map=True, strict=True)
+"""Collected, under ``STRICT``, the a2l's addresses read out of the map the page's recipe
+extracts after the link."""
 
 COMPILED = re.compile(r"Building C object \S*?(\w+\.c)\.o(?:bj)?\b")
 """A compile in a build's log, read back as the c file compiled, whichever generator wrote it."""
@@ -522,6 +564,11 @@ class Story:
         images = root / "app" if shape.in_a_subdirectory() else root
         images.mkdir(exist_ok=True)
         (images / "main.c").write_text(STORY_MAIN, encoding="utf-8")
+        if shape.address_map:
+            (images / "cmake").mkdir()
+            (images / "cmake" / "AddressMap.cmake").write_text(
+                documented_block("# cmake/AddressMap.cmake"), encoding="utf-8"
+            )
         if shape.in_a_subdirectory():
             (images / "CMakeLists.txt").write_text(self.image(), encoding="utf-8")
         (root / "CMakeLists.txt").write_text(self.listing(), encoding="utf-8")
@@ -532,6 +579,10 @@ class Story:
     def generation(self) -> str:
         """The ``ddd_generate`` call, and the links a hand written project makes after it."""
         templates = f'TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"'
+        if self.shape.address_map:
+            templates += ' ADDRESS_MAP "${address_map}"'
+        if self.shape.strict:
+            templates += " STRICT"
         if self.shape.project:
             generation = (
                 f'ddd_generate(img PROJECT "${{CMAKE_SOURCE_DIR}}/project.ddd.json" {templates})\n'
@@ -572,7 +623,8 @@ class Story:
         )
 
     def image(self) -> str:
-        """Where the image is defined, linked and generated, in the order the shape says."""
+        """Where the image is defined, linked and generated, in the order the shape says, and
+        the page's recipe around the call where the a2l takes its addresses from a map."""
         linked = self.shape.linked
         spare = " spare" if self.shape.spare_linked else ""
         link = {
@@ -580,8 +632,15 @@ class Story:
             "through a library defined later": "target_link_libraries(img PRIVATE platform)\n",
         }.get(linked, f"target_link_libraries(img PRIVATE bundle{spare})\n")
         calls = [link, self.generation()]
-        return "add_executable(img main.c)\n" + "".join(
-            reversed(calls) if linked == "after the call" else calls
+        before, after = "", ""
+        if self.shape.address_map:
+            before, step = address_map_recipe("img")
+            after = step + based_low("img")
+        return (
+            "add_executable(img main.c)\n"
+            + before
+            + "".join(reversed(calls) if linked == "after the call" else calls)
+            + after
         )
 
     def listing(self) -> str:
@@ -652,13 +711,29 @@ add_library(spare STATIC spare.c)
         assert run.returncode == 0, run.stdout + run.stderr
         return run.stdout + run.stderr
 
+    def images(self) -> Path:
+        """The build directory the image is linked into, and generated in."""
+        return self.build_dir / "app" if self.shape.in_a_subdirectory() else self.build_dir
+
+    def image_file(self) -> Path:
+        return self.images() / ("img.exe" if os.name == "nt" else "img")
+
+    def a2l(self) -> str:
+        """The a2l as the last build left it."""
+        return (self.images() / "ddd" / "img" / "StoryDevice.a2l").read_text(encoding="utf-8")
+
+    def placed(self) -> dict[str, int]:
+        """Where the image the last build linked has each record of the a2l, as ``nm`` reads it
+        - never through the map the build extracted, nor through DDD's reader."""
+        found = addresses_of(self.image_file())
+        return {symbol: found[symbol] for symbol in a2l_addresses(self.a2l())}
+
     def build(self) -> Step:
         run = cmake("--build", str(self.build_dir), cwd=self.build_dir)
         output = run.stdout + run.stderr
         printed = ""
         if run.returncode == 0:
-            images = self.build_dir / "app" if self.shape.in_a_subdirectory() else self.build_dir
-            image = images / ("img.exe" if os.name == "nt" else "img")
+            image = self.image_file()
             shown = subprocess.run([str(image)], capture_output=True, text=True, check=False)
             assert shown.returncode == 0, shown.stdout + shown.stderr
             printed = shown.stdout.strip()
@@ -893,6 +968,99 @@ class TestTheBuildAfterAnEdit:
         edited = story.build()
         assert edited.code == 0 and edited.generated(), edited.output
         assert "Configuring done" not in edited.output, edited.output
+
+
+class TestTheMapReadOnceTheImageIsLinked:
+    """``ADDRESS_MAP`` with the build page's recipe, under ``STRICT``: the a2l a build writes
+    holds the addresses of the image that build linked.
+
+    The generation before the link wrote the a2l, reading the map the link before it had
+    extracted, so each build's a2l carried the addresses of the image linked before it: every
+    address 0 on the first build of a clean tree, and after an edit that moved a variable, the
+    address it had - with no finding, not even under ``STRICT``, and nothing in the file to
+    tell. An object a description gained was missing from that map, so under ``STRICT`` the
+    generation stopped before anything compiled, and since only a link rewrites the map, every
+    build after it stopped the same way. The map is read once the image is linked now, by
+    ``<stem>_ddd_a2l``, as ``ADDRESSES_FROM_IMAGE`` reads the image; and an a2l written with
+    nothing to read its addresses from says so itself, no finding being able to.
+    """
+
+    @pytest.mark.parametrize(
+        ("shape", "addressed"),
+        [
+            pytest.param(MAPPED, True, id="its addresses read from the map"),
+            pytest.param(Shape(strict=True), False, id="no address source"),
+        ],
+    )
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_clean_trees_first_build_is_said_for_what_it_is(
+        self, tmp_path: Path, generator: str, shape: Shape, addressed: bool
+    ) -> None:
+        """With the map, the first build of a clean tree gives the a2l of the image it linked,
+        rather than one of zeros a second build would correct; without an address source the
+        a2l can only be one of zeros, and the line under its version says so."""
+        story = Story(tmp_path, shape, generator)
+        first = story.build()
+        assert first.code == 0, first.output
+        head = story.a2l().splitlines()[:3]
+        recorded = a2l_addresses(story.a2l())
+        assert recorded, "the story has records to address"
+        if addressed:
+            assert recorded == story.placed()
+            assert NO_ADDRESS_SOURCE not in head
+        else:
+            assert set(recorded.values()) == {0}
+            assert head[1:] == ["ASAP2_VERSION 1 61", NO_ADDRESS_SOURCE]
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_an_array_grown_and_built_once_is_at_this_links_addresses(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """``Buffer`` grows from 2 to 40 elements in one build, and the variables the linker
+        places after it move: the a2l says where they are now."""
+        story = Story(tmp_path, MAPPED, generator)
+        story.describe("uint8", declare("local", "Buffer", dimensions=[2]))
+        assert story.build().code == 0
+        before = story.placed()
+        story.describe("uint8", declare("local", "Buffer", dimensions=[40]))
+        grown = story.build()
+        assert grown.code == 0, grown.output
+        after = story.placed()
+        assert after != before, "nothing moved, so the story does not tell the two apart"
+        assert a2l_addresses(story.a2l()) == after
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_an_object_added_still_builds(self, tmp_path: Path, generator: str) -> None:
+        """``Ticks`` is new to the sensor, so the map the last link extracted has no entry for
+        it: nothing reads that map before the link any more, and the one this link extracts
+        has it."""
+        story = Story(tmp_path, MAPPED, generator)
+        assert story.build().code == 0
+        story.describe("uint8", declare("local", "Ticks", "uint16"))
+        added = story.build()
+        assert added.code == 0, added.output
+        assert "Ticks" in story.placed()
+        assert a2l_addresses(story.a2l()) == story.placed()
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_map_written_without_a_link_is_read_again_and_nothing_else_runs(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A map may be written otherwise than by a step of the link - by hand, say - so the
+        step after the link depends on it as well as on the image; the generation before the
+        link, which does not read it, does not run for it, nor does anything it orders."""
+        story = Story(tmp_path, MAPPED, generator)
+        assert story.build().code == 0
+        address_map = story.images() / "ddd" / "img" / "addresses.json"
+        entries = json.loads(address_map.read_text(encoding="utf-8"))
+        entries["Sample"] = "0x00500000"
+        address_map.write_text(json.dumps(entries), encoding="utf-8")
+        reread = story.build()
+        assert reread.code == 0, reread.output
+        assert "Reading the addresses of the a2l out of the address map of img" in reread.output
+        assert not reread.generated() and not reread.compiled, reread.output
+        assert "Linking" not in reread.output
+        assert a2l_addresses(story.a2l())["Sample"] == 0x00500000
 
 
 class TestACollectedProjectWithPlugins:
@@ -1521,7 +1689,8 @@ message(STATUS "DDD_DICTIONARY=${{dictionary}}")
 
 
 class TestTheDocumentedAddressMapRecipe:
-    """The two-run flow of the build page, run: three builds, and what the a2l ends up with.
+    """The build page's address map recipe, run: one build, what the a2l ends up with, and the
+    build after it.
 
     Every build after the first used to fail. The recipe extracts every defined symbol of the
     image, and an address outside ``0 .. 0xFFFFFFFF`` was refused whether or not DDD knew the
@@ -1541,8 +1710,7 @@ class TestTheDocumentedAddressMapRecipe:
 
     def write(self, tmp_path: Path) -> Path:
         source = example_project(tmp_path)
-        recipe = documented_block("set(address_map")
-        assert 'ADDRESS_MAP "${address_map}"' in recipe, "the page no longer names the map so"
+        before, step = address_map_recipe("firmware.elf")
         (source / "cmake").mkdir()
         (source / "cmake" / "AddressMap.cmake").write_text(
             documented_block("# cmake/AddressMap.cmake"), encoding="utf-8"
@@ -1552,50 +1720,34 @@ class TestTheDocumentedAddressMapRecipe:
         schemas = 'SCHEMA_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schemas")'
         assert schemas in text
         text = text.replace(
-            "ddd_generate(firmware.elf",
-            recipe.split("ddd_generate(")[0] + "ddd_generate(firmware.elf",
+            "ddd_generate(firmware.elf", before + "ddd_generate(firmware.elf"
         ).replace(
             schemas,
             schemas[:-1] + '\n             ADDRESS_MAP "${address_map}"'
             '\n             STRICT\n             SEVERITY "address-missing=info")',
         )
-        text += "\n" + "add_custom_command(" + recipe.split("add_custom_command(", 1)[1]
-        # A 64 bit image is based above 4 GB - 0x140000000 on Windows, and wherever the loader
-        # cares to put a position independent executable on linux - which no ECU_ADDRESS holds;
-        # an embedded image is not, and it is an embedded image the a2l describes. A GNU
-        # toolchain from end to end, since the recipe reads the nm of binutils as the page
-        # says, but the option is the object format's rather than the toolchain's: `ld` writing
-        # PE takes a base to write at, `ld` writing ELF places a non relocatable executable at
-        # 0x400000 on its own and has no `--image-base` at all.
-        text += (
-            "\nif(WIN32 AND NOT MSVC)\n"
-            '    target_link_options(firmware.elf PRIVATE "-Wl,--image-base,0x400000")\n'
-            "elseif(NOT MSVC)\n"
-            '    target_link_options(firmware.elf PRIVATE "-no-pie")\n'
-            "endif()\n"
-        )
+        text += "\n" + step + "\n" + based_low("firmware.elf")
         listing.write_text(text, encoding="utf-8")
         return source
 
-    def test_three_builds_settle_with_the_addresses_in_the_a2l(self, tmp_path: Path) -> None:
+    def test_one_build_gives_the_addresses_and_the_next_has_nothing_to_do(
+        self, tmp_path: Path
+    ) -> None:
         source = self.write(tmp_path)
         configure(source, tmp_path / "build")
         generated = tmp_path / "build" / "ddd" / "firmware.elf"
 
-        build(tmp_path / "build")
-        a2l = (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
-        assert "ECU_ADDRESS 0x00000000" in a2l, "the first build runs before anything is linked"
+        output = build(tmp_path / "build")
         extracted = json.loads((generated / "addresses.json").read_text(encoding="utf-8"))
         assert "ValueA" in extracted, "the step extracts the symbols of the image"
         assert any(name.startswith("_") for name in extracted), "the c runtime's among them"
-
-        output = build(tmp_path / "build")
+        assert "Reading the addresses of the a2l out of the address map of firmware.elf" in output
         assert "address-missing" in output, "the two objects a symbol lister cannot answer for"
         a2l = (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
         assert f"ECU_ADDRESS 0x{int(extracted['ValueA'], 16):08X}" in a2l
 
-        # "nothing is recompiled, nothing is relinked, and the flow settles after one extra
-        # round rather than chasing its own tail" - the page's own sentence about this flow.
+        # "nothing is extracted, read, compiled or linked again" - the page's own sentence
+        # about the build after it.
         assert "no work to do" in build(tmp_path / "build")
 
     def test_two_file_local_statics_of_one_name_do_not_collide(self, tmp_path: Path) -> None:
@@ -1624,8 +1776,8 @@ class TestTheDocumentedAddressMapRecipe:
         listing.write_text(text, encoding="utf-8")
 
         configure(source, tmp_path / "build")
-        build(tmp_path / "build")  # links with every address 0, then writes the map
-        build(tmp_path / "build")  # regenerates from the map - the run the duplicate used to fail
+        # One build links, extracts the map and reads it: the read the duplicate used to fail.
+        build(tmp_path / "build")
         generated = tmp_path / "build" / "ddd" / "firmware.elf"
         extracted = json.loads((generated / "addresses.json").read_text(encoding="utf-8"))
         assert "cntr_50ms_decimate_5" not in extracted

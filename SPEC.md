@@ -1454,7 +1454,8 @@ Warnings:
   image the run was given. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction, which is the
   run a build makes
-  before it has linked anything ([section 7.1](#71-build-system-integration)). With one, a
+  before it has linked anything ([section 7.1](#71-build-system-integration)), and the A2L
+  says so itself ([section 6](#6-address-information)). With one, a
   symbol the map omits is written at address zero, and a calibration tool reads and writes
   there as readily as anywhere else. It is one finding per run, naming up to five of the
   uncovered objects and counting the rest, with a note naming, the same way, the entries of
@@ -1870,11 +1871,12 @@ ASAM MCD-2 MC output containing:
 The A2L is written as `<project name>.a2l` into the output directory (`-o`), beside the C
 sources; a component generated on its own names the file after the component. The file is
 UTF-8 and opens with a UTF-8 byte order mark, then the generator comment and
-`ASAP2_VERSION 1 61`, and holds one `PROJECT` holding one `MODULE`, both named
-after the project ([section 3.1](#31-project-description)). The mark is the encoding
-declaration: ASAP2 1.6.1 section 1.5 says a reader detects the encoding from a byte order
-mark and otherwise reads the file as ISO-8859-1, and the `ENCODING` keyword that would say
-it in words arrives only with 1.7. Without the mark a unit such as `°C`, written UTF-8,
+`ASAP2_VERSION 1 61` - followed, in a file written with no address source, by a comment
+saying so ([section 6](#6-address-information)) - and holds one `PROJECT` holding one
+`MODULE`, both named after the project ([section 3.1](#31-project-description)). The mark
+is the encoding declaration: ASAP2 1.6.1 section 1.5 says a reader detects the encoding from
+a byte order mark and otherwise reads the file as ISO-8859-1, and the `ENCODING` keyword that
+would say it in words arrives only with 1.7. Without the mark a unit such as `°C`, written UTF-8,
 reaches a tool as `Â°C` or stops its parser; no other artefact carries one
 ([section 5.1](#51-c-code)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
@@ -2057,7 +2059,11 @@ A map with entries, or an image, that leaves an object of the A2L uncovered is
 `address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under
 `--strict`, and a run that reports it as an error writes nothing rather than a file whose
 addresses it has just been told are incomplete, unless `--force` asks for the file anyway
-([section 7](#7-tool-interface)). `ddd generate a2l` writes the A2L alone - no C is rendered
+([section 7](#7-tool-interface)). A run given neither, or given a map with no entry, has no
+address source: every address of its A2L is `0x00000000`, and no `address-missing` reports
+it, there being nothing to miss, so the file says so itself, on the line under
+`ASAP2_VERSION`: `/* written with no address source: every address below is 0x00000000 */`.
+`ddd generate a2l` writes the A2L alone - no C is rendered
 and no template directory is accepted - so the post-link run regenerates the A2L without
 touching the sources the image was built from. Reading IEEE-695 images, and cross-checking
 the type of each linked variable against its declaration, is *planned*.
@@ -2271,16 +2277,16 @@ components and with them the `GROUP`s, while the objects themselves sort by name
 hand written project description is used instead, which is the mode for an older CMake, or
 for a project layout the link graph does not mirror; `NAME` is then ignored in favour of
 the name written inside the file. An `ADDRESS_MAP <file>` names the address map of
-[section 6](#6-address-information): the map is a dependency of the generation, so
-rewriting it after linking is what makes the next build run DDD a second time with real
-addresses ([section 1.6](#16-position-in-the-build-process)), and the C sources that second
-run re-renders are byte identical and trigger no rebuild ([section 5.1](#51-c-code)). A
-map named inside the build tree that does not exist yet is seeded empty at configure time,
-so that the first build runs with address zero instead of failing over a file only the
-link can produce; an empty map raises no `address-missing`
-([section 4](#4-consistency-checks)), so that first build passes under `STRICT` as well.
-With `NO_A2L` the map is neither seeded nor a dependency, the A2L being the only artefact
-that reads it.
+[section 6](#6-address-information), which a step of the project's extracts from the image
+after the link: the A2L is written after the link out of the map, as `ADDRESSES_FROM_IMAGE`
+below writes it out of the image, so that the A2L of a build holds the addresses of the
+image that build linked ([section 1.6](#16-position-in-the-build-process)). A map named
+inside the build tree that does not exist yet is seeded empty at configure time, a build
+refusing to start for want of an input nothing produces, and the step after the link reads
+it once the project's step has written it; an empty map raises no `address-missing`
+([section 4](#4-consistency-checks)), and the A2L written with it says so
+([section 6](#6-address-information)). With `NO_A2L` the map is neither seeded nor read, the
+A2L being the only artefact that reads it.
 
 The generation declares as its outputs the files the template names give away, the A2L and
 the dictionary, and as its byproducts the files of each `{component}` template, one for every
@@ -2309,19 +2315,20 @@ build is configured again once it is written, the build after its component's he
 compiles the components reading it against the old one.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
-([section 6](#6-address-information)), so that one build gives the complete A2L: the
-generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after the
-link runs `ddd generate a2l --image` over the image, the A2L its output. The step depends on
-the image and on what the project is read from - its description, the files it is collected
-or included from, the `.py` plugins and the tool - so it runs again when the image relinks or
-a description changes, and under Ninja never otherwise; under Make it also runs at every
-build that follows a run of it leaving the A2L unchanged. A target `<stem>_ddd_a2l`, built by
-default, drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it
-into the directory the generation before the link writes into, whose manifest keeps either run
-from taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`,
-`SEVERITY` and `BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image
-cannot place stops the build. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L`
-is a configure error naming both.
+([section 6](#6-address-information)). With either keyword one build gives the complete A2L:
+the generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after
+the link runs `ddd generate a2l` over the image with `--image`, or over the map with
+`--address-map`, the A2L its output. The step depends on the image, on the map, and on what
+the project is read from - its description, the files it is collected or included from, the
+`.py` plugins and the tool - so it runs again when the image relinks, the map changes or a
+description does, and under Ninja never otherwise; under Make it also runs at every build that
+follows a run of it leaving the A2L unchanged. A target `<stem>_ddd_a2l`, built by default,
+drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it into the
+directory the generation before the link writes into, whose manifest keeps either run from
+taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`, `SEVERITY` and
+`BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot place, or the
+map leaves out, stops the build. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside
+`NO_A2L` is a configure error naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,

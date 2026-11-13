@@ -1621,6 +1621,19 @@ class TestTheDictionaryPage:
         assert without_descriptions(shown) == without_descriptions(expected)
 
 
+class TestTheArtefactsPage:
+    """The page shows the head of the demo's a2l, which the demo writes with no address source,
+    so the lines it shows under the generator's comment are the ones the file has."""
+
+    def test_the_head_of_the_a2l_is_shown_as_it_is_written(self, tmp_path: Path) -> None:
+        output = tmp_path / "gen"
+        assert main(["generate", "a2l", str(DEMO), "-o", str(output)]) == EXIT_OK
+        written = (output / "DemoDevice.a2l").read_text(encoding="utf-8").splitlines()
+        page = PAGES["docs/generated_artefacts.rst"]
+        shown = page.split("   /* DemoDevice.a2l - generated from 'DemoDevice'", 1)[1].splitlines()
+        assert [line.strip() for line in shown[1:4]] == written[1:4]
+
+
 def view_attributes(cls: type) -> list[str]:
     """What a template can read off a view: its fields, properties and public methods."""
     names = [field.name for field in dataclasses.fields(cls)]

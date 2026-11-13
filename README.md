@@ -751,15 +751,17 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
   `AXIS_PTS_REF`; an axis referenced this way is always exported, because a dangling
   `AXIS_PTS_REF` would make the file invalid
 * the address of an object is `0x00000000` unless the linked image or an address map gives
-  it (`ECU_ADDRESS` is simply the keyword the format uses);
+  it (`ECU_ADDRESS` is simply the keyword the format uses), and a file written with neither -
+  or with a map that has no entry - says so on the line under its `ASAP2_VERSION`;
   `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking.
   `--image firmware.elf` reads every address out of the linked ELF image's DWARF - an object
   by its name, a structure member by its access path - and takes the image's byte order; a
   symbol the image cannot place keeps address 0 and is reported, its reason a note, and in
   cmake `ADDRESSES_FROM_IMAGE` makes the a2l one step after the link.  `--address-map` serves
-  an image without debug information.
+  an image without debug information, and in cmake `ADDRESS_MAP` makes the a2l the same step,
+  reading the map.
   The map is a flat json object of symbol to address, decimal or hexadecimal, produced from
-  the linker output after the first build; a symbol that is not in it keeps address 0, and
+  the linker output after the link; a symbol that is not in it keeps address 0, and
   an address outside `0` .. `0xFFFFFFFF` is refused rather than written out malformed:
 
   ```json
@@ -884,8 +886,9 @@ report what the build reports.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
-the schemas), `ADDRESS_MAP`, `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
-addresses read out of the linked image), `BYTE_ORDER`,
+the schemas), `ADDRESS_MAP` and `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
+addresses read out of the map a step of the project's extracts, or out of the linked image),
+`BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an

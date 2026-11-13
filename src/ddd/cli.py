@@ -1223,6 +1223,9 @@ def _command_generate(args: argparse.Namespace) -> int:
                     A2lOptions(
                         byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
                         addresses=addresses,
+                        # An image is a source whatever it places, the finding naming what it
+                        # does not; a map is one once it has an entry, as for that finding.
+                        has_address_source=image_path is not None or bool(addresses),
                     ),
                     GENERATOR,
                 )

@@ -370,8 +370,11 @@ has its test in the task named after it.
 
 1. **A second writer during any GUI write, not only the three the review timed.** The second writer
    can be an editor's save, a second `ddd gui` or `ddd id --assign`, and it can land during a create,
-   an undo or a multi-file rename. Each must refuse `stale` or keep both changes, never answer
-   written over a lost save. *(Branch 1, task 2: an undo and a create, each raced by a save.)*
+   an undo or a multi-file rename. Each save landing before the write's last look at its file must
+   be refused `stale` or kept beside the write, and never answered as written over. One landing
+   between that look and the rename is still lost, since no lock of the file system closes that
+   moment (*Left open*, branch 1). *(Branch 1, task 2: an undo and a create, each raced by a
+   save.)*
 2. **Windows.** A held handle, the read-only flag, the console's code page, a path past 260
    characters. *(Branch 1, task 5; branch 2, task 6; branch 16, task 6: on the windows legs.)*
 3. **A project with one file that does not load.** Every plan, panel and count must say so, rather
@@ -406,17 +409,17 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
 - the matching `tests/test_*.py`, with `test_editing_at_once.py`;
 - `docs/command_line_interface.rst` (the gui row), `SPEC.md` 7 and `CHANGELOG.md`.
 
-- [ ] **Task 1 (`13:C2`, Critical):** every writer stages under a name of its own beside the file
+- [x] **Task 1 (`13:C2`, Critical):** every writer stages under a name of its own beside the file
       (`tempfile.mkstemp` in the target's directory), in `editing.py` and in `identity.py`.
       `CREATED_NAME_MAX` and the test pinning the suffix follow. 22:M1 was refuted: that test pins a
       spelling and nothing more. Test: the probe
       `test_p13_c2_what_an_edit_answers_is_true_of_the_file_when_another_writer_stages`.
-- [ ] **Task 2 (`13:I1`, raised to Critical):** after staging, and immediately before each rename,
+- [x] **Task 2 (`13:I1`, raised to Critical):** after staging, and immediately before each rename,
       compare the file's bytes with `original` again. A difference refuses `stale` and puts back what
       was already renamed. Tests:
       - the probe `test_p13_i1_a_save_landing_during_an_edit_is_refused_not_overwritten`;
       - for Review focus 1, an undo and a create, each raced by a save through the same seam.
-- [ ] **Task 3 (`13:C1`, Critical):** a revision fingerprints the bytes its analysis read.
+- [x] **Task 3 (`13:C1`, Critical):** a revision fingerprints the bytes its analysis read.
       - The loader records a hash of the bytes it parsed for each file, and `_described` takes those
         rather than reading the file again.
       - The plans that point by index ask the in-place question the read routes ask: `rename_unit`,
@@ -426,7 +429,7 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
       Tests: the probes `test_p13_c1_a_revision_fingerprints_the_bytes_its_analysis_read` and
       `test_p13_c1_an_edit_planned_from_that_revision_is_refused_as_stale`, with
       `saving_while_analysing` in `tests/test_gui_session.py` making the trigger.
-- [ ] **Task 4 (`1:C4`, Critical):** `ddd gui` recognises a project the build generated, from the
+- [x] **Task 4 (`1:C4`, Critical):** `ddd gui` recognises a project the build generated, from the
       build record that names it or from a mark `cmake/Ddd.cmake` writes into it.
       - Every plan that would touch such a project's files is refused, with a sentence saying that
         membership is `ddd_add_component`'s.
@@ -434,7 +437,7 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
 
       Test: the review's `b/ddd/fw/Fw.ddd.json` project, where both the create and the include are
       refused with that sentence.
-- [ ] **Task 5 (`13:I4`, `13:M1`; decisions 13.1 and 13.4):**
+- [x] **Task 5 (`13:I4`, `13:M1`; decisions 13.1 and 13.4):**
       - A target this process may not write is refused before staging, on every system.
       - A stage is made writable before it is unlinked.
       - The staged bytes are `os.fsync`ed before the rename.
@@ -444,7 +447,7 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
       Test (Review focus 2): a 0444 file on Linux is refused, its bytes and mode untouched and no stage
       left. On the windows legs, a read-only file is refused, and the next edit succeeds once the file
       is writable.
-- [ ] **Task 6 (`2:I6`, `13:I5`, `2:M7`; decision 2.5):** `identity.assign` builds `FileChange`s and
+- [x] **Task 6 (`2:I6`, `13:I5`, `2:M7`; decision 2.5):** `identity.assign` builds `FileChange`s and
       calls `apply_changes`, keeping its insertion after `name`.
       - It then keeps a file's mode, writes through a symbolic link, and refuses what the loader
         refuses: a duplicated key, a `NaN`.
@@ -452,7 +455,7 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
 
       Tests: `ddd id --assign` keeps a 0600 file at 0600; stamps a link's target and keeps the link;
       writes nothing to a file with a duplicated key, and says so.
-- [ ] **Task 7 (`13:I2`, `16:I10`, `14:M4`; decision 13.3):** while a file of the project does not
+- [x] **Task 7 (`13:I2`, `16:I10`, `14:M4`; decision 13.3):** while a file of the project does not
       load, every plan that renames or removes is refused, naming the file, as `rename_unit` already
       is: `_type_plan`, `_shared_plan`, `_settle`, and a declaration's removal.
       - A plan's refusal says that a file did not load, not "no such entry".
@@ -460,7 +463,7 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
 
       Test (Review focus 3): one parametrised test over every plan route with `b.ddd.json` half
       saved. Each route answers 409 and names `b`.
-- [ ] **Task 8 (`13:I3`, `10:I7`; decision 13.5):** the text a plan computes is validated with the
+- [x] **Task 8 (`13:I3`, `10:I7`; decision 13.5):** the text a plan computes is validated with the
       model of that file's kind before it is answered.
       - A quick fix or a button whose result would not load is withheld, in the GUI and in the editor
         alike (`finding_fixes.py` imports `lsp.edits.reconciliations`).
@@ -468,12 +471,12 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
 
       Test: the three file-breaking fixes the verification reproduced are withheld. The panel's case
       is planned with its sentence.
-- [ ] **Task 9 (`13:I6`):** `declarable` leaves out a name that only locals hold. Test: W's local
+- [x] **Task 9 (`13:I6`):** `declarable` leaves out a name that only locals hold. Test: W's local
       `Loc` is not offered to R.
-- [ ] **Task 10 (`13:M8`, `18:M3`):** adding a member to a one-line file, and `ddd id --assign` over a
+- [x] **Task 10 (`13:M8`, `18:M3`):** adding a member to a one-line file, and `ddd id --assign` over a
       large file, become linear. Test: one that fails on quadratic growth without timing the machine,
       for example by counting the characters scanned at 1,000 and 4,000 declarations.
-- [ ] **Task 11 (`13:M2`, `13:M3`, `13:M4`, `13:M6`, `13:M7`, `13:M9`):**
+- [x] **Task 11 (`13:M2`, `13:M3`, `13:M4`, `13:M6`, `13:M7`, `13:M9`):**
       - `at` without brackets is refused.
       - Reading a conditional object carries its condition.
       - A short `init`'s cell past its end is set, the repair `object_values.py` promises.
@@ -481,7 +484,7 @@ see. This branch carries three Criticals and pass 1's GUI one, 1:C4.
       - A created file takes the project's newline and indent.
       - The Files tab writes includes with `/`, relative to the project.
       - A key holding the pointer grammar is refused, not answered 500.
-- [ ] **Task 12 (`13:M5`):** a stale refusal asks for an analysis, so a change of the same size and
+- [x] **Task 12 (`13:M5`):** a stale refusal asks for an analysis, so a change of the same size and
       time is not stale for good.
 
 ### Branch 2: `fix/build-integration` (off branch 1)
@@ -939,7 +942,9 @@ What the GUI's server answers, and what it lets a plan carry.
 - `docs/command_line_interface.rst` and `CHANGELOG.md`.
 
 - [ ] **Task 1 (`3:I1`, `3:I2`, `3:M9`; decisions 3.2 and 3.3):** pass 3's move 2.
-      - `settle` and `type-plan` ask the models about the definition as the plan would leave it.
+      - `type-plan`'s `set_key` asks the models about the definition as the plan would leave it,
+        through `ddd.models.definition_problem`, which `settle` asks already since branch 1, task 8
+        (`lsp/edits.loading_problem`), so that one rule serves both.
       - Min and Max travel as text.
       - Where no declaration states `limits`, the settlement writes them on the producer.
       - `same_value` reads limits exactly.
@@ -1367,9 +1372,215 @@ maintainer has:
 
 Recorded as each branch lands, so that nothing is lost between a task and the release notes.
 
+**Branch 1:**
+- **Long file names** (task 1, `13:C2`): a stage is 21 bytes longer than its file's name, where it
+  was 12, so an existing file named 235 to 255 bytes can no longer be edited, where it was 244 to
+  255, and on a Windows without long paths, which decision 22.2 supports, a file whose full path is
+  239 characters or more, where it was 248. A file created from the page is refused past 234 bytes,
+  naming the limit. Branch 13 lists `file_names.py`, which builds the stage's name.
+- **The 255-byte stage on a real disk** (task 1): the test of the longest name a file can be
+  created under stages a name of 255 bytes in the test's own temporary directory, a full path that
+  a Windows without long paths refuses. Branch 16, task 6, the longest-name tests on a stock
+  Windows, takes it with them.
+- **A unit rename's plan parses each file twice** (task 3, `13:C1`): the in-place guard and the
+  plan each parse every file, so the plan of a unit stated in 1,167 files takes 1.55 s where it
+  took 1.14 s, widening a budget the plans already miss (spec §3). Branch 10, task 5 owns it,
+  with the plans it measures against their budgets.
+- **`ddd id --assign` syncs the files it stamps one after another** (task 6, `2:I6`): it hands
+  `apply_changes` one file at a time, so nothing batches the syncs, as an edit's are batched.
+  Measured on the Linux development PC's NVMe disk (ext4) over the generated project of 35,000
+  declarations with every output lacking an id - 1,166 component files - a first run took 0.70 s
+  before this branch and 10.7 s after it, the median of three runs each; a second run, which
+  stamps nothing, about 0.6 s both. No branch owns `identity.py`.
+- **The variable's key chooser still offers another component's locals** (task 9, `13:I6`): for an
+  `axis` or an `input` it lists a name another component declares `local`, which `declarable`
+  leaves out, and choosing it writes a `local-conflict`, the harm `13:I6` was graded for. Branch
+  10 lists `variable_keys.py`, where the chooser's offer is made.
+- **A description given with `PROJECT` whose record sits beside it reads as generated** (task 4,
+  `1:C4`; R2): `ddd_generate()` writes `ddd-build.json` into `OUTPUT_DIRECTORY` with or without
+  `PROJECT`, and where that is the description's own directory the record names a hand-written
+  project from beside it: every change of its files is refused as `generated`, in a sentence
+  saying the build writes it. Nothing is written wrongly, and the CLI and developer pages state the
+  limit. Branch 2, which owns `cmake/Ddd.cmake`, can say precisely which description the build
+  writes, by a key it adds to the description it collects or to the record: an addition to the
+  format, which its changelog would then state.
+- **A removal refused as stale is let go only by closing the panel** (R22): the variable panel's
+  removal offer withdraws Remove while any refusal stands (P19b-24), so its sentence, kept now
+  until the reader's next choice, goes when they settle a key or close the panel, and only then is
+  Remove offered again. Drawing Remove under the sentence, as the other offers draw their Apply, is
+  the question P19b-24 recorded for the maintainer. Branch 11 lists `screens/*` and
+  `components/*`.
+- **A create racing another writer's create** (task 2, `13:I1`; R23): a file an edit creates is
+  renamed into place, replacing one another writer created between the edit's last look and the
+  rename, and a save landing in that instant is written over too, as the documents now say.
+  Closing the create case takes a write that refuses an existing name - the stage linked to the
+  new name, then unlinked, and on Windows a rename that refuses one - with a fallback where a file
+  system offers neither. No branch owns `editing.py`.
+- **A read-only file is answered `500`** (task 5, `13:I4`): `unwritable`, refused before anything
+  is staged, takes the status of a write that failed, where a refusal the reader can mend is a
+  `409` elsewhere; another status is a change of the contract. Branch 10 lists `gui/api.py`, which
+  chooses it, and the contract.
+- **An undo left half written forward keeps its entry** (task 2, `16:M23`): after an `unwritable`
+  undo that put a file back but could not write the others forward again, the entry stays on the
+  stack, so a later undo of it is refused `stale` and the edits beneath it are out of reach until
+  the server restarts. Branch 11, task 11 owns it.
+- **What a refused write says** (tasks 2 and 5): a refused one-file edit, and a stage or a sync
+  refused in a batch, say the files already written were put back, or written forward again,
+  where none was touched; a file that cannot be read at the last look is told it changed on disk,
+  its error dropped; and a file deleted just before the write, or during an undo's batch, is
+  answered `unwritable` where `stale` is true. No branch owns `editing.py`.
+- **A folder a stage cannot be made in, and a umask without the owner's write bit** (task 5): the
+  first is refused only at its stage, after the files before it were written and then put back;
+  under the second every edit and undo is refused, the stage being opened again to write before
+  it is synced. No branch owns `editing.py`.
+- **A plan an unanalysed edit moved reads as `stale`** (task 3): where an edit of the page's own
+  moved the place a plan points at, the plan is refused `stale` before that edit's analysis lands,
+  ahead of the `analysing` refusal the CLI page documents for the case. Branch 10 lists
+  `object_values.py` and `gui/api.py`.
+- **A settled value whose declaration moved is refused `unreadable`** (task 3): where the other
+  plans say `stale`, as the changelog states; the page draws the two alike. No branch owns
+  `variables.py`.
+- **Fingerprints across several build records** (task 3): a file several runs read takes the
+  fingerprint of the first run that read it, not the index's run, so a file saved and put back
+  between two runs can carry the fingerprint of bytes other than the index's; several records
+  only, and rare. Branch 7 and branch 10 list `gui/session.py`.
+- **A generated project left unrecognised** (task 4): a record that does not parse is read as no
+  record, and `ddd build-info --output` writes one unstaged, so a write that dies can leave it
+  half written; a build configured at another path, a container's mount, names a project the path
+  opened does not match; and an empty `CMAKE_HOME_DIRECTORY` reads as the working directory. Each
+  can leave a generated description editable. Branch 7 and branch 10 list `gui/session.py`, branch
+  12 `cli.py`.
+- **An existing description added to a generated project** (task 4): is refused without the
+  `ddd_add_component()` line a new file is offered with. Branch 10 lists `gui/*.py`.
+- **The editor's own id fix** (tasks 6 and 10): the language server places an id with
+  `identity.insertions`, always breaking the line, so for a one-line object or a file of bare
+  carriage returns it writes other bytes than the page's fix and `ddd id`, and on a one-line file
+  it reads the file through once per declaration. Branch 9 lists `lsp/*.py`, which could build the
+  offer from the engine's own edit.
+- **What `ddd id` reports** (task 6): every refusal reads "cannot be written, skipped", a `stale`
+  one included; a file the loader refuses is reported without the loader's reason; and a read-only
+  file with nothing to stamp is left alone with exit 0, where the CLI page says a read-only file is
+  reported. Branch 12 lists `cli.py`, which words the report; no branch owns `identity.py`.
+- **What a refusal names while a file does not load** (task 7): one saying that nothing loaded
+  names no file, two unread files of one name in different directories are named alike, and a
+  dangling include is told of the project description. Branch 10 lists `gui/api.py`, branch 9
+  `lsp/units.py`.
+- **A file saved half way after the analysis** (task 7): a file typed into after the analysis and
+  then saved half way is unseen by a plan, which checks the fingerprints of the files it writes
+  alone. Branch 10 lists `gui/*.py`.
+- **An input stays answered while a file does not load** (task 7, R15): a local of the same name in
+  the unread file is a `local-conflict` once it loads. Branch 10 lists `declaration_plans.py`.
+- **A hidden local's name typed into the add panel** (task 9): is told the project declares it
+  already, not whose local it is. Branch 10 lists `declaration_plans.py`.
+- **The would-not-load sentence** (task 8): it reads "with that dimensions", and a removal's names
+  a value it does not write; the panel keys each sentence by its words, so two alike, from two
+  files of one name, share a key. No branch owns `variables.py`; branch 11 lists `components/*`.
+- **The editor's preferred fix** (task 8): for a consumer's mismatch the editor now prefers "Apply
+  this datatype to 1 other declaration", the first fix left once the others are withheld. Branch 9
+  lists `lsp/*.py`.
+- **What the panel's check does not ask** (task 8): a shape mixing a constant with numbers the
+  analysis refuses whatever the constant is planned without its sentence, and a type's key is read
+  at the index's pointer with no name checked (`_fixed_by`); `type_plans.set_key` is branch 10,
+  task 1's. Branch 13 lists `models/*`, branch 10 `lsp/edits.py`.
+- **A pattern character typed through a link** (task 11): a relative entry naming a file with a
+  pattern character, typed through a link the kernel cannot follow `..` after, is checked as the
+  file but read by `expand_include` as a pattern matching nothing. Branch 13 lists `loading.py`.
+- **The documents' corners** (tasks 4 and 8): no page says that the build tree is the output
+  directory where the cache cannot be read, and the three passages on what the panel's check does
+  not ask list different sets. Branch 15 owns `docs/*.rst`.
+- **A misdirected undo, and a print that fails** (task 12): a second window's undo of an entry no
+  longer on top is refused `stale` and asks for a whole analysis; and the line printed for an
+  analysis that failed on a refusing request raises where stderr cannot be written, replacing the
+  `409` with a `500`, which the analyser's own thread suppresses. Branch 7 and branch 10 list
+  `gui/session.py`.
+- **One case the threat model sets aside** stays as `docs/gui_security.rst` draws that model. No
+  branch owns it.
+
 ## Rulings taken
 
 Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so on.
+
+**Branch 1:**
+- **R1.** Task 1 gives `editing.py` its stage of its own and leaves `identity.py`'s writer to task
+  6, which routes `ddd id --assign` through `apply_changes`: `13:C2`'s `ddd id` half closes there,
+  rather than being written in task 1 and rewritten three tasks later.
+- **R2.** Task 4 recognises a generated project by the build record naming it, and could have
+  marked it from `cmake/Ddd.cmake` where the record did not suffice; it sufficed for the projects
+  the task names, so the module is unchanged. It does not suffice for a description given with
+  `PROJECT` whose record sits beside it, which is taken for generated (*Left open*, branch 2).
+- **R3.** A stage is created by an exclusive open of `<name>.<8 hexadecimal digits>.ddd-staging`,
+  not by `tempfile.mkstemp`, whose `0600` would carry into a file the engine creates, which takes
+  the access any new file gets; the name is as much its own either way.
+- **R4.** A branch's changelog entries for its fixes are written once, at the branch's end, not with
+  each task; a migration line stays with the task that makes it.
+- **R5.** A fix for a dependency's drift joins branch 1 as task D1, after task 2: the depth test
+  accepts both wordings pydantic-core gives its refusal, both cores lying in the range the
+  requirements allow, so that no commit leaves a gate red.
+- **R6.** Task 2 guards a refused edit's rollback and an undo's roll-forward too, though its text
+  names the edit's renames only: a file saved since is left as saved, and named, where an
+  unguarded put-back would lose the very save the task keeps.
+- **R7.** Task 3 gives `type_plans.set_key` the in-place guard as well, and corrects `kind_of`'s
+  docstring, which called it safe: every plan that points by the index asks the in-place question.
+- **R8.** The `ddd_add_component()` line task 4 offers keeps `<target>` as a placeholder: nothing
+  DDD reads names a component's target, and filling it in needs a change of `cmake/Ddd.cmake`.
+- **R9.** Task 4 refuses every file under the CMake build tree - the nearest directory at or above
+  the record holding a `CMakeCache.txt` - and not the output directory's alone: an edit anywhere in
+  that tree is lost when the build writes it again.
+- **R10.** A build whose cache's source tree lies at or under the cache's directory leaves that
+  source tree editable, an in-source build's and one configured inside its build tree alike, where
+  refusing the tree would refuse every component.
+- **R11.** Task 5 keeps the sync, but batches it: every file is staged, the stages are synced
+  together on at most `SYNC_WORKERS` threads, then each file is looked at again and renamed, and an
+  undo is written the same way. One sync after another made an edit and an undo of many files many
+  times slower under the session's lock, and NTFS, journaling no file data, needs the sync; only
+  the put-back of a refused write still syncs one file at a time.
+- **R12.** Decision 13.4's "the page's sentence" is read as the contract's `Changes` and the
+  reference pages: no sentence the page shows claims an edit is made all at once.
+- **R13.** Task 10 runs right after task 6, before tasks 7 to 9: task 6 made `ddd id --assign`,
+  which a pre-commit hook runs, many times slower on a file of many declarations, and task 10
+  depends on none of tasks 7 to 9.
+- **R14.** Task 7 also refuses a unit's removal while a file does not load, though its text lists
+  only the others: decision 13.3 is about a rename or a removal.
+- **R15.** Task 7's "each route answers 409 and names `b`" is read narrowly: renames, removals,
+  settles and the unit and value routes refuse, while setting a key, adding an entry, adding or
+  describing a unit, and the Files tab stay answered, since decision 13.3 is about renames and
+  removals.
+- **R16.** Task 7 also refuses as `unreadable`, naming the file, a declaration that produces a
+  name - an object declared, a variable read as an output or a local - while a file does not load:
+  that file may produce the name already, and loaded, it would give the name two producers.
+- **R17.** Task 8 draws `SettleReply.unloadable` on the page in branch 1, with its story, reference
+  screenshot and journey, rather than leaving it to branch 11: decision 13.5's "written and
+  reported" means the person is told, and wave 1 ships before branch 11.
+- **R18.** Task 8 widens the check rather than narrowing the documents: "would not load" is the
+  page's own notion, so after the models the check asks the definition's own analysis rules, and a
+  named string type's rule where it knows the type, and the documents say what is asked and what is
+  not.
+- **R19.** On the variable's panel, a value that would name a declaration's storage twice or leave a
+  datatype without its conversion, or that the declaration's kind does not take or cannot go
+  without, stays refused `409`: decision 13.5's sentence covers the values the panel used to write
+  in silence, and a refusal writes nothing.
+- **R20.** Task 9's "a name only locals hold" covers any name a component declares `local`: the
+  analysis files `local-conflict` for every other declaration of such a name.
+- **R21.** Task 11's rounds settle four edges of the code they rewrite: Add refuses a path on
+  another drive, which its page now lists; on Windows a path rooted without a drive counts as
+  rooted; an entry typed through a link is written with the link's name; and a file created beside
+  a description that does not parse gets the defaults, its newline among them.
+- **R22.** A refusal because a file changed on disk keeps its sentence until the reader chooses
+  again in that panel, as the panel's other refusals do, rather than until the next revision: task
+  12 brings that revision a few milliseconds from the refusal, sooner or later than it, so its
+  coming says nothing of whether the sentence was read, and the rule needs nothing new in the
+  contract.
+- **R23.** The final wave takes the documents' clause on the last look only. Closing the create
+  case, by linking the stage to the new name and then unlinking it, and on Windows by a rename that
+  refuses an existing name, is left open: it is a write of its own, with fallbacks for the file
+  systems lacking either, rather than a change of wording.
+- **R24.** What the whole-branch review set aside - another branch's, outside the threat model, past
+  a reasonable person, or older behaviour - stays set aside; `unwritable` answered `500` is recorded
+  under *Left open*.
+- **R25.** *Left open* records what a person could meet or a later branch must know, and these
+  rulings each departure from a task's text, or from the order the plan gives its tasks; how the
+  tasks were run, and minors that are only the wording of a test, a comment or a docstring, stay in
+  the implementers' ledger.
 
 ## Progress log
 

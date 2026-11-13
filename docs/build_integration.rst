@@ -512,11 +512,26 @@ file of the step after each run - ``ddd_types.h`` among them, which every compon
 includes, so every component compiled again. Under a Makefile generator each of the module's
 two steps - the generation, and the a2l's after the link - has a stamp in the output directory
 for its one output, ``ddd-generation.stamp`` and ``ddd-a2l.stamp``, touched by every run that
-succeeds, and the files it writes are its byproducts: a run that changed nothing leaves the
-build after it nothing to do, and the components whose header changed are recompiled and no
-others, as under Ninja. A file deleted from the output directory by hand is not written again
-there until the step runs for another reason; a deleted directory is (see *What the build
-tells an editor* above).
+succeeds: a run that changed nothing leaves the build after it nothing to do, and the
+components whose header changed are recompiled and no others, as under Ninja.
+
+Make knows a file only as the output of a rule, so each file a step of the project may read by
+its path - the a2l, the dictionary and the files the template names give away - is the output of
+a rule of its own there, which does nothing and depends on ``<stem>_ddd_generation``, or for the
+a2l written after the link on ``<stem>_ddd_a2l``. A step depending on such a file by its path,
+in the directory calling ``ddd_generate()``, therefore runs once the generation has, under
+``make -j`` too, and reads what it wrote, as under Ninja. A ``{component}`` header has no such
+rule, and a file read from another directory is known to make by no rule there either: a step
+reading one depends on ``<stem>_ddd_generation`` (``add_dependencies``), as it would have to
+under make in any case.
+
+A file deleted from the output directory by hand is not written again under make until the
+step runs for another reason - an edit, a clean - and every build reading the file stops on it
+until then: ``ddd_types.h``, ``ddd_globals.h``, the definitions, the dictionary and the a2l
+here, as a ``{component}`` header did before. Delete ``ddd-generation.stamp``, or
+``ddd-a2l.stamp``, beside it, or run ``make clean``, and the next build writes it again. A
+deleted output directory is noticed without either (see *What the build tells an editor*
+above).
 
 The names are read at configure time, so a component renamed in its description needs a
 reconfigure: until then its header is not declared under the new name, and the generation runs
@@ -549,9 +564,10 @@ post-build step can pick it up without rebuilding the path by hand:
    install(FILES "${a2l}" DESTINATION delivery)
 
 Where ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` has the a2l written after the link, a step
-that reads it in the course of the build depends on ``<stem>_ddd_a2l``: a ``POST_BUILD``
-command of the image runs before that target's step, and would read the a2l of the build
-before.
+that reads it in the course of the build depends on ``<stem>_ddd_a2l``, or on the a2l by its
+path in the directory calling ``ddd_generate()``, which comes to the same under either
+generator (see the Makefile generators above): a ``POST_BUILD`` command of the image runs
+before that target's step, and would read the a2l of the build before.
 
 Beside the artefacts the generation step writes ``<project name>.dictionary.json`` - the
 name the a2l takes, which beside ``PROJECT`` is the one written inside that file rather than
@@ -563,7 +579,9 @@ reads to see what the templates receive, and what a delivery archives for a late
 of the findings, and a run that fails its checks writes none of them, so the last dictionary
 keeps describing the artefacts still beside it; a regeneration that changes nothing in it
 leaves the file untouched. Its path is the ``DDD_DICTIONARY`` property of the image, read the
-same way, and ``NO_DICTIONARY`` leaves the file and the property out.
+same way - a step copying it, depending on that path in the directory calling
+``ddd_generate()``, runs once the generation has under a Makefile generator too, the file having
+a rule of its own there (above) - and ``NO_DICTIONARY`` leaves the file and the property out.
 
 .. note::
    Multi-config generators are refused with a fatal error: the project description and the

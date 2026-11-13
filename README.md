@@ -903,9 +903,12 @@ reaches every registered component rather than only the ones that image links.
 The declared outputs are derived from the template names, and the a2l; the files of a
 `{component}` template are declared as byproducts, one for each component of the image - each
 one it links, or with `PROJECT` each one the project names - under the names the module reads
-out of the descriptions when the build is configured; under a Makefile generator every one of
-them is a byproduct of a stamp, the step's one output, since make looks at no file again once
-a step has run - so
+out of the descriptions when the build is configured; under a Makefile generator, since make
+looks at no file again once a step has run, a stamp is the step's one output, and each shared
+file a rule of its own depending on `firmware_ddd_generation`, so that a step reading the
+dictionary or the a2l by its path, in the directory calling `ddd_generate`, runs after the
+generation - a `{component}` header, or a file read from another directory, is read after
+depending on that target instead - so
 the build after a description change recompiles exactly the components whose header changed,
 and in the collected mode a component renamed in its description needs a reconfigure.
 Consumers find the headers through `firmware_ddd_headers`, which carries their include

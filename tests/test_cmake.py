@@ -462,6 +462,11 @@ class Shape:
     strict: bool = False
     """``STRICT`` is given, so that a warning stops the build - ``address-missing`` among them."""
 
+    copied: str = ""
+    """The image property - ``DDD_DICTIONARY``, ``DDD_A2L`` - naming a generated file a step of
+    the project copies to ``copied`` beside the image, depending on the file by its path alone,
+    for a target ``copy`` built by default."""
+
     def in_a_subdirectory(self) -> bool:
         """Whether the image is defined and generated in ``app/`` rather than at the top."""
         return self.subdirectory or self.linked in (
@@ -727,6 +732,17 @@ class Story:
         if self.shape.address_map:
             before, step = address_map_recipe("img")
             after = step + based_low("img")
+        if self.shape.copied:
+            copy = "${CMAKE_CURRENT_BINARY_DIR}/copied"
+            after += (
+                f"get_target_property(generated img {self.shape.copied})\n"
+                f'add_custom_command(OUTPUT "{copy}"\n'
+                '                   COMMAND "${CMAKE_COMMAND}" -E copy "${generated}"\n'
+                f'                           "{copy}"\n'
+                '                   DEPENDS "${generated}"\n'
+                "                   VERBATIM)\n"
+                f'add_custom_target(copy ALL DEPENDS "{copy}")\n'
+            )
         return (
             "add_executable(img main.c)\n"
             + before
@@ -959,6 +975,34 @@ class TestTheBuildAfterAnEdit:
         assert touched.code == 0 and touched.generated(), touched.output
         assert not touched.compiled, touched.output
         assert story.build().did_nothing()
+
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            pytest.param(Shape(copied="DDD_DICTIONARY"), id="the dictionary"),
+            pytest.param(
+                Shape(address_map=True, strict=True, copied="DDD_A2L"),
+                id="the a2l written after the link",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_step_reading_a_generated_file_by_its_path_reads_it_fresh(
+        self, tmp_path: Path, generator: str, shape: Shape
+    ) -> None:
+        """A step of the project depending on a file of the generation by its path alone - the
+        copy of the dictionary a delivery archives, say. Under make the file was the output of
+        no rule once a stamp was the step's: in a fresh tree the step had nothing to make it
+        with, and after an edit it copied the file the build before had left."""
+        story = Story(tmp_path, shape, generator)
+        copied = story.images() / "copied"
+        first = story.build_target("copy")
+        assert first.returncode == 0, first.stdout + first.stderr
+        assert "Sample" in copied.read_text(encoding="utf-8")
+        story.describe("uint8", declare("local", "Fresh"))
+        again = story.build_target("copy")
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert "Fresh" in copied.read_text(encoding="utf-8")
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_component_registered_after_the_directory_is_done_is_refused_as_such(

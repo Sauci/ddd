@@ -2356,9 +2356,16 @@ of them, which the configure step keeps in the build tree as `<stem>_ddd_templat
 rewrites only when it differs, so that a template removed runs the generation, which takes
 back the file it rendered. Under a Makefile generator, which looks at no file again once a
 step has run, each of the two steps - the generation and the A2L's after the link - has a
-stamp in the output directory for its one output, touched by every run that succeeds, and the
-files it writes are its byproducts: a run that changed nothing leaves the build after it
-nothing to do, and a file it left as it was compiles nothing again.
+stamp in the output directory for its one output, touched by every run that succeeds: a run
+that changed nothing leaves the build after it nothing to do, and a file it left as it was
+compiles nothing again. Each file a step of the project may read by its path - the A2L, the
+dictionary and the files the template names give away - is the output of a rule of its own
+there, which does nothing and depends on the step's target, so that a step depending on the
+file, in the directory calling `ddd_generate`, runs once the generation has; a `{component}`
+file, and any file read from another directory, is known to make by no rule, and a step
+reading one depends on `<stem>_ddd_generation`, or `<stem>_ddd_a2l`, instead. A file of the
+step deleted by hand under make is not written again until the step runs for another reason -
+every build reading it stops on it until then - and deleting the stamp, or a clean, runs it.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
 ([section 6](#6-address-information)). With either keyword one build gives the complete A2L:

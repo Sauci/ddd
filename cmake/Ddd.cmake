@@ -669,6 +669,20 @@ function(_ddd_linked_component_names variable image)
     endif()
 endfunction()
 
+# Under a Makefile generator, a rule for each file a stamped step writes and a step of the project's may read by its
+# path: the a2l, the dictionary and the files the template names give away. Make knows a file only as the output of a
+# rule, and a stamp's files were the output of none: a step depending on one by its path - a copy of the dictionary, a
+# delivery's archive of the a2l - had no rule to make it with in a fresh tree, ran before the step under -j, and after
+# an edit read what the build before had left. Each rule does nothing and depends on the step's target, so that a step
+# depending on the file depends on that target, in the directory calling ddd_generate(), and runs once the step has. A
+# rule apiece, because CMake touches every output but the first of one rule once it has run, and ddd_types.h among them
+# would compile every component again.
+function(_ddd_files_of_a_step files target)
+    foreach(file IN LISTS files)
+        add_custom_command(OUTPUT "${file}" DEPENDS ${target} COMMENT "" VERBATIM)
+    endforeach()
+endfunction()
+
 # The generation of an image, added at the end of the directory that called ddd_generate() rather than in the call:
 # its byproducts are the files of the {component} templates for every component the image links, and in the collected
 # mode the link graph is only whole once the directory is done - an image may well be linked after the call that
@@ -677,7 +691,6 @@ endfunction()
 # the call already asked the tool for.
 function(_ddd_add_generation image)
     get_property(outputs TARGET ${image} PROPERTY DDD_GENERATION_OUTPUTS)
-    get_property(byproducts TARGET ${image} PROPERTY DDD_GENERATION_BYPRODUCTS)
     get_property(command TARGET ${image} PROPERTY DDD_GENERATION_COMMAND)
     get_property(touch TARGET ${image} PROPERTY DDD_GENERATION_TOUCH)
     get_property(depends TARGET ${image} PROPERTY DDD_GENERATION_DEPENDS)
@@ -697,6 +710,7 @@ function(_ddd_add_generation image)
     # Kept for _ddd_refuse_late_links, which walks the graph again once every directory is done.
     set_property(TARGET ${image} PROPERTY DDD_DECLARED_COMPONENTS "${names}")
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    set(byproducts "")
     foreach(component_file IN LISTS component_files)
         cmake_path(GET component_file PARENT_PATH directory)
         cmake_path(GET component_file FILENAME pattern)
@@ -834,7 +848,8 @@ endfunction()
 # generation runs at every build for the one under the old name, which it no longer writes. <stem>_ddd_headers is what
 # carries the include directory, and what orders every consumer after the generation. With ADDRESSES_FROM_IMAGE or
 # ADDRESS_MAP the a2l is the output of <stem>_ddd_a2l's step instead, which runs after the link. Under a Makefile
-# generator each of the two steps has a stamp for its one output, and every file it writes is a byproduct (see there).
+# generator each of the two steps has a stamp for its one output, and each shared file a rule of its own, depending on
+# the step's target (_ddd_files_of_a_step); the {component} files stay byproducts, with no rule under make.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
@@ -1119,22 +1134,24 @@ function(ddd_generate image)
     # A Makefile generator has nothing of the kind. There a run that changed nothing left the first file older than the
     # description that ran it, so every build after ran the generation again, and after each run CMake touched every
     # other file - ddd_types.h among them, which every component header includes, so every component compiled again.
-    # So there a stamp in the output directory is the step's one output, touched by each run that succeeds, and the
-    # files are its byproducts; a step that fails leaves the stamp as it was, and runs again at the next build.
-    if(CMAKE_GENERATOR MATCHES "^Ninja")
-        set(generation_outputs ${generated_outputs})
-        set(generation_byproducts "")
-        set(generation_touch "")
-    else()
+    # So there a stamp in the output directory is the step's one output, touched by each run that succeeds, and each of
+    # the files has a rule of its own (_ddd_files_of_a_step); a step that fails leaves the stamp as it was, and runs
+    # again at the next build.
+    set(stamped FALSE)
+    if(NOT CMAKE_GENERATOR MATCHES "^Ninja")
+        set(stamped TRUE)
+    endif()
+    if(stamped)
         set(generation_outputs "${arg_OUTPUT_DIRECTORY}/ddd-generation.stamp")
-        set(generation_byproducts ${generated_outputs})
         set(generation_touch COMMAND "${CMAKE_COMMAND}" -E touch "${generation_outputs}")
+    else()
+        set(generation_outputs ${generated_outputs})
+        set(generation_touch "")
     endif()
 
     # The command is added once this directory is done, when the components the image links are known by name; what it
     # runs, produces and depends on is settled here.
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_OUTPUTS ${generation_outputs})
-    set_property(TARGET ${image} PROPERTY DDD_GENERATION_BYPRODUCTS ${generation_byproducts})
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_COMMAND
                  ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
                  --output-dir "${arg_OUTPUT_DIRECTORY}"
@@ -1152,6 +1169,9 @@ function(ddd_generate image)
                                  "_ddd_refuse_late_links [==[${image}]==])")
     endif()
     add_custom_target(${image_stem}_ddd_generation DEPENDS ${generation_outputs})
+    if(stamped)
+        _ddd_files_of_a_step("${generated_outputs}" ${image_stem}_ddd_generation)
+    endif()
 
     # ADDRESSES_FROM_IMAGE and ADDRESS_MAP: the a2l is written once the image is linked, by a second run reading every
     # address it carries out of the image's debug information, or out of the map - which a step of the project's
@@ -1160,10 +1180,11 @@ function(ddd_generate image)
     # depends on the image and on what the project is read from, and on the map as well, which a project may write
     # otherwise - not on the templates or DEPENDS, which are the c's inputs, not the a2l's - so it runs again whenever
     # the image relinks or a description changes, and never otherwise: under a Makefile generator a stamp is its one
-    # output, as it is the generation's, the a2l its byproduct. It writes into the directory the run before the link
-    # wrote, whose manifest keeps each run from taking back the files of the other. STRICT and SEVERITY apply to it as
-    # to that run, so that under STRICT a symbol the image cannot place, or the map leaves out, stops the build rather
-    # than shipping an a2l with an address of 0; and BYTE_ORDER is its alone, held to the byte order an image states.
+    # output, as it is the generation's, and the a2l has a rule of its own. It writes into the directory the run before
+    # the link wrote, whose manifest keeps each run from taking back the files of the other. STRICT and SEVERITY apply
+    # to it as to that run, so that under STRICT a symbol the image cannot place, or the map leaves out, stops the build
+    # rather than shipping an a2l with an address of 0; and BYTE_ORDER is its alone, held to the byte order an image
+    # states.
     if(a2l_after_the_link)
         set(a2l_options ${common_options})
         if(arg_BYTE_ORDER)
@@ -1178,17 +1199,14 @@ function(ddd_generate image)
             set(map_dependency "${arg_ADDRESS_MAP}")
             set(reading "Reading the addresses of the a2l out of the address map of ${image}")
         endif()
-        if(CMAKE_GENERATOR MATCHES "^Ninja")
-            set(a2l_outputs "${a2l_file}")
-            set(a2l_byproducts "")
-            set(a2l_touch "")
-        else()
+        if(stamped)
             set(a2l_outputs "${arg_OUTPUT_DIRECTORY}/ddd-a2l.stamp")
-            set(a2l_byproducts "${a2l_file}")
             set(a2l_touch COMMAND "${CMAKE_COMMAND}" -E touch "${a2l_outputs}")
+        else()
+            set(a2l_outputs "${a2l_file}")
+            set(a2l_touch "")
         endif()
         add_custom_command(OUTPUT ${a2l_outputs}
-                           BYPRODUCTS ${a2l_byproducts}
                            COMMAND ${DDD_EXECUTABLE} generate a2l "${project_file}"
                                    --output-dir "${arg_OUTPUT_DIRECTORY}"
                                    ${address_source} ${a2l_options}
@@ -1200,6 +1218,9 @@ function(ddd_generate image)
                            COMMAND_EXPAND_LISTS
                            VERBATIM)
         add_custom_target(${image_stem}_ddd_a2l ALL DEPENDS ${a2l_outputs})
+        if(stamped)
+            _ddd_files_of_a_step("${a2l_file}" ${image_stem}_ddd_a2l)
+        endif()
     endif()
 
     # The generated headers are exposed through an interface library, so that a component can include its interface

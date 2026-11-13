@@ -40,10 +40,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   stages under a name of its own, beside the file.  And a file saved from outside while an edit
   was being written, between the moment the page last read it and the rename, was overwritten
   and the edit answered as written; each file is now read once more right before it replaces the
-  file, and a change since the analysis is refused as `stale`, with every file as it was.  An undo, and the rollback of an edit that is refused, put back only the files that
-  still hold what the edit wrote: a file saved since is left as it was saved, and named.  A
-  reader may now meet a `stale` where the edit used to be written; the answer is to read the
-  project again and ask once more.  No file format changes.
+  file, and a change since the analysis is refused as `stale`, with every file as it was.  An undo,
+  and the rollback of an edit that is refused, put back only the files that still hold what the
+  edit wrote: a file saved since is left as it was saved, and named.  A reader may now meet a
+  `stale` where the edit used to be written; the answer is to read the project again and ask once
+  more.  No file format changes.
 
 * **A plan made over a file saved during the analysis is refused as `stale`.**  The plan of an
   edit, a rename or a settled value took the places the analysis recorded, and when a file had
@@ -51,7 +52,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   rewrote another declaration, value or entry than the one asked about, and applying it wrote
   the wrong one.  The analysis now records a fingerprint of the bytes it read, and a plan
   whose file reads differently, or whose recorded place no longer names what was asked about -
-  an entry of a type put in above it or taken out since - is refused as `stale`.  No file format changes.
+  an entry of a type put in above it or taken out since - is refused as `stale`.
+  No file format changes.
 
 * **A refused `stale` edit or undo asks for the analysis that clears it.**  A file saved with
   the size and the modification time it had before is a change the project's poll cannot see,
@@ -87,7 +89,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   files and its undo still take a fraction of a second, and a power cut leaves a file as it was
   or as the edit made it, never empty, on a journaling file system that has a sync to offer.  A
   refusal leaves every file as it was or names those it could not put back; a server killed
-  while it writes can still leave part of an edit and the stage it was writing.  No file format changes.
+  while it writes can still leave part of an edit and the stages it
+  was writing.  No file format changes.
 
 * **A rename, a removal or a declaration that produces a name is refused while a file of the
   project does not load.**  A project is indexed from the files that loaded, so a file saved
@@ -140,8 +143,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   feed, and a file created takes the newline and the indentation the project uses.  The Files
   tab writes an include with `/` and relative to the project, as a project is checked out on
   more than one system, and a path typed through a link keeps the link's name where it resolves
-  to the file that was checked, and is refused where it does not.  A key that spells no pointer
-  is refused, where it ended in a server error.  No file format changes.
+  to the file that was checked, and is refused where it does not.  A description holding a key
+  that spells no pointer, which ended an edit in a server error, is edited and laid out as any
+  other.  No file format changes.
 
 * **A toolbox, and its first tool: `ddd tool from-elf`.**  It reads a linked ELF image and its
   DWARF debug information and prints the DDD declarations of the C variables named or matched

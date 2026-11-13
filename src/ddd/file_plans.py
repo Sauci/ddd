@@ -523,7 +523,8 @@ def _stated_units(described: Path, units: UnitProject, built: Index | None) -> l
 def spelled_with_slashes(entry: str) -> str:
     """``entry`` with ``/`` for every separator: a backslash is one on Windows alone, and an entry
     written with one is a ``file-not-found`` on any other system. Read before anything resolves
-    the entry, by every caller judging it - the one spelling that is checked, served and written."""
+    the entry, by every caller judging it, so that what is checked and served is one spelling. A
+    rooted entry is written in another (:func:`add_plan`), by what the checks found."""
     return entry.replace("\\", "/")
 
 

@@ -71,7 +71,7 @@ from ddd.gui.derived import Derived
 from ddd.gui.queries import AddRaster, AddSection
 from ddd.gui.routes import Policy
 from ddd.gui.session import Filed, Revision, Session
-from ddd.loading import load_workspace
+from ddd.loading import included_files, load_workspace, resolve_path
 from ddd.lsp.navigation import Index, Site
 from ddd.lsp.ranges import Document
 from ddd.object_values import grid_of
@@ -10570,10 +10570,12 @@ class TestAddingAFile:
     def test_a_dot_dot_after_a_link_is_written_as_the_file_judged_and_not_as_another(
         self, tmp_path: Path
     ) -> None:
-        """``served/proj/lnk`` leads into ``served/elsewhere/sub``, so ``lnk/../lnk3/x`` is
-        ``served/elsewhere/lnk3/x``, which is served. Read off the text alone it is
-        ``proj/lnk3/x``, and ``proj/lnk3`` leads outside what is served: the entry written named
-        a file that was never judged."""
+        """``served/proj/lnk`` leads into ``served/elsewhere/sub``. Where ``..`` follows the link,
+        ``lnk/../lnk3/x`` is ``served/elsewhere/lnk3/x``, which is served; read off the text
+        alone it is ``proj/lnk3/x``, and ``proj/lnk3`` leads outside what is served, which is
+        what a system reading ``..`` by the text, as Windows does, makes of it. On both, what is
+        judged is what is written: the entry, read back by the loader, is the file asked about,
+        or the path is refused."""
         write_tree(
             tmp_path,
             {
@@ -10591,10 +10593,16 @@ class TestAddingAFile:
         api = Api(session, served / "proj" / "p.ddd.json", wait_seconds=0.05)
         path = (served.resolve() / "proj" / "lnk" / ".." / "lnk3" / "x.ddd.json").as_posix()
         reply = files_plan(api, "add", path=path)
+        judged = resolve_path(Path(path))
+        if not judged.is_relative_to(served.resolve()):
+            assert refused(reply)[:2] == (409, "invalid")
+            assert "lies outside what ddd gui serves" in reply.body["message"]
+            return
         assert reply.status == 200
-        assert reply.body["changes"][0]["operations"][0]["raw"] == (
-            '"../elsewhere/lnk3/x.ddd.json"'
-        )
+        entry = json.loads(reply.body["changes"][0]["operations"][0]["raw"])
+        described = (served / "proj" / "p.ddd.json").resolve()
+        assert [resolve_path(file) for file in included_files(described, entry)] == [judged]
+        assert entry == "../elsewhere/lnk3/x.ddd.json"
 
     def test_every_refusal_of_an_add_names_the_entry_as_it_was_typed(self, tmp_path: Path) -> None:
         api = opened(tmp_path, {**ADDABLE, "sub/tool.py": "print('x')\n"})

@@ -1404,10 +1404,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   limit. Branch 2, which owns `cmake/Ddd.cmake`, can say precisely which description the build
   writes, by a key it adds to the description it collects or to the record: an addition to the
   format, which its changelog would then state.
-- **A removal refused as stale is let go only by closing the panel** (R22): the variable panel's
-  removal offer withdraws Remove while any refusal stands (P19b-24), so its sentence, kept now
-  until the reader's next choice, goes when they settle a key or close the panel, and only then is
-  Remove offered again. Drawing Remove under the sentence, as the other offers draw their Apply, is
+- **A removal refused as stale waits for the panel to close, or a key to settle** (R22): the
+  variable panel's removal offer withdraws Remove while any refusal stands (P19b-24), so its
+  sentence, kept now until the reader's next choice, goes when they settle a key or close the
+  panel, and only then is Remove offered again. Drawing Remove under the sentence, as the other offers draw their Apply, is
   the question P19b-24 recorded for the maintainer. Branch 11 lists `screens/*` and
   `components/*`.
 - **A create racing another writer's create** (task 2, `13:I1`; R23): a file an edit creates is
@@ -1574,13 +1574,8 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   case, by linking the stage to the new name and then unlinking it, and on Windows by a rename that
   refuses an existing name, is left open: it is a write of its own, with fallbacks for the file
   systems lacking either, rather than a change of wording.
-- **R24.** What the whole-branch review set aside - another branch's, outside the threat model, past
-  a reasonable person, or older behaviour - stays set aside; `unwritable` answered `500` is recorded
-  under *Left open*.
-- **R25.** *Left open* records what a person could meet or a later branch must know, and these
-  rulings each departure from a task's text, or from the order the plan gives its tasks; how the
-  tasks were run, and minors that are only the wording of a test, a comment or a docstring, stay in
-  the implementers' ledger.
+- **R24.** What the whole-branch review set aside stays so; `unwritable`'s 500 is under *Left open*.
+- **R25.** These records keep what a person meets or a later branch needs, the ledger how tasks ran.
 
 ## Progress log
 

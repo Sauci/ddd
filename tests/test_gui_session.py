@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import shutil
 import stat
@@ -1802,6 +1803,41 @@ class TestReadingAndEditing:
         with pytest.raises(EditError) as refused:
             session.edit([stale], "the unit of Torque")
         assert refused.value.code == STALE
+
+    def test_a_stale_refusal_asks_for_an_analysis_a_change_the_poll_cannot_see_needs(
+        self, shared: Path
+    ) -> None:
+        """A save of the same size with its modification time put back leaves the stamps as
+        they were: the poll sees nothing, and the plan keeps the old fingerprint. The refusal
+        itself asks for the analysis, whose revision fingerprints the bytes on disk, so that a
+        plan asked again applies."""
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        before = b.stat()
+        old = unit_of_b(shared, "Hz")
+        saved = b.read_bytes().replace(b'"rpm"', b'"rad"')
+        assert len(saved) == before.st_size
+        b.write_bytes(saved)
+        os.utime(b, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert session.poll() is False
+        first = session.current().number
+        with pytest.raises(EditError) as refused:
+            session.edit([old], "the unit of Torque")
+        assert refused.value.code == STALE
+        assert session.current().number > first
+        session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        assert b'"Hz"' in b.read_bytes()
+
+    def test_a_stale_refusal_of_an_undo_asks_for_an_analysis_too(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        at, _ = session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
+        first = session.current().number
+        with pytest.raises(EditError) as refused:
+            session.undo(at + 5)
+        assert refused.value.code == STALE
+        assert session.current().number > first
 
     def test_an_edit_needs_an_open_project(self, shared: Path) -> None:
         with pytest.raises(NoProjectError):

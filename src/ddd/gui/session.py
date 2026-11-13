@@ -553,6 +553,13 @@ class Session:
         ``label`` is what the page calls this edit - "the unit of ValueA" - and is what an undo
         of it offers to put back.
         """
+        try:
+            return self._edited(changes, label)
+        except EditError as refused:
+            self._refused(refused)
+            raise
+
+    def _edited(self, changes: Sequence[FileChange], label: str) -> tuple[int, tuple[Written, ...]]:
         with self._lock:
             revision = self._required()
             _creatable(changes)
@@ -581,6 +588,13 @@ class Session:
         changed since, or one that could not be written - leaves the stack as it is, so the
         reader may put that file back and ask again.
         """
+        try:
+            return self._undone(at)
+        except EditError as refused:
+            self._refused(refused)
+            raise
+
+    def _undone(self, at: int) -> int:
         with self._lock:
             self._required()
             top = self._stack[-1] if self._stack else None
@@ -681,6 +695,17 @@ class Session:
         self._asked = self._project
         self._version += 1
         self._changed.notify_all()
+
+    def _refused(self, refused: EditError) -> None:
+        """Ask for an analysis, and make it, when a write was refused ``stale``, then let the
+        refusal stand. A file changed in a way the poll cannot see - the same size and modification
+        time - keeps every plan carrying the fingerprint of the bytes read before, which would be
+        refused for good; the analysis reads what is on disk and its revision fingerprints that.
+        Called without the lock."""
+        if refused.code == STALE:
+            with self._lock:
+                self._request()
+            self._analyse_here()
 
     def _analyse_here(self) -> None:
         """Make the analyses asked for on this thread, where no analyser was started."""

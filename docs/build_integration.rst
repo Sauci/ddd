@@ -446,8 +446,11 @@ at every build for the header of the old one, which it no longer writes. With ``
 configure runs again by itself, every file of the project being one of its dependencies. A
 registered description whose json does not parse when the build is configured names no
 component, and is a dependency of the configure until it does, so the build after its repair
-configures again; one generated into the build tree later names its component from the first
-configure that finds it.
+configures again. One generated into the build tree later names its component only from the
+first configure that finds it, and none comes by itself, CMake taking no configure dependency
+on a file the build writes: the build has to be configured again by hand once it is there,
+and until then the build after its component's header changed compiles the components reading
+it against the old one. The configure warns of it, naming the file.
 
 A header whose component has left the image is another matter: once the image no longer links
 the component, nothing declares the header and the build leaves it where it is, which is why

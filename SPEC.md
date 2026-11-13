@@ -2298,7 +2298,11 @@ against the old header. A component renamed in its description therefore needs t
 configured again, until which the generation runs at every build; with `PROJECT` that happens
 by itself, the files of the project being dependencies of the configure step. A registered
 file that does not parse when the build is configured names no component and is a dependency
-of the configure step until it does.
+of the configure step until it does. One that does not exist yet, being generated into the
+build tree later, names no component either and is no dependency of the configure step, a file
+the build writes being none; the configure step warns of it, naming the file, since until the
+build is configured again once it is written, the build after its component's header changed
+compiles the components reading it against the old one.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
 ([section 6](#6-address-information)), so that one build gives the complete A2L: the

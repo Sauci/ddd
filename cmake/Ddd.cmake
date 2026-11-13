@@ -307,7 +307,8 @@ function(ddd_add_component target)
         # parse, or its component has no name yet - is a dependency of the configure step until it does, so that the
         # configure reading the name comes with the build after the repair: without it, that component's header would
         # be written by a generation that does not declare it until somebody next configured. A file that does not
-        # exist yet, generated into the build tree later, names nothing until a configure finds it.
+        # exist yet, generated into the build tree later, names nothing until a configure finds it - and no configure
+        # comes by itself, CMake taking no configure dependency on a file the build writes - so the configure says so.
         _ddd_component_name(name "${description}")
         if(NOT "${name}" STREQUAL "")
             set_property(TARGET ${target} APPEND PROPERTY DDD_COMPONENT_NAMES "${name}")
@@ -316,6 +317,12 @@ function(ddd_add_component target)
             if(is_component)
                 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${description}")
             endif()
+        else()
+            message(WARNING "ddd_add_component: \"${description}\" does not exist yet, so the header generated for "
+                            "the component it describes cannot be declared as an output of the generation, and "
+                            "the build after that header changes would compile the components reading it "
+                            "against the old one. Configure the build again once the build has written the "
+                            "file.")
         endif()
     endforeach()
     set_property(TARGET ${target} APPEND PROPERTY TRANSITIVE_LINK_PROPERTIES DDD_JSON)

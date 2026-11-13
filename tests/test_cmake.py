@@ -783,12 +783,22 @@ class TestTheBuildAfterAnEdit:
         self, tmp_path: Path, generator: str
     ) -> None:
         """A description generated into the build tree is not there when the build is first
-        configured, so it names no component yet, and the build goes through all the same;
-        the configure that finds it names the component, and from then on a change of its
-        header reaches the reader in one build."""
+        configured, so it names no component yet, and no configure comes by itself once the
+        build has written it: until somebody configures, the build after its header changed
+        compiles the reader against the old one. The configure says so, naming the file; the
+        one run by hand afterwards names the component and says nothing, and from then on a
+        change of its header reaches the reader in one build."""
         story = Story(tmp_path, DESCRIBED_BY_THE_BUILD, generator)
+        written = (story.build_dir / "logger.ddd.json").as_posix()
+        warned = (
+            f'ddd_add_component: "{written}" does not exist yet, so the header generated for the '
+            "component it describes cannot be declared as an output of the generation, and the "
+            "build after that header changes would compile the components reading it against "
+            "the old one. Configure the build again once the build has written the file."
+        )
+        assert warned in " ".join(story.configured.split()), story.configured
         assert story.build().code == 0
-        story.reconfigure()
+        assert "does not exist yet" not in story.reconfigure()
         story.describe("uint16")
         story.write_sensor(1234)
         widened = story.build()

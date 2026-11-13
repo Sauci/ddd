@@ -2615,6 +2615,42 @@ target_link_libraries(img PRIVATE store)
         configure(source, tmp_path / "build", f"-DDDD_MAP={(tmp_path / 'map.json').as_posix()}")
 
 
+class TestAProjectFileRegisteredAsAComponent:
+    """A project description is no component, and ``ddd_add_component`` once took it as one.
+
+    The file was collected into the generation, but only the file itself was watched: an
+    edit to what it includes, or to a plugin it names, built to ``no work to do`` over a
+    generated source that no longer matched the project. A supplier handing over a project
+    is registered through ``PROJECT`` of ``ddd_generate``, which follows its includes, and
+    the registration here is refused, naming that keyword.
+    """
+
+    def test_it_is_refused_naming_project(self, tmp_path: Path) -> None:
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        supplied = tmp_path / "supplier.ddd.json"
+        supplied.write_text(json.dumps({"project": {"name": "Supplier"}}), encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Supplied LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_add_component(store JSON "{supplied.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+        run = attempt(tmp_path, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        assert (
+            f'ddd_add_component: "{supplied.as_posix()}" registered on target "store" describes '
+            "a project, and a component is not one. Name a project file with PROJECT of "
+            "ddd_generate(), which follows what it includes."
+        ) in " ".join(run.stderr.split())
+
+
 VENDOR_TYPES = """#ifndef KEYWORD_VENDOR_H
 #define KEYWORD_VENDOR_H
 typedef struct { unsigned short revision; } VendorState_t;

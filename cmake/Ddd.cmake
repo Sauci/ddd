@@ -363,6 +363,24 @@ function(_ddd_absolute_input variable base context)
     set(${variable} "${path}" PARENT_SCOPE)
 endfunction()
 
+# Refuses a description whose top level key is "project". ddd_add_component() registers components and vocabulary files,
+# whose includes nothing follows: a project file registered here is collected into the generation, but only the file
+# itself is a dependency, so an edit to what it includes - or to a plugin it names - builds to "no work to do" over
+# generated sources that no longer match the project. PROJECT of ddd_generate() is where a project file goes. A file
+# that does not exist yet or does not parse says nothing about its kind, and passes.
+function(_ddd_refuse_project_file target description)
+    if(NOT EXISTS "${description}")
+        return()
+    endif()
+    file(READ "${description}" content)
+    string(JSON unused ERROR_VARIABLE absent GET "${content}" "project")
+    if(NOT absent)
+        message(FATAL_ERROR "ddd_add_component: \"${description}\" registered on target \"${target}\" describes a "
+                            "project, and a component is not one. Name a project file with PROJECT of "
+                            "ddd_generate(), which follows what it includes.")
+    endif()
+endfunction()
+
 # Registers one or more DDD description files (*.ddd.json) on the given component target. The files are attached as
 # transitive usage requirements: every image linking the component, directly or transitively, collects them with
 # ddd_generate(). Files in the source tree must exist at configure time; files in the build tree may be generated
@@ -387,6 +405,7 @@ function(ddd_add_component target)
             message(FATAL_ERROR "ddd_add_component: \"${description}\" registered on target \"${target}\" is a DDD "
                                 "description and has to be named \"*.ddd.json\".")
         endif()
+        _ddd_refuse_project_file("${target}" "${description}")
         set_property(TARGET ${target} APPEND PROPERTY DDD_JSON "${description}")
         set_property(TARGET ${target} APPEND PROPERTY INTERFACE_DDD_JSON "${description}")
         # DDD_JSON travels through the link graph; the component's own files are recorded separately for the

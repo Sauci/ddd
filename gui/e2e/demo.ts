@@ -628,8 +628,8 @@ export async function held(
  * Moves `file`'s modification time to now and changes none of its bytes. The watcher compares a
  * file's `(st_mtime_ns, st_size)` alone (`stamped` and `poll`, session.py), so its next poll
  * reads a new revision, and the server's long poll, which would otherwise wait out its
- * `WAIT_SECONDS`, answers at once (P19b-9). For a journey that needs the next revision now: a
- * held refusal let go, or the page's next state read failed.
+ * `WAIT_SECONDS`, answers at once (P19b-9). For a journey that needs the next revision now: one
+ * whose reads it fails, the state read after it failed, or a pattern expanded again.
  */
 export function restamp(directory: string, file: string): void {
   const now = new Date();

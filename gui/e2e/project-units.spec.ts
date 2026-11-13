@@ -201,26 +201,26 @@ test("an apply made from a panel that is out of date is refused, and the panel s
   await removing.getByRole("button", { name: "Remove from the vocabulary" }).click();
   const refused = removing.getByRole("status").filter({ hasText: "changed on disk" });
   await expect(refused).toBeVisible();
+  expect(entriesOf(units).map((entry) => entry.unit)).toContain("degC");
+
+  // Refusing the Apply as stale, the server asks for the analysis that reads the file as it now
+  // is (`Session._refused`). The panel shows that analysis landed - the description written from
+  // outside - and the sentence is still there: it is held until the reader's next choice, not
+  // until a revision.
   await expect(panel.getByRole("textbox", { name: "Description" })).toHaveValue(
     "temperature, degrees Celsius",
   );
-  expect(entriesOf(units).map((entry) => entry.unit)).toContain("degC");
+  await expect(refused).toBeVisible();
 
-  // Chosen again, once the server has caught up with the file as it now is, it is applied. The
-  // server checks the disk once a second (Session.poll_interval), and only a plan asked for
-  // after that carries the file's new fingerprint. The sentence is what says so: it is held
-  // until the analysis moves past the revision the edit was refused at, so its going is the
-  // page saying it has taken the newer one on board - and the preview goes with it until the
-  // plan asked for again answers, which is what puts the Apply back. Waiting instead on the
-  // response that carries that revision let this press land in the moment between the two,
-  // sending the very fingerprints the server had just refused; the same wait as keys.spec.ts's
-  // "a change refused as stale can be applied again once the analysis has caught up".
+  // Remove pressed again is that choice. Offered once the panel reads that revision, its plan is
+  // that revision's own, asked for again at every one, and carries the file's new fingerprint:
+  // the sentence goes, and the unit with it.
   await page.unroute("**/api/edit");
-  await expect(refused).toBeHidden({ timeout: 15000 });
   await removing.getByRole("button", { name: "Remove from the vocabulary" }).click();
   await expect
     .poll(() => entriesOf(units).map((entry) => entry.unit))
     .toEqual(["rpm", "Nm", "kPa"]);
+  await expect(refused).toHaveCount(0);
 });
 
 test("a unit nothing states any longer closes its panel and the tab says so, but not while a file does not load", async ({
@@ -295,10 +295,11 @@ test("an adopt refused because its units file now exists says so in the banner, 
 
   // Once that file is there the server offers no adoption (`ddd.lsp.units.adoption` refuses to
   // write over it), so the banner, the refusal in it, goes as soon as the page reads the units
-  // again - which it does the moment its Apply is answered, a few tens of milliseconds after the
-  // refusal is drawn: a window that polling finds only by luck. The units the page reads next are
-  // held until the refusal has been seen, once only: the ones it reads later go straight through.
-  const release = await held(page, "/api/units");
+  // again - which it does the moment its Apply is answered, and again as the revision the refusal
+  // asks for lands (`Session._refused`), each a few tens of milliseconds after the refusal is
+  // drawn: a window that polling finds only by luck. Every read of the units is held until the
+  // refusal has been seen: those after it go straight through.
+  const release = await held(page, "/api/units", { every: true });
   try {
     await preview.getByRole("button", { name: "Adopt 5 units" }).click();
     await expect(banner.getByText(STALE, { exact: true })).toBeVisible();

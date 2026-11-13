@@ -1008,8 +1008,8 @@ left to match nothing. ``restamp`` moves a file's modification time to now and c
 its bytes. The session's watcher compares a file's modification time and size alone
 (``stamped``, in ``src/ddd/gui/session.py``), so its next poll reads a new revision, and the long
 poll the page has open, which would otherwise wait out its ``WAIT_SECONDS``, answers at once: a
-journey needs it to let go a refusal held until the next revision, or to make the page's next
-read of the state the one ``failing`` fails.
+journey needs it to make the page's next read of the state the one ``failing`` fails, to read a
+revision whose answers ``failing`` fails, or to have a pattern expanded again.
 
 ``openedGui``, a fixture beside ``copiedGui``, serves a copy of the demo as a reader's own ``ddd
 gui`` serves it: started without ``--no-browser``, so that it opens a browser, with the

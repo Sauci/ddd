@@ -1,21 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
-import { isStale, panelShows, refusalShown, shownRefusal } from "./refusals";
+import { isStale, panelShows, type Refused, refusalShown } from "./refusals";
 
-test("a refusal shows until the revision it was refused at has passed", () => {
-  const stored = { text: "A file changed on disk", revision: 7 };
-  expect(shownRefusal(stored, 7)).toBe("A file changed on disk");
-  expect(shownRefusal(stored, 8)).toBeNull();
-});
-
-test("nothing refused shows nothing, whatever the revision", () => {
-  expect(shownRefusal(null, 7)).toBeNull();
-});
-
-test("a refusal from before the page knew a revision shows until one arrives", () => {
-  expect(shownRefusal({ text: "refused", revision: undefined }, undefined)).toBe("refused");
-  expect(shownRefusal({ text: "refused", revision: undefined }, 7)).toBeNull();
-});
+/** What a panel says when its Apply is refused because a file changed under its preview. */
+const STALE =
+  "A file changed on disk, so nothing was written. The page now shows the files as they are.";
 
 test("an Apply refused for a file changed on disk is stale, and no other refusal is", () => {
   expect(isStale(new ApiError(409, "stale", "a.ddd.json changed on disk"))).toBe(true);
@@ -24,35 +13,51 @@ test("an Apply refused for a file changed on disk is stale, and no other refusal
   expect(isStale(new Error("stale"))).toBe(false);
 });
 
-test("a stale Apply's sentence is shown over any other while its revision stands", () => {
-  const stale = { text: "A file changed on disk", revision: 7 };
-  expect(refusalShown(stale, null, "asked", 7)).toBe("A file changed on disk");
-  // Over another Apply's refusal too. `useFilesApply` never sets both - setting one clears the
-  // other - but the order is the function's own, and this is where it is stated.
-  expect(refusalShown(stale, "The change was refused: no", "asked", 7)).toBe(
-    "A file changed on disk",
+test("a refusal held of a write is shown beside it, over why its plan was refused", () => {
+  const held: Refused<string> = { about: "rename", text: STALE };
+  expect(refusalShown(held, "'rpm' is the unit's own spelling", "rename")).toBe(STALE);
+  expect(refusalShown(held, null, "rename")).toBe(STALE);
+});
+
+test("a refusal held of another write is not shown beside this one, which shows its own plan's", () => {
+  const held: Refused<string> = { about: "remove", text: "The change was refused: no" };
+  expect(refusalShown(held, "'rpm' is the unit's own spelling", "rename")).toBe(
+    "'rpm' is the unit's own spelling",
   );
+  expect(refusalShown(held, null, "rename")).toBeNull();
 });
 
-test("once the analysis moves past a stale Apply, why the plan was refused shows again", () => {
-  const stale = { text: "A file changed on disk", revision: 7 };
-  expect(refusalShown(stale, null, "refused when asked", 8)).toBe("refused when asked");
+test("nothing held and no plan refused, nothing is shown", () => {
+  expect(refusalShown(null, null, "rename")).toBeNull();
 });
 
-test("an Apply refused for another reason is shown over why the plan was refused", () => {
-  expect(refusalShown(null, "The change was refused: no", "asked", 7)).toBe(
-    "The change was refused: no",
-  );
-});
+describe("a refusal because a file changed on disk, as the revision the server asked for lands", () => {
+  // Refusing an Apply as stale, the server asks for the analysis that reads the file as it is, and
+  // that analysis's revision reaches the page within milliseconds, before the refusal or after
+  // it. Each revision asks the panel's plan again: the panel has none while it is asked for, then
+  // that revision's own answer - here a refusal of its own, so that what is shown says which.
+  const held: Refused<string> = { about: "rename", text: STALE };
+  const plan8 = "'rpm' is the unit's own spelling";
 
-test("a plan refused when asked is shown in the server's own words", () => {
-  expect(refusalShown(null, null, "units.ddd.json is there already", 7)).toBe(
-    "units.ddd.json is there already",
-  );
-});
+  test("answered before the new revision, it is shown, still shown once that revision has come, and gone on the reader's next choice", () => {
+    // At the revision it was refused at, whose plan the Apply was made from.
+    expect(refusalShown(held, null, "rename")).toBe(STALE);
+    // The new revision lands: its plan asked for, then answered.
+    expect(refusalShown(held, null, "rename")).toBe(STALE);
+    expect(refusalShown(held, plan8, "rename")).toBe(STALE);
+    // The reader chooses again, and the panel holds no refusal: its plan's own answer is shown.
+    expect(refusalShown(null, plan8, "rename")).toBe(plan8);
+  });
 
-test("nothing refused shows nothing", () => {
-  expect(refusalShown(null, null, null, 7)).toBeNull();
+  test("answered after the new revision, it is shown, still shown as that revision's plan comes, and gone on the reader's next choice", () => {
+    // The new revision landed first: its plan asked for, nothing refused yet.
+    expect(refusalShown(null, null, "rename")).toBeNull();
+    // The refusal is answered, then the new revision's plan.
+    expect(refusalShown(held, null, "rename")).toBe(STALE);
+    expect(refusalShown(held, plan8, "rename")).toBe(STALE);
+    // The reader chooses again.
+    expect(refusalShown(null, plan8, "rename")).toBe(plan8);
+  });
 });
 
 describe("what a panel shows of the answer about its own entity", () => {

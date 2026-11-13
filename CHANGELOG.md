@@ -61,8 +61,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   edit was refused as `stale` for good while the revision never moved.  The refusal now asks
   for the analysis itself, as the poll does for a change it sees, so that the next plan is made
   over the bytes on disk.  The refusal stands whether or not that analysis succeeds, and one
-  that fails is printed as any other, and asked for again by the next poll.  No file format
-  changes.
+  that fails is printed as any other, and asked for again by the next poll.  On the page, the
+  sentence saying a file changed on disk now stays until the reader chooses again in its panel,
+  as every other refusal does, where it went with the next revision, which now comes at once.
+  No file format changes.
 
 * **`ddd gui` writes nothing under the build tree of a generated project.**  Where
   `ddd_generate()` writes the project's description at every configure, `ddd gui` took it for
@@ -290,8 +292,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 * **A fix the server failed on can be chosen again.**  On the Findings tab, after the server
   failed on applying a finding's fix - an error of its own, not a file changed on disk - the
   panel went on saying so and drew no Apply, whichever fix was chosen next, until the finding
-  was pressed again.  Choosing a fix now takes that refusal away and offers its Apply.  A
-  refusal because a file changed on disk is still held until the analysis has caught up.
+  was pressed again.  Choosing a fix now takes that refusal away and offers its Apply, and it
+  takes a refusal because a file changed on disk away too.
 
 * **A baseline's finding names its file as the baseline's in its panel too.**  On the Compare
   tab, the table names the file of a finding the baseline itself reports as "the baseline's

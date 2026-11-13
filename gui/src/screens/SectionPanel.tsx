@@ -10,7 +10,7 @@ import {
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { type Offer, type SectionAction, SectionPanelView } from "../components/SectionPanelView";
-import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { planEdit, sectionSet } from "../lib/shared";
 import { planShown } from "../lib/typing";
@@ -88,14 +88,10 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   // The spelling chosen to rename the section to, `null` until one is typed.
   const [to, setTo] = useState<string | null>(null);
   const [shown, setShown] = useState<SectionAction | null>(null);
-  // The one action refused for a reason other than staleness, if any: cleared whenever the
-  // reader chooses again, exactly as `ConstantPanel`'s own.
-  const [failed, setFailed] = useState<{ action: SectionAction; message: string } | null>(null);
-  // The one action refused because a file changed on disk, and the revision it happened at -
-  // held until a later revision arrives, exactly as `ConstantPanel`'s own `staleFailed`.
-  const [staleFailed, setStaleFailed] = useState<({ action: SectionAction } & Refused) | null>(
-    null,
-  );
+  // The one action refused, if any: held until the reader chooses again, whatever its code, and
+  // never let go by a revision landing, exactly as `ConstantPanel`'s own (`Refused`,
+  // lib/refusals.ts).
+  const [failed, setFailed] = useState<Refused<SectionAction> | null>(null);
 
   // What the panel shows of that answer (`panelShows`): a section just added or renamed is refused
   // until its file is analysed again, and the panel says the findings are updating meanwhile.
@@ -169,10 +165,8 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
     onMutate: () => setFailed(null),
     // Renamed, the section is the new spelling now, and the tab opens its panel; removed, it is
     // gone as the reader asked. Neither is the section disappearing that spec 5.4 has the tab
-    // announce. A success is a definite answer, so it also clears a stale wait left over from an
-    // earlier attempt at this same action - `onMutate` above only ever clears the other refusal.
+    // announce.
     onSuccess: (_reply, action) => {
-      setStaleFailed(null);
       setShown(null);
       if (action === "rename" && to !== null) {
         moving.current = true;
@@ -182,17 +176,7 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
         onMoved(undefined);
       }
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so an action never shows two different answers to the same Apply.
-    onError: (error, action) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setStaleFailed({ action, text: refusalOf(error), revision });
-        setFailed(null);
-      } else {
-        setFailed({ action, message: refusalOf(error) });
-        setStaleFailed(null);
-      }
-    },
+    onError: (error, action) => setFailed({ about: action, text: refusalOf(error) }),
     // An Apply changes the section's own entry or every definition naming it, the tab's rows and
     // every section plan, whose fingerprints it spent: they are asked for again, and nothing can
     // be applied until they answer. A field saved is let go only then, so it goes from what was
@@ -212,18 +196,13 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
    * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
    * `null`/`null`/pending while the debounced request has not caught up with what the fields now
    * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
-   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
-   * failure takes precedence, as it always did. */
+   * its own fetch refusal, for text the reader has since typed past. A refusal of its Apply takes
+   * precedence, as it always did (`refusalShown`). */
   const offer = (action: SectionAction): Offer => {
     const shown = planShown(asked[action], requests[action], plans[action]);
     return {
       plan: shown.plan,
-      refusal:
-        staleFailed?.action === action
-          ? shownRefusal(staleFailed, revision)
-          : failed?.action === action
-            ? failed.message
-            : shown.refusal,
+      refusal: refusalShown(failed, shown.refusal, action),
       pending: shown.pending,
     };
   };

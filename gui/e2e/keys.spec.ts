@@ -9,7 +9,6 @@ import {
   openPanel,
   PUMP,
   readAsText,
-  restamp,
   SENSOR_HUB,
 } from "./demo";
 import { expect, test } from "./fixtures";
@@ -151,19 +150,24 @@ test("a change refused as stale can be applied again once the analysis has caugh
   // and left nothing stale to refuse - on a slow CI runner, never here.
   driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
   await apply.click();
-  await expect(panel.getByText("A file changed on disk")).toBeVisible();
+  const refused = panel.getByText("A file changed on disk");
+  await expect(refused).toBeVisible();
 
-  // Hidden from the watcher for good now, not just for a moment - nothing will ever make it
-  // notice controller.ddd.json changed on its own, so the drift above is not what the rest of
-  // this test can wait on. A plain modification time bump, no byte touched again, is a real
-  // difference in the one thing `stamped` compares, so it stands in for "something else
-  // changed" and is what lets the next poll reanalyse the project - reading, for the first
-  // time, the file's true and already-drifted bytes, and updating what the page holds against.
-  restamp(gui.directory, CONTROLLER);
-  await expect(panel.getByText("A file changed on disk")).toBeHidden({ timeout: 15000 });
-  await panel.getByLabel("Max").fill("50");
+  // The watcher never notices the drift, and nothing needs it to: refusing the Apply as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the drifted bytes.
+  // The panel shows that analysis landed - Controller's limits as the drift left them - and the
+  // sentence is still there: it is held until the reader's next choice, not until a revision.
+  await expect(panel.getByRole("row", { name: /^limits/ })).toContainText("0 … 999");
+  await expect(refused).toBeVisible();
+
+  // The reader's next choice, a new maximum typed, takes the sentence away, and what it asks
+  // for is planned against the files as they now are: applied, both files state it.
+  await panel.getByLabel("Max").fill("60");
+  await expect(refused).toBeHidden();
   await panel.getByRole("button", { name: /^Apply to/ }).click();
   await expect(panel.getByText("Nothing to change")).toBeVisible({ timeout: 15000 });
+  expect(valueA(gui.directory, SENSOR_HUB).limits).toEqual({ min: 0, max: 60 });
+  expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 60 });
 });
 
 test("a range the two fields do not make offers no Apply, and changes nothing", async ({

@@ -85,8 +85,8 @@ export function DeclarePanel({ file, component, revision, stopped, onClose, onDe
   // A value block's rows, kept apart because `dimensions` has no chooser of its own.
   const [dimensions, setDimensions] = useState<string[]>([]);
   const [changesShown, setChangesShown] = useState(false);
-  // The one write refused, cleared on the next change of the form - unlike the other panels, this
-  // one always closes on success, so there is no later revision for a stale refusal to wait on.
+  // The one write refused, whatever its code, cleared on the next change of the form - held until
+  // the reader's next choice, as every other panel holds its own (`Refused`, lib/refusals.ts).
   const [refusal, setRefusal] = useState<string | null>(null);
   // Whether the most recent change to the form was typed into a field, or committed discretely -
   // a key's own chooser, picked or confirmed with Enter (`onValue`, never typing: `DeclarePanelView`'s

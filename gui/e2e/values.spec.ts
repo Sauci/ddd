@@ -3,14 +3,12 @@ import { join } from "node:path";
 import type { Locator } from "@playwright/test";
 import {
   CONTROLLER,
-  driftMaxUnseen,
   type Frame,
   failing,
   framesWatched,
   held,
   openValues,
   paste,
-  restamp,
   SENSOR_HUB,
   SERVER_FAILED,
   scrolledIntoView,
@@ -20,6 +18,7 @@ import {
   widenBlockA,
   withinBox,
   writeBlockAInit,
+  writeUnseen,
 } from "./demo";
 import { expect, test } from "./fixtures";
 
@@ -340,26 +339,38 @@ test("a value applied from a file that changed on disk is refused, and applied o
   const apply = page.getByRole("button", { name: "Apply to 1 file" });
   await expect(apply).toBeEnabled();
 
-  // Controller changes under the plan the grid holds, unseen by the session's watcher, as
-  // keys.spec.ts's own stale journey changes it: only the Apply's own fingerprint check sees it.
+  // CurveA's last value changes under the plan the grid holds, one digit for another, written
+  // where the session's own watcher does not see it (`writeUnseen`): only the Apply's own
+  // fingerprint check sees it.
   const path = join(gui.directory, CONTROLLER);
-  driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
-  const drifted = readFileSync(path);
-  await apply.click();
-  const setting = page.getByRole("region", { name: "Set the cell" });
-  await expect(setting.getByRole("status")).toHaveText(
-    "A file changed on disk, so nothing was written. The page now shows the files as they are.",
+  const before = readFileSync(path, "utf8");
+  const changed = before.replace(
+    '"init": [1200, 900, 800, 750, 700, 650]',
+    '"init": [1200, 900, 800, 750, 700, 640]',
   );
-  expect(readFileSync(path).equals(drifted)).toBe(true);
+  expect(changed).not.toBe(before);
+  writeUnseen(gui.directory, CONTROLLER, changed);
+  await apply.click();
+  const refused = page.getByRole("region", { name: "Set the cell" }).getByRole("status");
+  const stale =
+    "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+  await expect(refused).toHaveText(stale);
+  expect(readFileSync(path, "utf8")).toBe(changed);
 
-  // A stamp moved with no byte touched lets the next poll read the drifted file; the refusal is
-  // held until the analysis moves on, and goes with it, the cell still being typed into.
-  restamp(gui.directory, CONTROLLER);
-  await expect(setting.getByRole("status")).toHaveCount(0, { timeout: 15000 });
+  // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
+  // The grid shows that analysis landed - CurveA's last value as the outside change left it - and
+  // the sentence is still there: it is held until the reader's next choice, not until a revision.
+  await expect(page.getByRole("textbox", { name: "element 6" })).toHaveValue("6.4");
+  await expect(refused).toHaveText(stale);
+
+  // Apply, offered under the sentence for the file as it now is, pressed again is that choice:
+  // the sentence goes, and the cell is written beside the outside change.
   await apply.click();
   await expect
     .poll(() => readFileSync(path, "utf8"))
-    .toContain('"init": [1200, 900, 750, 750, 700, 650]');
+    .toContain('"init": [1200, 900, 750, 750, 700, 640]');
+  await expect(refused).toHaveCount(0);
 });
 
 // Part 9's own five: a table pasted from a spreadsheet replaces every value of an object in one

@@ -207,7 +207,7 @@ test("a finding fixed from outside while its panel is open is no longer reported
 });
 
 /** What the Findings tab says when a fix's Apply is refused because a file changed under its
- * preview: `FindingsPage.tsx`'s own sentence, held until a later revision. */
+ * preview: `FindingsPage.tsx`'s own sentence, held until the reader's next choice. */
 const STALE =
   "A file changed on disk, so nothing was written. The tab now shows the findings as they are.";
 
@@ -228,11 +228,9 @@ test("a fix applied while its file changed on disk is refused, and nothing is wr
   await expect(panel.locator(".hunk .added").filter({ hasText: '"id":' })).toBeVisible();
 
   // Controller's description gains its full stop as the Apply goes out, written where the
-  // session's own watcher does not see it (`writeUnseen`): seen, it brought a revision of its
-  // own, and the tab holds a stale refusal only until the next (`shownRefusal`, lib/refusals.ts),
-  // which a journey can miss, as skeleton.spec.ts's out-of-date edit once did. A space taken out
-  // and a full stop put in keep the file as long as it was. Written once, then the request goes
-  // through to the server, which reads the bytes fresh.
+  // session's own watcher does not see it (`writeUnseen`), so that only the Apply's own fresh read
+  // of the bytes sees it. A space taken out and a full stop put in keep the file as long as it
+  // was. Written once, then the request goes through to the server, which reads the bytes fresh.
   const original = readFileSync(file, "utf8");
   const changed = original.replace(
     '"description": "Consumes the raw values and produces the derived ones"',

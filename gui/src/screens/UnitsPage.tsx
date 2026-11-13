@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApiError, getUnits, postEdit } from "../api/client";
+import { getUnits, postEdit } from "../api/client";
 import type { State } from "../api/types";
 import { useKept } from "../app/useKept";
 import { AdoptBannerView, AdoptPanelView } from "../components/AdoptBannerView";
@@ -12,7 +12,6 @@ import {
   planEdit,
   tabTitle,
 } from "../lib/projectUnits";
-import { type Refused, shownRefusal } from "../lib/refusals";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { refusalOf, UnitPanel, usePlan } from "./UnitPanel";
@@ -43,14 +42,11 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   const [gone, setGone] = useState<string | null>(null);
   // Whether the adoption's preview is open, in the panel's place beside the table.
   const [previewing, setPreviewing] = useState(false);
-  // A refused adopt for a reason other than staleness, if any: cleared whenever a new attempt
-  // starts, exactly as before this task.
+  // A refused adopt, if any, in the tab's own words (`refusalOf`): held until a new attempt starts,
+  // whatever its code, a file changed on disk included, and never let go by a revision landing
+  // (`Refused`, lib/refusals.ts) - though the banner, and the refusal in it, go once the server
+  // offers no adoption any more.
   const [refused, setRefused] = useState<string | null>(null);
-  // A refused adopt because a file changed on disk, and the revision it happened at. As in the
-  // variable, unit and findings panels, an immediate retry would otherwise send the same stale
-  // fingerprints the server just refused; `shownRefusal` keeps it shown until a later revision
-  // arrives.
-  const [stale, setStale] = useState<Refused | null>(null);
   const adoptable = answer?.adoptable ?? null;
   // Asked for as soon as the banner offers it, so that Adopt applies exactly what Show changes
   // shows; a project stating no unit has nothing to adopt, and nothing is asked. Both conditions
@@ -69,23 +65,8 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
       return postEdit(edit);
     },
     onMutate: () => setRefused(null),
-    // A success is a definite answer, so it also clears a stale wait left over from an earlier
-    // attempt; `onMutate` above only ever clears the other refusal.
-    onSuccess: () => {
-      setStale(null);
-      setPreviewing(false);
-    },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so the banner never shows two different answers to the same adopt.
-    onError: (error) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setStale({ text: refusalOf(error), revision });
-        setRefused(null);
-      } else {
-        setRefused(refusalOf(error));
-        setStale(null);
-      }
-    },
+    onSuccess: () => setPreviewing(false),
+    onError: (error) => setRefused(refusalOf(error)),
     // Adopting changes every row and every plan: they are asked for again, and nothing can be
     // adopted a second time while they are.
     onSettled: () =>
@@ -119,7 +100,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
           adoptable={answer.adoptable}
           hasUnitsFile={hasUnitsFile(answer)}
           plan={adoption.data ?? null}
-          refusal={shownRefusal(stale, revision) ?? refused ?? adoption.error?.message ?? null}
+          refusal={refused ?? adoption.error?.message ?? null}
           onShowChanges={() => {
             select(undefined);
             setPreviewing(true);

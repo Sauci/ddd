@@ -339,9 +339,8 @@ const STALE =
 
 /** examples/vocabulary's description as somebody saving it from their editor would change it: a
  * space taken out and a full stop put in, so that it keeps its length and `writeUnseen` can write
- * it where the session's own watcher does not see it - the change "a Remove applied while the
- * description changed on disk…" makes. Throws where the text is not there, so that a journey never
- * writes the file it was given back unchanged and calls that a change. */
+ * it where the session's own watcher does not see it. Throws where the text is not there, so that a
+ * journey never writes the file it was given back unchanged and calls that a change. */
 function withFullStop(original: string): string {
   const changed = original
     .replace('"name": "PumpDevice"', '"name":"PumpDevice"')
@@ -349,6 +348,30 @@ function withFullStop(original: string): string {
   if (changed === original) throw new Error(`${PROJECT} no longer reads as this journey expects`);
   return changed;
 }
+
+/** examples/vocabulary's description with its first include and its last swapped, as somebody
+ * reordering it in their editor would: the file keeps its length, so `writeUnseen` can write it
+ * where the session's own watcher does not see it, and every plan of the Files tab moves with it -
+ * the lines a Remove of units.ddd.json takes out, and the line a New file or an Add goes after - so
+ * that a panel's changes show when the page has read it. Throws where the includes are not there,
+ * as `withFullStop` does. */
+function withEndsSwapped(original: string): string {
+  const changed = original.replace(
+    /"units\.ddd\.json",([\s\S]*)"pump\.ddd\.json"/,
+    '"pump.ddd.json",$1"units.ddd.json"',
+  );
+  if (changed === original) throw new Error(`${PROJECT} no longer reads as this journey expects`);
+  return changed;
+}
+
+/** The includes of examples/vocabulary's description once `withEndsSwapped` has swapped them. */
+const SWAPPED = [
+  "pump.ddd.json",
+  "sections.ddd.json",
+  "constants.ddd.json",
+  "rasters.ddd.json",
+  "units.ddd.json",
+];
 
 test("a Remove applied while the description changed on disk is refused, and goes through once the analysis has caught up", async ({
   page,
@@ -363,14 +386,14 @@ test("a Remove applied while the description changed on disk is refused, and goe
     .getByRole("region", { name: "Remove from the includes" });
   const remove = removing.getByRole("button", { name: "Remove from the includes" });
   await expect(removing.getByText("Changes 1 file: project.ddd.json")).toBeVisible();
+  await removing.getByRole("button", { name: "Show changes" }).click();
+  const takenOut = removing.locator(".hunk .removed");
+  await expect(takenOut).toHaveText([/"units\.ddd\.json",$/]);
 
-  // The description gains its full stop as the Apply goes out, written where the session's own
-  // watcher does not see it (`writeUnseen`): seen, it brought a revision of its own, and the tab
-  // holds a stale refusal only until the next (`shownRefusal`, lib/refusals.ts) - once gone before
-  // skeleton.spec.ts's out-of-date edit read it (CI run 37705627501, windows msedge). A space
-  // taken out and a full stop put in keep the file as long as it was. Written once, then the
-  // request goes through to the server, which reads the bytes fresh.
-  const changed = withFullStop(readFileSync(project, "utf8"));
+  // The description's includes reordered as the Apply goes out, written where the session's own
+  // watcher does not see it (`writeUnseen`), so that only the Apply's own fresh read of the bytes
+  // sees the change. Written once, then the request goes through to the server.
+  const changed = withEndsSwapped(readFileSync(project, "utf8"));
   await page.route(
     "**/api/edit",
     async (route) => {
@@ -386,22 +409,21 @@ test("a Remove applied while the description changed on disk is refused, and goe
   // its includes.
   expect(readFileSync(project, "utf8")).toBe(changed);
 
-  // The refusal is held until the analysis has moved past the revision it was made at: no revision
-  // comes of a change the watcher did not see, so the file's stamp is moved, which it does see.
-  // The analysis reads the file as it now is, the refusal goes, and the plan asked for that
-  // revision carries the file's new fingerprint - which is what lets the same press go through.
-  restamp(vocabularyGui.directory, PROJECT);
-  await expect(refused).toHaveCount(0, { timeout: 15000 });
+  // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
+  // The panel shows that analysis landed - its changes, asked for again of that revision, take
+  // units.ddd.json out of the last place, where the outside change moved it - and the sentence is
+  // still there: it is held until the reader's next choice, not until a revision.
+  await expect(takenOut.filter({ hasText: /"units\.ddd\.json"$/ })).toBeVisible();
+  await expect(refused).toHaveText(STALE);
+
+  // Remove pressed again is that choice: the sentence goes, and the entry with it, the outside
+  // change kept.
   await remove.click();
   await expect(page.getByRole("row", { name: UNITS })).toHaveCount(0);
-  const written = JSON.parse(readFileSync(project, "utf8")).project;
-  expect(written.includes).toEqual([
-    "sections.ddd.json",
-    "constants.ddd.json",
-    "rasters.ddd.json",
-    "pump.ddd.json",
-  ]);
-  expect(written.description).toMatch(/names its sizes\.$/);
+  expect(JSON.parse(readFileSync(project, "utf8")).project.includes).toEqual(
+    SWAPPED.filter((entry) => entry !== UNITS),
+  );
 });
 
 /** A component the project does not include yet, reading a variable no component writes: adding
@@ -523,7 +545,11 @@ test("a New file applied while the description changed on disk is refused in its
     creating.getByText("Changes 2 files: project.ddd.json, spare.ddd.json", { exact: true }),
   ).toBeVisible();
 
-  const changed = withFullStop(readFileSync(project, "utf8"));
+  await creating.getByRole("button", { name: "Show changes" }).click();
+  const takenOut = creating.locator(".hunk .removed");
+  await expect(takenOut).toHaveText([/"pump\.ddd\.json"$/]);
+
+  const changed = withEndsSwapped(readFileSync(project, "utf8"));
   writeUnseen(vocabularyGui.directory, PROJECT, changed);
   const apply = creating.getByRole("button", { name: "Apply to 2 files" });
   await apply.click();
@@ -536,35 +562,33 @@ test("a New file applied while the description changed on disk is refused in its
   expect(existsSync(spare)).toBe(false);
   expect(readFileSync(project, "utf8")).toBe(changed);
 
-  // Held until the analysis has moved past the revision it was refused at (`refusalShown`,
-  // lib/refusals.ts). A stamp moved and no byte changed is what the watcher sees: the next
-  // revision reads the description as it now is, and in the render it lands the refusal goes and
-  // the plan is asked again under it - so the button pressed next is that revision's, carrying the
-  // fingerprint that lets the same press go through.
-  restamp(vocabularyGui.directory, PROJECT);
-  await expect(refused).toHaveCount(0);
+  // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
+  // The panel shows that analysis landed - its changes, asked for again of that revision, add the
+  // new entry after units.ddd.json, which the outside change made the last - and the sentence is
+  // still there: it is held until the reader's next choice, not until a revision.
+  await expect(takenOut).toHaveText([/"units\.ddd\.json"$/]);
+  await expect(refused).toHaveText(STALE);
+
+  // Apply pressed again is that choice: the sentence goes, and the file is created and added, the
+  // outside change kept.
   await apply.click();
   await expect(page.getByRole("row", { name: "spare.ddd.json", exact: true })).toBeVisible();
   expect(JSON.parse(readFileSync(spare, "utf8"))).toEqual({ types: [] });
-  const written = JSON.parse(readFileSync(project, "utf8")).project;
-  expect(written.includes).toEqual([
-    "units.ddd.json",
-    "sections.ddd.json",
-    "constants.ddd.json",
-    "rasters.ddd.json",
-    "pump.ddd.json",
+  expect(JSON.parse(readFileSync(project, "utf8")).project.includes).toEqual([
+    ...SWAPPED,
     "spare.ddd.json",
   ]);
-  expect(written.description).toMatch(/names its sizes\.$/);
 });
 
 /**
  * Add's out-of-date refusal, in Add's own panel: the same refusal New file's journey above meets,
  * reached the same way. Asked again after it (`onSettled`), Add's plan is itself refused as out
- * of date - it judges the change against the revision (`_judged`, api.py) - so the panel's
- * sentence is the Apply's, which takes precedence (`refusalShown`), and no button is offered.
+ * of date until the analysis the refusal asks for lands - it judges the change against the
+ * revision (`_judged`, api.py) - and the panel's sentence is the Apply's, which takes precedence
+ * over the plan's own, as long as it is held.
  */
-test("an Add applied while the description changed on disk is refused in its own panel, and nothing is written", async ({
+test("an Add applied while the description changed on disk is refused in its own panel, nothing is written, and it goes through once the analysis has caught up", async ({
   page,
   vocabularyGui,
 }) => {
@@ -582,14 +606,33 @@ test("an Add applied while the description changed on disk is refused in its own
   const adding = page.getByRole("complementary", { name: "Add a file" });
   await adding.getByRole("textbox", { name: "Path" }).fill(EXTRA);
   await expect(adding.getByText("Changes 1 file: project.ddd.json", { exact: true })).toBeVisible();
+  await adding.getByRole("button", { name: "Show changes" }).click();
+  const takenOut = adding.locator(".hunk .removed");
+  await expect(takenOut).toHaveText([/"pump\.ddd\.json"$/]);
 
-  const changed = withFullStop(readFileSync(project, "utf8"));
+  const changed = withEndsSwapped(readFileSync(project, "utf8"));
   writeUnseen(vocabularyGui.directory, PROJECT, changed);
-  await adding.getByRole("button", { name: "Apply to 1 file" }).click();
+  const apply = adding.getByRole("button", { name: "Apply to 1 file" });
+  await apply.click();
 
-  await expect(adding.getByRole("status")).toHaveText(STALE);
+  const refused = adding.getByRole("status");
+  await expect(refused).toHaveText(STALE);
   expect(readFileSync(project, "utf8")).toBe(changed);
   expect(JSON.parse(changed).project.includes).not.toContain(EXTRA);
+
+  // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
+  // The panel shows that analysis landed - its changes, asked for again of that revision, add the
+  // entry after units.ddd.json, which the outside change made the last - and the sentence is still
+  // there: it is held until the reader's next choice, not until a revision.
+  await expect(takenOut).toHaveText([/"units\.ddd\.json"$/]);
+  await expect(refused).toHaveText(STALE);
+
+  // Apply pressed again is that choice: the sentence goes, and the file is added, the outside
+  // change kept.
+  await apply.click();
+  await expect(page.getByRole("row", { name: EXTRA, exact: true })).toBeVisible();
+  expect(JSON.parse(readFileSync(project, "utf8")).project.includes).toEqual([...SWAPPED, EXTRA]);
 });
 
 test("the files tab says it is reading the project's files until they are read", async ({

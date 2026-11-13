@@ -1214,31 +1214,40 @@ another file under the build tree it is generated in, each refused as ``generate
 writes the description again at every configure, and which files belong to the project is
 ``ddd_add_component()``'s to say. That tree is the nearest directory at or above the record
 holding a ``CMakeCache.txt``, unless the source tree that cache names lies under it, as an
-in-source build's does, and the description's own directory otherwise. The file it
-creates takes the mode, and where the process may set them the owner and group, of the
-project description beside it, so ``ddd gui`` running in a container leaves the developer a
-file of their own rather than root's.
+in-source build's does, and the description's own directory otherwise. The record is all that
+says a description is generated, so one given to ``ddd_generate()`` with ``PROJECT`` and an
+``OUTPUT_DIRECTORY`` of its own directory, the record written beside it and naming it, is taken
+for one the build generates: every change of its files is refused, in a sentence saying the
+build writes it, which it does not. Nothing in the record or the description tells the two
+apart yet. The file it creates takes the mode, and where the process may set them the owner
+and group, of the project description beside it, so ``ddd gui`` running in a container leaves
+the developer a file of their own rather than root's.
 
 Every write of the engine, an edit's and an undo's alike, looks at its file once more after
 the stage is written and right before the rename - or the removal, for a file an edit
 created. A file that no longer holds the bytes the write was made from, or that exists
 where the write creates it, was changed by somebody else since the edit read it, and is
 refused as ``stale`` rather than overwritten, taken away or brought back; the files
-already written are put back, each one that still holds what the write left. ``stale``
-says that every one went back - the page tells a person that nothing was written - and
-where one could not, the refusal is ``unwritable`` and its sentence names the files it
-could not put back.
+already written are put back, each one that still holds what the write left. A save landing
+in the instant between that last look and the rename is still written over, and a file another
+writer creates there in that instant is replaced: no lock the file systems offer closes that
+moment. ``stale`` says that every one went back - the page tells a person that nothing was
+written - and where one could not, the refusal is ``unwritable`` and its sentence names the
+files it could not put back.
 
 A file this process may not write is refused ``unwritable`` before the first file of an edit,
 or of an undo, is staged, on every system: one with no permission to write it at all - a
 mode of ``0444``, which is what Windows' read-only flag reads as - for root as for anyone, or
 one the system says this process may not write, as it does for a file of another user's or on
-a read-only mount. Windows refused the rename of a stage that had taken a read-only file's
-access, after its second of retries, and left that stage beside the file; Linux, where a
-rename asks the permission of the folder and not of the file, wrote the file through and kept
-it read-only. A stage that is to take a file's access is created ``0600``, for its owner
-alone, and a stage a write refused is made writable before it is taken away, Windows not
-deleting a read-only file.
+a read-only mount. On Windows that question reads the read-only flag and nothing else,
+``os.access`` leaving a file's permissions unasked: a file they forbid this process, or one on a
+share that keeps no such flag, passes it, and the edit is refused when that file's stage cannot
+replace it, once its retries are spent, with every file renamed before it put back. Windows
+refused the rename of a stage that had taken a read-only file's access, after its second of
+retries, and left that stage beside the file; Linux, where a rename asks the permission of the
+folder and not of the file, wrote the file through and kept it read-only. A stage that is to
+take a file's access is created ``0600``, for its owner alone, and a stage a write refused is
+made writable before it is taken away, Windows not deleting a read-only file.
 
 An edit stages every one of its files before it renames any. The stages are written and
 closed, then synced together - on up to ``SYNC_WORKERS`` threads, a sync waiting for the disk

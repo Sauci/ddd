@@ -366,12 +366,13 @@ The commands
        Every change is written into the files in their own layout and checked
        the way ``ddd check`` checks them. A change is refused as a whole, every file
        left as it was, where a file it changes was saved from elsewhere since it was
-       planned, or is read-only, on every system alike - and where a file cannot be
-       written the ones already written are put back, the sentence naming any that
-       cannot be. Each file's new bytes are synced to the disk before they are renamed
-       onto it, where the file system has a sync to offer, so that on a journaling
-       file system a power cut leaves a file as it was or as the change made it, and
-       not empty. A refusal is what a change is made all at once against: a server
+       planned - all but a save landing in the instant between the last look at the file
+       and its rename, which is still written over - or is read-only, on every system
+       alike, and where a file cannot be written the ones already written are put back,
+       the sentence naming any that cannot be. Each file's new bytes are synced to the disk
+       before they are renamed onto it, where the file system has a sync to offer, so that
+       on a journaling file system a power cut leaves a file as it was or as the change
+       made it, and not empty. A refusal is what a change is made all at once against: a server
        stopped while it writes, by a closed terminal or a ``kill``, can leave some of
        the files renamed as the change made them, the others as they were and, beside
        them, the ``.ddd-staging`` files it was writing, and the next ``ddd gui`` has
@@ -579,8 +580,11 @@ The commands
        ddd_add_component(<target> JSON newcomp.ddd.json) to the CMakeLists.txt there, replacing
        <target> with your component's target``. The record beside the description is what says
        so, read for the project it names whatever its format and its severities, and whether or
-       not ``-b`` names the build directory; a project given to ``ddd_generate()`` with
-       ``PROJECT``, its record in the build tree, is edited as any other.
+       not ``-b`` names the build directory. A project given to ``ddd_generate()`` with
+       ``PROJECT`` is edited as any other while its record lies in the build tree, and taken for
+       a generated one, every change of its files refused in that sentence, which then says
+       something untrue, where ``OUTPUT_DIRECTORY`` is the description's own directory and
+       leaves the record beside it: nothing yet tells the two apart.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until

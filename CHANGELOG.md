@@ -40,11 +40,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   stages under a name of its own, beside the file.  And a file saved from outside while an edit
   was being written, between the moment the page last read it and the rename, was overwritten
   and the edit answered as written; each file is now read once more right before it replaces the
-  file, and a change since the analysis is refused as `stale`, with every file as it was.  An undo,
-  and the rollback of an edit that is refused, put back only the files that still hold what the
-  edit wrote: a file saved since is left as it was saved, and named.  A reader may now meet a
-  `stale` where the edit used to be written; the answer is to read the project again and ask once
-  more.  No file format changes.
+  file, and a change since the analysis is refused as `stale`, with every file as it was - all but
+  a save landing in the instant between that last read and the rename, which is still written
+  over.  An undo, and the rollback of an edit that is refused, put back only the files that still
+  hold what the edit wrote: a file saved since is left as it was saved, and named.  A reader may
+  now meet a `stale` where the edit used to be written; the answer is to read the project again
+  and ask once more.  No file format changes.
 
 * **A plan made over a file saved during the analysis is refused as `stale`.**  The plan of an
   edit, a rename or a settled value took the places the analysis recorded, and when a file had
@@ -52,8 +53,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   rewrote another declaration, value or entry than the one asked about, and applying it wrote
   the wrong one.  The analysis now records a fingerprint of the bytes it read, and a plan
   whose file reads differently, or whose recorded place no longer names what was asked about -
-  an entry of a type put in above it or taken out since - is refused as `stale`.
-  No file format changes.
+  an entry of a type put in above it or taken out since - is refused as `stale`, and a settled
+  value whose declaration moved so as `unreadable`.  No file format changes.
 
 * **A refused `stale` edit or undo asks for the analysis that clears it.**  A file saved with
   the size and the modification time it had before is a change the project's poll cannot see,
@@ -85,14 +86,17 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   file an edit changes or an undo puts back is now asked whether this process may write it
   before any is staged, and one it may not - read-only, another user's, on a read-only mount,
   or to be written by root over a file nobody can write - is refused as `unwritable`, naming
-  it and saying nothing was written.  A stage is created `0600` where it will take its file's
-  mode, and a name already taken is tried sixteen times, no more.  Every stage is synced to the
-  disk before any file is replaced, at once for all of them, so that an edit of hundreds of
-  files and its undo still take a fraction of a second, and a power cut leaves a file as it was
-  or as the edit made it, never empty, on a journaling file system that has a sync to offer.  A
-  refusal leaves every file as it was or names those it could not put back; a server killed
-  while it writes can still leave part of an edit and the stages it
-  was writing.  No file format changes.
+  it and saying nothing was written; on Windows the read-only flag is the one thing asked first,
+  so a file its permissions forbid this process passes, and is refused when its stage cannot
+  replace it, once the tries are spent, with the files renamed before it put back.  A stage is
+  created `0600` where it will take its file's mode, and a name already taken is tried sixteen
+  times, no more.  Every stage is synced to the disk before any file is replaced, at once for all
+  of them, so that an edit of hundreds of files and its undo still take a fraction of a second on
+  the NVMe disk of a Linux desktop, where that was measured, and a power cut leaves a file as it
+  was or as the edit made it, never empty, on a journaling file system that has a sync to offer.
+  A refusal leaves every file as it was or names those it could not put back; a server killed
+  while it writes can still leave part of an edit and the stages it was writing.  No file format
+  changes.
 
 * **A rename, a removal or a declaration that produces a name is refused while a file of the
   project does not load.**  A project is indexed from the files that loaded, so a file saved
@@ -112,15 +116,17 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   every declaration of a variable without asking whether the result was a declaration the
   loader accepts - an enumeration on a float32, a string beside a unit, limits that are not
   finite, a shape past the caps.  The project then counted as not loaded and every further
-  fix was refused until the file was mended by hand.  A fix is now offered only for the
-  declarations it leaves loadable, in the editor and on the page, and a value the variable's
-  panel would write that leaves one unable to load is planned all the same, as the reader
-  may mean it, with a sentence saying which declaration of which file would not load and why,
-  which the panel draws above Apply.  A value that is not json, an open buffer in the
-  editor with a key typed twice, is answered with the loader's own sentence rather than ending
-  the language server.  What needs more of the project - a constant a dimension names, a
-  structure's leaves, a map's axes - is still a finding of the next analysis.  No file format
-  changes.
+  fix was refused until the file was mended by hand.  A fix is now offered in the editor only
+  for the declarations it leaves loadable, and on the page only where it leaves every one of
+  them loadable, and a value the variable's panel would write that leaves one unable to load is
+  planned all the same, as the reader may mean it, with a sentence saying which declaration of
+  which file would not load and why, which the panel draws above Apply - all but a value that
+  would leave a declaration's storage named twice or a datatype without its conversion, or one
+  its kind does not take or cannot go without, which the panel refuses as it did.  A value that
+  is not json, an open buffer in the editor with a key typed twice, is answered with the loader's
+  own sentence rather than ending the language server.  What needs more of the project - a
+  constant a dimension names, a structure's leaves, a map's axes - is still a finding of the next
+  analysis.  No file format changes.
 
 * **A name another component keeps local is no longer offered to read.**  The add panel offered
   a component every name of the project, including a local of another component, and reading

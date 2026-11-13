@@ -36,7 +36,6 @@ import shutil
 import subprocess
 import sys
 import sysconfig
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -99,7 +98,23 @@ MAKE_PROGRAMS = {"Ninja": NINJA, MAKE: make_program()}
 TO_THE_SECOND = {MAKE} if os.name == "nt" else set()
 """The generators whose build tool may compare files' times to the whole second - a ``make``
 built for Windows - to which a file edited in the second a build ended is no newer than what
-that build wrote. A :class:`Story` waits that second out after each of their builds."""
+that build wrote, nor a header the next build writes than the object the last one compiled
+from it. A :class:`Story` sets its whole tree back after each of their builds (:func:`set_back`)
+rather than wait for the clock to leave that second."""
+
+SET_BACK_NS = 2_000_000_000
+"""How far :func:`set_back` moves every file back: two whole seconds, so that what is written
+next is newer to the second, even on a filesystem keeping times to two seconds."""
+
+
+def set_back(root: Path) -> None:
+    """Every file below ``root`` older by :data:`SET_BACK_NS`, each by the same amount, so that
+    their order - which a build reads - is kept, and what is written next, by the test or by the
+    build after, is newer than all of them to the second."""
+    for path in root.rglob("*"):
+        if path.is_file():
+            times = path.stat()
+            os.utime(path, ns=(times.st_atime_ns - SET_BACK_NS, times.st_mtime_ns - SET_BACK_NS))
 
 
 def attempt(
@@ -869,12 +884,12 @@ add_library(spare STATIC spare.c)
 
     def build_target(self, *targets: str) -> subprocess.CompletedProcess[str]:
         """One build, of the targets named or of everything, whether or not it succeeds; where
-        the build tool reads times to the second, that second is waited out before the test
-        edits anything (:data:`TO_THE_SECOND`)."""
+        the build tool reads times to the second, the tree is set back before the test edits
+        anything (:data:`TO_THE_SECOND`)."""
         target = ["--target", *targets] if targets else []
         run = cmake("--build", str(self.build_dir), *target, cwd=self.build_dir, site=self.site)
         if self.generator in TO_THE_SECOND:
-            time.sleep(1.05 - time.time() % 1)
+            set_back(self.source)
         return run
 
 

@@ -316,9 +316,11 @@ what it does rather than to what it says. Its story of the build after an edit i
 under Ninja, which the same requirements install, and under the platform's Makefile generator,
 whose ``make`` no requirements file installs and the machine running the suite has to have on
 its path: GNU ``make`` on Linux, and on Windows the ``mingw32-make`` of the MinGW whose ``gcc``
-the suite compiles with, found beside that ``gcc``. On Windows the story waits out the second
-a build under ``make`` ended in before it edits anything, for a ``make`` that compares files'
-times to the whole second. A configure and a build cost seconds each, which
+the suite compiles with, found beside that ``gcc``. On Windows, for a ``make`` that compares
+files' times to the whole second, the story sets every file of its tree two seconds back after
+each build under ``make``, all of them alike so that their order holds, rather than wait for
+the clock: what it writes next, and what the build after writes, is newer than all of it. A
+configure and a build cost seconds each, which
 makes that file a third of the suite's runtime, so the classes whose tests ask several
 questions of one tree configure and build it once, in a class-scoped fixture, and each test
 reads one answer out of what it left behind. ``tests/test_hardening.py`` holds one test per defect that once

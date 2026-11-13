@@ -2284,11 +2284,15 @@ that reads it.
 
 The generation declares as its outputs the files the template names give away, the A2L and
 the dictionary, and as its byproducts the files of each `{component}` template, one for every
-component the image links, named when the build is configured: `ddd_add_component` reads the
-component name of each file it registers, and `ddd_generate` follows the image's link graph
-to the components it links once the directory calling it is done, so that an image may be
-linked after the call, in that directory or one it adds; with `PROJECT` the names are read off
-the files `ddd sources` lists. A component the image reaches only through a link made, or a
+component of the image - in the collected mode every component it links, with `PROJECT` every
+component the project names, whatever the image links - named when the build is configured:
+`ddd_add_component` reads the component name of each file it registers, and `ddd_generate`
+follows the image's link graph to the components it links once the directory calling it is
+done, so that an image may be linked after the call, in that directory or one it adds; with
+`PROJECT` the names are read off the files `ddd sources` lists. A link behind a generator
+expression cannot be evaluated when the names are read, so every component it names is
+declared whatever the expression comes to, and one whose header is then never written makes
+the generation run at every build. A component the image reaches only through a link made, or a
 library defined, after that directory is done is a configure error naming the component,
 raised once the top directory is done: the generation was added without its header, which a
 command cannot be given afterwards. A declared header is one the build looks at again after

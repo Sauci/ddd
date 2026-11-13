@@ -430,12 +430,17 @@ endfunction()
 
 # The components a hand written project is made of, by name: read off the files "ddd sources" lists for it, since only
 # the tool resolves the includes - their wildcards and sub-projects among them - and each component file then names
-# its own; any other file, a plugin's module or a vocabulary, names none. The files are dependencies of the configure
-# step already (_ddd_project_sources), so a component renamed in one of them is read again by the configure that edit
-# runs, and one that does not parse names nothing until it does.
+# its own. Only a json file is read: the others the listing holds are a plugin's modules, which name no component and
+# may be many - every file of a package plugin. A vocabulary names none either. The files are dependencies of the
+# configure step already (_ddd_project_sources), so a component renamed in one of them is read again by the configure
+# that edit runs, and one that does not parse names nothing until it does.
 function(_ddd_project_component_names variable sources)
     set(names "")
     foreach(source IN LISTS sources)
+        string(TOLOWER "${source}" spelled)
+        if(NOT spelled MATCHES "\\.json$")
+            continue()
+        endif()
         _ddd_component_name(name "${source}")
         list(APPEND names ${name})
     endforeach()

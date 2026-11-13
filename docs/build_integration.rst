@@ -219,11 +219,12 @@ The names of the templates are then turned into the declared outputs. A helper -
 starting with an underscore, such as ``_macros.jinja2`` - renders nothing of its own, and a
 ``{component}`` template renders once per component, under the names the descriptions give
 their components: its files are declared as byproducts of the generation, one for each
-component the image links, named when the build is configured (see *The targets it creates*
-below). Everything else contributes one output named like its template without the
-``.jinja2`` extension, and every output ending in ``.c`` is compiled into the object library
-that ends up in the image - so a project splitting its definitions over two source templates
-gets both of them compiled, without saying so anywhere.
+component of the image - each one it links, or with ``PROJECT`` each one the project names -
+under the names read when the build is configured (see *The targets it creates* below).
+Everything else contributes one output named like its template without the ``.jinja2``
+extension, and every output ending in ``.c`` is compiled into the object library that ends up
+in the image - so a project splitting its definitions over two source templates gets both of
+them compiled, without saying so anywhere.
 
 Three arrangements are refused with a message rather than with a confusing failure later on: a
 directory holding no ``*.jinja2`` file at all, a directory holding nothing but helpers and
@@ -424,21 +425,28 @@ including the ones this image happens not to link.
 The outputs declared for the generator are the files the template names already give away, plus
 the a2l and the dictionary - the a2l being the output of ``<stem>_ddd_a2l``'s step instead
 where ``ADDRESSES_FROM_IMAGE`` gives it one - and its byproducts are the files of the
-``{component}`` templates, one for each component the image links. Their names come from
-inside the description files, so the module reads them when the build is configured:
-``ddd_add_component`` reads the component name of each file it registers, ``ddd_generate``
-follows the image's link graph to the components it links once the directory calling it is
-done, and with ``PROJECT`` the names are read off the files ``ddd sources`` lists. The image
-may therefore be linked after the call, in that directory or in one it adds, and not later:
-a component it reaches only through a link made, or a library defined, once that directory is
-done would have a header the generation does not declare, so the configure stops at it, once
-the top directory is done, naming the component. Declaring the headers is what makes the
-build after a change right under Ninja, which looks at the files a build reads before it runs
-anything: a header no step declares was looked at before the generation rewrote it, so the
-build after a datatype change compiled the components reading it against the old header and
-linked them with the new globals, and only the build after that one compiled them again. A
-declared header is looked at again once the generation has run, and since an unchanged file
-is left untouched, the components whose header changed are recompiled and no others.
+``{component}`` templates, one for each component of the image: in the collected mode each
+component it links, with ``PROJECT`` each component the project names, whatever the image
+links. Their names come from inside the description files, so the module reads them when the
+build is configured: ``ddd_add_component`` reads the component name of each file it
+registers, ``ddd_generate`` follows the image's link graph to the components it links once
+the directory calling it is done, and with ``PROJECT`` the names are read off the files
+``ddd sources`` lists. A link the image makes behind a generator expression -
+``$<$<CONFIG:Debug>:trace>``, say - cannot be evaluated when the names are read, so every
+component it names is declared, whatever the expression comes to; one whose header the
+generation then never writes makes the generation run at every build. The image may be linked
+after the call, in that directory or in one it adds, and not later: a component it reaches
+only through a link made, or a library defined, once that directory is done would have a
+header the generation does not declare, so the configure stops at it, once the top directory
+is done, naming the component.
+
+Declaring the headers is what makes the build after a change right under Ninja, which looks at
+the files a build reads before it runs anything: a header no step declares was looked at
+before the generation rewrote it, so the build after a datatype change compiled the components
+reading it against the old header and linked them with the new globals, and only the build
+after that one compiled them again. A declared header is looked at again once the generation
+has run, and since an unchanged file is left untouched, the components whose header changed
+are recompiled and no others.
 
 The names are read at configure time, so a component renamed in its description needs a
 reconfigure: until then its header is not declared under the new name, and the generation runs

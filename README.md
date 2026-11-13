@@ -898,8 +898,9 @@ only one of the two leaves the same ambiguity in place, because the automatic se
 reaches every registered component rather than only the ones that image links.
 
 The declared outputs are derived from the template names, and the a2l; the files of a
-`{component}` template are declared as byproducts, one for each component the image links,
-under the names the module reads out of the descriptions when the build is configured - so
+`{component}` template are declared as byproducts, one for each component of the image - each
+one it links, or with `PROJECT` each one the project names - under the names the module reads
+out of the descriptions when the build is configured - so
 the build after a description change recompiles exactly the components whose header changed,
 and in the collected mode a component renamed in its description needs a reconfigure.
 Consumers find the headers through `firmware_ddd_headers`, which carries their include

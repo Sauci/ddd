@@ -35,7 +35,7 @@ import sys
 import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from build_address_fixtures import ORACLE, PROJECT, SYMBOLS, addresses_of, oracle_of, root_of
@@ -313,12 +313,60 @@ class TestAComponentThatLeavesTheImage:
 STORY_GENERATORS = ["Ninja"]
 """The generators the story of the build after an edit is told under."""
 
-STORY_SHAPES = ["collected", "linked after the call", "project"]
-"""The ways a :class:`Story` hands the module its components, each told the whole story."""
+Linked = Literal[
+    "before the call", "after the call", "from the parent", "through a library defined later"
+]
+"""Where the image of a :class:`Story` is linked to its components (``Shape.linked``)."""
 
-DESCRIBED_BY_THE_BUILD = "collected, the logger described by the build"
-"""The shape whose logger's description the build copies into its tree: absent when the build
-is first configured."""
+
+@dataclass(frozen=True)
+class Shape:
+    """How a :class:`Story` hands the module its components, a field for each way it can differ.
+
+    A case a later edit needs - a plugin a project names, an include that is a wildcard - is one
+    more value of a field rather than one more branch of the listing.
+    """
+
+    project: bool = False
+    """A hand written project lists the components (``PROJECT``), registering none and linking
+    the headers into its libraries itself; otherwise they are collected from the link graph."""
+
+    linked: Linked = "before the call"
+    """Where the image is linked to ``bundle``: before or after the call, in the directory
+    calling ``ddd_generate``; from the parent, the image being defined and generated in
+    ``app/`` and linked by the top directory once ``app/`` is done; or through a library defined
+    later, the image linking in ``app/`` a ``platform`` the top directory defines afterwards."""
+
+    described_by_the_build: bool = False
+    """The logger's description is copied into the build tree by the build, so it is not there
+    when the build is first configured."""
+
+    includes: tuple[str, ...] = (
+        "components/sensor.ddd.json",
+        "components/logger.ddd.json",
+        "components/units.ddd.json",
+    )
+    """What a hand written project includes, relative to it: the image's components, which live
+    in ``components/`` apart from every other description a pattern could match."""
+
+    plugins: tuple[str, ...] = ()
+    """The plugins of the project, a ``.py`` spec relative to the source directory: given with
+    ``PLUGINS`` when collected, written into its ``plugins`` when hand written."""
+
+    def in_a_subdirectory(self) -> bool:
+        """Whether the image is defined and generated in ``app/`` rather than at the top."""
+        return self.linked in ("from the parent", "through a library defined later")
+
+
+STORY_SHAPES = {
+    "collected": Shape(),
+    "linked after the call": Shape(linked="after the call"),
+    "project": Shape(project=True),
+}
+"""The shapes the whole story is told for, under the names their tests are listed by."""
+
+DESCRIBED_BY_THE_BUILD = Shape(described_by_the_build=True)
+"""Collected, with the logger's description written by the build."""
 
 COMPILED = re.compile(r"Building C object \S*?(\w+\.c)\.o(?:bj)?\b")
 """A compile in a build's log, read back as the c file compiled, whichever generator wrote it."""
@@ -378,9 +426,14 @@ class Step:
         return "Generating the data dictionary" in self.output
 
     def did_nothing(self) -> bool:
-        """Nothing generated, compiled or linked: a build with nothing to do, read off what it
-        did rather than off the words one build tool has for that."""
-        return not self.generated() and not self.compiled and "Linking" not in self.output
+        """Nothing configured, generated, compiled or linked: a build with nothing to do, read
+        off what it did rather than off the words one build tool has for that."""
+        return (
+            "Configuring done" not in self.output
+            and not self.generated()
+            and not self.compiled
+            and "Linking" not in self.output
+        )
 
 
 class Story:
@@ -391,72 +444,96 @@ class Story:
     sensor by its alias ``story::writer``; the sensor links the logger privately, which a
     static library passes on as ``$<LINK_ONLY:logger>``; and the logger links the sensor back
     by its own name, so the two use each other and the sensor is met under two names.
-    ``Spare`` is registered and linked by no image, as the component of another image is.
+    ``Spare`` is registered and linked by no image, as the component of another image is. The
+    image's components are described in ``components/``, ``Spare`` beside it.
 
-    The shape is how the module is handed the components: collected, with the image linked
-    before ``ddd_generate`` or after it, or listed by a hand written project, which registers
-    none and links the headers into its libraries itself (``STORY_SHAPES``), or collected with
-    the logger's description written by the build (``DESCRIBED_BY_THE_BUILD``). A build is
-    read back as a :class:`Step`, and the image is run after it, so that what the reader was
-    compiled against is asked of the image rather than of the build's log.
+    The :class:`Shape` is how the module is handed the components. A build is read back as a
+    :class:`Step`, and the image is run after it, so that what the reader was compiled against
+    is asked of the image rather than of the build's log.
     """
 
-    def __init__(self, root: Path, shape: str, generator: str) -> None:
+    def __init__(self, root: Path, shape: Shape, generator: str) -> None:
         self.source = root
+        self.components = root / "components"
         self.build_dir = root / "build"
+        self.shape = shape
         self.generator = generator
+        self.components.mkdir(parents=True, exist_ok=True)
         self.describe("uint8")
         self.write_sensor(200)
         (root / "logger.c").write_text(LOGGER_C, encoding="utf-8")
         (root / "spare.c").write_text("int spare(void) { return 0; }\n", encoding="utf-8")
-        (root / "main.c").write_text(STORY_MAIN, encoding="utf-8")
         spare = {"component": {"name": "Spare", "interface": [declare("local", "SpareCount")]}}
         (root / "spare.ddd.json").write_text(json.dumps(spare, indent=2), encoding="utf-8")
-        (root / "units.ddd.json").write_text(json.dumps(STORY_UNITS, indent=2), encoding="utf-8")
-        (root / "CMakeLists.txt").write_text(self.listing(shape), encoding="utf-8")
-        configure(root, self.build_dir, generator=generator)
+        units = self.components / "units.ddd.json"
+        units.write_text(json.dumps(STORY_UNITS, indent=2), encoding="utf-8")
+        if shape.project:
+            project = {"project": {"name": "StoryDevice", "includes": list(shape.includes)}}
+            if shape.plugins:
+                project["project"]["plugins"] = list(shape.plugins)
+            (root / "project.ddd.json").write_text(json.dumps(project), encoding="utf-8")
+        images = root / "app" if shape.in_a_subdirectory() else root
+        images.mkdir(exist_ok=True)
+        (images / "main.c").write_text(STORY_MAIN, encoding="utf-8")
+        if shape.in_a_subdirectory():
+            (images / "CMakeLists.txt").write_text(self.subdirectory(), encoding="utf-8")
+        (root / "CMakeLists.txt").write_text(self.listing(), encoding="utf-8")
+        self.configured = self.reconfigure()
+        """What the first configure printed."""
 
-    def listing(self, shape: str) -> str:
+    def generation(self) -> str:
+        """The ``ddd_generate`` call, and the links a hand written project makes after it."""
         templates = f'TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"'
-        link = "target_link_libraries(img PRIVATE bundle)"
-        if shape == "project":
-            includes = ["sensor.ddd.json", "logger.ddd.json", "units.ddd.json"]
-            project = {"project": {"name": "StoryDevice", "includes": includes}}
-            (self.source / "project.ddd.json").write_text(json.dumps(project), encoding="utf-8")
-            registered = ""
-            generation = (
-                f"{link}\n"
-                f'ddd_generate(img PROJECT "${{CMAKE_CURRENT_SOURCE_DIR}}/project.ddd.json" '
-                f"{templates})\n"
+        if self.shape.project:
+            return (
+                f'ddd_generate(img PROJECT "${{CMAKE_SOURCE_DIR}}/project.ddd.json" {templates})\n'
                 "target_link_libraries(sensor PRIVATE img_ddd_headers)\n"
-                "target_link_libraries(logger PRIVATE img_ddd_headers)"
+                "target_link_libraries(logger PRIVATE img_ddd_headers)\n"
+            )
+        plugins = "".join(f' "${{CMAKE_SOURCE_DIR}}/{spec}"' for spec in self.shape.plugins)
+        plugins = f" PLUGINS{plugins}" if plugins else ""
+        return f"ddd_generate(img NAME StoryDevice {templates}{plugins})\n"
+
+    def registrations(self) -> str:
+        """Each component's description on its target, unless a hand written project lists
+        them; the logger's is written by the build where the shape says so."""
+        if self.shape.project:
+            return ""
+        here = "${CMAKE_CURRENT_SOURCE_DIR}"
+        logger = f'"{here}/components/logger.ddd.json"'
+        written = ""
+        if self.shape.described_by_the_build:
+            copied, logger = logger, '"${CMAKE_CURRENT_BINARY_DIR}/logger.ddd.json"'
+            written = (
+                f"add_custom_command(OUTPUT {logger}\n"
+                f'                   COMMAND "${{CMAKE_COMMAND}}" -E copy {copied} {logger}\n'
+                f"                   DEPENDS {copied}\n"
+                "                   VERBATIM)\n"
+            )
+        return (
+            f"{written}"
+            f'ddd_add_component(sensor JSON "{here}/components/sensor.ddd.json")\n'
+            f"ddd_add_component(logger JSON {logger})\n"
+            f'ddd_add_component(bundle JSON "{here}/components/units.ddd.json")\n'
+            f'ddd_add_component(spare JSON "{here}/spare.ddd.json")\n'
+        )
+
+    def listing(self) -> str:
+        """The top directory's ``CMakeLists.txt``."""
+        link = "target_link_libraries(img PRIVATE bundle)\n"
+        linked = self.shape.linked
+        if linked == "from the parent":
+            image = f"add_subdirectory(app)\n{link}"
+        elif linked == "through a library defined later":
+            image = (
+                "add_subdirectory(app)\n"
+                "add_library(platform INTERFACE)\n"
+                "target_link_libraries(platform INTERFACE bundle)\n"
             )
         else:
-            registered = "".join(
-                f'ddd_add_component({target} JSON "${{CMAKE_CURRENT_SOURCE_DIR}}/{name}")\n'
-                for target, name in (
-                    ("sensor", "sensor.ddd.json"),
-                    ("logger", "logger.ddd.json"),
-                    ("bundle", "units.ddd.json"),
-                    ("spare", "spare.ddd.json"),
-                )
-            )
-            if shape == DESCRIBED_BY_THE_BUILD:
-                written = '"${CMAKE_CURRENT_BINARY_DIR}/logger.ddd.json"'
-                copied = '"${CMAKE_CURRENT_SOURCE_DIR}/logger.ddd.json"'
-                registration = f"ddd_add_component(logger JSON {copied})"
-                assert registration in registered
-                registered = registered.replace(
-                    registration,
-                    f"add_custom_command(OUTPUT {written}\n"
-                    f'                   COMMAND "${{CMAKE_COMMAND}}" -E copy {copied} {written}\n'
-                    f"                   DEPENDS {copied}\n"
-                    "                   VERBATIM)\n"
-                    f"ddd_add_component(logger JSON {written})",
-                )
-            call = f"ddd_generate(img NAME StoryDevice {templates})"
-            generation = (
-                f"{call}\n{link}" if shape == "linked after the call" else f"{link}\n{call}"
+            calls = [link, self.generation()]
+            image = "add_executable(img main.c)\n" + "".join(
+                reversed(calls) if linked == "after the call" else calls
             )
         return f"""cmake_minimum_required(VERSION 3.30)
 project(Story LANGUAGES C)
@@ -470,9 +547,18 @@ target_link_libraries(logger PRIVATE sensor)
 add_library(bundle INTERFACE)
 target_link_libraries(bundle INTERFACE story::writer)
 add_library(spare STATIC spare.c)
-{registered}add_executable(img main.c)
-{generation}
-"""
+{self.registrations()}{image}"""
+
+    def subdirectory(self) -> str:
+        """``app/CMakeLists.txt``, where the image is defined and generated in a subdirectory."""
+        link = ""
+        if self.shape.linked == "through a library defined later":
+            link = "target_link_libraries(img PRIVATE platform)\n"
+        return f"add_executable(img main.c)\n{link}{self.generation()}"
+
+    def description(self, name: str) -> Path:
+        """Where the description of ``name``, ``"sensor"`` or ``"logger"``, is written."""
+        return self.components / f"{name}.ddd.json"
 
     def describe(self, datatype: str, *more: dict[str, Any]) -> None:
         """Both descriptions, ``Sample`` of ``datatype`` in each, and whatever more the sensor
@@ -484,7 +570,7 @@ add_library(spare STATIC spare.c)
                     "interface": [declare(scope, "Sample", datatype), *extra],
                 }
             }
-            path = self.source / f"{name.lower()}.ddd.json"
+            path = self.description(name.lower())
             text = json.dumps(described, indent=2)
             if not path.exists() or path.read_text(encoding="utf-8") != text:
                 path.write_text(text, encoding="utf-8")
@@ -492,15 +578,23 @@ add_library(spare STATIC spare.c)
     def write_sensor(self, value: int) -> None:
         (self.source / "sensor.c").write_text(SENSOR_C.format(value=value), encoding="utf-8")
 
-    def reconfigure(self) -> None:
-        configure(self.source, self.build_dir, generator=self.generator)
+    def attempt(self) -> subprocess.CompletedProcess[str]:
+        """A configure of the tree, whether or not it is expected to succeed."""
+        return attempt(self.source, self.build_dir, generator=self.generator)
+
+    def reconfigure(self) -> str:
+        """Configures the tree again, and answers with what the configure printed."""
+        run = self.attempt()
+        assert run.returncode == 0, run.stdout + run.stderr
+        return run.stdout + run.stderr
 
     def build(self) -> Step:
         run = cmake("--build", str(self.build_dir), cwd=self.build_dir)
         output = run.stdout + run.stderr
         printed = ""
         if run.returncode == 0:
-            image = self.build_dir / ("img.exe" if os.name == "nt" else "img")
+            images = self.build_dir / "app" if self.shape.in_a_subdirectory() else self.build_dir
+            image = images / ("img.exe" if os.name == "nt" else "img")
             shown = subprocess.run([str(image)], capture_output=True, text=True, check=False)
             assert shown.returncode == 0, shown.stdout + shown.stderr
             printed = shown.stdout.strip()
@@ -537,8 +631,8 @@ class TestTheBuildAfterAnEdit:
     @pytest.fixture(
         scope="class",
         params=[
-            pytest.param((shape, generator), id=f"{shape}, {generator}")
-            for shape in STORY_SHAPES
+            pytest.param((shape, generator), id=f"{name}, {generator}")
+            for name, shape in STORY_SHAPES.items()
             for generator in STORY_GENERATORS
         ],
     )
@@ -595,9 +689,9 @@ class TestTheBuildAfterAnEdit:
         The file is a dependency of the configure while it does not parse, so the build after
         its repair configures again, reads the name, and compiles the reader when the repair
         changed its header."""
-        story = Story(tmp_path, "collected", generator)
+        story = Story(tmp_path, STORY_SHAPES["collected"], generator)
         assert story.build().code == 0
-        (tmp_path / "logger.ddd.json").write_text("{ broken", encoding="utf-8")
+        story.description("logger").write_text("{ broken", encoding="utf-8")
         story.reconfigure()
         story.describe("uint16")
         story.write_sensor(1234)
@@ -629,9 +723,9 @@ class TestTheBuildAfterAnEdit:
         """A registered units file names no component and, unlike a description that does not
         parse, is no dependency of the configure step: its edit runs the generation, which
         reads it, and configures nothing again."""
-        story = Story(tmp_path, "collected", generator)
+        story = Story(tmp_path, STORY_SHAPES["collected"], generator)
         assert story.build().code == 0
-        units = tmp_path / "units.ddd.json"
+        units = story.components / "units.ddd.json"
         text = units.read_text(encoding="utf-8")
         units.write_text(text.replace("speed", "speed, per minute"), encoding="utf-8")
         edited = story.build()

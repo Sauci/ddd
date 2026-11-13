@@ -108,6 +108,9 @@ extension, so ``firmware.elf`` gives ``firmware_ddd_generation``. It has to be c
 ``CMakeLists.txt`` that defines the image, and after the components have been added, because
 it hands ``<stem>_ddd_headers`` to the components registered up to that point - which settles
 both which components get the generated headers and whose compile usage travels with them.
+In the collected mode the image also has to be linked to its components by the time that
+directory is done: a component it reaches only through a link made, or a library defined,
+later is a configure error naming the component (see *The targets it creates* below).
 The a2l is the one artefact that cannot be complete before the link, which decides every
 address it carries: with ``ADDRESSES_FROM_IMAGE`` the module writes it after the link instead,
 out of the linked image, and one build gives it whole (see *The a2l's addresses* below).
@@ -425,14 +428,17 @@ where ``ADDRESSES_FROM_IMAGE`` gives it one - and its byproducts are the files o
 inside the description files, so the module reads them when the build is configured:
 ``ddd_add_component`` reads the component name of each file it registers, ``ddd_generate``
 follows the image's link graph to the components it links once the directory calling it is
-done - so an image may be linked after the call - and with ``PROJECT`` the names are read off
-the files ``ddd sources`` lists. Declaring the headers is what makes the build after a change
-right under Ninja, which looks at the files a build reads before it runs anything: a header no
-step declares was looked at before the generation rewrote it, so the build after a datatype
-change compiled the components reading it against the old header and linked them with the new
-globals, and only the build after that one compiled them again. A declared header is looked at
-again once the generation has run, and since an unchanged file is left untouched, the
-components whose header changed are recompiled and no others.
+done, and with ``PROJECT`` the names are read off the files ``ddd sources`` lists. The image
+may therefore be linked after the call, in that directory or in one it adds, and not later:
+a component it reaches only through a link made, or a library defined, once that directory is
+done would have a header the generation does not declare, so the configure stops at it, once
+the top directory is done, naming the component. Declaring the headers is what makes the
+build after a change right under Ninja, which looks at the files a build reads before it runs
+anything: a header no step declares was looked at before the generation rewrote it, so the
+build after a datatype change compiled the components reading it against the old header and
+linked them with the new globals, and only the build after that one compiled them again. A
+declared header is looked at again once the generation has run, and since an unchanged file
+is left untouched, the components whose header changed are recompiled and no others.
 
 The names are read at configure time, so a component renamed in its description needs a
 reconfigure: until then its header is not declared under the new name, and the generation runs

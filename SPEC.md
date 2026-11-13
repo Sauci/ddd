@@ -2287,15 +2287,18 @@ the dictionary, and as its byproducts the files of each `{component}` template, 
 component the image links, named when the build is configured: `ddd_add_component` reads the
 component name of each file it registers, and `ddd_generate` follows the image's link graph
 to the components it links once the directory calling it is done, so that an image may be
-linked after the call; with `PROJECT` the names are read off the files `ddd sources` lists.
-A declared header is one the build looks at again after the generation ran, so the build
-after a description change compiles the components whose header changed, and only those,
-rather than linking the new definitions with readers compiled against the old header. A
-component renamed in its description therefore needs the build configured again, until which
-the generation runs at every build; with `PROJECT` that happens by itself, the files of the
-project being dependencies of the configure step. A registered file that does not parse when
-the build is configured names no component and is a dependency of the configure step until it
-does.
+linked after the call, in that directory or one it adds; with `PROJECT` the names are read off
+the files `ddd sources` lists. A component the image reaches only through a link made, or a
+library defined, after that directory is done is a configure error naming the component,
+raised once the top directory is done: the generation was added without its header, which a
+command cannot be given afterwards. A declared header is one the build looks at again after
+the generation ran, so the build after a description change compiles the components whose
+header changed, and only those, rather than linking the new definitions with readers compiled
+against the old header. A component renamed in its description therefore needs the build
+configured again, until which the generation runs at every build; with `PROJECT` that happens
+by itself, the files of the project being dependencies of the configure step. A registered
+file that does not parse when the build is configured names no component and is a dependency
+of the configure step until it does.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
 ([section 6](#6-address-information)), so that one build gives the complete A2L: the

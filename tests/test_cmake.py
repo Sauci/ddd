@@ -328,14 +328,26 @@ class Shape:
     """
 
     project: bool = False
-    """A hand written project lists the components (``PROJECT``), registering none and linking
-    the headers into its libraries itself; otherwise they are collected from the link graph."""
+    """A hand written project lists the components (``PROJECT``); otherwise they are collected
+    from the link graph."""
+
+    registered: bool = True
+    """The components register their descriptions on their targets, which collecting them
+    needs; a hand written project may do without, linking the headers into its libraries
+    itself."""
+
+    spare_linked: bool = False
+    """The image links ``spare`` as well, a component a hand written project may leave out."""
+
+    subdirectory: bool = False
+    """The image is defined and generated in ``app/``, which the top directory adds once the
+    components are defined; the two late links below put it there too."""
 
     linked: Linked = "before the call"
     """Where the image is linked to ``bundle``: before or after the call, in the directory
-    calling ``ddd_generate``; from the parent, the image being defined and generated in
-    ``app/`` and linked by the top directory once ``app/`` is done; or through a library defined
-    later, the image linking in ``app/`` a ``platform`` the top directory defines afterwards."""
+    calling ``ddd_generate``; from the parent, the top directory linking it once ``app/`` is
+    done; or through a library defined later, the image linking in ``app/`` a ``platform`` the
+    top directory defines afterwards."""
 
     described_by_the_build: bool = False
     """The logger's description is copied into the build tree by the build, so it is not there
@@ -355,18 +367,32 @@ class Shape:
 
     def in_a_subdirectory(self) -> bool:
         """Whether the image is defined and generated in ``app/`` rather than at the top."""
-        return self.linked in ("from the parent", "through a library defined later")
+        return self.subdirectory or self.linked in (
+            "from the parent",
+            "through a library defined later",
+        )
 
 
 STORY_SHAPES = {
     "collected": Shape(),
     "linked after the call": Shape(linked="after the call"),
-    "project": Shape(project=True),
+    "in a subdirectory": Shape(subdirectory=True),
+    "project": Shape(project=True, registered=False),
 }
 """The shapes the whole story is told for, under the names their tests are listed by."""
 
+LINKING_MORE_THAN_IT_NAMES = Shape(project=True, spare_linked=True)
+"""A hand written project whose components register too, for their own check targets, and
+whose image links one the project leaves out."""
+
 DESCRIBED_BY_THE_BUILD = Shape(described_by_the_build=True)
 """Collected, with the logger's description written by the build."""
+
+LINKED_LATE = {
+    "from the parent": Shape(linked="from the parent"),
+    "through a library defined later": Shape(linked="through a library defined later"),
+}
+"""The shapes whose image reaches its components only once the directory generating it is done."""
 
 COMPILED = re.compile(r"Building C object \S*?(\w+\.c)\.o(?:bj)?\b")
 """A compile in a build's log, read back as the c file compiled, whichever generator wrote it."""
@@ -444,15 +470,18 @@ class Story:
     sensor by its alias ``story::writer``; the sensor links the logger privately, which a
     static library passes on as ``$<LINK_ONLY:logger>``; and the logger links the sensor back
     by its own name, so the two use each other and the sensor is met under two names.
-    ``Spare`` is registered and linked by no image, as the component of another image is. The
-    image's components are described in ``components/``, ``Spare`` beside it.
+    ``Spare`` is registered and, unless the shape says otherwise, linked by no image, as the
+    component of another image is. The image's components are described in ``components/``,
+    ``Spare`` beside it.
 
     The :class:`Shape` is how the module is handed the components. A build is read back as a
     :class:`Step`, and the image is run after it, so that what the reader was compiled against
     is asked of the image rather than of the build's log.
     """
 
-    def __init__(self, root: Path, shape: Shape, generator: str) -> None:
+    def __init__(
+        self, root: Path, shape: Shape, generator: str, *, configured: bool = True
+    ) -> None:
         self.source = root
         self.components = root / "components"
         self.build_dir = root / "build"
@@ -476,17 +505,23 @@ class Story:
         images.mkdir(exist_ok=True)
         (images / "main.c").write_text(STORY_MAIN, encoding="utf-8")
         if shape.in_a_subdirectory():
-            (images / "CMakeLists.txt").write_text(self.subdirectory(), encoding="utf-8")
+            (images / "CMakeLists.txt").write_text(self.image(), encoding="utf-8")
         (root / "CMakeLists.txt").write_text(self.listing(), encoding="utf-8")
-        self.configured = self.reconfigure()
-        """What the first configure printed."""
+        self.configured = self.reconfigure() if configured else ""
+        """What the first configure printed, unless the story was written to be configured by
+        the test, with :meth:`attempt`."""
 
     def generation(self) -> str:
         """The ``ddd_generate`` call, and the links a hand written project makes after it."""
         templates = f'TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"'
         if self.shape.project:
-            return (
+            generation = (
                 f'ddd_generate(img PROJECT "${{CMAKE_SOURCE_DIR}}/project.ddd.json" {templates})\n'
+            )
+            if self.shape.registered:
+                return generation
+            return (
+                f"{generation}"
                 "target_link_libraries(sensor PRIVATE img_ddd_headers)\n"
                 "target_link_libraries(logger PRIVATE img_ddd_headers)\n"
             )
@@ -495,9 +530,9 @@ class Story:
         return f"ddd_generate(img NAME StoryDevice {templates}{plugins})\n"
 
     def registrations(self) -> str:
-        """Each component's description on its target, unless a hand written project lists
-        them; the logger's is written by the build where the shape says so."""
-        if self.shape.project:
+        """Each component's description on its target, where the shape registers them; the
+        logger's is written by the build where it says so."""
+        if not self.shape.registered:
             return ""
         here = "${CMAKE_CURRENT_SOURCE_DIR}"
         logger = f'"{here}/components/logger.ddd.json"'
@@ -518,23 +553,31 @@ class Story:
             f'ddd_add_component(spare JSON "{here}/spare.ddd.json")\n'
         )
 
-    def listing(self) -> str:
-        """The top directory's ``CMakeLists.txt``."""
-        link = "target_link_libraries(img PRIVATE bundle)\n"
+    def image(self) -> str:
+        """Where the image is defined, linked and generated, in the order the shape says."""
         linked = self.shape.linked
-        if linked == "from the parent":
-            image = f"add_subdirectory(app)\n{link}"
-        elif linked == "through a library defined later":
-            image = (
-                "add_subdirectory(app)\n"
-                "add_library(platform INTERFACE)\n"
-                "target_link_libraries(platform INTERFACE bundle)\n"
-            )
-        else:
-            calls = [link, self.generation()]
-            image = "add_executable(img main.c)\n" + "".join(
-                reversed(calls) if linked == "after the call" else calls
-            )
+        spare = " spare" if self.shape.spare_linked else ""
+        link = {
+            "from the parent": "",
+            "through a library defined later": "target_link_libraries(img PRIVATE platform)\n",
+        }.get(linked, f"target_link_libraries(img PRIVATE bundle{spare})\n")
+        calls = [link, self.generation()]
+        return "add_executable(img main.c)\n" + "".join(
+            reversed(calls) if linked == "after the call" else calls
+        )
+
+    def listing(self) -> str:
+        """The top directory's ``CMakeLists.txt``: the components, then the image or the
+        subdirectory defining it, and whatever the top directory links once that is done."""
+        image = self.image()
+        if self.shape.in_a_subdirectory():
+            image = "add_subdirectory(app)\n" + {
+                "from the parent": "target_link_libraries(img PRIVATE bundle)\n",
+                "through a library defined later": (
+                    "add_library(platform INTERFACE)\n"
+                    "target_link_libraries(platform INTERFACE bundle)\n"
+                ),
+            }.get(self.shape.linked, "")
         return f"""cmake_minimum_required(VERSION 3.30)
 project(Story LANGUAGES C)
 list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
@@ -548,13 +591,6 @@ add_library(bundle INTERFACE)
 target_link_libraries(bundle INTERFACE story::writer)
 add_library(spare STATIC spare.c)
 {self.registrations()}{image}"""
-
-    def subdirectory(self) -> str:
-        """``app/CMakeLists.txt``, where the image is defined and generated in a subdirectory."""
-        link = ""
-        if self.shape.linked == "through a library defined later":
-            link = "target_link_libraries(img PRIVATE platform)\n"
-        return f"add_executable(img main.c)\n{link}{self.generation()}"
 
     def description(self, name: str) -> Path:
         """Where the description of ``name``, ``"sensor"`` or ``"logger"``, is written."""
@@ -624,8 +660,10 @@ class TestTheBuildAfterAnEdit:
     looks at every input before it runs anything, so the build after a datatype change
     compiled the writer and the definitions, relinked, and kept the reader compiled for the
     old type - exit 0, and only the build after that one compiled the reader again. Both
-    modes, and an image linked after the call that generates it, which is the link graph the
-    module can only read once the directory is done.
+    modes, an image linked after the call that generates it, which is the link graph the
+    module can only read once the directory is done, and an image generated in a directory of
+    its own; and an image reaching its components only once that directory is done, which the
+    configure refuses.
     """
 
     @pytest.fixture(
@@ -679,6 +717,47 @@ class TestTheBuildAfterAnEdit:
         assert elsewhere.code == 0, elsewhere.output
         assert {"sensor.c", "ddd_globals.c"} <= elsewhere.compiled, elsewhere.output
         assert "logger.c" not in elsewhere.compiled, elsewhere.output
+
+    @pytest.mark.parametrize(
+        "shape", [pytest.param(shape, id=name) for name, shape in LINKED_LATE.items()]
+    )
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_component_reached_after_the_directory_is_done_stops_the_configure(
+        self, tmp_path: Path, shape: Shape, generator: str
+    ) -> None:
+        """The components are named once the directory calling ``ddd_generate`` is done, and
+        an image linked to them only after that - by the directory above, or through a library
+        it defines later - reached none of them then: their headers would go undeclared, and
+        the build after one of them changed would compile its reader against the old one. The
+        configure stops instead, once the top directory is done, naming them."""
+        run = Story(tmp_path, shape, generator, configured=False).attempt()
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert (
+            'ddd_generate: "img" reaches the component(s) "Logger", "Sensor" through a link '
+            f'made, or a library defined, after "{(tmp_path / "app").as_posix()}" - where '
+            "ddd_generate() is called - was done. Their headers are not declared as "
+            "outputs of the generation, so the build after one of them changed would compile "
+            "the components reading it against the old one. Link the image's components, and "
+            "define every library on the way to them, before that directory is done - or call "
+            "ddd_generate() where they are."
+        ) in said
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_hand_written_project_may_link_a_component_it_does_not_name(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """With ``PROJECT`` the components are the project's, whatever the image links, so the
+        link graph is not asked about: a component registered for its own check target and
+        linked, but left out of the project, is no late link, and the build after a change is
+        right all the same."""
+        story = Story(tmp_path, LINKING_MORE_THAN_IT_NAMES, generator)
+        assert story.build().code == 0
+        story.describe("uint16")
+        story.write_sensor(1234)
+        widened = story.build()
+        assert widened.code == 0, widened.output
+        assert widened.printed == "logged 1234"
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_description_unreadable_when_configured_is_read_after_its_repair(

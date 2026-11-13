@@ -493,6 +493,9 @@ function(_ddd_add_generation image)
     # A name met twice - a component reached under two names of its target, or two files naming one component, which
     # the generation reports - is one file: ninja refuses to load a build that declares an output twice.
     list(REMOVE_DUPLICATES names)
+    # Kept for _ddd_refuse_late_links, which walks the graph again once every directory is done.
+    set_property(TARGET ${image} PROPERTY DDD_DECLARED_COMPONENTS "${names}")
+    set_property(TARGET ${image} PROPERTY DDD_GENERATION_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     set(byproducts "")
     foreach(component_file IN LISTS component_files)
         cmake_path(GET component_file PARENT_PATH directory)
@@ -511,9 +514,39 @@ function(_ddd_add_generation image)
                        VERBATIM)
 endfunction()
 
+# Stops the configure, once the top directory is done, at a component the image links that the generation does not
+# declare: one reached only through a link made after the directory calling ddd_generate() was done - from a
+# directory processed later, or through a library defined later - which the walk of _ddd_add_generation could not
+# see. The generation cannot be told about it any more: its command belongs to that directory, and BYPRODUCTS cannot
+# be added to a command once it exists. Left alone, the build after the component's header changed would compile
+# the components reading it against the old one, with nothing to show for it.
+function(_ddd_refuse_late_links image)
+    get_property(declared TARGET ${image} PROPERTY DDD_DECLARED_COMPONENTS)
+    get_property(directory TARGET ${image} PROPERTY DDD_GENERATION_DIRECTORY)
+    _ddd_linked_component_names(linked "${image}")
+    set(late "")
+    foreach(name IN LISTS linked)
+        if(NOT "${name}" IN_LIST declared)
+            list(APPEND late "${name}")
+        endif()
+    endforeach()
+    if(NOT "${late}" STREQUAL "")
+        list(REMOVE_DUPLICATES late)
+        list(SORT late)
+        list(JOIN late "\", \"" spelled)
+        message(FATAL_ERROR "ddd_generate: \"${image}\" reaches the component(s) \"${spelled}\" through a link "
+                            "made, or a library defined, after \"${directory}\" - where ddd_generate() is called - "
+                            "was done. Their headers are not declared as outputs of the generation, so the build "
+                            "after one of them changed would compile the components reading it against the old "
+                            "one. Link the image's components, and define every library on the way to them, "
+                            "before that directory is done - or call ddd_generate() where they are.")
+    endif()
+endfunction()
+
 # Generates the data dictionary of an image out of the component descriptions collected from its link closure, and
 # links the result into the image. Must be called in the CMakeLists.txt which defines the image target, and after the
-# components have been added (add_subdirectory), so that PROPAGATE_HEADERS reaches all of them.
+# components have been added (add_subdirectory), so that PROPAGATE_HEADERS reaches all of them; in the collected mode,
+# the image has to be linked to its components by the time that directory is done (_ddd_refuse_late_links).
 #
 # ddd_generate(<image>
 #              [PROJECT <file>]              # use this project description instead of collecting the link closure
@@ -791,6 +824,12 @@ function(ddd_generate image)
                  ${template_files} "${DDD_EXECUTABLE}")
     set_property(TARGET ${image} PROPERTY DDD_COMPONENT_FILES "${component_files}")
     cmake_language(EVAL CODE "cmake_language(DEFER CALL _ddd_add_generation [==[${image}]==])")
+    # And once the top directory is done, every link of the image known, the collected mode checks that the image
+    # reaches no component the generation was added without.
+    if(NOT arg_PROJECT)
+        cmake_language(EVAL CODE "cmake_language(DEFER DIRECTORY [==[${CMAKE_SOURCE_DIR}]==] CALL "
+                                 "_ddd_refuse_late_links [==[${image}]==])")
+    endif()
     add_custom_target(${image_stem}_ddd_generation DEPENDS ${generated_outputs})
 
     # ADDRESSES_FROM_IMAGE: the a2l is written once the image is linked, by a second run reading every address it

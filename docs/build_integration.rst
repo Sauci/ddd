@@ -53,6 +53,14 @@ target of a component. The files must be named ``*.ddd.json`` and, unless they l
 build tree and are generated later, must exist at configure time; a violation of either is a
 fatal error, because the alternative is an image whose data dictionary is quietly incomplete.
 
+A project description is not a component, and a file whose top-level key is ``project`` is refused
+at configure time: only the file itself would be a dependency of the build, so an edit to what it
+includes, or to a plugin it names, would build to ``no work to do`` over generated sources that
+no longer match the project. The error reads ``ddd_add_component: "<file>" registered on target
+"<target>" describes a project, and a component is not one. Name a project file with PROJECT of
+ddd_generate(), which follows what it includes.`` A project file is named with ``PROJECT`` of
+``ddd_generate()``, which follows its includes.
+
 A :doc:`vocabulary file <file_formats/units>` registers the same way - a units, sections,
 constants, rasters or types file is a ``*.ddd.json`` like any other, and the call takes it
 without asking what is inside. Which target it belongs on is the question a project meets on

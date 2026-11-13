@@ -2257,7 +2257,9 @@ named by the ones that do: `types`, `units`, `sections`, `constants` and `raster
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
 built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30, and
-a registered file not named `*.ddd.json` is a configure error; so, in both calls, is a
+a registered file not named `*.ddd.json`, or whose top level key is `project`, is a configure
+error - a project file is named with `PROJECT` of `ddd_generate`, which follows what it includes,
+where nothing follows the includes of a registered file; so, in both calls, is a
 keyword given no value, which the error names: a variable that expanded to nothing reads
 exactly like a keyword nobody gave, and each one silently changes what the call does; it defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered

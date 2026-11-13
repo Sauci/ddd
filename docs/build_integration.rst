@@ -299,9 +299,12 @@ locates for it, and every ``.py`` file of a package plugin, so the edit that rep
 re-runs configure and the generation. What the tool says about the project on its standard
 error - that plugin's defect, a missing include - is printed by the configure as a warning,
 graded by the ``SEVERITY`` and ``STRICT`` of the call, so a check the call relaxed is not
-warned of. If the tool cannot resolve the project yet, the module warns and falls back to
-depending on the project file alone, which stays a dependency of the configure, rather than
-refusing to configure at all.
+warned of. The project file itself is read when the build is configured - for the files it is
+made of, its plugins and its name - so it has to exist and parse as json by then: one that
+does not, a file the build has yet to write among them, is a configure error naming it. If
+the tool cannot resolve a project that parses all the same - a root failing its schema - the
+module warns and falls back to depending on the project file alone, which stays a dependency
+of the configure, rather than refusing to configure at all.
 
 What the build tells an editor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -550,7 +553,8 @@ Options
    * - option
      - meaning
    * - ``PROJECT <file>``
-     - use this project description instead of collecting the link closure.
+     - use this project description instead of collecting the link closure. It is read when
+       the build is configured, so it has to exist and parse by then.
    * - ``PLUGINS <spec>...``
      - the plugins of the collected project: a ``.py`` path relative to the current source
        directory, which has to exist, or a dotted module name passed through as written. They

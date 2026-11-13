@@ -1373,7 +1373,9 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         project.write_text(named.replace('"includes"', '"included"'), encoding="utf-8")
         configured = story.reconfigure()
         assert "CMake Warning" in configured, configured
-        assert "cannot resolve the sources" in " ".join(configured.split()), configured
+        # Not "yet": a file that has yet to exist, or to parse, is refused before the tool is asked.
+        said = f'ddd_generate: cannot resolve the sources of "{project.as_posix()}" ('
+        assert said in " ".join(configured.split()), configured
         project.write_text(named, encoding="utf-8")
         repaired = story.build()
         assert repaired.code == 0 and repaired.printed == "logged 200", repaired.output
@@ -2066,6 +2068,61 @@ ddd_generate(img
         )
         assert run.returncode != 0
         assert "PLUGINS cannot be given together with PROJECT" in run.stderr
+
+
+class TestAProjectFileReadWhenConfigured:
+    """``PROJECT`` is read when the build is configured - the files it is made of, its plugins,
+    its name - so it has to exist, and parse, by then.
+
+    A file in the build tree was let through as one the build might write later, and the call
+    then said it could not resolve the project *yet* and that the generation would depend on
+    that file alone - and stopped the configure on CMake's own ``file failed to open for
+    reading``. A file that does not parse got the same line, and then ``has neither a project
+    nor a component name``. Neither was a fallback: both are refused now, naming the file and
+    why it has to be there. A project that parses and that the tool cannot resolve all the same
+    still falls back, as :class:`TestAPluginThatBreaksStillWatchedByTheBuild` shows.
+    """
+
+    def write(self, tmp_path: Path, project: str) -> Path:
+        (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.20)
+project(Read LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_executable(img main.c)
+ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_one_the_build_would_write_is_refused_naming_it(self, tmp_path: Path) -> None:
+        source = self.write(tmp_path, "${CMAKE_BINARY_DIR}/later.ddd.json")
+        run = attempt(source, tmp_path / "build")
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert "will depend on that file alone" not in said, said
+        assert (
+            f'ddd_generate: PROJECT names "{(tmp_path / "build" / "later.ddd.json").as_posix()}", '
+            "which does not exist. The project description is read when the build is configured "
+            "- the files it is made of, its plugins and its name - so it has to exist, and "
+            "parse, by then: a file the build has yet to write is no project description."
+        ) in said
+
+    def test_one_that_does_not_parse_is_refused_saying_so(self, tmp_path: Path) -> None:
+        project = tmp_path / "project.ddd.json"
+        project.write_text('{"project": {"name": "Read",', encoding="utf-8")
+        source = self.write(tmp_path, project.as_posix())
+        run = attempt(source, tmp_path / "build")
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert "will depend on that file alone" not in said, said
+        assert (
+            f'ddd_generate: PROJECT names "{project.as_posix()}", which does not parse as json. '
+            "The project description is read when the build is configured - the files it is "
+            "made of, its plugins and its name - so it has to exist, and parse, by then:"
+        ) in said
 
 
 class TestTheDictionary:

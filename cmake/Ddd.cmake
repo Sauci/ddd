@@ -215,9 +215,10 @@ endfunction()
 # - a plugin that stopped importing is listed, and so is one whose model raises - so that the edit repairing it re-runs
 # configure. What it has to say about the project (stderr: a plugin that does not import, an include that is missing) is
 # printed as a warning, graded by the build's SEVERITY and STRICT, the configure being the one place that reaches a
-# developer before the build does. If the tool is missing or the root cannot be read yet, the result is empty, a
-# warning says so, and the build falls back to depending on the project file alone, as a configure dependency, rather
-# than failing to configure at all.
+# developer before the build does. The file exists and parses by now (ddd_generate refuses it otherwise); if the tool
+# cannot resolve it all the same - a root failing its schema - or cannot be run, the result is empty, a warning says
+# so, and the build falls back to depending on the project file alone, as a configure dependency, rather than failing
+# to configure at all.
 function(_ddd_project_sources variable project_file)
     # The rest of the arguments are the severity policy of the build (-W, --strict): what the tool says about the
     # project is graded as the build grades it, so that a check the build relaxed is not warned of at every configure.
@@ -229,7 +230,7 @@ function(_ddd_project_sources variable project_file)
                     ERROR_STRIP_TRAILING_WHITESPACE
                     ENCODING UTF-8)
     if(NOT status EQUAL 0)
-        message(WARNING "ddd_generate: cannot resolve the sources of \"${project_file}\" yet (${error}); the "
+        message(WARNING "ddd_generate: cannot resolve the sources of \"${project_file}\" (${error}); the "
                         "generation will depend on that file alone.")
         # The file stays a dependency of the configure, so that its repair is what runs it again.
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${project_file}")
@@ -375,7 +376,8 @@ function(_ddd_component_name variable description)
 endfunction()
 
 # Turns a path into an absolute one and refuses a source file that does not exist. A file below the binary directory
-# is accepted unconditionally: it may well be generated later during the build.
+# is accepted unconditionally: it may well be generated later during the build. A project description is not taken
+# so, being read when the build is configured (ddd_generate).
 function(_ddd_absolute_input variable base context)
     set(path "${${variable}}")
     cmake_path(ABSOLUTE_PATH path BASE_DIRECTORY "${base}" NORMALIZE)
@@ -852,7 +854,25 @@ function(ddd_generate image)
     set(descriptions "")
     set(source_list "")
     if(arg_PROJECT)
-        _ddd_absolute_input(arg_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
+        # Read now - the files it is made of, its plugins and its name - so it has to exist, and parse, now. A file in
+        # the build tree that a step would write later, as a description may be, was let through, and so was one that
+        # does not parse: each was warned of as a project the generation would depend on alone, and each then stopped
+        # the configure on a reading of CMake's own, which names neither cause.
+        cmake_path(ABSOLUTE_PATH arg_PROJECT BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
+        string(CONCAT read_when_configured
+               "The project description is read when the build is configured - the files it is made of, its "
+               "plugins and its name - so it has to exist, and parse, by then")
+        if(NOT EXISTS "${arg_PROJECT}")
+            message(FATAL_ERROR "ddd_generate: PROJECT names \"${arg_PROJECT}\", which does not exist. "
+                                "${read_when_configured}: a file the build has yet to write is no project "
+                                "description.")
+        endif()
+        file(READ "${arg_PROJECT}" content)
+        string(JSON kind ERROR_VARIABLE unparsed TYPE "${content}")
+        if(unparsed)
+            message(FATAL_ERROR "ddd_generate: PROJECT names \"${arg_PROJECT}\", which does not parse as json. "
+                                "${read_when_configured}: ${unparsed}")
+        endif()
         set(project_file "${arg_PROJECT}")
         # A hand written project includes its components itself, so the files to watch have to be asked for; its
         # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.

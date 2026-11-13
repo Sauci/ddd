@@ -2290,7 +2290,12 @@ components and with them the `GROUP`s, while the objects themselves sort by name
 ([section 5.1](#51-c-code)). With `PROJECT <file>` a
 hand written project description is used instead, which is the mode for an older CMake, or
 for a project layout the link graph does not mirror; `NAME` is then ignored in favour of
-the name written inside the file. An `ADDRESS_MAP <file>` names the address map of
+the name written inside the file. That file is read when the build is configured - the files
+it is made of, its plugins and its name - so it has to exist and parse by then, and one that
+does not, a file the build has yet to write among them, is a configure error naming it; one
+that parses and that the tool cannot resolve all the same, a root failing its schema, is
+warned of, and the generation then depends on that file alone, as does the configure step.
+An `ADDRESS_MAP <file>` names the address map of
 [section 6](#6-address-information), which a step of the project's extracts from the image
 after the link: the A2L is written after the link out of the map, as `ADDRESSES_FROM_IMAGE`
 below writes it out of the image, so that the A2L of a build holds the addresses of the

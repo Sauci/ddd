@@ -701,11 +701,19 @@ class Session:
         refusal stand. A file changed in a way the poll cannot see - the same size and modification
         time - keeps every plan carrying the fingerprint of the bytes read before, which would be
         refused for good; the analysis reads what is on disk and its revision fingerprints that.
-        Called without the lock."""
+        Called without the lock.
+
+        The refusal is the answer whatever the analysis does: one that raises - the change may
+        have left the project unanalysable - is printed as the analyser prints its own, and its
+        files stay stamped unknown (:meth:`_finished`), so that the next poll asks again.
+        """
         if refused.code == STALE:
             with self._lock:
                 self._request()
-            self._analyse_here()
+            try:
+                self._analyse_here()
+            except Exception as error:
+                print(f"ddd gui: analysing the project failed: {error}", file=sys.stderr)
 
     def _analyse_here(self) -> None:
         """Make the analyses asked for on this thread, where no analyser was started."""

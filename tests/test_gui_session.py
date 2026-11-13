@@ -41,6 +41,7 @@ from ddd.editing import (
     INVALID,
     STALE,
     UNREADABLE,
+    UNWRITABLE,
     EditError,
     FileChange,
     Operation,
@@ -1828,6 +1829,50 @@ class TestReadingAndEditing:
         assert session.current().number > first
         session.edit([unit_of_b(shared, "Hz")], "the unit of Torque")
         assert b'"Hz"' in b.read_bytes()
+
+    def test_an_analysis_failing_after_a_stale_refusal_does_not_replace_it(
+        self, shared: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The change that made the edit stale may leave the project unanalysable: the caller
+        still gets the ``stale`` refusal, the failure is printed as the analyser prints its own,
+        and the next poll asks again."""
+
+        class Failing(Session):
+            analyses = 0
+
+            def _analysed(self, project: Path) -> Revision:
+                self.analyses += 1
+                if self.analyses == 2:
+                    raise RuntimeError("boom")
+                return super()._analysed(project)
+
+        session = Failing(shared.parent)
+        session.open(shared)
+        old = unit_of_b(shared, "Hz")
+        (shared.parent / "b.ddd.json").write_text("{}", encoding="utf-8")
+        first = session.revision
+        with pytest.raises(EditError) as refused:
+            session.edit([old], "the unit of Torque")
+        assert refused.value.code == STALE
+        assert refused.value.__cause__ is None
+        assert "ddd gui: analysing the project failed: boom" in capsys.readouterr().err
+        assert session.revision is first
+        assert session.poll() is True
+
+    def test_a_refusal_that_is_not_stale_asks_for_no_analysis(self, shared: Path) -> None:
+        session = Session(shared.parent)
+        session.open(shared)
+        b = shared.parent / "b.ddd.json"
+        change = unit_of_b(shared, "Hz")
+        b.chmod(0o444)
+        first = session.current()
+        try:
+            with pytest.raises(EditError) as refused:
+                session.edit([change], "the unit of Torque")
+        finally:
+            b.chmod(0o644)
+        assert refused.value.code == UNWRITABLE
+        assert session.current() is first
 
     def test_a_stale_refusal_of_an_undo_asks_for_an_analysis_too(self, shared: Path) -> None:
         session = Session(shared.parent)

@@ -2312,10 +2312,10 @@ done, so that an image may be linked after the call, in that directory or one it
 `PROJECT` the names are read off the files `ddd sources` lists. A link behind a generator
 expression cannot be evaluated when the names are read, so every component it names is
 declared whatever the expression comes to, and one whose header is then never written makes
-the generation run at every build. A component the image reaches only through a link made, or a
-library defined, after that directory is done is a configure error naming the component,
-raised once the top directory is done: the generation was added without its header, which a
-command cannot be given afterwards. A declared header is one the build looks at again after
+the generation run at every build under Ninja. A component the image reaches only through a
+link made, or a library defined, after that directory is done is a configure error naming the
+component, raised once the top directory is done: the generation was added without its header,
+which a command cannot be given afterwards. A declared header is one the build looks at again after
 the generation ran, so the build after a description change compiles the components whose
 header changed, and only those, rather than linking the new definitions with readers compiled
 against the old header. A component renamed in its description therefore needs the build
@@ -2333,7 +2333,12 @@ of the configure step until it does. One that does not exist yet, being generate
 build tree later, names no component either and is no dependency of the configure step, a file
 the build writes being none; the configure step warns of it, naming the file, since until the
 build is configured again once it is written, the build after its component's header changed
-compiles the components reading it against the old one.
+compiles the components reading it against the old one. Under a Makefile generator, which
+looks at no file again once a step has run, each of the two steps - the generation and the
+A2L's after the link - has a stamp in the output directory for its one output, touched by
+every run that succeeds, and the files it writes are its byproducts: a run that changed
+nothing leaves the build after it nothing to do, and a file it left as it was compiles nothing
+again.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
 ([section 6](#6-address-information)). With either keyword one build gives the complete A2L:
@@ -2342,8 +2347,7 @@ the link runs `ddd generate a2l` over the image with `--image`, or over the map 
 `--address-map`, the A2L its output. The step depends on the image, on the map, and on what
 the project is read from - its description, the files it is collected or included from, the
 `.py` plugins, the list of those files that `PROJECT` keeps in the build tree, and the tool - so it runs again when the image relinks, the map changes or a
-description does, and under Ninja never otherwise; under Make it also runs at every build that
-follows a run of it leaving the A2L unchanged. A target `<stem>_ddd_a2l`, built by default,
+description does, and never otherwise. A target `<stem>_ddd_a2l`, built by default,
 drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it into the
 directory the generation before the link writes into, whose manifest keeps either run from
 taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`, `SEVERITY` and

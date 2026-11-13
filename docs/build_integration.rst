@@ -446,7 +446,8 @@ including the ones this image happens not to link.
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 
-The outputs declared for the generator are the files the template names already give away, plus
+The outputs declared for the generator - its byproducts under a Makefile generator, beside a
+stamp (below) - are the files the template names already give away, plus
 the a2l and the dictionary - the a2l being the output of ``<stem>_ddd_a2l``'s step instead
 where ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` gives it one - and its byproducts are the
 files of the ``{component}`` templates, one for each component of the image: in the collected
@@ -457,11 +458,11 @@ registers, ``ddd_generate`` follows the image's link graph to the components it 
 the directory calling it is done, and with ``PROJECT`` the names are read off the files
 ``ddd sources`` lists. A link the image makes behind a generator expression -
 ``$<$<CONFIG:Debug>:trace>``, say - cannot be evaluated when the names are read, so every
-component it names is declared, whatever the expression comes to; one whose header the
-generation then never writes makes the generation run at every build. The image may be linked
-after the call, in that directory or in one it adds, and not later: a component it reaches
-only through a link made, or a library defined, once that directory is done would have a
-header the generation does not declare, so the configure stops at it, once the top directory
+component it names is declared, whatever the expression comes to; under Ninja one whose header
+the generation then never writes makes the generation run at every build. The image may be
+linked after the call, in that directory or in one it adds, and not later: a component it
+reaches only through a link made, or a library defined, once that directory is done would have
+a header the generation does not declare, so the configure stops at it, once the top directory
 is done, naming the component.
 
 Declaring the headers is what makes the build after a change right under Ninja, which looks at
@@ -471,6 +472,19 @@ reading it against the old header and linked them with the new globals, and only
 after that one compiled them again. A declared header is looked at again once the generation
 has run, and since an unchanged file is left untouched, the components whose header changed
 are recompiled and no others.
+
+A Makefile generator is supported as well, and looks at no file again once a step has run. A
+run that changed nothing left the first file of the generation older than the description
+that ran it, so every build after ran the whole analysis again, and CMake touched every other
+file of the step after each run - ``ddd_types.h`` among them, which every component header
+includes, so every component compiled again. Under a Makefile generator each of the module's
+two steps - the generation, and the a2l's after the link - has a stamp in the output directory
+for its one output, ``ddd-generation.stamp`` and ``ddd-a2l.stamp``, touched by every run that
+succeeds, and the files it writes are its byproducts: a run that changed nothing leaves the
+build after it nothing to do, and the components whose header changed are recompiled and no
+others, as under Ninja. A file deleted from the output directory by hand is not written again
+there until the step runs for another reason; a deleted directory is (see *What the build
+tells an editor* above).
 
 The names are read at configure time, so a component renamed in its description needs a
 reconfigure: until then its header is not declared under the new name, and the generation runs
@@ -521,7 +535,7 @@ same way, and ``NO_DICTIONARY`` leaves the file and the property out.
 .. note::
    Multi-config generators are refused with a fatal error: the project description and the
    generated sources are written to configuration-agnostic paths, which the configurations
-   would fight over. Use a single-config generator such as Ninja.
+   would fight over. Use a single-config generator: Ninja, or a Makefile generator.
 
 Options
 ~~~~~~~
@@ -578,8 +592,7 @@ Options
        image's debug information, so that one build gives the complete a2l: the run before the
        link leaves the a2l out, as ``NO_A2L`` does, and ``<stem>_ddd_a2l``, built by default,
        writes it after the link - again whenever the image relinks or a description changes,
-       and under Ninja never otherwise; under Make also at every build that follows a run
-       leaving the a2l unchanged. ``DDD_A2L`` names it as before, and ``STRICT``,
+       and never otherwise. ``DDD_A2L`` names it as before, and ``STRICT``,
        ``SEVERITY`` and ``BYTE_ORDER`` apply to it. The image has to be ELF with DWARF, built
        with ``-g``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
    * - ``BYTE_ORDER little|big``
@@ -657,9 +670,8 @@ The image has to be a linked ELF image whose DWARF describes the variables
 (:doc:`command_line_interface`), which a build with debug information writes: ``-g``, which
 CMake's ``Debug`` and ``RelWithDebInfo`` build types add. The step depends on the image and on
 what the project is read from, so it runs again when the image relinks or a description
-changes - a conversion's factor, which reaches the a2l and none of the c, included - and under
-Ninja a build with nothing changed runs nothing at all; under Make, every build that follows a
-run of the step leaving the a2l unchanged runs the step again. It writes the a2l into the
+changes - a conversion's factor, which reaches the a2l and none of the c, included - and a
+build with nothing changed runs nothing at all. It writes the a2l into the
 directory the generation before the link wrote the c sources, the headers and the dictionary
 into, and takes none of them back (:ref:`what-a-run-owns`), so nothing is compiled again
 because the a2l was written.

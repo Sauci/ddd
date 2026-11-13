@@ -21,7 +21,10 @@ Not skipped when ``cmake`` is missing: it comes from ``requirements-dev.txt``, a
 skips when a tool is absent reports success without having run. The generator is ninja, from
 the same requirements: the module refuses a multi-config generator, which is what cmake
 defaults to on Windows, and a compiler is named explicitly where ``cl`` is not on the path,
-which is a GitHub runner with MinGW's ``gcc`` and no developer prompt.
+which is a GitHub runner with MinGW's ``gcc`` and no developer prompt. The story of the build
+after an edit is told under the platform's Makefile generator as well, with a ``make`` no
+requirements file installs: GNU make on Linux, and MinGW's ``mingw32-make`` beside that ``gcc``
+on Windows.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ import shutil
 import subprocess
 import sys
 import sysconfig
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -75,8 +79,27 @@ def cmake(*arguments: str, cwd: Path, site: Path | None = None) -> subprocess.Co
     )
 
 
-MAKE_PROGRAMS = {"Ninja": NINJA}
+MAKE = "MinGW Makefiles" if os.name == "nt" else "Unix Makefiles"
+"""The platform's Makefile generator, which the module takes like any single-config one."""
+
+
+def make_program() -> str:
+    """The ``make`` that :data:`MAKE` runs: ``mingw32-make`` on Windows, from the MinGW whose
+    ``gcc`` the suite compiles with there, else ``make``; its bare name where none is found,
+    which :func:`test_the_tools_this_module_runs_exist` then names as missing."""
+    name = "mingw32-make" if os.name == "nt" else "make"
+    gcc = shutil.which("gcc")
+    beside = shutil.which(name, path=str(Path(gcc).parent)) if gcc else None
+    return beside or shutil.which(name) or name
+
+
+MAKE_PROGRAMS = {"Ninja": NINJA, MAKE: make_program()}
 """The build tool each generator the suite configures with runs, by the generator's name."""
+
+TO_THE_SECOND = {MAKE} if os.name == "nt" else set()
+"""The generators whose build tool may compare files' times to the whole second - a ``make``
+built for Windows - to which a file edited in the second a build ended is no newer than what
+that build wrote. A :class:`Story` waits that second out after each of their builds."""
 
 
 def attempt(
@@ -348,8 +371,9 @@ class TestAComponentThatLeavesTheImage:
         assert (dropped.generated / "ddd_globals.c").is_file()
 
 
-STORY_GENERATORS = ["Ninja"]
-"""The generators the story of the build after an edit is told under."""
+STORY_GENERATORS = ["Ninja", MAKE]
+"""The generators the story of the build after an edit is told under: ninja, which restats
+what a step wrote, and the platform's make, which has nothing of the kind."""
 
 Linked = Literal[
     "before the call", "after the call", "from the parent", "through a library defined later"
@@ -522,16 +546,17 @@ class Step:
         return "Generating the data dictionary" in self.output
 
     def did_nothing(self) -> bool:
-        """Nothing configured, generated, compiled or linked, and a build that succeeded: one
-        with nothing to do, read off what it did rather than off the words one build tool has
-        for that. A build whose CMake re-run failed prints ``Configuring incomplete`` and
-        compiles nothing, which is no build with nothing to do."""
+        """Nothing configured, generated, compiled, linked or read after the link, and a build
+        that succeeded: one with nothing to do, read off what it did rather than off the words
+        one build tool has for that. A build whose CMake re-run failed prints ``Configuring
+        incomplete`` and compiles nothing, which is no build with nothing to do."""
         return (
             self.code == 0
             and "Configuring done" not in self.output
             and not self.generated()
             and not self.compiled
             and "Linking" not in self.output
+            and "Reading the addresses of the a2l" not in self.output
         )
 
 
@@ -750,7 +775,7 @@ add_library(spare STATIC spare.c)
         return {symbol: found[symbol] for symbol in a2l_addresses(self.a2l())}
 
     def build(self) -> Step:
-        run = cmake("--build", str(self.build_dir), cwd=self.build_dir, site=self.site)
+        run = self.build_target()
         output = run.stdout + run.stderr
         printed = ""
         if run.returncode == 0:
@@ -759,6 +784,16 @@ add_library(spare STATIC spare.c)
             assert shown.returncode == 0, shown.stdout + shown.stderr
             printed = shown.stdout.strip()
         return Step(run.returncode, output, frozenset(COMPILED.findall(output)), printed)
+
+    def build_target(self, *targets: str) -> subprocess.CompletedProcess[str]:
+        """One build, of the targets named or of everything, whether or not it succeeds; where
+        the build tool reads times to the second, that second is waited out before the test
+        edits anything (:data:`TO_THE_SECOND`)."""
+        target = ["--target", *targets] if targets else []
+        run = cmake("--build", str(self.build_dir), *target, cwd=self.build_dir, site=self.site)
+        if self.generator in TO_THE_SECOND:
+            time.sleep(1.05 - time.time() % 1)
+        return run
 
 
 @dataclass(frozen=True)
@@ -841,6 +876,23 @@ class TestTheBuildAfterAnEdit:
         assert elsewhere.code == 0, elsewhere.output
         assert {"sensor.c", "ddd_globals.c"} <= elsewhere.compiled, elsewhere.output
         assert "logger.c" not in elsewhere.compiled, elsewhere.output
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_description_touched_and_left_as_it_was_runs_the_generation_once(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A run that changes nothing leaves every file it would write as it was. Ninja looks
+        at them again after the run and finds nothing to do; make has nothing of the kind, so
+        the first file of the generation stayed older than the description, and every build
+        after ran the whole analysis again - while CMake touched each other file of it after
+        each run, ``ddd_types.h`` among them, and every component compiled again."""
+        story = Story(tmp_path, STORY_SHAPES["collected"], generator)
+        assert story.build().code == 0
+        os.utime(story.description("sensor"))
+        touched = story.build()
+        assert touched.code == 0 and touched.generated(), touched.output
+        assert not touched.compiled, touched.output
+        assert story.build().did_nothing()
 
     @pytest.mark.parametrize(
         "shape", [pytest.param(shape, id=name) for name, shape in LINKED_LATE.items()]
@@ -1374,9 +1426,12 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
 
     def test_a_failed_build_is_not_a_build_with_nothing_to_do(self) -> None:
         """A CMake re-run that fails prints ``Configuring incomplete`` and compiles nothing,
-        which read as a build that had nothing to do."""
+        which read as a build that had nothing to do; and so did one that read the addresses
+        of the a2l again, and did nothing else."""
         failed = Step(1, "-- Configuring incomplete, errors occurred!", frozenset(), "")
         assert not failed.did_nothing()
+        reread = "[100%] Reading the addresses of the a2l out of the address map of img"
+        assert not Step(0, reread, frozenset(), "logged 200").did_nothing()
         assert Step(0, "ninja: no work to do.", frozenset(), "").did_nothing()
 
 
@@ -1471,6 +1526,21 @@ class TestTheMapReadOnceTheImageIsLinked:
         assert not reread.generated() and not reread.compiled, reread.output
         assert "Linking" not in reread.output
         assert a2l_addresses(story.a2l())["Sample"] == 0x00500000
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_map_touched_and_left_as_it_was_is_read_once(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A read of the map that changes nothing leaves the a2l as it was. Under make, which
+        looks at no file again once a step has run, the a2l stayed older than the map, and
+        every build after read the map again - the one rerun the pages stated."""
+        story = Story(tmp_path, MAPPED, generator)
+        assert story.build().code == 0
+        os.utime(story.images() / "ddd" / "img" / "addresses.json")
+        touched = story.build()
+        assert touched.code == 0, touched.output
+        assert "Reading the addresses of the a2l out of the address map of img" in touched.output
+        assert story.build().did_nothing()
 
 
 class TestACollectedProjectWithPlugins:
@@ -3153,9 +3223,11 @@ add_executable(img main.c)
         assert tool.as_posix() in said.replace("\\", "/"), "the message does not name the tool"
 
 
-@pytest.mark.parametrize("tool", [CMAKE, NINJA, str(DDD)])
+@pytest.mark.parametrize("tool", [CMAKE, NINJA, MAKE_PROGRAMS[MAKE], str(DDD)])
 def test_the_tools_this_module_runs_exist(tool: str) -> None:
-    """Said out loud, so that a missing tool is this failure and not a hundred cryptic ones."""
+    """Said out loud, so that a missing tool is this failure and not a hundred cryptic ones.
+    The make is the one no requirements file installs: GNU make on Linux, and on Windows the
+    ``mingw32-make`` of the MinGW whose gcc the suite compiles with."""
     assert Path(tool).is_file(), f"{tool} is not installed in this environment"
 
 

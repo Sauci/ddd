@@ -2261,7 +2261,8 @@ a registered file not named `*.ddd.json`, or whose top level key is `project`, i
 error - a project file is named with `PROJECT` of `ddd_generate`, which follows what it includes,
 where nothing follows the includes of a registered file; so, in both calls, is a
 keyword given no value, which the error names: a variable that expanded to nothing reads
-exactly like a keyword nobody gave, and each one silently changes what the call does; it defines an on-demand
+exactly like a keyword nobody gave, and each one silently changes what the call does - the
+quoted form `ADDRESS_MAP "${DDD_MAP}"`, a keyword followed by an empty argument, included; it defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
 declares no interface of its own; a registered file whose JSON does not parse at all is

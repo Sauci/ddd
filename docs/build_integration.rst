@@ -621,6 +621,9 @@ silence: the a2l came out with every address ``0x00000000``, no map was seeded a
 dependency, and the map below was never read.  ``PROJECT`` without a value fell into
 the collected mode and generated out of the link graph instead of out of the file the caller
 meant.
+The quoted form, ``ADDRESS_MAP "${DDD_MAP}"``, which every recipe on this page writes, is
+refused the same way: a keyword followed by an empty argument has no value either, from CMake
+3.20 on.
 
 ``NO_PROPAGATE_HEADERS`` is the option a project building **several** images from the same
 components cannot avoid. A component's interface header is generated for one link closure, so

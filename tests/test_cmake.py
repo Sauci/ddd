@@ -1946,6 +1946,21 @@ ddd_generate(img
         assert not (tmp_path / "build" / "ddd" / "img" / "Ignored.a2l").exists()
         assert "NAME is ignored with PROJECT" in configured.stdout, configured.stdout
 
+    def test_a_checkout_under_a_non_ascii_directory_builds(self, tmp_path: Path) -> None:
+        """``ddd sources`` writes UTF-8 whatever the console's code page is, and the module has
+        to read it as UTF-8: decoded in the code page, ``Müller`` became other characters, and
+        the build asked ninja for a description at a path that does not exist. Every leg runs
+        it; the windows legs are the ones whose code page is not UTF-8."""
+        root = tmp_path / "Müller-project"
+        root.mkdir()
+        self.write(root)
+        configure(root, root / "build")
+        build(root / "build")
+        generated = root / "build" / "ddd" / "img"
+        assert (generated / "ddd_layout.h").is_file()
+        graph = (root / "build" / "build.ninja").read_text(encoding="utf-8")
+        assert (root / "layout" / "project.ddd.json").as_posix() in graph
+
     def test_an_edited_plugin_regenerates_through_the_sources(self, tmp_path: Path) -> None:
         """``ddd sources`` names the plugin, which is how the module learns to depend on it."""
         plugin = self.write(tmp_path)
@@ -2583,6 +2598,36 @@ target_link_libraries(img PRIVATE store)
             ),
             pytest.param(
                 'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" ADDRESS_MAP "${{DDD_MAP}}")',
+                "ADDRESS_MAP",
+                id="the address map, quoted as every recipe quotes it",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" PROJECT "${{DDD_PROJECT}}")',
+                "PROJECT",
+                id="the project description, quoted",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" NAME "${{DDD_NAME}}")',
+                "NAME",
+                id="a single value keyword, quoted",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" SEVERITY "${{DDD_SEVERITY}}")',
+                "SEVERITY",
+                id="a multi value keyword, quoted",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "${{DDD_FILES}}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}")',
+                "JSON",
+                id="the descriptions of a component, quoted",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
                 "ddd_generate(img TEMPLATE_DIRECTORY ${{DDD_TEMPLATES}})",
                 "TEMPLATE_DIRECTORY",
                 id="the required keyword",
@@ -2602,6 +2647,21 @@ target_link_libraries(img PRIVATE store)
         # Rewrapped: cmake folds a message to its own width, so the sentence arrives with
         # newlines and two-space indents wherever it happened to break.
         assert f'"{keyword}" was given no value' in " ".join(run.stderr.split())
+
+    def test_a_quoted_keyword_is_refused_with_the_whole_sentence(self, tmp_path: Path) -> None:
+        source = self.write(
+            tmp_path,
+            'ddd_add_component(store JSON "{component}")\n'
+            'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" ADDRESS_MAP "${{DDD_MAP}}")',
+        )
+        run = attempt(source, tmp_path / "build")
+        assert run.returncode == 1, run.stdout + run.stderr
+        assert (
+            'ddd_generate: "ADDRESS_MAP" was given no value. A variable that expands to nothing '
+            "leaves the keyword with no argument, which reads exactly like a keyword that was "
+            "never given - so the call would quietly have done something else. Give it a value, "
+            "or leave the keyword out."
+        ) in " ".join(run.stderr.split())
 
     def test_a_keyword_with_a_value_still_configures(self, tmp_path: Path) -> None:
         """The positive control: the same call with the variable set is not refused."""

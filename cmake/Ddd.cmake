@@ -93,15 +93,34 @@ endif()
 # call does: ADDRESS_MAP writes the a2l before the link, with every ECU_ADDRESS 0x00000000, and adds no step reading
 # the map after it; PROJECT falls into the collected mode and generates out of the link closure instead of out of the
 # file the caller named. Refused here, once, for both functions.
-function(_ddd_refuse_empty_keywords context missing)
-    if(missing)
-        list(JOIN missing "\", \"" spelled)
-        message(FATAL_ERROR "${context}: \"${spelled}\" was given no value. A variable that expands to nothing "
+#
+# The bare form is what KEYWORDS_MISSING_VALUES names. The quoted form, ADDRESS_MAP "${DDD_MAP}", which every recipe
+# writes, is a value to PARSE_ARGV - an empty string - and is named by nothing it reports, so the arguments are walked
+# here: a keyword that takes a value, followed by an empty argument. It is a macro because ARGV<n> belongs to the function that was called,
+# not to a helper; it reads them by number, up to the count its caller hands it (ARGV<n> beyond it may be an outer
+# function's), and works from CMake 3.20 on.
+macro(_ddd_refuse_empty_keywords context argument_count keywords)
+    set(_ddd_keywords "${keywords}")
+    set(_ddd_empty ${arg_KEYWORDS_MISSING_VALUES})
+    set(_ddd_index 1)
+    while(_ddd_index LESS ${argument_count})
+        math(EXPR _ddd_next "${_ddd_index} + 1")
+        if(_ddd_next LESS ${argument_count})
+            if("${ARGV${_ddd_index}}" IN_LIST _ddd_keywords AND "${ARGV${_ddd_next}}" STREQUAL "")
+                list(APPEND _ddd_empty "${ARGV${_ddd_index}}")
+            endif()
+        endif()
+        set(_ddd_index ${_ddd_next})
+    endwhile()
+    list(REMOVE_DUPLICATES _ddd_empty)
+    if(_ddd_empty)
+        list(JOIN _ddd_empty "\", \"" _ddd_spelled)
+        message(FATAL_ERROR "${context}: \"${_ddd_spelled}\" was given no value. A variable that expands to nothing "
                             "leaves the keyword with no argument, which reads exactly like a keyword that was "
                             "never given - so the call would quietly have done something else. Give it a value, "
                             "or leave the keyword out.")
     endif()
-endfunction()
+endmacro()
 
 # The transitive property feature is only needed when the component descriptions are collected through the link
 # graph; a caller passing PROJECT never reaches this check.
@@ -204,7 +223,8 @@ function(_ddd_project_sources variable project_file)
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
                     OUTPUT_STRIP_TRAILING_WHITESPACE
-                    ERROR_STRIP_TRAILING_WHITESPACE)
+                    ERROR_STRIP_TRAILING_WHITESPACE
+                    ENCODING UTF-8)
     if(NOT status EQUAL 0)
         message(WARNING "ddd_generate: cannot resolve the sources of \"${project_file}\" yet (${error}); the "
                         "generation will depend on that file alone.")
@@ -390,7 +410,7 @@ function(ddd_add_component target)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_add_component: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
-    _ddd_refuse_empty_keywords("ddd_add_component" "${arg_KEYWORDS_MISSING_VALUES}")
+    _ddd_refuse_empty_keywords("ddd_add_component" ${ARGC} "JSON")
     if(NOT arg_JSON)
         message(FATAL_ERROR "ddd_add_component: at least one description file is required (JSON <file>...).")
     endif()
@@ -734,7 +754,9 @@ function(ddd_generate image)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
-    _ddd_refuse_empty_keywords("ddd_generate" "${arg_KEYWORDS_MISSING_VALUES}")
+    set(keywords_with_values PROJECT NAME OUTPUT_DIRECTORY TEMPLATE_DIRECTORY SCHEMA_DIRECTORY ADDRESS_MAP BYTE_ORDER
+                             SEVERITY LINK_LIBRARIES DEPENDS PLUGINS)
+    _ddd_refuse_empty_keywords("ddd_generate" ${ARGC} "${keywords_with_values}")
     # The a2l takes its addresses from one place, and ADDRESSES_FROM_IMAGE is that place being the image: beside a map
     # the call would name two, and beside NO_A2L it would read addresses for a file nobody writes.
     if(arg_ADDRESSES_FROM_IMAGE AND arg_ADDRESS_MAP)

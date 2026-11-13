@@ -365,6 +365,11 @@ class Shape:
     """The plugins of the project, a ``.py`` spec relative to the source directory: given with
     ``PLUGINS`` when collected, written into its ``plugins`` when hand written."""
 
+    logger_file: str = "logger.ddd.json"
+    """The name of the logger's description in ``components/``, whose case the tool does not
+    mind - though ``ddd_add_component`` does, so only a hand written project spells it
+    otherwise."""
+
     def in_a_subdirectory(self) -> bool:
         """Whether the image is defined and generated in ``app/`` rather than at the top."""
         return self.subdirectory or self.linked in (
@@ -380,6 +385,19 @@ STORY_SHAPES = {
     "project": Shape(project=True, registered=False),
 }
 """The shapes the whole story is told for, under the names their tests are listed by."""
+
+IN_CAPITALS = Shape(
+    project=True,
+    registered=False,
+    logger_file="logger.DDD.JSON",
+    includes=(
+        "components/sensor.ddd.json",
+        "components/logger.DDD.JSON",
+        "components/units.ddd.json",
+    ),
+)
+"""A hand written project whose logger's description is spelled in capitals, as a project kept
+on a filesystem that does not mind may have it."""
 
 LINKING_MORE_THAN_IT_NAMES = Shape(project=True, spare_linked=True)
 """A hand written project whose components register too, for their own check targets, and
@@ -535,7 +553,7 @@ class Story:
         if not self.shape.registered:
             return ""
         here = "${CMAKE_CURRENT_SOURCE_DIR}"
-        logger = f'"{here}/components/logger.ddd.json"'
+        logger = f'"{here}/components/{self.shape.logger_file}"'
         written = ""
         if self.shape.described_by_the_build:
             copied, logger = logger, '"${CMAKE_CURRENT_BINARY_DIR}/logger.ddd.json"'
@@ -602,7 +620,9 @@ add_library(spare STATIC spare.c)
 
     def description(self, name: str) -> Path:
         """Where the description of ``name``, ``"sensor"`` or ``"logger"``, is written."""
-        return self.components / f"{name}.ddd.json"
+        return self.components / (
+            self.shape.logger_file if name == "logger" else f"{name}.ddd.json"
+        )
 
     def describe(self, datatype: str, *more: dict[str, Any]) -> None:
         """Both descriptions, ``Sample`` of ``datatype`` in each, and whatever more the sensor
@@ -795,6 +815,23 @@ class TestTheBuildAfterAnEdit:
         assert story.build().code == 0
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_project_spelling_a_description_in_capitals_has_its_header_declared(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """The names of a hand written project's components are read off the json files
+        ``ddd sources`` lists, and the tool takes a description's suffix whatever its case, so
+        the module does too: ``logger.DDD.JSON`` names ``Logger``, whose header is declared, and
+        the widened ``Sample`` reaches its reader in one build."""
+        story = Story(tmp_path, IN_CAPITALS, generator)
+        assert story.build().code == 0
+        story.describe("uint16")
+        story.write_sensor(1234)
+        widened = story.build()
+        assert widened.code == 0, widened.output
+        assert "logger.c" in widened.compiled, widened.output
+        assert widened.printed == "logged 1234"
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_description_unreadable_when_configured_is_read_after_its_repair(
         self, tmp_path: Path, generator: str
     ) -> None:
@@ -831,7 +868,8 @@ class TestTheBuildAfterAnEdit:
             "build after that header changes would compile the components reading it against "
             "the old one. Configure the build again once the build has written the file."
         )
-        assert warned in " ".join(story.configured.split()), story.configured
+        # A warning, which a configure log shows as one, rather than a line of its status.
+        assert f"(message): {warned}" in " ".join(story.configured.split()), story.configured
         assert story.build().code == 0
         assert "does not exist yet" not in story.reconfigure()
         story.describe("uint16")

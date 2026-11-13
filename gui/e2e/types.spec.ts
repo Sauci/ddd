@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftIn, driftMaxUnseen, failing, held, PUMP, SERVER_FAILED } from "./demo";
+import { driftIn, failing, held, PUMP, SERVER_FAILED, writeUnseen } from "./demo";
 import { expect, test } from "./fixtures";
 
 const MONITORING = "monitoring.ddd.json";
@@ -367,25 +367,35 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   await expect(apply).toBeEnabled();
 
   // The file changes under the page, between the preview it is holding and the press that sends
-  // it, so that preview is against the old bytes. The session's own watcher never sees the write
-  // `driftMaxUnseen` makes (it keeps the file's size and modification time), so only a fresh read
-  // of the bytes does, which is the check an Apply itself makes - the same hazard as keys.spec.ts's
-  // "a change refused as stale can be applied again once the analysis has caught up".
-  driftMaxUnseen(structuresGui.directory, TYPES, "Temperature_t", 999);
+  // it, so that preview is against the old bytes: the type's description, one word for another as
+  // long, written where the session's own watcher does not see it (`writeUnseen`), so only a fresh
+  // read of the bytes does, which is the check an Apply itself makes - the same hazard as
+  // keys.spec.ts's "a change refused as stale can be applied again once the analysis has caught
+  // up".
+  const path = join(structuresGui.directory, TYPES);
+  const original = readFileSync(path, "utf8");
+  const changed = original.replace("agrees to see it", "agrees to log it");
+  if (changed === original) throw new Error(`Temperature_t is described otherwise in ${path}`);
+  writeUnseen(structuresGui.directory, TYPES, changed);
   await apply.click();
   const refused = panel.getByRole("status").filter({ hasText: "A file changed on disk" });
   await expect(refused).toHaveText(STALE);
-  // Nothing was written: the type's entry is as the drift left it.
+  // Nothing was written: the type's entry is as the outside change left it.
+  const described = "A temperature as every component of this project agrees to log it";
   expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual({
     ...before,
-    limits: { min: -40, max: 999 },
+    description: described,
   });
 
-  // The watcher never notices the drift, and nothing needs it to: refusing the Apply as stale, the
-  // server asks for the analysis itself (`Session._refused`), which reads the drifted bytes. The
-  // panel shows that analysis landed - the type's limits as the drift left them - and the sentence
-  // is still there: it is held until the reader's next choice, not until a revision.
-  await expect(limits).toContainText("-40 … 999");
+  // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
+  // The panel reads the type from the file as it stands, even of the revision refused, so it says
+  // nothing of that analysis; the Types table's rows are made once a revision and kept for it, so
+  // its row shows the new description only once that analysis has landed. The sentence is still
+  // there then: it is held until the reader's next choice, not until a revision.
+  await expect(page.getByRole("row", { name: "Temperature_t", exact: true })).toContainText(
+    described,
+  );
   await expect(refused).toHaveText(STALE);
 
   // The reader's next choice, a new maximum typed, takes the sentence away, and is planned against
@@ -395,7 +405,7 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   await apply.click();
   await expect
     .poll(() => entryOf(structuresGui.directory, "Temperature_t"))
-    .toEqual({ ...before, limits: { min: -40, max: 130 } });
+    .toEqual({ ...before, description: described, limits: { min: -40, max: 130 } });
   await expect(limits).toContainText("-40 … 130");
 });
 

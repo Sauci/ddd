@@ -465,11 +465,16 @@ test("a save made from a constant's panel that is out of date is refused, nothin
   await expect(save).toBeEnabled();
 
   // The file changes under the page, between the preview it holds and the press that sends it:
-  // its description, one word for another as long, written where the session's own watcher does
-  // not see it (`writeUnseen`), so only the Apply's own fresh read of the bytes does.
+  // its description, one word for another as long, and its value, 16 to 17, written where the
+  // session's own watcher does not see it (`writeUnseen`), so only the Apply's own fresh read of
+  // the bytes does.
   const before = readFileSync(path, "utf8");
-  const changed = before.replace("sample slots", "sample cells");
-  if (changed === before) throw new Error(`TREND_SAMPLES describes no sample slots in ${path}`);
+  const changed = before
+    .replace("sample slots", "sample cells")
+    .replace('"value": 16', '"value": 17');
+  if (!changed.includes("sample cells") || !changed.includes('"value": 17')) {
+    throw new Error(`TREND_SAMPLES no longer reads as this journey expects in ${path}`);
+  }
   writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
   await save.click();
   const refused = value.getByRole("status");
@@ -479,14 +484,13 @@ test("a save made from a constant's panel that is out of date is refused, nothin
 
   // The watcher never notices the change, and nothing needs it to: refusing the save as stale, the
   // server asks for the analysis itself (`Session._refused`), which reads the file as it is. The
-  // panel shows that analysis landed - the description written from outside - and the sentence is
-  // still there: it is held until the reader's next choice, not until a revision.
-  const description = panel
-    .getByRole("region", { name: "Description" })
-    .getByRole("textbox", { name: "Description" });
-  await expect(description).toHaveValue(
-    "sample cells of a pressure trend buffer, a device wide size no single component owns",
-  );
+  // panel reads the entry from the file as it stands, even of the revision refused, so it says
+  // nothing of that analysis; the table's rows are made once a revision and kept for it, so the
+  // entry's row states 17 only once that analysis has landed. The sentence is still there then:
+  // it is held until the reader's next choice, not until a revision.
+  await expect(
+    page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).getByRole("gridcell").nth(1),
+  ).toHaveText("17");
   await expect(refused).toHaveText(STALE);
 
   // Save, offered under the sentence for the file as it now is, pressed again is that choice: the

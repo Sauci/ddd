@@ -50,6 +50,14 @@ export function refusalShown<A>(
   return held !== null && held.about === about ? held.text : asked;
 }
 
+/** What a page holds of the refusal of an offer it makes - adopting a vocabulary - once it has
+ * read whether it still makes that offer: the refusal while it does, and none once the offer is
+ * withdrawn. A refusal is of the offer it was made of and does not outlive it: the same offer made
+ * again, once the page reads that it can be, is a new one, and starts with no refusal. */
+export function refusalOfOffer<T>(held: T | null, offered: boolean): T | null {
+  return offered ? held : null;
+}
+
 /** What a panel about one entity shows of the server's answer about it: the answer, a refusal in
  * its place, "Updating the findings…" alone, or that it is reading. */
 export type PanelShows<T> =

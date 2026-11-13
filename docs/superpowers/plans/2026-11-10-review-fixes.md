@@ -1407,9 +1407,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **A removal refused as stale waits for the panel to close, or a key to settle** (R22): the
   variable panel's removal offer withdraws Remove while any refusal stands (P19b-24), so its
   sentence, kept now until the reader's next choice, goes when they settle a key or close the
-  panel, and only then is Remove offered again. Drawing Remove under the sentence, as the other offers draw their Apply, is
-  the question P19b-24 recorded for the maintainer. Branch 11 lists `screens/*` and
-  `components/*`.
+  panel, and only then is Remove offered again. Drawing Remove under the sentence, as the other
+  offers draw their Apply, is the question P19b-24 recorded for the maintainer. Branch 11 lists
+  `screens/*` and `components/*`.
 - **A create racing another writer's create** (task 2, `13:I1`; R23): a file an edit creates is
   renamed into place, replacing one another writer created between the edit's last look and the
   rename, and a save landing in that instant is written over too, as the documents now say.

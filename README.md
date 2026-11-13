@@ -897,10 +897,13 @@ image without its extension, so `firmware.elf` gives `firmware_ddd_headers`.  Op
 only one of the two leaves the same ambiguity in place, because the automatic set still
 reaches every registered component rather than only the ones that image links.
 
-The declared outputs are derived from the template names, and the a2l; a `{component}`
-template is left out because its outputs are named after the components, which are only known
-once the description files have been read.  That is why
-consumers depend on `firmware_ddd_headers` rather than on an individual header path.
+The declared outputs are derived from the template names, and the a2l; the files of a
+`{component}` template are declared as byproducts, one for each component the image links,
+under the names the module reads out of the descriptions when the build is configured - so
+the build after a description change recompiles exactly the components whose header changed,
+and in the collected mode a component renamed in its description needs a reconfigure.
+Consumers find the headers through `firmware_ddd_headers`, which carries their include
+directory.
 
 Beside the module, this repository publishes a [pre-commit](https://pre-commit.com) hook,
 `ddd-id`, which runs `ddd id --assign` over the staged `*.ddd.json` files so that no object

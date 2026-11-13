@@ -1776,9 +1776,12 @@ no file; the project wide file defines them like any other.
 The build system can name what it compiles. The rule above lets it derive the generated
 files from the template directory, and a `{component}` template is the one entry it cannot
 resolve, because the component names come out of the description files and, for an image,
-the subset that matters comes out of its link graph. A generated header survives that,
-because a consumer depends on the directory it lives in rather than on its name; a source
-has to be named before it can be compiled.
+the subset that matters comes out of its link graph. A generated header survives that: a
+consumer finds it through the directory it lives in, and the build integration declares it
+under the name it reads when the build is configured, so that its readers are compiled again
+when it changes ([section 7.1](#71-build-system-integration)). A source has to be named
+before it can be compiled, and a name read at configure time is one a renamed component
+makes stale until the build is configured again.
 
 The definitions reach the image whole. An object that no compiled code references, for
 example a measurement only the calibration tool reads, has nothing to pull it out of a
@@ -2278,6 +2281,21 @@ link can produce; an empty map raises no `address-missing`
 ([section 4](#4-consistency-checks)), so that first build passes under `STRICT` as well.
 With `NO_A2L` the map is neither seeded nor a dependency, the A2L being the only artefact
 that reads it.
+
+The generation declares as its outputs the files the template names give away, the A2L and
+the dictionary, and as its byproducts the files of each `{component}` template, one for every
+component the image links, named when the build is configured: `ddd_add_component` reads the
+component name of each file it registers, and `ddd_generate` follows the image's link graph
+to the components it links once the directory calling it is done, so that an image may be
+linked after the call; with `PROJECT` the names are read off the files `ddd sources` lists.
+A declared header is one the build looks at again after the generation ran, so the build
+after a description change compiles the components whose header changed, and only those,
+rather than linking the new definitions with readers compiled against the old header. A
+component renamed in its description therefore needs the build configured again, until which
+the generation runs at every build; with `PROJECT` that happens by itself, the files of the
+project being dependencies of the configure step. A registered file that does not parse when
+the build is configured names no component and is a dependency of the configure step until it
+does.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
 ([section 6](#6-address-information)), so that one build gives the complete A2L: the

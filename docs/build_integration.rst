@@ -212,15 +212,15 @@ re-run cmake. The same files are dependencies of the generation step, which make
 behave like any other source: change the banner of ``ddd_globals.c.jinja2`` and the next build
 regenerates the file and recompiles it.
 
-The names of the templates are then turned into the declared outputs, minus the two kinds that
-cannot be named at configure time. A helper - a name starting with an underscore, such as
-``_macros.jinja2`` - renders nothing of its own, and a ``{component}`` template renders once
-per component, under names that only exist once the description files have been read. That
-second case is exactly why the per-component headers reach their consumers through the
-interface library rather than as declared outputs. Everything else contributes one output
-named like its template without the ``.jinja2`` extension, and every output ending in ``.c``
-is compiled into the object library that ends up in the image - so a project splitting its
-definitions over two source templates gets both of them compiled, without saying so anywhere.
+The names of the templates are then turned into the declared outputs. A helper - a name
+starting with an underscore, such as ``_macros.jinja2`` - renders nothing of its own, and a
+``{component}`` template renders once per component, under the names the descriptions give
+their components: its files are declared as byproducts of the generation, one for each
+component the image links, named when the build is configured (see *The targets it creates*
+below). Everything else contributes one output named like its template without the
+``.jinja2`` extension, and every output ending in ``.c`` is compiled into the object library
+that ends up in the image - so a project splitting its definitions over two source templates
+gets both of them compiled, without saying so anywhere.
 
 Three arrangements are refused with a message rather than with a confusing failure later on: a
 directory holding no ``*.jinja2`` file at all, a directory holding nothing but helpers and
@@ -263,13 +263,14 @@ a2l and the dictionary are then named after the project name inside the descript
 A hand written project pulls its components in through ``includes``, possibly with wildcards,
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
 the tool which files the project is really built out of, with ``ddd sources`` (see
-:doc:`command_line_interface`), and uses the answer twice: as the dependencies of the
+:doc:`command_line_interface`), and uses the answer three times: as the dependencies of the
 generation step, so that editing a component - or a plugin the project names, whose module
-the answer lists too - regenerates the globals and the a2l, and as
-``CMAKE_CONFIGURE_DEPENDS``, so that adding a file matching an ``includes`` wildcard re-runs
-configure and picks the new component up. If the tool cannot resolve the project yet, the
-module says so and falls back to depending on the project file alone rather than refusing to
-configure at all.
+the answer lists too - regenerates the globals and the a2l; as ``CMAKE_CONFIGURE_DEPENDS``, so
+that adding a file matching an ``includes`` wildcard re-runs configure and picks the new
+component up; and as the files the names of the project's components are read from, for the
+headers the generation declares (see *The targets it creates* below). If the tool cannot
+resolve the project yet, the module says so and falls back to depending on the project file
+alone rather than refusing to configure at all.
 
 What the build tells an editor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -419,18 +420,37 @@ including the ones this image happens not to link.
 
 The outputs declared for the generator are the files the template names already give away, plus
 the a2l and the dictionary - the a2l being the output of ``<stem>_ddd_a2l``'s step instead
-where ``ADDRESSES_FROM_IMAGE`` gives it one. The per-component headers are written next to
-them, but their names come from inside the description files and are therefore unknown at
-configure time - which is precisely why a consumer depends on ``<stem>_ddd_headers`` rather
-than on an individual header path.
+where ``ADDRESSES_FROM_IMAGE`` gives it one - and its byproducts are the files of the
+``{component}`` templates, one for each component the image links. Their names come from
+inside the description files, so the module reads them when the build is configured:
+``ddd_add_component`` reads the component name of each file it registers, ``ddd_generate``
+follows the image's link graph to the components it links once the directory calling it is
+done - so an image may be linked after the call - and with ``PROJECT`` the names are read off
+the files ``ddd sources`` lists. Declaring the headers is what makes the build after a change
+right under Ninja, which looks at the files a build reads before it runs anything: a header no
+step declares was looked at before the generation rewrote it, so the build after a datatype
+change compiled the components reading it against the old header and linked them with the new
+globals, and only the build after that one compiled them again. A declared header is looked at
+again once the generation has run, and since an unchanged file is left untouched, the
+components whose header changed are recompiled and no others.
 
-That leaves the build system unable to clean a header whose component has left the image, which
-is why ``ddd generate`` cleans it itself: it owns its output directory, records what it wrote
-there and removes, on the next run, the files it no longer writes (see
-:ref:`what-a-run-owns`). Dropping a component from ``target_link_libraries`` therefore takes
-its header out of the include path of every other component at the next build, and
-``ninja -t clean`` followed by a build leaves what a build from nothing leaves - the record
-survives the clean, being no more a declared output than the headers it names.
+The names are read at configure time, so a component renamed in its description needs a
+reconfigure: until then its header is not declared under the new name, and the generation runs
+at every build for the header of the old one, which it no longer writes. With ``PROJECT`` the
+configure runs again by itself, every file of the project being one of its dependencies. A
+registered description whose json does not parse when the build is configured names no
+component, and is a dependency of the configure until it does, so the build after its repair
+configures again; one generated into the build tree later names its component from the first
+configure that finds it.
+
+A header whose component has left the image is another matter: once the image no longer links
+the component, nothing declares the header and the build leaves it where it is, which is why
+``ddd generate`` cleans it itself. It owns its output directory, records what it wrote there
+and removes, on the next run, the files it no longer writes (see :ref:`what-a-run-owns`).
+Dropping a component from ``target_link_libraries`` therefore takes its header out of the
+include path of every other component at the next build, and ``ninja -t clean`` followed by a
+build leaves what a build from nothing leaves - the record survives the clean, being declared
+by nothing.
 
 The path of the generated a2l is published as the ``DDD_A2L`` property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:

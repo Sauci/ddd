@@ -245,6 +245,22 @@ function(_ddd_is_component_file variable description)
     endif()
 endfunction()
 
+# The name a component description gives its component, read at configure time, or an empty string where none can be
+# read: a vocabulary file has none, and neither has a file that does not exist yet or does not parse. A {component}
+# template renders one file per component under this name, which is how the generation can declare those files at all
+# (see ddd_generate).
+function(_ddd_component_name variable description)
+    set(name "")
+    if(EXISTS "${description}")
+        file(READ "${description}" content)
+        string(JSON name ERROR_VARIABLE error GET "${content}" "component" "name")
+        if(error)
+            set(name "")
+        endif()
+    endif()
+    set(${variable} "${name}" PARENT_SCOPE)
+endfunction()
+
 # Turns a path into an absolute one and refuses a source file that does not exist. A file below the binary directory
 # is accepted unconditionally: it may well be generated later during the build.
 function(_ddd_absolute_input variable base context)
@@ -286,6 +302,21 @@ function(ddd_add_component target)
         # DDD_JSON travels through the link graph; the component's own files are recorded separately for the
         # per-component check target, which must not see the files of the components it links.
         set_property(TARGET ${target} APPEND PROPERTY DDD_OWN_JSON "${description}")
+        # The name the description gives its component, read now for the headers ddd_generate() declares in the
+        # images linking this target (see there). A file that may be a component and names none - its json does not
+        # parse, or its component has no name yet - is a dependency of the configure step until it does, so that the
+        # configure reading the name comes with the build after the repair: without it, that component's header would
+        # be written by a generation that does not declare it until somebody next configured. A file that does not
+        # exist yet, generated into the build tree later, names nothing until a configure finds it.
+        _ddd_component_name(name "${description}")
+        if(NOT "${name}" STREQUAL "")
+            set_property(TARGET ${target} APPEND PROPERTY DDD_COMPONENT_NAMES "${name}")
+        elseif(EXISTS "${description}")
+            _ddd_is_component_file(is_component "${description}")
+            if(is_component)
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${description}")
+            endif()
+        endif()
     endforeach()
     set_property(TARGET ${target} APPEND PROPERTY TRANSITIVE_LINK_PROPERTIES DDD_JSON)
 
@@ -390,6 +421,96 @@ function(_ddd_project_plugins variable project_file)
     set(${variable} "${specs}" PARENT_SCOPE)
 endfunction()
 
+# The components a hand written project is made of, by name: read off the files "ddd sources" lists for it, since only
+# the tool resolves the includes - their wildcards and sub-projects among them - and each component file then names
+# its own; any other file, a plugin's module or a vocabulary, names none. The files are dependencies of the configure
+# step already (_ddd_project_sources), so a component renamed in one of them is read again by the configure that edit
+# runs, and one that does not parse names nothing until it does.
+function(_ddd_project_component_names variable sources)
+    set(names "")
+    foreach(source IN LISTS sources)
+        _ddd_component_name(name "${source}")
+        list(APPEND names ${name})
+    endforeach()
+    set(${variable} "${names}" PARENT_SCOPE)
+endfunction()
+
+# The components an image links, by name: the image's own registrations and those of every target in its link
+# closure - its LINK_LIBRARIES and, from each target found there, that target's INTERFACE_LINK_LIBRARIES, where a static
+# library's private links appear as $<LINK_ONLY:...>. That is the closure DDD_JSON is collected over, walked here by
+# hand because BYPRODUCTS cannot take the generator expression that collects it: CMake evaluates an output before it
+# knows any target, and refuses an expression naming one. Nor can an expression in a link list be evaluated here, so
+# every target it names is taken: a header declared and never written costs a generation at every build, which the
+# build log shows, where a header written and never declared is a reader compiled against the old one, with nothing to
+# show for it. Each target is visited once, since two static libraries may link each other; one met under an alias and
+# under its own name is visited twice, and names its components twice.
+function(_ddd_linked_component_names variable image)
+    set(visited "")
+    set(pending "${image}")
+    set(names "")
+    while(NOT "${pending}" STREQUAL "")
+        list(POP_FRONT pending target)
+        if("${target}" IN_LIST visited)
+            continue()
+        endif()
+        list(APPEND visited "${target}")
+        get_property(own TARGET "${target}" PROPERTY DDD_COMPONENT_NAMES)
+        list(APPEND names ${own})
+        if("${target}" STREQUAL "${image}")
+            get_property(linked TARGET "${target}" PROPERTY LINK_LIBRARIES)
+        else()
+            get_property(linked TARGET "${target}" PROPERTY INTERFACE_LINK_LIBRARIES)
+        endif()
+        # Whatever in the list spells a target - a namespaced one included - is a target it may link: an entry is a
+        # target's name, a path, a flag or an expression.
+        string(REGEX MATCHALL "[A-Za-z0-9_.+-]+(::[A-Za-z0-9_.+-]+)*" candidates "${linked}")
+        foreach(candidate IN LISTS candidates)
+            if(TARGET "${candidate}")
+                list(APPEND pending "${candidate}")
+            endif()
+        endforeach()
+    endwhile()
+    set(${variable} "${names}" PARENT_SCOPE)
+endfunction()
+
+# The generation of an image, added at the end of the directory that called ddd_generate() rather than in the call:
+# its byproducts are the files of the {component} templates for every component the image links, and in the collected
+# mode the link graph is only whole once the directory is done - an image may well be linked after the call that
+# generates it, and a link the walk missed would leave a reader compiled against the old header. Everything else was
+# decided by the call and is read off the image's properties. With PROJECT, the components are the project's, which
+# the call already asked the tool for.
+function(_ddd_add_generation image)
+    get_property(outputs TARGET ${image} PROPERTY DDD_GENERATION_OUTPUTS)
+    get_property(command TARGET ${image} PROPERTY DDD_GENERATION_COMMAND)
+    get_property(depends TARGET ${image} PROPERTY DDD_GENERATION_DEPENDS)
+    get_property(component_files TARGET ${image} PROPERTY DDD_COMPONENT_FILES)
+    get_property(listed TARGET ${image} PROPERTY DDD_PROJECT_COMPONENTS SET)
+    if(listed)
+        get_property(names TARGET ${image} PROPERTY DDD_PROJECT_COMPONENTS)
+    else()
+        _ddd_linked_component_names(names "${image}")
+    endif()
+    # A name met twice - a component reached under two names of its target, or two files naming one component, which
+    # the generation reports - is one file: ninja refuses to load a build that declares an output twice.
+    list(REMOVE_DUPLICATES names)
+    set(byproducts "")
+    foreach(component_file IN LISTS component_files)
+        cmake_path(GET component_file PARENT_PATH directory)
+        cmake_path(GET component_file FILENAME pattern)
+        foreach(name IN LISTS names)
+            string(REPLACE "{component}" "${name}" rendered "${pattern}")
+            list(APPEND byproducts "${directory}/${rendered}")
+        endforeach()
+    endforeach()
+    add_custom_command(OUTPUT ${outputs}
+                       BYPRODUCTS ${byproducts}
+                       COMMAND ${command}
+                       DEPENDS ${depends}
+                       COMMENT "Generating the data dictionary of ${image}"
+                       COMMAND_EXPAND_LISTS
+                       VERBATIM)
+endfunction()
+
 # Generates the data dictionary of an image out of the component descriptions collected from its link closure, and
 # links the result into the image. Must be called in the CMakeLists.txt which defines the image target, and after the
 # components have been added (add_subdirectory), so that PROPAGATE_HEADERS reaches all of them.
@@ -433,10 +554,16 @@ endfunction()
 # path of the generated a2l is available as the DDD_A2L property of the image, and that of the dictionary written beside
 # it as its DDD_DICTIONARY property.
 #
-# Only the shared files - the ones the template names give away, the a2l and the dictionary - are declared as outputs of
-# the generator; the per-component headers are written next to them, but their names come from inside the description
-# files and are therefore unknown at configure time. That is what <stem>_ddd_headers is for: a consumer depends on the
-# generation step, not on an individual header path.
+# The shared files - the ones the template names give away, the a2l and the dictionary - are the outputs of the
+# generator, and the files a {component} template renders, one per component, are its byproducts, named at configure
+# time: ddd_add_component() reads the component name of each registered description, and with PROJECT the names are
+# read off the files "ddd sources" lists. Under Ninja a header no step declares is looked at once, before the
+# generation rewrites it, so the build after a description change compiled the components reading it against the old
+# header and linked them with the new globals; declared, each header is looked at again after the generation, and the
+# components whose header changed are recompiled, and no others. A component renamed in its description therefore
+# needs a reconfigure in the collected mode: until then its header is not declared under the new name, and the
+# generation runs at every build for the one under the old name, which it no longer writes. <stem>_ddd_headers is what
+# carries the include directory, and what orders every consumer after the generation.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
@@ -531,6 +658,9 @@ function(ddd_generate image)
         # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.
         _ddd_project_sources(descriptions "${project_file}")
         _ddd_project_plugins(plugin_specs "${project_file}")
+        # Whose per-component files the generation declares: the project's components, which it names itself.
+        _ddd_project_component_names(project_components "${descriptions}")
+        set_property(TARGET ${image} PROPERTY DDD_PROJECT_COMPONENTS "${project_components}")
         # The tool names the a2l after the project name in the description, and the dictionary is named alike; NAME
         # renames neither.
         _ddd_description_name(arg_NAME "${project_file}")
@@ -593,19 +723,24 @@ function(ddd_generate image)
     endif()
 
     # Each template renders to a file named like it without the .jinja2 extension, so the
-    # templates are the single source of truth for what is generated. Two of them produce no
-    # output that can be named here: a helper (leading underscore) renders nothing at all,
-    # and a {component} template renders once per component - names that are only known once
-    # the description files have been read, which is why the per-component headers reach
-    # their consumers through the interface library below rather than as declared outputs.
+    # templates are the single source of truth for what is generated. A helper (leading
+    # underscore) renders nothing at all, and a {component} template renders once per
+    # component, under names only the descriptions give: its file is kept here with the
+    # placeholder in it, and becomes a byproduct per component once the components are known
+    # (_ddd_add_generation).
     set(generated_outputs "")
     set(definition_files "")
+    set(component_files "")
     foreach(template_file IN LISTS template_files)
         cmake_path(GET template_file FILENAME generated_name)
-        if(generated_name MATCHES "^_" OR generated_name MATCHES "{component}")
+        if(generated_name MATCHES "^_")
             continue()
         endif()
         cmake_path(REMOVE_EXTENSION generated_name LAST_ONLY)
+        if(generated_name MATCHES "{component}")
+            list(APPEND component_files "${arg_OUTPUT_DIRECTORY}/${generated_name}")
+            continue()
+        endif()
         list(APPEND generated_outputs "${arg_OUTPUT_DIRECTORY}/${generated_name}")
         if(generated_name MATCHES "\\.c$")
             list(APPEND definition_files "${arg_OUTPUT_DIRECTORY}/${generated_name}")
@@ -643,16 +778,19 @@ function(ddd_generate image)
         set_property(TARGET ${image} PROPERTY DDD_DICTIONARY "${dictionary_file}")
     endif()
 
-    add_custom_command(OUTPUT ${generated_outputs}
-                       COMMAND ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
-                               --output-dir "${arg_OUTPUT_DIRECTORY}"
-                               --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options}
-                       DEPENDS "${project_file}" ${descriptions} ${plugin_files}
-                               ${address_map_dependency} ${arg_DEPENDS}
-                               ${template_files} "${DDD_EXECUTABLE}"
-                       COMMENT "Generating the data dictionary of ${image}"
-                       COMMAND_EXPAND_LISTS
-                       VERBATIM)
+    # The command is added once this directory is done, when the components the image links are known by name; what it
+    # runs, produces and depends on is settled here.
+    set_property(TARGET ${image} PROPERTY DDD_GENERATION_OUTPUTS ${generated_outputs})
+    set_property(TARGET ${image} PROPERTY DDD_GENERATION_COMMAND
+                 ${DDD_EXECUTABLE} generate ${artefact} "${project_file}"
+                 --output-dir "${arg_OUTPUT_DIRECTORY}"
+                 --template-dir "${arg_TEMPLATE_DIRECTORY}" ${generate_options})
+    set_property(TARGET ${image} PROPERTY DDD_GENERATION_DEPENDS
+                 "${project_file}" ${descriptions} ${plugin_files}
+                 ${address_map_dependency} ${arg_DEPENDS}
+                 ${template_files} "${DDD_EXECUTABLE}")
+    set_property(TARGET ${image} PROPERTY DDD_COMPONENT_FILES "${component_files}")
+    cmake_language(EVAL CODE "cmake_language(DEFER CALL _ddd_add_generation [==[${image}]==])")
     add_custom_target(${image_stem}_ddd_generation DEPENDS ${generated_outputs})
 
     # ADDRESSES_FROM_IMAGE: the a2l is written once the image is linked, by a second run reading every address it

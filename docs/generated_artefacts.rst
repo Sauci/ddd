@@ -609,9 +609,10 @@ What a run owns
 A run writes what it renders, and what it renders follows from the descriptions - so a
 component that leaves a project simply stops being rendered. Its header used to stay where
 the last run had put it, on the include path of every component, and a translation unit went
-on compiling against the interface of a component the project no longer contains. No build
-system can clean that up either: a per-component file is named from inside a description
-file, which is why it is not among the outputs a build declares (see
+on compiling against the interface of a component the project no longer contains. The build
+did not clean that up either: the cmake module declares the per-component files of the
+components an image links, under the names it reads when the build is configured, and the
+file of a component that has left is one nothing declares any more (see
 :doc:`build_integration`).
 
 So ``ddd generate`` owns its output directory. It records the files it wrote there in

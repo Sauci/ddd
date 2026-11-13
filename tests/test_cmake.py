@@ -7,8 +7,9 @@ example and over small projects written into the temporary directory - one colle
 components through the link graph and naming a plugin with ``PLUGINS``, one handing the tool a
 hand-written project description that names its own plugin, and several written to exercise
 one keyword each. What is asserted is what a build would see: the files the generation writes,
-the project description the module assembles, the schemas it closes over the plugins, and a
-rebuild that notices an edited plugin.
+the project description the module assembles, the schemas it closes over the plugins, a
+rebuild that notices an edited plugin, and what the build after an edit compiles and what the
+image it links then reads.
 
 A configure and a build cost seconds each, and this file is a third of the suite's runtime,
 so a class whose tests ask several questions of one tree configures and builds it once in a
@@ -72,7 +73,13 @@ def cmake(*arguments: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def attempt(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
+MAKE_PROGRAMS = {"Ninja": NINJA}
+"""The build tool each generator the suite configures with runs, by the generator's name."""
+
+
+def attempt(
+    source: Path, build: Path, *definitions: str, generator: str = "Ninja"
+) -> subprocess.CompletedProcess[str]:
     """One configure, whether or not it is expected to succeed."""
     return cmake(
         "-S",
@@ -80,8 +87,8 @@ def attempt(source: Path, build: Path, *definitions: str) -> subprocess.Complete
         "-B",
         str(build),
         "-G",
-        "Ninja",
-        f"-DCMAKE_MAKE_PROGRAM={NINJA}",
+        generator,
+        f"-DCMAKE_MAKE_PROGRAM={MAKE_PROGRAMS[generator]}",
         f"-DDDD_EXECUTABLE={DDD.as_posix()}",
         *compiler(),
         *definitions,
@@ -89,8 +96,10 @@ def attempt(source: Path, build: Path, *definitions: str) -> subprocess.Complete
     )
 
 
-def configure(source: Path, build: Path, *definitions: str) -> subprocess.CompletedProcess[str]:
-    run = attempt(source, build, *definitions)
+def configure(
+    source: Path, build: Path, *definitions: str, generator: str = "Ninja"
+) -> subprocess.CompletedProcess[str]:
+    run = attempt(source, build, *definitions, generator=generator)
     assert run.returncode == 0, run.stdout + run.stderr
     return run
 
@@ -204,12 +213,12 @@ class Dropped:
 class TestAComponentThatLeavesTheImage:
     """The header of a component dropped from the link graph goes with it.
 
-    ``ddd generate`` wrote what it rendered and removed nothing, and the module can declare
-    only the files the template names give away - a per-component header's name comes out of
-    a description file, which is not read at configure time. So dropping a component from
-    ``target_link_libraries`` left its header in the output directory, on the include path of
-    every component, and a translation unit went on compiling against the interface of a
-    component the image no longer links. ``ninja -t clean`` did not take it either.
+    ``ddd generate`` wrote what it rendered and removed nothing, and the module declares the
+    headers of the components an image links as it finds them when configured - so once a
+    component is dropped from ``target_link_libraries`` and the configure has run again,
+    nothing declares its header any more. It stayed in the output directory, on the include
+    path of every component, and a translation unit went on compiling against the interface
+    of a component the image no longer links. ``ninja -t clean`` did not take it either.
     """
 
     def write(self, tmp_path: Path) -> Path:
@@ -289,15 +298,345 @@ class TestAComponentThatLeavesTheImage:
     def test_a_clean_does_not_lose_what_the_next_build_has_to_take_back(
         self, dropped: Dropped
     ) -> None:
-        """``ninja -t clean`` removes the files the module declared and leaves the
-        per-component headers it never knew about, so the record of them has to survive it -
-        which it does, being no more a declared output than they are."""
+        """``ninja -t clean`` removes the files the module declares, and the configure ninja
+        runs before it no longer declares the header of the component that left: the clean
+        leaves that header, so the record of it has to survive the clean too - which it does,
+        being declared by nothing."""
         assert dropped.cleaned == (True, False), (
-            "a clean either took the header it does not know the name of, or left the "
-            "declared outputs it does"
+            "a clean either took the header of the component that left, or left the outputs "
+            "the module declares"
         )
         assert not (dropped.generated / "EventLogger.h").exists(), "the generation after it"
         assert (dropped.generated / "ddd_globals.c").is_file()
+
+
+STORY_GENERATORS = ["Ninja"]
+"""The generators the story of the build after an edit is told under."""
+
+STORY_SHAPES = ["collected", "linked after the call", "project"]
+"""The ways a :class:`Story` hands the module its components, each told the whole story."""
+
+DESCRIBED_BY_THE_BUILD = "collected, the logger described by the build"
+"""The shape whose logger's description the build copies into its tree: absent when the build
+is first configured."""
+
+COMPILED = re.compile(r"Building C object \S*?(\w+\.c)\.o(?:bj)?\b")
+"""A compile in a build's log, read back as the c file compiled, whichever generator wrote it."""
+
+SENSOR_C = """#include "Sensor.h"
+
+void sensor_step(void);
+
+void sensor_step(void)
+{{
+    Sample = {value}u;
+}}
+"""
+"""The writer, whose stored value is the edit a story makes to the c."""
+
+LOGGER_C = """#include "Logger.h"
+
+unsigned long logger_reads(void);
+
+unsigned long logger_reads(void)
+{
+    return (unsigned long)Sample;
+}
+"""
+"""The reader, never edited: it reads what its header said when it was last compiled."""
+
+STORY_MAIN = """#include <stdio.h>
+
+void sensor_step(void);
+unsigned long logger_reads(void);
+
+int main(void)
+{
+    sensor_step();
+    printf("logged %lu\\n", logger_reads());
+    return 0;
+}
+"""
+
+STORY_UNITS = {"units": [{"unit": "rpm", "description": "rotational speed"}]}
+"""The device's vocabulary: registered, read by the generation, and naming no component."""
+
+
+@dataclass(frozen=True)
+class Step:
+    """One build of a :class:`Story`, and what the image it left behind printed."""
+
+    code: int
+    output: str
+    compiled: frozenset[str]
+    """The c files the build compiled, by name: ``logger.c`` for its object, ``.o`` or ``.obj``."""
+
+    printed: str
+    """What the image printed when run after the build, or nothing where the build failed."""
+
+    def generated(self) -> bool:
+        return "Generating the data dictionary" in self.output
+
+    def did_nothing(self) -> bool:
+        """Nothing generated, compiled or linked: a build with nothing to do, read off what it
+        did rather than off the words one build tool has for that."""
+        return not self.generated() and not self.compiled and "Linking" not in self.output
+
+
+class Story:
+    """``Sensor`` writes ``Sample`` and ``Logger`` reads it, in an image printing what it read.
+
+    The link graph has every kind of edge the components of an image are found through: the
+    image links ``bundle``, an interface library carrying the device's units, which links the
+    sensor by its alias ``story::writer``; the sensor links the logger privately, which a
+    static library passes on as ``$<LINK_ONLY:logger>``; and the logger links the sensor back
+    by its own name, so the two use each other and the sensor is met under two names.
+    ``Spare`` is registered and linked by no image, as the component of another image is.
+
+    The shape is how the module is handed the components: collected, with the image linked
+    before ``ddd_generate`` or after it, or listed by a hand written project, which registers
+    none and links the headers into its libraries itself (``STORY_SHAPES``), or collected with
+    the logger's description written by the build (``DESCRIBED_BY_THE_BUILD``). A build is
+    read back as a :class:`Step`, and the image is run after it, so that what the reader was
+    compiled against is asked of the image rather than of the build's log.
+    """
+
+    def __init__(self, root: Path, shape: str, generator: str) -> None:
+        self.source = root
+        self.build_dir = root / "build"
+        self.generator = generator
+        self.describe("uint8")
+        self.write_sensor(200)
+        (root / "logger.c").write_text(LOGGER_C, encoding="utf-8")
+        (root / "spare.c").write_text("int spare(void) { return 0; }\n", encoding="utf-8")
+        (root / "main.c").write_text(STORY_MAIN, encoding="utf-8")
+        spare = {"component": {"name": "Spare", "interface": [declare("local", "SpareCount")]}}
+        (root / "spare.ddd.json").write_text(json.dumps(spare, indent=2), encoding="utf-8")
+        (root / "units.ddd.json").write_text(json.dumps(STORY_UNITS, indent=2), encoding="utf-8")
+        (root / "CMakeLists.txt").write_text(self.listing(shape), encoding="utf-8")
+        configure(root, self.build_dir, generator=generator)
+
+    def listing(self, shape: str) -> str:
+        templates = f'TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"'
+        link = "target_link_libraries(img PRIVATE bundle)"
+        if shape == "project":
+            includes = ["sensor.ddd.json", "logger.ddd.json", "units.ddd.json"]
+            project = {"project": {"name": "StoryDevice", "includes": includes}}
+            (self.source / "project.ddd.json").write_text(json.dumps(project), encoding="utf-8")
+            registered = ""
+            generation = (
+                f"{link}\n"
+                f'ddd_generate(img PROJECT "${{CMAKE_CURRENT_SOURCE_DIR}}/project.ddd.json" '
+                f"{templates})\n"
+                "target_link_libraries(sensor PRIVATE img_ddd_headers)\n"
+                "target_link_libraries(logger PRIVATE img_ddd_headers)"
+            )
+        else:
+            registered = "".join(
+                f'ddd_add_component({target} JSON "${{CMAKE_CURRENT_SOURCE_DIR}}/{name}")\n'
+                for target, name in (
+                    ("sensor", "sensor.ddd.json"),
+                    ("logger", "logger.ddd.json"),
+                    ("bundle", "units.ddd.json"),
+                    ("spare", "spare.ddd.json"),
+                )
+            )
+            if shape == DESCRIBED_BY_THE_BUILD:
+                written = '"${CMAKE_CURRENT_BINARY_DIR}/logger.ddd.json"'
+                copied = '"${CMAKE_CURRENT_SOURCE_DIR}/logger.ddd.json"'
+                registration = f"ddd_add_component(logger JSON {copied})"
+                assert registration in registered
+                registered = registered.replace(
+                    registration,
+                    f"add_custom_command(OUTPUT {written}\n"
+                    f'                   COMMAND "${{CMAKE_COMMAND}}" -E copy {copied} {written}\n'
+                    f"                   DEPENDS {copied}\n"
+                    "                   VERBATIM)\n"
+                    f"ddd_add_component(logger JSON {written})",
+                )
+            call = f"ddd_generate(img NAME StoryDevice {templates})"
+            generation = (
+                f"{call}\n{link}" if shape == "linked after the call" else f"{link}\n{call}"
+            )
+        return f"""cmake_minimum_required(VERSION 3.30)
+project(Story LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(sensor STATIC sensor.c)
+add_library(story::writer ALIAS sensor)
+add_library(logger STATIC logger.c)
+target_link_libraries(sensor PRIVATE logger)
+target_link_libraries(logger PRIVATE sensor)
+add_library(bundle INTERFACE)
+target_link_libraries(bundle INTERFACE story::writer)
+add_library(spare STATIC spare.c)
+{registered}add_executable(img main.c)
+{generation}
+"""
+
+    def describe(self, datatype: str, *more: dict[str, Any]) -> None:
+        """Both descriptions, ``Sample`` of ``datatype`` in each, and whatever more the sensor
+        declares beside it. A description this leaves as it was is not written at all."""
+        for name, scope, extra in (("Sensor", "output", more), ("Logger", "input", ())):
+            described = {
+                "component": {
+                    "name": name,
+                    "interface": [declare(scope, "Sample", datatype), *extra],
+                }
+            }
+            path = self.source / f"{name.lower()}.ddd.json"
+            text = json.dumps(described, indent=2)
+            if not path.exists() or path.read_text(encoding="utf-8") != text:
+                path.write_text(text, encoding="utf-8")
+
+    def write_sensor(self, value: int) -> None:
+        (self.source / "sensor.c").write_text(SENSOR_C.format(value=value), encoding="utf-8")
+
+    def reconfigure(self) -> None:
+        configure(self.source, self.build_dir, generator=self.generator)
+
+    def build(self) -> Step:
+        run = cmake("--build", str(self.build_dir), cwd=self.build_dir)
+        output = run.stdout + run.stderr
+        printed = ""
+        if run.returncode == 0:
+            image = self.build_dir / ("img.exe" if os.name == "nt" else "img")
+            shown = subprocess.run([str(image)], capture_output=True, text=True, check=False)
+            assert shown.returncode == 0, shown.stdout + shown.stderr
+            printed = shown.stdout.strip()
+        return Step(run.returncode, output, frozenset(COMPILED.findall(output)), printed)
+
+
+@dataclass(frozen=True)
+class AfterAnEdit:
+    """What the builds of one story left behind, in order, for the class below to read."""
+
+    widened: Step
+    """``Sample`` widened from ``uint8`` to ``uint16`` in both descriptions, the writer storing
+    1234, which a byte cannot hold."""
+
+    settled: Step
+    """The build after it, nothing touched."""
+
+    elsewhere: Step
+    """``Sensor`` given a local of its own, which ``Logger.h`` does not show."""
+
+
+class TestTheBuildAfterAnEdit:
+    """Review focus 5: a build after an edit rebuilds what the edit changed, and no more.
+
+    The object of a component reading a generated header waited for the generation and did
+    not depend on what it rewrote, since the module declared no per-component header: ninja
+    looks at every input before it runs anything, so the build after a datatype change
+    compiled the writer and the definitions, relinked, and kept the reader compiled for the
+    old type - exit 0, and only the build after that one compiled the reader again. Both
+    modes, and an image linked after the call that generates it, which is the link graph the
+    module can only read once the directory is done.
+    """
+
+    @pytest.fixture(
+        scope="class",
+        params=[
+            pytest.param((shape, generator), id=f"{shape}, {generator}")
+            for shape in STORY_SHAPES
+            for generator in STORY_GENERATORS
+        ],
+    )
+    @staticmethod
+    def edited(
+        request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
+    ) -> AfterAnEdit:
+        """One story per shape and generator: build, widen, build twice, edit the writer's
+        description alone, build."""
+        shape, generator = request.param
+        story = Story(tmp_path_factory.mktemp("story"), shape, generator)
+        first = story.build()
+        assert first.code == 0 and first.printed == "logged 200", first.output
+        story.describe("uint16")
+        story.write_sensor(1234)
+        widened = story.build()
+        settled = story.build()
+        story.describe("uint16", declare("local", "Ticks", "uint16"))
+        return AfterAnEdit(widened, settled, story.build())
+
+    def test_a_datatype_widened_in_both_descriptions_reaches_the_reader_in_one_build(
+        self, edited: AfterAnEdit
+    ) -> None:
+        """``logger.c`` is not edited and has to be compiled again all the same, its header
+        having changed: compiled against the old one, it reads the low byte of 1234."""
+        widened = edited.widened
+        assert widened.code == 0, widened.output
+        assert "logger.c" in widened.compiled, widened.output
+        assert widened.printed == "logged 1234"
+
+    def test_the_build_after_it_has_nothing_to_do(self, edited: AfterAnEdit) -> None:
+        """Every header the generation writes is one it declares, and the other way round: a
+        header declared and never written - the one of a component another image links, say -
+        is a generation at every build."""
+        assert edited.settled.did_nothing(), edited.settled.output
+
+    def test_an_edit_the_readers_header_does_not_show_recompiles_the_writer_alone(
+        self, edited: AfterAnEdit
+    ) -> None:
+        """A local of ``Sensor`` rewrites ``Sensor.h`` and the definitions, and leaves
+        ``Logger.h`` as it was, so ``sensor.c`` is compiled again, without an edit of its own,
+        and ``logger.c`` is not: the granularity the generated headers are written for."""
+        elsewhere = edited.elsewhere
+        assert elsewhere.code == 0, elsewhere.output
+        assert {"sensor.c", "ddd_globals.c"} <= elsewhere.compiled, elsewhere.output
+        assert "logger.c" not in elsewhere.compiled, elsewhere.output
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_description_unreadable_when_configured_is_read_after_its_repair(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A component's name is read when the build is configured, and a description that
+        does not parse then - mid edit, or mid merge - names none: its header goes undeclared.
+        The file is a dependency of the configure while it does not parse, so the build after
+        its repair configures again, reads the name, and compiles the reader when the repair
+        changed its header."""
+        story = Story(tmp_path, "collected", generator)
+        assert story.build().code == 0
+        (tmp_path / "logger.ddd.json").write_text("{ broken", encoding="utf-8")
+        story.reconfigure()
+        story.describe("uint16")
+        story.write_sensor(1234)
+        repaired = story.build()
+        assert repaired.code == 0, repaired.output
+        assert repaired.printed == "logged 1234"
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_description_the_build_writes_is_named_by_the_configure_that_finds_it(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A description generated into the build tree is not there when the build is first
+        configured, so it names no component yet, and the build goes through all the same;
+        the configure that finds it names the component, and from then on a change of its
+        header reaches the reader in one build."""
+        story = Story(tmp_path, DESCRIBED_BY_THE_BUILD, generator)
+        assert story.build().code == 0
+        story.reconfigure()
+        story.describe("uint16")
+        story.write_sensor(1234)
+        widened = story.build()
+        assert widened.code == 0, widened.output
+        assert widened.printed == "logged 1234"
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_an_edited_vocabulary_file_runs_the_generation_and_no_configure(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A registered units file names no component and, unlike a description that does not
+        parse, is no dependency of the configure step: its edit runs the generation, which
+        reads it, and configures nothing again."""
+        story = Story(tmp_path, "collected", generator)
+        assert story.build().code == 0
+        units = tmp_path / "units.ddd.json"
+        text = units.read_text(encoding="utf-8")
+        units.write_text(text.replace("speed", "speed, per minute"), encoding="utf-8")
+        edited = story.build()
+        assert edited.code == 0 and edited.generated(), edited.output
+        assert "Configuring done" not in edited.output, edited.output
 
 
 class TestACollectedProjectWithPlugins:

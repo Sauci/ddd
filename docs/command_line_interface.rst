@@ -782,7 +782,9 @@ the image would happily link yesterday's globals and ship yesterday's a2l.
 ``ddd sources`` closes that gap. It prints one absolute path per line: the project file
 itself, every description it includes however deeply, and the module of every
 :doc:`plugin <plugins>` those files name, since a plugin decides what the generation writes
-as much as a description does. The demo names none, so its listing is descriptions alone:
+as much as a description does. A plugin that is a package is listed by every ``.py`` file of
+it, and one named by a ``.py`` path is listed whether or not it imports, as a missing include
+is. The demo names none, so its listing is descriptions alone:
 
 .. code-block:: text
 
@@ -801,11 +803,13 @@ translated first, and a file reached over two different include paths appears on
 The command is deliberately more tolerant than the others: a project whose interfaces disagree
 still has a well defined set of source files, and a build system asking what to watch deserves
 an answer even while the project does not check out. Only a file that cannot be read at all is
-fatal. Tolerant is not silent: a finding the load turned up - a missing include, say - is
-reported on stderr after the listing, so a configure step hears about it from the run that
+fatal. Tolerant is not silent: a finding the load turned up - a missing include, a plugin that
+does not import, a plugin whose model raises (``plugin-invalid``, where the other commands
+stop with exit ``2``) - is reported on stderr after the listing, so a configure step hears about it from the run that
 found it rather than from whichever DDD command the build runs next. This is what
 ``cmake/Ddd.cmake`` uses to make a hand written project description watch its own components,
-described in :doc:`build_integration`.
+described in :doc:`build_integration`, which prints that stderr as a warning of the
+configure.
 
 With ``--format json`` the same list arrives as the ``sources`` array of a json document, next
 to the diagnostics and their summary, exactly as the other commands report them.

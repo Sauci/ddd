@@ -2137,8 +2137,11 @@ the description files a project is built out of
 re-run its configure step when one changes; in JSON the paths are a `sources` list
 beside the findings, and in text the findings follow the listing on stderr the same way;
 the plugin modules the project names ([section 3.11](#311-plugins)) are among them,
-each by the file it was imported from, so that an edited plugin re-runs the generation
-as an edited component does); recording
+each by the file it was imported from, and every `.py` file of one that is a package,
+so that an edited plugin re-runs the generation as an edited component does; a plugin
+named by a `.py` path is listed whether or not it imports, as a missing include is, and a
+plugin that does not import or whose model raises is a `plugin-invalid` finding beside the
+listing, so that the edit repairing it is heard of); recording
 how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
@@ -2216,9 +2219,11 @@ the run whose findings its reader needs; the exit code is still 2.
 `dump` reports them on stderr, as it reports everything. A findings exit is reserved for
 findings reported *as errors*: a run whose findings are all warnings is a clean run unless
 `--strict` says otherwise. `ddd sources`
-and `ddd artefacts` exit 0 whatever the findings, because what a project is built out
+and `ddd artefacts` exit 0 whatever the findings, a plugin whose model raises among them,
+because what a project is built out
 of does not depend on whether it is consistent; they exit 1 only when the root cannot
-be read. `ddd generate` with error findings writes nothing, because a stale artefact is
+be read. A plugin's model that raises ends the other commands with exit 2 as a hook that
+raises does, the findings gathered first reported first, in json as the document. `ddd generate` with error findings writes nothing, because a stale artefact is
 preferable to a wrong one written halfway into a build, unless `--force` asks for the
 outputs anyway; the exit stays a findings exit in either case. `ddd generate --dry-run`
 reports what it would write and writes nothing. A run that does write writes every artefact

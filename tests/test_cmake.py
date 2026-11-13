@@ -512,10 +512,13 @@ class Step:
         return "Generating the data dictionary" in self.output
 
     def did_nothing(self) -> bool:
-        """Nothing configured, generated, compiled or linked: a build with nothing to do, read
-        off what it did rather than off the words one build tool has for that."""
+        """Nothing configured, generated, compiled or linked, and a build that succeeded: one
+        with nothing to do, read off what it did rather than off the words one build tool has
+        for that. A build whose CMake re-run failed prints ``Configuring incomplete`` and
+        compiles nothing, which is no build with nothing to do."""
         return (
-            "Configuring done" not in self.output
+            self.code == 0
+            and "Configuring done" not in self.output
             and not self.generated()
             and not self.compiled
             and "Linking" not in self.output
@@ -700,6 +703,10 @@ add_library(spare STATIC spare.c)
 
     def write_sensor(self, value: int) -> None:
         (self.source / "sensor.c").write_text(SENSOR_C.format(value=value), encoding="utf-8")
+
+    def write_plugin(self, source: str) -> None:
+        """The project's plugin, ``plug.py``, as the source says."""
+        (self.source / "plug.py").write_text(source, encoding="utf-8")
 
     def attempt(self) -> subprocess.CompletedProcess[str]:
         """A configure of the tree, whether or not it is expected to succeed."""
@@ -968,6 +975,128 @@ class TestTheBuildAfterAnEdit:
         edited = story.build()
         assert edited.code == 0 and edited.generated(), edited.output
         assert "Configuring done" not in edited.output, edited.output
+
+
+STAMP_PLUGIN = """from __future__ import annotations
+
+from pydantic import BaseModel, field_validator
+
+from ddd.plugins import Plugin
+
+
+class Stamp(BaseModel):
+    tag: str
+
+    @field_validator("tag")
+    @classmethod
+    def own_code(cls, value: str) -> str:
+        {body}
+        return value
+
+
+PLUGIN = Plugin(name="stamp", object_model=Stamp)
+"""
+"""A plugin whose model validates the block ``Ticks`` carries; ``{body}`` is what its validator
+does, and each edit of it is a different file."""
+
+SYNTAX_ERROR = "def broken(:\n"
+
+PLUGIN_PROJECT = Shape(project=True, registered=False, plugins=("plug.py",))
+"""A hand written project naming a plugin of its own, which the story writes."""
+
+
+def plugged(root: Path, generator: str, body: str = "pass") -> Story:
+    """A story of ``PLUGIN_PROJECT`` whose component carries a block of the plugin ``plug.py``
+    writes, so that the plugin's own model runs on a file of the project."""
+    story = Story(root, PLUGIN_PROJECT, generator, configured=False)
+    story.describe("uint8", declare("local", "Ticks", extensions={"stamp": {"tag": "t"}}))
+    story.write_plugin(STAMP_PLUGIN.format(body=body))
+    story.configured = story.reconfigure()
+    return story
+
+
+class TestAPluginThatBreaksStillWatchedByTheBuild:
+    """A plugin that stops importing, or whose model raises, is a defect to report and a file
+    to keep watching.
+
+    ``ddd sources`` listed the plugins that loaded, so the configure the edit ran dropped the
+    broken file from what the generation depends on: the build said ``no work to do`` with the
+    old artefacts, and so did every later one - the repair, and the edit of a component after
+    it - until something else configured again. The module also printed the tool's stderr only
+    when it exited non-zero, so the defect, a finding, reached nobody.
+    """
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    @pytest.mark.parametrize(
+        ("broken", "reported"),
+        [
+            pytest.param(SYNTAX_ERROR, "invalid syntax", id="stops importing"),
+            pytest.param(
+                STAMP_PLUGIN.format(body='raise RuntimeError("validator defect")'),
+                "validator defect",
+                id="its model raises",
+            ),
+        ],
+    )
+    def test_the_build_after_the_edit_fails_and_the_one_after_its_repair_runs(
+        self, tmp_path: Path, generator: str, broken: str, reported: str
+    ) -> None:
+        """The edit is noticed: the configure it runs warns, the generation stops loudly, the
+        repair is generated, and an edit of a component after that reaches the image."""
+        story = plugged(tmp_path, generator)
+        assert story.build().code == 0
+        story.write_plugin(broken)
+        edited = story.build()
+        assert edited.code != 0, edited.output
+        assert "CMake Warning" in edited.output and reported in edited.output, edited.output
+        story.write_plugin(STAMP_PLUGIN.format(body="pass") + "\n# repaired\n")
+        repaired = story.build()
+        assert repaired.code == 0 and repaired.generated(), repaired.output
+        assert story.build().did_nothing()
+        story.describe("uint16", declare("local", "Ticks", extensions={"stamp": {"tag": "t"}}))
+        story.write_sensor(1234)
+        widened = story.build()
+        assert widened.code == 0, widened.output
+        assert widened.printed == "logged 1234"
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_validator_raising_at_the_first_configure_is_warned_about_and_mended(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """The first configure meets the defect: it prints a warning and exits 0, the build
+        fails loudly, and once the plugin is mended a component's edit reaches the image
+        rather than ``no work to do`` - the project file the only thing watched until then."""
+        story = plugged(tmp_path, generator, 'raise RuntimeError("validator defect")')
+        assert "CMake Warning" in story.configured, story.configured
+        assert "validator defect" in story.configured, story.configured
+        assert story.build().code != 0
+        story.write_plugin(STAMP_PLUGIN.format(body="pass"))
+        mended = story.build()
+        assert mended.code == 0 and mended.printed == "logged 200", mended.output
+        story.describe("uint16", declare("local", "Ticks", extensions={"stamp": {"tag": "t"}}))
+        story.write_sensor(1234)
+        widened = story.build()
+        assert widened.code == 0, widened.output
+        assert widened.printed == "logged 1234"
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_plugin_deleted_is_noticed_and_its_return_is_generated(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        story = plugged(tmp_path, generator)
+        assert story.build().code == 0
+        (tmp_path / "plug.py").unlink()
+        assert story.build().code != 0
+        story.write_plugin(STAMP_PLUGIN.format(body="pass"))
+        returned = story.build()
+        assert returned.code == 0 and returned.generated(), returned.output
+
+    def test_a_failed_build_is_not_a_build_with_nothing_to_do(self) -> None:
+        """A CMake re-run that fails prints ``Configuring incomplete`` and compiles nothing,
+        which read as a build that had nothing to do."""
+        failed = Step(1, "-- Configuring incomplete, errors occurred!", frozenset(), "")
+        assert not failed.did_nothing()
+        assert Step(0, "ninja: no work to do.", frozenset(), "").did_nothing()
 
 
 class TestTheMapReadOnceTheImageIsLinked:

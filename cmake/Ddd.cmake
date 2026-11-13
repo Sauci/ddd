@@ -120,19 +120,32 @@ endfunction()
 # also registered with CMAKE_CONFIGURE_DEPENDS, so that adding a component to an "includes" wildcard re-runs configure
 # and picks up the new file as well.
 #
-# Tolerant on purpose: if the tool is missing or the project cannot be read yet, the result is empty and the build
-# falls back to depending on the project file alone, rather than failing to configure at all.
+# Tolerant on purpose, and never silent: what the tool lists is what the project names, whether or not it could be read
+# - a plugin that stopped importing is listed, and so is one whose model raises - so that the edit repairing it re-runs
+# configure. What it has to say about the project (stderr: a plugin that does not import, an include that is missing) is
+# printed as a warning, the configure being the one place that reaches a developer before the build does. If the tool
+# is missing or the root cannot be read yet, the result is empty, a warning says so, and the build falls back to
+# depending on the project file alone, as a configure dependency, rather than failing to configure at all.
 function(_ddd_project_sources variable project_file)
     execute_process(COMMAND "${DDD_EXECUTABLE}" sources "${project_file}"
                     OUTPUT_VARIABLE output
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
-                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_STRIP_TRAILING_WHITESPACE)
     if(NOT status EQUAL 0)
-        message(STATUS "ddd_generate: cannot resolve the sources of \"${project_file}\" yet "
-                       "(${error}); the generation will depend on that file alone.")
+        message(WARNING "ddd_generate: cannot resolve the sources of \"${project_file}\" yet (${error}); the "
+                        "generation will depend on that file alone.")
+        # The file stays a dependency of the configure, so that its repair is what runs it again.
+        if(EXISTS "${project_file}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${project_file}")
+        endif()
         set(${variable} "" PARENT_SCOPE)
         return()
+    endif()
+    if(NOT "${error}" STREQUAL "")
+        string(REPLACE "\r" "" error "${error}")
+        message(WARNING "ddd_generate: \"ddd sources ${project_file}\" reported:\n${error}")
     endif()
     string(REPLACE "\r" "" output "${output}")
     string(REPLACE "\n" ";" sources "${output}")

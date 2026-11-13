@@ -1723,7 +1723,8 @@ def _command_artefacts(args: argparse.Namespace) -> int:
     Tolerant in the same way as ``sources`` and for the same reason: which artefacts exist
     follows from the plugins a project names, not from whether its interfaces agree, and a
     build asking what it can produce deserves an answer while the project is still being
-    fixed. Only a root file that cannot be read at all is fatal.
+    fixed. Only a root file that cannot be read at all is fatal: a plugin whose model raises
+    is a ``plugin-invalid`` finding beside the listing.
 
     The files an artefact writes are deliberately not reported. A plugin decides them from
     the resolved dictionary, so they are knowable only once the project has been assembled,
@@ -1740,7 +1741,7 @@ def _command_artefacts(args: argparse.Namespace) -> int:
         plugins: tuple[Plugin, ...] = _plugins_from_arguments(args.plugin)
         unreadable = False
     else:
-        workspace = load_workspace(args.project, bag)
+        workspace = load_workspace(args.project, bag, plugin_defects_are_findings=True)
         plugins = () if workspace is None else workspace.plugins
         unreadable = workspace is None
 
@@ -1804,11 +1805,16 @@ def _command_sources(args: argparse.Namespace) -> int:
     and the exit code says so in both output formats. A finding beyond that - a missing
     include, say - is still reported, beside the listing rather than instead of it: on
     stderr in text, already carried by the diagnostics document in json.
+
+    What the project names is listed whether or not it loaded: a plugin that stopped
+    importing, or one whose model raises, is a ``plugin-invalid`` finding beside the listing,
+    and its file stays among the sources, so that the build which hears of the defect also
+    hears of its repair.
     """
     from ddd.loading import load_workspace
 
     bag = DiagnosticBag()
-    workspace = load_workspace(args.project, bag)
+    workspace = load_workspace(args.project, bag, plugin_defects_are_findings=True)
     if args.format == "json":
         payload = {
             "sources": [path.as_posix() for path in workspace.sources()]
@@ -1896,13 +1902,16 @@ def _analyze(
         [*standalone, *args.severity], strict=args.strict, standalone=bool(standalone)
     )
     bag = DiagnosticBag(policy)
-    workspace = load_workspace(args.project, bag)
-    if workspace is None:
-        # Nothing was read, so nothing says which plugins this project names: holding a `-W`
-        # naming one of their checks to an empty registry would blame the command line for a
-        # file the run could not open.
-        return None, bag
+    # The load is inside the block too: a plugin's model that raises while a block is validated
+    # is a usage error like a hook that raises, and the findings gathered before it are the
+    # project's, printed first - in json, as the document the format promises.
     with _reported_on_failure(bag, args.format, stream):
+        workspace = load_workspace(args.project, bag)
+        if workspace is None:
+            # Nothing was read, so nothing says which plugins this project names: holding a
+            # `-W` naming one of their checks to an empty registry would blame the command
+            # line for a file the run could not open.
+            return None, bag
         # An override naming a plugin check is verified once the project is read - only then
         # is it known which plugins loaded - so this has to sit inside the block: the
         # load-time findings gathered by then are reported before the usage error, as

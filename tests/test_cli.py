@@ -1850,13 +1850,70 @@ class TestSources:
         assert main(["sources", str(LAYOUT), "--format", "json"]) == EXIT_OK
         assert PLUGIN_FILE.as_posix() in json.loads(capsys.readouterr().out)["sources"]
 
-    def test_a_plugin_that_did_not_load_contributes_no_source(
+    @pytest.mark.parametrize(
+        ("body", "said"),
+        [
+            pytest.param(None, "does not exist", id="missing"),
+            pytest.param("def broken(:\n", "invalid syntax", id="not importable"),
+            pytest.param("X = 1\n", "exposes no PLUGIN", id="no plugin"),
+        ],
+    )
+    def test_a_plugin_that_did_not_load_is_listed_all_the_same(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], body: str | None, said: str
+    ) -> None:
+        """What the project names is what a build watches, whether or not it loaded - as a
+        missing include already is: left out of the list, the plugin that stopped importing
+        was dropped from the dependencies of the next configure, and the build after its repair
+        (or its next edit) had nothing to do. The finding says why, beside the listing."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["plug.py"])})
+        if body is not None:
+            (tmp_path / "plug.py").write_text(body, encoding="utf-8")
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert (tmp_path / "plug.py").resolve().as_posix() in captured.out.splitlines()
+        assert "error[plugin-invalid]" in captured.err or "error[plugin-not-found]" in captured.err
+        assert said in captured.err
+
+    def test_a_plugin_that_did_not_load_is_listed_in_json_too(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The finding says why; the list stays what a build can watch."""
-        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["missing.py"])})
-        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
-        assert not any(line.endswith(".py") for line in capsys.readouterr().out.splitlines())
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["plug.py"])})
+        (tmp_path / "plug.py").write_text("def broken(:\n", encoding="utf-8")
+        assert main(["sources", str(tmp_path / "p.ddd.json"), "--format", "json"]) == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert (tmp_path / "plug.py").resolve().as_posix() in document["sources"]
+        assert [entry["check"] for entry in document["diagnostics"]] == ["plugin-invalid"]
+
+    def test_a_plugin_that_is_a_package_lists_every_module_of_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A build watched ``__init__.py`` alone, so an edit of the module it imports its
+        ``PLUGIN`` from - where shared code goes - was ``no work to do``."""
+        package = tmp_path / "site" / "listed_pkg"
+        (package / "inner").mkdir(parents=True)
+        (package / "__init__.py").write_text("from listed_pkg.impl import PLUGIN\n", "utf-8")
+        (package / "impl.py").write_text(
+            "from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name='listed')\n", "utf-8"
+        )
+        (package / "inner" / "__init__.py").write_text("", encoding="utf-8")
+        (package / "inner" / "deep.py").write_text("", encoding="utf-8")
+        (package / "data.json").write_text("{}", encoding="utf-8")
+        (package / "__pycache__").mkdir()
+        (package / "__pycache__" / "impl.cpython-312.pyc").write_bytes(b"")
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["listed_pkg"])})
+        monkeypatch.syspath_prepend(str(tmp_path / "site"))
+        try:
+            assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        finally:
+            for name in ("listed_pkg", "listed_pkg.impl"):
+                sys.modules.pop(name, None)
+        listed = capsys.readouterr().out.splitlines()
+        wanted = {
+            (package.resolve() / name).as_posix()
+            for name in ("__init__.py", "impl.py", "inner/__init__.py", "inner/deep.py")
+        }
+        assert wanted <= set(listed)
+        assert not any(line.endswith((".json", ".pyc")) and "listed_pkg" in line for line in listed)
 
     def test_a_missing_include_is_reported_beside_the_listing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

@@ -155,18 +155,27 @@ def load_plugin(spelling: str, base: Path) -> Plugin:
     return plugin
 
 
-def plugin_source(spelling: str, base: Path) -> Path | None:
-    """The file a loaded plugin came from, for the dependency list of a build system.
+def plugin_files(spelling: str, base: Path) -> tuple[Path, ...]:
+    """The files a plugin the project names is made of, for the dependency list of a build system.
 
-    A path spelling names its file; a module spelling has the file its import recorded, which
-    only a module planted into ``sys.modules`` without one lacks. Nothing is imported here:
-    this answers for a plugin ``load_plugin`` has already loaded, so that a build re-runs the
-    generation when the plugin changes exactly as it does when a component does.
+    What the project names, whether or not the import went well: a path spelling names its
+    file, which a build has to keep watching while it does not import - the edit that repairs
+    it is the one to run the generation again - and a module spelling has the file its import
+    recorded, which a module that failed to import, or one planted into ``sys.modules`` without
+    one, lacks. A package is every ``.py`` file under its directory, not its ``__init__.py``
+    alone: the module its ``PLUGIN`` comes from, and the shared code a plugin keeps beside it,
+    are plugin code as much as the file that imports them. Nothing is imported here.
     """
     if spelling.endswith(".py"):
-        return _path_of(spelling, base)
-    source = getattr(sys.modules.get(spelling), "__file__", None)
-    return Path(source).resolve() if source else None
+        source: Path | None = _path_of(spelling, base)
+    else:
+        recorded = getattr(sys.modules.get(spelling), "__file__", None)
+        source = Path(recorded).resolve() if recorded else None
+    if source is None:
+        return ()
+    if source.name != "__init__.py":
+        return (source,)
+    return (source, *sorted(path.resolve() for path in source.parent.rglob("*.py")))
 
 
 def _path_of(spelling: str, base: Path) -> Path:

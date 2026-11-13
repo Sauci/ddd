@@ -273,9 +273,14 @@ generation step, so that editing a component - or a plugin the project names, wh
 the answer lists too - regenerates the globals and the a2l; as ``CMAKE_CONFIGURE_DEPENDS``, so
 that adding a file matching an ``includes`` wildcard re-runs configure and picks the new
 component up; and as the files the names of the project's components are read from, for the
-headers the generation declares (see *The targets it creates* below). If the tool cannot
-resolve the project yet, the module says so and falls back to depending on the project file
-alone rather than refusing to configure at all.
+headers the generation declares (see *The targets it creates* below). The list holds what the
+project names whether or not it loaded: a ``.py`` plugin that no longer imports, or whose
+model raises, is still listed, and every file of a package plugin is, so the edit that
+repairs it re-runs configure and the generation. What the tool says about the project on its
+standard error - that plugin's defect, a missing include - is printed by the configure as a
+warning. If the tool cannot resolve the project yet, the module warns and falls back to
+depending on the project file alone, which stays a dependency of the configure, rather than
+refusing to configure at all.
 
 What the build tells an editor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

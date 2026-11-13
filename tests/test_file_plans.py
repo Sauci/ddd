@@ -1713,6 +1713,22 @@ class TestAdd:
         plan = add_plan(tmp_path / "proj" / "p.ddd.json", typed, {})
         assert plan.includes == ("lnk/x.ddd.json",)
 
+    def test_a_dot_dot_after_a_link_is_taken_off_the_link_s_target_as_the_file_is_found(
+        self, tmp_path: Path
+    ) -> None:
+        """``proj/lnk`` leads to ``elsewhere/sub``: ``lnk/../p2`` is ``elsewhere/p2``, which the
+        text alone reads as ``proj/p2``. The entry written is the one that names the file found,
+        and not the link's spelling of another."""
+        write_tree(
+            tmp_path,
+            {"proj/p.ddd.json": project("P"), "elsewhere/p2/x.ddd.json": component("X")},
+        )
+        (tmp_path / "elsewhere" / "sub").mkdir()
+        directory_link(tmp_path / "proj" / "lnk", tmp_path / "elsewhere" / "sub")
+        typed = (tmp_path.resolve() / "proj" / "lnk" / ".." / "p2" / "x.ddd.json").as_posix()
+        plan = add_plan(tmp_path / "proj" / "p.ddd.json", typed, {})
+        assert plan.includes == ("../elsewhere/p2/x.ddd.json",)
+
     def test_a_file_above_the_description_is_written_relative_with_slashes(
         self, tmp_path: Path
     ) -> None:

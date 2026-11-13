@@ -968,6 +968,7 @@ class TestCreatedBeside:
             {"": 1, "project": {"name": "P"}},
             {"a.": 1, "a": {"x": {"y": 1}}, "project": {"name": "P"}},
             {"a]": 1, "a": {"x": {"y": 1}}, "project": {"name": "P"}},
+            {"[" + "7" * 4_301 + "]": 1, "project": {"name": "P"}},
         ],
         ids=[
             "a dot",
@@ -975,6 +976,7 @@ class TestCreatedBeside:
             "an empty key at the top",
             "a dot beside its object",
             "a bracket",
+            "a long index",
         ],
     )
     @pytest.mark.parametrize("indent", [None, 2], ids=["on one line", "over lines"])

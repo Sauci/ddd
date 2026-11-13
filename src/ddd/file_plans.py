@@ -529,13 +529,17 @@ def spelled_with_slashes(entry: str) -> str:
 
 def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan:
     """``entry`` - a path to an existing file, relative to the description or absolute, as the
-    reader wrote it - appended to the root's ``includes`` as written. Always a literal: the loader
-    reads an entry naming a file as that file, whatever it spells.
+    reader wrote it - appended to the root's ``includes`` as :func:`spelled_with_slashes` writes
+    it, and relative to the description's directory where it was rooted: an absolute entry names
+    the file on one machine only. Always a literal: the loader reads an entry naming a file as
+    that file, whatever it spells. Every refusal names ``entry`` as it was sent.
 
     Refused, in this order, by what the description and the files on disk can answer: ``entry``
     naming no file, ``not-found``, a file that is not there being created rather than added;
     naming the description itself, ``invalid``; naming a file the project has already - named by
-    an entry, or matched by a pattern, which the refusal names - ``invalid``. Whether the file
+    an entry, or matched by a pattern, which the refusal names - ``invalid``; and, on Windows, a
+    rooted entry naming a file on another drive than the description's, which no relative entry
+    can name, ``invalid``. Whether the file
     lies where the caller may read it, and whether it is a kind of file the loader recognises,
     are the caller's to ask: the first needs the directories the session serves, and the second
     the kind rule :func:`ddd.gui.session.kind_of` holds, which this module, importing nothing of
@@ -577,9 +581,16 @@ def add_plan(project: Path, entry: str, cache: dict[Path, Document]) -> FilePlan
         # Rooted, with a drive or without one: it names the file on this machine only. Written
         # relative to the description where it lies under it as typed - a path through a link
         # keeps the link's name, not its target's - and otherwise by where the file is.
+        # The link's spelling only where it leads to the file checked: a ``..`` after a link is
+        # taken off the text by ``normpath``, and off the link's target by ``resolve``.
         joined = Path(os.path.normpath(described.parent / typed))
-        if joined.is_relative_to(described.parent):
-            typed = joined.relative_to(described.parent).as_posix()
+        kept = (
+            joined.relative_to(described.parent)
+            if joined.is_relative_to(described.parent)
+            else None
+        )
+        if kept is not None and resolve_path(described.parent / kept) == added:
+            typed = kept.as_posix()
         else:
             try:
                 typed = Path(os.path.relpath(added, described.parent)).as_posix()

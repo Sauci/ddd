@@ -317,6 +317,17 @@ class TestSet:
             "b": {**document["b"], "y": {"q": [1]}},
         }
 
+    def test_a_key_spelling_an_index_no_array_needs_is_walked_past(self):
+        """``segments`` refuses an index of more than 4,300 digits with a ``ValueError``: the walk
+        read every key through it, and one that was the first member, over lines, ended edits
+        that were made before in a crash."""
+        key = "[" + "7" * 4_301 + "]"
+        text = json.dumps({key: 1, "b": {"y": 2}}, indent=2)
+        assert json.loads(edited(text, Operation("set", "b.y", '{"q": [1]}'))) == {
+            key: 1,
+            "b": {"y": {"q": [1]}},
+        }
+
     def test_a_member_is_added_beside_a_key_holding_a_dot_and_another_taken_away(self):
         """Edits that read nothing of the key's own member were made before, and still are."""
         text = '{\n  "b": {\n    ".": 1,\n    "y": 2\n  }\n}'

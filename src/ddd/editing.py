@@ -843,7 +843,10 @@ def _names(container: str, entry: str) -> bool:
     than the one (``a.``, ``.a``, ``a.b``), is recorded under a pointer that names the container
     itself or a member of another. Walked into as it was, the walk read the one for the other and
     ended in an ``AssertionError`` or a ``RecursionError``, which ``ddd gui`` answered ``500``;
-    left out of it, its line is no evidence of the file's unit."""
+    left out of it, its line is no evidence of the file's unit. So is a key spelling an index of
+    more digits than any array needs (:data:`_LONG_INDEX`), which ``segments`` cannot read."""
+    if _LONG_INDEX.search(entry):
+        return False
     key = entry[len(container) + 1 :] if container else entry
     return segments(entry) == [*segments(container), key]
 

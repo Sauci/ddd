@@ -2395,7 +2395,7 @@ def _addition(
     except NotInProjectError:
         serves = (directory.as_posix() for directory in revision.served)
         raise FileRefusalError("invalid", outside_served(entry, serves)) from None
-    plan = add_plan(revision.project, typed, cache)
+    plan = add_plan(revision.project, entry, cache)
     kind = kind_of(added, _read_json(added))
     if kind == "plugin":
         raise FileRefusalError(

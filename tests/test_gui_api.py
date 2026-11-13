@@ -10567,6 +10567,46 @@ class TestAddingAFile:
             "; start it in a directory holding this file to add it here",
         )
 
+    def test_a_dot_dot_after_a_link_is_written_as_the_file_judged_and_not_as_another(
+        self, tmp_path: Path
+    ) -> None:
+        """``served/proj/lnk`` leads into ``served/elsewhere/sub``, so ``lnk/../lnk3/x`` is
+        ``served/elsewhere/lnk3/x``, which is served. Read off the text alone it is
+        ``proj/lnk3/x``, and ``proj/lnk3`` leads outside what is served: the entry written named
+        a file that was never judged."""
+        write_tree(
+            tmp_path,
+            {
+                "served/proj/p.ddd.json": project("P"),
+                "served/elsewhere/lnk3/x.ddd.json": component("X"),
+                "secret/x.ddd.json": component("S"),
+            },
+        )
+        (tmp_path / "served" / "elsewhere" / "sub").mkdir()
+        served = tmp_path / "served"
+        directory_link(served / "proj" / "lnk", served / "elsewhere" / "sub")
+        directory_link(served / "proj" / "lnk3", tmp_path / "secret")
+        session = Session(served)
+        session.open(served / "proj" / "p.ddd.json")
+        api = Api(session, served / "proj" / "p.ddd.json", wait_seconds=0.05)
+        path = (served.resolve() / "proj" / "lnk" / ".." / "lnk3" / "x.ddd.json").as_posix()
+        reply = files_plan(api, "add", path=path)
+        assert reply.status == 200
+        assert reply.body["changes"][0]["operations"][0]["raw"] == (
+            '"../elsewhere/lnk3/x.ddd.json"'
+        )
+
+    def test_every_refusal_of_an_add_names_the_entry_as_it_was_typed(self, tmp_path: Path) -> None:
+        api = opened(tmp_path, {**ADDABLE, "sub/tool.py": "print('x')\n"})
+        assert refused(files_plan(api, "add", path="sub\\missing.ddd.json")) == (
+            404,
+            "not-found",
+            "sub\\missing.ddd.json names no file; a file not there yet is created, not added",
+        )
+        assert refused(files_plan(api, "add", path="sub\\tool.py"))[2].startswith(
+            "sub\\tool.py is a python file"
+        )
+
     @pytest.mark.parametrize(
         "path",
         [

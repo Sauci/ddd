@@ -101,7 +101,9 @@ endif()
 # writes, is a value to PARSE_ARGV - an empty string - and is named by nothing it reports, so the arguments are walked
 # here: a keyword that takes a value, followed by an empty argument. It is a macro because ARGV<n> belongs to the function that was called,
 # not to a helper; it reads them by number, up to the count its caller hands it (ARGV<n> beyond it may be an outer
-# function's), and works from CMake 3.20 on.
+# function's), and works from CMake 3.20 on. Only the argument right after a keyword says whether the keyword was given:
+# an empty one after a value leaves the keyword its values, and each caller drops it from them.
+# A macro, so its locals - each spelled _ddd_<name> - are set in the scope of the function calling it.
 macro(_ddd_refuse_empty_keywords context argument_count keywords)
     set(_ddd_keywords "${keywords}")
     set(_ddd_empty ${arg_KEYWORDS_MISSING_VALUES})
@@ -124,6 +126,21 @@ macro(_ddd_refuse_empty_keywords context argument_count keywords)
                             "or leave the keyword out.")
     endif()
 endmacro()
+
+# A path spelled as the pattern file(GLOB) matches that path with, and nothing else: the glob reads "[", "*" and "?" as
+# pattern syntax wherever they are, so a checkout in "pr[1]" would have its own directory read as a character class.
+function(_ddd_literal_pattern variable path)
+    string(REGEX REPLACE "([[*?])" "[\\1]" literal "${path}")
+    set(${variable} "${literal}" PARENT_SCOPE)
+endfunction()
+
+# Has the build configure again, before it does anything else, once a file appears where there is none now, or goes
+# where there is one: a glob of its own path with CONFIGURE_DEPENDS, which every build checks first. The configure
+# dependencies cannot do it, CMake taking none on a file in the build tree, and none on a file that does not exist.
+function(_ddd_watch_file path)
+    _ddd_literal_pattern(literal "${path}")
+    file(GLOB ignored CONFIGURE_DEPENDS "${literal}")
+endfunction()
 
 # The transitive property feature is only needed when the component descriptions are collected through the link
 # graph; a caller passing PROJECT never reaches this check.
@@ -165,7 +182,7 @@ function(_ddd_watch_includes description)
         return()
     endif()
     cmake_path(GET description PARENT_PATH base)
-    string(REGEX REPLACE "([[*?])" "[\\1]" literal_base "${base}")
+    _ddd_literal_pattern(literal_base "${base}")
     math(EXPR last "${count} - 1")
     foreach(index RANGE 0 ${last})
         string(JSON entry GET "${content}" "project" "includes" ${index})
@@ -332,8 +349,10 @@ endfunction()
 # good. Such files still register on the target and are checked in context, through the project of every image that
 # links the component.
 #
-# A file that does not exist yet - generated into the build tree later - is taken to be a component, because that is
-# the only kind worth generating there; nothing can be read off it at configure time either way.
+# A file that does not exist yet - one the build writes into the build tree - says nothing about its kind either, and
+# is taken to be a component until the configure that finds it reads what it is: the first build to find it there runs
+# that configure by itself (ddd_add_component watches the file), so a vocabulary the build writes is checked in context
+# from then on, and only a target built before the file is there checks it as a component - which it cannot pass.
 #
 # So is a file whose json does not parse at all, which is a different answer from "this is not a component": the file
 # says nothing about its kind, and the reading it has to be told about is exactly what "ddd check" says. Answering
@@ -416,6 +435,9 @@ function(ddd_add_component target)
         message(FATAL_ERROR "ddd_add_component: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
     _ddd_refuse_empty_keywords("ddd_add_component" ${ARGC} "JSON")
+    # An empty argument after a description is none: taken for one, it was the calling directory, refused as a
+    # description not named *.ddd.json.
+    list(REMOVE_ITEM arg_JSON "")
     if(NOT arg_JSON)
         message(FATAL_ERROR "ddd_add_component: at least one description file is required (JSON <file>...).")
     endif()
@@ -441,8 +463,11 @@ function(ddd_add_component target)
         # parse, or its component has no name yet - is a dependency of the configure step until it does, so that the
         # configure reading the name comes with the build after the repair: without it, that component's header would
         # be written by a generation that does not declare it until somebody next configured. A file that does not
-        # exist yet, generated into the build tree later, names nothing until a configure finds it - and no configure
-        # comes by itself, CMake taking no configure dependency on a file the build writes - so the configure says so.
+        # exist yet, written into the build tree by the build, says nothing yet - neither the component it may
+        # describe nor its kind - and no configure came by itself once it was there: under Ninja the build after its
+        # header changed compiled the readers against the old one, and its .ddd target checked a vocabulary as a
+        # component. It is watched instead, so that the first build to find it there configures again before it does
+        # anything else, and reads both.
         _ddd_component_name(name "${description}")
         if(NOT "${name}" STREQUAL "")
             set_property(TARGET ${target} APPEND PROPERTY DDD_COMPONENT_NAMES "${name}")
@@ -452,11 +477,10 @@ function(ddd_add_component target)
                 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${description}")
             endif()
         else()
-            message(WARNING "ddd_add_component: \"${description}\" does not exist yet, so the header generated for "
-                            "the component it describes cannot be declared as an output of the generation, and "
-                            "the build after that header changes would compile the components reading it "
-                            "against the old one. Configure the build again once the build has written the "
-                            "file.")
+            _ddd_watch_file("${description}")
+            message(STATUS "ddd_add_component: \"${description}\" does not exist yet, so neither the component it "
+                           "may describe nor its kind can be read; the first build to find it there configures "
+                           "again, and reads both.")
         endif()
     endforeach()
     set_property(TARGET ${target} APPEND PROPERTY TRANSITIVE_LINK_PROPERTIES DDD_JSON)
@@ -581,15 +605,37 @@ function(_ddd_project_component_names variable sources)
     set(${variable} "${names}" PARENT_SCOPE)
 endfunction()
 
+# Reads each $<$<CONFIG:...>:...> of a link list holding no other expression for the build type the tree is configured
+# for, as CMake reads it: its content where CMAKE_BUILD_TYPE is one of the configurations it names, in any case, and
+# nothing where it is not. The module takes no multi-config generator, so that build type is the one configuration
+# there is. Any other expression is left as it is, to be taken whatever it comes to - one inside such a $<CONFIG:...>
+# included, or one around it once that is read, such as a static library's $<LINK_ONLY:...>.
+function(_ddd_for_this_configuration variable text)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
+    while(text MATCHES "\\$<\\$<CONFIG:([^<>]*)>:([^<>]*)>")
+        set(expression "${CMAKE_MATCH_0}")
+        set(content "${CMAKE_MATCH_2}")
+        string(TOUPPER "${CMAKE_MATCH_1}" configurations)
+        string(REPLACE "," ";" configurations "${configurations}")
+        if(NOT "${build_type}" IN_LIST configurations)
+            set(content "")
+        endif()
+        string(REPLACE "${expression}" "${content}" text "${text}")
+    endwhile()
+    set(${variable} "${text}" PARENT_SCOPE)
+endfunction()
+
 # The components an image links, by name: the image's own registrations and those of every target in its link
 # closure - its LINK_LIBRARIES and, from each target found there, that target's INTERFACE_LINK_LIBRARIES, where a static
 # library's private links appear as $<LINK_ONLY:...>. That is the closure DDD_JSON is collected over, walked here by
 # hand because BYPRODUCTS cannot take the generator expression that collects it: CMake evaluates an output before it
-# knows any target, and refuses an expression naming one. Nor can an expression in a link list be evaluated here, so
-# every target it names is taken: a header declared and never written costs a generation at every build under Ninja,
-# which the build log shows, where a header written and never declared is a reader compiled against the old one, with
-# nothing to show for it. Each target is visited once, since two static libraries may link each other; one met under an
-# alias and under its own name is visited twice, and names its components twice.
+# knows any target, and refuses an expression naming one. Nor can an expression in a link list be evaluated here, but
+# for a $<CONFIG:...> around names alone, which is read for the build type (_ddd_for_this_configuration), so every
+# target any other one names is taken: a header declared and never written costs a generation at every build under
+# Ninja, which the build log shows, where a header written and never declared is a reader compiled against the old
+# one, with nothing to show for it. Each target is visited once, since two static libraries may link each other; one
+# met under an alias and under its own name is visited twice, and names its components twice. A third argument, where
+# given, is the variable the visited targets are returned in.
 function(_ddd_linked_component_names variable image)
     set(visited "")
     set(pending "${image}")
@@ -607,6 +653,7 @@ function(_ddd_linked_component_names variable image)
         else()
             get_property(linked TARGET "${target}" PROPERTY INTERFACE_LINK_LIBRARIES)
         endif()
+        _ddd_for_this_configuration(linked "${linked}")
         # Whatever in the list spells a target - a namespaced one included - is a target it may link: an entry is a
         # target's name, a path, a flag or an expression.
         string(REGEX MATCHALL "[A-Za-z0-9_.+-]+(::[A-Za-z0-9_.+-]+)*" candidates "${linked}")
@@ -617,6 +664,9 @@ function(_ddd_linked_component_names variable image)
         endforeach()
     endwhile()
     set(${variable} "${names}" PARENT_SCOPE)
+    if(ARGC GREATER 2)
+        set(${ARGV2} "${visited}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 # The generation of an image, added at the end of the directory that called ddd_generate() rather than in the call:
@@ -637,7 +687,9 @@ function(_ddd_add_generation image)
     if(listed)
         get_property(names TARGET ${image} PROPERTY DDD_PROJECT_COMPONENTS)
     else()
-        _ddd_linked_component_names(names "${image}")
+        _ddd_linked_component_names(names "${image}" reached)
+        # Kept for _ddd_refuse_late_links, which tells a target reached too late from one reached in time.
+        set_property(TARGET ${image} PROPERTY DDD_REACHED_TARGETS "${reached}")
     endif()
     # A name met twice - a component reached under two names of its target, or two files naming one component, which
     # the generation reports - is one file: ninja refuses to load a build that declares an output twice.
@@ -671,30 +723,59 @@ endfunction()
 
 # Stops the configure, once the top directory is done, at a component the image links that the generation does not
 # declare: one reached only through a link made after the directory calling ddd_generate() was done - from a
-# directory processed later, or through a library defined later - which the walk of _ddd_add_generation could not
-# see. The generation cannot be told about it any more: its command belongs to that directory, and BYPRODUCTS cannot
-# be added to a command once it exists. Left alone, the build after the component's header changed would compile
-# the components reading it against the old one, with nothing to show for it.
+# directory processed later, or through a library defined later - or registered on a target it reached in time only
+# once that directory was done, either of which the walk of _ddd_add_generation could not see. The generation cannot
+# be told about it any more: its command belongs to that directory, and BYPRODUCTS cannot be added to a command once
+# it exists. Left alone, the build after the component's header changed would compile the components reading it
+# against the old one, with nothing to show for it.
 function(_ddd_refuse_late_links image)
     get_property(declared TARGET ${image} PROPERTY DDD_DECLARED_COMPONENTS)
+    get_property(reached TARGET ${image} PROPERTY DDD_REACHED_TARGETS)
     get_property(directory TARGET ${image} PROPERTY DDD_GENERATION_DIRECTORY)
-    _ddd_linked_component_names(linked "${image}")
-    set(late "")
-    foreach(name IN LISTS linked)
-        if(NOT "${name}" IN_LIST declared)
-            list(APPEND late "${name}")
-        endif()
+    _ddd_linked_component_names(ignored "${image}" visited)
+    set(linked_late "")
+    set(registered_late "")
+    foreach(target IN LISTS visited)
+        get_property(own TARGET "${target}" PROPERTY DDD_COMPONENT_NAMES)
+        foreach(name IN LISTS own)
+            if("${name}" IN_LIST declared)
+                continue()
+            endif()
+            if("${target}" IN_LIST reached)
+                list(APPEND registered_late "${name}")
+            else()
+                list(APPEND linked_late "${name}")
+            endif()
+        endforeach()
     endforeach()
-    if(NOT "${late}" STREQUAL "")
-        list(REMOVE_DUPLICATES late)
-        list(SORT late)
-        list(JOIN late "\", \"" spelled)
-        message(FATAL_ERROR "ddd_generate: \"${image}\" reaches the component(s) \"${spelled}\" through a link "
-                            "made, or a library defined, after \"${directory}\" - where ddd_generate() is called - "
-                            "was done. Their headers are not declared as outputs of the generation, so the build "
-                            "after one of them changed would compile the components reading it against the old "
-                            "one. Link the image's components, and define every library on the way to them, "
-                            "before that directory is done - or call ddd_generate() where they are.")
+    set(refusals "")
+    if(NOT "${linked_late}" STREQUAL "")
+        list(REMOVE_DUPLICATES linked_late)
+        list(SORT linked_late)
+        list(JOIN linked_late "\", \"" spelled)
+        string(APPEND refusals
+               "ddd_generate: \"${image}\" reaches the component(s) \"${spelled}\" through a link made, or a library "
+               "defined, after \"${directory}\" - where ddd_generate() is called - was done. Their headers are not "
+               "declared as outputs of the generation, so the build after one of them changed would compile the "
+               "components reading it against the old one. Link the image's components, and define every library "
+               "on the way to them, before that directory is done - or call ddd_generate() where they are. A link "
+               "behind a generator expression is taken whatever the expression comes to, the names being read when "
+               "the build is configured, before CMake evaluates any; one behind $<CONFIG:...> alone is read for the "
+               "CMAKE_BUILD_TYPE configured.\n")
+    endif()
+    if(NOT "${registered_late}" STREQUAL "")
+        list(REMOVE_DUPLICATES registered_late)
+        list(SORT registered_late)
+        list(JOIN registered_late "\", \"" spelled)
+        string(APPEND refusals
+               "ddd_generate: the component(s) \"${spelled}\" of \"${image}\" were registered after \"${directory}\" "
+               "- where ddd_generate() is called - was done, on targets the image links in time. Their headers are "
+               "not declared as outputs of the generation, so the build after one of them changed would compile the "
+               "components reading it against the old one. Register the image's components before ddd_generate() "
+               "is called, which is also what hands them its headers.\n")
+    endif()
+    if(NOT "${refusals}" STREQUAL "")
+        message(FATAL_ERROR "${refusals}")
     endif()
 endfunction()
 
@@ -765,6 +846,10 @@ function(ddd_generate image)
     set(keywords_with_values PROJECT NAME OUTPUT_DIRECTORY TEMPLATE_DIRECTORY SCHEMA_DIRECTORY ADDRESS_MAP BYTE_ORDER
                              SEVERITY LINK_LIBRARIES DEPENDS PLUGINS)
     _ddd_refuse_empty_keywords("ddd_generate" ${ARGC} "${keywords_with_values}")
+    # An empty argument after a value is none: taken for one, it was a -W with nothing after it, or a plugin named
+    # nothing. LINK_LIBRARIES and DEPENDS drop theirs wherever they are expanded.
+    list(REMOVE_ITEM arg_SEVERITY "")
+    list(REMOVE_ITEM arg_PLUGINS "")
     # The a2l takes its addresses from one place, and ADDRESSES_FROM_IMAGE is that place being the image: beside a map
     # the call would name two, and beside NO_A2L it would read addresses for a file nobody writes.
     if(arg_ADDRESSES_FROM_IMAGE AND arg_ADDRESS_MAP)
@@ -904,6 +989,11 @@ function(ddd_generate image)
     endif()
 
     _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${common_options}")
+    # The output directory holds what the configure writes - the record above and, in the collected mode, the project
+    # description - which no step of the build writes again: deleted, the build stopped under Ninja on that description,
+    # missing and with no rule to make it, and only a configure by hand mended it. Watched, the record's deletion runs
+    # the configure, which writes both again, before the build generates the rest.
+    _ddd_watch_file("${arg_OUTPUT_DIRECTORY}/ddd-build.json")
 
     # The run always asks for every artefact the project has, and NO_A2L subtracts the a2l from
     # that rather than selecting the c artefact instead: 'all' is the only run that produces the
@@ -930,15 +1020,24 @@ function(ddd_generate image)
         list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
     endif()
 
-    # The templates are collected with a glob which the build system re-evaluates
-    # (CONFIGURE_DEPENDS), so that adding or removing a template is noticed without a manual
-    # re-configuration.
-    file(GLOB template_files CONFIGURE_DEPENDS "${arg_TEMPLATE_DIRECTORY}/*.jinja2")
+    # The templates are collected with a glob which the build system re-evaluates (CONFIGURE_DEPENDS), so that adding or
+    # removing a template is noticed without a manual re-configuration. The directory is read as a directory, whatever
+    # characters it has: a checkout in "pr[1]" is no character class, which found no template at all.
+    _ddd_literal_pattern(template_pattern "${arg_TEMPLATE_DIRECTORY}")
+    file(GLOB template_files CONFIGURE_DEPENDS "${template_pattern}/*.jinja2")
     if(NOT template_files)
         message(FATAL_ERROR "ddd_generate: no *.jinja2 template in \"${arg_TEMPLATE_DIRECTORY}\". The c sources are "
                             "rendered from templates the project provides; \"ddd templates-dir\" prints a set to "
                             "copy from.")
     endif()
+    # A template in a subdirectory is never rendered, and may be imported or included by one that is, so it is an input
+    # of the generation as much as they are: its edit built to "no work to do" over the text it used to have.
+    file(GLOB_RECURSE every_template CONFIGURE_DEPENDS "${template_pattern}/*.jinja2")
+    # Which templates there are is an input as well. A template removed leaves every other input and the command as
+    # they were, and only a run of the generation takes back the file it rendered, which stayed on the include path
+    # otherwise. The list is kept in the build tree, rewritten only when it differs, as a project's files are.
+    set(template_list "${CMAKE_CURRENT_BINARY_DIR}/${image_stem}_ddd_templates.txt")
+    _ddd_write_source_list("${template_list}" "${every_template}")
 
     # Each template renders to a file named like it without the .jinja2 extension, so the
     # templates are the single source of truth for what is generated. A helper (leading
@@ -972,6 +1071,22 @@ function(ddd_generate image)
         message(FATAL_ERROR "ddd_generate: no template in \"${arg_TEMPLATE_DIRECTORY}\" renders a .c file. The "
                             "definitions of the global variables have to be compiled into the image, so one "
                             "template must produce a source file (for example ddd_globals.c.jinja2).")
+    endif()
+    # The definitions are C, compiled by the object library below, which a project that enables no C - project(<name>
+    # LANGUAGES CXX) - cannot build: CMake stopped at it, unable to determine its linker language, naming a target of
+    # this module's and not the language the project left out.
+    get_property(enabled_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
+    if(NOT "C" IN_LIST enabled_languages)
+        set(rendered_c "")
+        foreach(definition_file IN LISTS definition_files)
+            cmake_path(GET definition_file FILENAME rendered)
+            list(APPEND rendered_c "${rendered}")
+        endforeach()
+        list(JOIN rendered_c "\", \"" rendered_c)
+        message(FATAL_ERROR "ddd_generate: the templates in \"${arg_TEMPLATE_DIRECTORY}\" render C - \"${rendered_c}\" "
+                            "- the definitions of the image's variables, and the project does not enable C. Enable "
+                            "it beside the project's own languages - project(<name> LANGUAGES C CXX) - or with "
+                            "enable_language(C) in the top directory.")
     endif()
     # What the templates render under names known now, so that a component whose file would be one of them is
     # refused by name (_ddd_add_generation), rather than by ninja, which only says that a file is declared twice.
@@ -1027,7 +1142,7 @@ function(ddd_generate image)
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_TOUCH ${generation_touch})
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_DEPENDS
                  "${project_file}" ${source_list} ${descriptions} ${plugin_files} ${arg_DEPENDS}
-                 ${template_files} "${DDD_EXECUTABLE}")
+                 ${every_template} "${template_list}" "${DDD_EXECUTABLE}")
     set_property(TARGET ${image} PROPERTY DDD_COMPONENT_FILES "${component_files}")
     cmake_language(EVAL CODE "cmake_language(DEFER CALL _ddd_add_generation [==[${image}]==])")
     # And once the top directory is done, every link of the image known, the collected mode checks that the image

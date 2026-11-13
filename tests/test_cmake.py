@@ -415,6 +415,26 @@ class Shape:
     """The logger's description is copied into the build tree by the build, so it is not there
     when the build is first configured."""
 
+    units_by_the_build: bool = False
+    """The device's units file is copied into the build tree by the build, as the logger's
+    description is above: a vocabulary the first configure cannot read."""
+
+    registered_late: bool = False
+    """The top directory registers the components once the directory generating the image is
+    done, the image linking them in time."""
+
+    traced: Literal["", "before the image", "after the image"] = ""
+    """The image links ``trace`` in a build with debug information alone,
+    ``$<$<CONFIG:Debug,RelWithDebInfo>:trace>``: a component the top directory defines and
+    registers before it adds ``app/``, or once ``app/`` is done."""
+
+    build_type: str = ""
+    """``CMAKE_BUILD_TYPE``, which a ``$<CONFIG:...>`` link is read for; none where empty."""
+
+    own_templates: bool = False
+    """The story copies the shipped templates into ``templates/`` and generates from that copy,
+    which a test may then edit."""
+
     includes: tuple[str, ...] = (
         "components/sensor.ddd.json",
         "components/logger.ddd.json",
@@ -478,11 +498,21 @@ whose image links one the project leaves out."""
 DESCRIBED_BY_THE_BUILD = Shape(described_by_the_build=True)
 """Collected, with the logger's description written by the build."""
 
+UNITS_BY_THE_BUILD = Shape(units_by_the_build=True)
+"""Collected, with the device's units file written by the build."""
+
 LINKED_LATE = {
     "from the parent": Shape(linked="from the parent"),
     "through a library defined later": Shape(linked="through a library defined later"),
 }
 """The shapes whose image reaches its components only once the directory generating it is done."""
+
+REGISTERED_LATE = Shape(subdirectory=True, registered_late=True)
+"""The image generated in ``app/``, linked in time, its components registered once ``app/`` is
+done."""
+
+TRACE_C = "int trace(void);\n\nint trace(void)\n{\n    return 0;\n}\n"
+"""The traced component's code, which reads no generated header."""
 
 MAPPED = Shape(address_map=True, strict=True)
 """Collected, under ``STRICT``, the a2l's addresses read out of the map the page's recipe
@@ -596,6 +626,12 @@ class Story:
         (root / "spare.ddd.json").write_text(json.dumps(spare, indent=2), encoding="utf-8")
         units = self.components / "units.ddd.json"
         units.write_text(json.dumps(STORY_UNITS, indent=2), encoding="utf-8")
+        if shape.own_templates:
+            shutil.copytree(TEMPLATES, root / "templates")
+        if shape.traced:
+            (root / "trace.c").write_text(TRACE_C, encoding="utf-8")
+            trace = {"component": {"name": "Trace", "interface": [declare("local", "Traces")]}}
+            (root / "trace.ddd.json").write_text(json.dumps(trace, indent=2), encoding="utf-8")
         if shape.project:
             project = {"project": {"name": "StoryDevice", "includes": list(shape.includes)}}
             if shape.plugins:
@@ -619,6 +655,8 @@ class Story:
     def generation(self) -> str:
         """The ``ddd_generate`` call, and the links a hand written project makes after it."""
         templates = f'TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"'
+        if self.shape.own_templates:
+            templates = 'TEMPLATE_DIRECTORY "${CMAKE_SOURCE_DIR}/templates"'
         if self.shape.address_map:
             templates += ' ADDRESS_MAP "${address_map}"'
         if self.shape.strict:
@@ -642,26 +680,35 @@ class Story:
 
     def registrations(self) -> str:
         """Each component's description on its target, where the shape registers them; the
-        logger's is written by the build where it says so."""
+        logger's, and the units file, are written by the build where it says so."""
         if not self.shape.registered:
             return ""
         here = "${CMAKE_CURRENT_SOURCE_DIR}"
         logger = f'"{here}/components/{self.shape.logger_file}"'
+        units = f'"{here}/components/units.ddd.json"'
         written = ""
         if self.shape.described_by_the_build:
             copied, logger = logger, '"${CMAKE_CURRENT_BINARY_DIR}/logger.ddd.json"'
-            written = (
-                f"add_custom_command(OUTPUT {logger}\n"
-                f'                   COMMAND "${{CMAKE_COMMAND}}" -E copy {copied} {logger}\n'
-                f"                   DEPENDS {copied}\n"
-                "                   VERBATIM)\n"
-            )
+            written += self.written_by_the_build(copied, logger)
+        if self.shape.units_by_the_build:
+            copied, units = units, '"${CMAKE_CURRENT_BINARY_DIR}/units.ddd.json"'
+            written += self.written_by_the_build(copied, units)
         return (
             f"{written}"
             f'ddd_add_component(sensor JSON "{here}/components/sensor.ddd.json")\n'
             f"ddd_add_component(logger JSON {logger})\n"
-            f'ddd_add_component(bundle JSON "{here}/components/units.ddd.json")\n'
+            f"ddd_add_component(bundle JSON {units})\n"
             f'ddd_add_component(spare JSON "{here}/spare.ddd.json")\n'
+        )
+
+    @staticmethod
+    def written_by_the_build(copied: str, written: str) -> str:
+        """The step of the build copying a description into the build tree."""
+        return (
+            f"add_custom_command(OUTPUT {written}\n"
+            f'                   COMMAND "${{CMAKE_COMMAND}}" -E copy {copied} {written}\n'
+            f"                   DEPENDS {copied}\n"
+            "                   VERBATIM)\n"
         )
 
     def image(self) -> str:
@@ -673,6 +720,8 @@ class Story:
             "from the parent": "",
             "through a library defined later": "target_link_libraries(img PRIVATE platform)\n",
         }.get(linked, f"target_link_libraries(img PRIVATE bundle{spare})\n")
+        if self.shape.traced:
+            link += 'target_link_libraries(img PRIVATE "$<$<CONFIG:Debug,RelWithDebInfo>:trace>")\n'
         calls = [link, self.generation()]
         before, after = "", ""
         if self.shape.address_map:
@@ -687,7 +736,8 @@ class Story:
 
     def listing(self) -> str:
         """The top directory's ``CMakeLists.txt``: the components, then the image or the
-        subdirectory defining it, and whatever the top directory links once that is done."""
+        subdirectory defining it, and whatever the top directory links, defines or registers
+        once that is done."""
         image = self.image()
         if self.shape.in_a_subdirectory():
             image = "add_subdirectory(app)\n" + {
@@ -697,6 +747,17 @@ class Story:
                     "target_link_libraries(platform INTERFACE bundle)\n"
                 ),
             }.get(self.shape.linked, "")
+        registrations = self.registrations()
+        if self.shape.registered_late:
+            image, registrations = image + registrations, ""
+        trace = (
+            "add_library(trace STATIC trace.c)\n"
+            'ddd_add_component(trace JSON "${CMAKE_CURRENT_SOURCE_DIR}/trace.ddd.json")\n'
+        )
+        if self.shape.traced == "before the image":
+            image = trace + image
+        elif self.shape.traced == "after the image":
+            image += trace
         return f"""cmake_minimum_required(VERSION 3.30)
 project(Story LANGUAGES C)
 list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
@@ -709,7 +770,7 @@ target_link_libraries(logger PRIVATE sensor)
 add_library(bundle INTERFACE)
 target_link_libraries(bundle INTERFACE story::writer)
 add_library(spare STATIC spare.c)
-{self.registrations()}{image}"""
+{registrations}{image}"""
 
     def reshape(self, shape: Shape) -> None:
         """The project's ``CMakeLists.txt`` rewritten for another shape of the same layout, as
@@ -749,7 +810,12 @@ add_library(spare STATIC spare.c)
 
     def attempt(self) -> subprocess.CompletedProcess[str]:
         """A configure of the tree, whether or not it is expected to succeed."""
-        return attempt(self.source, self.build_dir, generator=self.generator, site=self.site)
+        build_type = (
+            [f"-DCMAKE_BUILD_TYPE={self.shape.build_type}"] if self.shape.build_type else []
+        )
+        return attempt(
+            self.source, self.build_dir, *build_type, generator=self.generator, site=self.site
+        )
 
     def reconfigure(self) -> str:
         """Configures the tree again, and answers with what the configure printed."""
@@ -894,6 +960,68 @@ class TestTheBuildAfterAnEdit:
         assert not touched.compiled, touched.output
         assert story.build().did_nothing()
 
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_component_registered_after_the_directory_is_done_is_refused_as_such(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """The image links its components in time, and the top directory registers them only
+        once the directory generating it is done: no link was made late, and no library defined
+        late, so the refusal names what did come late."""
+        run = Story(tmp_path, REGISTERED_LATE, generator, configured=False).attempt()
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert "through a link made" not in said, said
+        assert (
+            'ddd_generate: the component(s) "Logger", "Sensor" of "img" were registered after '
+            f'"{(tmp_path / "app").as_posix()}" - where ddd_generate() is called - was done, on '
+            "targets the image links in time. Their headers are not declared as outputs of the "
+            "generation, so the build after one of them changed would compile the components "
+            "reading it against the old one. Register the image's components before "
+            "ddd_generate() is called, which is also what hands them its headers."
+        ) in said
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_link_for_another_build_type_is_no_late_link(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """``$<$<CONFIG:Debug,RelWithDebInfo>:trace>``, with ``trace`` defined once ``app/`` is
+        done: a Release image does not link it, as CMake reads the link for the one build type a
+        single-config generator has, and the module reads it so too. It was taken whatever its
+        condition, and the Release configure refused a component its image does not link."""
+        shape = Shape(subdirectory=True, traced="after the image", build_type="Release")
+        story = Story(tmp_path, shape, generator)
+        assert story.build().printed == "logged 200"
+        assert story.build().did_nothing()
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_link_for_this_build_type_made_late_is_refused_saying_how_links_are_read(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """The same link in a Debug configure is one the image makes, through a library defined
+        late, and is refused; the refusal says how a link behind an expression is read."""
+        shape = Shape(subdirectory=True, traced="after the image", build_type="Debug")
+        run = Story(tmp_path, shape, generator, configured=False).attempt()
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert 'reaches the component(s) "Trace" through a link made' in said, said
+        assert (
+            "A link behind a generator expression is taken whatever the expression comes to, "
+            "the names being read when the build is configured, before CMake evaluates any; one "
+            "behind $<CONFIG:...> alone is read for the CMAKE_BUILD_TYPE configured."
+        ) in said
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_link_for_another_build_type_declares_no_header(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """With ``trace`` defined in time, the Release generation declared ``Trace.h``, which it
+        never writes, the image not linking ``trace``: under ninja a byproduct missing after the
+        run is one to make, so the generation ran at every build."""
+        shape = Shape(subdirectory=True, traced="before the image", build_type="Release")
+        story = Story(tmp_path, shape, generator)
+        assert story.build().printed == "logged 200"
+        assert story.build().did_nothing()
+
     @pytest.mark.parametrize(
         "shape", [pytest.param(shape, id=name) for name, shape in LINKED_LATE.items()]
     )
@@ -1003,28 +1131,60 @@ class TestTheBuildAfterAnEdit:
         self, tmp_path: Path, generator: str
     ) -> None:
         """A description generated into the build tree is not there when the build is first
-        configured, so it names no component yet, and no configure comes by itself once the
-        build has written it: until somebody configures, the build after its header changed
-        compiles the reader against the old one. The configure says so, naming the file; the
-        one run by hand afterwards names the component and says nothing, and from then on a
-        change of its header reaches the reader in one build."""
+        configured, so it names no component yet, and no configure came by itself once the
+        build had written it: under ninja, until somebody configured by hand, the build after
+        its header changed compiled the reader against the old one. The file is watched now, so
+        the build after the one that wrote it configures first, by itself, and names it."""
         story = Story(tmp_path, DESCRIBED_BY_THE_BUILD, generator)
         written = (story.build_dir / "logger.ddd.json").as_posix()
-        warned = (
-            f'ddd_add_component: "{written}" does not exist yet, so the header generated for the '
-            "component it describes cannot be declared as an output of the generation, and the "
-            "build after that header changes would compile the components reading it against "
-            "the old one. Configure the build again once the build has written the file."
-        )
-        # A warning, which a configure log shows as one, rather than a line of its status.
-        assert f"(message): {warned}" in " ".join(story.configured.split()), story.configured
+        said = " ".join(story.configured.split())
+        assert "CMake Warning" not in said, said
+        assert (
+            f'-- ddd_add_component: "{written}" does not exist yet, so neither the component it '
+            "may describe nor its kind can be read; the first build to find it there configures "
+            "again, and reads both."
+        ) in said
         assert story.build().code == 0
-        assert "does not exist yet" not in story.reconfigure()
         story.describe("uint16")
         story.write_sensor(1234)
         widened = story.build()
         assert widened.code == 0, widened.output
+        assert "Configuring done" in widened.output, widened.output
         assert widened.printed == "logged 1234"
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_vocabulary_the_build_writes_is_not_checked_as_a_component(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A file that is not there yet says nothing about its kind, and was checked by its
+        target's ``.ddd`` as a component - which a units file the build writes is not, a
+        ``file-kind`` error until somebody configured again by hand. The configure that finds
+        it now comes by itself, and reads it for a vocabulary, which is checked in context."""
+        story = Story(tmp_path, UNITS_BY_THE_BUILD, generator)
+        assert story.build().printed == "logged 200"
+        checked = story.build_target("bundle.ddd")
+        assert checked.returncode == 0, checked.stdout + checked.stderr
+        assert "file-kind" not in checked.stdout + checked.stderr
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_an_output_directory_deleted_is_written_again_by_the_build(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """The output directory holds what the configure writes - the record of the build,
+        and the project description collected out of the link graph - which no step of the
+        build writes again: the build stopped on that description, missing and with no rule
+        to make it, and nothing said that a configure would mend it. The record is watched,
+        so the build configures again by itself, and generates the rest."""
+        story = Story(tmp_path, STORY_SHAPES["collected"], generator)
+        assert story.build().code == 0
+        output = story.images() / "ddd" / "img"
+        shutil.rmtree(output)
+        rebuilt = story.build()
+        assert rebuilt.code == 0, rebuilt.output
+        assert "Configuring done" in rebuilt.output, rebuilt.output
+        assert rebuilt.printed == "logged 200"
+        assert (output / "ddd-build.json").is_file()
+        assert story.build().did_nothing()
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_an_edited_vocabulary_file_runs_the_generation_and_no_configure(
@@ -1041,6 +1201,85 @@ class TestTheBuildAfterAnEdit:
         edited = story.build()
         assert edited.code == 0 and edited.generated(), edited.output
         assert "Configuring done" not in edited.output, edited.output
+
+
+BANNER = '{% include "inc/banner.jinja2" %}\n'
+"""What a template writes to include a helper kept in a subdirectory of the template directory."""
+
+
+class TestTheTemplateDirectory:
+    """What the module reads out of the template directory is what the tool renders from it.
+
+    The templates were globbed as a pattern, so a checkout in ``pr[1]`` read its own directory
+    as a character class and found no template in it; a helper below the directory, which
+    jinja finds and a template includes, was no dependency, so its edit built to ``no work to
+    do`` over the old text; and a template removed re-ran the configure and left the file it
+    had rendered on the include path, nothing having changed that the generation depends on.
+    """
+
+    def story(self, root: Path, generator: str) -> Story:
+        """A story generating from a copy of the shipped templates, unconfigured."""
+        return Story(root, Shape(own_templates=True), generator, configured=False)
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_checkout_spelled_like_a_pattern_finds_its_templates(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """And the build after it has nothing to do: every file the build watches by a glob of
+        its own path - the record in the output directory among them - is spelled as that path
+        alone, or the glob would find it missing at every build, and configure again. The
+        templates the generation depends on are found the same way, so an edit of one of them
+        regenerates."""
+        story = self.story(tmp_path / "pr[1]", generator)
+        story.reconfigure()
+        assert story.build().printed == "logged 200"
+        assert story.build().did_nothing()
+        definitions = tmp_path / "pr[1]" / "templates" / "ddd_globals.c.jinja2"
+        definitions.write_text(
+            definitions.read_text(encoding="utf-8") + "/* an edit of the template */\n", "utf-8"
+        )
+        edited = story.build()
+        assert edited.code == 0 and edited.generated(), edited.output
+        globals_c = story.images() / "ddd" / "img" / "ddd_globals.c"
+        assert "an edit of the template" in globals_c.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_helper_in_a_subdirectory_is_a_dependency_of_the_generation(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        story = self.story(tmp_path, generator)
+        templates = tmp_path / "templates"
+        (templates / "inc").mkdir()
+        helper = templates / "inc" / "banner.jinja2"
+        helper.write_text("/* the first banner */\n", encoding="utf-8")
+        definitions = templates / "ddd_globals.c.jinja2"
+        definitions.write_text(BANNER + definitions.read_text(encoding="utf-8"), "utf-8")
+        story.reconfigure()
+        assert story.build().code == 0
+        globals_c = story.images() / "ddd" / "img" / "ddd_globals.c"
+        assert "the first banner" in globals_c.read_text(encoding="utf-8")
+        helper.write_text("/* the second banner */\n", encoding="utf-8")
+        edited = story.build()
+        assert edited.code == 0 and edited.generated(), edited.output
+        assert "the second banner" in globals_c.read_text(encoding="utf-8")
+        assert story.build().did_nothing()
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_template_removed_takes_the_file_it_rendered_with_it(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        story = self.story(tmp_path, generator)
+        extra = tmp_path / "templates" / "extra.h.jinja2"
+        extra.write_text("/* rendered by a template the project removes */\n", "utf-8")
+        story.reconfigure()
+        assert story.build().code == 0
+        rendered = story.images() / "ddd" / "img" / "extra.h"
+        assert rendered.is_file()
+        extra.unlink()
+        removed = story.build()
+        assert removed.code == 0 and removed.generated(), removed.output
+        assert not rendered.exists(), "the file of a template removed stays on the include path"
+        assert story.build().did_nothing()
 
 
 WILDCARDS = {
@@ -2070,6 +2309,50 @@ ddd_generate(img
         assert "PLUGINS cannot be given together with PROJECT" in run.stderr
 
 
+def cxx_compiler() -> list[str]:
+    """``-DCMAKE_CXX_COMPILER=g++`` beside the gcc :func:`compiler` names, where it names one."""
+    if shutil.which("cl") is None and (gcc := shutil.which("gcc")):
+        gxx = shutil.which("g++", path=str(Path(gcc).parent))
+        if gxx is not None:
+            return [f"-DCMAKE_CXX_COMPILER={Path(gxx).as_posix()}"]
+    return []
+
+
+class TestAProjectThatEnablesNoC:
+    """``project(<name> LANGUAGES CXX)``: the definitions the templates render are C, and CMake
+    stopped at the object library compiling them, unable to determine its linker language - a
+    target of the module's named, and not the language the project left out."""
+
+    def test_it_is_refused_naming_the_language(self, tmp_path: Path) -> None:
+        described = {"component": {"name": "Store", "interface": [declare("local", "Level")]}}
+        (tmp_path / "store.ddd.json").write_text(json.dumps(described, indent=2), encoding="utf-8")
+        (tmp_path / "main.cpp").write_text("int main() { return 0; }\n", encoding="utf-8")
+        (tmp_path / "store.cpp").write_text("int store() { return 0; }\n", encoding="utf-8")
+        (tmp_path / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Cxx LANGUAGES CXX)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.cpp)
+ddd_add_component(store JSON "{(tmp_path / "store.ddd.json").as_posix()}")
+add_executable(img main.cpp)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+""",
+            encoding="utf-8",
+        )
+        run = attempt(tmp_path, tmp_path / "build", *cxx_compiler())
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert "can not determine linker language" not in said, said
+        assert (
+            f'ddd_generate: the templates in "{TEMPLATES.as_posix()}" render C - "ddd_globals.c" '
+            "- the definitions of the image's variables, and the project does not enable C. "
+            "Enable it beside the project's own languages - project(<name> LANGUAGES C CXX) - "
+            "or with enable_language(C) in the top directory."
+        ) in said
+
+
 class TestAProjectFileReadWhenConfigured:
     """``PROJECT`` is read when the build is configured - the files it is made of, its plugins,
     its name - so it has to exist, and parse, by then.
@@ -2748,6 +3031,13 @@ target_link_libraries(img PRIVATE store)
                 id="a multi value keyword, quoted",
             ),
             pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
+                'SEVERITY "${{DDD_SEVERITY}}" "unused-output=info")',
+                "SEVERITY",
+                id="a multi value keyword whose first value is empty",
+            ),
+            pytest.param(
                 'ddd_add_component(store JSON "${{DDD_FILES}}")\n'
                 'ddd_generate(img TEMPLATE_DIRECTORY "{templates}")',
                 "JSON",
@@ -2801,6 +3091,41 @@ target_link_libraries(img PRIVATE store)
         (tmp_path / "map.json").write_text("{}\n", encoding="utf-8")
         configure(source, tmp_path / "build", f"-DDDD_MAP={(tmp_path / 'map.json').as_posix()}")
 
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
+                'SEVERITY "unused-output=info" "${{DDD_SEVERITY}}" "missing-producer=ignore")',
+                id="a severity",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}" "${{DDD_FILES}}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}")',
+                id="a description",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
+                'PLUGINS "${{CMAKE_CURRENT_SOURCE_DIR}}/plug.py" "${{DDD_PLUGINS}}")',
+                id="a plugin",
+            ),
+        ],
+    )
+    def test_an_empty_value_after_one_is_skipped(self, tmp_path: Path, call: str) -> None:
+        """Only the argument right after a keyword says whether the keyword was given: an empty
+        one after a value leaves the keyword its values, and is no value of its own - not a
+        ``-W`` with nothing after it, a directory taken for a description, or a plugin named
+        nothing."""
+        source = self.write(tmp_path, call)
+        (tmp_path / "plug.py").write_text(
+            "from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name='plug')\n", encoding="utf-8"
+        )
+        configured = configure(source, tmp_path / "build")
+        build(tmp_path / "build")
+        assert "was given no value" not in configured.stdout + configured.stderr
+
 
 class TestAProjectFileRegisteredAsAComponent:
     """A project description is no component, and ``ddd_add_component`` once took it as one.
@@ -2812,11 +3137,11 @@ class TestAProjectFileRegisteredAsAComponent:
     the registration here is refused, naming that keyword.
     """
 
-    def test_it_is_refused_naming_project(self, tmp_path: Path) -> None:
+    def write(self, tmp_path: Path, *registered: Path) -> subprocess.CompletedProcess[str]:
+        """A configure registering the files on one target, in the order given."""
         (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
         (tmp_path / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
-        supplied = tmp_path / "supplier.ddd.json"
-        supplied.write_text(json.dumps({"project": {"name": "Supplier"}}), encoding="utf-8")
+        spelled = " ".join(f'"{path.as_posix()}"' for path in registered)
         (tmp_path / "CMakeLists.txt").write_text(
             f"""cmake_minimum_required(VERSION 3.30)
 project(Supplied LANGUAGES C)
@@ -2825,17 +3150,53 @@ include(Ddd)
 add_library(store STATIC store.c)
 add_executable(img main.c)
 target_link_libraries(img PRIVATE store)
-ddd_add_component(store JSON "{supplied.as_posix()}")
+ddd_add_component(store JSON {spelled})
 """,
             encoding="utf-8",
         )
-        run = attempt(tmp_path, tmp_path / "build")
+        return attempt(tmp_path, tmp_path / "build")
+
+    def supplied(self, tmp_path: Path) -> Path:
+        supplied = tmp_path / "supplier.ddd.json"
+        supplied.write_text(json.dumps({"project": {"name": "Supplier"}}), encoding="utf-8")
+        return supplied
+
+    def component(self, tmp_path: Path, file: str, name: str, **more: object) -> Path:
+        """A component file of the given name, with whatever more its component carries."""
+        described = {"component": {"name": name, "interface": [declare("local", "Level")]}}
+        described["component"].update(more)
+        path = tmp_path / file
+        path.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        return path
+
+    def test_it_is_refused_naming_project(self, tmp_path: Path) -> None:
+        supplied = self.supplied(tmp_path)
+        run = self.write(tmp_path, supplied)
         assert run.returncode != 0, run.stdout + run.stderr
         assert (
             f'ddd_add_component: "{supplied.as_posix()}" registered on target "store" describes '
             "a project, and a component is not one. Name a project file with PROJECT of "
             "ddd_generate(), which follows what it includes."
         ) in " ".join(run.stderr.split())
+
+    def test_one_registered_second_is_refused_as_well(self, tmp_path: Path) -> None:
+        """Every file of the call is read, not only the first."""
+        supplied = self.supplied(tmp_path)
+        run = self.write(tmp_path, self.component(tmp_path, "store.ddd.json", "Store"), supplied)
+        assert run.returncode != 0, run.stdout + run.stderr
+        assert f'"{supplied.as_posix()}" registered on target "store" describes a project' in (
+            " ".join(run.stderr.split())
+        )
+
+    def test_a_component_named_or_filed_as_a_project_is_registered(self, tmp_path: Path) -> None:
+        """What makes a file a project is its top level key: a component whose file is named
+        ``project.ddd.json``, whose name is ``project``, or which carries a block keyed
+        ``project`` - the extension of a plugin of that name - is a component."""
+        named = self.component(tmp_path, "project.ddd.json", "project")
+        keyed = self.component(tmp_path, "keyed.ddd.json", "Keyed", extensions={"project": {}})
+        run = self.write(tmp_path, named, keyed)
+        assert run.returncode == 0, run.stdout + run.stderr
+        assert "describes a project" not in run.stdout + run.stderr
 
 
 VENDOR_TYPES = """#ifndef KEYWORD_VENDOR_H

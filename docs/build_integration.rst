@@ -105,6 +105,9 @@ Which kind a file is is read at configure time, so a file whose json does not pa
 says nothing about itself. It is checked like a component, because what is wrong with it is
 exactly what that check reports: ``ninja <target>.ddd`` names the line and the column, and
 the same target run after the repair checks the repaired file, without configuring again.
+Neither does a file the build has yet to write into the build tree; the first build to find
+it there configures again by itself and reads its kind (see *The targets it creates* below),
+so a vocabulary the build writes is checked in context from then on.
 
 Generating an image
 ~~~~~~~~~~~~~~~~~~~
@@ -121,7 +124,8 @@ it hands ``<stem>_ddd_headers`` to the components registered up to that point - 
 both which components get the generated headers and whose compile usage travels with them.
 In the collected mode the image also has to be linked to its components by the time that
 directory is done: a component it reaches only through a link made, or a library defined,
-later is a configure error naming the component (see *The targets it creates* below).
+later is a configure error naming the component, and so is one registered with
+``ddd_add_component()`` later (see *The targets it creates* below).
 The a2l is the one artefact that cannot be complete before the link, which decides every
 address it carries: with ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` the module writes it after
 the link instead, out of the linked image or out of a map extracted from it, and one build gives
@@ -223,9 +227,15 @@ stays internal.
 
 The templates are collected with ``file(GLOB ... CONFIGURE_DEPENDS "<dir>/*.jinja2")``, so a
 template added or removed is noticed by the build itself instead of by whoever remembers to
-re-run cmake. The same files are dependencies of the generation step, which makes a template
-behave like any other source: change the banner of ``ddd_globals.c.jinja2`` and the next build
-regenerates the file and recompiles it.
+re-run cmake; the directory is read as a directory, whatever characters it has, so a checkout
+in ``pr[1]`` is no character class. The same files are dependencies of the generation step,
+which makes a template behave like any other source: change the banner of
+``ddd_globals.c.jinja2`` and the next build regenerates the file and recompiles it. So is every
+``*.jinja2`` below the directory, which is never rendered and may be imported or included by
+a template that is (see :doc:`templates`), and so is the list of them, kept in the binary
+directory of the call as ``<stem>_ddd_templates.txt`` and rewritten only when it differs: a
+template removed leaves every other input of the generation as it was, and only a run of it
+takes back the file that template rendered (see :ref:`what-a-run-owns`).
 
 The names of the templates are then turned into the declared outputs. A helper - a name
 starting with an underscore, such as ``_macros.jinja2`` - renders nothing of its own, and a
@@ -242,7 +252,10 @@ Three arrangements are refused with a message rather than with a confusing failu
 directory holding no ``*.jinja2`` file at all, a directory holding nothing but helpers and
 ``{component}`` templates, from which no output could be declared, and a directory in which no
 template produces a ``.c`` file - the definitions of the global variables have to be compiled
-into the image, so one template must produce a source file.
+into the image, so one template must produce a source file. For the same reason a project that
+enables no C - ``project(<name> LANGUAGES CXX)`` - is refused, naming the ``.c`` files and the
+two ways to enable it, rather than left to CMake, which cannot tell the linker language of the
+object library compiling them and names that library alone.
 
 Collection follows the link graph
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -348,6 +361,12 @@ where it would land.
 The file is not named ``*.ddd.json``: that extension means "a DDD description file", the
 ``file-extension`` check enforces it, and this is a document *about* a project rather than one.
 
+The build watches whether it is there, all the same. It and the collected project description
+are what the configure writes into the output directory, and no step of the build writes
+them again, so a deleted output directory stopped a Ninja build on the description, missing
+and with no rule to make it, until somebody configured by hand. A build that finds the record
+gone now configures again first, which writes both back, and then generates the rest.
+
 The targets it creates
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -409,9 +428,10 @@ including the ones this image happens not to link.
      - what it is
    * - ``<stem>_ddd_generation``
      - custom target running the generator. It depends on the project description and the
-       files collected into it, on the templates, on a ``.py`` plugin the call names, on
-       whatever ``DEPENDS`` adds and on the tool itself, so any of those changing regenerates -
-       and the c code the image is otherwise built from does not enter into it.
+       files collected into it, on the templates - every ``*.jinja2`` below the directory, and
+       the list of them - on a ``.py`` plugin the call names, on whatever ``DEPENDS`` adds and
+       on the tool itself, so any of those changing regenerates - and the c code the image is
+       otherwise built from does not enter into it.
    * - ``<stem>_ddd_headers``
      - interface library carrying the include directory of the generated headers, and
        depending on the generation. Every registered component links it, so a component
@@ -462,14 +482,20 @@ image links. Their names come from inside the description files, so the module r
 when the build is configured: ``ddd_add_component`` reads the component name of each file it
 registers, ``ddd_generate`` follows the image's link graph to the components it links once
 the directory calling it is done, and with ``PROJECT`` the names are read off the files
-``ddd sources`` lists. A link the image makes behind a generator expression -
-``$<$<CONFIG:Debug>:trace>``, say - cannot be evaluated when the names are read, so every
-component it names is declared, whatever the expression comes to; under Ninja one whose header
-the generation then never writes makes the generation run at every build. The image may be
-linked after the call, in that directory or in one it adds, and not later: a component it
-reaches only through a link made, or a library defined, once that directory is done would have
-a header the generation does not declare, so the configure stops at it, once the top directory
-is done, naming the component.
+``ddd sources`` lists. A link the image makes behind ``$<CONFIG:...>`` alone -
+``$<$<CONFIG:Debug>:trace>``, say - is read for the ``CMAKE_BUILD_TYPE`` the build is
+configured with, as CMake reads it, a single-config generator having that one configuration:
+a Release image does not link ``trace``, and declares no header of it. A link behind any other
+generator expression - one inside that ``$<CONFIG:...>`` among them - cannot be evaluated
+when the names are read, so every component it names
+is declared, whatever the expression comes to; under Ninja one whose header the generation
+then never writes makes the generation run at every build. The image may be linked after the
+call, in that directory or in one it adds, and not later: a component it reaches only through
+a link made, or a library defined, once that directory is done would have a header the
+generation does not declare, so the configure stops at it, once the top directory is done,
+naming the component - and so it does at a component registered with ``ddd_add_component()``
+once that directory is done, on a target the image linked in time, naming it as registered
+late.
 
 Declaring the headers is what makes the build after a change right under Ninja, which looks at
 the files a build reads before it runs anything: a header no step declares was looked at
@@ -499,10 +525,11 @@ configure runs again by itself, every file of the project being one of its depen
 registered description whose json does not parse when the build is configured names no
 component, and is a dependency of the configure until it does, so the build after its repair
 configures again. One generated into the build tree later names its component only from the
-first configure that finds it, and none comes by itself, CMake taking no configure dependency
-on a file the build writes: the build has to be configured again by hand once it is there,
-and until then the build after its component's header changed compiles the components reading
-it against the old one. The configure warns of it, naming the file.
+first configure that finds it, and CMake takes no configure dependency on a file the build
+writes, so it is watched instead, as a wildcard of ``includes`` is: the first build to find
+it there configures again before it does anything else, and that configure reads the
+component it describes, or that it is a vocabulary. Its header is therefore declared before a
+change of it can reach a reader. The configure that does not find it says so, naming the file.
 
 A header whose component has left the image is another matter: once the image no longer links
 the component, nothing declares the header and the build leaves it where it is, which is why
@@ -643,7 +670,11 @@ the collected mode and generated out of the link graph instead of out of the fil
 meant.
 The quoted form, ``ADDRESS_MAP "${DDD_MAP}"``, which every recipe on this page writes, is
 refused the same way: a keyword followed by an empty argument has no value either, from CMake
-3.20 on.
+3.20 on. Only the argument right after a keyword is weighed, that being what says whether the
+keyword was given: ``SEVERITY "" "unused-output=info"`` is refused, while an empty argument
+after a value - ``SEVERITY "unused-output=info" "" "missing-producer=ignore"`` - leaves the
+keyword its values and is dropped from them, as it is from the descriptions of
+``ddd_add_component`` and from ``PLUGINS``.
 
 ``NO_PROPAGATE_HEADERS`` is the option a project building **several** images from the same
 components cannot avoid. A component's interface header is generated for one link closure, so

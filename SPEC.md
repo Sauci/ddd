@@ -2262,7 +2262,9 @@ error - a project file is named with `PROJECT` of `ddd_generate`, which follows 
 where nothing follows the includes of a registered file; so, in both calls, is a
 keyword given no value, which the error names: a variable that expanded to nothing reads
 exactly like a keyword nobody gave, and each one silently changes what the call does - the
-quoted form `ADDRESS_MAP "${DDD_MAP}"`, a keyword followed by an empty argument, included; it defines an on-demand
+quoted form `ADDRESS_MAP "${DDD_MAP}"`, a keyword followed by an empty argument, included,
+while an empty argument after a value leaves the keyword its values and is dropped from them;
+it defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
 declares no interface of its own; a registered file whose JSON does not parse at all is
@@ -2295,7 +2297,10 @@ it is made of, its plugins and its name - so it has to exist and parse by then, 
 does not, a file the build has yet to write among them, is a configure error naming it; one
 that parses and that the tool cannot resolve all the same, a root failing its schema, is
 warned of, and the generation then depends on that file alone, as does the configure step.
-An `ADDRESS_MAP <file>` names the address map of
+The output directory holds what the configure step writes there - the build record and, in
+the collected mode, the project description - which no step of the build writes again, so
+the configure step watches the record: a build that finds it gone configures again first,
+and writes both back. An `ADDRESS_MAP <file>` names the address map of
 [section 6](#6-address-information), which a step of the project's extracts from the image
 after the link: the A2L is written after the link out of the map, as `ADDRESSES_FROM_IMAGE`
 below writes it out of the image, so that the A2L of a build holds the addresses of the
@@ -2314,13 +2319,18 @@ component the project names, whatever the image links - named when the build is 
 `ddd_add_component` reads the component name of each file it registers, and `ddd_generate`
 follows the image's link graph to the components it links once the directory calling it is
 done, so that an image may be linked after the call, in that directory or one it adds; with
-`PROJECT` the names are read off the files `ddd sources` lists. A link behind a generator
-expression cannot be evaluated when the names are read, so every component it names is
-declared whatever the expression comes to, and one whose header is then never written makes
-the generation run at every build under Ninja. A component the image reaches only through a
-link made, or a library defined, after that directory is done is a configure error naming the
-component, raised once the top directory is done: the generation was added without its header,
-which a command cannot be given afterwards. A declared header is one the build looks at again after
+`PROJECT` the names are read off the files `ddd sources` lists. A link behind
+`$<CONFIG:...>` alone is read for the `CMAKE_BUILD_TYPE` configured, as CMake reads it for the
+one configuration of a single-config generator; a link behind any other generator expression,
+one nested in that `$<CONFIG:...>` among them, cannot be evaluated when the names are read,
+so every component it names is declared
+whatever the expression comes to, and one whose header is then never written makes the
+generation run at every build under Ninja. A component the image reaches only through a link
+made, or a library defined, after that directory is done is a configure error naming the
+component, raised once the top directory is done, and so is one registered on a target the
+image reached in time only once that directory was done, the error naming it as registered
+late: the generation was added without its header, which a command cannot be given
+afterwards. A declared header is one the build looks at again after
 the generation ran, so the build after a description change compiles the components whose
 header changed, and only those, rather than linking the new definitions with readers compiled
 against the old header. A component renamed in its description therefore needs the build
@@ -2335,15 +2345,20 @@ to do. A relative entry is read from the directory of the file naming it whateve
 that directory has. A registered
 file that does not parse when the build is configured names no component and is a dependency
 of the configure step until it does. One that does not exist yet, being generated into the
-build tree later, names no component either and is no dependency of the configure step, a file
-the build writes being none; the configure step warns of it, naming the file, since until the
-build is configured again once it is written, the build after its component's header changed
-compiles the components reading it against the old one. Under a Makefile generator, which
-looks at no file again once a step has run, each of the two steps - the generation and the
-A2L's after the link - has a stamp in the output directory for its one output, touched by
-every run that succeeds, and the files it writes are its byproducts: a run that changed
-nothing leaves the build after it nothing to do, and a file it left as it was compiles nothing
-again.
+build tree later, names no component either and says nothing of its kind, and no file the
+build writes is a dependency of the configure step; it is watched instead, as a glob of its
+own path with `CONFIGURE_DEPENDS`, so that the first build to find it there configures again
+before anything else and reads both, and the configure step says so, naming the file. Until
+then its `<target>.ddd` checks it as a component. The generation depends on every `*.jinja2`
+below the template directory, which it reads as a directory whatever characters it has - a
+template in a subdirectory is never rendered and may be imported or included - and on the list
+of them, which the configure step keeps in the build tree as `<stem>_ddd_templates.txt` and
+rewrites only when it differs, so that a template removed runs the generation, which takes
+back the file it rendered. Under a Makefile generator, which looks at no file again once a
+step has run, each of the two steps - the generation and the A2L's after the link - has a
+stamp in the output directory for its one output, touched by every run that succeeds, and the
+files it writes are its byproducts: a run that changed nothing leaves the build after it
+nothing to do, and a file it left as it was compiles nothing again.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
 ([section 6](#6-address-information)). With either keyword one build gives the complete A2L:
@@ -2393,7 +2408,8 @@ a run failing its checks writes none of them; its path is published as the image
 itself is found by `find_program`
 into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
 upgraded DDD regenerates; multi-config generators are refused at configure time, because
-the generated files have one path that every configuration would write to. The module and
+the generated files have one path that every configuration would write to, and so is a project
+that enables no C, the definitions the templates render being C. The module and
 the tool **shall** be one release: including the module runs `ddd --version` and refuses,
 naming both, a tool spelling another version than the module does, because every option the
 module passes is checked when the build runs it and a mismatch is otherwise an unrecognised

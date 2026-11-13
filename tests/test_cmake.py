@@ -788,8 +788,8 @@ class TestTheBuildAfterAnEdit:
         assert refused.code != 0, said
         assert (
             'ddd_generate: the component "ddd_types" of "img" would have "{component}.h.jinja2" '
-            'render "ddd_types.h", which is also the output of "ddd_types.h.jinja2": ninja '
-            "refuses a build that declares one file twice. Rename the component, or the template."
+            'render "ddd_types.h", which "ddd_types.h.jinja2" renders already: ninja refuses a '
+            "build that declares one file twice. Rename the component, or one of the templates."
         ) in said
         spare.write_text(named, encoding="utf-8")
         assert story.build().code == 0

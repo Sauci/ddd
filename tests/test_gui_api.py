@@ -22,6 +22,7 @@ from conftest import (
     DOUBLE_BESIDE_SCALED,
     EXAMPLES,
     FLOAT_BESIDE_ENUM,
+    LOCAL_BESIDE_OUTPUT,
     STRING_TYPE_BESIDE_GRID,
     STRING_TYPE_BESIDE_SCALAR,
     TEXT,
@@ -8850,24 +8851,43 @@ class TestWhatAComponentMayAdd:
         api, root = demo
         body = get(api, "/api/declarable", file=self.controller(root)).body
         names = {entry["name"]: entry for entry in body["names"]}
-        # Measured against examples/demo: Controller declares 14 of the project's 23 names.
-        assert sorted(names) == [
-            "BlockA",
-            "CurveB",
-            "Diagnosis",
-            "FlagA",
-            "ValueC",
-            "ValueD",
-            "ValueI",
-            "ValueJ",
-            "ValueK",
-        ]
+        # Measured against examples/demo: Controller declares 14 of the project's 23 names, and
+        # of the 9 it does not, BlockA, CurveB, Diagnosis, ValueD and ValueK are another
+        # component's locals, which no other component may declare - so they are not offered.
+        assert sorted(names) == ["FlagA", "ValueC", "ValueI", "ValueJ"]
         assert (names["ValueC"]["producer"], names["ValueC"]["kind"]) == (
             "SensorHub",
             "measurement",
         )
         # Every one of them is produced by something, so reading is all any of them may be.
         assert names["ValueC"]["scopes"] == ["input"]
+
+    def test_a_name_another_component_keeps_local_is_neither_offered_nor_planned(
+        self, tmp_path: Path
+    ) -> None:
+        """Review finding: ``Loc`` is ``W``'s ``local``. It was offered to ``R`` as an ``input``,
+        planned and applied, and the project that reported nothing reported a ``local-conflict``.
+        Not offered, a read of it is refused in the sentence that says why; what ``W`` outputs is
+        offered still."""
+        api = opened(
+            tmp_path,
+            {"p.ddd.json": project("P", *LOCAL_BESIDE_OUTPUT), **LOCAL_BESIDE_OUTPUT},
+        )
+        reader = posix(tmp_path, "r.ddd.json")
+        assert every_finding(api) == []
+        body = get(api, "/api/declarable", file=reader).body
+        assert [(entry["name"], entry["scopes"]) for entry in body["names"]] == [("Out", ["input"])]
+        before = contents(tmp_path)
+        assert get(
+            api, "/api/declaration-plan", action="read", file=reader, name="Loc", scope="input"
+        ) == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "'Loc' is local to component 'W', so no other component may declare it",
+            },
+        )
+        assert contents(tmp_path) == before
 
     def test_the_kinds_carry_the_form_each_one_asks_for(self, demo) -> None:
         api, root = demo

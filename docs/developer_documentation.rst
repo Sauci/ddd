@@ -1176,7 +1176,11 @@ uses and its members, and ``GET /api/type-plan`` previews a change of either kin
 component may add a declaration of a variable the project already declares or of a new
 object of one of the six kinds, and its three verbs take a file, a name and a scope to
 read one; a file, a scope and a definition to declare one; and a file and a name to
-remove one.
+remove one. A variable another component declares ``local`` is not one it may read:
+``Index.producers`` counts a local among the producers of a name, so ``scopes_for`` asks the
+scope each declaration states instead and answers none, ``declarable`` leaves the name out,
+and ``read_object`` refuses it in any scope, since a declaration beside a local is the
+``local-conflict`` the analysis reports whatever its scope.
 
 ``ddd.object_values`` sits beside ``ddd.declaration_plans`` and ``ddd.type_plans``: what
 one object's grid shows - its kind, datatype, unit, conversion, resolved limits, shape,

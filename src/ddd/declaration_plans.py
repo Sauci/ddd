@@ -80,7 +80,12 @@ class Declarable:
 
 
 def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[Declarable, ...]:
-    """Every name the project declares that ``file`` does not, sorted by name."""
+    """Every name the project declares that ``file`` does not and a scope may take there, sorted
+    by name.
+
+    A name some component declares ``local`` is left out: :func:`scopes_for` answers it no scope,
+    and the name field is not offered a name the form has no scope to write it with.
+    """
     here = file.resolve()
     return tuple(
         Declarable(
@@ -93,21 +98,43 @@ def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[D
             ),
         )
         for name, sites in sorted(built.declarations.items())
-        if all(site.path != here for site in sites)
+        if all(site.path != here for site in sites) and scopes_for(built, name)
     )
 
 
 def scopes_for(built: Index, name: str) -> tuple[str, ...]:
     """Which of :data:`SCOPES` this name may be declared with, in that order.
 
-    ``input`` always. ``output`` only while nothing produces the name, so the menu cannot make
-    a ``multiple-producers`` - and when something is missing a producer, this is the repair.
-    ``local`` only for a name nothing declares at all, because ``local-conflict`` is exactly a
-    local beside another declaration.
+    ``input`` while no component keeps the name ``local``. ``output`` only while nothing
+    produces the name, so the menu cannot make a ``multiple-producers`` - and when something is
+    missing a producer, this is the repair. ``local`` only for a name nothing declares at all,
+    because ``local-conflict`` is exactly a local beside another declaration.
+
+    No scope at all where a component declares the name ``local``: it owns the object
+    exclusively, so a declaration of it anywhere else is a ``local-conflict`` whatever its scope -
+    an ``input`` no less than a second producer, and one more where the project holds one already.
+    The index lists a local among the producers of a name, which the editor jumps by and the grid
+    reads values from (:attr:`ddd.lsp.navigation.Index.producers`), so this is not read off them:
+    it is asked of the scope each declaration states.
     """
     if name not in built.declarations:
         return SCOPES
+    if _kept_by(built, name) is not None:
+        return ()
     return ("input",) if built.producers.get(name) else ("output", "input")
+
+
+def _kept_by(built: Index, name: str) -> str | None:
+    """The name of the component that declares ``name`` ``local``, as the analysis loaded it, or
+    ``None`` where none does.
+
+    The first, in the order the project lists its components: the one ``local-conflict`` names
+    when it files each declaration of the name beside it.
+    """
+    for site in built.declarations.get(name, ()):
+        if built.scopes[site] == Scope.LOCAL.value:
+            return built.components[site.path]
+    return None
 
 
 def form_for(built: Index, kind: str) -> tuple[KeyOffer, ...]:
@@ -167,6 +194,10 @@ def read_object(
     declaration there is: there is no owner's definition to copy, and the alternative is
     refusing the very repair the reader came for.
 
+    A name a component declares ``local`` is refused in every scope, saying whose it is rather than
+    only that the scope asked is none it may take: the declaration would be a ``local-conflict``,
+    which is why :func:`scopes_for` answers it no scope and :func:`declarable` leaves it out.
+
     That repair is what a :data:`PRODUCING_SCOPES` scope means here - ``scopes_for`` offers
     ``output`` exactly while nothing produces the name - so the declaration written is stamped,
     as :func:`declare_object` stamps one. Without it the verb would trade a ``missing-producer``
@@ -184,6 +215,11 @@ def read_object(
         raise DeclarationRefusalError("not-found", f"the project declares no '{name}'")
     if any(site.path == here for site in sites):
         raise DeclarationRefusalError("invalid", f"this component already declares '{name}'")
+    if (keeper := _kept_by(built, name)) is not None:
+        raise DeclarationRefusalError(
+            "invalid",
+            f"'{name}' is local to component '{keeper}', so no other component may declare it",
+        )
     if scope not in scopes_for(built, name):
         raise DeclarationRefusalError("invalid", f"'{name}' may not be declared '{scope}' here")
     owner = (built.producers.get(name) or sites)[0]

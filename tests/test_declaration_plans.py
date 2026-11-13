@@ -8,7 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from conftest import STRING_TYPE_BESIDE_SCALAR, built_of, component, declare, project, write_tree
+from conftest import (
+    LOCAL_BESIDE_OUTPUT,
+    STRING_TYPE_BESIDE_SCALAR,
+    built_of,
+    component,
+    declare,
+    project,
+    write_tree,
+)
 from ddd.analysis import PRODUCER_KEYS, analyze
 from ddd.declaration_plans import (
     CARRIED_BY_A_READER,
@@ -101,21 +109,18 @@ def checks_after(base: Path, plan: DeclarationPlan, root: str = "p.ddd.json") ->
 
 
 class TestWhatMayBeRead:
-    def test_every_name_the_project_has_that_this_file_has_not(
+    def test_every_name_the_project_shares_that_this_file_has_not(
         self, demo: Index, cache: dict[Path, Document]
     ) -> None:
         # Measured against examples/demo as it stands: Controller declares 14 of the project's
-        # 23 names, so these 9 are what it could read, each with the component producing it.
+        # 23 names, and of the 9 it does not, five are another component's locals - BlockA,
+        # CurveB, Diagnosis, ValueD and ValueK - which no other component may declare. These 4
+        # are what it could read, each with the component producing it.
         assert declarable(demo, CONTROLLER, cache) == (
-            Declarable("BlockA", "value_block", "UserInterface"),
-            Declarable("CurveB", "curve", "UserInterface"),
-            Declarable("Diagnosis", "measurement", "SensorHub"),
             Declarable("FlagA", "measurement", "SensorHub"),
             Declarable("ValueC", "measurement", "SensorHub"),
-            Declarable("ValueD", "measurement", "SensorHub"),
             Declarable("ValueI", "measurement", "UserInterface"),
             Declarable("ValueJ", "measurement", "EventLogger"),
-            Declarable("ValueK", "measurement", "EventLogger"),
         )
 
     def test_a_name_nothing_produces_names_no_producer(
@@ -137,6 +142,33 @@ class TestWhatMayBeRead:
             Declarable("Orphan", "measurement", None),
         )
 
+    def test_a_name_another_component_keeps_local_is_not_offered(
+        self, tmp_path: Path, cache: dict[Path, Document]
+    ) -> None:
+        # Review finding: `Loc` is W's `local`, which keeps it from every other component, and
+        # it was offered to R with the one scope `input` - which is `local-conflict` exactly, a
+        # local beside another declaration. What W *outputs* is still R's to read.
+        built, root = built_of(tmp_path, **LOCAL_BESIDE_OUTPUT)
+        assert declarable(built, root / "r.ddd.json", cache) == (
+            Declarable("Out", "measurement", "W"),
+        )
+
+    def test_a_local_another_component_already_reads_is_not_offered_either(
+        self, tmp_path: Path, cache: dict[Path, Document]
+    ) -> None:
+        # A project already holding a reader beside the local reports `local-conflict`, and the
+        # analysis files it again for each further declaration beside the local: a third
+        # component reading the name is one more error, so the name is not offered to it either.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "w.ddd.json": component("W", declare("local", "Loc", id="aaaaaaaaaaaa")),
+                "x.ddd.json": component("X", declare("input", "Loc")),
+                "r.ddd.json": component("R"),
+            },
+        )
+        assert declarable(built, root / "r.ddd.json", cache) == ()
+
 
 class TestWhichScopesANameMayTake:
     def test_a_name_with_a_producer_may_only_be_read(self, demo: Index) -> None:
@@ -157,6 +189,14 @@ class TestWhichScopesANameMayTake:
 
     def test_a_name_the_project_has_never_seen_may_take_all_three(self, demo: Index) -> None:
         assert scopes_for(demo, "Pressure") == SCOPES
+
+    def test_a_name_another_component_keeps_local_may_take_none(self, tmp_path: Path) -> None:
+        # A local is its component's alone, so any other declaration of it - a reader's no less
+        # than a second producer's - is a `local-conflict`, and no scope is the answer. A name
+        # beside it that is only written is still read.
+        built, _ = built_of(tmp_path, **LOCAL_BESIDE_OUTPUT)
+        assert scopes_for(built, "Loc") == ()
+        assert scopes_for(built, "Out") == ("input",)
 
 
 class TestWhatAKindAsksFor:
@@ -310,6 +350,13 @@ class TestReadingWhatTheProjectHas:
         assert refused.value.code == "invalid"
         assert refused.value.message == "this component already declares 'ValueA'"
 
+    def test_a_local_this_component_keeps_is_one_it_already_declares(self, demo, cache) -> None:
+        # A local of this file's own is not another component's: it is refused as a name the
+        # file already declares, not as one kept by the component that asks.
+        with pytest.raises(DeclarationRefusalError) as refused:
+            read_object(demo, CONTROLLER, "ParameterA", "input", cache)
+        assert refused.value.message == "this component already declares 'ParameterA'"
+
     def test_a_scope_the_name_may_not_take_is_refused(self, demo, cache) -> None:
         # ValueC has a producer, so offering `output` here would make a multiple-producers.
         with pytest.raises(DeclarationRefusalError) as refused:
@@ -355,6 +402,66 @@ class TestReadingWhatTheProjectHas:
         assert list(written["definition"])[:2] == ["name", "id"]
         assert len(written["definition"]["id"]) == OBJECT_ID_LENGTH
         assert checks_after(tmp_path, plan) == []
+
+    @pytest.mark.parametrize("scope", SCOPES)
+    def test_a_name_another_component_keeps_local_is_refused_in_every_scope(
+        self, tmp_path: Path, cache: dict[Path, Document], scope: str
+    ) -> None:
+        # Review finding: reading it was planned as an `input`, written, and reported by
+        # `ddd check` as `'Loc' is local to component 'W' but is also declared as input by
+        # component 'R'`, in a project that reported nothing. The refusal says why, in the
+        # sentence the check uses for what it is.
+        built, root = built_of(tmp_path, **LOCAL_BESIDE_OUTPUT)
+        with pytest.raises(DeclarationRefusalError) as refused:
+            read_object(built, root / "r.ddd.json", "Loc", scope, cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "'Loc' is local to component 'W', so no other component may declare it",
+        )
+
+    def test_the_component_named_is_the_first_to_keep_the_name_local(
+        self, tmp_path: Path, cache: dict[Path, Document]
+    ) -> None:
+        # Two components keeping one name local is a `local-conflict` of its own, and the check
+        # names the first the project lists, as the refusal does: `v` is listed before `w`.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "v.ddd.json": component("V", declare("local", "Loc", id="aaaaaaaaaaaa")),
+                "w.ddd.json": component("W", declare("local", "Loc", id="bbbbbbbbbbbb")),
+                "r.ddd.json": component("R"),
+            },
+        )
+        with pytest.raises(DeclarationRefusalError) as refused:
+            read_object(built, root / "r.ddd.json", "Loc", "input", cache)
+        assert refused.value.message == (
+            "'Loc' is local to component 'V', so no other component may declare it"
+        )
+
+    def test_nothing_the_form_offers_is_a_finding_once_it_is_written(
+        self, copied_demo: tuple[Index, Path], cache: dict[Path, Document]
+    ) -> None:
+        # The harm itself, over a project that reports nothing: each name Controller is offered,
+        # read in each scope it is offered, is written and the project asked what it says. Five
+        # of the nine names it was offered were another component's locals and said
+        # `local-conflict`, so nothing the form offers may make the project say anything.
+        built, root = copied_demo
+        controller = root / "components" / "controller.ddd.json"
+        original = controller.read_text(encoding="utf-8")
+        offered = [
+            (entry.name, scope)
+            for entry in declarable(built, controller, cache)
+            for scope in scopes_for(built, entry.name)
+        ]
+        assert ("ValueC", "input") in offered
+        brings: dict[tuple[str, str], list[str]] = {}
+        for name, scope in offered:
+            plan = read_object(built, controller, name, scope, cache)
+            found = checks_after(root, plan, "demo.ddd.json")
+            if found:
+                brings[name, scope] = found
+            controller.write_text(original, encoding="utf-8", newline="")
+        assert brings == {}
 
     def test_an_owner_the_file_no_longer_declares_since_the_index_was_built_is_not_found(
         self, tmp_path, cache

@@ -1387,6 +1387,10 @@ class DeclarableReply(_Frozen):
     """Absolute, posix-separated path of the component asked about."""
 
     names: tuple[DeclarableName, ...]
+    """The variables this component may add: every name the project declares that it does not,
+    except one a component declares ``local``, which no other component may declare in any
+    scope."""
+
     kinds: tuple[KindForm, ...]
     scopes: tuple[str, ...]
     """What a name the project has never seen may be declared with."""

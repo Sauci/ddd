@@ -183,6 +183,19 @@ STRING_TYPE_BESIDE_GRID: Final = {
 """The same reader beside a writer that states two dimensions: giving the reader the writer's
 dimensions leaves a string of two, which an array of strings is not allowed to be."""
 
+LOCAL_BESIDE_OUTPUT: Final = {
+    "w.ddd.json": component(
+        "W",
+        declare("local", "Loc", id="aaaaaaaaaaaa"),
+        declare("output", "Out", id="bbbbbbbbbbbb"),
+    ),
+    "x.ddd.json": component("X", declare("input", "Out")),
+    "r.ddd.json": component("R", declare("local", "Mine", id="cccccccccccc")),
+}
+"""A writer that keeps ``Loc`` to itself and writes ``Out``, which a second component reads, and a
+reader that keeps one object of its own: the project reports nothing, and ``Out`` is all ``R`` may
+read of it. ``Loc`` declared in ``R``, in any scope, is a ``local-conflict``."""
+
 
 def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
     """Write a mapping of relative path -> json document (or raw string).

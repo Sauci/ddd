@@ -592,6 +592,14 @@ target_link_libraries(bundle INTERFACE story::writer)
 add_library(spare STATIC spare.c)
 {self.registrations()}{image}"""
 
+    def reshape(self, shape: Shape) -> None:
+        """The project's ``CMakeLists.txt`` rewritten for another shape of the same layout, as
+        a developer edits it: the build that follows configures again."""
+        self.shape = shape
+        if shape.in_a_subdirectory():
+            (self.source / "app" / "CMakeLists.txt").write_text(self.image(), encoding="utf-8")
+        (self.source / "CMakeLists.txt").write_text(self.listing(), encoding="utf-8")
+
     def description(self, name: str) -> Path:
         """Where the description of ``name``, ``"sensor"`` or ``"logger"``, is written."""
         return self.components / f"{name}.ddd.json"
@@ -758,6 +766,33 @@ class TestTheBuildAfterAnEdit:
         widened = story.build()
         assert widened.code == 0, widened.output
         assert widened.printed == "logged 1234"
+
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_component_named_like_a_file_of_the_generation_is_refused_by_name(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """A component named ``ddd_types`` has ``{component}.h.jinja2`` render ``ddd_types.h``,
+        which ``ddd_types.h.jinja2`` renders too: ninja refused to load a build declaring that
+        file twice, naming no component, and went on refusing once the description was put
+        right, the build being one that could no longer configure itself again. The configure
+        refuses it instead, naming the component and the template, and the build after the
+        repair configures again by itself."""
+        story = Story(tmp_path, STORY_SHAPES["collected"], generator)
+        assert story.build().code == 0
+        spare = tmp_path / "spare.ddd.json"
+        named = spare.read_text(encoding="utf-8")
+        spare.write_text(named.replace('"Spare"', '"ddd_types"'), encoding="utf-8")
+        story.reshape(Shape(spare_linked=True))
+        refused = story.build()
+        said = " ".join(refused.output.split())
+        assert refused.code != 0, said
+        assert (
+            'ddd_generate: the component "ddd_types" of "img" would have "{component}.h.jinja2" '
+            'render "ddd_types.h", which is also the output of "ddd_types.h.jinja2": ninja '
+            "refuses a build that declares one file twice. Rename the component, or the template."
+        ) in said
+        spare.write_text(named, encoding="utf-8")
+        assert story.build().code == 0
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_description_unreadable_when_configured_is_read_after_its_repair(

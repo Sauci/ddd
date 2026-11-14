@@ -302,8 +302,8 @@ def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
     ``init-invalid`` and still resolves the project. Laid out regardless, an element of either
     kind reached :class:`Grid` where the other belongs, and the answer failed to be built: a
     ``500``. Nothing else is judged. A short or a ragged init is drawn as written: the finding
-    says what is wrong with it, and setting a cell or pasting a table - the two plans this grid
-    is read for - is how the page repairs it, which a refusal here would close; the variable
+    says what is wrong with it, and setting cells or pasting a table - the plans this grid is
+    read for - is how the page repairs it, which a refusal here would close; the variable
     panel's own settle of ``dimensions`` can leave an init short. A whole scalar fills every
     cell, text is no grid at all, and an object of no shape has no cell to lay any of its init
     out in."""
@@ -460,6 +460,76 @@ def set_cell(
     return ValuePlan((PlannedEdit(site.path, (operation,)),))
 
 
+def set_cells(
+    dictionary: DataDictionary,
+    built: Index,
+    name: str,
+    cells: Sequence[tuple[str, float]],
+    cache: dict[Path, Document],
+) -> ValuePlan:
+    """What setting several elements at once takes: the cells typed into the page's grid, each
+    given as :func:`set_cell` takes one, its element and its raw count, in the grid's order.
+
+    One edit, a ``set`` at each element's own pointer: what nobody typed stays as the file writes
+    it - its spellings, ``3.0`` as ``3.0``, its layout, and a value its datatype cannot hold,
+    which the analysis reports and this leaves alone - and a block too long for its table to be
+    sent in one request takes its cells all the same. Where the array is not written yet, or is
+    too short to hold one of the cells, the whole ``init`` is written instead, as :func:`set_cell`
+    writes it for one cell, every cell given set over the values the file states. A cell given
+    twice is set to the value given last, as the edit engine makes two sets of one pointer.
+
+    Refused as :func:`set_cell` refuses one cell, and in the same order: no shape, text, no
+    producer or more than one; then an element of another number of indices than the shape's,
+    which names no element of the object at all (:func:`_indices`); then every cell past the end
+    of the shape and every value its datatype cannot hold, each named with its own reason as
+    :func:`set_values` names a table's (:func:`_all_of_them`); then a producing declaration no
+    longer where the index found it (:func:`_in_place`).
+    """
+    grid = grid_of(dictionary, built, name)
+    if not grid.shape:
+        raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+    if grid.stated == "text":
+        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+    sites = built.producers.get(name) or []
+    if len(sites) != 1:
+        raise ValueRefusalError("invalid", _no_single_producer(name, sites))
+    found = [(_indices(at, grid.shape), at, raw) for at, raw in cells]
+    datatype = Datatype(grid.datatype)
+    offenders: list[tuple[str, str]] = []
+    for element, at, raw in found:
+        row, column = (0, element[0]) if len(grid.shape) == 1 else element
+        label = _element_label(row, column, grid.shape)
+        if _past(element, grid.shape):
+            offenders.append((label, f"'{at}' is past the end of this object"))
+            continue
+        try:
+            _acceptable(raw, datatype, name)
+        except ValueRefusalError as refused:
+            offenders.append((label, refused.message))
+    if offenders:
+        raise ValueRefusalError("invalid", _all_of_them(offenders, name))
+    site = sites[0]
+    _in_place(site, name, cache)
+    written = read(site.path, cache).value_at(f"{site.pointer}.init")
+    if all(_has_cell(written, element) for element, _, _ in found):
+        operations = tuple(
+            Operation(
+                "set",
+                f"{site.pointer}.init" + "".join(f"[{index}]" for index in element),
+                json.dumps(raw),
+            )
+            for element, _, raw in found
+        )
+        return ValuePlan((PlannedEdit(site.path, operations),))
+    rows = _filled_out(grid.rows, grid.shape)
+    for element, _, raw in found:
+        row, column = (0, element[0]) if len(grid.shape) == 1 else element
+        rows[row][column] = raw
+    whole: list[float] | list[list[float]] = rows[0] if len(grid.shape) == 1 else rows
+    operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
+    return ValuePlan((PlannedEdit(site.path, (operation,)),))
+
+
 def _element_label(row: int, column: int, shape: tuple[int, ...]) -> str:
     """``element 3``, ``element 2, 4`` - one-based, the spelling the undo strip already uses.
 
@@ -608,15 +678,25 @@ def _filled_out(rows: tuple[tuple[float, ...], ...], shape: tuple[int, ...]) -> 
     return filled
 
 
-def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
-    """The indices ``at`` names - ``[2]``, or ``[1][3]`` - checked against the shape. Each is in
-    brackets, as the pointer the edit is made at writes them: ``1`` is no element, where read as
-    one it planned a key of its own, ``init1``."""
+def _indices(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """The indices ``at`` names - ``[2]``, or ``[1][3]`` - one for each of the shape's dimensions,
+    whether or not they fall inside it. Each is in brackets, as the pointer the edit is made at
+    writes them: ``1`` is no element, where read as one it planned a key of its own, ``init1``."""
     parts = _INDEX.findall(at) if _ELEMENT.fullmatch(at) else []
     if len(parts) != len(shape):
         raise ValueRefusalError("invalid", f"'{at}' is not an element of this object")
-    found = tuple(int(piece) for piece in parts)
-    if any(index >= size for index, size in zip(found, shape, strict=True)):
+    return tuple(int(piece) for piece in parts)
+
+
+def _past(found: tuple[int, ...], shape: tuple[int, ...]) -> bool:
+    """Whether the element at ``found`` lies past the end of the shape in any dimension."""
+    return any(index >= size for index, size in zip(found, shape, strict=True))
+
+
+def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """The indices ``at`` names (:func:`_indices`), checked against the shape."""
+    found = _indices(at, shape)
+    if _past(found, shape):
         raise ValueRefusalError("invalid", f"'{at}' is past the end of this object")
     return found
 

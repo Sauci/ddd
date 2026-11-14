@@ -140,34 +140,32 @@ export function offerSentence(
   return changesSentence(reply, offer.changes, physical);
 }
 
-/** The plan asked for what the typed cells set: one element's own - a `set` at its pointer, one
- * line of the file (`GET /api/value-plan`) - or, for several, the whole table they make of the
- * values the grid shows, as a pasted table's (`GET /api/values-plan`). */
-export type TypedPlan =
-  | { cell: { row: number; column: number }; at: string; raw: number }
-  | { rows: number[][] };
+/** One element a plan is asked to set: where it stands in the grid, its pointer's suffix - `[2]`,
+ * or `[1][3]` - and the raw count it is set to. */
+export interface PlannedCell {
+  row: number;
+  column: number;
+  at: string;
+  raw: number;
+}
 
-/** The plan `changes` asks for, or `null` where there is nothing to set. The table holds the
- * object's own shape: a cell its row does not reach is the zero the startup code makes, which is
- * what one cell set there writes too, and a row longer than the shape is cut to it, as a pasted
- * table is. */
+/** The plan asked for what the typed cells set: one element's own (`GET /api/value-plan`), or
+ * several elements', each set where it stands (`GET /api/cells-plan`) - only the cells typed
+ * written, never a table of the values the page holds, which spells the numbers nobody typed as
+ * the page reads them and outgrows one request for a large block. */
+export type TypedPlan = { cell: PlannedCell } | { cells: PlannedCell[] };
+
+/** The plan `changes` asks for, or `null` where there is nothing to set. */
 export function typedPlan(reply: ValuesReply, changes: readonly CellChange[]): TypedPlan | null {
-  const [only] = changes;
+  const cells = changes.map(({ row, column, raw }) => ({
+    row,
+    column,
+    at: cellAt(row, column, reply.shape),
+    raw,
+  }));
+  const [only] = cells;
   if (only === undefined) return null;
-  if (changes.length === 1) {
-    const { row, column, raw } = only;
-    return { cell: { row, column }, at: cellAt(row, column, reply.shape), raw };
-  }
-  const set = new Map(changes.map(({ row, column, raw }) => [`${row} ${column}`, raw]));
-  const [rows, columns] = wanted(reply);
-  return {
-    rows: Array.from({ length: rows }, (_, row) =>
-      Array.from(
-        { length: columns },
-        (_, column) => set.get(`${row} ${column}`) ?? reply.rows[row]?.[column] ?? 0,
-      ),
-    ),
-  };
+  return cells.length === 1 ? { cell: only } : { cells };
 }
 
 /** What the offer's region is called: the one cell or the cells typed into, or a pasted table's

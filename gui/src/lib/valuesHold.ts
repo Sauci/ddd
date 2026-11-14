@@ -1,17 +1,20 @@
 import type { State, ValuesReply } from "../api/types";
 import type { TypedPlan } from "./typedCells";
 
-/** What one Apply in the grid wrote: one cell's raw count, or a whole table's - pasted, or made by
- * several cells typed - row by row as `ValuesReply.rows` holds them. */
-export type Written = { cell: { row: number; column: number }; raw: number } | { rows: number[][] };
+/** What one Apply in the grid wrote: the cells typed into it, each the raw count set where it
+ * stands, or a whole pasted table's, row by row as `ValuesReply.rows` holds them. */
+export type Written =
+  | { cells: readonly { row: number; column: number; raw: number }[] }
+  | { rows: number[][] };
 
-/** What an Apply would write: a pasted table's rows, where one was pasted; else what the cells
- * typed into set (`typedPlan`) - the one element and its raw count, or the table several make;
- * `null` while neither makes anything to write. */
+/** What an Apply would write: a pasted table's rows, where one was pasted; else each element the
+ * cells typed into set (`typedPlan`), one or several; `null` while neither makes anything to
+ * write. */
 export function writtenBy(pasted: number[][] | null, typed: TypedPlan | null): Written | null {
   if (pasted !== null) return { rows: pasted };
   if (typed === null) return null;
-  return "rows" in typed ? { rows: typed.rows } : { cell: typed.cell, raw: typed.raw };
+  const cells = "cell" in typed ? [typed.cell] : typed.cells;
+  return { cells: cells.map(({ row, column, raw }) => ({ row, column, raw })) };
 }
 
 /** What the grid holds of one Apply of its own: the number its edit was answered with, the
@@ -29,16 +32,18 @@ export interface ValuesHold {
 
 /** The hold of an Apply answered as edit `edit`, made over `before` - what the grid showed -
  * writing `written`. The values written are an array in the file from then on, whatever it stated
- * before: `ddd.object_values.set_cell` writes the whole `init` where the file held one value for
- * every cell, or none. */
+ * before: `ddd.object_values.set_cell` and `set_cells` write the whole `init` where the file held
+ * one value for every cell, or none. */
 export function holdOf(edit: number, before: ValuesReply, written: Written): ValuesHold {
   const rows =
     "rows" in written
       ? written.rows
       : before.rows.map((cells, row) =>
-          row === written.cell.row
-            ? cells.map((value, column) => (column === written.cell.column ? written.raw : value))
-            : cells,
+          cells.map(
+            (value, column) =>
+              written.cells.find((cell) => cell.row === row && cell.column === column)?.raw ??
+              value,
+          ),
         );
   return { edit, before, after: { ...before, rows, stated: "array" }, landed: null };
 }

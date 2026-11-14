@@ -265,7 +265,7 @@ function celled(text: string): string[][] {
 }
 
 /** The rows and columns the object itself takes, as a table is counted: what a paste must hold,
- * and the table several typed cells are planned as (`typedCells.ts`). The `= 0` is defensive
+ * and what a cell typed into must lie inside (`typedCells.ts`). The `= 0` is defensive
  * and nothing tests it: a shapeless reply reaches no caller, since `ValuesPage` answers
  * "has no cell for a value to sit in" before it draws a grid at all - and the test that used to
  * cover it pinned `Paste 1 row of 0 values…`, a sentence no reader can reach. A destructuring

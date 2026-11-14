@@ -349,7 +349,10 @@ The commands
        typed into are held together, each showing what was typed into it, and previewed
        as one change - in a sentence naming what each sets and the producing file it
        lands in - that one Apply writes, like every other change here, and one undo puts
-       back. A cell typed back to its file's value drops out of the change, and a cell
+       back. Only the cells typed are written, each where it stands, and the rest of the
+       file stays as it was, its spellings and its layout too. A cell keeps the reading
+       it was typed in: turned from physical to raw, the grid shows the count it sets. A
+       cell typed back to its file's value drops out of the change, and a cell
        the page refuses holds Apply back for them all, named in the sentence. The
        sentence and Apply stay at the foot of the window while they are offered, however
        tall the grid. A table copied from a spreadsheet is pasted anywhere in

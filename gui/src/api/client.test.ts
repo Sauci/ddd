@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { OwnEdits, ownEdits } from "../state/edits";
 import {
   ApiError,
+  getCellsPlan,
   getCompare,
   getConstant,
   getConstantPlan,
@@ -414,6 +415,25 @@ describe("requests to the server", () => {
         "/api/findings?offset=100&limit=100&severity=error&file=%2Fp%2Fa%26b.ddd.json&check=a%2Fb",
         { credentials: "omit" },
       ],
+    ]);
+  });
+
+  test("getCellsPlan asks for the cells alone, whatever the size of their object", async () => {
+    // Two cells of a block of 10240 counts: two elements and two counts, where the block's whole
+    // table needs more characters than one address holds.
+    const calls = recorded();
+    await getCellsPlan(
+      {
+        name: "Long",
+        cells: [
+          { at: "[3]", raw: 7 },
+          { at: "[9000]", raw: 8 },
+        ],
+      },
+      calls.fetch,
+    );
+    expect(calls.urls).toEqual([
+      ["/api/cells-plan?name=Long&at=%5B3%5D%2C%5B9000%5D&raw=7%2C8", { credentials: "omit" }],
     ]);
   });
 

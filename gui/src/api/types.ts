@@ -4,6 +4,7 @@
 // two silently drifting apart.
 export type {
   BroughtError,
+  CellsPlanQuery,
   Change,
   Changes,
   CompareQuery,

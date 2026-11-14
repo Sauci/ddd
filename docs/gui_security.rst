@@ -482,6 +482,12 @@ pages need none either; every route below needs the token as a header.
      - 
      - 
    * - ``GET``
+     - ``/api/cells-plan``
+     - 
+     - 
+     - 
+     - 
+   * - ``GET``
      - ``/api/values-plan``
      - 
      - 

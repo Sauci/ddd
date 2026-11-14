@@ -156,6 +156,20 @@ interface Definition {
   init?: unknown;
 }
 
+/** SensorHub's ValueD made a float64 block of three written `[1.0, 2.5, 3.0]`: numbers spelled as
+ * the page never spells one, which reads them as 1, 2.5 and 3. Replaced in the text, so that the
+ * file keeps those spellings. */
+function spelledValueD(directory: string): void {
+  const path = join(directory, SENSOR_HUB);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /("name": "ValueD",[\s\S]*?"datatype": )"uint16"([\s\S]*?"dimensions": )\[\s*8\s*\]/,
+    '$1"float64"$2[3],\n          "init": [1.0, 2.5, 3.0]',
+  );
+  if (changed === text) throw new Error(`${SENSOR_HUB} declares no ValueD of eight uint16`);
+  writeFileSync(path, changed, "utf8");
+}
+
 /** Each field of `grid` whose number runs past its edge, by its label and what it holds: a field
  * holding more than it shows scrolls wider than it is. */
 function cutFields(grid: Locator): Promise<string[]> {
@@ -963,6 +977,47 @@ test("a table pasted over typed cells takes their place, and a cell typed after 
   await expect
     .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
     .toEqual([1200, 900, 1500, 750, 700, 650]);
+});
+
+// Several cells were planned as the whole table the page held, the numbers nobody typed sent back
+// as the page reads them: written again, a 3.0 came out 3, and a value the datatype cannot hold,
+// left in a cell nobody touched, refused the cells typed. Each cell typed is set where it stands.
+test("the cells typed are written where they stand, the numbers nobody typed as the file spells them", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", spelledValueD);
+  await openValues(page, gui.address, "ValueD", "SensorHub");
+  const grid = page.getByRole("grid", { name: "Values of ValueD" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "9");
+  await typed(grid.getByRole("textbox", { name: "element 2" }), "8");
+  await expect(
+    page.getByText("Sets 2 elements of ValueD: element 1 to 9; element 2 to 8"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => readFileSync(join(gui.directory, SENSOR_HUB), "utf8"))
+    .toContain('"init": [9, 8, 3.0]');
+});
+
+test("a value nobody typed that its datatype cannot hold does not hold up the cells typed", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", (directory) =>
+    writeBlockAInit(directory, [0, 12, 28, 52, 84, 124, 180, 9999]),
+  );
+  await openValues(page, gui.address, "BlockA", "UserInterface");
+  const grid = page.getByRole("grid", { name: "Values of BlockA" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "1");
+  await typed(grid.getByRole("textbox", { name: "element 2" }), "2");
+  await expect(
+    page.getByText("Sets 2 elements of BlockA: element 1 to 1; element 2 to 2"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, USER_INTERFACE, "BlockA").init)
+    .toEqual([1, 2, 28, 52, 84, 124, 180, 9999]);
 });
 
 test("a value applied from a file that changed on disk is refused, and applied once the page has caught up", async ({

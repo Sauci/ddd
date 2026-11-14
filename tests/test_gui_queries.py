@@ -18,6 +18,7 @@ from ddd.gui.queries import (
     MAX_NAME,
     MAX_PATH,
     AddFile,
+    CellsPlanQuery,
     CompareQuery,
     ConstantPlanQuery,
     CreateFile,
@@ -1066,6 +1067,56 @@ PLANS_REFUSED = [
         "values-plan takes ?name= as an object's name",
     ),
     ("/api/values-plan", {"name": "CurveA", "raw": "1", "at": "[2]"}, "values-plan takes no ?at="),
+    ("/api/cells-plan", {}, "cells-plan takes ?name= and ?at= and ?raw="),
+    (
+        "/api/cells-plan",
+        {"name": "CurveA", "at": "", "raw": "1"},
+        "cells-plan takes ?name= and ?at= and ?raw=",
+    ),
+    (
+        "/api/cells-plan",
+        {"name": "CurveA", "at": "[0]", "raw": ""},
+        "cells-plan takes ?name= and ?at= and ?raw=",
+    ),
+    (
+        "/api/cells-plan",
+        {"name": "Curve\x00A", "at": "[0]", "raw": "1"},
+        "cells-plan takes ?name= as an object's name",
+    ),
+    *[
+        (
+            "/api/cells-plan",
+            {"name": "CurveA", "at": at, "raw": ",".join("1" * (at.count(",") + 1))},
+            "cells-plan takes ?at= as elements' indices joined by commas",
+        )
+        for at in (
+            "2",
+            "[2],",
+            ",[2]",
+            "[2],,[3]",
+            "[2] ,[3]",
+            "[02]",
+            "[2]x",
+            "[1][",
+            "[]",
+            f"[{'1' * (MAX_DIGITS + 1)}]",
+        )
+    ],
+    (
+        "/api/cells-plan",
+        {"name": "CurveA", "at": "[0],[1]", "raw": "1"},
+        "cells-plan takes as many numbers in ?raw= as elements in ?at=",
+    ),
+    (
+        "/api/cells-plan",
+        {"name": "CurveA", "at": "[0]", "raw": "1,2"},
+        "cells-plan takes as many numbers in ?raw= as elements in ?at=",
+    ),
+    (
+        "/api/cells-plan",
+        {"name": "CurveA", "at": "[0]", "raw": "1", "action": "set"},
+        "cells-plan takes no ?action=",
+    ),
     *[
         (f"/api/{route}-plan", {"action": "rename", "name": "X\x00", "to": "Y"}, sentence)
         for route, sentence in (
@@ -1298,8 +1349,8 @@ class TestAQueryOfOneModelPerAction:
 
 
 class TestThePlanRoutesQueries:
-    """The nine plan routes' queries: seven read as one model per action, ``action`` choosing
-    which, and value-plan's and values-plan's as one model each."""
+    """The ten plan routes' queries: seven read as one model per action, ``action`` choosing
+    which, and value-plan's, cells-plan's and values-plan's as one model each."""
 
     def test_each_action_route_takes_its_actions_in_the_order_its_refusal_names_them(
         self,
@@ -1473,6 +1524,11 @@ class TestThePlanRoutesQueries:
                 ValuesPlanQuery,
                 {"name": "CurveA"},
                 "values-plan takes ?raw= as numbers joined by commas",
+            ),
+            (
+                CellsPlanQuery,
+                {"name": "CurveA", "at": "[2]"},
+                "cells-plan takes ?raw= as numbers joined by commas",
             ),
         ],
     )

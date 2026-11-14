@@ -204,6 +204,7 @@ def _well_formed(
         "/api/declarable": {"file": controller},
         "/api/values": {"name": "CurveA"},
         "/api/value-plan": {"name": "CurveA", "at": "[2]", "raw": "750"},
+        "/api/cells-plan": {"name": "CurveA", "at": "[0],[2]", "raw": "1300,750"},
         "/api/values-plan": {"name": "CurveA", "raw": "1,2,3,4,5,6"},
         "/api/compare": {"baseline": demo_json},
     }
@@ -291,7 +292,7 @@ def test_every_key_of_every_route_s_query_is_never_answered_500(tmp_path: Path) 
                 cases += 1
                 reply = api.handle(route.method, route.path, {"zzz": [value]}, body)
                 assert reply.status != 500, (route.path, "zzz", value[:20], reply.body)
-    assert cases == 1254, "every route's query, every key, every hostile value: once each"
+    assert cases == 1287, "every route's query, every key, every hostile value: once each"
 
 
 def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path) -> None:

@@ -1790,6 +1790,7 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (queries.DeclarationPlanQuery, "validation"),
     (queries.ValuesQuery, "validation"),
     (queries.ValuePlanQuery, "validation"),
+    (queries.CellsPlanQuery, "validation"),
     (queries.ValuesPlanQuery, "validation"),
     (queries.CompareQuery, "validation"),
 )
@@ -1798,8 +1799,8 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
 a response, read for the shape ``model_dump(mode="json")`` produces - the two differ wherever a
 field has a default. A route's query is a request too: the model it reads its query as
 (:mod:`ddd.gui.queries`), each key the page may send and the type its value is read as - for a
-route that takes one of several actions, every plan route but value-plan and values-plan, the
-union of one model per action, which the page's types read as a union too.
+route that takes one of several actions, every plan route but value-plan, cells-plan and
+values-plan, the union of one model per action, which the page's types read as a union too.
 
 Nothing else needs listing: every other model above is reachable from one of these and is
 published under ``$defs`` regardless, :class:`Operation` and :class:`Severity` included, and

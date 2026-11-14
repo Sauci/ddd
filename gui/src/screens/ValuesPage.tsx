@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
-import { getValuePlan, getValues, getValuesPlan, postEdit } from "../api/client";
+import { getCellsPlan, getValuePlan, getValues, getValuesPlan, postEdit } from "../api/client";
 import type { State, ValuesReply } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
@@ -120,8 +120,8 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // What the cells typed into set, read against the values shown (`typedOffer`): `null` while
   // `shown` has not arrived yet, or one of the cells is refused - `ValuesGridView` finds that same
   // refusal and says it - and none where every cell is empty or typed back to its file's value.
-  // The plan asked for them is one element's own, or the whole table several make (`typedPlan`),
-  // `null` while they set nothing, which keeps the plan query skipped.
+  // The plan asked for them is one element's own, or several elements' each where it stands
+  // (`typedPlan`), `null` while they set nothing, which keeps the plan query skipped.
   const offered = shown === undefined ? null : typedOffer(typed, shown);
   const changes = offered === null ? null : offered.changes;
   const cellRequest = shown === undefined || changes === null ? null : typedPlan(shown, changes);
@@ -135,8 +135,8 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // query never asks for cells over the older answer kept on screen, from the very render the key
   // it shares with `revision` changes in; and once an answer of the new revision has come and it
   // opens again, the cells typed before are asked for at once - nothing was typed meanwhile to
-  // wait out. One element is asked of `value-plan`, a `set` at its own pointer; several, of
-  // `values-plan`, as the table they make.
+  // wait out. One element is asked of `value-plan`, several of `cells-plan`: each a `set` at its
+  // own pointer, the rest of the file as it is.
   const debouncedCell = useDebounced(cellRequest);
   const askedCell = gated(debouncedCell, cellRequest, current);
   const plan = useQuery({
@@ -144,9 +144,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     queryFn:
       askedCell === null
         ? skipToken
-        : "rows" in askedCell
-          ? () => getValuesPlan({ name, raw: askedCell.rows.flat() })
-          : () => getValuePlan({ name, at: askedCell.at, raw: askedCell.raw }),
+        : "cells" in askedCell
+          ? () => getCellsPlan({ name, cells: askedCell.cells })
+          : () => getValuePlan({ name, at: askedCell.cell.at, raw: askedCell.cell.raw }),
   });
   // The cell plan to draw, why its own fetch was refused if it was, and whether it may still
   // change - `planShown`'s own, `lib/typing.ts` (review fix round 1): this grid has no separate

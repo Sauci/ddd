@@ -145,7 +145,7 @@ export function AnAppliedValueHeld() {
   const [physical, setPhysical] = useState(true);
   return (
     <ValuesGridView
-      reply={holdOf(2, VALUES_CURVE, { cell: { row: 0, column: 2 }, raw: 750 }).after}
+      reply={holdOf(2, VALUES_CURVE, { cells: [{ row: 0, column: 2, raw: 750 }] }).after}
       updating
       backTo="Controller"
       undoStrip={

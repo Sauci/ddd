@@ -32,7 +32,7 @@ const BEFORE: ValuesReply = {
 };
 
 /** Element 3 set to 750 raw, answered as edit 7. */
-const HOLD: ValuesHold = holdOf(7, BEFORE, { cell: { row: 0, column: 2 }, raw: 750 });
+const HOLD: ValuesHold = holdOf(7, BEFORE, { cells: [{ row: 0, column: 2, raw: 750 }] });
 
 /** The grid as the server answers it at `revision`: the values it read at that revision. */
 function served(revision: number, rows: number[][] = BEFORE.rows): ValuesReply {
@@ -47,7 +47,7 @@ function state(revision: number, edits: number) {
 const NONE: ReadonlyMap<number, number> = new Map();
 
 describe("what an Apply would write", () => {
-  const ONE = { cell: { row: 1, column: 3 }, at: "[1][3]", raw: 50 };
+  const ONE = { cell: { row: 1, column: 3, at: "[1][3]", raw: 50 } };
 
   test("a pasted table: its rows, whatever cell was typed into before", () => {
     const rows = [[1, 2, 3, 4, 5, 6]];
@@ -55,12 +55,20 @@ describe("what an Apply would write", () => {
   });
 
   test("else the one element the typed cells set, and the raw count it is set to", () => {
-    expect(writtenBy(null, ONE)).toEqual({ cell: { row: 1, column: 3 }, raw: 50 });
+    expect(writtenBy(null, ONE)).toEqual({ cells: [{ row: 1, column: 3, raw: 50 }] });
   });
 
-  test("or the whole table several of them make", () => {
-    const rows = [[1300, 1400, 1500, 750, 700, 650]];
-    expect(writtenBy(null, { rows })).toEqual({ rows });
+  test("or each element several of them set", () => {
+    const cells = [
+      { row: 0, column: 0, at: "[0]", raw: 1300 },
+      { row: 0, column: 2, at: "[2]", raw: 1500 },
+    ];
+    expect(writtenBy(null, { cells })).toEqual({
+      cells: [
+        { row: 0, column: 0, raw: 1300 },
+        { row: 0, column: 2, raw: 1500 },
+      ],
+    });
   });
 
   test("nothing, while the typed cells set nothing", () => {
@@ -87,10 +95,20 @@ describe("what an Apply in the grid holds", () => {
         [4, 5, 6],
       ],
     };
-    expect(holdOf(3, map, { cell: { row: 1, column: 2 }, raw: 60 }).after.rows).toEqual([
+    expect(holdOf(3, map, { cells: [{ row: 1, column: 2, raw: 60 }] }).after.rows).toEqual([
       [1, 2, 3],
       [4, 5, 60],
     ]);
+  });
+
+  test("several cells: each set where it stands, the rest as the grid showed them", () => {
+    const written = {
+      cells: [
+        { row: 0, column: 0, raw: 1300 },
+        { row: 0, column: 2, raw: 1500 },
+      ],
+    };
+    expect(holdOf(9, BEFORE, written).after.rows).toEqual([[1300, 900, 1500, 750, 700, 650]]);
   });
 
   test("a pasted table: every value, as pasted", () => {
@@ -103,7 +121,7 @@ describe("what an Apply in the grid holds", () => {
     (stated) => {
       // `set_cell` writes the whole init where the file held one value or none.
       const flat = { ...BEFORE, stated, rows: [[200, 200, 200, 200, 200, 200]] };
-      const held = holdOf(5, flat, { cell: { row: 0, column: 0 }, raw: 100 }).after;
+      const held = holdOf(5, flat, { cells: [{ row: 0, column: 0, raw: 100 }] }).after;
       expect([held.stated, held.rows]).toEqual(["array", [[100, 200, 200, 200, 200, 200]]]);
     },
   );

@@ -652,6 +652,7 @@ class TestTheRouteTable:
             ("GET", "/api/declaration-plan"),
             ("GET", "/api/values"),
             ("GET", "/api/value-plan"),
+            ("GET", "/api/cells-plan"),
             ("GET", "/api/values-plan"),
             ("GET", "/api/compare"),
         ]
@@ -3140,6 +3141,7 @@ class TestBeforeTheFirstAnalysis:
             ),
             ("GET", "/api/values", {"name": "Speed"}),
             ("GET", "/api/value-plan", {"name": "Speed", "at": "[0]", "raw": "1"}),
+            ("GET", "/api/cells-plan", {"name": "Speed", "at": "[0],[1]", "raw": "1,2"}),
             ("GET", "/api/values-plan", {"name": "Speed", "raw": "1"}),
             ("GET", "/api/compare", {"baseline": "p.ddd.json"}),
         ],
@@ -3395,6 +3397,7 @@ class TestAPlanWhileAnEditWaits:
         [
             ("/api/declaration-plan", {"action": "remove", "name": "ValueH"}),
             ("/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
+            ("/api/cells-plan", {"name": "CurveA", "at": "[0],[2]", "raw": "1300,750"}),
             ("/api/values-plan", {"name": "CurveA", "raw": "1300,950,850,800,750,700"}),
         ],
     )
@@ -7569,6 +7572,12 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
                 "the values of 'Table' cannot be set",
             ),
             (
+                "/api/cells-plan",
+                {"name": "Table", "at": "[0],[1]", "raw": "4,5"},
+                "a.ddd.json",
+                "the values of 'Table' cannot be set",
+            ),
+            (
                 "/api/values-plan",
                 {"name": "Table", "raw": "4,5,6"},
                 "a.ddd.json",
@@ -7975,6 +7984,14 @@ class TestAPlanWhileAFileDidNotLoad:
                 raw="5",
             ),
             while_half_saved(
+                "/api/cells-plan",
+                "no object's values can be read",
+                "cells are set",
+                name="Table",
+                at="[0],[1]",
+                raw="4,5",
+            ),
+            while_half_saved(
                 "/api/values-plan",
                 "no object's values can be read",
                 "values are set",
@@ -8102,6 +8119,7 @@ class TestAPlanWhileAFileDidNotLoad:
         for reply in (
             get(api, "/api/values", name="Speed"),
             get(api, "/api/value-plan", name="Speed", at="[0]", raw="5"),
+            get(api, "/api/cells-plan", name="Speed", at="[0],[1]", raw="4,5"),
             get(api, "/api/values-plan", name="Speed", raw="4"),
         ):
             assert (reply.status, reply.body) == (
@@ -8841,6 +8859,7 @@ class TestAPlanWritingBesideAProjectTheBuildCollected:
                 "b.ddd.json",
             ),
             ("/api/value-plan", {"name": "Table", "at": "[1]", "raw": "5"}, "a.ddd.json"),
+            ("/api/cells-plan", {"name": "Table", "at": "[0],[1]", "raw": "4,5"}, "a.ddd.json"),
             ("/api/values-plan", {"name": "Table", "raw": "4,5,6"}, "a.ddd.json"),
         ],
     )
@@ -9240,6 +9259,8 @@ class TestTheValuesGrid:
         assert (plan.status, plan.body["error"]) == (409, "invalid")
         plans = get(api, "/api/values-plan", name="Cube", raw="7")
         assert (plans.status, plans.body["error"]) == (409, "invalid")
+        cells = get(api, "/api/cells-plan", name="Cube", at="[1][2][3],[0][0][0]", raw="7,8")
+        assert (cells.status, cells.body["error"]) == (409, "invalid")
 
     def test_an_init_that_does_not_fit_its_shape_is_refused_rather_than_drawn(
         self, tmp_path: Path, capsys
@@ -9736,6 +9757,130 @@ class TestTheValuesGrid:
         reply = get(api, "/api/values-plan", name="ValueA", raw="1")
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert reply.body["message"] == "'ValueA' has no cell for a value to sit in"
+
+    def test_several_cells_are_previewed_written_and_put_back_and_nothing_else(self, demo) -> None:
+        api, root = demo
+        controller = root / "components" / "controller.ddd.json"
+        before = controller.read_bytes()
+        preview = get(api, "/api/cells-plan", name="CurveA", at="[0],[2]", raw="1300,750").body
+        assert controller.read_bytes() == before
+        (change,) = preview["changes"]
+        assert [(o["pointer"].rsplit(".", 1)[1], o["raw"]) for o in change["operations"]] == [
+            ("init[0]", "1300"),
+            ("init[2]", "750"),
+        ]
+        assert [(h["before"], h["after"]) for h in change["hunks"]] == [
+            (
+                ['          "init": [1200, 900, 800, 750, 700, 650],'],
+                ['          "init": [1300, 900, 750, 750, 700, 650],'],
+            )
+        ]
+        reply = applied(api, preview, "2 elements of CurveA")
+        assert reply.status == 200
+        lines = zip(
+            before.decode("utf-8").splitlines(),
+            controller.read_text(encoding="utf-8").splitlines(),
+            strict=True,
+        )
+        assert [(old, new) for old, new in lines if old != new] == [
+            (
+                '          "init": [1200, 900, 800, 750, 700, 650],',
+                '          "init": [1300, 900, 750, 750, 700, 650],',
+            )
+        ]
+        assert post(api, "/api/undo", {"at": reply.body["edit"]}).status == 200
+        assert controller.read_bytes() == before
+
+    def test_two_cells_on_one_line_of_a_map_are_one_line_previewed_written_and_put_back(
+        self, demo
+    ) -> None:
+        api, root = demo
+        controller = root / "components" / "controller.ddd.json"
+        before = controller.read_bytes()
+        preview = get(api, "/api/cells-plan", name="MapA", at="[1][1],[1][3]", raw="99,77").body
+        (change,) = preview["changes"]
+        assert len(change["operations"]) == 2
+        assert [(h["before"], h["after"]) for h in change["hunks"]] == [
+            (["            [18, 22, 26, 28, 30, 28],"], ["            [18, 99, 26, 77, 30, 28],"])
+        ]
+        reply = applied(api, preview, "2 elements of MapA")
+        assert reply.status == 200
+        assert "            [18, 99, 26, 77, 30, 28],\n" in controller.read_text(encoding="utf-8")
+        assert post(api, "/api/undo", {"at": reply.body["edit"]}).status == 200
+        assert controller.read_bytes() == before
+
+    def test_two_cells_of_a_block_past_one_address_are_planned_alone(self, tmp_path) -> None:
+        # Its table cannot be asked for in one request: 10240 counts of four digits need more
+        # than the 65521 characters an address holds. Two of its cells are two short pairs.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Long",
+                        "uint16",
+                        kind="value_block",
+                        dimensions=[10240],
+                        init=[1000] * 10240,
+                    ),
+                ),
+            },
+        )
+        assert len(",".join(["1000"] * 10240).replace(",", "%2C")) > 65521
+        reply = get(api, "/api/cells-plan", name="Long", at="[3],[9000]", raw="7,8")
+        assert reply.status == 200, reply.body
+        (change,) = reply.body["changes"]
+        assert [(o["pointer"].rsplit(".", 1)[1], o["raw"]) for o in change["operations"]] == [
+            ("init[3]", "7"),
+            ("init[9000]", "8"),
+        ]
+
+    def test_a_cells_plan_missing_a_parameter_says_which_it_takes(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0]")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "cells-plan takes ?name= and ?at= and ?raw="
+
+    def test_a_count_of_a_cell_that_is_not_a_number_is_refused(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0],[2]", raw="1300,lots")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'lots' is not a number"
+
+    def test_every_cell_refused_is_named(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[1],[3],[9]", raw="70000,750,5")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == (
+            "2 elements of 'CurveA' are refused: element 2 because 70000 does not fit into uint16 "
+            "(0 .. 65535); element 10 because '[9]' is past the end of this object"
+        )
+
+    def test_a_name_the_project_has_not_is_not_found_for_a_cells_plan(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="Nope", at="[0],[1]", raw="1,2")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert reply.body["message"] == "the project declares no 'Nope'"
+
+    def test_a_project_that_did_not_load_has_no_cells_to_plan(self, tmp_path) -> None:
+        reply = get(unloaded(tmp_path), "/api/cells-plan", name="Anything", at="[0]", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_cells_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # /api/cells-plan's own call to `previewed`, as the two tests above do for theirs.
+        api, _ = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0],[2]", raw="1300,750")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
 
 
 def big_block(tmp_path: Path, init: object, datatype: str = "uint64") -> Api:

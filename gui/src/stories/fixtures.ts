@@ -2081,8 +2081,8 @@ export const CURVE_CELL_PLAN: PlanReply = {
 };
 
 /** CurveA's first three elements, 1200, 900 and 800, set to 1300, 1400 and 1500 - 13, 14 and 15
- * ms typed into three cells - and planned as the table they make (ThreeCellsTypedAsOneChange): one
- * `set` of the whole init, which a served copy of examples/demo answers with this one hunk. */
+ * ms typed into three cells - each where it stands (ThreeCellsTypedAsOneChange): three `set`s, one
+ * line of the file, which a served copy of examples/demo answers with this one hunk. */
 export const CURVE_CELLS_PLAN: PlanReply = {
   revision: 1,
   changes: [
@@ -2090,11 +2090,9 @@ export const CURVE_CELLS_PLAN: PlanReply = {
       file: CONTROLLER,
       fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
       operations: [
-        {
-          op: "set",
-          pointer: "component.interface[12].definition.init",
-          raw: "[1300, 1400, 1500, 750, 700, 650]",
-        },
+        { op: "set", pointer: "component.interface[12].definition.init[0]", raw: "1300" },
+        { op: "set", pointer: "component.interface[12].definition.init[1]", raw: "1400" },
+        { op: "set", pointer: "component.interface[12].definition.init[2]", raw: "1500" },
       ],
       hunks: [
         {

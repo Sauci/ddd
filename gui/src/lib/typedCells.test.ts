@@ -277,41 +277,54 @@ describe("typedPlan", () => {
 
   test("one element set is asked for as that cell, at its own pointer", () => {
     expect(typedPlan(MAP_A, [{ row: 1, column: 3, raw: 99 }])).toEqual({
-      cell: { row: 1, column: 3 },
-      at: "[1][3]",
-      raw: 99,
+      cell: { row: 1, column: 3, at: "[1][3]", raw: 99 },
     });
   });
 
-  test("several are asked for as the whole table they make of the values shown", () => {
+  test("several are asked for as those cells alone, each at its own pointer", () => {
     const changes = typedOffer(THREE, CURVE_A).changes ?? [];
-    expect(typedPlan(CURVE_A, changes)).toEqual({ rows: [[1300, 1400, 1500, 750, 700, 650]] });
+    expect(typedPlan(CURVE_A, changes)).toEqual({
+      cells: [
+        { row: 0, column: 0, at: "[0]", raw: 1300 },
+        { row: 0, column: 1, at: "[1]", raw: 1400 },
+        { row: 0, column: 2, at: "[2]", raw: 1500 },
+      ],
+    });
     expect(
       typedPlan(MAP_A, [
         { row: 0, column: 1, raw: 30 },
         { row: 3, column: 5, raw: -4 },
       ]),
     ).toEqual({
-      rows: [
-        [20, 30, 28, 30, 32, 30],
-        [18, 22, 26, 28, 30, 28],
-        [12, 16, 20, 22, 24, 22],
-        [6, 10, 14, 16, 18, -4],
+      cells: [
+        { row: 0, column: 1, at: "[0][1]", raw: 30 },
+        { row: 3, column: 5, at: "[3][5]", raw: -4 },
       ],
     });
   });
 
-  test("the table takes the object's shape: a short row filled with zeros, a long one cut", () => {
-    const changes = [
-      { row: 0, column: 0, raw: 1 },
-      { row: 0, column: 3, raw: 4 },
-    ];
-    expect(typedPlan({ ...CURVE_A, rows: [[1200, 900]] }, changes)).toEqual({
-      rows: [[1, 900, 0, 4, 0, 0]],
-    });
+  test("two cells of a block of more than ten thousand counts are those two cells alone", () => {
+    // Its whole table needs more characters than one address holds: 10240 counts of four
+    // digits, each with the three of the comma before it.
+    const long: ValuesReply = {
+      ...CURVE_A,
+      name: "Long",
+      conversion: { kind: "identity" },
+      shape: [10240],
+      rows: [Array.from({ length: 10240 }, () => 1000)],
+      axes: [],
+    };
     expect(
-      typedPlan({ ...CURVE_A, rows: [[1200, 900, 800, 750, 700, 650, 600]] }, changes),
-    ).toEqual({ rows: [[1, 900, 800, 4, 700, 650]] });
+      typedPlan(long, [
+        { row: 0, column: 3, raw: 7 },
+        { row: 0, column: 9000, raw: 8 },
+      ]),
+    ).toEqual({
+      cells: [
+        { row: 0, column: 3, at: "[3]", raw: 7 },
+        { row: 0, column: 9000, at: "[9000]", raw: 8 },
+      ],
+    });
   });
 });
 

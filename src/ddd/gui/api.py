@@ -77,6 +77,7 @@ from ddd.gui.queries import (
     AddSection,
     AddUnit,
     AdoptUnits,
+    CellsPlanQuery,
     CompareQuery,
     ConstantPlanQuery,
     ConstantQuery,
@@ -171,6 +172,7 @@ from ddd.object_values import (
     grid_of,
     limits_refusal,
     set_cell,
+    set_cells,
     set_values,
 )
 from ddd.project_shared import (
@@ -1569,6 +1571,38 @@ class Api:
             ),
         )
 
+    def _cells_plan(self, query: CellsPlanQuery, body: None) -> Reply:
+        revision = self._opened()
+        built, dictionary = revision.index, revision.dictionary
+        if built is None or dictionary is None:
+            return _unresolved(revision)
+        try:
+            # As many counts as elements: the query refuses any other pairing.
+            pairs = zip(query.at.split(","), query.raw.split(","), strict=True)
+            cells = [(at, _number(raw)) for at, raw in pairs]
+            plan = set_cells(dictionary, built, query.name, cells, {})
+        except ValueRefusalError as refused:
+            # Both codes, as `_value_plan` above: a name the project has not, and every other
+            # refusal. A statement rather than a ternary, so the gate can see both arms.
+            if refused.code == "not-found":
+                return _error(404, refused.code, refused.message)
+            return _error(409, refused.code, refused.message)
+        derived = self._derive(revision)
+        try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = previewed(plan.edits, derived.stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
+        )
+
     def _values_plan(self, query: ValuesPlanQuery, body: None) -> Reply:
         name = query.name
         revision = self._opened()
@@ -1846,6 +1880,7 @@ ROUTES: Final[tuple[Route, ...]] = (
     Route("/api/declaration-plan", "GET", DeclarationPlanQuery, None, Api._declaration_plan),
     Route("/api/values", "GET", ValuesQuery, None, Api._values),
     Route("/api/value-plan", "GET", ValuePlanQuery, None, Api._value_plan),
+    Route("/api/cells-plan", "GET", CellsPlanQuery, None, Api._cells_plan),
     Route("/api/values-plan", "GET", ValuesPlanQuery, None, Api._values_plan),
     Route("/api/compare", "GET", CompareQuery, None, Api._compare, Policy(runs_plugins=True)),
 )

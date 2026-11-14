@@ -483,6 +483,11 @@ class TestTheCommandPage:
             "previewed as one change"
         ) in text
         assert "that one Apply writes, like every other change here, and one undo puts back" in text
+        assert (
+            "Only the cells typed are written, each where it stands, and the rest of the file "
+            "stays as it was"
+        ) in text
+        assert "A cell keeps the reading it was typed in" in text
         assert "A cell typed back to its file's value drops out of the change" in text
         assert (
             "a cell the page refuses holds Apply back for them all, named in the sentence"

@@ -689,6 +689,8 @@ test("a wheel notch while the rename's list is open keeps what was typed, and th
   await expect(page.getByRole("listbox")).toBeVisible();
   await page.mouse.move(640, 200);
   await page.mouse.wheel(0, -100);
+  // The notch closed the list, so that what follows tests the keys after a close.
+  await expect(page.getByRole("listbox")).toHaveCount(0);
   await rename.pressSequentially("/h");
   await expect(rename).toHaveValue("km/h");
   await rename.press("Enter");

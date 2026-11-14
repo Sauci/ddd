@@ -482,7 +482,7 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   await chooser.clear();
   await chooser.pressSequentially("-4");
   // Enter takes only text spelling an entry exactly here, so the sentence offers the list alone.
-  await expect(panel.getByText("Pick one from the list.")).toBeVisible();
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
   await expect(panel.getByText("Press Enter to take")).toHaveCount(0);
   // Looked for by its text: the open list hides the page's roles from the accessibility tree.
   await expect(panel.getByText(STALE)).toHaveCount(0);

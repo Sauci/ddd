@@ -99,10 +99,13 @@ test("text left without Enter chooses nothing, and the field reads the chosen un
   await expect(picker).toHaveValue("%");
   await expect(picker).toHaveAttribute("aria-expanded", "false");
 
+  // An Enter that takes nothing - a blank field - keeps the text; Escape puts the unit back.
   await picker.fill("");
   await picker.press("Enter");
-  await expect(picker).toHaveValue("%");
+  await expect(picker).toHaveValue("");
   await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await picker.press("Escape");
+  await expect(picker).toHaveValue("%");
 
   await picker.fill("r");
   await picker.press("Tab");

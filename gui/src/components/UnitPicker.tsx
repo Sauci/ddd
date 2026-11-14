@@ -1,4 +1,4 @@
-import { unsettledSentence } from "../lib/typing";
+import { unsettledNote } from "../lib/typing";
 import { enteredUnit, type UnitSection } from "../lib/units";
 import { ComboBox } from "../ui/ComboBox";
 
@@ -38,36 +38,26 @@ export function UnitPicker({
   unsettled,
 }: Props) {
   return (
-    <>
-      <ComboBox
-        label={label}
-        inputValue={typed}
-        onInputChange={onTyped}
-        sections={sections}
-        onPick={(id) => {
-          const chosen = sections
-            .flatMap((section) => section.choices)
-            .find((entry) => entry.id === id);
-          if (chosen !== undefined) onPick(chosen.unit);
-        }}
-        onEnter={(text) => {
-          const unit = enteredUnit(sections, text);
-          if (unit !== undefined) onPick(unit);
-        }}
-        onClose={onClose}
-        note={note}
-        isDisabled={isDisabled}
-        autoFocus={autoFocus}
-        menuTrigger={menuTrigger}
-      />
-      {unsettled && (
-        <p className="consequence">
-          {unsettledSentence(
-            enteredUnit(sections, typed) !== undefined,
-            sections.reduce((count, section) => count + section.choices.length, 0),
-          )}
-        </p>
-      )}
-    </>
+    <ComboBox
+      label={label}
+      inputValue={typed}
+      onInputChange={onTyped}
+      sections={sections}
+      onPick={(id) => {
+        const chosen = sections
+          .flatMap((section) => section.choices)
+          .find((entry) => entry.id === id);
+        if (chosen !== undefined) onPick(chosen.unit);
+      }}
+      onEnter={(text) => {
+        const unit = enteredUnit(sections, text);
+        if (unit !== undefined) onPick(unit);
+      }}
+      onClose={onClose}
+      note={unsettledNote(unsettled, typed, sections, enteredUnit) ?? note}
+      isDisabled={isDisabled}
+      autoFocus={autoFocus}
+      menuTrigger={menuTrigger}
+    />
   );
 }

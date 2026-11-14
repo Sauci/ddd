@@ -13,7 +13,7 @@ import {
   Popover,
   Text,
 } from "react-aria-components";
-import { closeEndsTyped } from "../lib/typing";
+import { endsTyped } from "../lib/typing";
 
 export interface ComboChoice {
   id: string;
@@ -44,18 +44,10 @@ interface Props {
    */
   onEnter: (text: string) => void;
   /**
-   * The list closed, whether an entry was taken or not - by Enter, Escape, Tab, ▾ or the focus
-   * leaving the field. The caller puts its own value back in the field: text typed and left is
-   * never a choice.
-   *
-   * Called too on Escape and on the focus leaving the field, whether the list is open or not:
-   * those two end what was typed, wherever the list stands.
-   *
-   * Not called for a close React Aria makes on a scroll: it closes the list whenever a box
-   * holding the field scrolls - a wheel notch while it is open, or the scroll into view that follows
-   * the field taking the focus or a key typed into it below the fold - and none of those is the
-   * reader leaving. The text typed stays, the next key opens the list again, and a key lost to
-   * such a close would be the reader's spelling, spelt wrong.
+   * What was typed into the field is over: Escape was pressed in it, or the focus left it - once
+   * each, with the list open or not. The caller puts its own value back in the field, since the
+   * text is no choice until Enter or a pick takes it. No other close tells it: a scroll, Enter, Tab, the arrow and an
+   * empty list keep the text, which the caller then holds as text not yet taken.
    */
   onClose: () => void;
   /** A line under the field, such as that a typed unit is not one of the project's. */
@@ -116,13 +108,13 @@ export function ComboBox({
         onInputChange(value);
       }}
       onOpenChange={(isOpen) => {
-        // React Aria closes the list from inside the scroll event it hears (`useCloseOnScroll`),
-        // and `onOpenChange` runs within that dispatch, so the event being dispatched says what
-        // closed it, whichever listener heard it first. `window.event` is deprecated but is
-        // what says it without a flag or a timer; `closeEndsTyped` (lib/typing.ts) is the rule.
-        if (isOpen || !closeEndsTyped(window.event?.type)) return;
+        // A close, whoever made it - a scroll, Enter, Tab, the arrow, an empty list - keeps the
+        // text typed (`endsTyped`, lib/typing.ts): the caller is told of Escape and of the focus
+        // leaving, below, and of nothing else. Whatever picked an entry has told the caller
+        // already, and the value it puts in the field is no reason to open the list again.
+        if (isOpen) return;
         setPuttingBack(true);
-        onClose();
+        if (endsTyped("close")) onClose();
       }}
       allowsCustomValue
       menuTrigger={puttingBack ? "manual" : menuTrigger}
@@ -137,7 +129,7 @@ export function ComboBox({
           onKeyDown={(event) => {
             // Escape ends what was typed, with the list open or already closed by a scroll: the
             // caller puts its own value back, and the list is not opened again for that.
-            if (event.key === "Escape") {
+            if (endsTyped(event.key)) {
               setPuttingBack(true);
               onClose();
             }
@@ -158,7 +150,7 @@ export function ComboBox({
           // the focus leaving the field never leaves text in it that nothing took.
           onBlur={() => {
             setPuttingBack(false);
-            onClose();
+            if (endsTyped("blur")) onClose();
           }}
         />
         <AriaButton aria-label={`Show the choices for ${label}`}>▾</AriaButton>

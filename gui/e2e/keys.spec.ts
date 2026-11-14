@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
   CONTROLLER,
   chooseUnit,
@@ -478,7 +478,7 @@ test("text typed past the chosen unit offers no Apply for the earlier unit, and 
   const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
   await field.clear();
   // Blank text is taken by nothing: the sentence does not say Enter takes it.
-  await expect(panel.getByText("Pick one from the list.")).toBeVisible();
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
   await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
   await field.pressSequentially("km/h");
   await expect(field).toHaveValue("km/h");
@@ -530,12 +530,85 @@ test("a value chooser says Enter takes the text only once it spells an entry", a
   await datatype.clear();
   await datatype.pressSequentially("uint");
   // Part of an entry's spelling, so Enter would take nothing: the list is the way out.
-  await expect(panel.getByText("Pick one from the list.")).toBeVisible();
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
   await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
   await datatype.pressSequentially("16");
   await expect(panel.getByText(UNSETTLED)).toBeVisible();
-  await expect(panel.getByText("Pick one from the list.")).toHaveCount(0);
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toHaveCount(0);
   await datatype.press("Enter");
   await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
-  await expect(panel.getByText("Pick one from the list.")).toHaveCount(0);
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toHaveCount(0);
+});
+
+/** Whether the note under a field is what a reader would hit at its centre, rather than the open
+ * list or anything else drawn over it. */
+async function notCovered(field: Locator): Promise<boolean> {
+  return field.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return hit !== null && element.contains(hit);
+  });
+}
+
+test("the arrow closing the list keeps the text typed, withholds Apply and says what to do", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await field.clear();
+  await field.pressSequentially("km");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  // By its label: an open list hides the page's roles from the accessibility tree.
+  await panel.locator('button[aria-label="Show the choices for Unit of ValueA"]').click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(field).toHaveValue("km");
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  // The sentence is the field's description, and on screen with the list closed.
+  await expect(field).toHaveAccessibleDescription(UNSETTLED);
+  const note = panel.getByText(UNSETTLED);
+  await expect(note).toBeVisible();
+  expect(await notCovered(note)).toBe(true);
+  // Escape ends the text, the earlier unit is back and so is Apply; so does leaving the field.
+  await field.press("Escape");
+  await expect(field).toHaveValue("rpm");
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
+  await field.pressSequentially("k");
+  await expect(field).toHaveValue("rpmk");
+  await field.press("Tab");
+  await expect(field).toHaveValue("rpm");
+});
+
+test("an Enter that takes nothing keeps the text, and so does text that spells no entry", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint");
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await datatype.press("Enter");
+  await expect(datatype).toHaveValue("uint");
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  const note = panel.getByText(/^Pick one from the list, or press Escape/);
+  await expect(note).toBeVisible();
+  expect(await notCovered(note)).toBe(true);
+
+  // Text no entry spells empties the list; it stays, and the sentence names the way out.
+  await datatype.clear();
+  await datatype.pressSequentially("zzz");
+  await expect(datatype).toHaveValue("zzz");
+  const nothing = panel.getByText(/^Nothing in the list matches what you typed/);
+  await expect(nothing).toBeVisible();
+  await expect(nothing).toContainText("Escape");
+  await datatype.press("Escape");
+  await expect(datatype).toHaveValue("uint8");
+  await expect(nothing).toHaveCount(0);
 });

@@ -1,14 +1,18 @@
 import { describe, expect, test } from "vitest";
 import {
   atOnce,
-  closeEndsTyped,
+  endsTyped,
   gated,
   PLAN_DELAY_MS,
   planDelay,
   planShown,
   sameRequest,
+  UNSETTLED_ENTER_ONLY,
+  UNSETTLED_NOTHING,
+  UNSETTLED_PICK,
   UNSETTLED_TEXT,
   unsettled,
+  unsettledNote,
   unsettledSentence,
 } from "./typing";
 
@@ -155,39 +159,64 @@ describe("unsettled", () => {
   });
 });
 
-describe("closeEndsTyped", () => {
-  test("a close made inside a scroll keeps what was typed", () => {
-    expect(closeEndsTyped("scroll")).toBe(false);
+describe("endsTyped", () => {
+  test("Escape and the focus leaving end what was typed", () => {
+    expect(endsTyped("Escape")).toBe(true);
+    expect(endsTyped("blur")).toBe(true);
   });
 
-  test("a close made by a key, a press, the focus leaving or no event at all ends it", () => {
-    for (const event of [
-      "keydown",
-      "keyup",
-      "pointerdown",
-      "mousedown",
-      "blur",
-      "focusout",
-      "click",
-    ]) {
-      expect(closeEndsTyped(event)).toBe(true);
+  test("every close keeps it, and so does any other key", () => {
+    expect(endsTyped("close")).toBe(false);
+    for (const key of ["Enter", "Tab", "ArrowDown", "a", " ", "escape", ""]) {
+      expect(endsTyped(key)).toBe(false);
     }
-    expect(closeEndsTyped(undefined)).toBe(true);
   });
 });
 
 describe("unsettledSentence", () => {
-  test("where Enter would take the text it says so, and the pick from the list", () => {
-    expect(unsettledSentence(true, 0)).toBe(UNSETTLED_TEXT);
+  test("where Enter would take the text it says so, and the list only if it offers one", () => {
     expect(unsettledSentence(true, 3)).toBe(UNSETTLED_TEXT);
+    expect(unsettledSentence(true, 0)).toBe(UNSETTLED_ENTER_ONLY);
+    expect(UNSETTLED_ENTER_ONLY).not.toContain("list");
   });
 
-  test("where Enter would take nothing it only offers the list", () => {
-    expect(unsettledSentence(false, 3)).toBe("Pick one from the list.");
-    expect(unsettledSentence(false, 1)).not.toContain("Enter");
+  test("where Enter would take nothing it offers the list, and the way back", () => {
+    expect(unsettledSentence(false, 3)).toBe(UNSETTLED_PICK);
+    expect(UNSETTLED_PICK).not.toContain("Enter");
+    expect(UNSETTLED_PICK).toContain("Escape");
   });
 
-  test("with nothing listed it says so rather than offer a list", () => {
-    expect(unsettledSentence(false, 0)).toBe("Nothing in the list is what you typed.");
+  test("with nothing listed it does not send the reader to the list, and names the way out", () => {
+    expect(unsettledSentence(false, 0)).toBe(UNSETTLED_NOTHING);
+    expect(UNSETTLED_NOTHING).not.toContain("pick");
+    expect(UNSETTLED_NOTHING).toContain("Escape");
+    expect(UNSETTLED_NOTHING).toContain("change");
+  });
+});
+
+describe("unsettledNote", () => {
+  const sections = [{ choices: [1, 2] }, { choices: [3] }];
+  const none = [{ choices: [] }];
+  const takesAll = () => "x";
+  const takesNothing = () => undefined;
+
+  test("nothing is said while the text is settled", () => {
+    expect(unsettledNote(false, "km", sections, takesAll)).toBeUndefined();
+  });
+
+  test("it counts every entry of every section, and asks what Enter does with the text", () => {
+    expect(unsettledNote(true, "km", sections, takesAll)).toBe(UNSETTLED_TEXT);
+    expect(unsettledNote(true, "km", sections, takesNothing)).toBe(UNSETTLED_PICK);
+    expect(unsettledNote(true, "km", none, takesNothing)).toBe(UNSETTLED_NOTHING);
+    expect(unsettledNote(true, "km", [], takesAll)).toBe(UNSETTLED_ENTER_ONLY);
+  });
+
+  test("Enter is asked about the text and the sections it is given", () => {
+    const seen: unknown[] = [];
+    unsettledNote(true, "uint", sections, (given, text) => {
+      seen.push(given, text);
+      return undefined;
+    });
+    expect(seen).toEqual([sections, "uint"]);
   });
 });

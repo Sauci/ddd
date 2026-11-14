@@ -131,7 +131,7 @@ test("text left in a key's field of the form offers no Add, until it is taken", 
     adding.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
   ).toHaveCount(0);
   // Enter would take nothing yet: only an entry spelt exactly, so the sentence says to pick.
-  await expect(adding.getByText("Pick one from the list.")).toBeVisible();
+  await expect(adding.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
   await datatype.pressSequentially("6");
   await expect(
     adding.getByText("Press Enter to take what you typed, or pick it from the list."),
@@ -268,6 +268,15 @@ test("a name the project already has is refused in its own words", async ({ page
   await expect(adding.getByText("'ValueA' is already declared by this project")).toBeVisible();
   await expect(adding.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+
+  // Text typed into a key's field is past the value the refusal was about: the sentence goes, and
+  // comes back with the text put back. Looked for by its text: the open list hides the roles.
+  await volatile.clear();
+  await volatile.pressSequentially("fal");
+  await expect(adding.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await expect(adding.getByText("'ValueA' is already declared by this project")).toHaveCount(0);
+  await volatile.press("Escape");
+  await expect(adding.getByText("'ValueA' is already declared by this project")).toBeVisible();
 });
 
 test("a declaration is removed and put back", async ({ page, gui }) => {

@@ -97,6 +97,9 @@ interface Props {
   chosen?: string | null;
   changesShown?: boolean;
   pickerOpen?: boolean;
+  /** Text already typed into the chooser's field and left there, which the reader has not taken:
+   * the panel then withholds its plan and its Apply, and says how to go on. */
+  typing?: string;
   /** What removing the variable from a component would take, and which component that is; left
    * out for a story that shows no removal offer at all - the way a screen with no component in
    * view never offers one either. */
@@ -120,12 +123,13 @@ function View({
   chosen: initialChosen,
   changesShown: initialChangesShown = false,
   pickerOpen = false,
+  typing,
   removal,
   updating = false,
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(initialSelected);
   const [chosen, setChosen] = useState<string | null | undefined>(initialChosen);
-  const [typed, setTyped] = useState<string | undefined>(undefined);
+  const [typed, setTyped] = useState<string | undefined>(typing);
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(initialChangesShown);
   const [removalShown, setRemovalShown] = useState(false);
@@ -185,7 +189,7 @@ function View({
           ? "Not one of this project's units"
           : undefined)
       }
-      preview={broken === null ? preview : null}
+      preview={broken === null && !unsettled(typed, settledLabel) ? preview : null}
       refusal={refusal ?? null}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
@@ -224,6 +228,18 @@ export const ChangesShown = () => (
 
 export const PickerOpen = () => (
   <View variable={DISAGREEING} units={FREE_UNITS} preview={ONE_FILE} selected="unit" pickerOpen />
+);
+
+/** Text typed into the unit field and left there: what the panel planned for the unit settled on
+ * is no longer drawn, nor its Apply, and the field says how to take the text. */
+export const TextNotYetTaken = () => (
+  <View
+    variable={DISAGREEING}
+    units={FREE_UNITS}
+    preview={ONE_FILE}
+    selected="unit"
+    typing="km/h"
+  />
 );
 
 export const TypedOutsideVocabulary = () => (

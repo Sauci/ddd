@@ -195,7 +195,7 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
         )}
       </div>
       <p className="consequence">{declareSentence(props.typed, props.kind, props.scope, reply)}</p>
-      {props.refusal !== null && (
+      {props.refusal !== null && !unsettledForm && (
         <p className="panel-refusal" role="status">
           {props.refusal}
         </p>

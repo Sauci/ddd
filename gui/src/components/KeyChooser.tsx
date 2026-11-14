@@ -1,5 +1,5 @@
 import type { UnitsReply, VariableKeyOffer } from "../api/types";
-import { unsettledSentence } from "../lib/typing";
+import { unsettledNote } from "../lib/typing";
 import { pickerSections, rawOf } from "../lib/units";
 import { chooserSections, enteredValue } from "../lib/variableKeys";
 import { ComboBox } from "../ui/ComboBox";
@@ -78,19 +78,15 @@ export function KeyChooser(props: KeyChooserProps) {
           if (raw !== undefined) props.onChosen(raw);
         }}
         onClose={props.onPickerClosed}
-        note={props.note}
+        note={
+          unsettledNote(props.unsettled, props.typed, sections, (listed, text) =>
+            enteredValue(listed, keyName, text),
+          ) ?? props.note
+        }
         isDisabled={props.busy}
         autoFocus={props.focus}
         menuTrigger={props.pickerTrigger}
       />
-      {props.unsettled && (
-        <p className="consequence">
-          {unsettledSentence(
-            enteredValue(sections, keyName, props.typed) !== undefined,
-            sections.reduce((count, section) => count + section.choices.length, 0),
-          )}
-        </p>
-      )}
       {offer.editor === "limits" && (
         <div className="key-range">
           <label>

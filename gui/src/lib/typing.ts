@@ -74,9 +74,20 @@ export function planShown<T>(
   };
 }
 
-/** What a panel says in place of a plan while a chooser's text is not the value settled on: the
- * reader's way out of it. */
+/** What a panel says in place of a plan while a chooser's text is not the value settled on and
+ * Enter would take that text: the reader's way out of it. */
 export const UNSETTLED_TEXT = "Press Enter to take what you typed, or pick it from the list.";
+
+/**
+ * The way out of text the panel has not settled on, said only as far as it is true. `enterTakes`:
+ * whether Enter would take the text as it stands (a unit picker takes any text but a blank one; a
+ * value chooser only text spelling an entry exactly); `listed`: how many entries the list offers
+ * for it. A chooser whose Enter would take nothing must not say it does.
+ */
+export function unsettledSentence(enterTakes: boolean, listed: number): string {
+  if (enterTakes) return UNSETTLED_TEXT;
+  return listed > 0 ? "Pick one from the list." : "Nothing in the list is what you typed.";
+}
 
 /**
  * Whether a chooser's text is one the panel has not settled on (decision 15.3): `typed` is what
@@ -89,4 +100,16 @@ export const UNSETTLED_TEXT = "Press Enter to take what you typed, or pick it fr
  */
 export function unsettled(typed: string | undefined, settled: string): boolean {
   return typed !== undefined && typed !== settled;
+}
+
+/**
+ * Whether a chooser's list closing ends what was typed into its field (decision 24.2), given the
+ * type of the event being dispatched when it closed, `undefined` when none was. React Aria closes
+ * the list on any scroll of a box holding the field - a wheel notch, or the scroll into view that
+ * follows the field taking the focus or a key typed below the fold - and none of those is the
+ * reader leaving, so the text stays. Every other close ends it, as before; Escape and the focus
+ * leaving end it on their own account, open list or not.
+ */
+export function closeEndsTyped(event: string | undefined): boolean {
+  return event !== "scroll";
 }

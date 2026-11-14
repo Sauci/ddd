@@ -7,7 +7,6 @@ import {
   renameSections,
   unitMeta,
 } from "../lib/projectUnits";
-import { UNSETTLED_TEXT } from "../lib/typing";
 import { baseName, consequence, shownChanges } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -195,6 +194,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
             if (chosen !== null) props.onChosen(chosen);
           }}
           onClose={props.onPickerClosed}
+          unsettled={props.unsettled}
           note={undefined}
           isDisabled={props.busy}
           autoFocus={null}
@@ -202,7 +202,6 @@ export function UnitPanelView(props: UnitPanelViewProps) {
         <p className="rename-note">
           Only the spelling changes; values, limits and conversions stay as they are.
         </p>
-        {props.unsettled && <p className="consequence">{UNSETTLED_TEXT}</p>}
         {!props.unsettled &&
           to !== null &&
           outcome(

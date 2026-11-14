@@ -13,6 +13,7 @@ import {
   Popover,
   Text,
 } from "react-aria-components";
+import { closeEndsTyped } from "../lib/typing";
 
 export interface ComboChoice {
   id: string;
@@ -102,25 +103,9 @@ export function ComboBox({
   // no reason to open it again: until the reader types or leaves the field, only ArrowDown or ▾
   // opens it.
   const [puttingBack, setPuttingBack] = useState(false);
-  // Whether a scroll of an ancestor of the field is being dispatched: React Aria's own listener
-  // for it (`useCloseOnScroll`) closes the list from inside that event, and says nothing of why.
-  // This one is registered at mount, before React Aria's, so it has run when the close is told.
-  const scrolling = useRef(false);
   useEffect(() => {
     if (autoFocus !== null) input.current?.focus();
   }, [autoFocus]);
-  useEffect(() => {
-    const scrolled = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof Node) || !target.contains(input.current)) return;
-      scrolling.current = true;
-      setTimeout(() => {
-        scrolling.current = false;
-      }, 0);
-    };
-    window.addEventListener("scroll", scrolled, true);
-    return () => window.removeEventListener("scroll", scrolled, true);
-  }, []);
   return (
     <AriaComboBox
       className="combo"
@@ -131,7 +116,11 @@ export function ComboBox({
         onInputChange(value);
       }}
       onOpenChange={(isOpen) => {
-        if (isOpen || scrolling.current) return;
+        // React Aria closes the list from inside the scroll event it hears (`useCloseOnScroll`),
+        // and `onOpenChange` runs within that dispatch, so the event being dispatched says what
+        // closed it, whichever listener heard it first. `window.event` is deprecated but is
+        // what says it without a flag or a timer; `closeEndsTyped` (lib/typing.ts) is the rule.
+        if (isOpen || !closeEndsTyped(window.event?.type)) return;
         setPuttingBack(true);
         onClose();
       }}

@@ -481,9 +481,9 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   const chooser = panel.getByRole("combobox", { name: "Limits of Temperature_t" });
   await chooser.clear();
   await chooser.pressSequentially("-4");
-  await expect(
-    panel.getByText("Press Enter to take what you typed, or pick it from the list."),
-  ).toBeVisible();
+  // Enter takes only text spelling an entry exactly here, so the sentence offers the list alone.
+  await expect(panel.getByText("Pick one from the list.")).toBeVisible();
+  await expect(panel.getByText("Press Enter to take")).toHaveCount(0);
   // Looked for by its text: the open list hides the page's roles from the accessibility tree.
   await expect(panel.getByText(STALE)).toHaveCount(0);
   await chooser.press("Escape");

@@ -477,6 +477,9 @@ test("text typed past the chosen unit offers no Apply for the earlier unit, and 
   await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
   const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
   await field.clear();
+  // Blank text is taken by nothing: the sentence does not say Enter takes it.
+  await expect(panel.getByText("Pick one from the list.")).toBeVisible();
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
   await field.pressSequentially("km/h");
   await expect(field).toHaveValue("km/h");
   // The open list hides the rest of the page from the accessibility tree: looked for there too.
@@ -516,4 +519,23 @@ test("what Apply writes is not a unit the reader typed past", async ({ page, gui
   await expect(field).toHaveValue("rpm");
   await panel.getByRole("button", { name: "Apply to 2 files" }).click();
   await expect.poll(() => unitOfValueA(gui.directory)).toBe("rpm");
+});
+
+test("a value chooser says Enter takes the text only once it spells an entry", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint");
+  // Part of an entry's spelling, so Enter would take nothing: the list is the way out.
+  await expect(panel.getByText("Pick one from the list.")).toBeVisible();
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
+  await datatype.pressSequentially("16");
+  await expect(panel.getByText(UNSETTLED)).toBeVisible();
+  await expect(panel.getByText("Pick one from the list.")).toHaveCount(0);
+  await datatype.press("Enter");
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
+  await expect(panel.getByText("Pick one from the list.")).toHaveCount(0);
 });

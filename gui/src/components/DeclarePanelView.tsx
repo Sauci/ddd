@@ -182,6 +182,9 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
                     props.onTyped_(key.key, undefined);
                   }}
                   onPickerClosed={() => props.onTyped_(key.key, undefined)}
+                  // The form's own Add is not withheld for text left in a key's field: outside
+                  // task 4's three choosers, left for the branch's review.
+                  unsettled={false}
                   range={NO_RANGE}
                   onRange={() => undefined}
                   note={undefined}

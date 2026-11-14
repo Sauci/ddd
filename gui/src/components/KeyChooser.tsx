@@ -1,4 +1,5 @@
 import type { UnitsReply, VariableKeyOffer } from "../api/types";
+import { unsettledSentence } from "../lib/typing";
 import { pickerSections, rawOf } from "../lib/units";
 import { chooserSections, enteredValue } from "../lib/variableKeys";
 import { ComboBox } from "../ui/ComboBox";
@@ -24,6 +25,9 @@ export interface KeyChooserProps {
   onChosen: (raw: string | null) => void;
   /** The list closed or the field was left: what was typed there is dropped. */
   onPickerClosed: () => void;
+  /** Whether the text is not the value settled on (`unsettled`, lib/typing.ts): the chooser then
+   * says how to settle it, under the field. */
+  unsettled: boolean;
   /** The two fields of a range, while the key is `limits`. */
   range: { min: string; max: string };
   onRange: (range: { min: string; max: string }) => void;
@@ -53,6 +57,7 @@ export function KeyChooser(props: KeyChooserProps) {
         isDisabled={props.busy}
         autoFocus={props.focus}
         menuTrigger={props.pickerTrigger}
+        unsettled={props.unsettled}
       />
     );
   }
@@ -78,6 +83,14 @@ export function KeyChooser(props: KeyChooserProps) {
         autoFocus={props.focus}
         menuTrigger={props.pickerTrigger}
       />
+      {props.unsettled && (
+        <p className="consequence">
+          {unsettledSentence(
+            enteredValue(sections, keyName, props.typed) !== undefined,
+            sections.reduce((count, section) => count + section.choices.length, 0),
+          )}
+        </p>
+      )}
       {offer.editor === "limits" && (
         <div className="key-range">
           <label>

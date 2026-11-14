@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   atOnce,
+  closeEndsTyped,
   gated,
   PLAN_DELAY_MS,
   planDelay,
@@ -8,6 +9,7 @@ import {
   sameRequest,
   UNSETTLED_TEXT,
   unsettled,
+  unsettledSentence,
 } from "./typing";
 
 describe("planDelay", () => {
@@ -150,5 +152,42 @@ describe("unsettled", () => {
 
   test("it says what the reader can do, in the words the panels draw", () => {
     expect(UNSETTLED_TEXT).toBe("Press Enter to take what you typed, or pick it from the list.");
+  });
+});
+
+describe("closeEndsTyped", () => {
+  test("a close made inside a scroll keeps what was typed", () => {
+    expect(closeEndsTyped("scroll")).toBe(false);
+  });
+
+  test("a close made by a key, a press, the focus leaving or no event at all ends it", () => {
+    for (const event of [
+      "keydown",
+      "keyup",
+      "pointerdown",
+      "mousedown",
+      "blur",
+      "focusout",
+      "click",
+    ]) {
+      expect(closeEndsTyped(event)).toBe(true);
+    }
+    expect(closeEndsTyped(undefined)).toBe(true);
+  });
+});
+
+describe("unsettledSentence", () => {
+  test("where Enter would take the text it says so, and the pick from the list", () => {
+    expect(unsettledSentence(true, 0)).toBe(UNSETTLED_TEXT);
+    expect(unsettledSentence(true, 3)).toBe(UNSETTLED_TEXT);
+  });
+
+  test("where Enter would take nothing it only offers the list", () => {
+    expect(unsettledSentence(false, 3)).toBe("Pick one from the list.");
+    expect(unsettledSentence(false, 1)).not.toContain("Enter");
+  });
+
+  test("with nothing listed it says so rather than offer a list", () => {
+    expect(unsettledSentence(false, 0)).toBe("Nothing in the list is what you typed.");
   });
 });

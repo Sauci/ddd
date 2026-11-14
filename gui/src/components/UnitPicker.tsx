@@ -1,3 +1,4 @@
+import { unsettledSentence } from "../lib/typing";
 import { enteredUnit, type UnitSection } from "../lib/units";
 import { ComboBox } from "../ui/ComboBox";
 
@@ -14,6 +15,9 @@ interface Props {
   isDisabled: boolean;
   /** A new value on every request to focus the field; `null` asks for no focus. */
   autoFocus: number | null;
+  /** Whether the text is not the value settled on (`unsettled`, lib/typing.ts): the picker then
+   * says how to settle it, under the field. */
+  unsettled: boolean;
   /** "focus" opens the list as the field takes the focus, for a story to photograph it open. */
   menuTrigger?: "input" | "focus" | undefined;
 }
@@ -31,28 +35,39 @@ export function UnitPicker({
   isDisabled,
   autoFocus,
   menuTrigger,
+  unsettled,
 }: Props) {
   return (
-    <ComboBox
-      label={label}
-      inputValue={typed}
-      onInputChange={onTyped}
-      sections={sections}
-      onPick={(id) => {
-        const chosen = sections
-          .flatMap((section) => section.choices)
-          .find((entry) => entry.id === id);
-        if (chosen !== undefined) onPick(chosen.unit);
-      }}
-      onEnter={(text) => {
-        const unit = enteredUnit(sections, text);
-        if (unit !== undefined) onPick(unit);
-      }}
-      onClose={onClose}
-      note={note}
-      isDisabled={isDisabled}
-      autoFocus={autoFocus}
-      menuTrigger={menuTrigger}
-    />
+    <>
+      <ComboBox
+        label={label}
+        inputValue={typed}
+        onInputChange={onTyped}
+        sections={sections}
+        onPick={(id) => {
+          const chosen = sections
+            .flatMap((section) => section.choices)
+            .find((entry) => entry.id === id);
+          if (chosen !== undefined) onPick(chosen.unit);
+        }}
+        onEnter={(text) => {
+          const unit = enteredUnit(sections, text);
+          if (unit !== undefined) onPick(unit);
+        }}
+        onClose={onClose}
+        note={note}
+        isDisabled={isDisabled}
+        autoFocus={autoFocus}
+        menuTrigger={menuTrigger}
+      />
+      {unsettled && (
+        <p className="consequence">
+          {unsettledSentence(
+            enteredUnit(sections, typed) !== undefined,
+            sections.reduce((count, section) => count + section.choices.length, 0),
+          )}
+        </p>
+      )}
+    </>
   );
 }

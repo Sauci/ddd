@@ -1,7 +1,6 @@
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { removalSentence } from "../lib/declarations";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
-import { UNSETTLED_TEXT } from "../lib/typing";
 import { consequence, declaredUnits, shownChanges, unloadableOf } from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
@@ -28,9 +27,6 @@ export interface VariablePanelViewProps
   preview: SettleReply | null;
   /** Why the chosen value cannot be applied, or why applying it was refused. */
   refusal: string | null;
-  /** Whether the chooser's text is not the value settled on (`unsettled`, lib/typing.ts): the
-   * panel then says how to settle it, in place of a plan and an Apply. */
-  unsettled: boolean;
   changesShown: boolean;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
@@ -105,6 +101,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
             onTyped={props.onTyped}
             onChosen={props.onChosen}
             onPickerClosed={props.onPickerClosed}
+            unsettled={props.unsettled}
             range={props.range}
             onRange={props.onRange}
             note={props.note}
@@ -120,7 +117,6 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           section exists so a reader - and a locator - can tell this block's "Show changes" from
           the removal offer's own, below. */}
       <section aria-label="Settle the key">
-        {props.unsettled && <p className="consequence">{UNSETTLED_TEXT}</p>}
         {refusal !== null ? (
           <p className="panel-refusal" role="status">
             {refusal}

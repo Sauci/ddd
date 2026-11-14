@@ -2,7 +2,6 @@ import type { PlanReply, TypeReply, TypeUse, UnitsReply } from "../api/types";
 import { distinctFindings, keyedFindings, routeOf } from "../lib/findings";
 import { keyRowsOfType, memberRows } from "../lib/projectTypes";
 import type { Route } from "../lib/route";
-import { UNSETTLED_TEXT } from "../lib/typing";
 import { baseName, consequence, shownChanges, textOf } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -135,6 +134,7 @@ export function TypePanelView(props: TypePanelViewProps) {
               onTyped={props.onTyped}
               onChosen={props.onChosen}
               onPickerClosed={props.onPickerClosed}
+              unsettled={props.unsettled}
               range={props.range}
               onRange={props.onRange}
               note={props.note}
@@ -160,7 +160,6 @@ export function TypePanelView(props: TypePanelViewProps) {
         </label>
         <p className="rename-note">Only the name changes; what the type fixes stays as it is.</p>
       </section>
-      {props.unsettled && <p className="consequence">{UNSETTLED_TEXT}</p>}
       {refusal !== null ? (
         <p className="panel-refusal" role="status">
           {refusal}

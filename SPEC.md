@@ -2263,8 +2263,8 @@ where nothing follows the includes of a registered file; so, in both calls, is a
 keyword given no value, which the error names: a variable that expanded to nothing reads
 exactly like a keyword nobody gave, and each one silently changes what the call does - the
 quoted form `ADDRESS_MAP "${DDD_MAP}"`, a keyword followed by an empty argument, included,
-while an empty argument after a value leaves the keyword its values and is dropped from them;
-it defines an on-demand
+and so is an empty argument among the values of a keyword taking several, which would
+otherwise drop out of the list without a word; it defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
 declares no interface of its own; a registered file whose JSON does not parse at all is
@@ -2293,10 +2293,11 @@ components and with them the `GROUP`s, while the objects themselves sort by name
 hand written project description is used instead, which is the mode for an older CMake, or
 for a project layout the link graph does not mirror; `NAME` is then ignored in favour of
 the name written inside the file. That file is read when the build is configured - the files
-it is made of, its plugins and its name - so it has to exist and parse by then, and one that
-does not, a file the build has yet to write among them, is a configure error naming it; one
-that parses and that the tool cannot resolve all the same, a root failing its schema, is
-warned of, and the generation then depends on that file alone, as does the configure step.
+it is made of, its plugins and its name - so it has to exist, parse and name its project by
+then, and one that does not, a file the build has yet to write among them, is a configure
+error naming it; one that does all three and that the tool cannot resolve all the same, a
+root failing its schema otherwise, is warned of, and the generation then depends on that
+file alone, as does the configure step.
 The output directory holds what the configure step writes there - the build record and, in
 the collected mode, the project description - which no step of the build writes again, so
 the configure step watches the record: a build that finds it gone configures again first,
@@ -2415,14 +2416,16 @@ a run failing its checks writes none of them; its path is published as the image
 itself is found by `find_program`
 into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
 upgraded DDD regenerates; multi-config generators are refused at configure time, because
-the generated files have one path that every configuration would write to, and so is a project
-that enables no C, the definitions the templates render being C. The module and
+the generated files have one path that every configuration would write to, and so is a
+directory calling `ddd_generate` in which C is not enabled by the time it is done, the
+definitions the templates render being C and compiled there. The module and
 the tool **shall** be one release: including the module runs `ddd --version` and refuses,
 naming both, a tool spelling another version than the module does, because every option the
 module passes is checked when the build runs it and a mismatch is otherwise an unrecognised
 argument at build time, or a silent build under the option set of a release nobody is
-running. The answer is not kept: every configure includes the module and asks again, so that a
-tool upgraded where it stands - another release installed at the same path - is refused too.
+running. The answer is kept for one configure run alone, however many directories include the
+module: the next configure asks again, so that a tool upgraded where it stands - another
+release installed at the same path - is refused too.
 
 In the collected mode the interface library carries the compile usage of every registered
 target - include directories, compile definitions and compile options, never link edges - so

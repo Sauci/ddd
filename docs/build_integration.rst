@@ -38,10 +38,11 @@ installation - the one of a virtual environment, or a small wrapper script runni
 of another release than the module's own: the two are one release, and a project that copied
 ``Ddd.cmake`` into its tree - which the line above invites - otherwise finds out at build
 time, in an ``unrecognized arguments`` from the tool's argument parser, or does not find out
-at all and builds under the option set of a release nobody is running. It asks at every
-configure, keeping no answer: a tool upgraded where it stands - ``pip install -U`` into the
-environment the path names - is another release at the same path, and is refused the same
-way. The module needs CMake
+at all and builds under the option set of a release nobody is running. It asks once in every
+configure, however many directories include it, and keeps the answer for that configure
+alone: a tool upgraded where it stands - ``pip install -U`` into the environment the path
+names - is another release at the same path, and the next configure refuses it the same way.
+The module needs CMake
 3.20 and says so at include time; collecting the
 components through the link graph (below) needs CMake 3.30. A cross-compile toolchain file
 that sets ``CMAKE_FIND_ROOT_PATH_MODE_PROGRAM ONLY`` keeps ``find_program`` from seeing host
@@ -252,10 +253,14 @@ Three arrangements are refused with a message rather than with a confusing failu
 directory holding no ``*.jinja2`` file at all, a directory holding nothing but helpers and
 ``{component}`` templates, from which no output could be declared, and a directory in which no
 template produces a ``.c`` file - the definitions of the global variables have to be compiled
-into the image, so one template must produce a source file. For the same reason a project that
-enables no C - ``project(<name> LANGUAGES CXX)`` - is refused, naming the ``.c`` files and the
-two ways to enable it, rather than left to CMake, which cannot tell the linker language of the
-object library compiling them and names that library alone.
+into the image, so one template must produce a source file. For the same reason the directory
+calling ``ddd_generate()`` has to have C enabled by the time it is done - by
+``project(<name> LANGUAGES C CXX)``, by an ``enable_language(C)`` in a directory above it
+before it is added, or by one in it, before or after the call - since the object library
+compiling those files is built there. One that has not is refused, naming the ``.c`` files, the directory and the two ways
+to enable it: ``project(<name> LANGUAGES CXX)`` was left to CMake, which cannot tell the
+linker language of that library and names it alone, and C enabled in a sibling directory alone
+stopped CMake on a variable of its own that the directory lacks.
 
 Collection follows the link graph
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -313,11 +318,11 @@ re-runs configure and the generation. What the tool says about the project on it
 error - that plugin's defect, a missing include - is printed by the configure as a warning,
 graded by the ``SEVERITY`` and ``STRICT`` of the call, so a check the call relaxed is not
 warned of. The project file itself is read when the build is configured - for the files it is
-made of, its plugins and its name - so it has to exist and parse as json by then: one that
-does not, a file the build has yet to write among them, is a configure error naming it. If
-the tool cannot resolve a project that parses all the same - a root failing its schema - the
-module warns and falls back to depending on the project file alone, which stays a dependency
-of the configure, rather than refusing to configure at all.
+made of, its plugins and its name - so it has to exist, parse as json and name its project by
+then: one that does not, a file the build has yet to write among them, is a configure error
+naming it. If the tool cannot resolve a project that does all three - a root failing its
+schema otherwise - the module warns and falls back to depending on the project file alone,
+which stays a dependency of the configure, rather than refusing to configure at all.
 
 What the build tells an editor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -688,11 +693,11 @@ the collected mode and generated out of the link graph instead of out of the fil
 meant.
 The quoted form, ``ADDRESS_MAP "${DDD_MAP}"``, which every recipe on this page writes, is
 refused the same way: a keyword followed by an empty argument has no value either, from CMake
-3.20 on. Only the argument right after a keyword is weighed, that being what says whether the
-keyword was given: ``SEVERITY "" "unused-output=info"`` is refused, while an empty argument
-after a value - ``SEVERITY "unused-output=info" "" "missing-producer=ignore"`` - leaves the
-keyword its values and is dropped from them, as it is from the descriptions of
-``ddd_add_component`` and from ``PLUGINS``.
+3.20 on. So is an empty argument among a keyword's values, wherever it is, in either call and
+for every keyword taking several: ``SEVERITY "unused-output=info" "${RAISE}"`` with ``RAISE``
+mistyped would otherwise drop out of the list without a word and leave the policy weaker than
+the call says. The error names the keyword, saying that it was given an empty value among its
+values.
 
 ``NO_PROPAGATE_HEADERS`` is the option a project building **several** images from the same
 components cannot avoid. A component's interface header is generated for one link closure, so

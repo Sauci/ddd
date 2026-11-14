@@ -991,6 +991,28 @@ class TestTheBuildAfterAnEdit:
         assert not touched.compiled, touched.output
         assert story.build().did_nothing()
 
+    @pytest.mark.parametrize("generator", STORY_GENERATORS)
+    def test_a_file_of_the_generation_deleted_by_hand_is_written_again(
+        self, tmp_path: Path, generator: str
+    ) -> None:
+        """Ninja makes a declared file that is missing. Make, with a stamp the step's one output,
+        does not: every build stops on the file until the stamp goes, and the rule of the file's
+        own claims to generate nothing in the meantime. Deleting the stamp is the way back."""
+        story = Story(tmp_path, STORY_SHAPES["collected"], generator)
+        assert story.build().code == 0
+        generated = story.images() / "ddd" / "img"
+        (generated / "ddd_globals.c").unlink()
+        deleted = story.build()
+        if generator == "Ninja":
+            assert deleted.code == 0 and deleted.generated(), deleted.output
+        else:
+            assert deleted.code != 0, deleted.output
+            assert "Generating ddd/img/ddd_globals.c" not in deleted.output, deleted.output
+            assert story.build().code != 0
+            (generated / "ddd-generation.stamp").unlink()
+            assert story.build().printed == "logged 200"
+        assert (generated / "ddd_globals.c").is_file()
+
     @pytest.mark.parametrize(
         "shape",
         [
@@ -1284,11 +1306,11 @@ class TestTheTemplateDirectory:
     def test_a_checkout_spelled_like_a_pattern_finds_its_templates(
         self, tmp_path: Path, generator: str
     ) -> None:
-        """And the build after it has nothing to do: every file the build watches by a glob of
-        its own path - the record in the output directory among them - is spelled as that path
-        alone, or the glob would find it missing at every build, and configure again. The
-        templates the generation depends on are found the same way, so an edit of one of them
-        regenerates."""
+        """The templates are found, the generation depends on them, so an edit of one of them
+        regenerates, and the build after has nothing to do. The record in the output directory
+        is watched by a glob of its own path, spelled as that path alone: read as a pattern, the
+        glob would match nothing and watch nothing, and a deleted output directory stop the
+        build under ninja, the project description missing with no rule to make it."""
         story = self.story(tmp_path / "pr[1]", generator)
         story.reconfigure()
         assert story.build().printed == "logged 200"
@@ -1301,6 +1323,9 @@ class TestTheTemplateDirectory:
         assert edited.code == 0 and edited.generated(), edited.output
         globals_c = story.images() / "ddd" / "img" / "ddd_globals.c"
         assert "an edit of the template" in globals_c.read_text(encoding="utf-8")
+        shutil.rmtree(story.images() / "ddd" / "img")
+        rebuilt = story.build()
+        assert rebuilt.code == 0 and rebuilt.printed == "logged 200", rebuilt.output
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_helper_in_a_subdirectory_is_a_dependency_of_the_generation(
@@ -2378,38 +2403,82 @@ def cxx_compiler() -> list[str]:
 
 
 class TestAProjectThatEnablesNoC:
-    """``project(<name> LANGUAGES CXX)``: the definitions the templates render are C, and CMake
-    stopped at the object library compiling them, unable to determine its linker language - a
-    target of the module's named, and not the language the project left out."""
+    """The definitions the templates render are C, compiled by an object library of the module's,
+    which a directory with no C cannot build: under ``project(<name> LANGUAGES CXX)`` CMake
+    stopped at it, unable to determine its linker language - a target of the module's named, and
+    not the language the project left out. What counts is whether C is enabled in the directory
+    calling ``ddd_generate``, once that directory is done: a sibling enabling it does not help
+    that directory, and an ``enable_language(C)`` after the call, in it, does."""
 
-    def test_it_is_refused_naming_the_language(self, tmp_path: Path) -> None:
+    GENERATION = (
+        "add_library(store STATIC store.cpp)\n"
+        'ddd_add_component(store JSON "${CMAKE_CURRENT_SOURCE_DIR}/store.ddd.json")\n'
+        "add_executable(img main.cpp)\n"
+        "target_link_libraries(img PRIVATE store)\n"
+        f'ddd_generate(img TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")\n'
+    )
+    """A component and an image in C++, generated where they are."""
+
+    def write(self, tmp_path: Path, tail: str, generating: Path) -> Path:
+        """The top ``CMakeLists.txt``, a C++ project, ending with ``tail``; the component and the
+        image in ``generating``, a directory of their own or the top one."""
         described = {"component": {"name": "Store", "interface": [declare("local", "Level")]}}
-        (tmp_path / "store.ddd.json").write_text(json.dumps(described, indent=2), encoding="utf-8")
-        (tmp_path / "main.cpp").write_text("int main() { return 0; }\n", encoding="utf-8")
-        (tmp_path / "store.cpp").write_text("int store() { return 0; }\n", encoding="utf-8")
+        generating.mkdir(parents=True, exist_ok=True)
+        (generating / "store.ddd.json").write_text(json.dumps(described), encoding="utf-8")
+        (generating / "main.cpp").write_text("int main() { return 0; }\n", encoding="utf-8")
+        (generating / "store.cpp").write_text("int store() { return 0; }\n", encoding="utf-8")
         (tmp_path / "CMakeLists.txt").write_text(
-            f"""cmake_minimum_required(VERSION 3.30)
-project(Cxx LANGUAGES CXX)
-list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
-include(Ddd)
-add_library(store STATIC store.cpp)
-ddd_add_component(store JSON "{(tmp_path / "store.ddd.json").as_posix()}")
-add_executable(img main.cpp)
-target_link_libraries(img PRIVATE store)
-ddd_generate(img TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
-""",
+            "cmake_minimum_required(VERSION 3.30)\n"
+            "project(Cxx LANGUAGES CXX)\n"
+            f'list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")\n'
+            f"include(Ddd)\n{tail}",
             encoding="utf-8",
         )
+        return generating
+
+    def refusal(self, directory: Path) -> str:
+        return (
+            f'ddd_generate: the templates in "{TEMPLATES.as_posix()}" render C - "ddd_globals.c" '
+            f"- the definitions of the image's variables, and C is not enabled in \""
+            f'{directory.as_posix()}", where ddd_generate() is called. Enable it there, or in a '
+            "directory above it, before that directory is done: project(<name> LANGUAGES C CXX), "
+            "or enable_language(C)."
+        )
+
+    def test_it_is_refused_naming_the_language(self, tmp_path: Path) -> None:
+        self.write(tmp_path, self.GENERATION, tmp_path)
         run = attempt(tmp_path, tmp_path / "build", *cxx_compiler())
         said = " ".join((run.stdout + run.stderr).split())
         assert run.returncode != 0, said
         assert "can not determine linker language" not in said, said
-        assert (
-            f'ddd_generate: the templates in "{TEMPLATES.as_posix()}" render C - "ddd_globals.c" '
-            "- the definitions of the image's variables, and the project does not enable C. "
-            "Enable it beside the project's own languages - project(<name> LANGUAGES C CXX) - "
-            "or with enable_language(C) in the top directory."
-        ) in said
+        assert self.refusal(tmp_path) in said
+
+    def test_c_enabled_in_a_sibling_directory_alone_is_refused_too(self, tmp_path: Path) -> None:
+        """The language CMake reads for the directory calling ``ddd_generate`` is that
+        directory's own: C enabled in a sibling passed a check of the languages enabled anywhere,
+        and CMake then stopped generating, missing ``CMAKE_C_COMPILE_OBJECT``."""
+        (tmp_path / "clib").mkdir()
+        (tmp_path / "clib" / "CMakeLists.txt").write_text(
+            "enable_language(C)\nadd_library(clib STATIC clib.c)\n", encoding="utf-8"
+        )
+        (tmp_path / "clib" / "clib.c").write_text("int clib(void) { return 0; }\n", "utf-8")
+        generating = self.write(
+            tmp_path, "add_subdirectory(clib)\nadd_subdirectory(fw)\n", tmp_path / "fw"
+        )
+        (generating / "CMakeLists.txt").write_text(self.GENERATION, encoding="utf-8")
+        run = attempt(tmp_path, tmp_path / "build", *cxx_compiler())
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert "CMAKE_C_COMPILE_OBJECT" not in said, said
+        assert self.refusal(generating) in said
+
+    def test_c_enabled_after_the_call_in_its_directory_builds(self, tmp_path: Path) -> None:
+        """CMake builds the object library once the directory has C, which it reads when the
+        directory is done: refused at the call, this layout was refused for nothing."""
+        self.write(tmp_path, self.GENERATION + "enable_language(C)\n", tmp_path)
+        configure(tmp_path, tmp_path / "build", *cxx_compiler())
+        build(tmp_path / "build")
+        assert (tmp_path / "build" / "ddd" / "img" / "ddd_globals.c").is_file()
 
 
 class TestAProjectFileReadWhenConfigured:
@@ -2464,6 +2533,25 @@ ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
             f'ddd_generate: PROJECT names "{project.as_posix()}", which does not parse as json. '
             "The project description is read when the build is configured - the files it is "
             "made of, its plugins and its name - so it has to exist, and parse, by then:"
+        ) in said
+
+    def test_one_that_names_nothing_is_refused_saying_so(self, tmp_path: Path) -> None:
+        """A root that parses and names no project: the a2l and the dictionary are named after
+        that name, so the call cannot declare them. It was warned of as a project the generation
+        would depend on alone, a fallback the call then did not take, stopping on ``has neither
+        a project nor a component name``."""
+        project = tmp_path / "project.ddd.json"
+        project.write_text(json.dumps({"project": {"includes": []}}), encoding="utf-8")
+        source = self.write(tmp_path, project.as_posix())
+        run = attempt(source, tmp_path / "build")
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert "will depend on that file alone" not in said, said
+        assert (
+            f'ddd_generate: PROJECT names "{project.as_posix()}", which gives its project - or '
+            "its component - no name. The project description is read when the build is "
+            "configured - the files it is made of, its plugins and its name - so it has to exist, "
+            "and parse, by then: the a2l and the dictionary are named after that name."
         ) in said
 
 
@@ -3090,13 +3178,6 @@ target_link_libraries(img PRIVATE store)
                 id="a multi value keyword, quoted",
             ),
             pytest.param(
-                'ddd_add_component(store JSON "{component}")\n'
-                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
-                'SEVERITY "${{DDD_SEVERITY}}" "unused-output=info")',
-                "SEVERITY",
-                id="a multi value keyword whose first value is empty",
-            ),
-            pytest.param(
                 'ddd_add_component(store JSON "${{DDD_FILES}}")\n'
                 'ddd_generate(img TEMPLATE_DIRECTORY "{templates}")',
                 "JSON",
@@ -3150,40 +3231,81 @@ target_link_libraries(img PRIVATE store)
         (tmp_path / "map.json").write_text("{}\n", encoding="utf-8")
         configure(source, tmp_path / "build", f"-DDDD_MAP={(tmp_path / 'map.json').as_posix()}")
 
+    def test_an_empty_argument_after_a_single_value_is_no_value_of_it(self, tmp_path: Path) -> None:
+        """A keyword taking one value has it after one argument, as cmake_parse_arguments reads
+        the call: an empty argument after it is no value of that keyword, nor of any other."""
+        source = self.write(
+            tmp_path,
+            'ddd_add_component(store JSON "{component}")\n'
+            'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" NAME Named "${{DDD_NOTHING}}")',
+        )
+        configure(source, tmp_path / "build")
+
     @pytest.mark.parametrize(
-        "call",
+        ("call", "keyword"),
         [
             pytest.param(
                 'ddd_add_component(store JSON "{component}")\n'
                 'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
                 'SEVERITY "unused-output=info" "${{DDD_SEVERITY}}" "missing-producer=ignore")',
-                id="a severity",
+                "SEVERITY",
+                id="a severity among others",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
+                'SEVERITY "${{DDD_SEVERITY}}" "unused-output=info")',
+                "SEVERITY",
+                id="a severity before another",
             ),
             pytest.param(
                 'ddd_add_component(store JSON "{component}" "${{DDD_FILES}}")\n'
                 'ddd_generate(img TEMPLATE_DIRECTORY "{templates}")',
+                "JSON",
                 id="a description",
             ),
             pytest.param(
                 'ddd_add_component(store JSON "{component}")\n'
                 'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
                 'PLUGINS "${{CMAKE_CURRENT_SOURCE_DIR}}/plug.py" "${{DDD_PLUGINS}}")',
+                "PLUGINS",
                 id="a plugin",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
+                'LINK_LIBRARIES store "${{DDD_LIBRARIES}}")',
+                "LINK_LIBRARIES",
+                id="a library",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
+                'DEPENDS "${{CMAKE_CURRENT_SOURCE_DIR}}/main.c" "${{DDD_DEPENDS}}")',
+                "DEPENDS",
+                id="a file the generation depends on",
             ),
         ],
     )
-    def test_an_empty_value_after_one_is_skipped(self, tmp_path: Path, call: str) -> None:
-        """Only the argument right after a keyword says whether the keyword was given: an empty
-        one after a value leaves the keyword its values, and is no value of its own - not a
-        ``-W`` with nothing after it, a directory taken for a description, or a plugin named
-        nothing."""
+    def test_an_empty_value_among_values_is_refused(
+        self, tmp_path: Path, call: str, keyword: str
+    ) -> None:
+        """A variable that expanded to nothing among a keyword's values drops out of the list
+        without a word - ``SEVERITY "unused-output=info" "${RAISE}"`` with ``RAISE`` mistyped is
+        a policy quietly weaker than the call says - so every one is refused, not only the one
+        right after the keyword."""
         source = self.write(tmp_path, call)
         (tmp_path / "plug.py").write_text(
             "from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name='plug')\n", encoding="utf-8"
         )
-        configured = configure(source, tmp_path / "build")
-        build(tmp_path / "build")
-        assert "was given no value" not in configured.stdout + configured.stderr
+        run = attempt(source, tmp_path / "build")
+        said = " ".join(run.stderr.split())
+        assert run.returncode != 0, run.stdout + run.stderr
+        assert (
+            f'"{keyword}" was given an empty value among its values. A variable that expands to '
+            "nothing there drops out of the list without a word, so the call would quietly have "
+            "done without it. Give it a value, or leave it out."
+        ) in said
 
 
 class TestAProjectFileRegisteredAsAComponent:
@@ -3707,16 +3829,57 @@ add_executable(img main.c)
         reading its release from a file beside it is that tool: the wrapper itself keeps its
         size and its time, so nothing short of asking it tells the two answers apart."""
         self.write(tmp_path)
+        arguments = self.wrapped(tmp_path)
+        first = cmake(*arguments, cwd=tmp_path)
+        assert first.returncode == 0, first.stdout + first.stderr
+        (tmp_path / "release.txt").write_text("ddd 0.0.1\n", encoding="utf-8")
+        again = cmake(*arguments, cwd=tmp_path)
+        assert again.returncode != 0, "a tool upgraded in place configured without a word"
+        said = " ".join(again.stderr.split())
+        assert "0.0.1" in said and __version__ in said, said
+
+    def test_a_configure_asks_once_however_often_the_module_is_included(
+        self, tmp_path: Path
+    ) -> None:
+        """The module has no include guard, and a project may include it in every directory
+        that calls it: the question was asked at each include. A global property keeps the
+        answer for the configure run alone, so the next configure asks again."""
+        self.write(tmp_path)
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "CMakeLists.txt").write_text("include(Ddd)\n", encoding="utf-8")
+        listing = tmp_path / "CMakeLists.txt"
+        listing.write_text(
+            listing.read_text(encoding="utf-8") + "add_subdirectory(sub)\ninclude(Ddd)\n",
+            encoding="utf-8",
+        )
+        arguments = self.wrapped(tmp_path)
+        asked = tmp_path / "asked.txt"
+        first = cmake(*arguments, cwd=tmp_path)
+        assert first.returncode == 0, first.stdout + first.stderr
+        assert len(asked.read_text(encoding="utf-8").splitlines()) == 1
+        again = cmake(*arguments, cwd=tmp_path)
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert len(asked.read_text(encoding="utf-8").splitlines()) == 2
+
+    def wrapped(self, tmp_path: Path) -> tuple[str, ...]:
+        """A configure of ``tmp_path`` with a ``ddd`` wrapper that answers ``--version`` with
+        what ``release.txt`` beside it says - this release, until a test writes another - and
+        notes each time it is asked in ``asked.txt``."""
         if os.name == "nt":
             tool = tmp_path / "ddd.bat"
-            tool.write_text('@type "%~dp0release.txt"\n', encoding="utf-8")
+            tool.write_text(
+                '@echo asked>>"%~dp0asked.txt"\n@type "%~dp0release.txt"\n', encoding="utf-8"
+            )
         else:
             tool = tmp_path / "ddd.sh"
-            tool.write_text('#!/bin/sh\ncat "$(dirname "$0")/release.txt"\n', encoding="utf-8")
+            tool.write_text(
+                '#!/bin/sh\necho asked >> "$(dirname "$0")/asked.txt"\n'
+                'cat "$(dirname "$0")/release.txt"\n',
+                encoding="utf-8",
+            )
             tool.chmod(0o755)
-        release = tmp_path / "release.txt"
-        release.write_text(f"ddd {__version__}\n", encoding="utf-8")
-        arguments = (
+        (tmp_path / "release.txt").write_text(f"ddd {__version__}\n", encoding="utf-8")
+        return (
             "-S",
             str(tmp_path),
             "-B",
@@ -3727,13 +3890,6 @@ add_executable(img main.c)
             f"-DDDD_EXECUTABLE={tool.as_posix()}",
             *compiler(),
         )
-        first = cmake(*arguments, cwd=tmp_path)
-        assert first.returncode == 0, first.stdout + first.stderr
-        release.write_text("ddd 0.0.1\n", encoding="utf-8")
-        again = cmake(*arguments, cwd=tmp_path)
-        assert again.returncode != 0, "a tool upgraded in place configured without a word"
-        said = " ".join(again.stderr.split())
-        assert "0.0.1" in said and __version__ in said, said
 
 
 @pytest.mark.parametrize("tool", [CMAKE, NINJA, MAKE_PROGRAMS[MAKE], str(DDD)])
@@ -3745,7 +3901,7 @@ def test_the_tools_this_module_runs_exist(tool: str) -> None:
 
 
 def test_a_c_compiler_this_module_builds_with_exists() -> None:
-    """The fourth tool, which the three above left out.
+    """The fifth tool, which the four above leave out.
 
     Every test here configures and builds, so cmake needs a C compiler; without one the first
     ``configure()`` fails inside its own assertion and prints cmake's whole output, which

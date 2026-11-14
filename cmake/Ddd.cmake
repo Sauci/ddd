@@ -53,11 +53,12 @@ set(DDD_MODULE_VERSION "0.11.0")
 # and not the mismatch behind it, while a module older than its tool builds happily with the option set of a release
 # nobody is running. Asked at include time, because it is a property of the pair rather than of anything a call says.
 #
-# And asked at every include, so at every configure, keeping no answer: the release answering at a path can change
-# while the path stays - "pip install -U" into the environment DDD_EXECUTABLE names, or an editable install whose
-# checkout moved on - and an answer the cache kept by the path skipped the question there, the one case it exists for,
-# until a fresh build tree asked it. "ddd --version" answers without loading the rest of the tool, so the question
-# costs next to nothing.
+# And asked at every configure, the answer kept for that run alone: the release answering at a path can change while
+# the path stays - "pip install -U" into the environment DDD_EXECUTABLE names, or an editable install whose checkout
+# moved on - and an answer the cache kept by the path skipped the question there, the one case it exists for, until a
+# fresh build tree asked it. "ddd --version" answers without loading the rest of the tool, so the question costs next
+# to nothing; a global property, which lasts for the configure run, keeps it from being asked again by each directory
+# including the module, which has no include guard.
 #
 # Tolerant where it cannot tell - a tool that does not answer --version at all is broken in a way the next
 # execute_process() will say more about - and fatal where it can: a mismatch is a build that fails later, with less
@@ -86,8 +87,10 @@ function(_ddd_verify_tool_version)
     endif()
 endfunction()
 
-if(DDD_EXECUTABLE)
+get_property(_ddd_asked GLOBAL PROPERTY DDD_VERSION_ASKED)
+if(DDD_EXECUTABLE AND NOT _ddd_asked STREQUAL "${DDD_EXECUTABLE}|${DDD_MODULE_VERSION}")
     _ddd_verify_tool_version()
+    set_property(GLOBAL PROPERTY DDD_VERSION_ASKED "${DDD_EXECUTABLE}|${DDD_MODULE_VERSION}")
 endif()
 
 # A keyword whose value expanded to nothing - ddd_generate(... ADDRESS_MAP ${DDD_MAP}) with DDD_MAP unset or empty,
@@ -99,31 +102,72 @@ endif()
 #
 # The bare form is what KEYWORDS_MISSING_VALUES names. The quoted form, ADDRESS_MAP "${DDD_MAP}", which every recipe
 # writes, is a value to PARSE_ARGV - an empty string - and is named by nothing it reports, so the arguments are walked
-# here: a keyword that takes a value, followed by an empty argument. It is a macro because ARGV<n> belongs to the function that was called,
-# not to a helper; it reads them by number, up to the count its caller hands it (ARGV<n> beyond it may be an outer
-# function's), and works from CMake 3.20 on. Only the argument right after a keyword says whether the keyword was given:
-# an empty one after a value leaves the keyword its values, and each caller drops it from them.
+# here, each value by the keyword it belongs to: the options end a keyword's values, a keyword taking one value has
+# it after one argument, and one taking several has them up to the next keyword. A keyword whose values are all empty
+# was given none. An empty one among others drops out of the list without a word, and the call does without it - a
+# SEVERITY "unused-output=info" "${RAISE}" with RAISE mistyped is a policy weaker than the call says - so it is refused
+# as well. It is a macro because ARGV<n> belongs to the function that was called, not to a helper; it reads them by
+# number, up to the count its caller hands it (ARGV<n> beyond it may be an outer function's), and works from CMake 3.20
+# on. The keywords are the caller's cmake_parse_arguments() lists, which it hands over spelled the same way.
 # A macro, so its locals - each spelled _ddd_<name> - are set in the scope of the function calling it.
-macro(_ddd_refuse_empty_keywords context argument_count keywords)
-    set(_ddd_keywords "${keywords}")
+macro(_ddd_refuse_empty_keywords context argument_count options one_value multi_value)
+    set(_ddd_options "${options}")
+    set(_ddd_one_value "${one_value}")
+    set(_ddd_multi_value "${multi_value}")
     set(_ddd_empty ${arg_KEYWORDS_MISSING_VALUES})
+    set(_ddd_blank "")
+    set(_ddd_filled "")
+    set(_ddd_keyword "")
     set(_ddd_index 1)
     while(_ddd_index LESS ${argument_count})
-        math(EXPR _ddd_next "${_ddd_index} + 1")
-        if(_ddd_next LESS ${argument_count})
-            if("${ARGV${_ddd_index}}" IN_LIST _ddd_keywords AND "${ARGV${_ddd_next}}" STREQUAL "")
-                list(APPEND _ddd_empty "${ARGV${_ddd_index}}")
+        set(_ddd_argument "${ARGV${_ddd_index}}")
+        set(_ddd_value TRUE)
+        if(_ddd_argument STREQUAL "")
+            # A value, and never a keyword, though IN_LIST finds "" in a list that is empty, as one of these may be.
+            if(NOT _ddd_keyword STREQUAL "")
+                list(APPEND _ddd_blank "${_ddd_keyword}")
             endif()
+        elseif(_ddd_argument IN_LIST _ddd_one_value OR _ddd_argument IN_LIST _ddd_multi_value)
+            set(_ddd_keyword "${_ddd_argument}")
+            set(_ddd_value FALSE)
+        elseif(_ddd_argument IN_LIST _ddd_options)
+            set(_ddd_keyword "")
+        elseif(NOT _ddd_keyword STREQUAL "")
+            list(APPEND _ddd_filled "${_ddd_keyword}")
         endif()
-        set(_ddd_index ${_ddd_next})
+        # A keyword taking one value has it now, and what follows belongs to none.
+        if(_ddd_value AND NOT _ddd_keyword STREQUAL "" AND _ddd_keyword IN_LIST _ddd_one_value)
+            set(_ddd_keyword "")
+        endif()
+        math(EXPR _ddd_index "${_ddd_index} + 1")
     endwhile()
-    list(REMOVE_DUPLICATES _ddd_empty)
+    set(_ddd_among "")
+    foreach(_ddd_name IN LISTS _ddd_blank)
+        if(_ddd_name IN_LIST _ddd_filled)
+            list(APPEND _ddd_among "${_ddd_name}")
+        else()
+            list(APPEND _ddd_empty "${_ddd_name}")
+        endif()
+    endforeach()
+    set(_ddd_refusals "")
     if(_ddd_empty)
+        list(REMOVE_DUPLICATES _ddd_empty)
         list(JOIN _ddd_empty "\", \"" _ddd_spelled)
-        message(FATAL_ERROR "${context}: \"${_ddd_spelled}\" was given no value. A variable that expands to nothing "
-                            "leaves the keyword with no argument, which reads exactly like a keyword that was "
-                            "never given - so the call would quietly have done something else. Give it a value, "
-                            "or leave the keyword out.")
+        string(APPEND _ddd_refusals
+               "${context}: \"${_ddd_spelled}\" was given no value. A variable that expands to nothing leaves the "
+               "keyword with no argument, which reads exactly like a keyword that was never given - so the call "
+               "would quietly have done something else. Give it a value, or leave the keyword out.\n")
+    endif()
+    if(_ddd_among)
+        list(REMOVE_DUPLICATES _ddd_among)
+        list(JOIN _ddd_among "\", \"" _ddd_spelled)
+        string(APPEND _ddd_refusals
+               "${context}: \"${_ddd_spelled}\" was given an empty value among its values. A variable that expands "
+               "to nothing there drops out of the list without a word, so the call would quietly have done without "
+               "it. Give it a value, or leave it out.\n")
+    endif()
+    if(NOT _ddd_refusals STREQUAL "")
+        message(FATAL_ERROR "${_ddd_refusals}")
     endif()
 endmacro()
 
@@ -328,21 +372,6 @@ function(_ddd_write_build_info directory image project_file options)
     endif()
 endfunction()
 
-# The a2l is named after the project name *inside* the description, which is not necessarily what NAME says. Reading it
-# here keeps the declared OUTPUT and the file the tool actually writes in agreement - otherwise the build re-runs the
-# generator on every ninja invocation and DDD_A2L points at a file that never appears.
-function(_ddd_description_name variable description)
-    file(READ "${description}" content)
-    string(JSON name ERROR_VARIABLE error GET "${content}" "project" "name")
-    if(error)
-        string(JSON name ERROR_VARIABLE error GET "${content}" "component" "name")
-    endif()
-    if(error)
-        message(FATAL_ERROR "ddd_generate: \"${description}\" has neither a project nor a component name: ${error}")
-    endif()
-    set(${variable} "${name}" PARENT_SCOPE)
-endfunction()
-
 # Whether a description file's top level key is "component". The per-component check target may only run "ddd check"
 # on component files: a vocabulary file - types, units, sections, constants or rasters - has no interfaces of its
 # own, and handing one to "check" is an unrelaxable file-kind error that would break the <target>.ddd target for
@@ -434,10 +463,7 @@ function(ddd_add_component target)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_add_component: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
-    _ddd_refuse_empty_keywords("ddd_add_component" ${ARGC} "JSON")
-    # An empty argument after a description is none: taken for one, it was the calling directory, refused as a
-    # description not named *.ddd.json.
-    list(REMOVE_ITEM arg_JSON "")
+    _ddd_refuse_empty_keywords("ddd_add_component" ${ARGC} "" "" "JSON")
     if(NOT arg_JSON)
         message(FATAL_ERROR "ddd_add_component: at least one description file is required (JSON <file>...).")
     endif()
@@ -690,6 +716,26 @@ endfunction()
 # decided by the call and is read off the image's properties. With PROJECT, the components are the project's, which
 # the call already asked the tool for.
 function(_ddd_add_generation image)
+    # The definitions the templates render are C, compiled by <stem>_ddd_globals in this directory, which CMake builds
+    # only where C is enabled - in this directory, or in one above it before this one was added - and reads for it
+    # once the directory is done, which it is now. A project that enables no C, project(<name> LANGUAGES CXX), stopped
+    # at that library, CMake unable to determine its linker language; one enabling C in a sibling directory alone
+    # stopped on a variable of CMake's missing. Both named a target of this module's, and not the language.
+    if(NOT CMAKE_C_COMPILER_LOADED)
+        get_property(definition_files TARGET ${image} PROPERTY DDD_DEFINITION_FILES)
+        get_property(template_directory TARGET ${image} PROPERTY DDD_TEMPLATE_DIRECTORY)
+        set(rendered_c "")
+        foreach(definition_file IN LISTS definition_files)
+            cmake_path(GET definition_file FILENAME rendered)
+            list(APPEND rendered_c "${rendered}")
+        endforeach()
+        list(JOIN rendered_c "\", \"" rendered_c)
+        message(FATAL_ERROR "ddd_generate: the templates in \"${template_directory}\" render C - \"${rendered_c}\" - "
+                            "the definitions of the image's variables, and C is not enabled in "
+                            "\"${CMAKE_CURRENT_SOURCE_DIR}\", where ddd_generate() is called. Enable it there, or in "
+                            "a directory above it, before that directory is done: project(<name> LANGUAGES C CXX), "
+                            "or enable_language(C).")
+    endif()
     get_property(outputs TARGET ${image} PROPERTY DDD_GENERATION_OUTPUTS)
     get_property(command TARGET ${image} PROPERTY DDD_GENERATION_COMMAND)
     get_property(touch TARGET ${image} PROPERTY DDD_GENERATION_TOUCH)
@@ -858,13 +904,12 @@ function(ddd_generate image)
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
     endif()
-    set(keywords_with_values PROJECT NAME OUTPUT_DIRECTORY TEMPLATE_DIRECTORY SCHEMA_DIRECTORY ADDRESS_MAP BYTE_ORDER
-                             SEVERITY LINK_LIBRARIES DEPENDS PLUGINS)
-    _ddd_refuse_empty_keywords("ddd_generate" ${ARGC} "${keywords_with_values}")
-    # An empty argument after a value is none: taken for one, it was a -W with nothing after it, or a plugin named
-    # nothing. LINK_LIBRARIES and DEPENDS drop theirs wherever they are expanded.
-    list(REMOVE_ITEM arg_SEVERITY "")
-    list(REMOVE_ITEM arg_PLUGINS "")
+    # The three lists of cmake_parse_arguments() above, spelled the same way.
+    _ddd_refuse_empty_keywords(
+        "ddd_generate" ${ARGC}
+        "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
+        "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
+        "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     # The a2l takes its addresses from one place, and ADDRESSES_FROM_IMAGE is that place being the image: beside a map
     # the call would name two, and beside NO_A2L it would read addresses for a file nobody writes.
     if(arg_ADDRESSES_FROM_IMAGE AND arg_ADDRESS_MAP)
@@ -973,6 +1018,20 @@ function(ddd_generate image)
             message(FATAL_ERROR "ddd_generate: PROJECT names \"${arg_PROJECT}\", which does not parse as json. "
                                 "${read_when_configured}: ${unparsed}")
         endif()
+        # The a2l is named after the name *inside* the description - a project's, or a component's where the file is
+        # one - which is not necessarily what NAME says, and the dictionary alike: reading it here keeps the declared
+        # outputs and the files the tool writes in agreement, and DDD_A2L from naming a file that never appears. NAME
+        # renames neither. Read before the tool is asked, so that a root naming nothing is refused for that, rather
+        # than warned of as a project the generation would depend on alone, a fallback it would not have taken.
+        string(JSON arg_NAME ERROR_VARIABLE unnamed GET "${content}" "project" "name")
+        if(unnamed)
+            string(JSON arg_NAME ERROR_VARIABLE unnamed GET "${content}" "component" "name")
+        endif()
+        if(unnamed OR arg_NAME STREQUAL "")
+            message(FATAL_ERROR "ddd_generate: PROJECT names \"${arg_PROJECT}\", which gives its project - or its "
+                                "component - no name. ${read_when_configured}: the a2l and the dictionary are named "
+                                "after that name.")
+        endif()
         set(project_file "${arg_PROJECT}")
         # A hand written project includes its components itself, so the files to watch have to be asked for; its
         # plugins are read off it for the schemas below, and reach the dependencies through the sources as well.
@@ -984,9 +1043,6 @@ function(ddd_generate image)
         # Whose per-component files the generation declares: the project's components, which it names itself.
         _ddd_project_component_names(project_components "${descriptions}")
         set_property(TARGET ${image} PROPERTY DDD_PROJECT_COMPONENTS "${project_components}")
-        # The tool names the a2l after the project name in the description, and the dictionary is named alike; NAME
-        # renames neither.
-        _ddd_description_name(arg_NAME "${project_file}")
     else()
         # The component descriptions travel through the link graph as a transitive property (see
         # ddd_add_component). The property is resolved at generate time, when the link graph is known but nothing is
@@ -1087,22 +1143,9 @@ function(ddd_generate image)
                             "definitions of the global variables have to be compiled into the image, so one "
                             "template must produce a source file (for example ddd_globals.c.jinja2).")
     endif()
-    # The definitions are C, compiled by the object library below, which a project that enables no C - project(<name>
-    # LANGUAGES CXX) - cannot build: CMake stopped at it, unable to determine its linker language, naming a target of
-    # this module's and not the language the project left out.
-    get_property(enabled_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
-    if(NOT "C" IN_LIST enabled_languages)
-        set(rendered_c "")
-        foreach(definition_file IN LISTS definition_files)
-            cmake_path(GET definition_file FILENAME rendered)
-            list(APPEND rendered_c "${rendered}")
-        endforeach()
-        list(JOIN rendered_c "\", \"" rendered_c)
-        message(FATAL_ERROR "ddd_generate: the templates in \"${arg_TEMPLATE_DIRECTORY}\" render C - \"${rendered_c}\" "
-                            "- the definitions of the image's variables, and the project does not enable C. Enable "
-                            "it beside the project's own languages - project(<name> LANGUAGES C CXX) - or with "
-                            "enable_language(C) in the top directory.")
-    endif()
+    # Whether C is enabled where they are compiled is read once this directory is done (_ddd_add_generation).
+    set_property(TARGET ${image} PROPERTY DDD_DEFINITION_FILES "${definition_files}")
+    set_property(TARGET ${image} PROPERTY DDD_TEMPLATE_DIRECTORY "${arg_TEMPLATE_DIRECTORY}")
     # What the templates render under names known now, so that a component whose file would be one of them is
     # refused by name (_ddd_add_generation), rather than by ninja, which only says that a file is declared twice.
     set_property(TARGET ${image} PROPERTY DDD_TEMPLATE_OUTPUTS "${generated_outputs}")

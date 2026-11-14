@@ -2406,7 +2406,9 @@ ddd_generate(img
         """``ddd sources`` writes UTF-8 whatever the console's code page is, and the module has
         to read it as UTF-8: decoded in the code page, ``Müller`` became other characters, and
         the build asked ninja for a description at a path that does not exist. Every leg runs
-        it; the windows legs are the ones whose code page is not UTF-8."""
+        it; the windows legs are the ones whose code page is not UTF-8. The graph is asked for
+        a file only the listing names, by its tail, which a drive's colon does not reach: the
+        project file is in it whatever is decoded, CMake writing it from the call's own words."""
         root = tmp_path / "Müller-project"
         root.mkdir()
         self.write(root)
@@ -2415,7 +2417,7 @@ ddd_generate(img
         generated = root / "build" / "ddd" / "img"
         assert (generated / "ddd_layout.h").is_file()
         graph = (root / "build" / "build.ninja").read_text(encoding="utf-8")
-        assert (root / "layout" / "project.ddd.json").as_posix() in graph
+        assert "Müller-project/layout/storage.ddd.json" in graph
 
     def test_an_edited_plugin_regenerates_through_the_sources(self, tmp_path: Path) -> None:
         """``ddd sources`` names the plugin, which is how the module learns to depend on it."""
@@ -2555,7 +2557,7 @@ class TestAProjectFileReadWhenConfigured:
     still falls back, as :class:`TestAPluginThatBreaksStillWatchedByTheBuild` shows.
     """
 
-    def write(self, tmp_path: Path, project: str) -> Path:
+    def write(self, tmp_path: Path, project: str, options: str = "") -> Path:
         (tmp_path / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
         (tmp_path / "CMakeLists.txt").write_text(
             f"""cmake_minimum_required(VERSION 3.20)
@@ -2563,7 +2565,7 @@ project(Read LANGUAGES C)
 list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
 include(Ddd)
 add_executable(img main.c)
-ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}")
+ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"{options})
 """,
             encoding="utf-8",
         )
@@ -2616,6 +2618,25 @@ ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
             "configured - the files it is made of, its plugins and its name - so it has to exist, "
             "parse and name its project by then: the a2l and the dictionary are named after "
             "that name."
+        ) in said
+
+    def test_a_severity_naming_no_check_is_refused_in_the_tools_words(self, tmp_path: Path) -> None:
+        """``ddd sources`` is asked with the call's ``SEVERITY``, and refuses one naming no check
+        as the usage error it is, exit 2, where a project it cannot resolve is exit 1. The
+        configure took either for the second and warned of a project the generation would depend
+        on alone, blaming the project, and only the record written next gave the reason. No
+        fallback mends a call, so the configure stops at it, in the tool's words, as the record
+        does."""
+        project = tmp_path / "project.ddd.json"
+        project.write_text(json.dumps({"project": {"name": "Read", "includes": []}}), "utf-8")
+        source = self.write(tmp_path, project.as_posix(), ' SEVERITY "nosuch=info"')
+        run = attempt(source, tmp_path / "build")
+        said = " ".join((run.stdout + run.stderr).split())
+        assert run.returncode != 0, said
+        assert "will depend on that file alone" not in said, said
+        assert (
+            f'ddd_generate: cannot list the sources of "{project.as_posix()}" using '
+            f"\"{DDD.as_posix()}\" (2): ddd: unknown check 'nosuch'"
         ) in said
 
 

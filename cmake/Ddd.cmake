@@ -279,7 +279,9 @@ endfunction()
 # developer before the build does. The file exists and parses by now (ddd_generate refuses it otherwise); if the tool
 # cannot resolve it all the same - a root failing its schema - or cannot be run, the result is empty, a warning says
 # so, and the build falls back to depending on the project file alone, as a configure dependency, rather than failing
-# to configure at all.
+# to configure at all. A usage error is not the project's, and no fallback mends it: the tool refusing what the call
+# asks of it - a SEVERITY naming no check, exit 2 where a project it cannot resolve is exit 1 - stops the configure in
+# its own words, as the record written next would.
 function(_ddd_project_sources variable project_file)
     # The rest of the arguments are the severity policy of the build (-W, --strict): what the tool says about the
     # project is graded as the build grades it, so that a check the build relaxed is not warned of at every configure.
@@ -290,6 +292,10 @@ function(_ddd_project_sources variable project_file)
                     OUTPUT_STRIP_TRAILING_WHITESPACE
                     ERROR_STRIP_TRAILING_WHITESPACE
                     ENCODING UTF-8)
+    if(status EQUAL 2)
+        message(FATAL_ERROR "ddd_generate: cannot list the sources of \"${project_file}\" "
+                            "using \"${DDD_EXECUTABLE}\" (${status}): ${error}")
+    endif()
     if(NOT status EQUAL 0)
         message(WARNING "ddd_generate: cannot resolve the sources of \"${project_file}\" (${error}); the "
                         "generation will depend on that file alone.")
@@ -368,9 +374,9 @@ function(_ddd_write_build_info directory image project_file origin options)
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
                     OUTPUT_QUIET)
-    # Fatal rather than tolerant, unlike _ddd_project_sources: this reads nothing that might not be ready yet, so a
-    # failure means either that the tool is broken or that SEVERITY names a check that does not exist - and the
-    # second would fail the build a moment later anyway, with less to go on.
+    # Fatal rather than tolerant, unlike _ddd_project_sources over a project the tool cannot resolve: this reads nothing
+    # that might not be ready yet, so a failure means either that the tool is broken or that SEVERITY names a check that
+    # does not exist - and the second would fail the build a moment later anyway, with less to go on.
     if(NOT status EQUAL 0)
         message(FATAL_ERROR "ddd_generate: cannot record the build information in \"${directory}\" "
                             "using \"${DDD_EXECUTABLE}\" (${status}): ${error}")

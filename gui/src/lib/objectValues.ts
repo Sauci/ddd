@@ -55,6 +55,12 @@ export function drawable(reply: ValuesReply): boolean {
   return reply.stated !== "text" && (reply.shape.length > 0 || reply.rows.length > 0);
 }
 
+/** Whether the grid is the one cell of a scalar, which keeps its natural width where a curve or a map
+ * is laid across the page. */
+export function oneCell(reply: ValuesReply): boolean {
+  return reply.shape.length === 0;
+}
+
 /** Whether a table is pasted into this object's grid: not into the one cell of a scalar, which
  * the server refuses a table of (`set_values`) - one value is typed. */
 export function pastes(reply: ValuesReply): boolean {

@@ -1758,6 +1758,15 @@ test("a scalar naming a scalar type reads scalar, and its value is typed, writte
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "GainA").init).toBe(20);
   expect(definitionOf(gui.directory, CONTROLLER, "GainA").typename).toBe("Gain_t");
+
+  // The value block naming the same type opens a row of three, read through the type's conversion.
+  await page.getByRole("button", { name: "Back to Controller" }).click();
+  const row = page.getByRole("button", { name: "Show the values of GainRow" });
+  await scrolledIntoView(page, "Declarations of Controller", row);
+  await row.click();
+  const grid = page.getByRole("grid", { name: "Values of GainRow" });
+  await expect(grid.getByRole("rowheader")).toHaveText(["GainRow (Hz)"]);
+  await expectRow(grid, ["0.25", "0.5", "0.75"]);
 });
 
 // 16:I4: a variable's description is the declaration's own, written from the panel of the
@@ -1826,6 +1835,66 @@ test("a declaration's description is read in its panel, written, put back, and t
   await expect(field).toHaveValue("Single calibratable constant");
   await expect(describing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
   await expect(describing.getByText(/Sets the description|Takes the description/)).toHaveCount(0);
+});
+
+// Spec 2026-09-30 §6: what an edit wrote shows at once. The file is read again after the write; the
+// field holds what was applied meanwhile, and a read held back by the journey is the interim state
+// that an auto-retrying assertion cannot otherwise see.
+test("the description field shows what an Apply wrote while the file is still being read again", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  await field.fill("Engine speed gain");
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+  const apply = describing.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeVisible();
+
+  const release = await held(page, "/api/file", { every: true });
+  try {
+    await apply.click();
+    await expect
+      .poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA").description)
+      .toBe("Engine speed gain");
+    // The write is done and the file not read again: never the description from before it.
+    await expect(field).toHaveValue("Engine speed gain", { timeout: 2000 });
+  } finally {
+    release();
+  }
+  await expect(field).toHaveValue("Engine speed gain");
+  await expect(apply).toHaveCount(0);
+});
+
+// A description typed before a key is settled is planned afresh once the settle has written, and
+// is not refused as stale when applied (the settle's write moved the file's fingerprint).
+test("a description typed before a key is settled is applied after it", async ({ page, gui }) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+  await field.fill("Engine speed gain");
+  await expect(describing.getByRole("button", { name: "Apply to 1 file" })).toBeVisible();
+
+  await panel.getByRole("row", { name: /limits/ }).click();
+  await panel.getByLabel("Min").fill("400");
+  const settling = panel.getByRole("region", { name: "Settle the key" });
+  await settling.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA").limits.min)
+    .toBe(400);
+
+  await describing.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA").description)
+    .toBe("Engine speed gain");
+  await expect(describing.getByText(/changed on disk/)).toHaveCount(0);
+  expect(definitionOf(gui.directory, CONTROLLER, "ParameterA").limits.min).toBe(400);
 });
 
 test("a description is one declaration's own: another component's stays as it was", async ({

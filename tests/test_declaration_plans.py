@@ -843,6 +843,26 @@ class TestDescribingADeclaration:
         stated = json.loads(after)["component"]["interface"][0]["definition"]
         assert stated["description"] == "Shaft speed"
 
+    def test_a_description_is_written_as_typed_not_as_escapes(self, demo, cache) -> None:
+        plan = describe_declaration(
+            demo, CONTROLLER, "ParameterA", "Drehzahl in °/s, Kühlung", cache
+        )
+        (edit,) = plan.edits
+        (operation,) = edit.operations
+        assert operation.raw == '"Drehzahl in °/s, Kühlung"'
+        after = edit_text(CONTROLLER.read_text(encoding="utf-8"), edit.operations)
+        assert '"description": "Drehzahl in °/s, Kühlung",' in after
+        assert "\\u00" not in after
+
+    def test_a_lone_surrogate_is_refused_rather_than_written(self, demo, cache) -> None:
+        # A query can carry one; no file can hold it, and it would reach none the page could apply.
+        with pytest.raises(DeclarationRefusalError) as refused:
+            describe_declaration(demo, CONTROLLER, "ParameterA", "\ud800", cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "a description holds a character that no file can hold, a lone surrogate",
+        )
+
     def test_the_empty_text_takes_the_key_away(self, demo, cache) -> None:
         # The model's default is the empty text, so a description of none is no key at all.
         plan = describe_declaration(demo, CONTROLLER, "ParameterA", "", cache)

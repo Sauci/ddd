@@ -66,7 +66,12 @@ export function shapeColumn(
   if (dimensions.length > 0) text = dimensions.map(String).join(" × ");
   else if (shapedByKind(kind)) text = kind;
   else if (numeric) text = "scalar";
+  // A list written for a declaration of no dimensions and no shaped kind has no cell: no button.
+  const listed = dimensions.length === 0 && !shapedByKind(kind) && Array.isArray(init);
   const offered =
-    typeof init !== "string" && dimensions.length <= 2 && (shapedByKind(kind) || numeric);
+    typeof init !== "string" &&
+    !listed &&
+    dimensions.length <= 2 &&
+    (shapedByKind(kind) || numeric);
   return { text, offered };
 }

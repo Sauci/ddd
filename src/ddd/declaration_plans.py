@@ -340,8 +340,15 @@ def describe_declaration(
             "stale", changed_since((here,), f"the description of '{name}' cannot be set")
         )
     pointer = f"{site.pointer}.description"
+    if not _writable(description):
+        raise DeclarationRefusalError(
+            "invalid", "a description holds a character that no file can hold, a lone surrogate"
+        )
     if description:
-        operation = Operation("set", pointer, json.dumps(description))
+        # Every character as written, as the plans of units and shared entries spell theirs: a
+        # description holding a degree sign arrives in the file as one, where json's default
+        # would write an escape.
+        operation = Operation("set", pointer, json.dumps(description, ensure_ascii=False))
     elif read(here, cache).value_at(pointer) is None:
         raise DeclarationRefusalError(
             "invalid", f"{here.name} states no description of '{name}', so there is none to remove"
@@ -349,6 +356,16 @@ def describe_declaration(
     else:
         operation = Operation("remove", pointer)
     return DeclarationPlan((PlannedEdit(here, (operation,)),))
+
+
+def _writable(text: str) -> bool:
+    """Whether ``text`` can be written to a file as utf-8: a lone surrogate, which a query can
+    carry, cannot, and written as it stands it would reach no file the page could apply."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _stamped(name: str, definition: Mapping[str, object]) -> dict[str, object]:

@@ -15,6 +15,8 @@ import { useDebounced } from "../app/useDebounced";
 import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
 import {
+  type Applied,
+  appliedHeld,
   describeRequest,
   descriptionField,
   descriptionIn,
@@ -169,6 +171,9 @@ export function VariablePanel({
   // shows the declaration's own - the diff of what writing it takes, and why it was refused. Kept
   // apart from the key chooser's and the removal's for the same reason theirs are kept apart.
   const [typedDescription, setTypedDescription] = useState<string | undefined>(undefined);
+  // What the last Apply wrote, held by `descriptionShown` until the file read since states
+  // something else.
+  const [appliedDescription, setAppliedDescription] = useState<Applied | undefined>(undefined);
   const [descriptionShownDiff, setDescriptionShownDiff] = useState(false);
   const [descriptionRefused, setDescriptionRefused] = useState<string | null>(null);
   // What this declaration states of its description (`descriptionIn`): `null` where the file is not
@@ -180,6 +185,9 @@ export function VariablePanel({
     from,
     content.data === undefined ? null : descriptionIn(content.data.data, name),
   );
+  // The hold ends for good once the file read states something else (`appliedHeld`).
+  const heldApplied = field === null ? undefined : appliedHeld(appliedDescription, field.stored);
+  if (heldApplied !== appliedDescription) setAppliedDescription(heldApplied);
   const describeRequested =
     field === null ? null : describeRequest(field.where, typedDescription, field.stored);
   const describeAsked = useDebounced(describeRequested);
@@ -318,10 +326,11 @@ export function VariablePanel({
         queries.invalidateQueries({ queryKey: ["file"] }),
         queries.invalidateQueries({ queryKey: ["declarable"] }),
         queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
+        queries.invalidateQueries({ queryKey: ["description-plan"] }),
       ]),
   });
   const describe = useMutation({
-    mutationFn: () => {
+    mutationFn: (_applied: Applied) => {
       const edit =
         shownDescription.plan === null
           ? null
@@ -330,14 +339,18 @@ export function VariablePanel({
       return postEdit(edit);
     },
     // The write paths must not answer for each other, as above: writing a description changes the
-    // file the other two read.
+    // file the other two read, and moves the line the key chooser's open diff was planned against.
     onMutate: () => {
       setRemovalRefused(null);
       setRemovalShown(false);
+      setRefused(null);
+      hold({ changesShown: false });
     },
-    // What was typed is let go, as the panel's other typed keys let theirs: the field reads the
-    // file again, so an undo shows the earlier description, and no offer is drawn for it.
-    onSuccess: () => {
+    // What was typed is let go, as the panel's other typed keys let theirs, and what it wrote is
+    // held until the file read since states something else (`descriptionShown`): the field never
+    // shows the old description, and an undo then shows the earlier one, with no offer drawn.
+    onSuccess: (_reply, written) => {
+      setAppliedDescription(written);
       setTypedDescription(undefined);
       setDescriptionRefused(null);
       setDescriptionShownDiff(false);
@@ -347,6 +360,7 @@ export function VariablePanel({
     onSettled: () =>
       Promise.all([
         queries.invalidateQueries({ queryKey: ["variable"] }),
+        queries.invalidateQueries({ queryKey: ["settle", name] }),
         queries.invalidateQueries({ queryKey: ["file"] }),
         queries.invalidateQueries({ queryKey: ["description-plan"] }),
         queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
@@ -388,6 +402,8 @@ export function VariablePanel({
         queries.invalidateQueries({ queryKey: ["file"] }),
         queries.invalidateQueries({ queryKey: ["declarable"] }),
         queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
+        queries.invalidateQueries({ queryKey: ["settle", name] }),
+        queries.invalidateQueries({ queryKey: ["description-plan"] }),
       ]),
   });
   // What the removal offers, drawn the same way `UnitPanel`'s own actions are: the plan asked
@@ -499,7 +515,7 @@ export function VariablePanel({
           ? undefined
           : {
               from: field.from,
-              value: descriptionShown(typedDescription, field.stored),
+              value: descriptionShown(typedDescription, field.stored, appliedDescription),
               onChange: (text) => {
                 setTypedDescription(text);
                 setDescriptionRefused(null);
@@ -511,7 +527,11 @@ export function VariablePanel({
               },
               shown: descriptionShownDiff,
               onShown: setDescriptionShownDiff,
-              onApply: () => describe.mutate(),
+              onApply: () => {
+                if (typedDescription !== undefined) {
+                  describe.mutate({ text: typedDescription, before: field.stored });
+                }
+              },
             }
       }
       busy={stopped || apply.isPending || remove.isPending || describe.isPending}

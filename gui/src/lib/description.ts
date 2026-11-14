@@ -20,10 +20,33 @@ export function descriptionIn(data: unknown, name: string): string | null {
   return null;
 }
 
+/** What an Apply wrote, held while the file read since still holds what it was before. */
+export interface Applied {
+  text: string;
+  /** What the declaration stated when the Apply was made. */
+  before: string;
+}
+
+/** The hold an Apply left, or `undefined` once the file read since states something else: let go for
+ * good, so that an undo returning the file to what it stated before the Apply is not taken for the
+ * file not yet being read. */
+export function appliedHeld(applied: Applied | undefined, stored: string): Applied | undefined {
+  return applied !== undefined && stored === applied.before ? applied : undefined;
+}
+
 /** What the description field shows: the text typed into it, the empty text of a field cleared
- * included, or the declaration's own while nothing is. */
-export function descriptionShown(typed: string | undefined, stored: string): string {
-  return typed ?? stored;
+ * included; else what the last Apply wrote while the file read since still states what it did
+ * before - an edit shows at once, and the field never reverts to the old text for the round trip
+ * that reads the file again (spec 2026-09-30 §6); else the declaration's own. Once the file read
+ * states anything else - the new text, or an undo's - the hold has ended. */
+export function descriptionShown(
+  typed: string | undefined,
+  stored: string,
+  applied: Applied | undefined,
+): string {
+  if (typed !== undefined) return typed;
+  if (applied !== undefined && stored === applied.before) return applied.text;
+  return stored;
 }
 
 /** Which declaration a description is for: the variable's, in the component file the panel is

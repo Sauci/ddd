@@ -21,6 +21,7 @@ import {
   elementLabel,
   limitsLine,
   noGridNote,
+  oneCell,
   pasteHint,
   pastes,
   plotDrawn,
@@ -249,7 +250,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
             </Button>
           </fieldset>
           {columnAxis !== "" && <p className="values-axis">{columnAxis} →</p>}
-          <div className="values-table">
+          <div className={oneCell(reply) ? "values-table values-one" : "values-table"}>
             <Table aria-label={`Values of ${reply.name}`}>
               <TableHeader columns={headerColumns}>
                 {(column) => <Column isRowHeader={column.isRowHeader}>{column.label}</Column>}

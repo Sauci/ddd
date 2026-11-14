@@ -12,6 +12,7 @@ import {
   elementLabel,
   limitsLine,
   noGridNote,
+  oneCell,
   pasted,
   pasteHint,
   pasteSentence,
@@ -1151,5 +1152,16 @@ describe("statedNote", () => {
 
   test("a scalar written is one value for one cell, which needs no sentence", () => {
     expect(statedNote(PARAMETER_A)).toBeNull();
+  });
+});
+
+describe("oneCell", () => {
+  test("a scalar is a grid of one cell, which keeps its natural width", () => {
+    expect(oneCell(PARAMETER_A)).toBe(true);
+  });
+
+  test("a curve and a map are laid across the page", () => {
+    expect(oneCell(CURVE_A)).toBe(false);
+    expect(oneCell(MAP_A)).toBe(false);
   });
 });

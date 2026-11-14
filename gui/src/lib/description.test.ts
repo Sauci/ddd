@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  appliedHeld,
   describeRequest,
   describeSentence,
   descriptionField,
@@ -49,12 +50,27 @@ describe("descriptionIn", () => {
 
 describe("descriptionShown", () => {
   test("is what was typed, the empty text included", () => {
-    expect(descriptionShown("new", "old")).toBe("new");
-    expect(descriptionShown("", "old")).toBe("");
+    expect(descriptionShown("new", "old", undefined)).toBe("new");
+    expect(descriptionShown("", "old", undefined)).toBe("");
   });
 
   test("is the file's own while nothing is typed", () => {
-    expect(descriptionShown(undefined, "old")).toBe("old");
+    expect(descriptionShown(undefined, "old", undefined)).toBe("old");
+  });
+
+  test("is what an Apply wrote while the file read since still holds what it was before", () => {
+    // The interim state: the write is done, the file not yet read again.
+    expect(descriptionShown(undefined, "old", { text: "new", before: "old" })).toBe("new");
+    expect(descriptionShown(undefined, "old", { text: "", before: "old" })).toBe("");
+  });
+
+  test("is the file's own once the file read holds another text, an undo's included", () => {
+    expect(descriptionShown(undefined, "new", { text: "new", before: "old" })).toBe("new");
+    expect(descriptionShown(undefined, "older", { text: "new", before: "old" })).toBe("older");
+  });
+
+  test("what is typed after an Apply wins over what the Apply wrote", () => {
+    expect(descriptionShown("again", "old", { text: "new", before: "old" })).toBe("again");
   });
 });
 
@@ -124,5 +140,22 @@ describe("descriptionField", () => {
 
   test("is withheld until the file is read, or where it declares no such variable", () => {
     expect(descriptionField("/p/c.ddd.json", "ParameterA", "Controller", null)).toBeNull();
+  });
+});
+
+describe("appliedHeld", () => {
+  const applied = { text: "new", before: "old" };
+
+  test("is kept while the file read still states what it did before the Apply", () => {
+    expect(appliedHeld(applied, "old")).toBe(applied);
+  });
+
+  test("is let go once the file states anything else, so an undo is not taken for a file unread", () => {
+    expect(appliedHeld(applied, "new")).toBeUndefined();
+    expect(appliedHeld(applied, "older")).toBeUndefined();
+  });
+
+  test("is nothing without an Apply", () => {
+    expect(appliedHeld(undefined, "old")).toBeUndefined();
   });
 });

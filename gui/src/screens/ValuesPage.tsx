@@ -252,7 +252,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   if (!drawable(reply) && reply.stated !== "text") {
     // A list written for an object of no shape: no cell for a value to sit in, the same words
     // `object_values.py`'s own `set_cell` refuses one with - reached by a finding on it or a
-    // typed address, never by this screen's own Shape button.
+    // typed address: the Shape column offers no button for one (`shapeColumn`).
     return (
       <section>
         <div className="heading">

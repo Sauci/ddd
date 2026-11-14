@@ -9392,7 +9392,60 @@ class TestDescribingADeclarationOverHttp:
             name="ParameterA",
             description="x",
         )
-        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        # The whole reply: a route the server lacks answers 404 too, and its message is not this.
+        elsewhere = (tmp_path / "elsewhere.ddd.json").as_posix()
+        assert reply == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{elsewhere} is not a description file of the open project",
+            },
+        )
+
+    def test_a_lone_surrogate_is_refused_not_planned(self, demo) -> None:
+        api, root = demo
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="\ud800",
+        )
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "a description holds a character that no file can hold, "
+                "a lone surrogate",
+            },
+        )
+
+    def test_a_description_in_non_ascii_is_previewed_and_written_as_typed(self, demo) -> None:
+        api, root = demo
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="Kühlung in °C",
+        ).body
+        (change,) = preview["changes"]
+        assert change["operations"][0]["raw"] == '"Kühlung in °C"'
+        assert any(
+            '"description": "Kühlung in °C",' in line
+            for hunk in change["hunks"]
+            for line in hunk["after"]
+        )
+        assert applied(api, preview, "the description of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"description": "Kühlung in °C",' in written
+
+    def test_a_structure_is_refused_on_the_scalar_path(self, demo) -> None:
+        # Diagnosis is a structure: it has no cell, and the project declares no object by that name.
+        api, _ = demo
+        assert get(api, "/api/value-plan", name="Diagnosis", at="", raw="1") == Reply(
+            404, {"error": "not-found", "message": "the project declares no 'Diagnosis'"}
+        )
 
     def test_a_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
         self, demo, monkeypatch: pytest.MonkeyPatch

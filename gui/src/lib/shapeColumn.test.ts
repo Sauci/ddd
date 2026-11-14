@@ -56,6 +56,21 @@ describe("shapeColumn", () => {
     });
   });
 
+  test("a list written for a declaration of no dimensions has no cell: no button", () => {
+    expect(shapeColumn("measurement", [], "sint16", [1, 2])).toEqual({
+      text: "scalar",
+      offered: false,
+    });
+  });
+
+  test("a list is a curve's own value, and a shaped declaration's", () => {
+    expect(shapeColumn("curve", [], undefined, [1, 2])).toEqual({ text: "curve", offered: true });
+    expect(shapeColumn("value_block", [2], "uint8", [1, 2])).toEqual({
+      text: "2",
+      offered: true,
+    });
+  });
+
   test("more than two dimensions is more than a grid draws", () => {
     expect(shapeColumn("value_block", [2, 3, 4], "uint8", undefined)).toEqual({
       text: "2 × 3 × 4",

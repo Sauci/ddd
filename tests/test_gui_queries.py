@@ -1028,6 +1028,16 @@ PLANS_REFUSED = [
         {"action": "remove", "file": C, "name": "ValueA", "scope": "input"},
         "remove takes no ?scope=",
     ),
+    (
+        "/api/description-plan",
+        {"file": "/p/c\x00.ddd.json", "name": "ParameterA", "description": "x"},
+        "description-plan takes ?file= as a file's path",
+    ),
+    (
+        "/api/description-plan",
+        {"file": C, "name": "Parameter\x00A", "description": "x"},
+        "description-plan takes ?name= as an object's name",
+    ),
     ("/api/value-plan", {}, "value-plan takes ?name= and ?at= and ?raw="),
     (
         "/api/value-plan",

@@ -362,9 +362,10 @@ The commands
        where the project says the type is a scalar one - a scalar naming it reads ``scalar``,
        a value block naming it keeps its dimensions - and none where the type is a structure,
        an external type or unknown, or while the types are not yet read. A curve, a map and an axis are
-       offered whatever type they name; anything else states its own dimensions and its
-       own datatype, so a dimensioned declaration naming a structured type is shown
-       there and not offered, and so is a deeper shape. Cells
+       offered whatever type they name; anything else needs numeric storage - a datatype
+       of its own or a scalar type - so a dimensioned declaration naming a structured type is
+       shown there and not offered, and so is a deeper shape, and a scalar a file initialises
+       with a list. Cells
        typed into are held together, each showing what was typed into it, and previewed
        as one change - in a sentence naming what each sets and the producing file it
        lands in - that one Apply writes, like every other change here, and one undo puts

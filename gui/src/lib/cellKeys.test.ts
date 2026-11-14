@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { keptByCell } from "./cellKeys";
+import { cellId, keptByCell } from "./cellKeys";
 
 const key = (name: string, held: { ctrlKey?: boolean; metaKey?: boolean } = {}) =>
   keptByCell({ key: name, ctrlKey: false, metaKey: false, ...held });
@@ -28,5 +28,15 @@ describe("keptByCell", () => {
   it("leaves a shortcut to the grid: Ctrl or Meta held", () => {
     expect(key("a", { ctrlKey: true })).toBe(false);
     expect(key("5", { metaKey: true })).toBe(false);
+  });
+});
+
+describe("cellId", () => {
+  it("names a cell by its row and its column", () => {
+    expect(cellId(2, 3)).toBe("cell:2:3");
+  });
+
+  it("names every cell of a grid differently", () => {
+    expect(cellId(1, 11)).not.toBe(cellId(11, 1));
   });
 });

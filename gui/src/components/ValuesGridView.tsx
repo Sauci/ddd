@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { type InputHTMLAttributes, type ReactNode, useContext } from "react";
+import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
-import { keptByCell } from "../lib/cellKeys";
+import { cellId, keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   cellSentence,
@@ -84,6 +85,17 @@ interface GridRow {
   label: string;
   cells: number[];
   row: number;
+}
+
+/** A grid cell's field. The grid's focus follows it: the field takes the focus and the table is
+ * told that its focused cell is this one, as the table does itself for a click but not for a
+ * focus a key or a call gives (it then looks for no focused cell and moves the focus to the first
+ * row, where the keys that follow go). With the cell known to the table, the focus stays in the
+ * field and the arrows move on from it. */
+function CellField(props: InputHTMLAttributes<HTMLInputElement> & { cellId: string }) {
+  const { cellId: key, ...field } = props;
+  const state = useContext(TableStateContext);
+  return <input {...field} onFocus={() => state?.selectionManager.setFocusedKey(key)} />;
 }
 
 /** One object's values (spec 5.2), drawn from what the api answered: a picture of its props. It
@@ -209,8 +221,9 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                         ? editing.typed
                         : String(physical ? physicalOf(value, reply.conversion) : value);
                       return (
-                        <Cell>
-                          <input
+                        <Cell id={cellId(row, at)}>
+                          <CellField
+                            cellId={cellId(row, at)}
                             type="text"
                             inputMode="decimal"
                             aria-label={elementLabel(row, at, reply.shape)}
@@ -220,12 +233,6 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                             onChange={(event) =>
                               props.onEditing({ row, column: at, typed: event.target.value })
                             }
-                            // The table moves the focus to its first row when the focus first
-                            // enters it with no row focused yet, and a focus coming from a field
-                            // of a cell does not stop it: the field lost the focus a few
-                            // milliseconds after taking it, and the keys after that went to the
-                            // row. The field's focus is the field's own, so it goes no further.
-                            onFocus={(event) => event.stopPropagation()}
                             // Enter settles what was typed and nothing more: the preview is
                             // already below the grid, and spec 5.3 is explicit that no cell
                             // writes on its own - only Apply writes. Taken here all the same,

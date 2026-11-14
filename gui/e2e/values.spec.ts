@@ -383,6 +383,57 @@ test("a cell's field keeps the focus the first time it takes it, and a cell clea
   await expect(page.getByText("Sets element 1, 2 of MapA to 20 %")).toBeVisible();
 });
 
+test("an arrow pressed in a cell's field moves to the neighbouring cell's field", async ({
+  page,
+  gui,
+}) => {
+  // The grid's own keyboard navigation starts from the cell the focus is in, whether the focus
+  // was put there by a click or by a key: never from the first row.
+  await openValues(page, gui.address, "MapA");
+  const field = (row: number, column: number) =>
+    page.getByRole("textbox", { name: `element ${row}, ${column}` });
+  const moves = [
+    ["ArrowRight", 2, 3],
+    ["ArrowLeft", 2, 1],
+    ["ArrowUp", 1, 2],
+    ["ArrowDown", 3, 2],
+  ] as const;
+  for (const [key, row, column] of moves) {
+    await field(2, 2).click();
+    await expect(field(2, 2)).toBeFocused();
+    await field(2, 2).press(key);
+    await expect(field(row, column)).toBeFocused();
+  }
+  // And from a field that took the focus by a call, not a click: the focus a key moves there is
+  // the one the grid also treats as keyboard's own.
+  await page.getByRole("button", { name: "Raw" }).click();
+  await field(3, 3).focus();
+  await field(3, 3).press("ArrowDown");
+  await expect(field(4, 3)).toBeFocused();
+});
+
+test("a click into a field after the focus left the grid keeps the focus in that field", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "MapA");
+  const field = (row: number, column: number) =>
+    page.getByRole("textbox", { name: `element ${row}, ${column}` });
+  await field(1, 1).click();
+  await expect(field(1, 1)).toBeFocused();
+  await page.getByRole("button", { name: "Raw" }).click();
+  await expect(page.getByRole("button", { name: "Raw" })).toBeFocused();
+  await field(3, 3).click();
+  // Two frames: the grid's own refocusing of the cell it last had focused comes within them.
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  await expect(field(3, 3)).toBeFocused();
+  await typed(field(3, 3), "7");
+  await expect(field(3, 3)).toHaveValue("7");
+  await expect(page.getByText("Sets element 3, 3 of MapA to 7")).toBeVisible();
+});
+
 test("a physical value no raw count represents shows what was stored", async ({ page, gui }) => {
   await openValues(page, gui.address, "CurveA");
 

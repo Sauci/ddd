@@ -473,6 +473,36 @@ class TestTheCommandPage:
             "rather than send the double"
         ) in text
 
+    def test_the_values_grid_is_said_to_read_numbers_by_one_grammar(self) -> None:
+        """What ``numbers.ts`` reads a number by, in every field, said where the grid is
+        described: decimal notation, the spellings refused, and the one rule for a comma."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "Every field of the page reads a number the same way, in decimal notation: an "
+            "optional sign, digits with an optional fraction or a fraction alone, and an optional "
+            "exponent, the white space around it ignored"
+        ) in text
+        assert (
+            "A number written in hexadecimal, binary or octal, ``Infinity``, ``NaN`` and digits "
+            "parted by underscores are refused in one sentence, the same in every field, and "
+            "nothing is asked of the server for them"
+        ) in text
+        assert (
+            "A comma is a decimal point where it cannot group thousands - after a first group of "
+            "0, or before anything but exactly three digits - and groups thousands where it cannot "
+            "be a decimal point, two of them or a point after it; text holding both has its "
+            "decimal point last, so ``1.234,5`` and ``1,234.5`` both read 1234.5"
+        ) in text
+        assert (
+            "A block pasted where one value's comma can only be a decimal point reads every comma "
+            "of it as one"
+        ) in text
+        assert (
+            "A comma that could be either, ``1,200``, is refused with the choice of what it means "
+            "one press away, the same for a cell typed into and for a block pasted"
+        ) in text
+        assert "A boolean takes 0 and 1 alone, in physical as in raw" in text
+
     def test_the_values_grid_is_said_to_hold_the_cells_typed_as_one_change(self) -> None:
         """What ``ValuesPage.tsx`` and ``typedCells.ts`` do with cells typed one after another,
         said where the grid is described: held together, one change, one Apply and one undo."""

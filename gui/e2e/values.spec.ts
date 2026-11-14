@@ -713,10 +713,10 @@ test("a value the datatype cannot hold is refused, and nothing is written", asyn
   await openValues(page, gui.address, "CurveA");
   await page.getByRole("button", { name: "Raw" }).click();
 
-  // Not a number at all first: a decimal comma is what half the world types, and reading the
-  // numeric prefix of it would plan a write of 1 with no refusal at all.
-  await typed(page.getByRole("textbox", { name: "element 1" }), "1,5");
-  await expect(page.getByText("'1,5' is not a number")).toBeVisible();
+  // Not a number in decimal notation first, which every field refuses in one sentence before it
+  // asks the server anything: `Number` read `0x10` as 16, and the cell planned it (15:M13).
+  await typed(page.getByRole("textbox", { name: "element 1" }), "0x10");
+  await expect(page.getByText("'0x10' is not a number in decimal notation")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 
   await typed(page.getByRole("textbox", { name: "element 1" }), "70000");
@@ -780,13 +780,11 @@ test("a whole number past 2^53 typed or pasted into a uint64 block is refused, a
   const refused = page.getByRole("region", { name: "Set the cell" }).getByRole("status");
   const apply = page.getByRole("button", { name: /^Apply to/ });
 
-  // 2^53 + 1, a 64 bit mask whose bit 0 a double drops, the most a uint64 holds, and 2^53 + 1
-  // with a point and in an exponent: each refused as it was typed, key by key, before anything is
-  // asked of the server.
+  // 2^53 + 1, the most a uint64 holds, and 2^53 + 1 with a point and in an exponent: each refused
+  // as it was typed, key by key, before anything is asked of the server.
   await expect(cell).toHaveValue("1");
   for (const text of [
     "9007199254740993",
-    "0x8000000000000001",
     "18446744073709551615",
     "9007199254740993.0",
     "9.007199254740993e15",
@@ -795,6 +793,11 @@ test("a whole number past 2^53 typed or pasted into a uint64 block is refused, a
     await expect(refused).toHaveText(`'${text}' ${PAST_2_53}`);
     await expect(apply).toHaveCount(0);
   }
+  // A 64 bit mask whose bit 0 a double drops, refused once past 2^53, is refused now as no number
+  // in decimal notation, before it is weighed at all (ruling B3-1).
+  await typed(cell, "0x8000000000000001");
+  await expect(refused).toHaveText("'0x8000000000000001' is not a number in decimal notation");
+  await expect(apply).toHaveCount(0);
   // A fraction the page's double would drop is refused as one, not planned as the whole number
   // the double reads it as.
   await typed(cell, "4503599627370496.5");
@@ -822,6 +825,90 @@ test("a whole number past 2^53 typed or pasted into a uint64 block is refused, a
   await expect(page.getByText("Sets element 1 of BlockA to 9007199254740991")).toBeVisible();
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect.poll(() => readFileSync(path, "utf8")).toMatch(/"init": \[9007199254740991, 2\]/);
+});
+
+// One rule for a comma, typed or pasted (15:M9, 3:M4): a comma is a decimal point where it cannot
+// group thousands, and one that could be either is asked about, with one press, the same for a cell
+// typed into and a block pasted.
+
+test("a decimal comma typed into a cell is read, and one that could be either is asked about with one press", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  const cell = grid.getByRole("textbox", { name: "element 2" });
+  const offer = page.getByRole("region", { name: "Set the cell" });
+
+  // 7,25 ms groups no thousands: a decimal point, 725 counts.
+  await typed(cell, "7,25");
+  await expect(offer.getByText("Sets element 2 of CurveA to 7.25 ms")).toBeVisible();
+
+  // 1,500 could be one and a half or fifteen hundred: refused, no Apply, and the two answers.
+  await typed(cell, "1,500");
+  await expect(offer.getByRole("status")).toHaveText(
+    "the comma in '1,500' could be a decimal point or a thousands separator",
+  );
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(offer.getByRole("button", { name: "A thousands separator: 1500" })).toBeVisible();
+  await offer.getByRole("button", { name: "A decimal point: 1.5" }).click();
+  await expect(offer.getByText("Sets element 2 of CurveA to 1.5 ms")).toBeVisible();
+  await expect(offer.getByRole("status")).toHaveCount(0);
+  await expect(cell).toHaveValue("1,500");
+
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init[1]).toBe(150);
+});
+
+test("a comma that could be either in a pasted block is asked about with the same press, and a comma locale's block is read", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const offer = page.getByRole("region", { name: "Replace the values" });
+
+  // 0,120's leading 0 groups no thousands, so every comma of the block is a decimal point.
+  await paste(page, "0,120\t1,250\t0,500\t1\t2\t3");
+  await expect(offer.getByText("Replaces every value of CurveA")).toBeVisible();
+  await page.getByRole("button", { name: "Show changes" }).click();
+  await expect(offer.getByText(/12, 125, 50, 100, 200, 300/)).toBeVisible();
+
+  // Nothing in this one says what its comma is.
+  await paste(page, "1,200\t2\t3\t4\t5\t6");
+  await expect(offer.getByRole("status")).toHaveText(
+    "the comma in '1,200' could be a decimal point or a thousands separator",
+  );
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await offer.getByRole("button", { name: "A decimal point: 1.2" }).click();
+  await expect(offer.getByRole("status")).toHaveCount(0);
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([120, 200, 300, 400, 500, 600]);
+});
+
+test("a boolean takes 0 and 1 alone, in physical as in raw", async ({ page, gui }) => {
+  // 3:M4: 0.6 typed in physical was rounded to 1, which the file stored, where in raw the same 0.6
+  // is refused. Both readings now send it as typed, and the server refuses it in the same words.
+  const before = readFileSync(join(gui.directory, SENSOR_HUB));
+  await openValues(page, gui.address, "FlagA", "SensorHub");
+  const cell = page.getByRole("textbox", { name: "the value" });
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(cell).toHaveValue("0");
+
+  await typed(cell, "0.6");
+  await expect(offer.getByRole("status")).toHaveText("0.6 is not a valid bool");
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Raw" }).click();
+  await typed(cell, "0.6");
+  await expect(offer.getByRole("status")).toHaveText("0.6 is not a valid bool");
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Physical" }).click();
+  await typed(cell, "1");
+  await expect(offer.getByText("Sets the value of FlagA to 1")).toBeVisible();
+  expect(readFileSync(join(gui.directory, SENSOR_HUB)).equals(before)).toBe(true);
 });
 
 test("Enter settles what was typed and writes nothing", async ({ page, gui }) => {
@@ -920,9 +1007,9 @@ test("a refused cell among those typed holds Apply back and is named, and one ty
   const offer = page.getByRole("region", { name: "Set the cells" });
   const apply = page.getByRole("button", { name: /^Apply to/ });
   await typed(grid.getByRole("textbox", { name: "element 1" }), "13");
-  await typed(grid.getByRole("textbox", { name: "element 2" }), "1,5");
+  await typed(grid.getByRole("textbox", { name: "element 2" }), "1;5");
   await expect(offer.getByRole("status")).toHaveText(
-    "element 2 of 'CurveA' is refused: '1,5' is not a number",
+    "element 2 of 'CurveA' is refused: '1;5' is not a number",
   );
   await expect(apply).toHaveCount(0);
 

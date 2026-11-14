@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { SettleReply, VariableKeyOffer, VariableReply } from "../api/types";
 import {
+  chooserNote,
   chooserSections,
   describeVariable,
   enteredValue,
@@ -622,6 +623,68 @@ describe("what a field's text chooses", () => {
       enteredValue(chooserSections(of, "ValueA", "axis", "Wheel"), "axis", "Wheel"),
     ).toBeUndefined();
   });
+  test.each([
+    // A size typed is read as every field reads a number: in any decimal spelling of a whole
+    // number of at least 1, and travelling in its own digits.
+    { text: "12", raw: "12" },
+    { text: " 12 ", raw: "12" },
+    { text: "012", raw: "12" },
+    { text: "+12", raw: "12" },
+    { text: "1e1", raw: "10" },
+    { text: "12.0", raw: "12" },
+    { text: "1,234,567", raw: "1234567" },
+    // Nothing else is one.
+    { text: "0", raw: undefined },
+    { text: "-3", raw: undefined },
+    { text: "2.5", raw: undefined },
+    { text: "0x10", raw: undefined },
+    { text: "1,500", raw: undefined },
+  ])("a size typed '$text' chooses $raw", ({ text, raw }) => {
+    const of = offer("size", { editor: "size", choices: [] });
+    expect(enteredValue(chooserSections(of, "ValueA", "size", text), "size", text)).toBe(raw);
+  });
+});
+
+describe("chooserNote", () => {
+  const SIZE = offer("size", { editor: "size", choices: ["CELLS"] });
+
+  test("a size in another notation is refused in the sentence every field refuses it with", () => {
+    // 15:M13: `Number` read `0x10` as 16, and the panel offered it as the size typed.
+    const sections = chooserSections(SIZE, "ValueA", "size", "0x10");
+    expect(sections.some((section) => section.id === "typed")).toBe(false);
+    expect(chooserNote(true, "size", "0x10", sections)).toBe(
+      "'0x10' is not a number in decimal notation",
+    );
+    expect(
+      chooserNote(true, "size", "1,500", chooserSections(SIZE, "ValueA", "size", "1,500")),
+    ).toBe("the comma in '1,500' could be a decimal point or a thousands separator");
+  });
+
+  test("a name, or a number that reads, gets the way out of the text", () => {
+    expect(chooserNote(true, "size", "ROWS", chooserSections(SIZE, "ValueA", "size", "ROWS"))).toBe(
+      "Nothing in the list matches what you typed: change it, or press Escape to put the value back.",
+    );
+    expect(chooserNote(true, "size", "12", chooserSections(SIZE, "ValueA", "size", "12"))).toBe(
+      "Press Enter to take what you typed, or pick it from the list.",
+    );
+    // `Infinity` may name a constant, so it is a name here and not a number in another notation.
+    expect(
+      chooserNote(true, "size", "Infinity", chooserSections(SIZE, "ValueA", "size", "Infinity")),
+    ).toBe(
+      "Nothing in the list matches what you typed: change it, or press Escape to put the value back.",
+    );
+  });
+
+  test("another key's text gets the way out of it, whatever it spells", () => {
+    const of = offer("axis", { editor: "name", choices: ["AxisA"] });
+    expect(chooserNote(true, "axis", "0x10", chooserSections(of, "ValueA", "axis", "0x10"))).toBe(
+      "Nothing in the list matches what you typed: change it, or press Escape to put the value back.",
+    );
+  });
+
+  test("nothing while the text is the value settled on", () => {
+    expect(chooserNote(false, "size", "0x10", [])).toBeUndefined();
+  });
 });
 
 describe("the value a chooser starts on", () => {
@@ -736,11 +799,40 @@ describe("a range typed into two fields", () => {
   test("two empty fields state nothing, and anything half typed is nothing to apply", () => {
     expect(limitsNote("", "")).toBeNull();
     expect(limitsNote(" ", " ")).toBeNull();
-    expect(limitsNote("0", "")).toBe("A range needs a minimum and a maximum");
-    expect(limitsNote("", "100")).toBe("A range needs a minimum and a maximum");
-    expect(limitsNote("low", "100")).toBe("A range needs a minimum and a maximum");
-    expect(limitsNote("0", "high")).toBe("A range needs a minimum and a maximum");
     expect(limitsNote("0", "100")).toBeNull();
+  });
+
+  test.each([
+    // 15:M9: each sentence names the one field it is about, where one sentence spoke of both
+    // fields whichever of them was wrong, even of one holding a comma locale's decimal.
+    { min: "0", max: "", says: "Max is empty" },
+    { min: "", max: "100", says: "Min is empty" },
+    { min: " ", max: "100", says: "Min is empty" },
+    { min: "low", max: "100", says: "Min: 'low' is not a number" },
+    { min: "0", max: "high", says: "Max: 'high' is not a number" },
+    { min: "0x10", max: "100", says: "Min: '0x10' is not a number in decimal notation" },
+    { min: "0", max: "Infinity", says: "Max: 'Infinity' is not a number in decimal notation" },
+    {
+      min: "0",
+      max: "1,500",
+      says: "Max: the comma in '1,500' could be a decimal point or a thousands separator",
+    },
+  ])("'$min' and '$max' say: $says", ({ min, max, says }) => {
+    expect(limitsNote(min, max)).toBe(says);
+    expect(limitsRaw(min, max)).toBeNull();
+  });
+
+  test("a range is read by the one rule for a comma, the two fields together", () => {
+    expect(limitsNote("1,5", "2")).toBeNull();
+    expect(limitsRaw("1,5", "2,5")).toBe('{ "min": 1.5, "max": 2.5 }');
+    // `0,5` says what the comma is, so `1,500` beside it is one and a half.
+    expect(limitsRaw("0,5", "1,500")).toBe('{ "min": 0.5, "max": 1.5 }');
+    expect(limitsRaw("1,234.5", "1.234.567,5")).toBe('{ "min": 1234.5, "max": 1234567.5 }');
+  });
+
+  test("a range is spelled as the numbers it holds, whatever their spelling", () => {
+    expect(limitsRaw("+1", "1e3")).toBe('{ "min": 1, "max": 1000 }');
+    expect(limitsRaw(".5", "5.")).toBe('{ "min": 0.5, "max": 5 }');
   });
 });
 
@@ -769,19 +861,25 @@ describe("a limit a double cannot hold", () => {
 
   test("a range holding one says why it cannot be applied, in the grid's words", () => {
     expect(limitsNote("1", "18446744073709551615")).toBe(
-      `'18446744073709551615' is past 2^53, ${INEXACT}`,
+      `Max: '18446744073709551615' is past 2^53, ${INEXACT}`,
     );
     expect(limitsRaw("1", "18446744073709551615")).toBeNull();
   });
 
-  test("so does one typed past 2^53, either side, in any whole number's spelling", () => {
+  test("so does one typed past 2^53, either side", () => {
     expect(limitsNote("-9007199254740993", "0")).toBe(
-      `'-9007199254740993' is past -2^53, ${INEXACT}`,
-    );
-    expect(limitsNote("0", "0x8000000000000001")).toBe(
-      `'0x8000000000000001' is past 2^53, ${INEXACT}`,
+      `Min: '-9007199254740993' is past -2^53, ${INEXACT}`,
     );
     expect(limitsRaw("0", "9007199254740993")).toBeNull();
+  });
+
+  test("the 64 bit mask in hexadecimal stays refused, as a number in another notation", () => {
+    // Ruling B3-1: refused past 2^53 once; refused now before it is weighed, as every field
+    // refuses a spelling `Number` read and decimal notation does not.
+    expect(limitsNote("0", "0x8000000000000001")).toBe(
+      "Max: '0x8000000000000001' is not a number in decimal notation",
+    );
+    expect(limitsRaw("0", "0x8000000000000001")).toBeNull();
   });
 
   test("up to 2^53 a bound is written as it is typed", () => {

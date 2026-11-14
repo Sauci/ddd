@@ -812,6 +812,10 @@ tr.changing td {
   max-height: 40vh;
   overflow: auto;
 }
+/* The two answers to a comma that could be either, side by side under the sentence asking. */
+.values-comma {
+  justify-content: flex-start;
+}
 /* The paste hint (part 9): set small like the meta and axis lines above the grid, since it is
    the same kind of annotation, and pulled in close under the table rather than left at the
    paragraph's own default margin. */

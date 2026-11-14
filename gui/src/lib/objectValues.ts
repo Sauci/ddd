@@ -1,4 +1,12 @@
 import type { ValuesReply } from "../api/types";
+import {
+  type CommaMeaning,
+  type Decimal,
+  doubleOf,
+  pastedComma,
+  readNumber,
+  typedComma,
+} from "./numbers";
 
 /** A conversion as the server hands it over: its kind and whatever that kind states.
  *
@@ -34,13 +42,15 @@ function floating(datatype: string): boolean {
 /** The raw count a physical value needs, rounded to a whole number where the datatype stores
  * one. Most physical values are the image of no raw count at all, so this is where a typed
  * value becomes one the file can hold - and the grid then shows what was stored, not what was
- * typed. */
+ * typed. A boolean is not rounded: it takes 0 and 1 alone, in physical as in raw, and anything
+ * else is the server's to refuse in the words it refuses it in raw - 0.6 rounded was 1, which
+ * the file stored. */
 export function rawOf(physical: number, conversion: Conversion, datatype: string): number {
   const exact =
     conversion.kind === "linear"
       ? (physical - number(conversion.offset, 0)) / number(conversion.factor, 1)
       : physical;
-  return floating(datatype) ? exact : Math.round(exact);
+  return floating(datatype) || datatype === "boolean" ? exact : Math.round(exact);
 }
 
 /** The tail of the arithmetic taken off, as `round_physical` takes it off server side. */
@@ -134,11 +144,10 @@ export function readOnlyNote(reply: ValuesReply): string | null {
 
 /** 2^53, where a double - the number the page holds - stops holding every whole number. Past it
  * `Number` reads a whole number as a double beside it, saying nothing: `9007199254740993` as
- * `9007199254740992`, and `0x8000000000000001`, a 64 bit mask, as 2^63. Planned from what it
- * read, the first was written as `9007199254740992`; the mask as `9223372036854776000`, the
- * shortest decimal of 2^63, which is `0x80000000000000C0` - its low bit cleared and two others
- * set; and `18446744073709551615`, the most a uint64 holds, read as 2^64, was refused as a number
- * that does not fit, which nobody typed. */
+ * `9007199254740992`. Planned from what it read, that was written as `9007199254740992`; and
+ * `18446744073709551615`, the most a uint64 holds, read as 2^64, was refused as a number that does
+ * not fit, which nobody typed. A 64 bit mask written in hexadecimal lost its low bits the same way,
+ * before hexadecimal was refused as no decimal notation (`numbers.ts`). */
 const EXACT = 2n ** 53n;
 
 /** How many digits 2^53 is written in, `9007199254740992`: a whole part of fewer is inside it,
@@ -148,14 +157,6 @@ const EXACT_DIGITS = 16;
 /** Why a number past ±2^53 is refused, in the same words wherever it was typed or pasted. */
 const INEXACT = "where the page cannot hold every whole number exactly";
 
-/** A decimal spelling `Number` reads, its sign, whole digits, fraction and exponent apart: `5.`,
- * `.5` and `1e19` among them. `Number` has read the text before this is asked, so a match holds a
- * digit somewhere - `.` and `e5` are no numbers. */
-const DECIMAL = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/;
-
-/** A whole number in hexadecimal, binary or octal digits, which `Number` reads with no sign. */
-const NONDECIMAL = /^0(?:[xX][0-9a-fA-F]+|[bB][01]+|[oO][0-7]+)$/;
-
 /** A whole number in decimal digits, with or without a sign. */
 const WHOLE = /^[+-]?\d+$/;
 
@@ -164,104 +165,103 @@ function pastSentence(said: string, side: -1 | 1): string {
   return `'${said}' is past ${side < 0 ? "-" : ""}2^53, ${INEXACT}`;
 }
 
-/** The sentence a whole number past ±2^53 is refused with where it is spelled as one - in
- * digits, or in hexadecimal, binary or octal - or `null` for any other text. What a field with no
- * datatype to weigh it by refuses: a limit, which a float states as freely as any number, and
- * which a fraction or an exponent spells as the double it is. */
+/** The sentence a whole number past ±2^53 is refused with where it is spelled in decimal digits,
+ * or `null` for any other text. What a field with no datatype to weigh it by refuses: a limit,
+ * which a float states as freely as any number, and which a fraction or an exponent spells as the
+ * double it is. */
 export function wholePast(text: string): string | null {
   const trimmed = text.trim();
-  if (!WHOLE.test(trimmed) && !NONDECIMAL.test(trimmed)) return null;
-  // `BigInt` reads exactly these spellings, a sign on decimal digits included.
+  if (!WHOLE.test(trimmed)) return null;
+  // `BigInt` reads exactly this spelling, a sign on decimal digits included.
   const whole = BigInt(trimmed);
   if (whole > EXACT) return pastSentence(text, 1);
   return whole < -EXACT ? pastSentence(text, -1) : null;
 }
 
-/** What a text says as a number: the double `Number` reads it as; which side of ±2^53 the number
- * it spells lies past, `0` where it lies inside; and whether that number has a fraction. */
-interface Spelled {
-  double: number;
-  side: -1 | 0 | 1;
-  fraction: boolean;
-}
-
-/** `text` read once as the number it spells, or `null` where it spells none `Number` reads. The
- * spelling decides before `BigInt` is asked anything: only a whole part of sixteen digits - the
- * one length that falls either side of 2^53 - and a hexadecimal, binary or octal number are
- * compared with 2^53 exactly. Measured on 4,096 fractional cells, this reads them in about a
- * millisecond, four or five times what `Number` alone takes; asking `BigInt` of every cell, which
- * throws for a fraction, took over twenty. `Infinity` is read as the double it is, on no side. */
-function spelled(text: string): Spelled | null {
-  const trimmed = text.trim();
-  const double = Number(trimmed);
-  if (trimmed === "" || Number.isNaN(double)) return null;
-  const decimal = DECIMAL.exec(trimmed);
-  if (decimal !== null) return exactly(double, decimal);
-  if (NONDECIMAL.test(trimmed)) {
-    return { double, side: BigInt(trimmed) > EXACT ? 1 : 0, fraction: false };
-  }
-  return { double, side: 0, fraction: false };
-}
-
-/** A decimal spelling's side of ±2^53 and whether it has a fraction, from its digits: the number
- * is its significant digits times ten to `scale`, so its whole part has `wholeDigits` digits -
+/** Which side of ±2^53 a decimal lies past, `0` where it lies inside, from its digits: the number
+ * is its significant digits times ten to its exponent, so its whole part has `wholeDigits` digits -
  * none, or fewer, for a number under one - and is compared with 2^53 itself only where those are
- * sixteen. Past 2^53 by a fraction, `9007199254740992.5`, is past it. */
-function exactly(double: number, match: RegExpExecArray): Spelled {
-  const [, sign, whole = "", fraction = "", power = "0"] = match;
-  const digits = `${whole}${fraction}`.replace(/^0+/, "");
-  const significant = digits.replace(/0+$/, "");
-  if (significant === "") return { double, side: 0, fraction: false };
-  const scale = Number(power) - fraction.length + (digits.length - significant.length);
-  const wholeDigits = significant.length + scale;
+ * sixteen, the one length that falls either side of it. Past 2^53 by a fraction,
+ * `9007199254740992.5`, is past it. Measured on 4,096 fractional cells, reading their numbers this
+ * way costs about a millisecond, four or five times what `Number` alone takes; asking `BigInt` of
+ * every cell, which throws for a fraction, took over twenty. */
+function sideOf(decimal: Decimal): -1 | 0 | 1 {
+  const { negative, digits, exponent } = decimal;
+  const wholeDigits = digits.length + exponent;
   let past = wholeDigits > EXACT_DIGITS;
   if (wholeDigits === EXACT_DIGITS) {
-    const head = BigInt(significant.slice(0, EXACT_DIGITS).padEnd(EXACT_DIGITS, "0"));
-    past = head > EXACT || (head === EXACT && scale < 0);
+    const head = BigInt(digits.slice(0, EXACT_DIGITS).padEnd(EXACT_DIGITS, "0"));
+    past = head > EXACT || (head === EXACT && exponent < 0);
   }
-  return { double, side: past ? (sign === "-" ? -1 : 1) : 0, fraction: scale < 0 };
+  if (!past) return 0;
+  return negative ? -1 : 1;
 }
 
-/** How a cell of `datatype` reads `text`, naming it as `said` where it refuses it: the double it
- * takes, or the sentence. A float cell takes the double whatever the spelling - the double is
+/** How a cell of `datatype` reads `text` - a comma that could be either read as `meaning` says -
+ * the double it takes, or the sentence it is refused with (`numbers.ts`'s own, for a text that is
+ * no number in decimal notation). A float cell takes the double whatever the digits - the double is
  * what a float holds, and FLT_MAX is a whole number past 2^53 as much as 2^64 is. Any other cell
- * refuses a number past ±2^53 in any spelling, and a fraction the double drops, which it would
- * plan as the whole number the double reads it as; a fraction the double keeps is the server's
- * to refuse an integer, in raw, and the conversion's to round, in physical. */
-function readOf(
-  text: string,
-  said: string,
-  datatype: string,
-): { double: number } | { refusal: string } {
-  const read = spelled(text);
-  if (read === null) return { refusal: `'${said}' is not a number` };
-  if (floating(datatype)) return { double: read.double };
-  if (read.side !== 0) return { refusal: pastSentence(said, read.side) };
-  if (read.fraction && Number.isInteger(read.double)) {
-    return { refusal: `'${said}' is not a whole number, and the page cannot hold its fraction` };
+ * refuses a number past ±2^53, and a fraction the double drops, which it would plan as the whole
+ * number the double reads it as; a fraction the double keeps is the server's to refuse an integer,
+ * in raw, and the conversion's to round, in physical. */
+function readOf(text: string, datatype: string, meaning: CommaMeaning | undefined): CellRead {
+  const read = readNumber(text, meaning);
+  if (!("decimal" in read)) return read;
+  const double = doubleOf(read.decimal);
+  if (floating(datatype)) return { double };
+  const side = sideOf(read.decimal);
+  if (side !== 0) return { refusal: pastSentence(text, side), ambiguous: false };
+  if (read.decimal.exponent < 0 && Number.isInteger(double)) {
+    return {
+      refusal: `'${text}' is not a whole number, and the page cannot hold its fraction`,
+      ambiguous: false,
+    };
   }
-  return { double: read.double };
+  return { double };
+}
+
+/** What a cell reads a text as: the double it takes, or the sentence it is refused with. */
+type CellRead = { double: number } | { refusal: string; ambiguous: boolean };
+
+/** What `text`, typed into a cell of `reply` in physical or in raw, comes to: the raw count it
+ * writes, the sentence the cell refuses it with - `ambiguous` where that is a comma that could be
+ * either, which a choice of what it means answers (`numbers.ts`) - or `null` for a cell the reader
+ * has emptied, which is no mistake but a cell nothing has been typed into yet. `meaning` says what
+ * a comma that could be either is. */
+export function cellRead(
+  text: string,
+  reply: ValuesReply,
+  physical: boolean,
+  meaning?: CommaMeaning,
+): { raw: number } | { refusal: string; ambiguous: boolean } | null {
+  if (text.trim() === "") return null;
+  const read = readOf(text, reply.datatype, meaning);
+  if (!("double" in read)) return read;
+  return { raw: physical ? rawOf(read.double, reply.conversion, reply.datatype) : read.double };
 }
 
 /** The raw count `text`, typed into a cell of `reply`, writes, or `null` where it writes none:
- * nothing typed, or a text the cell refuses (`typedRefusal`), for which no plan is asked.
- * `parseFloat` takes a numeric prefix, so `1,5` - a decimal comma, which half the world writes -
- * would read as `1` and plan a write of it; `Number` weighs the whole string, and an empty cell is
- * nothing typed rather than the zero `Number("")` answers. */
-export function typedRaw(text: string, reply: ValuesReply, physical: boolean): number | null {
-  if (text.trim() === "") return null;
-  const read = readOf(text, text, reply.datatype);
-  if ("refusal" in read) return null;
-  return physical ? rawOf(read.double, reply.conversion, reply.datatype) : read.double;
+ * nothing typed, or a text the cell refuses (`cellRead`), for which no plan is asked. */
+export function typedRaw(
+  text: string,
+  reply: ValuesReply,
+  physical: boolean,
+  meaning?: CommaMeaning,
+): number | null {
+  const read = cellRead(text, reply, physical, meaning);
+  return read !== null && "raw" in read ? read.raw : null;
 }
 
 /** The sentence a cell of `reply` refuses what was typed with, or `null` where there is nothing
- * to refuse: a cell the reader has emptied is not a mistake, it is a cell nothing has been typed
- * into yet. */
-export function typedRefusal(text: string, reply: ValuesReply): string | null {
-  if (text.trim() === "") return null;
-  const read = readOf(text, text, reply.datatype);
-  return "refusal" in read ? read.refusal : null;
+ * to refuse (`cellRead`). */
+export function typedRefusal(
+  text: string,
+  reply: ValuesReply,
+  physical: boolean,
+  meaning?: CommaMeaning,
+): string | null {
+  const read = cellRead(text, reply, physical, meaning);
+  return read !== null && "refusal" in read ? read.refusal : null;
 }
 
 /** The limits as the line above the grid says them: each the double it crossed as, but a whole
@@ -282,9 +282,13 @@ export function noGridNote(reply: ValuesReply): string | null {
   return `'${reply.unshown}' holds a whole number at or past ±2^53, ${INEXACT}, so the grid cannot show it`;
 }
 
-/** A pasted block, read against the object the grid is showing. Exactly one of the two fields is
- * set, so a reader narrows on `refusal === null` and needs no fallback for the other. */
-export type Pasted = { rows: number[][]; refusal: null } | { rows: null; refusal: string };
+/** A pasted block, read against the object the grid is showing. Exactly one of `rows` and
+ * `refusal` is set, so a reader narrows on `refusal === null` and needs no fallback for the
+ * other; `ambiguous` is the value whose comma could be a decimal point or a thousands separator,
+ * where that is what is refused - the choice of what it means is offered for it. */
+export type Pasted =
+  | { rows: number[][]; refusal: null; ambiguous: null }
+  | { rows: null; refusal: string; ambiguous: string | null };
 
 /** The block as a spreadsheet writes it: rows by newline, cells by tab, a trailing newline
  * dropped because every spreadsheet adds one. */
@@ -317,43 +321,33 @@ function listed(numbers: number[]): string {
   return `${all.slice(0, -1).join(", ")} and ${all.slice(-1).join("")}`;
 }
 
-/** A comma before exactly three digits at the end of a cell - `1,200`, which an English
- * spreadsheet writes for twelve hundred and a French one for one and a fifth. Two digits are no
- * grouping (`1,25`) and neither are four (`1,2345`), so both stay decimals. */
-const GROUPED = /,\d{3}$/;
-
-/** The first cell whose comma could be a thousands separator, or `undefined` where no cell's
- * could. Trimmed, because a cell padded by the spreadsheet is the same number. */
-function groupedCell(cells: string[][]): string | undefined {
-  return cells.flat().find((cell) => GROUPED.test(cell.trim()));
-}
-
-/** Whether a comma is this block's decimal separator: only where no cell states a point and no
- * cell states two commas, so `1,5` reads as one and a half and `1.234,56` never does. */
-function commaIsDecimal(cells: string[][]): boolean {
-  const all = cells.flat();
-  if (all.some((cell) => cell.includes("."))) return false;
-  return all.every((cell) => (cell.match(/,/g) ?? []).length <= 1);
-}
-
-/** Whether two *different* cells disagree about the separator, which is the one case worth its
- * own sentence. A single cell holding both - `1.234,56` - is not a block that mixes them; it is
- * a cell that is not a number, and saying so names the cell a reader has to go and fix. */
-function mixesSeparators(cells: string[][]): boolean {
-  const all = cells.flat();
-  return (
-    all.some((cell) => cell.includes(".") && !cell.includes(",")) &&
-    all.some((cell) => cell.includes(",") && !cell.includes("."))
-  );
-}
-
-export function pasted(text: string, reply: ValuesReply, physical: boolean): Pasted {
+/**
+ * A block pasted into the grid of `reply`, read in physical or in raw: the raw counts it writes,
+ * row by row, or why it writes none.
+ *
+ * Its commas are read by the block's own rule (`pastedComma`, `numbers.ts`): a spreadsheet writes
+ * every number of a block with the same separators, so one value whose comma can only be a decimal
+ * point - `0,5`, or `0,125`, where a first group of 0 groups no thousands - makes every comma of
+ * the block one, `1,250` beside it among them; a block writing its decimal point both ways is
+ * refused. A comma nothing in the block decides is read as `chosen` says, and refused until it
+ * says - `1,200` is twelve hundred from a spreadsheet that groups thousands and one and a fifth
+ * from one that writes decimals with a comma, and read either way, without asking, it stored a
+ * calibration nobody typed. A header row and column, pasted along with the values, are dropped
+ * unread: their readings are no part of what is written.
+ */
+export function pasted(
+  text: string,
+  reply: ValuesReply,
+  physical: boolean,
+  chosen?: CommaMeaning,
+): Pasted {
   const cells = celled(text);
   const widths = new Set(cells.map((row) => row.length));
   if (widths.size > 1) {
     return {
       rows: null,
       refusal: `this is not a table: its rows are ${listed([...widths])} values long`,
+      ambiguous: null,
     };
   }
   // Every row is the same length by now, so the widest is the width - and taking it this way
@@ -368,45 +362,26 @@ export function pasted(text: string, reply: ValuesReply, physical: boolean): Pas
       refusal:
         `expected ${table(rows, columns)}, or ${table(rows + 1, columns + 1)} with a header; ` +
         `got ${table(cells.length, width)}`,
+      ambiguous: null,
     };
   }
   const values = header ? cells.slice(1).map((row) => row.slice(1)) : cells;
-  const decimal = commaIsDecimal(values);
-  if (mixesSeparators(values)) {
-    return {
-      rows: null,
-      refusal: "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
-    };
-  }
-  // The one comma nothing can decide, refused rather than read: `1,200` is twelve hundred from
-  // a spreadsheet that groups thousands and one and a fifth from one that writes decimals with
-  // a comma, and both are ordinary. Read either way it stores a calibration nobody typed - a
-  // thousand times too small, or a thousand times too large - and says nothing, which is the
-  // guessing this whole rule exists to refuse. Only where the comma would otherwise be the
-  // decimal separator: a block that states a point elsewhere has already said what its commas
-  // are, and `mixesSeparators` above answers that one.
-  if (decimal) {
-    const grouped = groupedCell(values);
-    if (grouped !== undefined) {
-      return {
-        rows: null,
-        refusal:
-          `the comma in '${grouped}' could be a decimal point or a thousands separator, so it ` +
-          "is not clear what it means; paste the column unformatted",
-      };
-    }
-  }
+  const block = pastedComma(values.flat());
+  if ("refusal" in block) return { rows: null, refusal: block.refusal, ambiguous: null };
+  const meaning = block.meaning ?? chosen;
   const read: number[][] = [];
   for (const row of values) {
     const counts: number[] = [];
     for (const cell of row) {
-      const read = readOf(decimal ? cell.replace(",", ".") : cell, cell, reply.datatype);
-      if ("refusal" in read) return { rows: null, refusal: read.refusal };
-      counts.push(physical ? rawOf(read.double, reply.conversion, reply.datatype) : read.double);
+      const value = readOf(cell, reply.datatype, meaning);
+      if (!("double" in value)) {
+        return { rows: null, refusal: value.refusal, ambiguous: value.ambiguous ? cell : null };
+      }
+      counts.push(physical ? rawOf(value.double, reply.conversion, reply.datatype) : value.double);
     }
     read.push(counts);
   }
-  return { rows: read, refusal: null };
+  return { rows: read, refusal: null, ambiguous: null };
 }
 
 /** The line under the grid saying what shape a paste wants - the only way the feature is
@@ -457,13 +432,22 @@ export function rowHeader(reply: ValuesReply, physical: boolean): string[] {
 }
 
 /** A cell of the values grid the reader has typed into: where it is, what was typed, and whether
- * it was typed in physical - the reading its text is read in, whichever the grid shows now. The
- * grid holds every cell typed into (`typedCells.ts`). */
+ * it was typed in physical - the reading its text is read in, whichever the grid shows now - and,
+ * where its comma could be a decimal point or a thousands separator, which the reader said it is.
+ * The grid holds every cell typed into (`typedCells.ts`). */
 export interface TypedCell {
   row: number;
   column: number;
   typed: string;
   physical: boolean;
+  comma?: CommaMeaning | undefined;
+}
+
+/** What a comma that could be either means in `cell`, one of the cells typed into a grid: a
+ * decimal point where one of `typed` shows its comma to be one (`typedComma`), else what the
+ * reader said of this cell's, if anything. */
+export function commaOf(typed: readonly TypedCell[], cell: TypedCell): CommaMeaning | undefined {
+  return typedComma(typed.map((held) => held.typed)) ?? cell.comma;
 }
 
 /** What one cell's field shows. A cell typed into shows what was typed, in the reading it was
@@ -483,7 +467,7 @@ export function cellText(
   if (held === undefined)
     return reading(reply.rows[row]?.[column] ?? 0, reply.conversion, physical);
   if (held.physical === physical) return held.typed;
-  const raw = typedRaw(held.typed, reply, held.physical);
+  const raw = typedRaw(held.typed, reply, held.physical, commaOf(typed, held));
   return raw === null ? held.typed : reading(raw, reply.conversion, physical);
 }
 

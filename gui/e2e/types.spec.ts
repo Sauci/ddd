@@ -252,7 +252,7 @@ test("a type's limit past 2^53 is shown as its file writes it, and no range hold
   // states is no range to send, and never a removal of it.
   await expect(
     panel.getByText(
-      "'18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
+      "Max: '18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
       { exact: true },
     ),
   ).toBeVisible();

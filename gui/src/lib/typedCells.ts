@@ -1,13 +1,15 @@
 import type { ValuesReply } from "../api/types";
+import type { CommaMeaning } from "./numbers";
 import {
   cellAt,
+  cellRead,
   cellSentence,
+  commaOf,
   elementLabel,
   pasteSentence,
   physicalReading,
   type TypedCell,
   typedRaw,
-  typedRefusal,
   wanted,
 } from "./objectValues";
 
@@ -35,15 +37,25 @@ function fileValue(reply: ValuesReply, row: number, column: number): number | un
 }
 
 /** Why a cell refuses what was typed into it, or `null`: text that is no number it takes
- * (`typedRefusal`), or a number typed into a cell past the end of the object's shape, which has
- * no element to set - one an axis's breakpoints draw beyond it - in the words the server refuses
- * one with. An emptied cell is nothing typed yet, wherever it is. */
-function refusalOf(cell: TypedCell, reply: ValuesReply): string | null {
-  const refusal = typedRefusal(cell.typed, reply);
-  if (refusal !== null || cell.typed.trim() === "") return refusal;
+ * (`cellRead`), a comma that could be either among it - `ambiguous`, which a choice of what it means
+ * answers - or a number typed into a cell past the end of the object's shape, which has no element
+ * to set - one an axis's breakpoints draw beyond it - in the words the server refuses one with. An
+ * emptied cell is nothing typed yet, wherever it is. `typed` is every cell typed into the grid,
+ * whose commas are read together (`commaOf`). */
+function refusalOf(
+  cell: TypedCell,
+  typed: readonly TypedCell[],
+  reply: ValuesReply,
+): { refusal: string; ambiguous: boolean } | null {
+  const read = cellRead(cell.typed, reply, cell.physical, commaOf(typed, cell));
+  if (read === null) return null;
+  if ("refusal" in read) return read;
   const [rows, columns] = wanted(reply);
   if (cell.row < rows && cell.column < columns) return null;
-  return `'${cellAt(cell.row, cell.column, reply.shape)}' is past the end of this object`;
+  return {
+    refusal: `'${cellAt(cell.row, cell.column, reply.shape)}' is past the end of this object`,
+    ambiguous: false,
+  };
 }
 
 /** The most cells a sentence names one by one before it counts the rest, as the server names the
@@ -60,11 +72,12 @@ function listed(clauses: readonly string[]): string {
 }
 
 /** What the cells typed into offer: the sentence a cell is refused with, which withholds Apply
- * for them all, or the elements they set - none, where every cell is empty or typed back to its
- * file's value. */
+ * for them all - with the text of the first refused for a comma that could be either, which the
+ * offer asks the meaning of - or the elements they set: none, where every cell is empty or typed
+ * back to its file's value. */
 export type TypedOffer =
-  | { refusal: string; changes: null }
-  | { refusal: null; changes: CellChange[] };
+  | { refusal: string; changes: null; ambiguous: string | null }
+  | { refusal: null; changes: CellChange[]; ambiguous: null };
 
 /**
  * What `cells`, typed into the grid of `reply`, offer: together they make one plan, one Apply and
@@ -80,31 +93,50 @@ export type TypedOffer =
  */
 export function typedOffer(cells: readonly TypedCell[], reply: ValuesReply): TypedOffer {
   const refused = cells.flatMap((cell) => {
-    const refusal = refusalOf(cell, reply);
-    return refusal === null ? [] : [{ cell, refusal }];
+    const refusal = refusalOf(cell, cells, reply);
+    return refusal === null ? [] : [{ cell, ...refusal }];
   });
   const [first] = refused;
   if (first !== undefined) {
+    const ambiguous = refused.find((entry) => entry.ambiguous)?.cell.typed ?? null;
     const label = (cell: TypedCell) => elementLabel(cell.row, cell.column, reply.shape);
-    if (cells.length === 1) return { refusal: first.refusal, changes: null };
+    if (cells.length === 1) return { refusal: first.refusal, changes: null, ambiguous };
     if (refused.length === 1) {
       return {
         refusal: `${label(first.cell)} of '${reply.name}' is refused: ${first.refusal}`,
         changes: null,
+        ambiguous,
       };
     }
     const clauses = refused.map(({ cell, refusal }) => `${label(cell)} because ${refusal}`);
     return {
       refusal: `${refused.length} elements of '${reply.name}' are refused: ${listed(clauses)}`,
       changes: null,
+      ambiguous,
     };
   }
   const changes = cells.flatMap((cell) => {
-    const raw = typedRaw(cell.typed, reply, cell.physical);
+    const raw = typedRaw(cell.typed, reply, cell.physical, commaOf(cells, cell));
     if (raw === null || raw === fileValue(reply, cell.row, cell.column)) return [];
     return [{ row: cell.row, column: cell.column, raw }];
   });
-  return { refusal: null, changes };
+  return { refusal: null, changes, ambiguous: null };
+}
+
+/** The cells typed into, each whose comma could be a decimal point or a thousands separator said
+ * to be `meaning` - the one press that answers what the offer asked of them; every other cell as
+ * it was. */
+export function withComma(
+  cells: readonly TypedCell[],
+  reply: ValuesReply,
+  meaning: CommaMeaning,
+): TypedCell[] {
+  return cells.map((cell) => {
+    const read = cellRead(cell.typed, reply, cell.physical, commaOf(cells, cell));
+    return read !== null && "ambiguous" in read && read.ambiguous
+      ? { ...cell, comma: meaning }
+      : cell;
+  });
 }
 
 /** The sentence above the preview of what the typed cells set: one cell's own (`cellSentence`),
@@ -166,6 +198,13 @@ export function typedPlan(reply: ValuesReply, changes: readonly CellChange[]): T
   const [only] = cells;
   if (only === undefined) return null;
   return cells.length === 1 ? { cell: only } : { cells };
+}
+
+/** The text whose comma the offer asks the meaning of, or `null` where it asks none: the typed
+ * cells' (`offer`), or, where no cell is typed into - `offer` null - a pasted block's own
+ * (`Pasted.ambiguous`). */
+export function commaAsked(offer: TypedOffer | null, pasted: string | null): string | null {
+  return offer === null ? pasted : offer.ambiguous;
 }
 
 /** What the offer's region is called: the one cell or the cells typed into, or a pasted table's

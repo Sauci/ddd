@@ -12,6 +12,7 @@ import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
 import { scrollFromUnder } from "../lib/heldOffer";
+import { type CommaMeaning, commaChoices } from "../lib/numbers";
 import {
   cellText,
   columnAxisLabel,
@@ -30,7 +31,7 @@ import {
   statedNote,
   type TypedCell,
 } from "../lib/objectValues";
-import { offerName, offerSentence, typedOffer } from "../lib/typedCells";
+import { commaAsked, offerName, offerSentence, typedOffer } from "../lib/typedCells";
 import { consequence, NO_UNIT, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
@@ -62,6 +63,12 @@ export interface ValuesGridViewProps {
   typed: readonly TypedCell[];
   plan: PlanReply | null;
   refusal: string | null;
+  /** The value of a pasted block whose comma could be a decimal point or a thousands separator,
+   * which is what the block is refused for (`Pasted.ambiguous`); `null` otherwise, and while no
+   * block is pasted. */
+  pasteAmbiguous?: string | null;
+  /** The reader's answer to what such a comma means, typed or pasted: one press. */
+  onComma?: (meaning: CommaMeaning) => void;
   changesShown: boolean;
   busy: boolean;
   onPhysical: (physical: boolean) => void;
@@ -175,6 +182,9 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   const offered = typed.length === 0 ? null : typedOffer(typed, reply);
   const refused = offered?.refusal ?? refusal;
   const sentence = offerSentence(reply, offered, physical);
+  // The text whose comma could be a decimal point or a thousands separator, typed or pasted: the
+  // offer asks which it is, with one press (`commaChoices`).
+  const asked = commaAsked(offered, props.pasteAmbiguous ?? null);
   const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
   const stated = statedNote(reply);
@@ -340,6 +350,20 @@ export function ValuesGridView(props: ValuesGridViewProps) {
             <p className="panel-refusal" role="status">
               {refused}
             </p>
+          )}
+          {refused !== null && asked !== null && (
+            <div className="panel-actions values-comma">
+              {commaChoices(asked).map((choice) => (
+                <Button
+                  key={choice.meaning}
+                  variant="secondary"
+                  isDisabled={busy}
+                  onPress={() => props.onComma?.(choice.meaning)}
+                >
+                  {choice.label}
+                </Button>
+              ))}
+            </div>
           )}
           {plan !== null && sentence !== null && (
             // What it sets, and the file it lands in - the way `renameConsequence` folds

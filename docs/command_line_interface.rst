@@ -380,7 +380,22 @@ The commands
        or exactly one row and one column larger for the header pasted along with it -
        previewed and undone the same way, in place of any cells typed before it, as a
        cell typed after it takes the table's place. Its header is discarded unread, so one naming
-       a different axis is caught only by that preview, not by the paste itself. The page
+       a different axis is caught only by that preview, not by the paste itself. Every field
+       of the page reads a number the same way, in decimal notation: an optional sign, digits
+       with an optional fraction or a fraction alone, and an optional exponent, the white
+       space around it ignored. A number written in hexadecimal, binary or octal,
+       ``Infinity``, ``NaN`` and digits parted by underscores are refused in one sentence, the
+       same in every field, and nothing is asked of the server for them. A comma is a decimal
+       point where it cannot group thousands - after a first group of 0, or before anything
+       but exactly three digits - and groups thousands where it cannot be a decimal point, two
+       of them or a point after it; text holding both has its decimal point last, so
+       ``1.234,5`` and ``1,234.5`` both read 1234.5. A block pasted where one value's comma
+       can only be a decimal point reads every comma of it as one, ``0,5`` making ``1,250``
+       beside it one and a quarter, and a block writing its decimal point both ways is
+       refused. A comma that could be either, ``1,200``, is refused with the choice of what it
+       means one press away, the same for a cell typed into and for a block pasted; a
+       range's two fields offer no such choice, and their sentence names the field it is
+       about. A boolean takes 0 and 1 alone, in physical as in raw. The page
        holds a number as a double, which past 2^53 no longer holds every whole number, so a
        cell of an integer datatype refuses a number past 2^53 either side of zero, however it
        is spelled, where it is typed or pasted, and a fraction the double would drop with it;

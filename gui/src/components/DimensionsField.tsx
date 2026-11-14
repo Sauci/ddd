@@ -1,3 +1,4 @@
+import { dimensionNote } from "../lib/declarations";
 import { Button } from "../ui/Button";
 import { ComboBox } from "../ui/ComboBox";
 
@@ -37,6 +38,7 @@ export function DimensionsField({ rows, constants, owner, busy, onRows }: Dimens
             onPick={(id) => onRows(shown.map((old, at) => (at === index ? id : old)))}
             onEnter={(text) => onRows(shown.map((old, at) => (at === index ? text : old)))}
             onClose={() => undefined}
+            note={dimensionNote(row)}
             isDisabled={busy}
           />
           <Button

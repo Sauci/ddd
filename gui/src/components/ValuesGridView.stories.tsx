@@ -160,6 +160,17 @@ export const ARefusedCell = () => (
 
 // Three of CurveA's elements typed 13, 14 and 15 ms and held together: each field shows what was
 // typed into it, and one sentence, one preview and one Apply cover all three (16:I3).
+// 1,500 typed into CurveA's second cell: one and a half or fifteen hundred, which nothing in the
+// text says, so the offer asks which, one press away (15:M9) - and holds Apply back until it is.
+export const ACommaThatCouldBeEither = () => (
+  <View
+    reply={VALUES_CURVE}
+    backTo="Controller"
+    physical
+    typed={[{ row: 0, column: 1, typed: "1,500", physical: true }]}
+  />
+);
+
 export const ThreeCellsTypedAsOneChange = () => (
   <View
     reply={VALUES_CURVE}

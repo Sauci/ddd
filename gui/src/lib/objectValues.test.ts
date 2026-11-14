@@ -2,11 +2,13 @@ import { describe, expect, test, vi } from "vitest";
 import type { ValuesReply } from "../api/types";
 import {
   cellAt,
+  cellRead,
   cellSentence,
   cellText,
   columnAxisLabel,
   columnChars,
   columnHeader,
+  commaOf,
   cornerLabel,
   drawable,
   elementLabel,
@@ -435,10 +437,17 @@ describe("columnAxisLabel", () => {
 });
 
 describe("typedRaw", () => {
-  test("a decimal comma is not a number, rather than the whole part of one", () => {
+  test("a decimal comma that groups no thousands is a decimal point, not the whole part of one", () => {
     // `parseFloat("1,5")` is 1: half the world's decimal separator, silently planning a write
-    // of a value the reader did not type.
-    expect(typedRaw("1,5", BLOCK_A, false)).toBeNull();
+    // of a value the reader did not type; and `Number` refused it, where it is one and a half.
+    expect(typedRaw("1,5", BLOCK_A, false)).toBe(1.5);
+    expect(typedRaw("0,125", BLOCK_A, false)).toBe(0.125);
+  });
+
+  test("a comma that could be either writes nothing until it is said which", () => {
+    expect(typedRaw("1,500", BLOCK_A, false)).toBeNull();
+    expect(typedRaw("1,500", BLOCK_A, false, "decimal")).toBe(1.5);
+    expect(typedRaw("1,500", BLOCK_A, false, "grouping")).toBe(1500);
   });
 
   test("a numeric prefix is not a number either", () => {
@@ -460,19 +469,94 @@ describe("typedRaw", () => {
   test("in physical it is the raw count the conversion comes to, rounded for an integer", () => {
     expect(typedRaw("12.004", CURVE_A, true)).toBe(1200);
   });
+
+  test("a number in another notation writes nothing, in either reading", () => {
+    // 15:M13: `Number` read `0x10` as 16, and CurveA's cell planned 16 ms.
+    expect(typedRaw("0x10", CURVE_A, false)).toBeNull();
+    expect(typedRaw("0b101", CURVE_A, true)).toBeNull();
+    expect(typedRaw("Infinity", CURVE_A, false)).toBeNull();
+  });
 });
 
 describe("typedRefusal", () => {
   test("what is not wholly a number is refused in the grid's own voice", () => {
-    expect(typedRefusal("1,5", BLOCK_A)).toBe("'1,5' is not a number");
+    expect(typedRefusal("7abc", BLOCK_A, false)).toBe("'7abc' is not a number");
+  });
+
+  test("a number in another notation is refused in the sentence every field refuses it with", () => {
+    expect(typedRefusal("0x10", CURVE_A, false)).toBe("'0x10' is not a number in decimal notation");
+    expect(typedRefusal("NaN", CURVE_A, true)).toBe("'NaN' is not a number in decimal notation");
+    expect(typedRefusal("1_000", CURVE_A, false)).toBe(
+      "'1_000' is not a number in decimal notation",
+    );
+  });
+
+  test("a comma that could be either is refused until it is said which", () => {
+    expect(typedRefusal("1,500", BLOCK_A, false)).toBe(
+      "the comma in '1,500' could be a decimal point or a thousands separator",
+    );
+    expect(typedRefusal("1,500", BLOCK_A, false, "grouping")).toBeNull();
   });
 
   test("a number is not refused", () => {
-    expect(typedRefusal("7.5", BLOCK_A)).toBeNull();
+    expect(typedRefusal("7.5", BLOCK_A, false)).toBeNull();
+    expect(typedRefusal("1,5", BLOCK_A, false)).toBeNull();
   });
 
   test("an empty cell is not refused - nothing has been typed yet", () => {
-    expect(typedRefusal("", BLOCK_A)).toBeNull();
+    expect(typedRefusal("", BLOCK_A, false)).toBeNull();
+  });
+});
+
+describe("cellRead", () => {
+  test("says which refusal a choice of the comma's meaning answers", () => {
+    expect(cellRead("1,500", BLOCK_A, false)).toEqual({
+      refusal: "the comma in '1,500' could be a decimal point or a thousands separator",
+      ambiguous: true,
+    });
+    expect(cellRead("7abc", BLOCK_A, false)).toEqual({
+      refusal: "'7abc' is not a number",
+      ambiguous: false,
+    });
+    expect(cellRead("12", BLOCK_A, false)).toEqual({ raw: 12 });
+    expect(cellRead(" ", BLOCK_A, false)).toBeNull();
+  });
+});
+
+/** FlagA: a boolean scalar holding false, the count 0, under the identity conversion. */
+const FLAG_A: ValuesReply = {
+  ...PARAMETER_A,
+  name: "FlagA",
+  kind: "measurement",
+  datatype: "boolean",
+  unit: "",
+  conversion: { kind: "identity" },
+  minimum: 0,
+  maximum: 1,
+  rows: [[0]],
+};
+
+describe("a boolean takes 0 and 1 alone", () => {
+  test.each([
+    // 3:M4: 0.6 typed in physical was rounded to 1, which the file stored, where in raw the same
+    // 0.6 is refused - it is not a valid bool. Both readings now send it as it is typed, for the
+    // server to refuse in the same words; 0 and 1 are what a boolean holds, in either.
+    { text: "0.6", physical: true, raw: 0.6 },
+    { text: "0.6", physical: false, raw: 0.6 },
+    { text: "1", physical: true, raw: 1 },
+    { text: "0", physical: false, raw: 0 },
+    { text: "1.0", physical: true, raw: 1 },
+  ])("'$text' in physical $physical writes $raw", ({ text, physical, raw }) => {
+    expect(typedRaw(text, FLAG_A, physical)).toBe(raw);
+  });
+
+  test("and a pasted boolean is no more rounded than a typed one", () => {
+    expect(pasted("0.6", { ...FLAG_A, shape: [1] }, true).rows).toEqual([[0.6]]);
+  });
+
+  test("rawOf keeps a boolean's raw count as the conversion comes to it", () => {
+    expect(rawOf(0.6, { kind: "identity" }, "boolean")).toBe(0.6);
+    expect(rawOf(0.5, { kind: "linear", factor: 0.5, offset: 0 }, "boolean")).toBe(1);
   });
 });
 
@@ -499,11 +583,7 @@ describe("a number a double cannot hold", () => {
     { text: "9007199254740991", cell: UINT64, raw: 9007199254740991, refused: null },
     { text: "9007199254740992", cell: UINT64, raw: 2 ** 53, refused: null },
     { text: "-9007199254740992", cell: SINT64, raw: -(2 ** 53), refused: null },
-    { text: "0x1F", cell: UINT64, raw: 31, refused: null },
-    // `Infinity` is read as the double it is, on no side of 2^53: no whole number at all, and
-    // the server's range refuses it.
-    { text: "Infinity", cell: UINT64, raw: Number.POSITIVE_INFINITY, refused: null },
-    // Past it, whichever side, in every spelling `Number` reads, the space around it included.
+    // Past it, whichever side, in every decimal spelling, the space around it included.
     {
       text: "9007199254740993",
       cell: UINT64,
@@ -517,34 +597,10 @@ describe("a number a double cannot hold", () => {
       refused: `'-9007199254740993' is past -2^53, ${INEXACT}`,
     },
     {
-      text: "0x8000000000000001",
-      cell: UINT64,
-      raw: null,
-      refused: `'0x8000000000000001' is past 2^53, ${INEXACT}`,
-    },
-    {
       text: "18446744073709551615",
       cell: UINT64,
       raw: null,
       refused: `'18446744073709551615' is past 2^53, ${INEXACT}`,
-    },
-    {
-      text: "0x20000000000001",
-      cell: UINT64,
-      raw: null,
-      refused: `'0x20000000000001' is past 2^53, ${INEXACT}`,
-    },
-    {
-      text: `0b1${"0".repeat(52)}1`,
-      cell: UINT64,
-      raw: null,
-      refused: `'0b1${"0".repeat(52)}1' is past 2^53, ${INEXACT}`,
-    },
-    {
-      text: "0o400000000000000001",
-      cell: UINT64,
-      raw: null,
-      refused: `'0o400000000000000001' is past 2^53, ${INEXACT}`,
     },
     {
       text: " 9007199254740993 ",
@@ -606,13 +662,30 @@ describe("a number a double cannot hold", () => {
     },
   ])("'$text' in a $cell.datatype cell", ({ text, cell, raw, refused }) => {
     expect(typedRaw(text, cell, false)).toBe(raw);
-    expect(typedRefusal(text, cell)).toBe(refused);
+    expect(typedRefusal(text, cell, false)).toBe(refused);
+  });
+
+  test.each([
+    // Ruling B3-1: the 64 bit mask `0x8000000000000001`, which `Number` read as 2^63 and the page
+    // wrote as 9223372036854776000, stays refused - now as a number in another notation, before
+    // anything weighs it against 2^53; and so do the other spellings `Number` read, inside 2^53
+    // as past it, and `Infinity`, which it read as a double on no side of it.
+    "0x8000000000000001",
+    "0x20000000000001",
+    `0b1${"0".repeat(52)}1`,
+    "0o400000000000000001",
+    "0x1F",
+    "Infinity",
+  ])("'%s', in another notation, is refused before it is weighed against 2^53", (text) => {
+    expect(typedRaw(text, UINT64, false)).toBeNull();
+    expect(typedRefusal(text, UINT64, false)).toBe(`'${text}' is not a number in decimal notation`);
   });
 
   test("a pasted block holding one is refused in the same words, and plans nothing", () => {
     expect(pasted("9007199254740993\t9007199254740995", BIG, false)).toEqual({
       rows: null,
       refusal: `'9007199254740993' is past 2^53, ${INEXACT}`,
+      ambiguous: null,
     });
   });
 
@@ -878,13 +951,37 @@ describe("cellText", () => {
   });
 
   test("text that comes to no count is shown as typed in either reading", () => {
-    expect(cellText(CURVE_A, [typedCell(0, 2, "1,5")], 0, 2, false)).toBe("1,5");
+    expect(cellText(CURVE_A, [typedCell(0, 2, "1,500")], 0, 2, false)).toBe("1,500");
     expect(cellText(CURVE_A, [typedCell(0, 2, "")], 0, 2, false)).toBe("");
+  });
+
+  test("a comma is read as the cells typed together read it, or as the reader said", () => {
+    // 1,5 ms is a decimal comma, 150 counts; beside it, 1,250 ms is 125 counts.
+    expect(cellText(CURVE_A, [typedCell(0, 2, "1,5")], 0, 2, false)).toBe("150");
+    const together = [typedCell(0, 1, "0,5"), typedCell(0, 2, "1,250")];
+    expect(cellText(CURVE_A, together, 0, 2, false)).toBe("125");
+    const said = { ...typedCell(0, 2, "1,500"), comma: "grouping" as const };
+    expect(cellText(CURVE_A, [said], 0, 2, false)).toBe("150000");
   });
 
   test("a cell its row does not reach reads zero, as the startup code makes it", () => {
     expect(cellText({ ...CURVE_A, rows: [[1200, 900]] }, [], 0, 4, false)).toBe("0");
     expect(cellText({ ...MAP_A, rows: MAP_A.rows.slice(0, 2) }, [], 3, 0, true)).toBe("0");
+  });
+});
+
+describe("commaOf", () => {
+  test("a comma one typed cell shows to be a decimal point is one in every typed cell", () => {
+    const decimal = typedCell(0, 0, "0,5");
+    const either = typedCell(0, 1, "1,250");
+    expect(commaOf([decimal, either], either)).toBe("decimal");
+  });
+
+  test("else it is what was said of the cell's own, or nothing", () => {
+    const either = typedCell(0, 1, "1,250");
+    expect(commaOf([either], either)).toBeUndefined();
+    const said = { ...either, comma: "grouping" as const };
+    expect(commaOf([said], said)).toBe("grouping");
   });
 });
 
@@ -1038,20 +1135,65 @@ describe("pasted", () => {
     );
   });
 
-  test("a thousands separator beside a decimal comma is not a number", () => {
+  test("text holding both a point and a comma is read by the same rule, its decimal point last", () => {
+    // `1.234,56` groups thousands with points and parts its fraction with the comma: 1234.56.
+    expect(pasted("1.234,56\t9\t8\t7,5\t7\t6,5", CURVE_A, false).rows).toEqual([
+      [1234.56, 9, 8, 7.5, 7, 6.5],
+    ]);
+    expect(pasted("1,234.56\t9\t8\t7.5\t7\t6.5", CURVE_A, false).rows).toEqual([
+      [1234.56, 9, 8, 7.5, 7, 6.5],
+    ]);
+  });
+
+  test("and so is refused where the block's other values write the decimal point the other way", () => {
     expect(pasted("1.234,56\t9\t8\t7.5\t7\t6.5", CURVE_A, true).refusal).toBe(
-      "'1.234,56' is not a number",
+      "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
     );
   });
 
-  test("a comma before three digits could be either, so the block is refused", () => {
+  test("a comma before three digits could be either, so the block is refused until it is said", () => {
     // What an English spreadsheet puts on the clipboard for twelve hundred, and what a French
-    // one puts there for one and a fifth. Read as a decimal point - the rule as it stood - a
+    // one puts there for one and a fifth. Read as a decimal point - the rule as it once stood - a
     // uint32 curve of 1,000 / 2,000 / 3,000 was written 1 / 2 / 3 and nothing said so.
-    expect(pasted("1,200\t2\t3\t4\t5\t6", CURVE_A, false).refusal).toBe(
-      "the comma in '1,200' could be a decimal point or a thousands separator, so it is not " +
-        "clear what it means; paste the column unformatted",
-    );
+    expect(pasted("1,200\t2\t3\t4\t5\t6", CURVE_A, false)).toEqual({
+      rows: null,
+      refusal: "the comma in '1,200' could be a decimal point or a thousands separator",
+      ambiguous: "1,200",
+    });
+  });
+
+  test("said with one press, the block is read as it says, the same choice as a typed cell's", () => {
+    expect(pasted("1,200\t2\t3\t4\t5\t6", CURVE_A, false, "decimal").rows).toEqual([
+      [1.2, 2, 3, 4, 5, 6],
+    ]);
+    expect(pasted("1,200\t2\t3\t4\t5\t6", CURVE_A, false, "grouping").rows).toEqual([
+      [1200, 2, 3, 4, 5, 6],
+    ]);
+  });
+
+  test("a comma locale's block holding a value of three decimals is read, its leading 0 no grouping", () => {
+    // 15:M9: `0,125 0,250 0,500` was refused, though no grouping starts at 0, and so was
+    // `0,5 1,250 2`, whose `0,5` says what every comma of the block is.
+    expect(pasted("0,125\t0,250\t0,500\t1\t2\t3", CURVE_A, false).rows).toEqual([
+      [0.125, 0.25, 0.5, 1, 2, 3],
+    ]);
+    expect(pasted("0,5\t1,250\t2\t3\t4\t5", CURVE_A, false).rows).toEqual([
+      [0.5, 1.25, 2, 3, 4, 5],
+    ]);
+  });
+
+  test("what the block itself shows comes before what was said for it", () => {
+    expect(pasted("0,5\t1,250\t2\t3\t4\t5", CURVE_A, false, "grouping").rows).toEqual([
+      [0.5, 1.25, 2, 3, 4, 5],
+    ]);
+  });
+
+  test("a number in another notation pasted is refused in the one sentence, and asks nothing", () => {
+    expect(pasted("0x10\t2\t3\t4\t5\t6", CURVE_A, false)).toEqual({
+      rows: null,
+      refusal: "'0x10' is not a number in decimal notation",
+      ambiguous: null,
+    });
   });
 
   test("a comma before one, two or four digits is a decimal point still", () => {

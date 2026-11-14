@@ -313,14 +313,22 @@ test("the add form refuses a value no constant may state, in the words of a cons
   await value.fill("4");
   await expect(form.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
 
-  // Json a constant's model takes no value from: a string. Typed bare, `oops` is not json at all,
-  // and the request is refused before any vocabulary is asked about it.
-  await value.fill('"oops"');
+  // A number in decimal notation a constant's model takes no value from: a whole one past what a
+  // 64 bit target holds.
+  await value.fill("18446744073709551616");
   await expect(form.getByRole("status")).toHaveText(
-    "\"oops\" is not a value a constant may state, so 'SPARE' cannot take it in " +
+    "18446744073709551616 is not a value a constant may state, so 'SPARE' cannot take it in " +
       "constants.ddd.json: a whole number a 64 bit target holds, of either sign, or a finite " +
       "fractional one",
   );
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  // Text that is no number, a string's json among it, or a number in another notation, is refused
+  // by the page in the words every field refuses it with, and no plan is asked (15:M13).
+  await value.fill('"oops"');
+  await expect(form.getByRole("status")).toHaveText("'\"oops\"' is not a number");
+  await value.fill("0x10");
+  await expect(form.getByRole("status")).toHaveText("'0x10' is not a number in decimal notation");
   await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 });
 
@@ -349,6 +357,11 @@ test("a constant's value and description are each saved from its panel", async (
   const value = panel.getByRole("region", { name: "Value" });
   const valueField = value.getByRole("textbox", { name: "Value" });
   await expect(valueField).toHaveValue("16");
+  // A value in another notation is refused by the page, in the words every field refuses it with,
+  // and nothing is offered to save (15:M13).
+  await valueField.fill("0x20");
+  await expect(value.getByRole("status")).toHaveText("'0x20' is not a number in decimal notation");
+  await expect(value.getByRole("button", { name: "Save" })).toHaveCount(0);
   await valueField.fill("32");
   await expect(value.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
   await value.getByRole("button", { name: "Save" }).click();

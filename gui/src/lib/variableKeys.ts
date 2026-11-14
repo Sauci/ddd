@@ -4,8 +4,10 @@ import type {
   VariableKeyOffer,
   VariableReply,
 } from "../api/types";
+import { type CommaMeaning, decimalText, doubleOf, readNumber, typedComma } from "./numbers";
 import { wholePast } from "./objectValues";
 import { hrefOf } from "./route";
+import { unsettledNote } from "./typing";
 import { textOf } from "./units";
 
 /** One entry of a `dimensions` value: the text it reads as, and - for a name - the constant it
@@ -470,14 +472,32 @@ function who(components: readonly string[], producer: boolean): string {
   return producer ? `${listed} · the producer` : listed;
 }
 
+/** A name a constant, a type or a measurement may have: what the field reads as a name rather
+ * than as a number. */
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** A size typed, read as a number (`numbers.ts`): the whole number of at least 1 it spells, or the
+ * sentence a spelling in another notation, or a comma that could be either, is refused with - or
+ * `null` for a name, which the list offers, and for a number that is no size. */
+function sizeOf(typed: string): { raw: string } | { refusal: string } | null {
+  if (IDENTIFIER.test(typed.trim())) return null;
+  const read = readNumber(typed);
+  if (!("decimal" in read)) return { refusal: read.refusal };
+  const { negative, digits, exponent } = read.decimal;
+  return !negative && digits !== "" && exponent >= 0 ? { raw: decimalText(read.decimal) } : null;
+}
+
 /** The json text a text typed into the field travels as, or `null` when the key takes none.
  *
- * A size may be any whole number, so one typed is taken as it stands. Everything else names
- * something the project declares, and a name it does not declare is not offered: the list is
- * the answer to "what may this be", and a typed one would be a reference to nothing.
+ * A size may be any whole number, so one typed is taken as it stands, read as every field reads a
+ * number (`sizeOf`). Everything else names something the project declares, and a name it does not
+ * declare is not offered: the list is the answer to "what may this be", and a typed one would be
+ * a reference to nothing.
  */
 function typedRaw(key: string, typed: string): string | null {
-  return key === "size" && /^[1-9][0-9]*$/.test(typed) ? typed : null;
+  if (key !== "size") return null;
+  const size = sizeOf(typed);
+  return size !== null && "raw" in size ? size.raw : null;
 }
 
 /**
@@ -497,6 +517,22 @@ export function enteredValue(
     }
   }
   return typedRaw(key, text) ?? undefined;
+}
+
+/** The chooser's note while its text is not the value settled on, `undefined` while it is: why a
+ * size typed in another notation is no number - in the sentence every field refuses one with - and
+ * otherwise the way out of the text (`unsettledNote`). */
+export function chooserNote(
+  isUnsettled: boolean,
+  key: string,
+  typed: string,
+  sections: readonly ValueSection[],
+): string | undefined {
+  const size = isUnsettled && key === "size" ? sizeOf(typed) : null;
+  if (size !== null && "refusal" in size) return size.refusal;
+  return unsettledNote(isUnsettled, typed, sections, (listed, text) =>
+    enteredValue(listed, key, text),
+  );
 }
 
 /** The two fields of a range, read from what is stated: each bound as the double `JSON.parse`
@@ -547,34 +583,55 @@ function shownBound(value: unknown, text: string | undefined): string {
  * and stop each of those files loading, so it never becomes a value to settle on.
  */
 export function limitsRaw(min: string, max: string): string | null {
-  const low = numberOf(min);
-  const high = numberOf(max);
-  if (low === null || high === null || high < low) return null;
-  return `{ "min": ${low}, "max": ${high} }`;
+  const range = rangeOf(min, max);
+  if (range === null || "note" in range) return null;
+  return `{ "min": ${range.low}, "max": ${range.high} }`;
 }
 
 /** What the chooser says is wrong with the two fields, or `null` while they say something the
- * panel can settle on.
+ * panel can settle on (`rangeOf`). */
+export function limitsNote(min: string, max: string): string | null {
+  const range = rangeOf(min, max);
+  return range !== null && "note" in range ? range.note : null;
+}
+
+/**
+ * The range the two fields say, the sentence saying what is wrong with them, or `null` for two
+ * empty fields.
  *
  * Two empty fields are not wrong: they are "state nothing", which the list offers as well and
  * which removes the key. Anything else that is not a range is nothing to apply, and saying so
- * is the whole of what the panel does about it - no Apply, and no preview behind it.
+ * is the whole of what the panel does about it - no Apply, and no preview behind it. Each sentence
+ * but the last names the one field it is about (`fieldBound`); the two are read together, so that a
+ * comma one shows to be a decimal point is one in the other too.
  */
-export function limitsNote(min: string, max: string): string | null {
+function rangeOf(
+  min: string,
+  max: string,
+): { note: string } | { low: number; high: number } | null {
   if (min.trim() === "" && max.trim() === "") return null;
-  // A whole number past 2^53 is refused in the grid's own words (`wholePast`): sent, it would be
-  // the double nearest it, and a bound nobody typed.
-  const past = wholePast(min) ?? wholePast(max);
-  if (past !== null) return past;
-  const low = numberOf(min);
-  const high = numberOf(max);
-  if (low === null || high === null) return "A range needs a minimum and a maximum";
-  return high < low ? "The maximum is below the minimum" : null;
+  const meaning = typedComma([min, max]);
+  const low = fieldBound("Min", min, meaning);
+  if ("note" in low) return low;
+  const high = fieldBound("Max", max, meaning);
+  if ("note" in high) return high;
+  if (high.value < low.value) return { note: "The maximum is below the minimum" };
+  return { low: low.value, high: high.value };
 }
 
-/** The number a field holds, or `null` where it holds none it can send: empty, not a number at
- * all, or a whole number past 2^53, which the page holds as another (`wholePast`). */
-function numberOf(text: string): number | null {
-  const value = Number(text);
-  return text.trim() === "" || Number.isNaN(value) || wholePast(text) !== null ? null : value;
+/** The number one of the two fields holds, read as every field reads one (`numbers.ts`), or what
+ * is wrong with it, in a sentence naming the field: empty, a number in another notation, a comma
+ * that could be either, no number at all - or a whole number past 2^53, refused in the grid's own
+ * words (`wholePast`): sent, it would be the double nearest it, and a bound nobody typed. */
+function fieldBound(
+  field: "Min" | "Max",
+  text: string,
+  meaning: CommaMeaning | undefined,
+): { note: string } | { value: number } {
+  if (text.trim() === "") return { note: `${field} is empty` };
+  const read = readNumber(text, meaning);
+  if (!("decimal" in read)) return { note: `${field}: ${read.refusal}` };
+  const past = wholePast(text);
+  if (past !== null) return { note: `${field}: ${past}` };
+  return { value: doubleOf(read.decimal) };
 }

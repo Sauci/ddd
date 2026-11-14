@@ -3,10 +3,12 @@ import type { ValuesReply } from "../api/types";
 import type { TypedCell } from "./objectValues";
 import {
   changesSentence,
+  commaAsked,
   offerName,
   offerSentence,
   typedOffer,
   typedPlan,
+  withComma,
   withTyped,
 } from "./typedCells";
 
@@ -119,6 +121,7 @@ describe("typedOffer", () => {
         { row: 0, column: 1, raw: 1400 },
         { row: 0, column: 2, raw: 1500 },
       ],
+      ambiguous: null,
     });
   });
 
@@ -134,6 +137,7 @@ describe("typedOffer", () => {
     expect(typedOffer([typed(0, 0, ""), typed(0, 1, " ")], CURVE_A)).toEqual({
       refusal: null,
       changes: [],
+      ambiguous: null,
     });
   });
 
@@ -166,9 +170,10 @@ describe("typedOffer", () => {
   });
 
   test("one cell typed alone is refused in its own words", () => {
-    expect(typedOffer([typed(0, 1, "1,5")], CURVE_A)).toEqual({
-      refusal: "'1,5' is not a number",
+    expect(typedOffer([typed(0, 1, "1;5")], CURVE_A)).toEqual({
+      refusal: "'1;5' is not a number",
       changes: null,
+      ambiguous: null,
     });
     const big: ValuesReply = { ...CURVE_A, datatype: "uint64", conversion: { kind: "identity" } };
     expect(typedOffer([typed(0, 0, "9007199254740993", false)], big).refusal).toBe(
@@ -177,9 +182,10 @@ describe("typedOffer", () => {
   });
 
   test("among several cells, the one refused is named, and withholds what the others set", () => {
-    expect(typedOffer([typed(0, 0, "13"), typed(0, 1, "1,5")], CURVE_A)).toEqual({
-      refusal: "element 2 of 'CurveA' is refused: '1,5' is not a number",
+    expect(typedOffer([typed(0, 0, "13"), typed(0, 1, "1;5")], CURVE_A)).toEqual({
+      refusal: "element 2 of 'CurveA' is refused: '1;5' is not a number",
       changes: null,
+      ambiguous: null,
     });
     expect(typedOffer([typed(1, 3, "x"), typed(2, 0, "5")], MAP_A).refusal).toBe(
       "element 2, 4 of 'MapA' is refused: 'x' is not a number",
@@ -198,6 +204,7 @@ describe("typedOffer", () => {
         "2 elements of 'CurveA' are refused: element 1 because 'a' is not a number; " +
         "element 3 because 'b' is not a number",
       changes: null,
+      ambiguous: null,
     });
     const seven = [0, 1, 2, 3, 4, 5].map((column) => typed(1, column, `x${column}`));
     expect(typedOffer([...seven, typed(2, 0, "y")], MAP_A).refusal).toBe(
@@ -222,7 +229,79 @@ describe("typedOffer", () => {
     expect(typedOffer([typed(0, 6, ""), typed(0, 0, "13")], CURVE_A)).toEqual({
       refusal: null,
       changes: [{ row: 0, column: 0, raw: 1300 }],
+      ambiguous: null,
     });
+  });
+});
+
+describe("a comma typed into the cells", () => {
+  // 15:M9 and 3:M4: a typed cell refused the decimal comma a paste took, so one rule read `1,5`
+  // two ways; and a comma that could be either is asked about, with one press, for either.
+  const EITHER = "the comma in '1,500' could be a decimal point or a thousands separator";
+
+  test("one that groups no thousands is a decimal point", () => {
+    expect(typedOffer([typed(0, 2, "7,25")], CURVE_A)).toEqual({
+      refusal: null,
+      changes: [{ row: 0, column: 2, raw: 725 }],
+      ambiguous: null,
+    });
+  });
+
+  test("one that could be either withholds the plan, and is the text whose meaning is asked", () => {
+    expect(typedOffer([typed(0, 2, "1,500")], CURVE_A)).toEqual({
+      refusal: EITHER,
+      changes: null,
+      ambiguous: "1,500",
+    });
+  });
+
+  test("among several cells it is named, and is still the one asked about", () => {
+    const offer = typedOffer([typed(0, 1, "7"), typed(0, 2, "1,500")], CURVE_A);
+    expect(offer.refusal).toBe(`element 3 of 'CurveA' is refused: ${EITHER}`);
+    expect(offer.ambiguous).toBe("1,500");
+  });
+
+  test("a cell typed beside it whose comma is a decimal point says what it is", () => {
+    expect(typedOffer([typed(0, 1, "0,5"), typed(0, 2, "1,500")], CURVE_A).changes).toEqual([
+      { row: 0, column: 1, raw: 50 },
+      { row: 0, column: 2, raw: 150 },
+    ]);
+  });
+
+  test("said with one press, each cell asked about takes the meaning, and no other cell does", () => {
+    const held = [typed(0, 1, "7"), typed(0, 2, "1,500")];
+    const said = withComma(held, CURVE_A, "grouping");
+    expect(said).toEqual([typed(0, 1, "7"), { ...typed(0, 2, "1,500"), comma: "grouping" }]);
+    expect(typedOffer(said, CURVE_A).changes).toEqual([
+      { row: 0, column: 1, raw: 700 },
+      { row: 0, column: 2, raw: 150000 },
+    ]);
+    expect(typedOffer(withComma(held, CURVE_A, "decimal"), CURVE_A).changes).toEqual([
+      { row: 0, column: 1, raw: 700 },
+      { row: 0, column: 2, raw: 150 },
+    ]);
+  });
+
+  test("a cell typed again is asked about afresh", () => {
+    const said = withComma([typed(0, 2, "1,500")], CURVE_A, "grouping");
+    expect(typedOffer(withTyped(said, typed(0, 2, "2,500")), CURVE_A).ambiguous).toBe("2,500");
+  });
+
+  test("a number in another notation is refused, and asks nothing about a comma", () => {
+    expect(typedOffer([typed(0, 2, "0x10")], CURVE_A)).toEqual({
+      refusal: "'0x10' is not a number in decimal notation",
+      changes: null,
+      ambiguous: null,
+    });
+  });
+});
+
+describe("commaAsked", () => {
+  test("the typed cells' own text where they hold one, else a pasted block's", () => {
+    expect(commaAsked(typedOffer([typed(0, 2, "1,500")], CURVE_A), "9,999")).toBe("1,500");
+    expect(commaAsked(typedOffer([typed(0, 2, "7")], CURVE_A), "9,999")).toBeNull();
+    expect(commaAsked(null, "1,200")).toBe("1,200");
+    expect(commaAsked(null, null)).toBeNull();
   });
 });
 
@@ -361,11 +440,16 @@ describe("a scalar's one cell", () => {
     expect(typedOffer([typed("1000", true)], PARAMETER_A)).toEqual({
       refusal: null,
       changes: [{ row: 0, column: 0, raw: 4000 }],
+      ambiguous: null,
     });
   });
 
   test("typed back to the file's value it drops out", () => {
-    expect(typedOffer([typed("800", true)], PARAMETER_A)).toEqual({ refusal: null, changes: [] });
+    expect(typedOffer([typed("800", true)], PARAMETER_A)).toEqual({
+      refusal: null,
+      changes: [],
+      ambiguous: null,
+    });
   });
 
   test("typed into a scalar stating none, it sets a value the file does not state", () => {
@@ -373,6 +457,7 @@ describe("a scalar's one cell", () => {
     expect(typedOffer([typed("0", false)], none)).toEqual({
       refusal: null,
       changes: [{ row: 0, column: 0, raw: 0 }],
+      ambiguous: null,
     });
   });
 
@@ -380,6 +465,7 @@ describe("a scalar's one cell", () => {
     expect(typedOffer([typed("lots", true)], PARAMETER_A)).toEqual({
       refusal: "'lots' is not a number",
       changes: null,
+      ambiguous: null,
     });
   });
 

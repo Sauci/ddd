@@ -1,4 +1,5 @@
 import type { DeclarableName, DeclarableReply, VariableKeyOffer } from "../api/types";
+import { decimalText, readNumber } from "./numbers";
 import { unsettled } from "./typing";
 import { shortValue } from "./variableKeys";
 
@@ -78,14 +79,41 @@ export function definitionOf(
   return JSON.stringify(definition);
 }
 
-/** The json a row of dimension fields makes: a whole number stays a number, anything else is
- * the name of a constant. `null` while any row is blank - a value block is never a scalar, so
- * a half-filled row states nothing rather than a shape nobody asked for. */
+/** A name a constant may have: what a dimension's field reads as a name rather than as a number. */
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** One dimension's field read: the json text it travels as - a name as a string, anything else
+ * as the number it spells, read as every field reads one (`numbers.ts`) and in its digits, never
+ * the double nearest them - or the sentence a spelling in another notation, a comma that could be
+ * either or text that is no number is refused with. */
+function dimensionOf(row: string): { json: string } | { refusal: string } {
+  const text = row.trim();
+  if (IDENTIFIER.test(text)) return { json: JSON.stringify(text) };
+  const read = readNumber(text);
+  return "decimal" in read ? { json: decimalText(read.decimal) } : { refusal: read.refusal };
+}
+
+/** Why one dimension's field is refused, or `undefined` while it holds a name, a number or
+ * nothing yet: the note under the field. */
+export function dimensionNote(row: string): string | undefined {
+  if (row.trim() === "") return undefined;
+  const dimension = dimensionOf(row);
+  return "refusal" in dimension ? dimension.refusal : undefined;
+}
+
+/** The json a row of dimension fields makes: a name is the name of a constant, and anything else
+ * the number it spells. `null` while any row is blank - a value block is never a scalar, so a
+ * half-filled row states nothing rather than a shape nobody asked for - or refused
+ * (`dimensionNote`), which asks for no plan. */
 export function dimensionsRaw(rows: string[]): string | null {
   if (rows.length === 0 || rows.some((row) => row.trim() === "")) return null;
-  return JSON.stringify(
-    rows.map((row) => (/^[1-9][0-9]*$/.test(row.trim()) ? Number(row.trim()) : row.trim())),
-  );
+  const parts: string[] = [];
+  for (const row of rows) {
+    const dimension = dimensionOf(row);
+    if ("refusal" in dimension) return null;
+    parts.push(dimension.json);
+  }
+  return `[${parts.join(",")}]`;
 }
 
 /** The sentence above the preview, which is what tells reading from declaring apart before

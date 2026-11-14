@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { PlanReply, RasterUse, SharedEntry, SharedReply } from "../api/types";
 import {
+  addedValueRefusal,
   addTitle,
   constantAdd,
+  constantValue,
   isDeclared,
   kindNamed,
   opensPanel,
@@ -405,6 +407,56 @@ describe("declaring a constant", () => {
       name: "TREND_SLOTS",
       raw: "12",
     });
+  });
+
+  test("a value in another notation asks for nothing, and the form says why", () => {
+    // 15:M13: the constant's Value was refused in the json parser's words, where every other
+    // field read hexadecimal as `Number` does.
+    expect(constantAdd("TREND_SLOTS", "0x10")).toBeNull();
+    expect(addedValueRefusal("0x10")).toBe("'0x10' is not a number in decimal notation");
+    expect(addedValueRefusal("12")).toBeNull();
+    expect(addedValueRefusal(" ")).toBeNull();
+  });
+
+  test("a value travels as json spells it, whole or fractional as it was written", () => {
+    expect(constantAdd("TREND_SLOTS", "1,5")).toEqual({
+      action: "add",
+      name: "TREND_SLOTS",
+      raw: "1.5",
+    });
+  });
+});
+
+describe("a constant's value", () => {
+  test.each([
+    // Whole where it was written whole, fractional where it was written with a point or an
+    // exponent (design §2), in the digits typed, as json spells a number.
+    { text: "2", raw: "2" },
+    { text: "2.0", raw: "2.0" },
+    { text: "2.", raw: "2.0" },
+    { text: ".5", raw: "0.5" },
+    { text: "+5", raw: "5" },
+    { text: "007", raw: "7" },
+    { text: "-0", raw: "-0" },
+    { text: "1e3", raw: "1e3" },
+    { text: " 1E-3 ", raw: "1e-3" },
+    { text: "1,5", raw: "1.5" },
+    { text: "1,234,567", raw: "1234567" },
+    { text: "18446744073709551615", raw: "18446744073709551615" },
+  ])("'$text' travels as $raw", ({ text, raw }) => {
+    expect(constantValue(text)).toEqual({ raw });
+  });
+
+  test.each([
+    { text: "0x10", says: "'0x10' is not a number in decimal notation" },
+    { text: "NaN", says: "'NaN' is not a number in decimal notation" },
+    {
+      text: "1,000",
+      says: "the comma in '1,000' could be a decimal point or a thousands separator",
+    },
+    { text: "", says: "'' is not a number" },
+  ])("'$text' is refused: $says", ({ text, says }) => {
+    expect(constantValue(text)).toEqual({ refusal: says });
   });
 });
 

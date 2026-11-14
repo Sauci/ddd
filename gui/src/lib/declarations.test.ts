@@ -4,6 +4,7 @@ import {
   chosenName,
   declareSentence,
   definitionOf,
+  dimensionNote,
   dimensionsRaw,
   followedScope,
   formUnsettled,
@@ -187,6 +188,31 @@ describe("the dimensions a row of fields makes", () => {
 
   test("a blank row states nothing, because a value block is never a scalar", () => {
     expect(dimensionsRaw(["4", ""])).toBeNull();
+  });
+
+  test("a number is read as every field reads one, in its own digits", () => {
+    expect(dimensionsRaw(["1e1", " 4 ", "+8", "1,024,000"])).toBe("[10,4,8,1024000]");
+    // A number that is no size is one all the same, for the server to refuse in its words,
+    // rather than the name of a constant nobody declared.
+    expect(dimensionsRaw(["2.5"])).toBe("[2.5]");
+    expect(dimensionsRaw(["0"])).toBe("[0]");
+  });
+
+  test("one in another notation is refused, and makes no shape to ask a plan for", () => {
+    // 15:M13: `0x10` was taken for the name of a constant.
+    expect(dimensionsRaw(["4", "0x10"])).toBeNull();
+    expect(dimensionNote("0x10")).toBe("'0x10' is not a number in decimal notation");
+    expect(dimensionNote("1,000")).toBe(
+      "the comma in '1,000' could be a decimal point or a thousands separator",
+    );
+    expect(dimensionNote("4x")).toBe("'4x' is not a number");
+  });
+
+  test("a name, a number or nothing yet says nothing", () => {
+    expect(dimensionNote("CELLS")).toBeUndefined();
+    expect(dimensionNote("Infinity")).toBeUndefined();
+    expect(dimensionNote("4")).toBeUndefined();
+    expect(dimensionNote(" ")).toBeUndefined();
   });
 });
 

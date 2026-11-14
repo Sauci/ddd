@@ -8,7 +8,7 @@ import { useKept } from "../app/useKept";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { drawable, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
-import { typedOffer, typedPlan, withTyped } from "../lib/typedCells";
+import { typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valuesLabel } from "../lib/undo";
 import {
@@ -117,6 +117,11 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // both hold something (each clears the other's state below).
   const [pastedRows, setPastedRows] = useState<number[][] | null>(null);
   const [pasteRefusal, setPasteRefusal] = useState<string | null>(null);
+  // The block last pasted, as the clipboard held it and in the reading it was pasted in, and the
+  // value of it whose comma could be a decimal point or a thousands separator, where that is what
+  // it was refused for: the reader's answer to what the comma means reads the block again.
+  const [pastedText, setPastedText] = useState<{ text: string; physical: boolean } | null>(null);
+  const [pasteAmbiguous, setPasteAmbiguous] = useState<string | null>(null);
 
   // What the cells typed into set, read against the values shown (`typedOffer`): `null` while
   // `shown` has not arrived yet, or one of the cells is refused - `ValuesGridView` finds that same
@@ -214,6 +219,8 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       setTyped([]);
       setPastedRows(null);
       setPasteRefusal(null);
+      setPastedText(null);
+      setPasteAmbiguous(null);
       return Promise.all([
         queries.invalidateQueries({ queryKey: ["values"] }),
         queries.invalidateQueries({ queryKey: ["file"] }),
@@ -286,6 +293,8 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         setFailed(null);
         setPastedRows(null);
         setPasteRefusal(null);
+        setPastedText(null);
+        setPasteAmbiguous(null);
       }}
       onChangesShown={setChangesShown}
       // Offered only once a plan of what is written has come, so there is always something here.
@@ -293,10 +302,26 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         if (written !== null) apply.mutate({ before: reply, written });
       }}
       onBack={onBack}
+      pasteAmbiguous={pasteAmbiguous}
+      // What a comma that could be either means, as the reader says with one press: the block
+      // pasted is read again with it, or each typed cell holding such a comma takes it.
+      onComma={(meaning) => {
+        if (pastedText !== null) {
+          const block = pasted(pastedText.text, reply, pastedText.physical, meaning);
+          setPastedRows(block.rows);
+          setPasteRefusal(block.refusal);
+          setPasteAmbiguous(block.ambiguous);
+        } else {
+          setTyped((held) => withComma(held, reply, meaning));
+        }
+        setFailed(null);
+      }}
       onPaste={(text) => {
         const block = pasted(text, reply, physical);
+        setPastedText({ text, physical });
         setPastedRows(block.rows);
         setPasteRefusal(block.refusal);
+        setPasteAmbiguous(block.ambiguous);
         setFailed(null);
         setTyped([]);
       }}

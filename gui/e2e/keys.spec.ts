@@ -53,7 +53,7 @@ test("a limit past 2^53 is shown as its file writes it, and no range holding one
     "0 … 18446744073709551615",
   );
   const note = panel.getByText(
-    "'18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
+    "Max: '18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
     { exact: true },
   );
   await expect(note).toBeVisible();
@@ -257,8 +257,9 @@ test("a range the two fields do not make offers no Apply, and changes nothing", 
   await expect(field).toHaveValue("");
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 
+  // The sentence names the one field it is about (15:M9).
   await panel.getByLabel("Max").fill("");
-  await expect(panel.getByText("A range needs a minimum and a maximum")).toBeVisible();
+  await expect(panel.getByText("Max is empty", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 
   // Taking the key out is a choice the list still offers, and it empties the two fields.

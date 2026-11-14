@@ -39,6 +39,18 @@ describe("sameRequest", () => {
     expect(asked).not.toBe(typed);
   });
 
+  test("numbers json cannot hold are each their own request, and none is a null", () => {
+    // 15:M13: `JSON.stringify` wrote all three as `null`, so a plan of `Infinity` was shown for
+    // `-Infinity`, in its words.
+    expect(sameRequest({ raw: Number.POSITIVE_INFINITY }, { raw: Number.NEGATIVE_INFINITY })).toBe(
+      false,
+    );
+    expect(sameRequest({ raw: Number.NaN }, { raw: Number.POSITIVE_INFINITY })).toBe(false);
+    expect(sameRequest({ raw: Number.POSITIVE_INFINITY }, { raw: null })).toBe(false);
+    expect(sameRequest({ raw: Number.NaN }, { raw: Number.NaN })).toBe(true);
+    expect(sameRequest({ raw: 2.5 }, { raw: 2.5 })).toBe(true);
+  });
+
   test("text the reader has since typed past is not the same request", () => {
     expect(
       sameRequest(

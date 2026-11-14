@@ -11,9 +11,17 @@ export function planDelay(asked: boolean): number {
 }
 
 /** Whether a plan asked for is the one the reader's fields now say: only then is its preview
- * shown and applied, never one for text the reader has since typed past. */
+ * shown and applied, never one for text the reader has since typed past. Compared as json, a
+ * number json cannot hold spelled as itself: `JSON.stringify` writes `Infinity`, `-Infinity` and
+ * `NaN` alike as `null`, which made the three one request, the plan of one shown for another. */
 export function sameRequest(asked: unknown, typed: unknown): boolean {
-  return JSON.stringify(asked) === JSON.stringify(typed);
+  return keyOf(asked) === keyOf(typed);
+}
+
+function keyOf(request: unknown): string | undefined {
+  return JSON.stringify(request, (_key, value: unknown) =>
+    typeof value === "number" && !Number.isFinite(value) ? `${value} as a number` : value,
+  );
 }
 
 /** Whether a value moving into `useDebounced` takes effect at once rather than waiting

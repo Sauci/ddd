@@ -1,7 +1,6 @@
 import type { UnitsReply, VariableKeyOffer } from "../api/types";
-import { unsettledNote } from "../lib/typing";
 import { pickerSections, rawOf } from "../lib/units";
-import { chooserSections, enteredValue } from "../lib/variableKeys";
+import { chooserNote, chooserSections, enteredValue } from "../lib/variableKeys";
 import { ComboBox } from "../ui/ComboBox";
 import { UnitPicker } from "./UnitPicker";
 
@@ -78,11 +77,7 @@ export function KeyChooser(props: KeyChooserProps) {
           if (raw !== undefined) props.onChosen(raw);
         }}
         onClose={props.onPickerClosed}
-        note={
-          unsettledNote(props.unsettled, props.typed, sections, (listed, text) =>
-            enteredValue(listed, keyName, text),
-          ) ?? props.note
-        }
+        note={chooserNote(props.unsettled, keyName, props.typed, sections) ?? props.note}
         isDisabled={props.busy}
         autoFocus={props.focus}
         menuTrigger={props.pickerTrigger}

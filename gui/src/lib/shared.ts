@@ -1,6 +1,7 @@
 import type { ConstantPlanRequest, RasterPlanRequest, SectionPlanRequest } from "../api/client";
 import type { Changes, PlanReply, RasterUse, SharedEntry, SharedReply } from "../api/types";
 import type { SectionAccess } from "../generated/sections";
+import { jsonNumber } from "./numbers";
 import { planEdit as editOfPlan } from "./projectUnits";
 import type { Route } from "./route";
 
@@ -260,14 +261,34 @@ export function rasterSet<K extends string>(
   return { action: "set", name, key, raw: rasterRaw(key, text) };
 }
 
+/** A constant's value as its field holds it, in the json text it travels as (`jsonNumber`): read
+ * as every field reads a number, whole where it was written whole and fractional where it was
+ * written with a point or an exponent (design §2) - or the sentence it is refused with, a number
+ * in another notation, a comma that could be either, or no number at all, before anything is
+ * asked of the server. */
+export function constantValue(text: string): { raw: string } | { refusal: string } {
+  const read = jsonNumber(text);
+  return "json" in read ? { raw: read.json } : { refusal: read.refusal };
+}
+
 /** The declaration a constant's add form comes to, or `null` while a parameter `add` requires is
- * still empty.
+ * still empty, or its value is refused (`constantValue`).
  *
  * `add`'s own `raw` is required where `set`'s may be left out (`ConstantPlanRequest`'s own doc): a
  * name with no value yet is not a request the api takes, and asking anyway would only ever come
  * back `bad-request` for a reader who has not finished typing. */
 export function constantAdd(name: string, raw: string): ConstantPlanRequest | null {
-  return name.trim() === "" || raw.trim() === "" ? null : { action: "add", name, raw };
+  if (name.trim() === "" || raw.trim() === "") return null;
+  const value = constantValue(raw);
+  return "raw" in value ? { action: "add", name, raw: value.raw } : null;
+}
+
+/** Why the value typed into a constant's add form is refused, or `null` while it is empty or a
+ * number: the form's refusal, said before any plan is asked. */
+export function addedValueRefusal(raw: string): string | null {
+  if (raw.trim() === "") return null;
+  const value = constantValue(raw);
+  return "refusal" in value ? value.refusal : null;
 }
 
 /** The declaration a section's add form comes to, or `null` while a parameter `add` requires is

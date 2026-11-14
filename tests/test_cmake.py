@@ -3231,6 +3231,23 @@ target_link_libraries(img PRIVATE store)
         (tmp_path / "map.json").write_text("{}\n", encoding="utf-8")
         configure(source, tmp_path / "build", f"-DDDD_MAP={(tmp_path / 'map.json').as_posix()}")
 
+    @pytest.mark.parametrize("function", ["ddd_generate", "ddd_add_component"])
+    def test_the_check_weighs_the_keywords_its_call_parses(self, function: str) -> None:
+        """``_ddd_refuse_empty_keywords`` is handed the option, one-value and multi-value lists
+        of the ``cmake_parse_arguments`` beside it spelled again - a test of the build page reads
+        those lists literally. A keyword added to one and not the other would take an empty
+        value unrefused, or have its values counted to the keyword before it."""
+        module = (ROOT / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+        body = module.split(f"function({function} ", 1)[1].split("\nendfunction()", 1)[0]
+        lists = r'\s+"([^"]*)"\s+"([^"]*)"\s+"([^"]*)"\)'
+        parsed = re.search(r"cmake_parse_arguments\(PARSE_ARGV 1 arg" + lists, body)
+        weighed = re.search(
+            r'_ddd_refuse_empty_keywords\(\s*"' + function + r'" \$\{ARGC\}' + lists, body
+        )
+        assert parsed is not None, f"{function} no longer parses its arguments in one call"
+        assert weighed is not None, f"{function} no longer weighs its arguments' values"
+        assert weighed.groups() == parsed.groups()
+
     def test_an_empty_argument_after_a_single_value_is_no_value_of_it(self, tmp_path: Path) -> None:
         """A keyword taking one value has it after one argument, as cmake_parse_arguments reads
         the call: an empty argument after it is no value of that keyword, nor of any other."""

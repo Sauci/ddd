@@ -388,7 +388,11 @@ class TestAComponentThatLeavesTheImage:
 
 STORY_GENERATORS = ["Ninja", MAKE]
 """The generators the story of the build after an edit is told under: ninja, which restats
-what a step wrote, and the platform's make, which has nothing of the kind."""
+what a step wrote, and the platform's make, which has nothing of the kind.
+
+A case the configure decides alone - a refusal, a warning - is told under ninja alone: the
+module reads a call alike under every generator, and a configure is what a case costs most of,
+several times over on a Windows leg."""
 
 Linked = Literal[
     "before the call", "after the call", "from the parent", "through a library defined later"
@@ -1041,14 +1045,13 @@ class TestTheBuildAfterAnEdit:
         assert again.returncode == 0, again.stdout + again.stderr
         assert "Fresh" in copied.read_text(encoding="utf-8")
 
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_component_registered_after_the_directory_is_done_is_refused_as_such(
-        self, tmp_path: Path, generator: str
+        self, tmp_path: Path
     ) -> None:
         """The image links its components in time, and the top directory registers them only
         once the directory generating it is done: no link was made late, and no library defined
         late, so the refusal names what did come late."""
-        run = Story(tmp_path, REGISTERED_LATE, generator, configured=False).attempt()
+        run = Story(tmp_path, REGISTERED_LATE, "Ninja", configured=False).attempt()
         said = " ".join((run.stdout + run.stderr).split())
         assert run.returncode != 0, said
         assert "through a link made" not in said, said
@@ -1074,14 +1077,13 @@ class TestTheBuildAfterAnEdit:
         assert story.build().printed == "logged 200"
         assert story.build().did_nothing()
 
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_link_for_this_build_type_made_late_is_refused_saying_how_links_are_read(
-        self, tmp_path: Path, generator: str
+        self, tmp_path: Path
     ) -> None:
         """The same link in a Debug configure is one the image makes, through a library defined
         late, and is refused; the refusal says how a link behind an expression is read."""
         shape = Shape(subdirectory=True, traced="after the image", build_type="Debug")
-        run = Story(tmp_path, shape, generator, configured=False).attempt()
+        run = Story(tmp_path, shape, "Ninja", configured=False).attempt()
         said = " ".join((run.stdout + run.stderr).split())
         assert run.returncode != 0, said
         assert 'reaches the component(s) "Trace" through a link made' in said, said
@@ -1106,16 +1108,15 @@ class TestTheBuildAfterAnEdit:
     @pytest.mark.parametrize(
         "shape", [pytest.param(shape, id=name) for name, shape in LINKED_LATE.items()]
     )
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_component_reached_after_the_directory_is_done_stops_the_configure(
-        self, tmp_path: Path, shape: Shape, generator: str
+        self, tmp_path: Path, shape: Shape
     ) -> None:
         """The components are named once the directory calling ``ddd_generate`` is done, and
         an image linked to them only after that - by the directory above, or through a library
         it defines later - reached none of them then: their headers would go undeclared, and
         the build after one of them changed would compile its reader against the old one. The
         configure stops instead, once the top directory is done, naming them."""
-        run = Story(tmp_path, shape, generator, configured=False).attempt()
+        run = Story(tmp_path, shape, "Ninja", configured=False).attempt()
         said = " ".join((run.stdout + run.stderr).split())
         assert run.returncode != 0, said
         assert (
@@ -1384,6 +1385,11 @@ own, a recursive one, or one of a project it includes - and the directory a file
 matches is written into. ``project.ddd.json`` and ``spare.ddd.json`` beside the components are
 matched by none."""
 
+WILDCARD_UNDER_MAKE = "a wildcard"
+"""The one shape of :data:`WILDCARDS` told under make as well as ninja. The others differ from
+it only in how the module spells the pattern it watches, which the configure does alike under
+every generator."""
+
 STAMP_PLUGIN = """from __future__ import annotations
 
 from pydantic import BaseModel, field_validator
@@ -1448,10 +1454,13 @@ class TestAWildcardThatStartsOrStopsMatching:
     generation with the same command and fewer inputs."""
 
     @pytest.mark.parametrize(
-        ("includes", "directory"),
-        [pytest.param(*case, id=name) for name, case in WILDCARDS.items()],
+        ("generator", "includes", "directory"),
+        [
+            pytest.param(generator, *case, id=f"{generator}-{name}")
+            for name, case in WILDCARDS.items()
+            for generator in (STORY_GENERATORS if name == WILDCARD_UNDER_MAKE else ["Ninja"])
+        ],
     )
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_the_next_build_follows_the_file_in_and_out_of_the_match(
         self, tmp_path: Path, generator: str, includes: tuple[str, ...], directory: str
     ) -> None:
@@ -1519,9 +1528,8 @@ class TestAWildcardThatStartsOrStopsMatching:
         globals_c = story.images() / "ddd" / "img" / "ddd_globals.c"
         assert "LateCount" in globals_c.read_text(encoding="utf-8")
 
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_missing_include_is_a_warning_and_no_reason_to_refuse_to_configure(
-        self, tmp_path: Path, generator: str
+        self, tmp_path: Path
     ) -> None:
         """The tool lists an include that does not exist, and says so on its standard error:
         the file is nothing to watch, and the configure warns and goes on, the build deciding
@@ -1529,21 +1537,18 @@ class TestAWildcardThatStartsOrStopsMatching:
         shape = Shape(
             project=True, registered=False, includes=("components/*.ddd.json", "later.ddd.json")
         )
-        story = Story(tmp_path, shape, generator, configured=False)
+        story = Story(tmp_path, shape, "Ninja", configured=False)
         configured = story.reconfigure()
         assert "CMake Warning" in configured, configured
         assert "later.ddd.json" in configured, configured
 
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
-    def test_a_sub_project_whose_includes_is_no_list_is_a_warning_too(
-        self, tmp_path: Path, generator: str
-    ) -> None:
+    def test_a_sub_project_whose_includes_is_no_list_is_a_warning_too(self, tmp_path: Path) -> None:
         """The tool reports the schema error and lists the file all the same, so the watch
         reads a file whose ``includes`` is an object, and finds nothing in it to watch."""
         shape = Shape(
             project=True, registered=False, includes=("components/*.ddd.json", "sub.json")
         )
-        story = Story(tmp_path, shape, generator, configured=False)
+        story = Story(tmp_path, shape, "Ninja", configured=False)
         (tmp_path / "sub.json").write_text(
             json.dumps({"project": {"name": "Sub", "includes": {"a": "b"}}}), encoding="utf-8"
         )
@@ -1563,12 +1568,11 @@ class TestAWildcardThatStartsOrStopsMatching:
         (tmp_path / "elsewhere" / "other.ddd.json").write_text("{}", encoding="utf-8")
         assert story.build().did_nothing()
 
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_project_including_nothing_has_nothing_to_watch_and_configures(
-        self, tmp_path: Path, generator: str
+        self, tmp_path: Path
     ) -> None:
         shape = Shape(project=True, registered=False, includes=())
-        story = Story(tmp_path, shape, generator, configured=False)
+        story = Story(tmp_path, shape, "Ninja", configured=False)
         story.reconfigure()
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
@@ -1737,16 +1741,15 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         again = story.build()
         assert again.code == 0 and again.generated(), again.output
 
-    @pytest.mark.parametrize("generator", STORY_GENERATORS)
     def test_a_check_the_call_relaxes_is_not_warned_of_at_the_configure(
-        self, tmp_path: Path, generator: str
+        self, tmp_path: Path
     ) -> None:
         """``ddd sources`` grades what it says by the ``SEVERITY`` and ``STRICT`` of the call:
         a project relaxing a load-time check there had a warning at every configure that it
         could not silence."""
-        said = " ".join(Story(tmp_path / "loud", UNMATCHED, generator).configured.split())
+        said = " ".join(Story(tmp_path / "loud", UNMATCHED, "Ninja").configured.split())
         assert "CMake Warning" in said and "include-empty" in said, said
-        relaxed = Story(tmp_path / "quiet", RELAXED, generator).configured
+        relaxed = Story(tmp_path / "quiet", RELAXED, "Ninja").configured
         assert "CMake Warning" not in relaxed, relaxed
 
     def test_a_failed_build_is_not_a_build_with_nothing_to_do(self) -> None:

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { PlanReply, ValuesReply } from "../api/types";
+import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import {
   cellSentence,
@@ -219,13 +220,23 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                             onChange={(event) =>
                               props.onEditing({ row, column: at, typed: event.target.value })
                             }
+                            // The table moves the focus to its first row when the focus first
+                            // enters it with no row focused yet, and a focus coming from a field
+                            // of a cell does not stop it: the field lost the focus a few
+                            // milliseconds after taking it, and the keys after that went to the
+                            // row. The field's focus is the field's own, so it goes no further.
+                            onFocus={(event) => event.stopPropagation()}
                             // Enter settles what was typed and nothing more: the preview is
                             // already below the grid, and spec 5.3 is explicit that no cell
                             // writes on its own - only Apply writes. Taken here all the same,
                             // so a habit of finishing a number with Enter reaches neither the
-                            // table's own keyboard navigation nor anything around it.
+                            // table's own keyboard navigation nor anything around it. A key
+                            // naming one character is the field's own, kept from the table's
+                            // type-to-find: it would move the focus to a row labelled with
+                            // that digit and swallow the key (`keptByCell` says which).
                             onKeyDown={(event) => {
                               if (event.key === "Enter") event.preventDefault();
+                              if (keptByCell(event)) event.stopPropagation();
                             }}
                           />
                         </Cell>

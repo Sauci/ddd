@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   describeRequest,
   describeSentence,
+  descriptionField,
   descriptionIn,
   descriptionShown,
   EDITED_ELSEWHERE,
@@ -100,5 +101,28 @@ describe("EDITED_ELSEWHERE", () => {
     expect(EDITED_ELSEWHERE).toBe(
       "Renaming the variable and changing its scope are done in its file, in the editor.",
     );
+  });
+});
+
+describe("descriptionField", () => {
+  test("is offered from a component's page, once the file is read and it declares the variable", () => {
+    expect(descriptionField("/p/c.ddd.json", "ParameterA", "Controller", "old")).toEqual({
+      where: { file: "/p/c.ddd.json", name: "ParameterA" },
+      from: "Controller",
+      stored: "old",
+    });
+  });
+
+  test("is withheld on the project screen's panel, where no component is in view", () => {
+    expect(descriptionField(undefined, "ParameterA", undefined, null)).toBeNull();
+    expect(descriptionField(undefined, "ParameterA", "Controller", "old")).toBeNull();
+  });
+
+  test("is withheld where the panel's component is not one that declares it", () => {
+    expect(descriptionField("/p/c.ddd.json", "ParameterA", undefined, "old")).toBeNull();
+  });
+
+  test("is withheld until the file is read, or where it declares no such variable", () => {
+    expect(descriptionField("/p/c.ddd.json", "ParameterA", "Controller", null)).toBeNull();
   });
 });

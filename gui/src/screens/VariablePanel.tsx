@@ -14,7 +14,12 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
-import { describeRequest, descriptionIn, descriptionShown } from "../lib/description";
+import {
+  describeRequest,
+  descriptionField,
+  descriptionIn,
+  descriptionShown,
+} from "../lib/description";
 import { planEdit } from "../lib/projectUnits";
 import { isStale, panelShows, type Refused, refusalShown } from "../lib/refusals";
 import { planShown, unsettled } from "../lib/typing";
@@ -169,11 +174,14 @@ export function VariablePanel({
   // What this declaration states of its description (`descriptionIn`): `null` where the file is not
   // read yet or does not declare the variable, and then the field is not drawn. The request - the
   // text typed, where it is not the declaration's own - is debounced as every field typed into is.
-  const stored = content.data === undefined ? null : descriptionIn(content.data.data, name);
+  const field = descriptionField(
+    file,
+    name,
+    from,
+    content.data === undefined ? null : descriptionIn(content.data.data, name),
+  );
   const describeRequested =
-    stored === null
-      ? null
-      : describeRequest(file === undefined ? undefined : { file, name }, typedDescription, stored);
+    field === null ? null : describeRequest(field.where, typedDescription, field.stored);
   const describeAsked = useDebounced(describeRequested);
   const describing = useQuery({
     queryKey: ["description-plan", describeAsked, revision],
@@ -327,9 +335,10 @@ export function VariablePanel({
       setRemovalRefused(null);
       setRemovalShown(false);
     },
-    // What was typed stays in the field: it is the declaration's own as soon as the file is read
-    // again, and the offer then goes - nothing is left to change.
+    // What was typed is let go, as the panel's other typed keys let theirs: the field reads the
+    // file again, so an undo shows the earlier description, and no offer is drawn for it.
     onSuccess: () => {
+      setTypedDescription(undefined);
       setDescriptionRefused(null);
       setDescriptionShownDiff(false);
     },
@@ -486,11 +495,11 @@ export function VariablePanel({
             }
       }
       description={
-        stored === null || from === undefined
+        field === null
           ? undefined
           : {
-              from,
-              value: descriptionShown(typedDescription, stored),
+              from: field.from,
+              value: descriptionShown(typedDescription, field.stored),
               onChange: (text) => {
                 setTypedDescription(text);
                 setDescriptionRefused(null);

@@ -358,8 +358,10 @@ The commands
        ``set`` at the declaration's own ``init`` - added, and shown as a line of the
        preview, where the file states none - and nothing is drawn of one point, nor
        pasted into it. A scalar a file initialises with text, or one produced in more
-       than one place, is refused as ever, and a declaration naming a type is offered no
-       grid, the type possibly being a structure. A curve, a map and an axis are
+       than one place, is refused as ever. A declaration naming a type is offered the grid
+       where the project says the type is a scalar one - a scalar naming it reads ``scalar``,
+       a value block naming it keeps its dimensions - and none where the type is a structure,
+       an external type or unknown, or while the types are not yet read. A curve, a map and an axis are
        offered whatever type they name; anything else states its own dimensions and its
        own datatype, so a dimensioned declaration naming a structured type is shown
        there and not offered, and so is a deeper shape. Cells

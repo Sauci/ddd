@@ -51,3 +51,26 @@ export function describeSentence(name: string, from: string, description: string
   if (description === "") return `Takes the description of ${name} out of ${from}`;
   return `Sets the description of ${name} in ${from}`;
 }
+
+/** Where a description is written, and what the declaration states now. */
+export interface DescriptionField {
+  where: Described;
+  /** The component whose declaration it is. */
+  from: string;
+  stored: string;
+}
+
+/** Whether the panel holds a description field, and for what: only on a component's page - `file`
+ * is `undefined` on the project screen's own panel, where no component is in view - for a
+ * component that declares the variable (`from`), once its file is read (`stored`, `null` until it
+ * is, and where it declares none). The one decision; the screen asks and the view draws what it
+ * is given. */
+export function descriptionField(
+  file: string | undefined,
+  name: string,
+  from: string | undefined,
+  stored: string | null,
+): DescriptionField | null {
+  if (file === undefined || from === undefined || stored === null) return null;
+  return { where: { file, name }, from, stored };
+}

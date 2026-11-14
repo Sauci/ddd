@@ -1692,6 +1692,74 @@ test("a values address naming a file the project does not include still draws th
   );
 });
 
+/** Controller made to declare a scalar type, `Gain_t`, and two declarations naming it: `GainA`, a
+ * parameter of no dimensions stating 10, and `GainRow`, a value block of three. Neither states a
+ * datatype of its own: the type does. */
+function namingAScalarType(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  data.component.types = [
+    {
+      type: "scalar",
+      name: "Gain_t",
+      description: "A gain in hertz",
+      datatype: "uint16",
+      unit: "Hz",
+      conversion: { factor: 0.25 },
+    },
+  ];
+  data.component.interface.push(
+    {
+      scope: "local",
+      definition: {
+        kind: "parameter",
+        name: "GainA",
+        id: "g41na0000001",
+        typename: "Gain_t",
+        init: 10,
+        volatile: false,
+      },
+    },
+    {
+      scope: "local",
+      definition: {
+        kind: "value_block",
+        name: "GainRow",
+        id: "g41na0000002",
+        typename: "Gain_t",
+        dimensions: [3],
+        init: [1, 2, 3],
+        volatile: false,
+      },
+    },
+  );
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+test("a scalar naming a scalar type reads scalar, and its value is typed, written and read back", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", namingAScalarType);
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  // A value block naming it keeps its dimensions and is a button too; a declaration naming a
+  // struct, as SensorHub's does, is neither.
+  await expect(page.getByRole("button", { name: "Show the values of GainRow" })).toBeVisible();
+  const open = page.getByRole("button", { name: "Show the values of GainA" });
+  await scrolledIntoView(page, "Declarations of Controller", open);
+  await expect(open).toHaveText("scalar");
+  await open.click();
+
+  const cell = page.getByRole("textbox", { name: "the value" });
+  await expect(cell).toHaveValue("2.5");
+  await typed(cell, "5");
+  await expect(page.getByText("Sets the value of GainA to 5 Hz")).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "GainA").init).toBe(20);
+  expect(definitionOf(gui.directory, CONTROLLER, "GainA").typename).toBe("Gain_t");
+});
+
 // 16:I4: a variable's description is the declaration's own, written from the panel of the
 // component's page - one `set` at its `description` in that file, undone as any edit is - and the
 // panel says what is edited elsewhere.
@@ -1729,6 +1797,7 @@ test("a declaration's description is read in its panel, written, put back, and t
     .toBe("Engine speed gain");
   await expect(field).toHaveValue("Engine speed gain");
   await expect(describing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
+  await expect(describing.getByText(/Sets the description/)).toHaveCount(0);
 
   // Emptied, the key goes: the model's default is the empty text.
   await field.fill("");
@@ -1743,14 +1812,20 @@ test("a declaration's description is read in its panel, written, put back, and t
     .not.toHaveProperty("description");
 
   // Both edits put back, one at a time: the second undo restores the file as it was.
+  const strip = page.getByRole("region", { name: "Undo" });
   for (let step = 0; step < 2; step += 1) {
     await page.getByRole("button", { name: "Undo the description of ParameterA" }).click();
-    await page
-      .getByRole("region", { name: "Undo" })
-      .getByRole("button", { name: "Put back 1 file" })
-      .click();
+    await strip.getByRole("button", { name: "Put back 1 file" }).click();
+    if (step === 0) {
+      // The first undo puts the emptied field back to the text it had after the first edit.
+      await expect(field).toHaveValue("Engine speed gain");
+    }
   }
   await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+  // The earlier description is shown, and no offer is drawn for what the undo restored.
+  await expect(field).toHaveValue("Single calibratable constant");
+  await expect(describing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
+  await expect(describing.getByText(/Sets the description|Takes the description/)).toHaveCount(0);
 });
 
 test("a description is one declaration's own: another component's stays as it was", async ({

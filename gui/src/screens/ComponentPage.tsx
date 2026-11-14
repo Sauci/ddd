@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MouseEvent } from "react";
 import { useMemo, useState } from "react";
-import { getFile, getFindings } from "../api/client";
+import { getFile, getFindings, getTypes } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { useKept } from "../app/useKept";
@@ -9,7 +9,7 @@ import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt } from "../lib/pointer";
-import { shapeColumn } from "../lib/shapeColumn";
+import { shapeColumn, typeKinds } from "../lib/shapeColumn";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -87,6 +87,19 @@ export function ComponentPage({
       previousQuery?.queryKey[3] === file ? previous : undefined,
   });
 
+  // What each type of the project is, asked once for the page: a declaration naming a type is a
+  // grid of numbers only where the type is a scalar one (`shapeColumn`). Kept up over a revision's
+  // own refetch, and nothing is offered for such a row until it has come.
+  const projectTypes = useQuery({
+    queryKey: ["types", state.revision],
+    queryFn: () => getTypes(),
+    placeholderData: (previous) => previous,
+  });
+  const kinds = useMemo(
+    () => (projectTypes.data === undefined ? undefined : typeKinds(projectTypes.data.types)),
+    [projectTypes.data],
+  );
+
   // `null` while there is no answer to draw - the file pending, or failed with none kept for it -
   // or the answer failed its schema check - the cases the early returns below show their own
   // message for instead of this page's table - so that the two memos just below, like every
@@ -119,7 +132,16 @@ export function ComponentPage({
       const kind = text("definition.kind");
       const datatype = text("definition.datatype");
       const dimensions = asList(valueAt(data, `${at}.definition.dimensions`));
-      const shape = shapeColumn(kind, dimensions, datatype, valueAt(data, `${at}.definition.init`));
+      const shape = shapeColumn(
+        kind,
+        dimensions,
+        datatype,
+        valueAt(data, `${at}.definition.init`),
+        {
+          name: text("definition.typename"),
+          kinds,
+        },
+      );
       return {
         id: at,
         name: text("definition.name") ?? `declaration ${index + 1}`,
@@ -134,7 +156,7 @@ export function ComponentPage({
         own: byRow.get(at) ?? [],
       };
     });
-  }, [data, byRow]);
+  }, [data, byRow, kinds]);
 
   if (answer === undefined) {
     if (content.isError) return <Banner tone="error">{content.error.message}</Banner>;

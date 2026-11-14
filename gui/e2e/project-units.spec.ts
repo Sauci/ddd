@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, driftIn, failing, held, PUMP, SERVER_FAILED, UNITS } from "./demo";
+import { CONTROLLER, driftIn, failing, held, PUMP, restamp, SERVER_FAILED, UNITS } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** The entries of a units file as it stands on disk: objects, in both examples' units files. */
@@ -190,11 +190,16 @@ test("an apply made from a panel that is out of date is refused, and the panel s
   const removing = panel.getByRole("region", { name: "Remove from the vocabulary" });
   await expect(removing.getByText("Changes 1 file: units.ddd.json")).toBeVisible();
 
-  // Described from outside between the preview and Apply.
+  // Described from outside between the preview and Apply, and given a unit more, mbar.
   await page.route("**/api/edit", async (route) => {
     writeFileSync(
       units,
-      readFileSync(units, "utf8").replace('"temperature"', '"temperature, degrees Celsius"'),
+      readFileSync(units, "utf8")
+        .replace('"temperature"', '"temperature, degrees Celsius"')
+        .replace(
+          '{ "unit": "kPa", "description": "pressure" }',
+          '{ "unit": "kPa", "description": "pressure" },\n    { "unit": "mbar", "description": "pressure" }',
+        ),
     );
     await route.continue();
   });
@@ -204,13 +209,15 @@ test("an apply made from a panel that is out of date is refused, and the panel s
   expect(entriesOf(units).map((entry) => entry.unit)).toContain("degC");
 
   // Refusing the Apply as stale, the server asks for the analysis that reads the file as it now
-  // is (`Session._refused`). The panel shows that analysis landed - the description written from
-  // outside - and the sentence is still there: it is held until the reader's next choice, not
-  // until a revision.
+  // is (`Session._refused`). The panel and the tab read the vocabulary's words from the file as it
+  // stands, even of the revision refused, so neither says anything of that analysis; the tab's
+  // rows are the index's, so mbar has a row only once that analysis has landed. The sentence is
+  // still there then: it is held until the reader's next choice, not until a revision.
+  await expect(page.getByRole("row", { name: "mbar", exact: true })).toBeVisible();
+  await expect(refused).toBeVisible();
   await expect(panel.getByRole("textbox", { name: "Description" })).toHaveValue(
     "temperature, degrees Celsius",
   );
-  await expect(refused).toBeVisible();
 
   // Remove pressed again is that choice. Offered once the panel reads that revision, its plan is
   // that revision's own, asked for again at every one, and carries the file's new fingerprint:
@@ -219,7 +226,7 @@ test("an apply made from a panel that is out of date is refused, and the panel s
   await removing.getByRole("button", { name: "Remove from the vocabulary" }).click();
   await expect
     .poll(() => entriesOf(units).map((entry) => entry.unit))
-    .toEqual(["rpm", "Nm", "kPa"]);
+    .toEqual(["rpm", "Nm", "kPa", "mbar"]);
   await expect(refused).toHaveCount(0);
 });
 
@@ -312,6 +319,40 @@ test("an adopt refused because its units file now exists says so in the banner, 
   await expect(banner).toHaveCount(0);
   await expect(preview).toHaveCount(0);
   await expect(page.getByText("5 units · no units file")).toBeVisible();
+});
+
+test("an adopt refused leaves no sentence behind it, and an adoption offered again starts with none", async ({
+  page,
+  gui,
+}) => {
+  const adopted = join(gui.directory, UNITS);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(page.getByText("5 units · no units file")).toBeVisible();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  await banner.getByRole("button", { name: "Show changes" }).click();
+  const preview = page.getByRole("complementary", { name: "Adopt a vocabulary" });
+  await expect(preview.getByText("Changes 2 files: demo.ddd.json, units.ddd.json")).toBeVisible();
+
+  // Refused because a units file was made by hand meanwhile, as the journey above: every read of
+  // the units held until the sentence is seen, then the banner goes with the offer.
+  writeFileSync(adopted, `${JSON.stringify({ units: [{ unit: "ms", description: "ms" }] })}\n`);
+  const release = await held(page, "/api/units", { every: true });
+  try {
+    await preview.getByRole("button", { name: "Adopt 5 units" }).click();
+    await expect(banner.getByText(STALE, { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(banner).toHaveCount(0);
+
+  // The hand-made file taken away again, and a stamp moved so that a revision reads the units
+  // anew: the adoption is offered once more, an offer of its own, and its banner says nothing of
+  // the refusal of the one before.
+  rmSync(adopted);
+  restamp(gui.directory, CONTROLLER);
+  await expect(banner.getByRole("button", { name: "Adopt 5 units" })).toBeVisible();
+  await expect(banner.getByText(STALE, { exact: true })).toHaveCount(0);
 });
 
 test("the units tab says it is reading the project's units until they are read", async ({

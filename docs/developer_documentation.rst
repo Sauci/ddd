@@ -312,7 +312,15 @@ graph, as described above. ``tests/test_cmake.py`` configures and builds the cma
 over the shipped example, over a collected project naming a plugin, over a hand written one
 and over a project written to exercise the keywords of one call - with the ``cmake`` the
 development requirements install, so that the module is held to
-what it does rather than to what it says. A configure and a build cost seconds each, which
+what it does rather than to what it says. Its story of the build after an edit is told twice,
+under Ninja, which the same requirements install, and under the platform's Makefile generator,
+whose ``make`` no requirements file installs and the machine running the suite has to have on
+its path: GNU ``make`` on Linux, and on Windows the ``mingw32-make`` of the MinGW whose ``gcc``
+the suite compiles with, found beside that ``gcc``. On Windows, for a ``make`` that compares
+files' times to the whole second, the story sets every file of its tree two seconds back after
+each build under ``make``, all of them alike so that their order holds, rather than wait for
+the clock: what it writes next, and what the build after writes, is newer than all of it. A
+configure and a build cost seconds each, which
 makes that file a third of the suite's runtime, so the classes whose tests ask several
 questions of one tree configure and build it once, in a class-scoped fixture, and each test
 reads one answer out of what it left behind. ``tests/test_hardening.py`` holds one test per defect that once
@@ -1214,14 +1222,16 @@ another file under the build tree it is generated in, each refused as ``generate
 writes the description again at every configure, and which files belong to the project is
 ``ddd_add_component()``'s to say. That tree is the nearest directory at or above the record
 holding a ``CMakeCache.txt``, unless the source tree that cache names lies under it, as an
-in-source build's does, and the description's own directory otherwise. The record is all that
-says a description is generated, so one given to ``ddd_generate()`` with ``PROJECT`` and an
-``OUTPUT_DIRECTORY`` of its own directory, the record written beside it and naming it, is taken
-for one the build generates: every change of its files is refused, in a sentence saying the
-build writes it, which it does not. Nothing in the record or the description tells the two
-apart yet. The file it creates takes the mode, and where the process may set them the owner
-and group, of the project description beside it, so ``ddd gui`` running in a container leaves
-the developer a file of their own rather than root's.
+in-source build's does, and the description's own directory otherwise. What
+says a description is not generated is its record's ``origin`` key, ``given`` where
+the description was handed to ``ddd_generate()`` as ``PROJECT``, so that a description given
+with an ``OUTPUT_DIRECTORY`` of its own directory, the record written beside it and naming it,
+is not taken for one the build generates. Any other record is the build's, a record without the
+key included, which is every record of a collected description and every one a module wrote
+before the key: a project given with such a record beside it stays refused until the build is
+configured again. The file it creates takes the mode, and where the process may set them the
+owner and group, of the project description beside it, so ``ddd gui`` running in a container
+leaves the developer a file of their own rather than root's.
 
 Every write of the engine, an edit's and an undo's alike, looks at its file once more after
 the stage is written and right before the rename - or the removal, for a file an edit
@@ -1229,11 +1239,12 @@ created. A file that no longer holds the bytes the write was made from, or that 
 where the write creates it, was changed by somebody else since the edit read it, and is
 refused as ``stale`` rather than overwritten, taken away or brought back; the files
 already written are put back, each one that still holds what the write left. A save landing
-in the instant between that last look and the rename is still written over, and a file another
-writer creates there in that instant is replaced: no lock the file systems offer closes that
-moment. ``stale`` says that every one went back - the page tells a person that nothing was
-written - and where one could not, the refusal is ``unwritable`` and its sentence names the
-files it could not put back.
+in the instant between that last look and the rename is still written over, no lock the file
+systems offer closing that moment; and a file another writer creates there in that instant is
+replaced, the rename taking whatever holds the name, where a write that refuses a name already
+taken would close it. ``stale`` says that every one went back - the page tells a person that
+nothing was written - and where one could not, the refusal is ``unwritable`` and its sentence
+names the files it could not put back.
 
 A file this process may not write is refused ``unwritable`` before the first file of an edit,
 or of an undo, is staged, on every system: one with no permission to write it at all - a

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
-import { isStale, panelShows, type Refused, refusalShown } from "./refusals";
+import { isStale, panelShows, type Refused, refusalOfOffer, refusalShown } from "./refusals";
 
 /** What a panel says when its Apply is refused because a file changed under its preview. */
 const STALE =
@@ -27,36 +27,38 @@ test("a refusal held of another write is not shown beside this one, which shows 
   expect(refusalShown(held, null, "rename")).toBeNull();
 });
 
+test("a refusal of an offer is held while the offer is made, and goes with it", () => {
+  expect(refusalOfOffer(STALE, true)).toBe(STALE);
+  expect(refusalOfOffer(STALE, false)).toBeNull();
+  expect(refusalOfOffer(null, true)).toBeNull();
+  expect(refusalOfOffer(null, false)).toBeNull();
+});
+
 test("nothing held and no plan refused, nothing is shown", () => {
   expect(refusalShown(null, null, "rename")).toBeNull();
 });
 
-describe("a refusal because a file changed on disk, as the revision the server asked for lands", () => {
-  // Refusing an Apply as stale, the server asks for the analysis that reads the file as it is, and
-  // that analysis's revision reaches the page within milliseconds, before the refusal or after
-  // it. Each revision asks the panel's plan again: the panel has none while it is asked for, then
-  // that revision's own answer - here a refusal of its own, so that what is shown says which.
+describe("a refusal held of a write, over each answer a new revision brings its plan", () => {
+  // What these pin is the drawing alone: whatever the write's plan answers as a revision lands -
+  // nothing while it is asked again, then that revision's own answer, here a refusal of its own -
+  // the refusal the panel holds is what is shown, and once the panel holds none, the plan's answer
+  // is. They are pure calls, so they cannot tell which reached the page first, the refusal or the
+  // revision, nor fail on a screen that lets its refusal go when a revision lands: each screen sets
+  // and clears its own, outside this gate. The journeys of a refusal because a file changed on
+  // disk are what fail then - in keys, declarations, values, project-units, files, shared and
+  // types `.spec.ts`, each waiting for a sign only the analysis the refusal asks for can draw
+  // before it looks for the sentence again.
   const held: Refused<string> = { about: "rename", text: STALE };
   const plan8 = "'rpm' is the unit's own spelling";
 
-  test("answered before the new revision, it is shown, still shown once that revision has come, and gone on the reader's next choice", () => {
-    // At the revision it was refused at, whose plan the Apply was made from.
-    expect(refusalShown(held, null, "rename")).toBe(STALE);
-    // The new revision lands: its plan asked for, then answered.
+  test("held, it is shown while the plan is asked again, and over the plan's own refusal once that comes", () => {
     expect(refusalShown(held, null, "rename")).toBe(STALE);
     expect(refusalShown(held, plan8, "rename")).toBe(STALE);
-    // The reader chooses again, and the panel holds no refusal: its plan's own answer is shown.
-    expect(refusalShown(null, plan8, "rename")).toBe(plan8);
   });
 
-  test("answered after the new revision, it is shown, still shown as that revision's plan comes, and gone on the reader's next choice", () => {
-    // The new revision landed first: its plan asked for, nothing refused yet.
-    expect(refusalShown(null, null, "rename")).toBeNull();
-    // The refusal is answered, then the new revision's plan.
-    expect(refusalShown(held, null, "rename")).toBe(STALE);
-    expect(refusalShown(held, plan8, "rename")).toBe(STALE);
-    // The reader chooses again.
+  test("once the panel holds none, the plan's own answer is shown", () => {
     expect(refusalShown(null, plan8, "rename")).toBe(plan8);
+    expect(refusalShown(null, null, "rename")).toBeNull();
   });
 });
 

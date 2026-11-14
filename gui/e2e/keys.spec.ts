@@ -155,9 +155,17 @@ test("a change refused as stale can be applied again once the analysis has caugh
 
   // The watcher never notices the drift, and nothing needs it to: refusing the Apply as stale,
   // the server asks for the analysis itself (`Session._refused`), which reads the drifted bytes.
-  // The panel shows that analysis landed - Controller's limits as the drift left them - and the
-  // sentence is still there: it is held until the reader's next choice, not until a revision.
-  await expect(panel.getByRole("row", { name: /^limits/ })).toContainText("0 … 999");
+  // The panel's rows say nothing of that analysis - the variable's reply reads its declarations
+  // as the files stand, and is asked again as soon as the Apply is answered - but the
+  // disagreement the drift makes is the analysis's own finding, which the panel lists only once
+  // that analysis has landed. The sentence is still there then: it is held until the reader's
+  // next choice, not until a revision.
+  await expect(
+    panel.getByText(
+      "'ValueA' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 999] != [0, 100])",
+      { exact: true },
+    ),
+  ).toBeVisible({ timeout: 15000 });
   await expect(refused).toBeVisible();
 
   // The reader's next choice, a new maximum typed, takes the sentence away, and what it asks

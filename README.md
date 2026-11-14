@@ -751,15 +751,17 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
   `AXIS_PTS_REF`; an axis referenced this way is always exported, because a dangling
   `AXIS_PTS_REF` would make the file invalid
 * the address of an object is `0x00000000` unless the linked image or an address map gives
-  it (`ECU_ADDRESS` is simply the keyword the format uses);
+  it (`ECU_ADDRESS` is simply the keyword the format uses), and a file written with neither -
+  or with a map that has no entry - says so on the line under its `ASAP2_VERSION`;
   `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking.
   `--image firmware.elf` reads every address out of the linked ELF image's DWARF - an object
   by its name, a structure member by its access path - and takes the image's byte order; a
   symbol the image cannot place keeps address 0 and is reported, its reason a note, and in
   cmake `ADDRESSES_FROM_IMAGE` makes the a2l one step after the link.  `--address-map` serves
-  an image without debug information.
+  an image without debug information, and in cmake `ADDRESS_MAP` makes the a2l the same step,
+  reading the map.
   The map is a flat json object of symbol to address, decimal or hexadecimal, produced from
-  the linker output after the first build; a symbol that is not in it keeps address 0, and
+  the linker output after the link; a symbol that is not in it keeps address 0, and
   an address outside `0` .. `0xFFFFFFFF` is refused rather than written out malformed:
 
   ```json
@@ -859,7 +861,10 @@ needs no 3.30 and no `ddd_add_component`.
 | `firmware_ddd_globals` | object library compiling every generated definition file, linked into the image; links `firmware_ddd_headers` for that compile usage |
 
 plus `firmware_ddd_check` to run the consistency check on its own in ci, `firmware_ddd_list`
-to print the table of the image's variables, and one
+to print the table of the image's variables, `firmware_ddd_a2l` - with `ADDRESSES_FROM_IMAGE`
+or `ADDRESS_MAP`, built by default - to write the a2l once the image is linked (a build that
+names its targets does not build it, and leaves the a2l of the last build that did, or none on a
+first build), and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
 `<project name>.dictionary.json` - the resolved dictionary the generation writes beside the
@@ -880,12 +885,16 @@ the project description this image is generated from and the severity policy it 
 under - the two things no `*.ddd.json` records, since without `PROJECT` the project
 description is collected out of the link graph and does not exist in the source tree at all.
 Nothing in the build reads it; it is there so that the language server and `ddd gui` can
-report what the build reports.
+report what the build reports.  For a description handed to the module as `PROJECT` it says
+so as well, `"origin": "given"`, and is stamped format 2: `ddd gui` edits such a project, and
+refuses to write into any other, a collected description being written again at every
+configure.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
-the schemas), `ADDRESS_MAP`, `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
-addresses read out of the linked image), `BYTE_ORDER`,
+the schemas), `ADDRESS_MAP` and `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
+addresses read out of the map a step of the project's extracts, or out of the linked image),
+`BYTE_ORDER`,
 `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an
@@ -897,10 +906,25 @@ image without its extension, so `firmware.elf` gives `firmware_ddd_headers`.  Op
 only one of the two leaves the same ambiguity in place, because the automatic set still
 reaches every registered component rather than only the ones that image links.
 
-The declared outputs are derived from the template names, and the a2l; a `{component}`
-template is left out because its outputs are named after the components, which are only known
-once the description files have been read.  That is why
-consumers depend on `firmware_ddd_headers` rather than on an individual header path.
+The declared outputs are derived from the template names, and the a2l; the files of a
+`{component}` template are declared as byproducts, one for each component of the image - each
+one it links, or with `PROJECT` each one the project names - under the names the module reads
+out of the descriptions when the build is configured.  A link made behind `$<CONFIG:...>`
+alone is read for the `CMAKE_BUILD_TYPE` the build is configured with, as CMake reads it; a link
+behind any other generator expression cannot be evaluated then, so every component it names is
+declared, whatever the expression comes to.  Under a Makefile generator, since make
+looks at no file again once a step has run, a stamp is the step's one output, and each shared
+file a rule of its own depending on `firmware_ddd_generation` - on `firmware_ddd_a2l` for the
+a2l written after the link, which `ADDRESSES_FROM_IMAGE` or `ADDRESS_MAP` give - so that a step
+reading the dictionary or the a2l by its path, in the directory calling `ddd_generate`, runs
+after the step that writes it.  A `{component}` header, or a file read from another directory,
+is read after depending on `firmware_ddd_generation` instead - which, for the a2l written after
+the link, is the a2l of the build before, `firmware_ddd_a2l` being the target to depend on.  So
+the build after a description change recompiles exactly the components whose header changed,
+and in the collected mode a component renamed in its description needs a reconfigure, until
+which, under Ninja, a change of its header reaches the components reading it a build late.
+Consumers find the headers through `firmware_ddd_headers`, which carries their include
+directory.
 
 Beside the module, this repository publishes a [pre-commit](https://pre-commit.com) hook,
 `ddd-id`, which runs `ddd id --assign` over the staged `*.ddd.json` files so that no object

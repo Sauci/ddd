@@ -54,7 +54,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the wrong one.  The analysis now records a fingerprint of the bytes it read, and a plan
   whose file reads differently, or whose recorded place no longer names what was asked about -
   an entry of a type put in above it or taken out since - is refused as `stale`, and a settled
-  value whose declaration moved so as `unreadable`.  No file format changes.
+  value is refused as `unreadable` when its declaration moved.  No file format changes.
 
 * **A refused `stale` edit or undo asks for the analysis that clears it.**  A file saved with
   the size and the modification time it had before is a change the project's poll cannot see,
@@ -78,6 +78,135 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `CMakeLists.txt` beside it, with the `ddd_add_component()` line to add to it.  The
   components themselves are edited as before.  A build record written by a newer DDD no longer
   hides that the description is generated.  No file format changes.
+
+* **Under Ninja, a build after a description change compiles the components whose header it
+  changed.**  The per-component headers a description change rewrites were not declared as
+  outputs of the generation, so a component reading one was compiled against the old header and
+  linked with the new globals: the build exited 0, and only a second build compiled it again.
+  `ddd_generate()` now declares the header of every component the image links, named at
+  configure from `ddd_add_component()`, or from `ddd sources` with `PROJECT`, so the build
+  recompiles exactly the components whose header changed, and `ninja -t clean` removes those
+  headers too.  A plugin's files are still declared by nothing, their names being the plugin's,
+  so a component compiling one meets a change of it a build late; the build page says how a
+  project has a description change reach such a component in one build.  Migrating costs
+  three things.  A component the image reaches only through a link made, or a library defined, after
+  the directory calling `ddd_generate()` is done, or registered after it, now fails the configure,
+  naming each such component and what to do; link it, define it or register it before the end of
+  that directory.  In the collected mode a renamed component needs a reconfigure: until then every
+  build runs the generation, and a change of that component's header reaches the components
+  reading it a build late.  And the generation's command is now added at the end of the
+  calling directory, so nothing there can `APPEND` to it earlier.  A generator expression in a link
+  list counts whatever it comes to, except `$<CONFIG:...>` around plain names, which is read for
+  `CMAKE_BUILD_TYPE`.  Under Makefile generators the generation is built as the entry on them below
+  says.  No file format changes.
+
+* **With `ADDRESS_MAP`, the a2l carries the addresses of the image just linked.**  The generation
+  before the link read the map the previous link had extracted, so the a2l of a build held the
+  addresses of the image linked before it - every one 0 on the first build of a clean tree, the old
+  address of a variable an edit moved - with no finding, `STRICT` or not, and under `STRICT` an
+  object added to a description stopped every build.  The generation before the link now leaves the
+  a2l out, and `<stem>_ddd_a2l`, built by default, writes it once the image is linked, from the
+  image and the map, as `ADDRESSES_FROM_IMAGE` has always done; `BYTE_ORDER` goes to that step.  A
+  project following the build page's recipe, whose extractor is a `POST_BUILD` command of the image,
+  migrates nothing.  A map written by any other step has to be written before `<stem>_ddd_a2l` runs;
+  `--target <image>` and `<stem>_ddd_generation` no longer write the a2l, so a build naming its
+  targets builds `<stem>_ddd_a2l` too, and a target that depended on the generation for the a2l
+  depends on `<stem>_ddd_a2l`; a project that defined a target of that name renames it; a
+  `POST_BUILD` command of the image reading `DDD_A2L` reads the a2l of the build before.  Under
+  `STRICT`, a map that leaves out a member of a structure now stops the first build, where it
+  stopped the second.  An a2l written with no address source now says so in a comment under
+  `ASAP2_VERSION`, so a step comparing a2l files byte for byte sees that line where it applies.  A
+  file named by `DEPENDS` still reruns the generation before the link, and no longer the a2l written
+  after it.
+
+* **`ddd sources` lists every file a build depends on, and a plugin's defect no longer hides
+  them.**  It listed a plugin only when the plugin imported, and a package plugin only by the
+  files it had imported, so a file that stopped importing, or that nothing had yet imported, was
+  no dependency of the configure; and a plugin whose model raised ended the command with exit 2
+  and no listing at all.  It now lists every `.py` file of each plugin a project names, a module
+  plugin by the files the finder locates, in the json `sources` too, and reports a plugin's
+  defect as the finding `plugin-invalid`, printed next to the listing by `sources` and by
+  `artefacts`, with exit 0.
+  `ddd check`, `list`, `dump` and `generate` print the findings gathered before such a defect,
+  and `check --format json` prints its document, still with exit 2.  `ddd sources` takes `-W` and
+  `--strict`, which grade what it reports on stderr and never the listing or the exit code, and
+  the module passes the call's `SEVERITY` and `STRICT`, so the configure's warning is graded as
+  the build is.  The listing grows; a script that took its length for something else has to
+  change.
+
+* **A file that a wildcard include gains or loses re-runs the build.**  A project's `includes`
+  wildcards were read at configure only, so a file one began to match touched nothing the build
+  watched, and a file one stopped matching left the generation's inputs the same or fewer: both
+  ended in `no work to do` over a stale dictionary.  The module now watches every wildcard, those of
+  the projects included as well, so such a file re-runs the configure, and the generation and the
+  a2l step when a file leaves.  The configure writes `<stem>_ddd_sources.txt`, new, in the call's
+  binary directory, rewriting it only when it differs.  A `**` include is scanned at every build.
+  Nothing to migrate.
+
+* **A call the module cannot honour fails the configure, naming why.**  `ddd_add_component()` took a
+  project file for a component's description, and the next configure found no components; it now
+  refuses a description whose top-level key is `project`, naming `PROJECT` of `ddd_generate()`.  A
+  call that gave a value keyword an empty variable in quotes, `ADDRESS_MAP "${DDD_MAP}"`,
+  configured with the keyword dropped - every address 0 for `ADDRESS_MAP`, the collected mode for
+  `PROJECT` - the bare form being refused since 0.10.0, and an empty value among several was
+  dropped, or stopped the configure or the build on words that did not name it; each now fails
+  the configure, naming the keyword, for every empty value of a value keyword of `ddd_generate()`
+  or `ddd_add_component()`.  A `PROJECT` has to exist, parse and name its project when the
+  configure runs, where a missing one in the build tree, or one that did not parse, was warned of
+  and then stopped the configure on CMake's own words, which name neither cause; and C has to be
+  enabled in the directory calling `ddd_generate()` by the time it is done, where a project that
+  had not enabled it failed at CMake's generate step, which could not determine the linker
+  language of a target of the module's.  Migrating costs a line each.  Pass a project file to
+  `ddd_generate(... PROJECT <file>)`, not to `ddd_add_component()`.  Give a value keyword a value,
+  or wrap the keyword and its value in `if()`.  Write the project file before configuring.
+  Declare `project(<name> LANGUAGES C CXX)`, or call `enable_language(C)` there or above.  The
+  advice of the refusal of a late link and the reason of the one for `PROJECT` are reworded.
+  `ddd sources` is read as UTF-8, so a Windows checkout under a non-ASCII path builds.
+
+* **Makefile generators leave a build that changed nothing with nothing to do, and `make clean`
+  cleans it.**  Under a Makefile generator a generation that changed nothing ran again at every
+  build, and an edit that left a component's header as it was recompiled the component all the same,
+  since every file of the step after the first was touched by each run, `ddd_types.h` among them;
+  and the a2l step after the link, which `ADDRESSES_FROM_IMAGE` alone had, read the image again at
+  every build.  Each step now has a stamp of its own as its one output - `ddd-generation.stamp`
+  and `ddd-a2l.stamp` - touched by each run that succeeds, and a rule per shared file depending on
+  the step, so a step that depends on the dictionary's or the pre-link a2l's path in the calling
+  directory still runs after the generation; `make clean` removes the step's files, a plugin's
+  apart, which nothing declares.  Migrating costs a line for a step in another directory, or one
+  reading a `{component}` header: it depends on `<stem>_ddd_generation`, or on `<stem>_ddd_a2l`
+  for the linked a2l, and not on a generated file's path.  A file of the step deleted by hand is
+  not written again until the step's stamp is deleted or the tree cleaned.
+
+* **The configure follows the tool and the templates it renders with.**  The module asked
+  `ddd --version` once and cached the answer as `DDD_VERSION_HANDSHAKE`, so a tool upgraded in
+  place was met only by a fresh build tree; it now asks at every configure, once, and the
+  variable is no longer cached.  A template directory whose path holds `[`, `*` or `?` is found;
+  every `*.jinja2` below it is a dependency, listed in `<stem>_ddd_templates.txt`, new, in the
+  call's binary directory; and a removed template's file is taken back.  A deleted output
+  directory reconfigures by itself, where a Ninja build stopped on the missing description until
+  somebody configured by hand, so such a step can go.  A description the build itself writes,
+  which does not exist yet at configure, is watched, so the first build to find it there
+  configures again; a status line says so, where the configure said nothing of such a file.
+
+* **`ddd check`'s count line agrees in number, and a dictionary cannot take the manifest's name.**
+  The line read "1 variable in 1 component are consistent" for a single one, and now reads "1
+  variable in 1 component is consistent"; a script matching the old line has to change.
+  `--dictionary` naming the file the run keeps its manifest under, `.ddd-manifest.json`, is refused
+  for that.  The page of `<target>.ddd` now says what the behaviour already was: it checks a
+  component under the default policy, not the image's, so the promise that the image's checks cannot
+  drift apart covers `ddd build-info`, `ddd check` and `ddd generate`.
+
+* **`ddd gui` edits a hand-written project whose build record sits beside it.**  A record in the
+  build tree made the project look generated, so a description written by hand under `PROJECT`
+  was refused as `generated`.  `ddd-build.json` now says where its description came from:
+  `origin: "given"`, written only for a description given as `PROJECT`, and `ddd gui` edits a
+  project only where its record says so.  A record without the key reads as collected, and one of
+  a collected build is unchanged, format 1 with no key; `ddd build-info` gains `--origin
+  {collected,given}`, default `collected`.  Migrating concerns records of `PROJECT` builds alone,
+  which are stamped `format` 2: a DDD from 0.11.0 on declines such a record as written by a newer
+  DDD, and says so, and an older one skips it in silence, so a team on mixed versions upgrades its
+  editors with the module.  A `PROJECT` with an older module's record beside it stays refused
+  until the build is configured again.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

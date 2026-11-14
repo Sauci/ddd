@@ -7,9 +7,12 @@ makes it usable from wherever the build already lives - a makefile, a cmake proj
 :doc:`build_integration`), a batch file on an engineer's machine, or a ci job that never sees
 a terminal. Two commands do not exit: ``ddd lsp``, the language server an editor keeps running
 (see :doc:`editor_integration`), and ``ddd gui``, the preview of a browser interface, which
-serves until it is interrupted. The one file the tool leaves behind for its own use is the
-``ddd-build.json`` that ``ddd build-info`` writes for the language server and for ``ddd gui``,
-which both apply the severities of the build that names a project.
+serves until it is interrupted. Two files are left behind for the tool's own use: the
+``.ddd-manifest.json`` that ``ddd generate`` keeps in its output directory, the record of the
+files it wrote there, by which the next run takes back those it no longer writes (see
+:ref:`what-a-run-owns`), and the ``ddd-build.json`` that ``ddd build-info`` writes for the
+language server and for ``ddd gui``, which both apply the severities of the build that names a
+project.
 
 The same discipline governs the output. The findings - everything the tool has to say about
 a project - are written to standard error, one line per finding followed by a summary, while
@@ -241,8 +244,9 @@ The commands
        generates in spite of errors. Every artefact also takes ``--dictionary FILE``, which
        writes the resolved data dictionary - the text ``ddd dump`` prints - in the same write as
        the artefacts, so that all of them are written or none is; a path an artefact of the
-       run is written to is refused. That is how a build keeps the dictionary beside what it
-       generated, in one analysis and one report of its findings.
+       run is written to is refused, and so is ``.ddd-manifest.json`` in the output directory,
+       the name the run's manifest is kept under. That is how a build keeps the dictionary
+       beside what it generated, in one analysis and one report of its findings.
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, initial value
        with its physical reading, producer and consumers - the quickest answer to "who
@@ -581,10 +585,12 @@ The commands
        <target> with your component's target``. The record beside the description is what says
        so, read for the project it names whatever its format and its severities, and whether or
        not ``-b`` names the build directory. A project given to ``ddd_generate()`` with
-       ``PROJECT`` is edited as any other while its record lies in the build tree, and taken for
-       a generated one, every change of its files refused in that sentence, which then says
-       something untrue, where ``OUTPUT_DIRECTORY`` is the description's own directory and
-       leaves the record beside it: nothing yet tells the two apart.
+       ``PROJECT`` is edited as any other where its record says so, ``"origin": "given"``, whether
+       the record lies in the build tree or, where ``OUTPUT_DIRECTORY`` is the description's own
+       directory, beside it. Any other record beside a description makes it a generated one,
+       one without the key included, as every record is that a module wrote before the key
+       existed: a project given with such a record beside it stays refused until the build is
+       configured again, and the module writes the key.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until
@@ -623,15 +629,16 @@ The commands
        that names it`` - rather than made over the files that did, which would leave the
        old name in the one that did not, or take out what it still names. So is a plan that
        declares an object, or reads a variable, as an output or a local, which a file that
-       did not load may produce or declare already, and one that writes into the file that
-       did not load, whatever its scope; one that declares or reads an input into a file
-       that loaded is answered. A plan for a name only such a file declares says what its
-       panel says, that no file that loaded declares it and which did not load, and not
-       that no file declares it. Opening a project answers at once with its
-       name, read from its description as it stands and kept in the heading from then on;
-       ``Analysing the project…`` stands where the tab's own content goes, until the first
-       analysis lands, and every answer needing a revision is refused until then, in the
-       same words - ``the open project has not been analysed yet``. A panel's own plan
+       did not load may produce or declare already; and one that writes into the file that
+       did not load, whatever its scope, is refused naming that file alone - ``b.ddd.json did
+       not load, so what it declares is unknown and nothing can be declared in it``. One that
+       declares or reads an input into a file that loaded is answered. A plan for a name only
+       such a file declares says what its panel says, that no file that loaded declares it
+       and which did not load, and not that no file declares it. Opening a project answers at
+       once with its name, read from its description as it stands and kept in the heading
+       from then on; ``Analysing the project…`` stands where the tab's own content goes,
+       until the first analysis lands, and every answer needing a revision is refused until
+       then, in the same words - ``the open project has not been analysed yet``. A panel's own plan
        request goes out at once the first time a field asks for one; typed text asks
        again only after a pause in the reader's typing; a pick from a list, or Enter,
        always goes out at once, first time or later. The
@@ -645,10 +652,12 @@ The commands
        ``--no-browser`` only prints the address. It serves until interrupted, and its
        options are not yet part of the stable interface.
    * - ``ddd build-info FILE -o FILE``
-     - record which project description a build runs DDD on and under which severity policy,
-       the ``ddd-build.json`` the language server and ``ddd gui`` read; ``ddd_generate()``
-       calls it at configure time, so a hand-rolled build is the only caller that needs it
-       directly.
+     - record which project description a build runs DDD on, whether it was given to the build
+       (``--origin given``, written into the record, which is then format 2) or collected by it
+       (``collected``, the default, with no such key), and under which
+       severity policy, the ``ddd-build.json`` the language server and ``ddd gui`` read;
+       ``ddd_generate()`` calls it at configure time, so a hand-rolled build is the only caller
+       that needs it directly.
    * - ``ddd checks``
      - list every check with its identifier, its default severity, whether it can be relaxed
        (``(fixed)`` if not), whether it needs every component of a project (``(project)``)
@@ -700,7 +709,8 @@ actually running where they are instead of hard-coding a guess:
    $ ddd templates-dir
    /home/you/ddd/examples/templates
 
-How both directories are used from a ``CMakeLists.txt`` is in :doc:`build_integration`.
+How a ``CMakeLists.txt`` finds the module with ``cmake-dir``, and what it does with a template
+directory, is in :doc:`build_integration`.
 
 Severity options
 ----------------
@@ -780,7 +790,10 @@ the image would happily link yesterday's globals and ship yesterday's a2l.
 ``ddd sources`` closes that gap. It prints one absolute path per line: the project file
 itself, every description it includes however deeply, and the module of every
 :doc:`plugin <plugins>` those files name, since a plugin decides what the generation writes
-as much as a description does. The demo names none, so its listing is descriptions alone:
+as much as a description does. A plugin that is a package is listed by every ``.py`` file of
+it, and one named by a ``.py`` path is listed whether or not it imports, as a missing include
+is; one named as a module, by the file the finder locates for it. The demo names none, so its
+listing is descriptions alone:
 
 .. code-block:: text
 
@@ -799,11 +812,16 @@ translated first, and a file reached over two different include paths appears on
 The command is deliberately more tolerant than the others: a project whose interfaces disagree
 still has a well defined set of source files, and a build system asking what to watch deserves
 an answer even while the project does not check out. Only a file that cannot be read at all is
-fatal. Tolerant is not silent: a finding the load turned up - a missing include, say - is
-reported on stderr after the listing, so a configure step hears about it from the run that
-found it rather than from whichever DDD command the build runs next. This is what
-``cmake/Ddd.cmake`` uses to make a hand written project description watch its own components,
-described in :doc:`build_integration`.
+fatal. Tolerant is not silent: a finding the load turned up - a missing include, a plugin that
+does not import, a plugin whose model raises (``plugin-invalid``, where the other commands
+stop with exit ``2``) - is reported on stderr after the listing, so a configure step hears
+about it from the run that found it rather than from whichever DDD command the build runs
+next. ``-W CHECK=SEVERITY`` and ``--strict`` mean here what they mean on ``check``: they grade
+what is reported, so a check the build relaxed is not reported, and they change neither the
+listing nor the exit code. This is what ``cmake/Ddd.cmake`` uses to make a hand written
+project description watch its own components, described in :doc:`build_integration`, which
+passes it the ``SEVERITY`` and ``STRICT`` of the call and prints that stderr as a warning of
+the configure.
 
 With ``--format json`` the same list arrives as the ``sources`` array of a json document, next
 to the diagnostics and their summary, exactly as the other commands report them.

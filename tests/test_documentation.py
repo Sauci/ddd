@@ -1092,6 +1092,108 @@ class TestCommandLineHelp:
         )
 
 
+def record_section() -> str:
+    """Section 3.6 of the specification, the build record's, and nothing of the others."""
+    start = SPEC.index("### 3.6 Build record")
+    return SPEC[start : SPEC.index("### 3.7 ", start)]
+
+
+class TestTheRecordSaysWhereTheDescriptionCameFrom:
+    """The build record's ``origin`` key, in every page that states what ``ddd gui`` does with a
+    project whose record sits beside it."""
+
+    def test_the_record_table_has_the_key_and_the_formats(self) -> None:
+        rows = {
+            line.split("`")[1]: line for line in record_section().splitlines() if "| `" in line[:3]
+        }
+        assert "description" not in rows
+        assert (
+            "present only for a project description given to the build as `PROJECT`"
+            in (rows["origin"])
+        )
+        assert "`collected` is what `--origin` says for it" in rows["origin"]
+        assert "`2` for a record with an `origin`" in rows["format"]
+        assert "highest this version understands" in rows["format"]
+
+    def test_the_specification_says_what_the_key_costs_and_whom(self) -> None:
+        text = flattened(record_section())
+        assert "The key is named `origin` and not `description`, which is a declaration's" in text
+        assert "A record without the key is read as `collected`" in text
+        assert "stays refused until the build is configured again" in text
+        assert "A DDD from 0.11.0 on declines a record stamped past its format" in text
+        assert "an older one skips it in silence" in text
+        assert "so what this costs is a given description's record alone" in text
+        assert "reads a record of format `1` and of format `2` alike" in text
+        assert "reading it as `given` would open every build made before" in text
+
+    def test_the_build_page_example_is_the_record_the_tool_writes(self, tmp_path: Path) -> None:
+        page = PAGES["docs/build_integration.rst"]
+        start = page.index(".. code-block:: json", page.index("What the build tells an editor"))
+        example = json.loads(page[start:].split("\n\n", 2)[1])
+        target = tmp_path / "ddd-build.json"
+        arguments = ["build-info", str(ROOT / "examples/demo/demo.ddd.json"), "-o", str(target)]
+        assert main([*arguments, "--image", "firmware.elf", "-W", "unused-output=info"]) == EXIT_OK
+        written = json.loads(target.read_text(encoding="utf-8"))
+        assert list(example) == list(written)
+        assert (example["format"], example["image"], example["severity"]) == (
+            written["format"],
+            written["image"],
+            written["severity"],
+        )
+
+    def test_the_build_page_says_what_the_key_costs_and_whom(self) -> None:
+        text = flattened(PAGES["docs/build_integration.rst"])
+        assert '``"origin": "given"`` and is stamped ``"format": 2``' in text
+        assert "has no such key and keeps the shape of format 1" in text
+        assert "a record without the key is read as collected" in text
+        assert "stays refused until the build is configured again" in text
+        assert "falls on ``PROJECT`` builds alone" in text
+        assert (
+            "a DDD from 0.11.0 on declines a record of format 2 as written by a newer DDD" in text
+        )
+        assert "an older one skips it in silence" in text
+
+    def test_the_command_line_page_says_it(self) -> None:
+        text = flattened(PAGES["docs/command_line_interface.rst"])
+        assert "``--origin given``, written into the record, which is then format 2" in text
+        assert 'is edited as any other where its record says so, ``"origin": "given"``' in text
+        assert "Any other record beside a description makes it a generated one" in text
+        assert "stays refused until the build is configured again" in text
+        assert "tells the two apart" not in text
+
+    def test_the_developer_page_says_it(self) -> None:
+        text = flattened(PAGES["docs/developer_documentation.rst"])
+        assert "What says a description is not generated is its record's ``origin`` key" in text
+        assert "Any other record is the build's, a record without the key included" in text
+        assert "stays refused until the build is configured again" in text
+        assert "tells the two apart yet" not in text
+
+    def test_the_help_of_the_command_says_it(self) -> None:
+        said = ""
+        for action in _build_parser()._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for action_of_command in action.choices["build-info"]._actions:
+                    if "--origin" in action_of_command.option_strings:
+                        said = action_of_command.help or ""
+        assert "which stamps the record format 2 and which ddd gui then edits" in said
+        assert "which ddd gui refuses to write into" in said
+
+    def test_the_start_page_journey_stamps_its_record_one_past_the_format_read(self) -> None:
+        """A journey that writes a record in a format too new for the start page to list it, and
+        says what the page then prints: both follow ``BUILD_INFO_FORMAT``, so the next raise
+        cannot leave the journey stamping a format this version reads."""
+        from ddd.build_info import BUILD_INFO_FORMAT
+
+        spec = (ROOT / "gui" / "e2e" / "start.spec.ts").read_text(encoding="utf-8")
+        stamped = re.search(r'"build", \{ format: (\d+), project: join\(directory, "demo', spec)
+        assert stamped is not None
+        assert int(stamped.group(1)) == BUILD_INFO_FORMAT + 1
+        assert (
+            f"written in format {BUILD_INFO_FORMAT + 1} by a newer DDD, and this one understands "
+            f"up to format {BUILD_INFO_FORMAT}"
+        ) in spec
+
+
 def published_kinds() -> list[str]:
     """The file formats ``ddd schema`` publishes, which is what these tests are about."""
     from ddd.cli import schema_models
@@ -1621,6 +1723,19 @@ class TestTheDictionaryPage:
         assert without_descriptions(shown) == without_descriptions(expected)
 
 
+class TestTheArtefactsPage:
+    """The page shows the head of the demo's a2l, which the demo writes with no address source,
+    so the lines it shows under the generator's comment are the ones the file has."""
+
+    def test_the_head_of_the_a2l_is_shown_as_it_is_written(self, tmp_path: Path) -> None:
+        output = tmp_path / "gen"
+        assert main(["generate", "a2l", str(DEMO), "-o", str(output)]) == EXIT_OK
+        written = (output / "DemoDevice.a2l").read_text(encoding="utf-8").splitlines()
+        page = PAGES["docs/generated_artefacts.rst"]
+        shown = page.split("   /* DemoDevice.a2l - generated from 'DemoDevice'", 1)[1].splitlines()
+        assert [line.strip() for line in shown[1:4]] == written[1:4]
+
+
 def view_attributes(cls: type) -> list[str]:
     """What a template can read off a view: its fields, properties and public methods."""
     names = [field.name for field in dataclasses.fields(cls)]
@@ -1715,6 +1830,65 @@ class TestTheBuildIntegrationPage:
     def test_plugins_and_project_exclude_each_other(self) -> None:
         """Two lists of plugins would be two sources of truth; the module refuses the pair."""
         assert re.search(r"FATAL_ERROR \"ddd_generate: PLUGINS[^\"]*PROJECT", self.CMAKE_MODULE)
+
+    def test_the_pages_say_when_a_plugins_file_reaches_a_component_compiling_it(self) -> None:
+        """The module cannot declare a plugin's files, whose names the plugin chooses when it
+        runs, so under Ninja a change of one reaches a component compiling it a build late,
+        however that component is ordered after the generation: the page offered that ordering
+        as what keeps the component right. It says what happens instead, under either generator,
+        and what a project can do - depending on the dictionary, which a description change
+        reaches and an edit of the plugin's code does not - and so does the specification."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert "so a target that consumes one depends on" not in page
+        assert (
+            "under Ninja that is not enough, a change of the file reaching a component compiling "
+            "it a build late"
+        ) in page
+        assert (
+            "under Ninja a change of one reaches a component compiling it a build late: ninja "
+            "looked at the file before the generation rewrote it, however the component is "
+            "ordered after the generation"
+        ) in page
+        assert (
+            "a project making the component's object depend on the dictionary - "
+            "``set_source_files_properties(<file> PROPERTIES OBJECT_DEPENDS <dictionary>)``, the "
+            "path being the image's ``DDD_DICTIONARY`` property - has such a change reach the "
+            "component in one build"
+        ) in page
+        assert (
+            "An edit of the plugin's own code leaves the dictionary as it was, and reaches the "
+            "component a build late all the same. Under a Makefile generator the build after "
+            "either is right. A clean leaves a plugin's files"
+        ) in page
+        assert "A ``{component}`` header has no such rule, nor has a plugin's file" in page
+        spec = flattened(SPEC)
+        assert (
+            "A plugin's files are declared by nothing, so under Ninja a change of one reaches a "
+            "component compiling it a build late, however that component is ordered after the "
+            "generation"
+        ) in spec
+        assert (
+            "a component whose object depends on the dictionary - `OBJECT_DEPENDS` on the path of "
+            "`DDD_DICTIONARY` - is compiled again in that build, while an edit of the plugin's own "
+            "code leaves the dictionary as it was and still reaches it a build late"
+        ) in spec
+
+    def test_the_pages_say_a_renamed_component_reaches_its_readers_a_build_late(self) -> None:
+        """A component renamed in its description, in the collected mode, has its header
+        declared under the old name until the build is configured again: under Ninja the build
+        after a change of the new header compiles its readers against the old one, which is
+        what declaring the headers is for, and the pages said only that the generation runs at
+        every build."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert (
+            "so under Ninja the generation runs at every build for the header of the old one, "
+            "which it no longer writes, and a change of the new one reaches the components "
+            "reading it a build late"
+        ) in page
+        assert (
+            "until which, under Ninja, the generation runs at every build and a change of that "
+            "component's header reaches its readers a build late"
+        ) in flattened(SPEC)
 
     def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
         """The page calls its block the shipped file minus comments, so that is what it is."""
@@ -3119,13 +3293,13 @@ class TestTheCiRun:
         browser, and would have held the run, and any re-run of its failed jobs, for the rest.
         Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
         gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
-        1)."""
+        1); the test legs 40, the windows ones taking about 18 to 22 since the Makefile cell."""
         limits = {}
         for name in job_names(CI_WORKFLOW):
             limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)
             limits[name] = None if limit is None else limit.group(1)
         assert limits == {
-            "test": "25",
+            "test": "40",
             "lint": "10",
             "container": "20",
             "extension": "15",

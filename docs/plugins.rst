@@ -33,8 +33,10 @@ project file, for a plugin the project keeps in its own repository; anything els
 dotted module name imported from the environment, for one installed as a distribution. A
 plugin acts on a project because the project names it, never because it happens to be
 installed. A sub-project may name plugins too, and the set in play is the union.
-``ddd sources`` lists each plugin's file beside the description files, so that a build re-runs
-the generation when a plugin changes exactly as it does when a component does.
+``ddd sources`` lists each plugin's file beside the description files - every ``.py`` file of
+one that is a package, and a ``.py`` path whether or not it imports - so that a build re-runs
+the generation when a plugin changes exactly as it does when a component does, and when its
+repair follows a defect.
 
 ``extensions`` on the project holds each plugin's settings, keyed by the plugin's name and
 validated against its project model with defaults filled in. The key is spelled the way a
@@ -220,7 +222,8 @@ The models are the one place where raising is part of the contract. A ``@field_v
 ``ValueError`` or ``AssertionError`` pydantic turns into a ``ValidationError`` is how a model
 refuses a block: that verdict is a ``schema`` finding on the reader's file, located at the
 failing key. Anything else the model raises is the plugin's own defect and is reported the way
-a hook's is - one line naming the plugin, exit 2, ``plugin-invalid`` in the language server.
+a hook's is - one line naming the plugin, exit 2, ``plugin-invalid`` in the language server and
+beside the listing of ``ddd sources`` and ``ddd artefacts``, which exit 0.
 
 Writing a well-behaved plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

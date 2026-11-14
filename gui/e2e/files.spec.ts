@@ -364,6 +364,17 @@ function withEndsSwapped(original: string): string {
   return changed;
 }
 
+/** examples/vocabulary's description with its rasters entry naming a file that is not there, one
+ * letter for another, as a typo saved from an editor would: the file keeps its length, so
+ * `writeUnseen` can write it where the session's own watcher does not see it, and the analysis
+ * files `file-not-found` at that entry, which the tab counts in its row only once that analysis
+ * has landed. Throws where the entry is not there, as `withFullStop` does. */
+function withAnEntryMissing(original: string): string {
+  const changed = original.replace('"rasters.ddd.json"', '"rasterz.ddd.json"');
+  if (changed === original) throw new Error(`${PROJECT} no longer reads as this journey expects`);
+  return changed;
+}
+
 /** The includes of examples/vocabulary's description once `withEndsSwapped` has swapped them. */
 const SWAPPED = [
   "pump.ddd.json",
@@ -545,11 +556,7 @@ test("a New file applied while the description changed on disk is refused in its
     creating.getByText("Changes 2 files: project.ddd.json, spare.ddd.json", { exact: true }),
   ).toBeVisible();
 
-  await creating.getByRole("button", { name: "Show changes" }).click();
-  const takenOut = creating.locator(".hunk .removed");
-  await expect(takenOut).toHaveText([/"pump\.ddd\.json"$/]);
-
-  const changed = withEndsSwapped(readFileSync(project, "utf8"));
+  const changed = withAnEntryMissing(readFileSync(project, "utf8"));
   writeUnseen(vocabularyGui.directory, PROJECT, changed);
   const apply = creating.getByRole("button", { name: "Apply to 2 files" });
   await apply.click();
@@ -564,10 +571,14 @@ test("a New file applied while the description changed on disk is refused in its
 
   // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
   // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
-  // The panel shows that analysis landed - its changes, asked for again of that revision, add the
-  // new entry after units.ddd.json, which the outside change made the last - and the sentence is
-  // still there: it is held until the reader's next choice, not until a revision.
-  await expect(takenOut).toHaveText([/"units\.ddd\.json"$/]);
+  // New file's plan, asked again as soon as the Apply is answered, reads the description as it
+  // stands, and so does the tab's list of entries, so neither says anything of that analysis;
+  // the finding the analysis files at the entry naming no file is counted in its row only once
+  // that analysis has landed. The sentence is still there then: it is held until the reader's
+  // next choice, not until a revision.
+  await expect(
+    page.getByRole("row", { name: "rasterz.ddd.json", exact: true }).getByRole("gridcell"),
+  ).toHaveText(["", "names no file", "1"]);
   await expect(refused).toHaveText(STALE);
 
   // Apply pressed again is that choice: the sentence goes, and the file is created and added, the
@@ -576,7 +587,11 @@ test("a New file applied while the description changed on disk is refused in its
   await expect(page.getByRole("row", { name: "spare.ddd.json", exact: true })).toBeVisible();
   expect(JSON.parse(readFileSync(spare, "utf8"))).toEqual({ types: [] });
   expect(JSON.parse(readFileSync(project, "utf8")).project.includes).toEqual([
-    ...SWAPPED,
+    "units.ddd.json",
+    "sections.ddd.json",
+    "constants.ddd.json",
+    "rasterz.ddd.json",
+    "pump.ddd.json",
     "spare.ddd.json",
   ]);
 });

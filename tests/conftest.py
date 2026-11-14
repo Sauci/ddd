@@ -325,7 +325,15 @@ def build_backends(**options: Any) -> list[Backend]:
         raise TypeError(msg)
     backends: list[Backend] = [CBackend(template_dir, COptions(const_inputs=const_inputs))]
     if emit_a2l:
-        backends.append(A2lBackend(A2lOptions(byte_order=byte_order, addresses=addresses or {})))
+        backends.append(
+            A2lBackend(
+                A2lOptions(
+                    byte_order=byte_order,
+                    addresses=addresses or {},
+                    has_address_source=bool(addresses),
+                )
+            )
+        )
     return backends
 
 

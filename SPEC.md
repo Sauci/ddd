@@ -794,11 +794,31 @@ project rather than a description of one.
 
 | key | meaning |
 | --- | --- |
-| `format` | version of this document format, raised only when its shape changes; today `1` |
+| `format` | version of this document format, raised only when its shape changes; `1`, or `2` for a record with an `origin`, which is the highest this version understands |
 | `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project need not |
 | `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and written as the empty string `""`, never as `null`, when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
+| `origin` | present only for a project description given to the build as `PROJECT`, a file somebody wrote and the build only reads, and then `given`; `ddd build-info` takes it as `--origin` and writes it for `given` alone, and the CMake integration passes the one of the mode `ddd_generate` was called in. A record of a description the build collected out of the C link closure, and writes again at every configure, has no such key, as no record of format `1` has; `collected` is what `--origin` says for it and what a record without the key is read as everywhere, and is never written |
 | `strict` | whether the build reports warnings as errors |
 | `severity` | the severity overrides the build applies, as `check=severity` ([section 4](#4-consistency-checks)), in the order given |
+
+The `origin` key is what lets a tool tell a description the build writes from one it was
+given: where `ddd_generate` is given a `PROJECT` and an `OUTPUT_DIRECTORY` that is the
+description's own directory, the record lies beside a hand-written project and names it. The
+browser interface edits a project whose record says `given` and refuses to write into any other
+named by its record, the next configure writing a collected description again. A record without
+the key is read as `collected`, which is what it was taken for before the key existed: reading it
+as `given` would open every build made before to edits the next configure undoes, and a project
+given with such a record beside it stays refused until the build is configured again. The key is
+named `origin` and not `description`, which is a declaration's free text in the description files
+([section 3.2](#32-software-component-description)).
+
+The key is written for a given description alone, and that record is stamped `2`: the record is
+a closed object, so a reader that does not know the key fails the record. A DDD from 0.11.0 on
+declines a record stamped past its format as written by a newer DDD and says so, and an older one
+skips it in silence, as it skips any record it cannot validate. The record of a collected
+description keeps the shape of format `1` and is stamped `1`, which every DDD that read a record
+before reads still, so what this costs is a given description's record alone. A reader of this
+version reads a record of format `1` and of format `2` alike.
 
 The path in `project` is recorded and never checked when the record is written: in the
 collected mode the description is produced at the end of the configure run, after the
@@ -1327,8 +1347,9 @@ Errors:
   found. Fixed severity, because a project cannot be interpreted without the plugins it names.
 - `plugin-invalid`: a plugin module raises or exits the interpreter on import, exposes no
   `PLUGIN`, exposes one that is malformed, or claims a name another plugin already has, and, in
-  the language server only, a hook or a model of the plugin's own that raises or exits while a
-  file is checked or while a project is read to find out whether it contains an open file
+  the language server, and beside the listing of `ddd sources` and `ddd artefacts`, a hook or a
+  model of the plugin's own that raises or exits while a file is checked or while a project is
+  read to find out whether it contains an open file, or while a block is validated
   ([section 3.11](#311-plugins)). Fixed severity, for the same reason.
 - `unknown-extension`: an `extensions` block names a plugin the project does not load. A block
   only means something to the plugin that owns it; relaxing the check is how a project
@@ -1452,9 +1473,12 @@ Warnings:
   to read both.
 - `address-missing`: an object the A2L carries gets no address from the address map or the
   image the run was given. It fires for a map only when the map has at least one entry:
-  without a map, or with an empty one, every address is zero by construction, which is the
-  run a build makes
-  before it has linked anything ([section 7.1](#71-build-system-integration)). With one, a
+  without a map, or with an empty one, every address is zero by construction. That is the run
+  a build makes before it has linked anything, and it is as well the step after the link
+  when the map it reads has no entry, one the project's step extracted nothing into among
+  them ([section 7.1](#71-build-system-integration)): neither is `address-missing`, so
+  `--strict` does not fail either, and the A2L says so itself
+  ([section 6](#6-address-information)). With one, a
   symbol the map omits is written at address zero, and a calibration tool reads and writes
   there as readily as anywhere else. It is one finding per run, naming up to five of the
   uncovered objects and counting the rest, with a note naming, the same way, the entries of
@@ -1776,9 +1800,12 @@ no file; the project wide file defines them like any other.
 The build system can name what it compiles. The rule above lets it derive the generated
 files from the template directory, and a `{component}` template is the one entry it cannot
 resolve, because the component names come out of the description files and, for an image,
-the subset that matters comes out of its link graph. A generated header survives that,
-because a consumer depends on the directory it lives in rather than on its name; a source
-has to be named before it can be compiled.
+the subset that matters comes out of its link graph. A generated header survives that: a
+consumer finds it through the directory it lives in, and the build integration declares it
+under the name it reads when the build is configured, so that its readers are compiled again
+when it changes ([section 7.1](#71-build-system-integration)). A source has to be named
+before it can be compiled, and a name read at configure time is one a renamed component
+makes stale until the build is configured again.
 
 The definitions reach the image whole. An object that no compiled code references, for
 example a measurement only the calibration tool reads, has nothing to pull it out of a
@@ -1867,11 +1894,12 @@ ASAM MCD-2 MC output containing:
 The A2L is written as `<project name>.a2l` into the output directory (`-o`), beside the C
 sources; a component generated on its own names the file after the component. The file is
 UTF-8 and opens with a UTF-8 byte order mark, then the generator comment and
-`ASAP2_VERSION 1 61`, and holds one `PROJECT` holding one `MODULE`, both named
-after the project ([section 3.1](#31-project-description)). The mark is the encoding
-declaration: ASAP2 1.6.1 section 1.5 says a reader detects the encoding from a byte order
-mark and otherwise reads the file as ISO-8859-1, and the `ENCODING` keyword that would say
-it in words arrives only with 1.7. Without the mark a unit such as `°C`, written UTF-8,
+`ASAP2_VERSION 1 61` - followed, in a file written with no address source, by a comment
+saying so ([section 6](#6-address-information)) - and holds one `PROJECT` holding one
+`MODULE`, both named after the project ([section 3.1](#31-project-description)). The mark
+is the encoding declaration: ASAP2 1.6.1 section 1.5 says a reader detects the encoding from
+a byte order mark and otherwise reads the file as ISO-8859-1, and the `ENCODING` keyword that
+would say it in words arrives only with 1.7. Without the mark a unit such as `°C`, written UTF-8,
 reaches a tool as `Â°C` or stops its parser; no other artefact carries one
 ([section 5.1](#51-c-code)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
@@ -2054,7 +2082,12 @@ A map with entries, or an image, that leaves an object of the A2L uncovered is
 `address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under
 `--strict`, and a run that reports it as an error writes nothing rather than a file whose
 addresses it has just been told are incomplete, unless `--force` asks for the file anyway
-([section 7](#7-tool-interface)). `ddd generate a2l` writes the A2L alone - no C is rendered
+([section 7](#7-tool-interface)). A run given neither, or given a map with no entry, has no
+address source: every address of its A2L is `0x00000000`, and no `address-missing` reports
+it, an empty map naming no object for the A2L to miss, and `--strict` does not fail it,
+so the file says so itself, on the line under `ASAP2_VERSION`:
+`/* written with no address source: every address below is 0x00000000 */`.
+`ddd generate a2l` writes the A2L alone - no C is rendered
 and no template directory is accepted - so the post-link run regenerates the A2L without
 touching the sources the image was built from. Reading IEEE-695 images, and cross-checking
 the type of each linked variable against its declaration, is *planned*.
@@ -2128,8 +2161,14 @@ the description files a project is built out of
 re-run its configure step when one changes; in JSON the paths are a `sources` list
 beside the findings, and in text the findings follow the listing on stderr the same way;
 the plugin modules the project names ([section 3.11](#311-plugins)) are among them,
-each by the file it was imported from, so that an edited plugin re-runs the generation
-as an edited component does); recording
+each by the file it was imported from, and every `.py` file of one that is a package,
+so that an edited plugin re-runs the generation as an edited component does; a plugin
+named by a `.py` path is listed whether or not it imports, as a missing include is, and so is
+one named as a module, by the file the finder locates for it; a plugin that does not import
+or whose model raises is a `plugin-invalid` finding beside the listing (a missing one,
+`plugin-not-found`), so that the edit repairing it is heard of; `-W` and `--strict` grade
+those findings as they grade `check`'s, so that a check a build relaxed is not reported
+by it, and change neither the listing nor the exit code); recording
 how a
 build is configured to run DDD (`ddd build-info`,
 [section 3.6](#36-build-record)), so that a tool outside the build can apply the same
@@ -2207,9 +2246,13 @@ the run whose findings its reader needs; the exit code is still 2.
 `dump` reports them on stderr, as it reports everything. A findings exit is reserved for
 findings reported *as errors*: a run whose findings are all warnings is a clean run unless
 `--strict` says otherwise. `ddd sources`
-and `ddd artefacts` exit 0 whatever the findings, because what a project is built out
-of does not depend on whether it is consistent; they exit 1 only when the root cannot
-be read. `ddd generate` with error findings writes nothing, because a stale artefact is
+and `ddd artefacts` exit 0 whatever the findings, a plugin whose model raises among them,
+because what a project is built out of does not depend on whether it is consistent; they
+exit 1 only when the root cannot be read. A plugin's model that raises ends the other
+commands with exit 2 as a hook that raises does, the findings gathered first reported
+first, in json as the document.
+
+`ddd generate` with error findings writes nothing, because a stale artefact is
 preferable to a wrong one written halfway into a build, unless `--force` asks for the
 outputs anyway; the exit stays a findings exit in either case. `ddd generate --dry-run`
 reports what it would write and writes nothing. A run that does write writes every artefact
@@ -2236,14 +2279,22 @@ named by the ones that do: `types`, `units`, `sections`, `constants` and `raster
 `ddd_generate(<image> ...)` generates every artefact of an image - the built-in ones and
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
-built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30, and
-a registered file not named `*.ddd.json` is a configure error; so, in both calls, is a
-keyword given no value, which the error names: a variable that expanded to nothing reads
-exactly like a keyword nobody gave, and each one silently changes what the call does; it defines an on-demand
+built-in ones without being declared as outputs, their names being the plugin's own, which
+the module cannot know before it runs (below). `ddd_add_component` needs CMake 3.30. A
+registered file not named `*.ddd.json` is a configure error, and so is one whose top level key
+is `project`, where the file exists when the build is configured - one the build writes later
+passes, saying nothing of its kind. A project file is named with `PROJECT` of `ddd_generate`,
+which follows what it includes, where nothing follows the includes of a registered file. So,
+in both calls, is a keyword given no value, which the error names: a variable that expanded to
+nothing reads exactly like a keyword nobody gave, and each one silently changes what the call
+does - the quoted form `ADDRESS_MAP "${DDD_MAP}"`, a keyword followed by an empty argument,
+included, and so is an empty argument among the values of a keyword taking several, which
+would otherwise drop out of the list without a word. `ddd_add_component` defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
 declares no interface of its own; a registered file whose JSON does not parse at all is
-checked like a component, what is wrong with it being exactly what that check reports. `ddd_generate` generates into the build tree and defines
+checked like a component, what is wrong with it being exactly what that check reports.
+`ddd_generate` generates into the build tree and defines
 two libraries, named after the image without its extension: an interface library
 `<stem>_ddd_headers`, carrying the output directory as an include directory and, in the
 collected mode, the compile usage described at the end of this section; and an object
@@ -2267,32 +2318,109 @@ components and with them the `GROUP`s, while the objects themselves sort by name
 ([section 5.1](#51-c-code)). With `PROJECT <file>` a
 hand written project description is used instead, which is the mode for an older CMake, or
 for a project layout the link graph does not mirror; `NAME` is then ignored in favour of
-the name written inside the file. An `ADDRESS_MAP <file>` names the address map of
-[section 6](#6-address-information): the map is a dependency of the generation, so
-rewriting it after linking is what makes the next build run DDD a second time with real
-addresses ([section 1.6](#16-position-in-the-build-process)), and the C sources that second
-run re-renders are byte identical and trigger no rebuild ([section 5.1](#51-c-code)). A
-map named inside the build tree that does not exist yet is seeded empty at configure time,
-so that the first build runs with address zero instead of failing over a file only the
-link can produce; an empty map raises no `address-missing`
-([section 4](#4-consistency-checks)), so that first build passes under `STRICT` as well.
-With `NO_A2L` the map is neither seeded nor a dependency, the A2L being the only artefact
-that reads it.
+the name written inside the file. That file is read when the build is configured - the files
+it is made of, its plugins and its name - so it has to exist, parse and name its project by
+then, and one that does not, a file the build has yet to write among them, is a configure
+error naming it; one that does all three and that the tool cannot resolve all the same, a
+root failing its schema otherwise, is warned of, and the generation then depends on that
+file alone, as does the configure step.
+The output directory holds what the configure step writes there - the build record and, in
+the collected mode, the project description - which no step of the build writes again, so
+the configure step watches the record: a build that finds it gone configures again first,
+and writes both back. An `ADDRESS_MAP <file>` names the address map of
+[section 6](#6-address-information), which a step of the project's extracts from the image
+after the link: the A2L is written after the link out of the map, as `ADDRESSES_FROM_IMAGE`
+below writes it out of the image, so that the A2L of a build holds the addresses of the
+image that build linked ([section 1.6](#16-position-in-the-build-process)). A map named
+inside the build tree that does not exist yet is seeded empty at configure time, a build
+refusing to start for want of an input nothing produces, and the step after the link reads
+it once the project's step has written it; an empty map raises no `address-missing`
+([section 4](#4-consistency-checks)), and the A2L written with it says so
+([section 6](#6-address-information)). With `NO_A2L` the map is neither seeded nor read, the
+A2L being the only artefact that reads it.
+
+The generation declares as its outputs the files the template names give away, the A2L
+(unless `ADDRESSES_FROM_IMAGE` or `ADDRESS_MAP` has the step after the link write it) and
+the dictionary, and as its byproducts the files of each `{component}` template, one for every
+component of the image - in the collected mode every component it links, with `PROJECT` every
+component the project names, whatever the image links - named when the build is configured:
+`ddd_add_component` reads the component name of each file it registers, and `ddd_generate`
+follows the image's link graph to the components it links once the directory calling it is
+done, so that an image may be linked after the call, in that directory or one it adds; with
+`PROJECT` the names are read off the files `ddd sources` lists. A link behind
+`$<CONFIG:...>` alone is read for the `CMAKE_BUILD_TYPE` configured, as CMake reads it for the
+one configuration of a single-config generator; a link behind any other generator expression,
+one nested in that `$<CONFIG:...>` among them, cannot be evaluated when the names are read,
+so every component it names is declared
+whatever the expression comes to, and one whose header is then never written makes the
+generation run at every build under Ninja. A component the image reaches only through a link
+made, or a library defined, after that directory is done is a configure error naming the
+component, raised once the top directory is done, and so is one registered on a target the
+image reached in time only once that directory was done, the error naming it as registered
+late: the generation was added without its header, which a command cannot be given
+afterwards. A declared header is one the build looks at again after
+the generation ran, so the build after a description change compiles the components whose
+header changed, and only those, rather than linking the new definitions with readers compiled
+against the old header. A component renamed in its description therefore needs the build
+configured again, until which, under Ninja, the generation runs at every build and a change of
+that component's header reaches its readers a build late; with `PROJECT` that happens by
+itself, the files of the project being dependencies of the configure step. A plugin's files are
+declared by nothing, so under Ninja a change of one reaches a component compiling it a build
+late, however that component is ordered after the generation; a description change reaching
+one reaches the dictionary too, which the generation declares, so a component whose object
+depends on the dictionary - `OBJECT_DEPENDS` on the path of `DDD_DICTIONARY` - is compiled
+again in that build, while an edit of the plugin's own code leaves the dictionary as it was and
+still reaches it a build late. Under a Makefile generator the build after either is right, and
+a clean leaves a plugin's files under either generator. With `PROJECT`
+each `includes` entry is also globbed with `CONFIGURE_DEPENDS`, those of the projects it
+includes among them, so that a file a wildcard starts or stops matching runs the configure
+step, and the list of the files the project is made of, which the configure step keeps in the
+build tree, as `<stem>_ddd_sources.txt` and rewrites only when it differs, is an input of the
+generation: the build after a file left a wildcard regenerates, and the one after has nothing
+to do. A relative entry is read from the directory of the file naming it whatever characters that
+directory has. A registered file that does not parse when the build is configured names no
+component and is a dependency of the configure step until it does. One that does not exist
+yet, being generated into the build tree later, names no component either and says nothing of its
+kind, and no file the build writes is a dependency of the configure step; it is watched instead,
+as a glob of its own path with `CONFIGURE_DEPENDS`, so that the first build to find it there
+configures again before anything else and reads both, and the configure step says so, naming the
+file. Until then its `<target>.ddd` checks it as a component. The generation depends on every
+`*.jinja2` below the template directory, which it reads as a directory whatever characters it has -
+a template in a subdirectory is never rendered and may be imported or included - and on the
+list of them, which the configure step keeps in the build tree as `<stem>_ddd_templates.txt` and
+rewrites only when it differs, so that a template removed runs the generation, which takes back
+the file it rendered. Under a Makefile generator, which looks at no file again once a step has
+run, each of the two steps - the generation and the A2L's after the link - has a stamp in the
+output directory for its one output, touched by every run that succeeds: a run that changed
+nothing leaves the build after it nothing to do, and a file it left as it was compiles nothing
+again. Each file a step of the project may read by its path - the A2L, the dictionary and the
+files the template names give away - is the output of a rule of its own there, which does nothing
+and depends on the step's target, so that a step depending on the file, in the directory calling
+`ddd_generate`, runs once the step writing it has, the generation or, for the A2L written after
+the link, `<stem>_ddd_a2l`; a `{component}` file, and any file read from another directory, is
+known to make by no rule, and a step reading one depends on `<stem>_ddd_generation`, or on
+`<stem>_ddd_a2l` for that A2L, instead. A file of the step deleted by hand under make is not
+written again until the step runs for another reason - every build reading it stops on it until
+then - and deleting the stamp, or a clean, runs it.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
-([section 6](#6-address-information)), so that one build gives the complete A2L: the
-generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after the
-link runs `ddd generate a2l --image` over the image, the A2L its output. The step depends on
-the image and on what the project is read from - its description, the files it is collected
-or included from, the `.py` plugins and the tool - so it runs again when the image relinks or
-a description changes, and under Ninja never otherwise; under Make it also runs at every
-build that follows a run of it leaving the A2L unchanged. A target `<stem>_ddd_a2l`, built by
-default, drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it
-into the directory the generation before the link writes into, whose manifest keeps either run
-from taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`,
-`SEVERITY` and `BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image
-cannot place stops the build. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L`
-is a configure error naming both.
+([section 6](#6-address-information)). With either keyword one build gives the complete A2L:
+the generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after
+the link runs `ddd generate a2l` over the image with `--image`, or over the map with
+`--address-map`, the A2L its output. The step depends on the image, on the map with
+`ADDRESS_MAP`, and on what the project is read from - its description, the files it is
+collected or included from, the `.py` plugins, the list of those files that `PROJECT` keeps in
+the build tree, and the tool - so it runs again when the image relinks, the map changes or a
+description does, and never otherwise. A target `<stem>_ddd_a2l`, built by default,
+drives it; a build that names its targets, `cmake --build --target <image>` or
+`<stem>_ddd_generation` say, does not build it and leaves the A2L of the last build that did,
+or none on a first build. The A2L keeps its path and its `DDD_A2L` property, and the step
+writes it into the directory the generation before the link writes into, whose manifest keeps
+either run from taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`,
+`SEVERITY` and `BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot
+place, or a map with entries leaves out, stops the build; a map with none, read after the link,
+does not. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L` is a configure error
+naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,
@@ -2325,14 +2453,20 @@ its one `ddd generate`, so that the dictionary is part of the same write as the 
 a run failing its checks writes none of them; its path is published as the image's
 `DDD_DICTIONARY` property, and `NO_DICTIONARY` leaves the file and the property out. The tool
 itself is found by `find_program`
-into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
-upgraded DDD regenerates; multi-config generators are refused at configure time, because
-the generated files have one path that every configuration would write to. The module and
+into the cache variable `DDD_EXECUTABLE` and that file is a dependency of the generation, so
+an executable replaced by an upgraded DDD regenerates, and a wrapper script running
+`python -m ddd` is the file depended on, so an upgrade behind it does not; multi-config
+generators are refused at configure time, because
+the generated files have one path that every configuration would write to, and so is a
+directory calling `ddd_generate` in which C is not enabled by the time it is done, the
+definitions the templates render being C and compiled there. The module and
 the tool **shall** be one release: including the module runs `ddd --version` and refuses,
 naming both, a tool spelling another version than the module does, because every option the
 module passes is checked when the build runs it and a mismatch is otherwise an unrecognised
 argument at build time, or a silent build under the option set of a release nobody is
-running.
+running. The answer is kept for one configure run alone, however many directories include the
+module: the next configure asks again, so that a tool upgraded where it stands - another
+release installed at the same path - is refused too.
 
 In the collected mode the interface library carries the compile usage of every registered
 target - include directories, compile definitions and compile options, never link edges - so

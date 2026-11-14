@@ -1267,17 +1267,23 @@ def _generated(project: Path) -> Generated | None:
 
     What ``ddd_generate`` leaves where it collects a project out of an image's link closure: the
     description and the record of that build, written into one directory, its output directory.
-    A project somebody wrote has no such record beside it: given with ``PROJECT``, its record lies
-    in the build tree and names it from there. Looked for beside the description whatever build
+    A project somebody wrote has the record beside it too where its output directory is the
+    description's own, and that record says so: its ``origin`` is ``given``, the description given
+    to the build as ``PROJECT``, which the build does not write - ``None``. A record without the
+    key, as every record is that a build wrote before it and every one of a collected description,
+    or saying anything else, is the build's: reading it as given would open each build made before
+    to edits the next configure undoes, and a project given with such a record beside it stays
+    refused until the build is configured again. Looked for beside the description whatever build
     directories the session was given, which are where it finds the builds whose severities
     apply: a build tree under any other name is the build's all the same.
 
-    Read for what it names alone - the project, and the image for the sentence - by the loader's
-    reading of json, and not as :func:`ddd.lsp.discovery.load_builds` reads a record. That reader
-    asks whether this version can apply the record's severities, and declines one written by a
-    newer DDD, in a format past its own, or naming a check it has not got; the description beside
-    such a record is written again at every configure all the same. A record that does not read
-    as json, or names no project by a path, names nothing here."""
+    Read for what it names alone - the project, whether it was given, and the image for the
+    sentence - by the loader's reading of json, and not as :func:`ddd.lsp.discovery.load_builds`
+    reads a record. That reader asks whether this version can apply the record's severities, and
+    declines one written by a newer DDD, in a format past its own, or naming a check it has not
+    got; the description beside such a record, unless it says it was given, is written again at
+    every configure all the same. A record that does not read as json, or names no project by a
+    path, names nothing here."""
     record = _read_json(project.parent / BUILD_INFO_FILENAME)
     if not isinstance(record, dict):
         return None
@@ -1285,6 +1291,11 @@ def _generated(project: Path) -> Generated | None:
     if not isinstance(named, str):
         return None
     if resolve_path(Path(named)) != project:
+        return None
+    # Only a record saying the description was given to the build, as PROJECT, leaves it to the
+    # person who wrote it. One without the key - every record a build wrote before the key, and
+    # every record of a collected description - or saying anything else is the build's.
+    if record.get("origin") == "given":
         return None
     image = record.get("image")
     if not isinstance(image, str):

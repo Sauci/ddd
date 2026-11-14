@@ -452,7 +452,9 @@ reproducible.
 Before the address map is applied every address in the a2l is ``0x00000000``; afterwards the
 objects named in the map carry their real address, and the ones that are not named keep zero
 and are reported once, as the ``address-missing`` warning above - which ``--strict`` turns
-into an error, so that a post-link build cannot ship an a2l with a hole in it.
+into an error, so that a build whose map names some of the objects cannot ship an a2l with a
+hole in it. A map that names none of them is not reported, ``--strict`` or not, and the a2l
+says so itself.
 ``SYMBOL_LINK`` is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
 have the symbol names in the file:

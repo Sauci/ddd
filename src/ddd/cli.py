@@ -436,6 +436,17 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     )
     build_info.add_argument("--image", default="", help="name of the build target this belongs to")
     build_info.add_argument(
+        "--origin",
+        choices=("collected", "given"),
+        default="collected",
+        help=(
+            "where the project description came from: 'given' to the build as a file somebody "
+            "wrote, which stamps the record format 2 and which ddd gui then edits, or "
+            "'collected' by the build out of the link closure of the image, written again at "
+            "every configure (the default), which ddd gui refuses to write into"
+        ),
+    )
+    build_info.add_argument(
         "-W",
         "--severity",
         action="append",
@@ -509,6 +520,17 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     )
     sources.add_argument("project", type=Path, help="project or component description file")
     sources.add_argument("--format", choices=["text", "json"], default="text", help="output format")
+    sources.add_argument(
+        "-W",
+        "--severity",
+        action="append",
+        default=[],
+        metavar="CHECK=SEVERITY",
+        help="change the severity of a check the findings are reported with; repeatable",
+    )
+    sources.add_argument(
+        "--strict", action="store_true", help="report warnings as errors, as the build does"
+    )
     sources.set_defaults(handler=_command_sources)
 
     checks = subparsers.add_parser("checks", help="list the available consistency checks")
@@ -862,7 +884,8 @@ def _command_check(args: argparse.Namespace) -> int:
         components = len(dictionary.components)
         print(
             f"ok: {count} variable{'s' if count != 1 else ''} in "
-            f"{components} component{'s' if components != 1 else ''} are consistent",
+            f"{components} component{'s' if components != 1 else ''} "
+            f"{'is' if count == 1 else 'are'} consistent",
             file=sys.stderr,
         )
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
@@ -942,8 +965,9 @@ def _check_address_coverage(
     """Report the objects a supplied address map does not cover, and the entries nobody wants.
 
     Only when a map with entries was given: without one, or with an empty one, every address
-    is zero on purpose, because that is the run a build makes before it has linked anything.
-    With entries, a symbol the map does not
+    is zero by construction, and nothing is reported or failed, ``--strict`` included. That is
+    the run a build makes before it has linked anything, and as well a step after the link
+    whose map holds no entry. With entries, a symbol the map does not
     carry silently became address zero - and the map is written by a linker script or a patch
     tool against the names of one build, so a renamed variable or a stale file covers some of
     the objects and not the rest. What comes out is an a2l pointing a calibration tool at
@@ -958,10 +982,13 @@ def _check_address_coverage(
     anything, and this note is where the rest are accounted for.
     """
     if not addresses:
-        # The run a build makes before it has linked: the cmake module seeds an empty map so
-        # that the two-run flow has a file to depend on, and a strict first build that failed
-        # on it could never reach the second run that fills the map. A map that names some
-        # objects and not others is another thing, and is reported below.
+        # An empty map is every address zero by construction, and it is not failed under
+        # --strict either: the run a build makes before it has linked reads one, the cmake
+        # module seeding it so that the build has a file to depend on, and a strict first build
+        # that failed on it could never reach the step that fills the map. The step after the
+        # link reads one too when nothing was extracted into the map, and passes the same
+        # way. A map that names some objects and not others is another thing, and is
+        # reported below.
         return
     missing = [symbol for symbol in carried if symbol not in addresses]
     if not missing:
@@ -1103,7 +1130,7 @@ def _dictionary_text(dictionary: DataDictionary) -> str:
 
 
 def _dictionary_file(
-    dictionary: DataDictionary, path: Path, artefacts: Sequence[GeneratedFile]
+    dictionary: DataDictionary, path: Path, artefacts: Sequence[GeneratedFile], output_dir: Path
 ) -> GeneratedFile:
     """``generate --dictionary``: the dictionary as one more file of the run's single write.
 
@@ -1113,14 +1140,23 @@ def _dictionary_file(
     the one typed, relative to the working directory like every path on the command line
     rather than a file a backend names inside the output directory, so it is resolved before
     it is weighed against the files the backends claim; a clash is refused before anything is
-    written, as :func:`~ddd.backends.base.render` refuses two backends claiming one file.
+    written, as :func:`~ddd.backends.base.render` refuses two backends claiming one file. The
+    name the run's manifest is kept under in the output directory is refused the same way: a
+    dictionary written there would be taken, by the next run, for the record of what was written.
     """
     from ddd.backends import DICTIONARY_ARTEFACT, GeneratedFile
+    from ddd.backends.base import MANIFEST_NAME
 
     if path.resolve() in {artefact.path for artefact in artefacts}:
         msg = (
             f"the dictionary and an artefact of this run would both write '{path.name}'; "
             "give --dictionary another file"
+        )
+        raise ValueError(msg)
+    if path.resolve() == output_dir.resolve() / MANIFEST_NAME:
+        msg = (
+            f"the dictionary would be written as '{MANIFEST_NAME}', which is the name the "
+            "manifest of this run is kept under; give --dictionary another file"
         )
         raise ValueError(msg)
     return GeneratedFile(path, _dictionary_text(dictionary), DICTIONARY_ARTEFACT)
@@ -1223,6 +1259,9 @@ def _command_generate(args: argparse.Namespace) -> int:
                     A2lOptions(
                         byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
                         addresses=addresses,
+                        # An image is a source whatever it places, the finding naming what it
+                        # does not; a map is one once it has an entry, as for that finding.
+                        has_address_source=image_path is not None or bool(addresses),
                     ),
                     GENERATOR,
                 )
@@ -1256,7 +1295,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         if args.dictionary is not None:
             _refuse_a_directory(args.dictionary, "--dictionary")
             _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
-            files.append(_dictionary_file(dictionary, args.dictionary, files))
+            files.append(_dictionary_file(dictionary, args.dictionary, files, args.output_dir))
             produced.add(DICTIONARY_ARTEFACT)
         try:
             results = write(
@@ -1641,6 +1680,7 @@ def _command_build_info(args: argparse.Namespace) -> int:
         # Absolute, because whoever reads this file is not in the directory the build ran in.
         project=args.project.resolve().as_posix(),
         image=args.image,
+        origin=args.origin,
         strict=args.strict,
         severity=tuple(args.severity),
     )
@@ -1720,7 +1760,8 @@ def _command_artefacts(args: argparse.Namespace) -> int:
     Tolerant in the same way as ``sources`` and for the same reason: which artefacts exist
     follows from the plugins a project names, not from whether its interfaces agree, and a
     build asking what it can produce deserves an answer while the project is still being
-    fixed. Only a root file that cannot be read at all is fatal.
+    fixed. Only a root file that cannot be read at all is fatal: a plugin whose model raises
+    is a ``plugin-invalid`` finding beside the listing.
 
     The files an artefact writes are deliberately not reported. A plugin decides them from
     the resolved dictionary, so they are knowable only once the project has been assembled,
@@ -1737,7 +1778,7 @@ def _command_artefacts(args: argparse.Namespace) -> int:
         plugins: tuple[Plugin, ...] = _plugins_from_arguments(args.plugin)
         unreadable = False
     else:
-        workspace = load_workspace(args.project, bag)
+        workspace = load_workspace(args.project, bag, plugin_defects_are_findings=True)
         plugins = () if workspace is None else workspace.plugins
         unreadable = workspace is None
 
@@ -1801,11 +1842,20 @@ def _command_sources(args: argparse.Namespace) -> int:
     and the exit code says so in both output formats. A finding beyond that - a missing
     include, say - is still reported, beside the listing rather than instead of it: on
     stderr in text, already carried by the diagnostics document in json.
+
+    What the project names is listed whether or not it loaded: a plugin that stopped
+    importing (``plugin-invalid``), is missing (``plugin-not-found``), or whose model raises
+    (``plugin-invalid``) is a finding beside the listing, and its file stays among the
+    sources where one is known, so that the build which hears of the defect also hears of its
+    repair. ``-W`` and ``--strict`` mean what they mean on ``check``: they grade what is
+    reported, never what is listed, and the exit code stays 0.
     """
     from ddd.loading import load_workspace
 
-    bag = DiagnosticBag()
-    workspace = load_workspace(args.project, bag)
+    # The policy the build runs under, so that a check it relaxed is not reported here either:
+    # the findings only say what the other commands would say of the same project.
+    bag = DiagnosticBag(SeverityPolicy.from_strings(args.severity, strict=args.strict))
+    workspace = load_workspace(args.project, bag, plugin_defects_are_findings=True)
     if args.format == "json":
         payload = {
             "sources": [path.as_posix() for path in workspace.sources()]
@@ -1893,13 +1943,16 @@ def _analyze(
         [*standalone, *args.severity], strict=args.strict, standalone=bool(standalone)
     )
     bag = DiagnosticBag(policy)
-    workspace = load_workspace(args.project, bag)
-    if workspace is None:
-        # Nothing was read, so nothing says which plugins this project names: holding a `-W`
-        # naming one of their checks to an empty registry would blame the command line for a
-        # file the run could not open.
-        return None, bag
+    # The load is inside the block too: a plugin's model that raises while a block is validated
+    # is a usage error like a hook that raises, and the findings gathered before it are the
+    # project's, printed first - in json, as the document the format promises.
     with _reported_on_failure(bag, args.format, stream):
+        workspace = load_workspace(args.project, bag)
+        if workspace is None:
+            # Nothing was read, so nothing says which plugins this project names: holding a
+            # `-W` naming one of their checks to an empty registry would blame the command
+            # line for a file the run could not open.
+            return None, bag
         # An override naming a plugin check is verified once the project is read - only then
         # is it known which plugins loaded - so this has to sit inside the block: the
         # load-time findings gathered by then are reported before the usage error, as

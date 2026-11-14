@@ -17,6 +17,7 @@ from typing import Any, ClassVar
 
 import elftools
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from conftest import (
     DEMO,
@@ -1850,13 +1851,148 @@ class TestSources:
         assert main(["sources", str(LAYOUT), "--format", "json"]) == EXIT_OK
         assert PLUGIN_FILE.as_posix() in json.loads(capsys.readouterr().out)["sources"]
 
-    def test_a_plugin_that_did_not_load_contributes_no_source(
+    @pytest.mark.parametrize(
+        ("body", "check", "said"),
+        [
+            pytest.param(None, "plugin-not-found", "does not exist", id="missing"),
+            pytest.param("def broken(:\n", "plugin-invalid", "invalid syntax", id="not importable"),
+            pytest.param("X = 1\n", "plugin-invalid", "exposes no PLUGIN", id="no plugin"),
+        ],
+    )
+    def test_a_plugin_that_did_not_load_is_listed_all_the_same(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        body: str | None,
+        check: str,
+        said: str,
+    ) -> None:
+        """What the project names is what a build watches, whether or not it loaded - as a
+        missing include already is: left out of the list, the plugin that stopped importing
+        was dropped from the dependencies of the next configure, and the build after its repair
+        (or its next edit) had nothing to do. The finding says why, beside the listing."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["plug.py"])})
+        if body is not None:
+            (tmp_path / "plug.py").write_text(body, encoding="utf-8")
+        assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        captured = capsys.readouterr()
+        assert (tmp_path / "plug.py").resolve().as_posix() in captured.out.splitlines()
+        assert f"error[{check}]" in captured.err
+        assert said in captured.err
+
+    def test_a_plugin_that_did_not_load_is_listed_in_json_too(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The finding says why; the list stays what a build can watch."""
-        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["missing.py"])})
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["plug.py"])})
+        (tmp_path / "plug.py").write_text("def broken(:\n", encoding="utf-8")
+        assert main(["sources", str(tmp_path / "p.ddd.json"), "--format", "json"]) == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert (tmp_path / "plug.py").resolve().as_posix() in document["sources"]
+        assert [entry["check"] for entry in document["diagnostics"]] == ["plugin-invalid"]
+
+    def test_a_package_that_stopped_importing_lists_every_module_of_it_still(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A module spelling that fails to import is in no ``sys.modules``, which the listing
+        read its file from: the breaking edit of a package under development dropped all of
+        it, and the repair was ``no work to do``. The finder locates it without running it."""
+        package = tmp_path / "site" / "broken_pkg"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("def broken(:\n", encoding="utf-8")
+        (package / "impl.py").write_text("", encoding="utf-8")
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["broken_pkg"])})
+        monkeypatch.syspath_prepend(str(tmp_path / "site"))
         assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
-        assert not any(line.endswith(".py") for line in capsys.readouterr().out.splitlines())
+        captured = capsys.readouterr()
+        assert {
+            (package.resolve() / name).as_posix() for name in ("__init__.py", "impl.py")
+        } <= set(captured.out.splitlines())
+        assert "error[plugin-invalid]" in captured.err
+
+    def test_a_package_is_listed_once_per_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ddd.plugins import plugin_files
+
+        package = tmp_path / "once_pkg"
+        package.mkdir()
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "impl.py").write_text("", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        assert plugin_files("once_pkg", tmp_path) == (
+            (package / "__init__.py").resolve(),
+            (package / "impl.py").resolve(),
+        )
+
+    @pytest.mark.parametrize(
+        "spelling", ["no_such_module_zz", "sys", "namespace_dir", "bad_parent.child"]
+    )
+    def test_a_module_with_no_file_to_locate_lists_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spelling: str
+    ) -> None:
+        """Not found, built in, a namespace package, and a dotted name whose parent raises
+        when the finder imports it: each has no file, and none of them raises here."""
+        from ddd.plugins import plugin_files
+
+        (tmp_path / "namespace_dir").mkdir()
+        (tmp_path / "bad_parent").mkdir()
+        (tmp_path / "bad_parent" / "__init__.py").write_text("raise RuntimeError('x')\n", "utf-8")
+        (tmp_path / "bad_parent" / "child.py").write_text("", encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        try:
+            assert plugin_files(spelling, tmp_path) == ()
+        finally:
+            sys.modules.pop("bad_parent", None)
+
+    def test_the_policy_of_the_build_grades_what_is_reported_beside_the_listing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``-W`` and ``--strict`` mean what they mean on ``check``: a check the build relaxed
+        is not reported, and the listing and the exit code are what they were."""
+        write_tree(tmp_path, {"p.ddd.json": project("P", "nothing/*.ddd.json")})
+        root = str(tmp_path / "p.ddd.json")
+        assert main(["sources", root]) == EXIT_OK
+        assert "error[include-empty]" in capsys.readouterr().err
+        assert main(["sources", root, "-W", "include-empty=ignore"]) == EXIT_OK
+        relaxed = capsys.readouterr()
+        assert relaxed.err == ""
+        assert relaxed.out.splitlines() == [(tmp_path / "p.ddd.json").resolve().as_posix()]
+        assert main(["sources", root, "-W", "include-empty=warning"]) == EXIT_OK
+        assert "warning[include-empty]" in capsys.readouterr().err
+        arguments = ["sources", root, "-W", "include-empty=warning", "--strict"]
+        assert main(arguments) == EXIT_OK
+        assert "error[include-empty]" in capsys.readouterr().err
+
+    def test_a_plugin_that_is_a_package_lists_every_module_of_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A build watched ``__init__.py`` alone, so an edit of the module it imports its
+        ``PLUGIN`` from - where shared code goes - was ``no work to do``."""
+        package = tmp_path / "site" / "listed_pkg"
+        (package / "inner").mkdir(parents=True)
+        (package / "__init__.py").write_text("from listed_pkg.impl import PLUGIN\n", "utf-8")
+        (package / "impl.py").write_text(
+            "from ddd.plugins import Plugin\n\nPLUGIN = Plugin(name='listed')\n", "utf-8"
+        )
+        (package / "inner" / "__init__.py").write_text("", encoding="utf-8")
+        (package / "inner" / "deep.py").write_text("", encoding="utf-8")
+        (package / "data.json").write_text("{}", encoding="utf-8")
+        (package / "__pycache__").mkdir()
+        (package / "__pycache__" / "impl.cpython-312.pyc").write_bytes(b"")
+        write_tree(tmp_path, {"p.ddd.json": project("P", plugins=["listed_pkg"])})
+        monkeypatch.syspath_prepend(str(tmp_path / "site"))
+        try:
+            assert main(["sources", str(tmp_path / "p.ddd.json")]) == EXIT_OK
+        finally:
+            for name in ("listed_pkg", "listed_pkg.impl"):
+                sys.modules.pop(name, None)
+        listed = capsys.readouterr().out.splitlines()
+        wanted = {
+            (package.resolve() / name).as_posix()
+            for name in ("__init__.py", "impl.py", "inner/__init__.py", "inner/deep.py")
+        }
+        assert wanted <= set(listed)
+        assert not any(line.endswith((".json", ".pyc")) and "listed_pkg" in line for line in listed)
 
     def test_a_missing_include_is_reported_beside_the_listing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1950,7 +2086,10 @@ class TestBuildInfo:
         assert recorded["image"] == "firmware.elf"
         assert recorded["severity"] == ["unused-output=info"]
         assert recorded["strict"] is True
-        assert recorded["format"] == BUILD_INFO_FORMAT
+        # A collected description, which is what a record says unless it says otherwise: the
+        # record every DDD reads, in format 1, with no key of the description's origin.
+        assert recorded["format"] == 1
+        assert "origin" not in recorded
 
     def test_the_recorded_project_is_absolute(self, tmp_path: Path) -> None:
         """Whoever reads this file is not in the directory the build ran in."""
@@ -1962,6 +2101,96 @@ class TestBuildInfo:
         assert recorded["image"] == ""
         assert recorded["severity"] == []
         assert recorded["strict"] is False
+
+    def test_a_given_description_is_said_so_and_stamps_the_record_format_2(
+        self, tmp_path: Path
+    ) -> None:
+        """``--origin given``: the description a build was handed, as ``PROJECT``. The key is
+        written for it alone, and the record is stamped the format that has the key."""
+        target = tmp_path / "given.json"
+        assert main(["build-info", str(DEMO), "-o", str(target), "--origin", "given"]) == EXIT_OK
+        recorded = json.loads(target.read_text(encoding="utf-8"))
+        assert recorded["origin"] == "given"
+        assert recorded["format"] == BUILD_INFO_FORMAT == 2
+
+    def test_a_collected_description_is_the_record_of_format_1_without_the_key(
+        self, tmp_path: Path
+    ) -> None:
+        """With ``--origin collected`` and without it: nothing a DDD that predates the key could
+        not read, so nothing is asked of any reader in a team that has not upgraded."""
+        said = tmp_path / "collected.json"
+        unsaid = tmp_path / "unsaid.json"
+        assert main(["build-info", str(DEMO), "-o", str(said), "--origin", "collected"]) == (
+            EXIT_OK
+        )
+        assert main(["build-info", str(DEMO), "-o", str(unsaid)]) == EXIT_OK
+        assert said.read_text(encoding="utf-8") == unsaid.read_text(encoding="utf-8")
+        recorded = json.loads(said.read_text(encoding="utf-8"))
+        assert recorded["format"] == 1
+        assert set(recorded) == {"format", "project", "image", "strict", "severity"}
+
+    def test_a_record_built_without_saying_holds_collected(self) -> None:
+        """What a record without the key is, whoever reads it: the build's own description."""
+        from ddd.build_info import BuildInfo
+
+        assert BuildInfo(project="p.ddd.json").origin == "collected"
+
+    def test_an_origin_that_is_neither_is_refused(self, tmp_path: Path) -> None:
+        target = tmp_path / "ddd-build.json"
+        with pytest.raises(SystemExit) as raised:
+            main(["build-info", str(DEMO), "-o", str(target), "--origin", "guessed"])
+        assert raised.value.code == EXIT_USAGE
+        assert not target.exists()
+
+    def test_this_version_reads_the_record_of_each_format_it_understands(
+        self, tmp_path: Path
+    ) -> None:
+        from ddd.lsp.discovery import load_builds
+
+        collected = tmp_path / "collected" / "ddd-build.json"
+        given = tmp_path / "given" / "ddd-build.json"
+        assert main(["build-info", str(DEMO), "-o", str(collected)]) == EXIT_OK
+        assert main(["build-info", str(DEMO), "-o", str(given), "--origin", "given"]) == EXIT_OK
+        refused: dict[Path, str] = {}
+        builds = load_builds([collected, given], refused)
+        assert [(build.format, build.origin) for build in builds] == [
+            (1, "collected"),
+            (2, "given"),
+        ]
+        assert refused == {}
+
+    def test_only_the_record_with_the_key_is_one_an_older_reader_declines(
+        self, tmp_path: Path
+    ) -> None:
+        """A reader of format 1 validates a closed object, so a key it does not know fails the
+        record: the record of a given description carries one and is stamped 2, which a DDD
+        from 0.11.0 on declines as written by a newer DDD, and an older one skips in silence.
+        The record of a collected description is what every such reader read before."""
+        from ddd.lsp.discovery import load_builds
+
+        collected = tmp_path / "collected.json"
+        given = tmp_path / "given.json"
+        assert main(["build-info", str(DEMO), "-o", str(collected)]) == EXIT_OK
+        assert main(["build-info", str(DEMO), "-o", str(given), "--origin", "given"]) == EXIT_OK
+
+        class Older(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+            format: int
+            project: str
+            image: str
+            strict: bool
+            severity: tuple[str, ...]
+
+        assert Older.model_validate_json(collected.read_text(encoding="utf-8")).format == 1
+        with pytest.raises(ValueError, match="origin"):
+            Older.model_validate_json(given.read_text(encoding="utf-8"))
+        # The reader of the formats up to the next one, which this record is stamped past.
+        future = json.loads(given.read_text(encoding="utf-8")) | {"format": BUILD_INFO_FORMAT + 1}
+        later = tmp_path / "later.json"
+        later.write_text(json.dumps(future), encoding="utf-8")
+        refused: dict[Path, str] = {}
+        assert load_builds([later], refused) == []
+        assert "written in format 3 by a newer DDD" in refused[later]
 
     def test_a_project_that_does_not_exist_yet_is_recorded_anyway(self, tmp_path: Path) -> None:
         """The collected project description is written later in the same configure run.
@@ -2602,6 +2831,37 @@ class TestSchemaAll:
         assert target.read_text(encoding="utf-8") == printed
 
 
+@pytest.mark.parametrize(
+    ("in_a", "in_b", "said"),
+    [
+        (["X"], None, "ok: 1 variable in 1 component is consistent"),
+        (["X", "Y"], None, "ok: 2 variables in 1 component are consistent"),
+        (["X"], ["X"], "ok: 1 variable in 2 components is consistent"),
+        (["X", "Y"], ["X"], "ok: 2 variables in 2 components are consistent"),
+    ],
+)
+def test_the_count_line_agrees_in_number(tree, capsys, in_a, in_b, said):
+    """The verb follows the variables counted, not the components: ``1 variable in 2
+    components is consistent``, ``2 variables in 1 component are``. The second component,
+    where there is one, only consumes ``X``."""
+    ids = {"X": "k7m2q9xr4t8w", "Y": "p3n6v8c2d5fz"}
+
+    def scope(name):
+        return "output" if name == "X" and in_b is not None else "local"
+
+    files = {
+        "a.ddd.json": component("A", *(declare(scope(name), name, id=ids[name]) for name in in_a))
+    }
+    includes = ["a.ddd.json"]
+    if in_b is not None:
+        files["b.ddd.json"] = component("B", declare("input", "X"))
+        includes.append("b.ddd.json")
+    files["project.ddd.json"] = project("P", *includes)
+    write_tree(tree, files)
+    assert main(["check", str(tree / "project.ddd.json")]) == EXIT_OK
+    assert said in capsys.readouterr().err
+
+
 def test_the_dictionary_carries_the_identity_and_states_the_format(tree, capsys):
     write_tree(
         tree,
@@ -2854,6 +3114,23 @@ class TestGenerateTheDictionary:
         assert main(self.a2l(output, output / "DemoDevice.a2l")) == EXIT_USAGE
         assert "would both write 'DemoDevice.a2l'" in capsys.readouterr().err
         assert not output.exists()
+
+    def test_the_name_the_runs_manifest_is_kept_under_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The manifest is the record of what the run wrote there, so a dictionary under its name
+        would be taken for that record by the next run. It was refused with a message about the
+        length of the path, which is not the reason."""
+        output = tmp_path / "gen"
+        output.mkdir()
+        assert main(self.a2l(output, output / ".ddd-manifest.json")) == EXIT_USAGE
+        said = capsys.readouterr().err
+        assert (
+            "the dictionary would be written as '.ddd-manifest.json', which is the name the "
+            "manifest of this run is kept under; give --dictionary another file"
+        ) in said
+        assert "characters" not in said
+        assert not (output / "DemoDevice.a2l").exists()
 
     def test_a_run_left_with_the_dictionary_alone_still_writes_it(self, tmp_path: Path) -> None:
         """``--without`` may take every built-in artefact away; the dictionary is still a file
@@ -3637,16 +3914,19 @@ class TestBaselineUnderStrict:
 
 class TestCmakeModule:
     def test_the_a2l_options_are_not_passed_to_a_c_only_generation(self) -> None:
-        """``ddd generate c`` has neither option; a rule carrying them fails on every build."""
+        """A run without the a2l refuses its options; a rule carrying them fails on every build.
+        The byte order reaches the run before the link only where that run writes the a2l, and
+        the map never does: the step after the link reads it."""
         from ddd.cli import cmake_module_directory
 
         directory = cmake_module_directory()
         assert directory is not None
         text = (directory / "Ddd.cmake").read_text(encoding="utf-8")
-        for option in ("--byte-order", "--address-map"):
-            appended = text.index(f"list(APPEND generate_options {option}")
-            guard = text[:appended].rsplit("if(", 1)[1]
-            assert "NOT arg_NO_A2L" in guard, f"{option} is appended without a NO_A2L guard"
+        appended = text.index("list(APPEND generate_options --byte-order")
+        guard = text[:appended].rsplit("if(", 1)[1]
+        assert "NOT arg_NO_A2L" in guard, "--byte-order is appended without a NO_A2L guard"
+        assert "NOT a2l_after_the_link" in guard, "--byte-order reaches a run without the a2l"
+        assert "generate_options --address-map" not in text
 
 
 def test_assigning_ids_fills_an_explicit_null(tree, capsys):
@@ -4660,6 +4940,9 @@ ADDRESS_ROWS = json.loads((ADDRESS_FIXTURES / "manifest.json").read_text(encodin
 of every variable, the compiler's ``offsetof`` of every member, and the target's byte order."""
 X86_ADDRESSES = ADDRESS_FIXTURES / "x86_64.elf"
 
+NO_ADDRESS_SOURCE = "/* written with no address source: every address below is 0x00000000 */"
+"""The line under ``ASAP2_VERSION`` of an a2l written with nothing to read its addresses from."""
+
 
 def a2l_addresses(text: str) -> dict[str, int]:
     """Every record of an a2l and the address it states, read back out of the file: a
@@ -4963,3 +5246,35 @@ class TestGenerateFromAnImage:
             if path.name not in (MANIFEST_NAME, a2l.name)
         }
         assert kept == written
+
+
+class TestAnA2lWrittenWithNoAddressSource:
+    """Every address of such a file is 0, and no ``address-missing`` can say so, there being
+    nothing to miss: the file says it itself, on the line under ``ASAP2_VERSION``. An empty
+    map is no source, being the one a build seeds before its first link; an image is one
+    whatever it places, the finding naming what it does not."""
+
+    @pytest.mark.parametrize(
+        ("source", "said"),
+        [
+            pytest.param(None, True, id="no address source"),
+            pytest.param("{}", True, id="an empty address map"),
+            pytest.param('{"ValueE": "0x20001000"}', False, id="a map with an entry"),
+            pytest.param(X86_ADDRESSES, False, id="an image placing none of its objects"),
+        ],
+    )
+    def test_it_says_so_under_its_version(
+        self, tmp_path: Path, source: str | Path | None, said: bool
+    ) -> None:
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        if isinstance(source, Path):
+            arguments += ["--image", str(source)]
+        elif source is not None:
+            addresses = tmp_path / "addresses.json"
+            addresses.write_text(source, encoding="utf-8")
+            arguments += ["--address-map", str(addresses)]
+        assert main(arguments) == EXIT_OK
+        head = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8").splitlines()
+        assert head[1] == "ASAP2_VERSION 1 61", "the version is no longer on the second line"
+        assert (head[2] == NO_ADDRESS_SOURCE) is said
+        assert NO_ADDRESS_SOURCE not in head[3:]

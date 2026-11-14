@@ -126,8 +126,8 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   // What the server refused the last apply for, if it did, in the tab's own words where a file
   // changed on disk (`STALE`): held until the reader chooses again - another finding, another fix,
   // the same one let go and chosen again, or Apply pressed once more - whatever its code, and never
-  // let go by a revision landing (`Refused`, lib/refusals.ts). Another finding selected meanwhile is
-  // a choice, so it is never given this one's sentence.
+  // let go by a revision landing (`Refused`, lib/refusals.ts). Another finding selected meanwhile
+  // is a choice, so it is never given this one's sentence.
   const [refused, setRefused] = useState<string | null>(null);
   // The finding whose panel closed because the next revision no longer reports it - the
   // analysis moved on, or somebody else fixed it (spec 5.3) - named above the table until

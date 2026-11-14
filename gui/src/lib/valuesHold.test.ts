@@ -24,6 +24,8 @@ const BEFORE: ValuesReply = {
   stated: "array",
   axes: [],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: "C:/work/demo/components/controller.ddd.json",
   findings: [],

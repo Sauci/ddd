@@ -347,6 +347,13 @@ test("a block holding a whole number past 2^53 says the grid cannot show it, and
   await expect(page.getByRole("grid", { name: "Values of BlockA" })).toHaveCount(0);
   await expect(page.getByRole("img", { name: /plotted against/ })).toHaveCount(0);
   await expect(page.getByText(/^Paste /)).toHaveCount(0);
+  // Nor does the line above it print the double of the most a uint64 holds, which none holds.
+  await expect(
+    page.getByText("value_block · uint64 · no unit · identity · 0 … 18446744073709551615", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("18446744073709552000")).toHaveCount(0);
 
   // Nor does it take a paste, as a grid with no file to write into takes none: a block of the
   // wrong shape, which a grid it took would refuse in the same event, plans and says nothing.

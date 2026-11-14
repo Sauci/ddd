@@ -110,6 +110,14 @@ class Grid:
     cannot edit."""
 
     maximum: float
+    minimum_text: str | None
+    """:attr:`minimum` in its own digits where the double it reaches the page as would show
+    another number (:func:`_limit_text`), and ``None`` where the double shows it as it is."""
+
+    maximum_text: str | None
+    """:attr:`maximum` the same way: the default maximum of a uint64, ``18446744073709551615``,
+    reaches the page as 2^64 and printed as ``18446744073709552000``, which no uint64 holds."""
+
     shape: tuple[int, ...]
     rows: tuple[tuple[float, ...], ...]
     """Always rows: a one dimensional object is one row, so one shape serves both."""
@@ -207,6 +215,8 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         conversion=resolved.conversion,
         minimum=resolved.limits.min,
         maximum=resolved.limits.max,
+        minimum_text=_limit_text(resolved.limits.min),
+        maximum_text=_limit_text(resolved.limits.max),
         shape=shape,
         rows=rows,
         stated=stated,
@@ -235,6 +245,16 @@ def _unshown(
     for named, stored, values in drawn:
         if any(_unshowable(value, stored) for value in values):
             return named
+    return None
+
+
+def _limit_text(limit: float) -> str | None:
+    """A limit in its own digits where the page could not print it from its double, a whole
+    number past :data:`EXACT`, else ``None``. A float is a double already, and a whole number up
+    to 2^53 prints as itself; past it the double is another number, or prints as one -
+    ``2**63`` as ``9223372036854776000``."""
+    if isinstance(limit, int) and abs(limit) > EXACT:
+        return str(limit)
     return None
 
 

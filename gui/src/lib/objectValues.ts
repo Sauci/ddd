@@ -234,6 +234,13 @@ export function typedRefusal(text: string, reply: ValuesReply): string | null {
   return "refusal" in read ? read.refusal : null;
 }
 
+/** The limits as the line above the grid says them: each the double it crossed as, but a whole
+ * number past 2^53 in the digits the route sends with it (`ValuesReply.maximum_text`), the
+ * double printing another number - 18446744073709552000 for the most a uint64 holds. */
+export function limitsLine(reply: ValuesReply): string {
+  return `${reply.minimum_text ?? reply.minimum} … ${reply.maximum_text ?? reply.maximum}`;
+}
+
 /** Why this grid draws none of its numbers, or `null` where it draws them. Text is no grid at
  * all, whatever it holds. And the route marks a block whose numbers - this one's or an axis's -
  * hold a whole number the page cannot draw as the number it is and set back (`ValuesReply.

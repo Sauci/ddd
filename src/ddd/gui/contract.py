@@ -1452,6 +1452,14 @@ class ValuesReply(_Frozen):
 
     maximum: float
 
+    minimum_text: str | None
+    """:attr:`minimum` in its own digits where the double cannot carry it - a whole number past
+    2^53, which the page would print as another - and ``None`` where the double is the limit."""
+
+    maximum_text: str | None
+    """:attr:`maximum` the same way: a uint64's own maximum, ``18446744073709551615``, crosses as
+    2^64, printed ``18446744073709552000``, which no uint64 holds."""
+
     shape: tuple[int, ...]
     """Fully numeric, whatever a dimension is spelled with in the file."""
 

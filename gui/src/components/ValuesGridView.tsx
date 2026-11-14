@@ -7,6 +7,7 @@ import {
   columnHeader,
   cornerLabel,
   elementLabel,
+  limitsLine,
   noGridNote,
   pasteHint,
   pasteSentence,
@@ -120,7 +121,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     reply.datatype,
     reply.unit === "" ? NO_UNIT : reply.unit,
     shortValue("conversion", JSON.stringify(reply.conversion)),
-    `${reply.minimum} … ${reply.maximum}`,
+    limitsLine(reply),
   ].join(" · ");
   // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
   // what is typed is no number the cell takes - the same gate the screen itself keys its

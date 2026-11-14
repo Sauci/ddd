@@ -9185,6 +9185,7 @@ class TestTheValuesGrid:
         assert body["owner"] == "Controller"
         assert body["file"].endswith("controller.ddd.json")
         assert body["unshown"] is None
+        assert (body["minimum_text"], body["maximum_text"]) == (None, None)
 
     def test_a_map_answers_four_rows_of_six(self, demo) -> None:
         api, _ = demo
@@ -9779,6 +9780,64 @@ class TestAWholeNumberPastWhatADoubleHolds:
         # What the wire answers for it, each the double nearest it: the mark is what says so.
         assert body["rows"] == [[9007199254740992.0, 1.8446744073709552e19]]
         assert body["unshown"] == "Big"
+
+    @pytest.mark.parametrize(
+        ("datatype", "extra", "texts"),
+        [
+            pytest.param("uint64", {}, (None, "18446744073709551615"), id="a-uint64-s-own-range"),
+            pytest.param(
+                "sint64",
+                {},
+                ("-9223372036854775808", "9223372036854775807"),
+                id="a-sint64-s-own-range",
+            ),
+            pytest.param(
+                "uint64",
+                {"limits": {"min": 0, "max": 2**53}},
+                (None, None),
+                id="limits-up-to-2^53-which-the-double-shows-as-they-are",
+            ),
+            pytest.param(
+                "uint64",
+                {"limits": {"min": 0, "max": 2**53 + 1}},
+                (None, "9007199254740993"),
+                id="a-limit-past-2^53-stated",
+            ),
+            pytest.param(
+                "uint64",
+                {"conversion": {"kind": "linear", "factor": 0.5}},
+                (None, None),
+                id="a-limit-a-conversion-makes-is-a-float-already",
+            ),
+            pytest.param("float32", {}, (None, None), id="a-float-s-range-is-doubles"),
+        ],
+    )
+    def test_a_limit_the_double_cannot_carry_comes_as_its_own_digits(
+        self, tmp_path: Path, datatype: str, extra: dict[str, Any], texts: tuple[str | None, ...]
+    ) -> None:
+        """``minimum`` and ``maximum`` cross as doubles, so the default maximum of a uint64,
+        ``18446744073709551615``, printed as ``18446744073709552000``, which no uint64 holds -
+        above every 64 bit values page. A whole number past 2^53 travels as its digits too."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Big",
+                        datatype,
+                        kind="value_block",
+                        dimensions=[2],
+                        init=[1, 2],
+                        **extra,
+                    ),
+                ),
+            },
+        )
+        body = get(api, "/api/values", name="Big").body
+        assert (body["minimum_text"], body["maximum_text"]) == texts
 
     @pytest.mark.parametrize(
         ("datatype", "init", "unshown"),

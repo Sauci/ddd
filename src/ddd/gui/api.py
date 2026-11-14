@@ -1514,6 +1514,8 @@ class Api:
                     conversion=written(grid.conversion),
                     minimum=grid.minimum,
                     maximum=grid.maximum,
+                    minimum_text=grid.minimum_text,
+                    maximum_text=grid.maximum_text,
                     shape=grid.shape,
                     rows=grid.rows,
                     stated=grid.stated,

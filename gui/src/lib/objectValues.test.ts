@@ -8,6 +8,7 @@ import {
   cornerLabel,
   drawable,
   elementLabel,
+  limitsLine,
   noGridNote,
   pasted,
   pasteHint,
@@ -46,6 +47,8 @@ const CURVE_A: ValuesReply = {
     },
   ],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: "/repo/examples/demo/components/controller.ddd.json",
   findings: [],
@@ -86,6 +89,8 @@ const MAP_A: ValuesReply = {
     },
   ],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: "/repo/examples/demo/components/controller.ddd.json",
   findings: [],
@@ -106,6 +111,8 @@ const BLOCK_A: ValuesReply = {
   stated: "array",
   axes: [],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "UserInterface",
   file: "/repo/examples/demo/components/user_interface.ddd.json",
   findings: [],
@@ -131,6 +138,8 @@ const VALUE_K: ValuesReply = {
   stated: "array",
   axes: [],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "EventLogger",
   file: "/repo/examples/demo/subsystems/logging/event_logger.ddd.json",
   findings: [],
@@ -151,6 +160,8 @@ const VALUE_A: ValuesReply = {
   stated: "scalar",
   axes: [],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "SensorHub",
   file: "/repo/examples/demo/components/sensor_hub.ddd.json",
   findings: [],
@@ -183,6 +194,8 @@ const CURVE_X: ValuesReply = {
     },
   ],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "A",
   file: "/repo/a.ddd.json",
   findings: [],
@@ -207,6 +220,7 @@ const BIG: ValuesReply = {
   shape: [2],
   rows: [[2 ** 53, 2 ** 64]],
   unshown: "BlockA",
+  maximum_text: "18446744073709551615",
 };
 
 /** SoftwareLabel: a shaped object initialised with text - no grid either, the other way. */
@@ -224,6 +238,8 @@ const SOFTWARE_LABEL: ValuesReply = {
   stated: "text",
   axes: [],
   unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: "/repo/examples/demo/components/controller.ddd.json",
   findings: [],
@@ -618,6 +634,30 @@ describe("the work a pasted block costs", () => {
     } finally {
       asked.mockRestore();
     }
+  });
+});
+
+describe("limitsLine", () => {
+  test("the limits as the doubles they cross as, where those show them", () => {
+    expect(limitsLine(CURVE_A)).toBe("0 … 655.35");
+  });
+
+  test("a limit the double cannot carry in its own digits, not the double's", () => {
+    // 2^64 - 1, the most a uint64 holds, crosses as 2^64 and printed as 18446744073709552000,
+    // which none holds, over every 64 bit values page.
+    expect(limitsLine(BIG)).toBe("0 … 18446744073709551615");
+  });
+
+  test("on either side", () => {
+    const sint64: ValuesReply = {
+      ...BIG,
+      datatype: "sint64",
+      minimum: -(2 ** 63),
+      maximum: 2 ** 63,
+      minimum_text: "-9223372036854775808",
+      maximum_text: "9223372036854775807",
+    };
+    expect(limitsLine(sint64)).toBe("-9223372036854775808 … 9223372036854775807");
   });
 });
 

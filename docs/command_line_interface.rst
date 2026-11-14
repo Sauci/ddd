@@ -585,10 +585,12 @@ The commands
        <target> with your component's target``. The record beside the description is what says
        so, read for the project it names whatever its format and its severities, and whether or
        not ``-b`` names the build directory. A project given to ``ddd_generate()`` with
-       ``PROJECT`` is edited as any other: its record says the description was given, whether it
-       lies in the build tree or, where ``OUTPUT_DIRECTORY`` is the description's own directory,
-       beside it. Only a record that says collected, or that does not say, as one written before
-       the record did not, makes a project a generated one.
+       ``PROJECT`` is edited as any other where its record says so, ``"origin": "given"``, whether
+       the record lies in the build tree or, where ``OUTPUT_DIRECTORY`` is the description's own
+       directory, beside it. Any other record beside a description makes it a generated one,
+       one without the key included, as every record is that a module wrote before the key
+       existed: a project given with such a record beside it stays refused until the build is
+       configured again, and the module writes the key.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until
@@ -650,8 +652,9 @@ The commands
        ``--no-browser`` only prints the address. It serves until interrupted, and its
        options are not yet part of the stable interface.
    * - ``ddd build-info FILE -o FILE``
-     - record which project description a build runs DDD on, whether the build collected it or
-       was given it (``--description collected`` or ``given``, the default), and under which
+     - record which project description a build runs DDD on, whether it was given to the build
+       (``--origin given``, written into the record, which is then format 2) or collected by it
+       (``collected``, the default, with no such key), and under which
        severity policy, the ``ddd-build.json`` the language server and ``ddd gui`` read;
        ``ddd_generate()`` calls it at configure time, so a hand-rolled build is the only caller
        that needs it directly.

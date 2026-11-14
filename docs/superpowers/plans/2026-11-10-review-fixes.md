@@ -1403,12 +1403,14 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   saying the build writes it. Nothing is written wrongly, and the CLI and developer pages state the
   limit. Branch 2, which owns `cmake/Ddd.cmake`, can say precisely which description the build
   writes, by a key it adds to the description it collects or to the record: an addition to the
-  format, which its changelog would then state. *(Done by branch 2, task 10, ruling B2-2: the
-  record's `description` key says `collected` or `given`, and `ddd gui` refuses as generated only a
-  description its record says was collected, or that it does not say, as every record before the key.
-  The record's closed object made an older reader skip a record with the key in silence, so
-  `format` rose to 2, which such a reader declines with a reason. The CLI and developer pages state
-  the limit no more, and the branch's changelog entry states the key and the format.)*
+  format, which its changelog would then state. *(Done by branch 2, task 10, ruling B2-2, and its
+  fix round 1: the record of a description given as `PROJECT` carries `origin`, `given`, and is stamped `format` 2; the record of a collected one is
+  the format 1 record every DDD reads, with no key. `ddd gui` edits a project whose record says
+  `given`, and refuses every other, a record without the key included, as every record before the
+  key. A DDD from 0.11.0 on declines a record of format 2 as written by a newer DDD and says so,
+  an older one skips it in silence, so the cost falls on `PROJECT` builds' records alone. The CLI
+  and developer pages state the limit no more, and the branch's changelog entry states the key and
+  the format.)*
 - **A removal refused as stale waits for the panel to close, or a key to settle** (R22): the
   variable panel's removal offer withdraws Remove while any refusal stands (P19b-24), so its
   sentence, kept now until the reader's next choice, goes when they settle a key or close the

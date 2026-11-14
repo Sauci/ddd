@@ -1760,24 +1760,32 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         assert Step(0, "ninja: no work to do.", frozenset(), "").did_nothing()
 
 
-class TestTheRecordSaysHowTheBuildHasTheDescription:
-    """``ddd-build.json`` says whether the description it names was collected by the module out of
-    the link graph or given to it as ``PROJECT``, which ``ddd gui`` takes a project for generated
-    by. Configured only: the module writes the record while it configures."""
+class TestTheRecordSaysWhereTheDescriptionCameFrom:
+    """``ddd-build.json`` says, for a description given to the module as ``PROJECT``, that it
+    was: ``ddd gui`` edits the project of such a record and refuses every other. The record of
+    a collected description is the one every DDD reads, with no such key. Configured only: the
+    module writes the record while it configures."""
 
     @pytest.mark.parametrize(
-        ("shape", "described"),
+        ("shape", "written"),
         [
-            pytest.param(STORY_SHAPES["collected"], "collected", id="without PROJECT"),
-            pytest.param(STORY_SHAPES["project"], "given", id="with PROJECT"),
+            pytest.param(STORY_SHAPES["collected"], {"format": 1}, id="without PROJECT"),
+            pytest.param(
+                STORY_SHAPES["project"], {"format": 2, "origin": "given"}, id="with PROJECT"
+            ),
         ],
     )
-    def test_the_module_writes_the_key(self, tmp_path: Path, shape: Shape, described: str) -> None:
+    def test_the_module_writes_the_key_for_a_given_description_alone(
+        self, tmp_path: Path, shape: Shape, written: dict[str, object]
+    ) -> None:
         story = Story(tmp_path, shape, "Ninja")
         record = story.images() / "ddd" / "img" / "ddd-build.json"
-        written = json.loads(record.read_text(encoding="utf-8"))
-        assert written["description"] == described
-        assert written["format"] == 2
+        recorded = json.loads(record.read_text(encoding="utf-8"))
+        assert {key: recorded.get(key) for key in ("format", "origin")} == {
+            "format": written["format"],
+            "origin": written.get("origin"),
+        }
+        assert ("origin" in recorded) == ("origin" in written)
 
 
 class TestACleanUnderMake:
@@ -1807,6 +1815,10 @@ class TestACleanUnderMake:
         cleaned = story.build_target("clean")
         assert cleaned.returncode == 0, cleaned.stdout + cleaned.stderr
         assert [name for name in written if (generated / name).exists()] == []
+        # What the configure writes is no step's, and a clean leaves it: the record, and the
+        # description collected out of the link graph, which no build writes again.
+        assert (generated / "ddd-build.json").is_file()
+        assert (generated / "StoryDevice.ddd.json").is_file()
 
 
 class TestTheMapReadOnceTheImageIsLinked:

@@ -2086,7 +2086,10 @@ class TestBuildInfo:
         assert recorded["image"] == "firmware.elf"
         assert recorded["severity"] == ["unused-output=info"]
         assert recorded["strict"] is True
-        assert recorded["format"] == BUILD_INFO_FORMAT
+        # A collected description, which is what a record says unless it says otherwise: the
+        # record every DDD reads, in format 1, with no key of the description's origin.
+        assert recorded["format"] == 1
+        assert "origin" not in recorded
 
     def test_the_recorded_project_is_absolute(self, tmp_path: Path) -> None:
         """Whoever reads this file is not in the directory the build ran in."""
@@ -2099,47 +2102,76 @@ class TestBuildInfo:
         assert recorded["severity"] == []
         assert recorded["strict"] is False
 
-    def test_it_says_how_the_build_has_the_description(self, tmp_path: Path) -> None:
-        """``--description``: collected by the build, or given to it. Without it the record says
-        given, the description being a file somebody wrote unless the build is told otherwise."""
+    def test_a_given_description_is_said_so_and_stamps_the_record_format_2(
+        self, tmp_path: Path
+    ) -> None:
+        """``--origin given``: the description a build was handed, as ``PROJECT``. The key is
+        written for it alone, and the record is stamped the format that has the key."""
+        target = tmp_path / "given.json"
+        assert main(["build-info", str(DEMO), "-o", str(target), "--origin", "given"]) == EXIT_OK
+        recorded = json.loads(target.read_text(encoding="utf-8"))
+        assert recorded["origin"] == "given"
+        assert recorded["format"] == BUILD_INFO_FORMAT == 2
+
+    def test_a_collected_description_is_the_record_of_format_1_without_the_key(
+        self, tmp_path: Path
+    ) -> None:
+        """With ``--origin collected`` and without it: nothing a DDD that predates the key could
+        not read, so nothing is asked of any reader in a team that has not upgraded."""
         said = tmp_path / "collected.json"
         unsaid = tmp_path / "unsaid.json"
-        assert main(["build-info", str(DEMO), "-o", str(said), "--description", "collected"]) == (
+        assert main(["build-info", str(DEMO), "-o", str(said), "--origin", "collected"]) == (
             EXIT_OK
         )
         assert main(["build-info", str(DEMO), "-o", str(unsaid)]) == EXIT_OK
-        assert json.loads(said.read_text(encoding="utf-8"))["description"] == "collected"
-        assert json.loads(unsaid.read_text(encoding="utf-8"))["description"] == "given"
+        assert said.read_text(encoding="utf-8") == unsaid.read_text(encoding="utf-8")
+        recorded = json.loads(said.read_text(encoding="utf-8"))
+        assert recorded["format"] == 1
+        assert set(recorded) == {"format", "project", "image", "strict", "severity"}
 
-    def test_a_record_built_without_saying_holds_given(self) -> None:
-        """What the record is when nobody says: the file somebody wrote, not one the build does."""
+    def test_a_record_built_without_saying_holds_collected(self) -> None:
+        """What a record without the key is, whoever reads it: the build's own description."""
         from ddd.build_info import BuildInfo
 
-        assert BuildInfo(project="p.ddd.json").description == "given"
+        assert BuildInfo(project="p.ddd.json").origin == "collected"
 
-    def test_a_description_that_is_neither_is_refused(self, tmp_path: Path) -> None:
+    def test_an_origin_that_is_neither_is_refused(self, tmp_path: Path) -> None:
         target = tmp_path / "ddd-build.json"
         with pytest.raises(SystemExit) as raised:
-            main(["build-info", str(DEMO), "-o", str(target), "--description", "guessed"])
+            main(["build-info", str(DEMO), "-o", str(target), "--origin", "guessed"])
         assert raised.value.code == EXIT_USAGE
         assert not target.exists()
 
-    def test_the_format_rose_with_the_key_an_older_reader_does_not_know(
+    def test_this_version_reads_the_record_of_each_format_it_understands(
+        self, tmp_path: Path
+    ) -> None:
+        from ddd.lsp.discovery import load_builds
+
+        collected = tmp_path / "collected" / "ddd-build.json"
+        given = tmp_path / "given" / "ddd-build.json"
+        assert main(["build-info", str(DEMO), "-o", str(collected)]) == EXIT_OK
+        assert main(["build-info", str(DEMO), "-o", str(given), "--origin", "given"]) == EXIT_OK
+        refused: dict[Path, str] = {}
+        builds = load_builds([collected, given], refused)
+        assert [(build.format, build.origin) for build in builds] == [
+            (1, "collected"),
+            (2, "given"),
+        ]
+        assert refused == {}
+
+    def test_only_the_record_with_the_key_is_one_an_older_reader_declines(
         self, tmp_path: Path
     ) -> None:
         """A reader of format 1 validates a closed object, so a key it does not know fails the
-        record in silence; the record is stamped past that reader's format instead, which it
-        declines with the reason, and what it read as a format 1 record is all there still."""
-        target = tmp_path / "ddd-build.json"
-        assert main(["build-info", str(DEMO), "-o", str(target)]) == EXIT_OK
-        recorded = json.loads(target.read_text(encoding="utf-8"))
-        assert recorded["format"] == BUILD_INFO_FORMAT == 2
-        assert set(recorded) - {"description", "format"} == {
-            "project",
-            "image",
-            "strict",
-            "severity",
-        }
+        record: the record of a given description carries one and is stamped 2, which a DDD
+        from 0.11.0 on declines as written by a newer DDD, and an older one skips in silence.
+        The record of a collected description is what every such reader read before."""
+        from ddd.lsp.discovery import load_builds
+
+        collected = tmp_path / "collected.json"
+        given = tmp_path / "given.json"
+        assert main(["build-info", str(DEMO), "-o", str(collected)]) == EXIT_OK
+        assert main(["build-info", str(DEMO), "-o", str(given), "--origin", "given"]) == EXIT_OK
 
         class Older(BaseModel):
             model_config = ConfigDict(extra="forbid")
@@ -2149,10 +2181,16 @@ class TestBuildInfo:
             strict: bool
             severity: tuple[str, ...]
 
-        with pytest.raises(ValueError, match="description"):
-            Older.model_validate(recorded)
-        without = {key: value for key, value in recorded.items() if key != "description"}
-        assert Older.model_validate(without).project == recorded["project"]
+        assert Older.model_validate_json(collected.read_text(encoding="utf-8")).format == 1
+        with pytest.raises(ValueError, match="origin"):
+            Older.model_validate_json(given.read_text(encoding="utf-8"))
+        # The reader of the formats up to the next one, which this record is stamped past.
+        future = json.loads(given.read_text(encoding="utf-8")) | {"format": BUILD_INFO_FORMAT + 1}
+        later = tmp_path / "later.json"
+        later.write_text(json.dumps(future), encoding="utf-8")
+        refused: dict[Path, str] = {}
+        assert load_builds([later], refused) == []
+        assert "written in format 3 by a newer DDD" in refused[later]
 
     def test_a_project_that_does_not_exist_yet_is_recorded_anyway(self, tmp_path: Path) -> None:
         """The collected project description is written later in the same configure run.

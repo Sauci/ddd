@@ -36,11 +36,13 @@ Raised only when the shape of the document changes, so that a reader older than 
 wrote the file can say so instead of misreading it. The same discipline as the data dictionary,
 for the same reason: these two are the documents DDD produces rather than reads.
 
-Raised to 2 for ``description``. The record's object is closed, so a reader of format 1 declines
-a record carrying a key it does not know and says nothing of why, a build record being written by
-a build and not by a person; stamped 2, the record is declined with the reason - written by a
-newer DDD - which is what the stamp is for. A record of format 1 has no such key, and is read as
-it always was.
+The highest format this DDD understands, which it reads along with every one below it. A record
+is stamped 2 only where it carries ``origin``, which says the description was given to the build
+as ``PROJECT``: the record's object is closed, so a reader that does not know that key fails the
+record, and a DDD from 0.11.0 on declines a record stamped past its format as written by a newer
+DDD and says so, where an older one skips it in silence, as it skips any record it cannot
+validate. A record of a collected description has no such key, keeps the shape of format 1, and
+is stamped 1: every DDD that read a record before reads it still.
 """
 
 BUILD_INFO_FILENAME: Final = "ddd-build.json"
@@ -57,8 +59,12 @@ class BuildInfo(BaseModel):
         title="DDD build information",
     )
 
-    format: int = BUILD_INFO_FORMAT
-    """Version of this document format, raised only when its shape changes."""
+    format: int = 1
+    """Version of this document format, raised only when its shape changes.
+
+    Stamped 2 where ``origin`` is written, and 1 where it is not: what the build writes is read
+    by every DDD that could read a record of that shape.
+    """
 
     project: str
     """Absolute path of the project description the build runs DDD on.
@@ -74,14 +80,15 @@ class BuildInfo(BaseModel):
     belongs to two projects, and they need not agree about it.
     """
 
-    description: Literal["collected", "given"] = "given"
-    """How the build has the project description: ``collected`` by ``ddd_generate`` out of the
-    link closure of the image, written into the build tree again at every configure, or ``given``
-    to it as ``PROJECT``, a file somebody wrote and the build only reads.
+    origin: Literal["collected", "given"] = "collected"
+    """Where the project description came from: ``given`` to the build as ``PROJECT``, a file
+    somebody wrote and the build only reads, or ``collected`` by ``ddd_generate`` out of the link
+    closure of the image, written into the build tree again at every configure.
 
-    What ``ddd gui`` tells the two apart by, refusing to write into the first. A record of format
-    1 has no such key: it was written by a build that did not say, and ``ddd gui`` reads it as
-    collected, which is what it took every record for.
+    Written only for a given one, which stamps the record 2. A record without it, as every record
+    of format 1 is, is a collected description: what ``ddd gui`` takes it for, and refuses to
+    write into. Not named ``description``, which is a declaration's free text in the description
+    files.
     """
 
     strict: bool = False
@@ -101,4 +108,10 @@ def build_info_text(info: BuildInfo) -> str:
     One function so that what a build writes and what anything else produces cannot differ,
     the same arrangement the published json schemas use.
     """
-    return json.dumps(info.model_dump(mode="json"), indent=2) + "\n"
+    data = info.model_dump(mode="json")
+    if info.origin == "collected":
+        # Kept out, so that the record of a collected description is the one every DDD reads.
+        del data["origin"]
+    else:
+        data["format"] = BUILD_INFO_FORMAT
+    return json.dumps(data, indent=2) + "\n"

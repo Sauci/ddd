@@ -1092,41 +1092,106 @@ class TestCommandLineHelp:
         )
 
 
-class TestTheRecordSaysHowTheBuildHasTheDescription:
-    """The build record's ``description`` key, in every page that states what ``ddd gui`` does
-    with a project whose record sits beside it."""
+def record_section() -> str:
+    """Section 3.6 of the specification, the build record's, and nothing of the others."""
+    start = SPEC.index("### 3.6 Build record")
+    return SPEC[start : SPEC.index("### 3.7 ", start)]
 
-    def test_the_record_table_has_the_key_and_the_format_that_came_with_it(self) -> None:
-        rows = [line for line in SPEC.splitlines() if line.startswith("| `")]
-        keys = {line.split("`")[1]: line for line in rows}
-        assert "`collected`" in keys["description"] and "`given`" in keys["description"]
-        assert "today `2`" in keys["format"]
-        text = flattened(SPEC)
-        assert "A record that does not say, as every record of format `1` does not" in text
+
+class TestTheRecordSaysWhereTheDescriptionCameFrom:
+    """The build record's ``origin`` key, in every page that states what ``ddd gui`` does with a
+    project whose record sits beside it."""
+
+    def test_the_record_table_has_the_key_and_the_formats(self) -> None:
+        rows = {
+            line.split("`")[1]: line for line in record_section().splitlines() if "| `" in line[:3]
+        }
+        assert "description" not in rows
         assert (
-            "stamped `2`, the record is declined by that reader as written by a newer DDD" in text
+            "present only for a project description given to the build as `PROJECT`"
+            in (rows["origin"])
+        )
+        assert "`collected` is what `--origin` says for it" in rows["origin"]
+        assert "`2` for a record with an `origin`" in rows["format"]
+        assert "highest this version understands" in rows["format"]
+
+    def test_the_specification_says_what_the_key_costs_and_whom(self) -> None:
+        text = flattened(record_section())
+        assert "The key is named `origin` and not `description`, which is a declaration's" in text
+        assert "A record without the key is read as `collected`" in text
+        assert "stays refused until the build is configured again" in text
+        assert "A DDD from 0.11.0 on declines a record stamped past its format" in text
+        assert "an older one skips it in silence" in text
+        assert "so what this costs is a given description's record alone" in text
+        assert "reads a record of format `1` and of format `2` alike" in text
+        assert "reading it as `given` would open every build made before" in text
+
+    def test_the_build_page_example_is_the_record_the_tool_writes(self, tmp_path: Path) -> None:
+        page = PAGES["docs/build_integration.rst"]
+        start = page.index(".. code-block:: json", page.index("What the build tells an editor"))
+        example = json.loads(page[start:].split("\n\n", 2)[1])
+        target = tmp_path / "ddd-build.json"
+        arguments = ["build-info", str(ROOT / "examples/demo/demo.ddd.json"), "-o", str(target)]
+        assert main([*arguments, "--image", "firmware.elf", "-W", "unused-output=info"]) == EXIT_OK
+        written = json.loads(target.read_text(encoding="utf-8"))
+        assert list(example) == list(written)
+        assert (example["format"], example["image"], example["severity"]) == (
+            written["format"],
+            written["image"],
+            written["severity"],
         )
 
-    def test_the_pages_state_the_key_and_no_longer_a_limit_it_removed(self) -> None:
-        build = flattened(PAGES["docs/build_integration.rst"])
-        assert '"description": "collected"' in build
-        assert 'A record that says nothing, as every record of ``"format": 1`` does' in build
-        command_line = flattened(PAGES["docs/command_line_interface.rst"])
-        assert "``--description collected`` or ``given``, the default" in command_line
-        assert "nothing yet tells the two apart" not in command_line.lower()
-        developer = flattened(PAGES["docs/developer_documentation.rst"])
-        assert "tells the two apart yet" not in developer
-        for page in (command_line, developer):
-            assert "that does not say" in page or "without the key" in page
+    def test_the_build_page_says_what_the_key_costs_and_whom(self) -> None:
+        text = flattened(PAGES["docs/build_integration.rst"])
+        assert '``"origin": "given"`` and is stamped ``"format": 2``' in text
+        assert "has no such key and keeps the shape of format 1" in text
+        assert "a record without the key is read as collected" in text
+        assert "stays refused until the build is configured again" in text
+        assert "falls on ``PROJECT`` builds alone" in text
+        assert (
+            "a DDD from 0.11.0 on declines a record of format 2 as written by a newer DDD" in text
+        )
+        assert "an older one skips it in silence" in text
+
+    def test_the_command_line_page_says_it(self) -> None:
+        text = flattened(PAGES["docs/command_line_interface.rst"])
+        assert "``--origin given``, written into the record, which is then format 2" in text
+        assert 'is edited as any other where its record says so, ``"origin": "given"``' in text
+        assert "Any other record beside a description makes it a generated one" in text
+        assert "stays refused until the build is configured again" in text
+        assert "tells the two apart" not in text
+
+    def test_the_developer_page_says_it(self) -> None:
+        text = flattened(PAGES["docs/developer_documentation.rst"])
+        assert "What says a description is not generated is its record's ``origin`` key" in text
+        assert "Any other record is the build's, a record without the key included" in text
+        assert "stays refused until the build is configured again" in text
+        assert "tells the two apart yet" not in text
 
     def test_the_help_of_the_command_says_it(self) -> None:
         said = ""
         for action in _build_parser()._actions:
             if isinstance(action, argparse._SubParsersAction):
                 for action_of_command in action.choices["build-info"]._actions:
-                    if "--description" in action_of_command.option_strings:
+                    if "--origin" in action_of_command.option_strings:
                         said = action_of_command.help or ""
-        assert "collected" in said and "given" in said and "ddd gui refuses" in said
+        assert "which stamps the record format 2 and which ddd gui then edits" in said
+        assert "which ddd gui refuses to write into" in said
+
+    def test_the_start_page_journey_stamps_its_record_one_past_the_format_read(self) -> None:
+        """A journey that writes a record in a format too new for the start page to list it, and
+        says what the page then prints: both follow ``BUILD_INFO_FORMAT``, so the next raise
+        cannot leave the journey stamping a format this version reads."""
+        from ddd.build_info import BUILD_INFO_FORMAT
+
+        spec = (ROOT / "gui" / "e2e" / "start.spec.ts").read_text(encoding="utf-8")
+        stamped = re.search(r'"build", \{ format: (\d+), project: join\(directory, "demo', spec)
+        assert stamped is not None
+        assert int(stamped.group(1)) == BUILD_INFO_FORMAT + 1
+        assert (
+            f"written in format {BUILD_INFO_FORMAT + 1} by a newer DDD, and this one understands "
+            f"up to format {BUILD_INFO_FORMAT}"
+        ) in spec
 
 
 def published_kinds() -> list[str]:

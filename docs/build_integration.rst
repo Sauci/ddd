@@ -351,10 +351,9 @@ time, with ``ddd build-info``:
 .. code-block:: json
 
    {
-     "format": 2,
+     "format": 1,
      "project": "/home/me/firmware/build/ddd/firmware.elf/firmware.ddd.json",
      "image": "firmware.elf",
-     "description": "collected",
      "strict": false,
      "severity": ["unused-output=info"]
    }
@@ -377,14 +376,16 @@ to ``ddd build-info`` are the very list handed to ``ddd check`` and ``ddd genera
 three apply one policy. The ``<target>.ddd`` check of a component is not among them: it applies
 the default policy, as described under "Registering a component".
 
-The record also says **how the build has the project description**: ``"collected"`` where the
-module assembles it out of the link graph, and ``"given"`` where it was handed to
-``ddd_generate()`` as ``PROJECT``. ``ddd gui`` refuses to write into a description the record says
-was collected, which the build writes again at every configure, and not into one it says was
-given, even where ``OUTPUT_DIRECTORY`` is that description's own directory and the record lies
-beside it. A record that says nothing, as every record of ``"format": 1`` does, is read as
-collected. The key raised the record's ``format`` to 2: a DDD that reads up to format 1 skips such
-a record and says it was written by a newer DDD.
+A description handed to ``ddd_generate()`` as ``PROJECT`` is said to be so: its record has
+``"origin": "given"`` and is stamped ``"format": 2``. ``ddd gui`` edits the project of such a
+record, even where ``OUTPUT_DIRECTORY`` is the description's own directory and the record lies
+beside it, and refuses to write into any other, a collected description being written again at
+every configure. The record of a collected description, as the example above, has no such key and
+keeps the shape of format 1: a record without the key is read as collected, so a project given
+with a record of an older module beside it stays refused until the build is configured again. The
+key is the one change to the record, and falls on ``PROJECT`` builds alone: a DDD from 0.11.0 on
+declines a record of format 2 as written by a newer DDD and says so, and an older one skips it in
+silence, as it skips any record it cannot validate.
 
 The project description is named rather than read, because in the collected mode it does not
 exist yet at that point - ``file(GENERATE)`` produces it at the end of the configure run, after

@@ -355,16 +355,16 @@ endfunction()
 # outside the build can see what the build sees. "options" is the very list handed to "check" and "generate", so those
 # three apply one severity policy. The <target>.ddd check of a component is not one of them: it applies the default.
 #
-# "description" says how this build has the project description - "collected" by this module out of the link graph, which
-# writes it again at every configure, or "given" to it as PROJECT, a file somebody wrote - which ddd gui tells a project
-# it may not write into by.
+# "origin" says where this build has the project description from - "collected" by this module out of the link graph,
+# which writes it again at every configure, or "given" to it as PROJECT, a file somebody wrote. Only a given one is
+# written into the record, which ddd gui edits the project of and no other, and which that stamps format 2.
 #
 # Configure time, and the project description is named rather than read - without PROJECT it is produced by
 # file(GENERATE) at the end of this configure run, so it does not exist yet while this executes.
-function(_ddd_write_build_info directory image project_file description options)
+function(_ddd_write_build_info directory image project_file origin options)
     execute_process(COMMAND "${DDD_EXECUTABLE}" build-info "${project_file}"
                             --output "${directory}/ddd-build.json" --image "${image}"
-                            --description "${description}" ${options}
+                            --origin "${origin}" ${options}
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
                     OUTPUT_QUIET)
@@ -1068,11 +1068,11 @@ function(ddd_generate image)
     endif()
 
     if(arg_PROJECT)
-        set(description_mode given)
+        set(origin_mode given)
     else()
-        set(description_mode collected)
+        set(origin_mode collected)
     endif()
-    _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${description_mode}"
+    _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${origin_mode}"
                           "${common_options}")
     # The output directory holds what the configure writes - the record above and, in the collected mode, the project
     # description - which no step of the build writes again: deleted, the build stopped under Ninja on that description,

@@ -794,27 +794,31 @@ project rather than a description of one.
 
 | key | meaning |
 | --- | --- |
-| `format` | version of this document format, raised only when its shape changes; today `2` |
+| `format` | version of this document format, raised only when its shape changes; `1`, or `2` for a record with an `origin`, which is the highest this version understands |
 | `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project need not |
 | `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and written as the empty string `""`, never as `null`, when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
-| `description` | how the build has the project description: `collected`, which the build assembles itself out of the C link closure and writes again at every configure, or `given`, a file somebody wrote and passed as `PROJECT`, which the build only reads. `ddd build-info` takes it as `--description` and writes `given` where it is not asked, and the CMake integration passes the one of the mode `ddd_generate` was called in. Written as one of those two words, never as `null`; a record of format `1` has no such key |
+| `origin` | present only for a project description given to the build as `PROJECT`, a file somebody wrote and the build only reads, and then `given`; `ddd build-info` takes it as `--origin` and writes it for `given` alone, and the CMake integration passes the one of the mode `ddd_generate` was called in. A record of a description the build collected out of the C link closure, and writes again at every configure, has no such key, as no record of format `1` has; `collected` is what `--origin` says for it and what a record without the key is read as everywhere, and is never written |
 | `strict` | whether the build reports warnings as errors |
 | `severity` | the severity overrides the build applies, as `check=severity` ([section 4](#4-consistency-checks)), in the order given |
 
-The `description` key is what lets a tool tell a description the build writes from one it was
+The `origin` key is what lets a tool tell a description the build writes from one it was
 given: where `ddd_generate` is given a `PROJECT` and an `OUTPUT_DIRECTORY` that is the
 description's own directory, the record lies beside a hand-written project and names it. The
-browser interface refuses to write into a project its record says was `collected`, which the
-next configure writes again, and treats one that says `given` as any other. A record that does
-not say, as every record of format `1` does not, is read as `collected`, which is what it was
-taken for before the key existed: reading it as `given` would open every build made before to
-edits the next configure undoes.
+browser interface edits a project whose record says `given` and refuses to write into any other
+named by its record, the next configure writing a collected description again. A record without
+the key is read as `collected`, which is what it was taken for before the key existed: reading it
+as `given` would open every build made before to edits the next configure undoes, and a project
+given with such a record beside it stays refused until the build is configured again. The key is
+named `origin` and not `description`, which is a declaration's free text in the description files
+([section 3.2](#32-software-component-description)).
 
-The key raised `format` to `2`. The record is a closed object and a reader of format `1`
-validates it as one, so it declines a record with a key it does not know without saying why,
-being written by a build and not by a person; stamped `2`, the record is declined by that
-reader as written by a newer DDD, with the reason announced. A reader of this version reads a
-record of format `1` and of format `2` alike.
+The key is written for a given description alone, and that record is stamped `2`: the record is
+a closed object, so a reader that does not know the key fails the record. A DDD from 0.11.0 on
+declines a record stamped past its format as written by a newer DDD and says so, and an older one
+skips it in silence, as it skips any record it cannot validate. The record of a collected
+description keeps the shape of format `1` and is stamped `1`, which every DDD that read a record
+before reads still, so what this costs is a given description's record alone. A reader of this
+version reads a record of format `1` and of format `2` alike.
 
 The path in `project` is recorded and never checked when the record is written: in the
 collected mode the description is produced at the end of the configure run, after the

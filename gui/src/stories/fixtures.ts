@@ -1951,6 +1951,17 @@ export const VALUES_BLOCK_PAST_2_53: ValuesReply = {
   maximum_text: "18446744073709551615",
 };
 
+/** BlockA made a uint32 block of four holding numbers of nine, ten, two and seven digits, each in
+ * a field as wide as it (ABlockOfWideNumbers): fields of one width cut the first, second and
+ * fourth short. Built from BlockA's own answer, as VALUES_BLOCK_PAST_2_53 is. */
+export const VALUES_BLOCK_WIDE: ValuesReply = {
+  ...VALUES_BLOCK,
+  datatype: "uint32",
+  maximum: 4294967295,
+  shape: [4],
+  rows: [[123456789, 4000000000, 42, 1000000]],
+};
+
 /** AxisA drawn as an object in its own right, rather than as CurveA's or MapA's own axis: it
  * carries no axis of its own, so AnAxisOnItsOwn's column header is plain indices too - what makes
  * it worth drawing beside AValueBlockOverIndices rather than redundant with it. */

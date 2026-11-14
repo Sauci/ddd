@@ -422,6 +422,41 @@ export function rowHeader(reply: ValuesReply, physical: boolean): string[] {
   return indices(reply.shape[0] ?? 0);
 }
 
+/** What one cell's field shows: the text typed into it, while it is the cell being typed into;
+ * else its raw count, or what that count reads as in physical. A cell its row does not reach reads
+ * 0, as the startup code makes it. */
+export function cellText(
+  reply: ValuesReply,
+  editing: { row: number; column: number; typed: string } | null,
+  row: number,
+  column: number,
+  physical: boolean,
+): string {
+  if (editing !== null && editing.row === row && editing.column === column) return editing.typed;
+  const value = reply.rows[row]?.[column] ?? 0;
+  return String(physical ? physicalOf(value, reply.conversion) : value);
+}
+
+/** How many characters wide each of the grid's `columns` is drawn: the longest text its fields
+ * show, the numbers of its rows and what is being typed into one of them alike. A field cut short
+ * hides the end of its number with no sign of it, and under right aligned digits a cut number
+ * reads as a smaller one - 4000000000 as 400000. Column by column, so that one long number widens
+ * its own column and leaves the others as narrow as theirs; counted in characters, which the
+ * grid's monospace sets one `ch` apiece. */
+export function columnChars(
+  reply: ValuesReply,
+  editing: { row: number; column: number; typed: string } | null,
+  physical: boolean,
+  columns: number,
+): number[] {
+  return Array.from({ length: columns }, (_, column) =>
+    Math.max(
+      0,
+      ...reply.rows.map((_, row) => cellText(reply, editing, row, column, physical).length),
+    ),
+  );
+}
+
 /** `[2]` for a single row, `[1][3]` for a map. */
 export function cellAt(row: number, column: number, shape: number[]): string {
   return shape.length === 1 ? `[${column}]` : `[${row}][${column}]`;

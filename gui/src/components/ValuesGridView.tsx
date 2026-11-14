@@ -1,4 +1,4 @@
-import { type InputHTMLAttributes, type ReactNode, useContext } from "react";
+import { type CSSProperties, type InputHTMLAttributes, type ReactNode, useContext } from "react";
 import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
 import { keptByCell } from "../lib/cellKeys";
@@ -6,7 +6,9 @@ import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
 import {
   cellSentence,
+  cellText,
   columnAxisLabel,
+  columnChars,
   columnHeader,
   cornerLabel,
   elementLabel,
@@ -14,7 +16,6 @@ import {
   noGridNote,
   pasteHint,
   pasteSentence,
-  physicalOf,
   readOnlyNote,
   rowHeader,
   typedRaw,
@@ -79,12 +80,10 @@ interface HeaderColumn {
   index: number;
 }
 
-/** One row of the body: its own header label and id, its raw cells, and which of `reply.rows`
- * it is. */
+/** One row of the body: its own header label and id, and which of `reply.rows` it is. */
 interface GridRow {
   id: string;
   label: string;
-  cells: number[];
   row: number;
 }
 
@@ -135,12 +134,13 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       index,
     })),
   ];
-  const gridRows: GridRow[] = reply.rows.map((cells, row) => ({
+  const gridRows: GridRow[] = reply.rows.map((_, row) => ({
     id: `row:${row}`,
     label: rowLabels[row] ?? "",
-    cells,
     row,
   }));
+  // How many characters each column's fields hold (`columnChars`), for ui.css to widen them by.
+  const chars = columnChars(reply, editing, physical, columnLabels.length);
   const meta = [
     reply.kind,
     reply.datatype,
@@ -227,11 +227,6 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                       if (column.isRowHeader) return <Cell>{item.label}</Cell>;
                       const { row } = item;
                       const at = column.index;
-                      const value = item.cells[at] ?? 0;
-                      const here = editing !== null && editing.row === row && editing.column === at;
-                      const shown = here
-                        ? editing.typed
-                        : String(physical ? physicalOf(value, reply.conversion) : value);
                       const id = cellId(row, at);
                       return (
                         <Cell id={id}>
@@ -241,7 +236,8 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                             inputMode="decimal"
                             aria-label={elementLabel(row, at, reply.shape)}
                             className={reply.stated === "none" ? "unstated" : undefined}
-                            value={shown}
+                            style={{ "--chars": chars[at] } as CSSProperties}
+                            value={cellText(reply, editing, row, at, physical)}
                             disabled={reply.file === null || busy}
                             onChange={(event) =>
                               props.onEditing({ row, column: at, typed: event.target.value })

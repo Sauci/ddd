@@ -6,6 +6,7 @@ import {
   VALUES_AXIS,
   VALUES_BLOCK,
   VALUES_BLOCK_PAST_2_53,
+  VALUES_BLOCK_WIDE,
   VALUES_CURVE,
   VALUES_CURVE_B,
   VALUES_MAP,
@@ -82,6 +83,12 @@ export const AnAxisOnItsOwn = () => <View reply={VALUES_AXIS} backTo="Controller
 
 export const AValueBlockOverIndices = () => (
   <View reply={VALUES_BLOCK} backTo="UserInterface" physical />
+);
+
+// Each field as wide as its column's longest number: 123456789 and 4000000000 whole, where fields
+// of one width showed 123456 and 400000, smaller numbers than the ones held.
+export const ABlockOfWideNumbers = () => (
+  <View reply={VALUES_BLOCK_WIDE} backTo="UserInterface" physical />
 );
 
 export const AScalarInitStatedOnce = () => (

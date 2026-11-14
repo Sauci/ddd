@@ -113,6 +113,59 @@ function bigMapA(directory: string): void {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+/** Numbers wider than the grid's fields once were: BlockA made a uint32 block of four holding
+ * numbers of nine, ten, two and seven digits; ValueD a float64 block of three whose numbers are
+ * spelled in fifteen, eleven and nine characters; and MapA counted in steps of 0.125 %, its first
+ * cell 83 counts, which reads 10.375 %. Each file rewritten whole, as `bigMapA` rewrites its own. */
+function wideNumbers(directory: string): void {
+  const definition = (file: string, name: string, change: (definition: Definition) => void) => {
+    const path = join(directory, file);
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    change(
+      data.component.interface.find(
+        (declaration: { definition: { name: string } }) => declaration.definition.name === name,
+      ).definition,
+    );
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  };
+  definition(USER_INTERFACE, "BlockA", (block) => {
+    block.datatype = "uint32";
+    block.dimensions = [4];
+    block.init = [123456789, 4000000000, 42, 1000000];
+  });
+  definition(SENSOR_HUB, "ValueD", (block) => {
+    block.datatype = "float64";
+    block.dimensions = [3];
+    block.init = [0.1234567890123, 1234567.125, -0.000001];
+  });
+  definition(CONTROLLER, "MapA", (map) => {
+    map.conversion = { factor: 0.125 };
+    const first = (map.init as number[][])[0];
+    if (first === undefined) throw new Error(`${CONTROLLER} states no row of MapA`);
+    first[0] = 83;
+  });
+}
+
+/** A declaration's definition as `wideNumbers` changes it: only the keys it writes. */
+interface Definition {
+  datatype?: string;
+  dimensions?: number[];
+  conversion?: { factor: number };
+  init?: unknown;
+}
+
+/** Each field of `grid` whose number runs past its edge, by its label and what it holds: a field
+ * holding more than it shows scrolls wider than it is. */
+function cutFields(grid: Locator): Promise<string[]> {
+  return grid
+    .getByRole("textbox")
+    .evaluateAll((fields) =>
+      (fields as HTMLInputElement[])
+        .filter((field) => field.scrollWidth > field.clientWidth)
+        .map((field) => `${field.getAttribute("aria-label")}: ${field.value}`),
+    );
+}
+
 /** UserInterface's reading of ValueB made a second producing declaration of it, beside
  * SensorHub's. */
 function producedTwice(directory: string): void {
@@ -303,6 +356,36 @@ test("a map's cell names its row and its column", async ({ page, gui }) => {
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
 
   await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "MapA").init[1][3]).toBe(50);
+});
+
+// A field cut its number from the right with no sign of it, under right aligned digits: 123456789
+// read 123456 and 4000000000 read 400000, each a smaller number than the one it held.
+test("a cell's field shows the whole number it holds, and the whole of what is typed into it", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", wideNumbers);
+  for (const [variable, component, values] of [
+    ["BlockA", "UserInterface", ["123456789", "4000000000", "42", "1000000"]],
+    ["ValueD", "SensorHub", ["0.1234567890123", "1234567.125", "-0.000001"]],
+  ] as const) {
+    await openValues(page, gui.address, variable, component);
+    const grid = page.getByRole("grid", { name: `Values of ${variable}` });
+    await expectRow(grid, values);
+    await expect.poll(() => cutFields(grid)).toEqual([]);
+  }
+
+  await openValues(page, gui.address, "MapA");
+  const map = page.getByRole("grid", { name: "Values of MapA" });
+  await expect(map.getByRole("textbox", { name: "element 1, 1" })).toHaveValue("10.375");
+  await expect.poll(() => cutFields(map)).toEqual([]);
+  // A number typed into a field is shown whole while it is typed: -83 counts, past the field's
+  // own 2.75.
+  const cell = map.getByRole("textbox", { name: "element 2, 2" });
+  await typed(cell, "-10.375");
+  await expect(cell).toHaveValue("-10.375");
+  await expect(page.getByText("Sets element 2, 2 of MapA to -10.375 %")).toBeVisible();
+  await expect.poll(() => cutFields(map)).toEqual([]);
 });
 
 test("a number typed key by key into a map's cell reaches the cell, not the table's type-to-find", async ({

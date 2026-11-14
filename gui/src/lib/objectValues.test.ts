@@ -3,7 +3,9 @@ import type { ValuesReply } from "../api/types";
 import {
   cellAt,
   cellSentence,
+  cellText,
   columnAxisLabel,
+  columnChars,
   columnHeader,
   cornerLabel,
   drawable,
@@ -752,6 +754,82 @@ describe("cellSentence", () => {
 
   test("an object with no unit carries none in its sentence either", () => {
     expect(cellSentence(BLOCK_A, 0, 4, 84, true)).toBe("Sets element 5 of BlockA to 84");
+  });
+});
+
+/** A uint32 block holding numbers of nine, ten, two and seven digits. */
+const WIDE_WHOLE: ValuesReply = {
+  ...BLOCK_A,
+  datatype: "uint32",
+  maximum: 4294967295,
+  shape: [4],
+  rows: [[123456789, 4000000000, 42, 1000000]],
+};
+
+/** A float64 block whose numbers are spelled in fifteen, eleven and nine characters. */
+const WIDE_FRACTIONS: ValuesReply = {
+  ...BLOCK_A,
+  datatype: "float64",
+  shape: [3],
+  rows: [[0.1234567890123, 1234567.125, -0.000001]],
+};
+
+/** MapA counted in steps of 0.125 %, its first cell 83 counts: 10.375 % in physical. */
+const EIGHTHS: ValuesReply = {
+  ...MAP_A,
+  conversion: { kind: "linear", factor: 0.125, offset: 0 },
+  rows: [[83, 24, 28, 30, 32, 30], ...MAP_A.rows.slice(1)],
+};
+
+describe("cellText", () => {
+  test("a cell shows what its count reads as in physical, and the count itself in raw", () => {
+    expect(cellText(CURVE_A, null, 0, 2, true)).toBe("8");
+    expect(cellText(CURVE_A, null, 0, 2, false)).toBe("800");
+  });
+
+  test("the cell being typed into shows what was typed, in either reading, and no other does", () => {
+    const editing = { row: 0, column: 2, typed: "7.25" };
+    expect(cellText(CURVE_A, editing, 0, 2, true)).toBe("7.25");
+    expect(cellText(CURVE_A, editing, 0, 2, false)).toBe("7.25");
+    expect(cellText(CURVE_A, editing, 0, 1, true)).toBe("9");
+    expect(cellText(MAP_A, { row: 1, column: 3, typed: "7.25" }, 3, 1, false)).toBe("10");
+  });
+
+  test("a cell its row does not reach reads zero, as the startup code makes it", () => {
+    expect(cellText({ ...CURVE_A, rows: [[1200, 900]] }, null, 0, 4, false)).toBe("0");
+    expect(cellText({ ...MAP_A, rows: MAP_A.rows.slice(0, 2) }, null, 3, 0, true)).toBe("0");
+  });
+});
+
+describe("columnChars", () => {
+  test("each column of a uint32 block holds its own number whole", () => {
+    expect(columnChars(WIDE_WHOLE, null, false, 4)).toEqual([9, 10, 2, 7]);
+    expect(columnChars(WIDE_WHOLE, null, true, 4)).toEqual([9, 10, 2, 7]);
+  });
+
+  test("a float64 block's fractions are counted as the page spells them", () => {
+    expect(columnChars(WIDE_FRACTIONS, null, true, 3)).toEqual([15, 11, 9]);
+  });
+
+  test("a map's column is as wide as the longest number of its rows, read as the grid reads it", () => {
+    // 83, 18, 12 and 6 counts read 10.375, 2.25, 1.5 and 0.75 %; the next column's longest are
+    // 2.75 and 1.25. In raw every count of the map is two digits at most.
+    expect(columnChars(EIGHTHS, null, true, 6)).toEqual([6, 4, 4, 4, 4, 4]);
+    expect(columnChars(EIGHTHS, null, false, 6)).toEqual([2, 2, 2, 2, 2, 2]);
+  });
+
+  test("what is typed into a cell widens its own column alone, while it is typed", () => {
+    const editing = { row: 0, column: 2, typed: "4294967295" };
+    expect(columnChars(WIDE_WHOLE, editing, false, 4)).toEqual([9, 10, 10, 7]);
+    expect(columnChars(WIDE_WHOLE, { ...editing, typed: "" }, false, 4)).toEqual([9, 10, 0, 7]);
+  });
+
+  test("a column past the row's last value is counted as the zero it shows", () => {
+    expect(columnChars({ ...CURVE_A, rows: [[1200, 900]] }, null, false, 3)).toEqual([4, 3, 1]);
+  });
+
+  test("a grid of no rows has no width to give", () => {
+    expect(columnChars({ ...CURVE_A, rows: [] }, null, true, 6)).toEqual([0, 0, 0, 0, 0, 0]);
   });
 });
 

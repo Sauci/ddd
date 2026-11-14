@@ -761,8 +761,13 @@ tr.changing td {
 .values-table {
   margin-bottom: var(--space-2);
 }
+/* A field is as wide as its column's longest text, which `--chars` counts (objectValues.ts'
+   `columnChars`): one `ch` a character in this monospace, and the 22px of its padding and border
+   (`--cell`'s 10px a side, a 1px border) - and never narrower than the 5em every field once was,
+   so a grid of short numbers keeps its look, and a number of a few digits typed into a field
+   does not move the columns beside it with every key. */
 .values-table input {
-  width: 5em;
+  width: max(5em, calc(var(--chars, 0) * 1ch + 22px));
   padding: var(--cell);
   background: var(--surface);
   border: 1px solid var(--rule);

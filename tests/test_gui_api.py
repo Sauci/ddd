@@ -9868,26 +9868,60 @@ class TestAWholeNumberPastWhatADoubleHolds:
         assert get(api, "/api/values", name="Big").body["unshown"] == unshown
 
     @pytest.mark.parametrize(
-        ("axis", "curve", "unshown"),
+        ("axis_datatype", "axis", "curve_datatype", "curve", "unshown"),
         [
-            pytest.param([0, 2**53 + 1], [1, 2], "AxisX", id="the-axis-alone"),
-            pytest.param([0, 2**53], [1, 2], "AxisX", id="2^53-on-a-uint64-axis"),
-            pytest.param([0, 2**53 + 1], [1, 2**53 + 1], "CurveX", id="the-object-before-its-axis"),
+            pytest.param("uint64", [0, 2**53 + 1], "uint64", [1, 2], "AxisX", id="the-axis-alone"),
+            pytest.param(
+                "uint64", [0, 2**53], "uint64", [1, 2], "AxisX", id="2^53-on-a-uint64-axis"
+            ),
+            pytest.param(
+                "uint32",
+                [0, 2**53],
+                "uint64",
+                [1, 2],
+                None,
+                id="2^53-on-a-narrower-axis-under-a-uint64-curve",
+            ),
+            pytest.param(
+                "uint64",
+                [0, 2**53],
+                "float64",
+                [1, 2],
+                "AxisX",
+                id="2^53-on-a-uint64-axis-under-a-float-curve",
+            ),
+            pytest.param(
+                "uint64",
+                [0, 2**53 + 1],
+                "uint64",
+                [1, 2**53 + 1],
+                "CurveX",
+                id="the-object-before-its-axis",
+            ),
         ],
     )
     def test_an_axis_holding_one_is_named_by_the_grid_lying_against_it(
-        self, tmp_path: Path, axis: list[int], curve: list[int], unshown: str
+        self,
+        tmp_path: Path,
+        axis_datatype: str,
+        axis: list[int],
+        curve_datatype: str,
+        curve: list[int],
+        unshown: str | None,
     ) -> None:
         """Its breakpoints are drawn as the grid's own header, so they would be the rounded
-        numbers drawn there; weighed by the axis's own datatype, which is its cells'."""
+        numbers drawn there; weighed by the axis's own datatype, which is its cells', and not by
+        the curve's."""
         api = opened(
             tmp_path,
             {
                 "p.ddd.json": project("P", "a.ddd.json"),
                 "a.ddd.json": component(
                     "A",
-                    declare("local", "AxisX", "uint64", kind="axis", size=2, init=axis),
-                    declare("local", "CurveX", "uint64", kind="curve", axis="AxisX", init=curve),
+                    declare("local", "AxisX", axis_datatype, kind="axis", size=2, init=axis),
+                    declare(
+                        "local", "CurveX", curve_datatype, kind="curve", axis="AxisX", init=curve
+                    ),
                 ),
             },
         )

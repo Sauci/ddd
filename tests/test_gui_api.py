@@ -9260,7 +9260,8 @@ class TestAPlanThatChangesNothing:
 
 class TestAUnitSettledWithSpacesAroundIt:
     """15:M10: ``GET /api/settle`` wrote ``"unit": "V "``, while ``GET /api/unit-plan`` refuses that
-    spelling; it is refused now in the same words, and nothing is planned."""
+    spelling; it is refused now in the same words, and nothing is planned - and ``GET
+    /api/type-plan`` refuses a type's unit alike, as it refuses a type's limits as a variable's."""
 
     @pytest.mark.parametrize("unit", ["rpm ", " rpm"])
     def test_is_refused_as_the_units_tab_refuses_it(self, api: Api, root: Path, unit: str) -> None:
@@ -9277,6 +9278,31 @@ class TestAUnitSettledWithSpacesAroundIt:
         reply = get(api, "/api/settle", name="Speed", key="unit", raw='"Hz"')
         assert reply.status == 200
         assert len(reply.body["changes"]) == 2
+
+    @pytest.mark.parametrize("unit", ["degC ", " degC", "\tdegC"])
+    def test_a_types_unit_is_refused_alike(self, tmp_path: Path, unit: str) -> None:
+        api, root = copied(tmp_path, "structures", "project.ddd.json")
+        before = contents(root)
+        reply = get(
+            api,
+            "/api/type-plan",
+            action="set",
+            name="Temperature_t",
+            key="unit",
+            raw=json.dumps(unit),
+        )
+        assert reply == Reply(
+            409, {"error": "invalid", "message": f"'{unit}' has spaces around it"}
+        )
+        assert contents(root) == before
+
+    def test_a_types_unit_without_is_planned(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "structures", "project.ddd.json")
+        reply = get(
+            api, "/api/type-plan", action="set", name="Temperature_t", key="unit", raw='"K"'
+        )
+        assert reply.status == 200
+        assert [Path(change["file"]).name for change in reply.body["changes"]] == ["types.ddd.json"]
 
 
 class TestDescribingADeclarationOverHttp:

@@ -134,9 +134,11 @@ export function pastes(reply: ValuesReply): boolean {
 }
 
 /** Whether the object's values are drawn as a picture under the grid: one point plots nothing, so
- * a scalar has none. */
+ * a scalar has none. The picture follows the cells, drawing what the file states (`drawnRows`):
+ * a grid stating nothing, every cell of it hollow, has no point to place and draws none either,
+ * where it drew a line of the startup code's zeros under cells saying the file holds none. */
 export function plotDrawn(reply: ValuesReply): boolean {
-  return reply.shape.length > 0;
+  return reply.shape.length > 0 && reply.stated !== "none";
 }
 
 /** What a grid says of how its producer states the object, or `null` where the file writes the

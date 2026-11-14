@@ -166,7 +166,7 @@ describe("plotted", () => {
   });
 
   test("a range of zero at zero gets one either side", () => {
-    // An absent init is zeros, and a twentieth of zero is zero - there is no proportion to take.
+    // A row of zeros, and a twentieth of zero is zero - there is no proportion to take.
     const zeros: ValuesReply = { ...BLOCK_A, rows: [[0, 0, 0, 0, 0, 0, 0, 0]] };
     const plot = plotted(zeros, true);
     expect([plot.low, plot.high]).toEqual([-1, 1]);
@@ -200,10 +200,11 @@ describe("plotted", () => {
   });
 
   test("a flat line at zero is ruled by its own lower limit", () => {
-    // `ValueD` is this object in the demo: an absent init reads zero everywhere, its limits are
-    // `0 … 65535`, and the range of -1 to 1 the line above gives it puts the lower limit *inside*
-    // the frame - so the rule is drawn exactly where the flat line is. That is correct and looks
-    // odd, which is worth knowing before a picture of it is reported as a fault.
+    // A row stating zero everywhere under limits of `0 … 65535` - `ValueD`'s in the demo, were its
+    // file to state its zeros; its absent init draws no picture (`plotDrawn`) - and the range of
+    // -1 to 1 the line above gives it puts the lower limit *inside* the frame, so the rule is
+    // drawn exactly where the flat line is. That is correct and looks odd, which is worth knowing
+    // before a picture of it is reported as a fault.
     const zeros: ValuesReply = { ...BLOCK_A, rows: [[0, 0, 0, 0, 0, 0, 0, 0]] };
     const plot = plotted(zeros, true);
     expect(plot.rules.map((rule) => rule.value)).toEqual([0]);

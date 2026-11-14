@@ -1001,6 +1001,12 @@ class Api:
             inexact = limits_refusal(asked.raw, stated)
             if inexact is not None:
                 return _refusal(revision, "invalid", inexact, asked.name)
+        # A type's unit with spaces around it refused as a variable's is (`unit_refusal`), in the
+        # words the Units tab refuses that spelling with.
+        if isinstance(asked, SetTypeKey) and asked.key == "unit" and asked.raw is not None:
+            spaced = unit_refusal(asked.raw)
+            if spaced is not None:
+                return _refusal(revision, "invalid", spaced, asked.name)
         try:
             plan = _type_plan_of(asked, built, cache)
         except TypeRefusalError as refused:

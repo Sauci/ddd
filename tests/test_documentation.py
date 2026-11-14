@@ -549,6 +549,21 @@ class TestTheCommandPage:
             "change, and is offered as none"
         ) in text
 
+    def test_the_values_picture_is_said_to_draw_what_the_file_states(self) -> None:
+        """What ``ValuesGridView.tsx`` draws under the grid (``plotDrawn``, ``valuePlot.ts``), said
+        where the grid is described: the values the file states, placed by index where the axis
+        states fewer breakpoints than the shape, and no picture of a grid stating nothing."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "left undrawn only where there is no grid to begin with" not in text
+        assert (
+            "or over plain indices where it has no axis, or one stating fewer breakpoints than "
+            "the shape has columns"
+        ) in text
+        assert (
+            "It draws what the file states, as the cells do: a scalar's one value draws none, "
+            "and nor does a grid whose file states nothing, every cell of it hollow"
+        ) in text
+
     def test_the_values_grid_is_said_to_hold_the_cells_typed_as_one_change(self) -> None:
         """What ``ValuesPage.tsx`` and ``typedCells.ts`` do with cells typed one after another,
         said where the grid is described: held together, one change, one Apply and one undo."""

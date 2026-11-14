@@ -228,7 +228,8 @@ export function AnAppliedValueHeld() {
 }
 
 // Spec 6's own list, beyond the brief's: an absent init, and a grid nothing produces. An absent
-// init states no cell, so every cell is hollow (15:M7), where each read a greyed 0.
+// init states no cell, so every cell is hollow (15:M7), where each read a greyed 0, and no picture
+// is drawn under them, where a line of those zeros was.
 
 export const AnAbsentInitHollow = () => <View reply={VALUES_VALUE_D} backTo="SensorHub" physical />;
 
@@ -326,6 +327,9 @@ export const ABlockPlottedWithBothLimits = () => <ValuesPlotView reply={VALUES_B
 
 export const AFlatLineStatedOnce = () => <ValuesPlotView reply={VALUES_CURVE_B} physical />;
 
-// ValueD's absent init reads zero throughout, and its lower limit is zero too - the flat line and
-// the limit line share one y, which is correct rather than a coincidence to hide.
-export const AnAbsentInitAtZero = () => <ValuesPlotView reply={VALUES_VALUE_D} physical />;
+// ValueD's eight cells as though its file stated them zero - its absent init draws no picture -
+// and its lower limit is zero too: the flat line and the limit line share one y, which is correct
+// rather than a coincidence to hide.
+export const AFlatLineAtItsOwnLowerLimit = () => (
+  <ValuesPlotView reply={{ ...VALUES_VALUE_D, stated: "array" }} physical />
+);

@@ -1545,6 +1545,18 @@ describe("plotDrawn", () => {
   test("one point plots nothing", () => {
     expect(plotDrawn(PARAMETER_A)).toBe(false);
   });
+
+  test("a grid stating nothing draws no picture, its file stating no point to place", () => {
+    // The picture follows the cells: every one is hollow, and a line of the startup code's zeros
+    // under them would say what the grid does not.
+    expect(plotDrawn({ ...CURVE_A, stated: "none" })).toBe(false);
+    expect(plotDrawn({ ...MAP_A, stated: "none" })).toBe(false);
+  });
+
+  test("a grid the file states is drawn, one stated short or once for every cell alike", () => {
+    expect(plotDrawn(SHORT_CURVE)).toBe(true);
+    expect(plotDrawn({ ...CURVE_A, stated: "scalar" })).toBe(true);
+  });
 });
 
 describe("statedNote", () => {

@@ -1797,7 +1797,7 @@ test("an object initialised with text says so on its values page, which only a r
   await expect(page.getByRole("button", { name: "Back to UserInterface" })).toBeVisible();
 });
 
-test("a grid that states nothing is drawn hollow, says so, and takes its first values", async ({
+test("a grid that states nothing is drawn hollow with no picture, says so, and takes its first values", async ({
   page,
   copiedGui,
 }) => {
@@ -1814,6 +1814,11 @@ test("a grid that states nothing is drawn hollow, says so, and takes its first v
   }
   const nothing = page.getByText("Nothing is stated.", { exact: true });
   await expect(nothing).toBeVisible();
+  // The picture follows the cells: the file states no point, so none is drawn - where a line of
+  // the startup code's zeros lay under the hollow cells. Drawn with the grid, it would be here by
+  // now; it is drawn once the file states values (below).
+  const picture = page.getByRole("img", { name: /plotted against/ });
+  await expect(picture).toHaveCount(0);
   // One producer, so the grid is writable and a paste is offered.
   await expect(
     page.getByText("Paste 1 row of 4 values from a spreadsheet to replace them all.", {
@@ -1830,6 +1835,8 @@ test("a grid that states nothing is drawn hollow, says so, and takes its first v
     .poll(() => definitionOf(gui.directory, SENSOR_HUB, "ValueB").init)
     .toEqual([0, 1000, 0, 0]);
   await expect(nothing).toHaveCount(0);
+  // The file states four values now, and the picture draws them.
+  await expect(picture).toBeVisible();
 });
 
 test("a grid stated once for every cell says so, and one cell set writes every value", async ({

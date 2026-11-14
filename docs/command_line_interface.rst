@@ -433,10 +433,12 @@ The commands
        the grid, the object's values are drawn as a picture too: a marker at each point
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
-       plain indices where it has none, with its declared limits ruled across it
-       wherever they fall inside the drawn range. It follows the same toggle, offers no
-       control of its own, changes nothing, and is drawn under a read-only grid exactly
-       as under a writable one, left undrawn only where there is no grid to begin with.
+       plain indices where it has no axis, or one stating fewer breakpoints than the shape
+       has columns, with its declared limits ruled across it wherever they fall inside the
+       drawn range. It follows the same toggle, offers no control of its own, changes
+       nothing, and is drawn under a read-only grid exactly as under a writable one. It
+       draws what the file states, as the cells do: a scalar's one value draws none, and
+       nor does a grid whose file states nothing, every cell of it hollow.
        The toggle always rescales to its own range: for a positive conversion the same
        numbers in a different unit draw the very same picture, only the readings along
        its edges changing; a negative one - legal here - mirrors the curve instead of

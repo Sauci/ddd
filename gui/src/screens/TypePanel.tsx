@@ -14,7 +14,7 @@ import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { planShown } from "../lib/typing";
+import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
 import { limitsNote, limitsOf, limitsRaw, settledRaw, shortValue } from "../lib/variableKeys";
@@ -212,6 +212,12 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
     active === null
       ? { plan: null, refusal: null, pending: false }
       : planShown(asked[active], requests[active], plans[active]);
+  // What the chooser's field reads while nothing is being typed, and whether what is typed is not
+  // that: text typed and left is no choice yet (decision 15.3), so while it stands no plan is
+  // drawn for the value before it and Apply is withheld.
+  const settledLabel =
+    selected === undefined || broken !== null ? "" : fieldLabel(offer?.editor, selected, target);
+  const unsettledText = unsettled(typed, settledLabel);
 
   const apply = useMutation({
     mutationFn: (kind: Kind) => {
@@ -292,12 +298,8 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setDescription(undefined);
         }
       }}
-      typed={
-        typed ??
-        (selected === undefined || broken !== null
-          ? ""
-          : fieldLabel(offer?.editor, selected, target))
-      }
+      typed={typed ?? settledLabel}
+      unsettled={unsettledText}
       // Never the target: opening the list on the value already chosen must still list
       // everything, not just the entries that happen to contain it (spec 5.3, as `VariablePanel`
       // narrows too).
@@ -360,14 +362,16 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setChangesShown(false);
         }
       }}
-      preview={shown.plan}
+      preview={unsettledText ? null : shown.plan}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {
         if (active !== null) apply.mutate(active);
       }}
       onOpen={onOpen}
-      refusal={active === null ? null : refusalShown(refused, shown.refusal, active)}
+      refusal={
+        active === null || unsettledText ? null : refusalShown(refused, shown.refusal, active)
+      }
       busy={stopped || apply.isPending}
       onClose={onClose}
     />

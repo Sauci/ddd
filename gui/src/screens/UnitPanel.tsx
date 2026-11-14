@@ -13,7 +13,7 @@ import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, refusalShown } from "../lib/refusals";
-import { planShown } from "../lib/typing";
+import { planShown, unsettled } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -233,6 +233,8 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
         setFailed(null);
       }}
       onPickerClosed={() => setTyped(undefined)}
+      // Text typed into the picker and left there is no spelling chosen yet (decision 15.3).
+      unsettled={unsettled(typed, to ?? name)}
       to={to}
       // Nothing is said of a description left as it is: `offer("describe")` already draws
       // nothing once `requests.describe` is `null` (`planShown` answers `plan: null`), so this

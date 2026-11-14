@@ -73,3 +73,20 @@ export function planShown<T>(
     pending: !trusted || query.data === undefined,
   };
 }
+
+/** What a panel says in place of a plan while a chooser's text is not the value settled on: the
+ * reader's way out of it. */
+export const UNSETTLED_TEXT = "Press Enter to take what you typed, or pick it from the list.";
+
+/**
+ * Whether a chooser's text is one the panel has not settled on (decision 15.3): `typed` is what
+ * the reader has typed into its field and left there, `undefined` while the field reads the value
+ * settled on, whose own label is `settled`. Text typed is never a choice until Enter or a pick
+ * makes it one, so the plan on screen is still the earlier value's - `planShown`'s own rule,
+ * "never one for text the reader has since typed past", which cannot see this text: it is no part
+ * of the request. While it holds, the panel draws no plan and offers no Apply, and says
+ * `UNSETTLED_TEXT` instead. Text equal to the settled label is that value, however it got there.
+ */
+export function unsettled(typed: string | undefined, settled: string): boolean {
+  return typed !== undefined && typed !== settled;
+}

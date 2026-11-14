@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PlanReply, SettleReply, UnitsReply, VariableReply } from "../api/types";
+import { unsettled } from "../lib/typing";
 import { outsideVocabulary, textOf } from "../lib/units";
 import {
   labelOfRaw,
@@ -154,6 +155,8 @@ function View({
     setEdited(next);
     setTyped(undefined);
   };
+  const settledLabel =
+    selected === undefined || broken !== null ? "" : labelOfRaw(variable, selected, target);
   return (
     <VariablePanelView
       variable={variable}
@@ -162,10 +165,8 @@ function View({
       onSelect={select}
       onOpenType={() => undefined}
       onOpenConstant={() => undefined}
-      typed={
-        typed ??
-        (selected === undefined || broken !== null ? "" : labelOfRaw(variable, selected, target))
-      }
+      typed={typed ?? settledLabel}
+      unsettled={unsettled(typed, settledLabel)}
       // Never the target: opening the list on the value settled on must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
       narrow={typed ?? ""}

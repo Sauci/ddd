@@ -162,6 +162,34 @@ function entryOf(directory: string, name: string): Record<string, unknown> {
   return entry;
 }
 
+test("text typed past a type's chosen unit offers no Apply for the earlier one, until it is taken", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Unit", exact: true }).click();
+  const picker = panel.getByRole("combobox", { name: "Unit of Temperature_t" });
+  await picker.clear();
+  await picker.pressSequentially("K");
+  await picker.press("Enter");
+  await expect(panel.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  await picker.clear();
+  await picker.pressSequentially("Pa");
+  await expect(picker).toHaveValue("Pa");
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(panel.getByText("Changes 1 file")).toHaveCount(0);
+  await expect(
+    panel.getByText("Press Enter to take what you typed, or pick it from the list."),
+  ).toBeVisible();
+  await picker.press("Enter");
+  await expect(panel.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+});
+
 test("a type's range is settled from its two fields, and written", async ({
   page,
   structuresGui,
@@ -446,6 +474,19 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   await expect(page.getByRole("row", { name: "Temperature_t", exact: true })).toContainText(
     described,
   );
+  await expect(refused).toHaveText(STALE);
+
+  // Text typed into the chooser is no choice, yet it is past the value the refusal was about: the
+  // sentence is not drawn beside the way out the panel says instead.
+  const chooser = panel.getByRole("combobox", { name: "Limits of Temperature_t" });
+  await chooser.clear();
+  await chooser.pressSequentially("-4");
+  await expect(
+    panel.getByText("Press Enter to take what you typed, or pick it from the list."),
+  ).toBeVisible();
+  // Looked for by its text: the open list hides the page's roles from the accessibility tree.
+  await expect(panel.getByText(STALE)).toHaveCount(0);
+  await chooser.press("Escape");
   await expect(refused).toHaveText(STALE);
 
   // The reader's next choice, a new maximum typed, takes the sentence away, and is planned against

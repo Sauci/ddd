@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   CONTROLLER,
+  chooseUnit,
   driftDatatypeIn,
   driftFactor,
   driftIn,
@@ -15,6 +16,9 @@ import {
   USER_INTERFACE,
 } from "./demo";
 import { expect, test } from "./fixtures";
+
+/** What the panel says while a chooser's text is not the value settled on. */
+const UNSETTLED = "Press Enter to take what you typed, or pick it from the list.";
 
 /** BlockA made a uint64 stating limits up to the most a uint64 holds, written as text: as a
  * number here the maximum would already be the double nearest it. */
@@ -305,6 +309,11 @@ test("a key a declared type fixes is refused, and nothing is written", async ({
   await expect(panel.getByText("which fixes its unit")).toBeVisible();
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
   expect(readFileSync(join(vocabularyGui.directory, PUMP)).equals(before)).toBe(true);
+  // Text typed past the unit refused is no longer about it: the refusal goes, the way out is said.
+  await field.clear();
+  await field.pressSequentially("Hz");
+  await expect(panel.getByText(UNSETTLED)).toBeVisible();
+  await expect(panel.getByText("which fixes its unit")).toHaveCount(0);
 });
 
 test("a value that would leave a file unable to load is previewed with why, and applied all the same", async ({
@@ -450,4 +459,61 @@ test("text typed on one row is not carried to the row the panel moves to", async
   // The datatype is settled from outside: the panel moves by itself to the unit.
   driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint8");
   await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
+});
+
+/** What Controller's file states for ValueA's unit. */
+function unitOfValueA(directory: string): string {
+  return JSON.parse(readFileSync(join(directory, CONTROLLER), "utf8")).component.interface.find(
+    (declaration: { definition: { name: string } }) => declaration.definition.name === "ValueA",
+  ).definition.unit;
+}
+
+test("text typed past the chosen unit offers no Apply for the earlier unit, and says what to do", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
+  const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await field.clear();
+  await field.pressSequentially("km/h");
+  await expect(field).toHaveValue("km/h");
+  // The open list hides the rest of the page from the accessibility tree: looked for there too.
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  // Nor does a sentence plan the earlier unit as if it were the one now written.
+  await expect(panel.getByText("Changes 2 files")).toHaveCount(0);
+  await expect(panel.getByText(UNSETTLED)).toBeVisible();
+  // Taken with Enter, the text is the unit, and what is planned is for it.
+  await field.press("Enter");
+  await expect(field).toHaveValue("km/h");
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
+});
+
+test("what Apply writes is not a unit the reader typed past", async ({ page, gui }) => {
+  const before = unitOfValueA(gui.directory);
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  // The diff is open, which keeps the open list off the button.
+  await panel
+    .getByRole("region", { name: "Settle the key" })
+    .getByRole("button", { name: "Show changes" })
+    .click();
+  const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await field.clear();
+  await field.pressSequentially("km/h");
+  await expect(field).toHaveValue("km/h");
+  // Nothing to press while the text is not the unit settled on, so nothing can be written.
+  await expect(panel.getByRole("button", { name: /^Apply to/, includeHidden: true })).toHaveCount(
+    0,
+  );
+  expect(unitOfValueA(gui.directory)).toBe(before);
+  // Left, the field goes back to the unit chosen, and Apply writes exactly what it reads.
+  await field.press("Tab");
+  await expect(field).toHaveValue("rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect.poll(() => unitOfValueA(gui.directory)).toBe("rpm");
 });

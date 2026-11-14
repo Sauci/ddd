@@ -1,5 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { atOnce, gated, PLAN_DELAY_MS, planDelay, planShown, sameRequest } from "./typing";
+import {
+  atOnce,
+  gated,
+  PLAN_DELAY_MS,
+  planDelay,
+  planShown,
+  sameRequest,
+  UNSETTLED_TEXT,
+  unsettled,
+} from "./typing";
 
 describe("planDelay", () => {
   test("a debounced value's first plan is asked for at once, not only a panel's very first", () => {
@@ -123,5 +132,23 @@ describe("gated", () => {
   test("nothing typed is nothing asked, open or not", () => {
     expect(gated(null, null, true)).toBeNull();
     expect(gated(null, null, false)).toBeNull();
+  });
+});
+
+describe("unsettled", () => {
+  test("text typed that is not the settled label is not settled", () => {
+    expect(unsettled("km/h", "rpm")).toBe(true);
+    expect(unsettled("", "rpm")).toBe(true);
+    expect(unsettled("rp", "rpm")).toBe(true);
+  });
+
+  test("nothing typed reads the settled value, and typed text equal to it is that value", () => {
+    expect(unsettled(undefined, "rpm")).toBe(false);
+    expect(unsettled("rpm", "rpm")).toBe(false);
+    expect(unsettled("", "")).toBe(false);
+  });
+
+  test("it says what the reader can do, in the words the panels draw", () => {
+    expect(UNSETTLED_TEXT).toBe("Press Enter to take what you typed, or pick it from the list.");
   });
 });

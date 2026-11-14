@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PlanReply, TypeReply } from "../api/types";
+import { unsettled } from "../lib/typing";
 import { textOf, unitLabel } from "../lib/units";
 import { limitsNote, limitsOf, settledRaw } from "../lib/variableKeys";
 import {
@@ -73,6 +74,7 @@ function PanelStory({
       selected={selected}
       onSelect={select}
       typed={typed ?? startingLabel(reply, selected, chosen)}
+      unsettled={unsettled(typed, startingLabel(reply, selected, chosen))}
       narrow={typed ?? ""}
       onTyped={setTyped}
       onChosen={(raw) => {

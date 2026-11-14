@@ -121,6 +121,42 @@ test("a unit renamed from its panel is renamed everywhere, merging into the voca
   await expect(page.getByText("no longer stated or listed")).toHaveCount(0);
 });
 
+test("a rename's text typed past the spelling chosen offers no Apply for the earlier one", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const pump = join(vocabularyGui.directory, PUMP);
+  driftIn(vocabularyGui.directory, PUMP, "PumpSpeed", "RPM");
+  const drifted = readFileSync(pump);
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "RPM", exact: true }).click();
+  const renaming = page
+    .getByRole("complementary", { name: "RPM" })
+    .getByRole("region", { name: "Rename" });
+  const picker = renaming.getByRole("combobox", { name: "Rename RPM to" });
+  await renaming.getByRole("button", { name: "Show the choices for Rename RPM to" }).click();
+  await page.getByRole("option", { name: "kPa", exact: true }).click();
+  await expect(renaming.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  // Another spelling typed, and left in the field: kPa is no longer what would be written.
+  await picker.clear();
+  await picker.pressSequentially("Kilopascal");
+  await expect(picker).toHaveValue("Kilopascal");
+  await expect(
+    renaming.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(renaming.getByText(/kPa is in the vocabulary already/)).toHaveCount(0);
+  await expect(
+    renaming.getByText("Press Enter to take what you typed, or pick it from the list."),
+  ).toBeVisible();
+  expect(readFileSync(pump).equals(drifted)).toBe(true);
+  // Taken with Enter, it is the spelling, and Apply is for it.
+  await picker.press("Enter");
+  await expect(renaming.getByText("Not one of this project's units")).toBeVisible();
+  await renaming.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => readFileSync(pump, "utf8")).toContain('"unit": "Kilopascal"');
+});
+
 test("the vocabulary is described, added to and pruned from the units' panels", async ({
   page,
   vocabularyGui,
@@ -632,4 +668,52 @@ test("a unit listed twice is flagged by its chip, and its panel says it is alrea
   await expect(panel.getByRole("listitem")).toHaveText([
     "duplicate-unit unit 'rpm' is already declared",
   ]);
+});
+
+test("a wheel notch while the rename's list is open keeps what was typed, and the keys after it", async ({
+  page,
+  gui,
+}) => {
+  // Short enough that the panel scrolls: the field sits below the fold, and a notch moves the
+  // page under it.
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "ms", exact: true }).click();
+  const unit = page.getByRole("complementary", { name: "ms" });
+  const rename = unit.getByRole("combobox", { name: "Rename ms to" });
+  await rename.scrollIntoViewIfNeeded();
+  await rename.click();
+  await rename.press("Control+a");
+  await rename.pressSequentially("km");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await page.mouse.move(640, 200);
+  await page.mouse.wheel(0, -100);
+  await rename.pressSequentially("/h");
+  await expect(rename).toHaveValue("km/h");
+  await rename.press("Enter");
+  await expect(rename).toHaveValue("km/h");
+  // What is planned is for km/h, not for what the field read before the notch.
+  await unit.getByRole("button", { name: "Show changes" }).click();
+  await expect(unit.locator(".hunk .added").first()).toContainText('"unit": "km/h"');
+  // Escape and leaving the field are still the end of what was typed, with the list closed by a
+  // scroll as with it open.
+  const scrolled = async () => {
+    await page.mouse.wheel(0, -100);
+    await page.mouse.wheel(0, 100);
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+  };
+  await rename.press("End");
+  await rename.pressSequentially("zz");
+  await expect(rename).toHaveValue("km/hzz");
+  await scrolled();
+  await expect(rename).toHaveValue("km/hzz");
+  await rename.press("Escape");
+  await expect(rename).toHaveValue("km/h");
+  await rename.press("End");
+  await rename.pressSequentially("yy");
+  await scrolled();
+  await expect(rename).toHaveValue("km/hyy");
+  await rename.press("Tab");
+  await expect(rename).toHaveValue("km/h");
 });

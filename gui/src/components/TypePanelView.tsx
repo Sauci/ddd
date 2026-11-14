@@ -2,6 +2,7 @@ import type { PlanReply, TypeReply, TypeUse, UnitsReply } from "../api/types";
 import { distinctFindings, keyedFindings, routeOf } from "../lib/findings";
 import { keyRowsOfType, memberRows } from "../lib/projectTypes";
 import type { Route } from "../lib/route";
+import { UNSETTLED_TEXT } from "../lib/typing";
 import { baseName, consequence, shownChanges, textOf } from "../lib/units";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -24,6 +25,9 @@ export interface TypePanelViewProps {
   onTyped: (text: string) => void;
   onChosen: (raw: string | null) => void;
   onPickerClosed: () => void;
+  /** Whether the chooser's text is not the value settled on (`unsettled`, lib/typing.ts): the
+   * panel then says how to settle it, in place of a plan and an Apply. */
+  unsettled: boolean;
   range: { min: string; max: string };
   onRange: (range: { min: string; max: string }) => void;
   /** Why the two fields say nothing to apply, while they say so - the sentence the variable
@@ -156,6 +160,7 @@ export function TypePanelView(props: TypePanelViewProps) {
         </label>
         <p className="rename-note">Only the name changes; what the type fixes stays as it is.</p>
       </section>
+      {props.unsettled && <p className="consequence">{UNSETTLED_TEXT}</p>}
       {refusal !== null ? (
         <p className="panel-refusal" role="status">
           {refusal}

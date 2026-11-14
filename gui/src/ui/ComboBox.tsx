@@ -46,6 +46,15 @@ interface Props {
    * The list closed, whether an entry was taken or not - by Enter, Escape, Tab, ▾ or the focus
    * leaving the field. The caller puts its own value back in the field: text typed and left is
    * never a choice.
+   *
+   * Called too on Escape and on the focus leaving the field, whether the list is open or not:
+   * those two end what was typed, wherever the list stands.
+   *
+   * Not called for a close React Aria makes on a scroll: it closes the list whenever a box
+   * holding the field scrolls - a wheel notch while it is open, or the scroll into view that follows
+   * the field taking the focus or a key typed into it below the fold - and none of those is the
+   * reader leaving. The text typed stays, the next key opens the list again, and a key lost to
+   * such a close would be the reader's spelling, spelt wrong.
    */
   onClose: () => void;
   /** A line under the field, such as that a typed unit is not one of the project's. */
@@ -93,9 +102,25 @@ export function ComboBox({
   // no reason to open it again: until the reader types or leaves the field, only ArrowDown or ▾
   // opens it.
   const [puttingBack, setPuttingBack] = useState(false);
+  // Whether a scroll of an ancestor of the field is being dispatched: React Aria's own listener
+  // for it (`useCloseOnScroll`) closes the list from inside that event, and says nothing of why.
+  // This one is registered at mount, before React Aria's, so it has run when the close is told.
+  const scrolling = useRef(false);
   useEffect(() => {
     if (autoFocus !== null) input.current?.focus();
   }, [autoFocus]);
+  useEffect(() => {
+    const scrolled = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node) || !target.contains(input.current)) return;
+      scrolling.current = true;
+      setTimeout(() => {
+        scrolling.current = false;
+      }, 0);
+    };
+    window.addEventListener("scroll", scrolled, true);
+    return () => window.removeEventListener("scroll", scrolled, true);
+  }, []);
   return (
     <AriaComboBox
       className="combo"
@@ -106,7 +131,7 @@ export function ComboBox({
         onInputChange(value);
       }}
       onOpenChange={(isOpen) => {
-        if (isOpen) return;
+        if (isOpen || scrolling.current) return;
         setPuttingBack(true);
         onClose();
       }}
@@ -121,6 +146,12 @@ export function ComboBox({
         <Input
           ref={input}
           onKeyDown={(event) => {
+            // Escape ends what was typed, with the list open or already closed by a scroll: the
+            // caller puts its own value back, and the list is not opened again for that.
+            if (event.key === "Escape") {
+              setPuttingBack(true);
+              onClose();
+            }
             // React Aria has handled the key already, closing the list, and with an entry focused
             // it took that entry. Whether one was is read from the field's aria-activedescendant,
             // which still describes the list as the key found it: the page is not drawn again
@@ -134,7 +165,12 @@ export function ComboBox({
           }}
           // Leaving the field ends the putting back - React Aria has closed the list before this
           // runs - so that the field taking the focus again opens the list as `menuTrigger` says.
-          onBlur={() => setPuttingBack(false)}
+          // Also ends what was typed when the list is already closed - a scroll closed it - so that
+          // the focus leaving the field never leaves text in it that nothing took.
+          onBlur={() => {
+            setPuttingBack(false);
+            onClose();
+          }}
         />
         <AriaButton aria-label={`Show the choices for ${label}`}>▾</AriaButton>
       </Group>

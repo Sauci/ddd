@@ -14,7 +14,7 @@ import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
 import { planEdit } from "../lib/projectUnits";
 import { isStale, panelShows, type Refused, refusalShown } from "../lib/refusals";
-import { planShown } from "../lib/typing";
+import { planShown, unsettled } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
@@ -192,6 +192,14 @@ export function VariablePanel({
   const settleRequest: SettleRequest | null =
     reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
   const askedSettle = useDebounced(settleRequest, typedLimits);
+  // What the field reads while nothing is being typed, and whether what is typed is not that:
+  // text typed and left is no choice yet (decision 15.3), so while it stands nothing is previewed
+  // - the table above says nothing of the earlier value either - and Apply is withheld.
+  const settledLabel =
+    reply === undefined || selected === undefined || broken !== null
+      ? ""
+      : labelOfRaw(reply, selected, target);
+  const unsettledText = unsettled(typed, settledLabel);
   const preview = useQuery({
     queryKey: ["settle", name, askedSettle, revision],
     queryFn:
@@ -350,10 +358,8 @@ export function VariablePanel({
       onOpenConstant={onOpenConstant}
       // A range the fields do not make is no value, so the field above them reads empty and
       // the note says why, rather than naming a value nothing would be settled on.
-      typed={
-        typed ??
-        (selected === undefined || broken !== null ? "" : labelOfRaw(reply, selected, target))
-      }
+      typed={typed ?? settledLabel}
+      unsettled={unsettledText}
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
       narrow={typed ?? ""}
@@ -383,11 +389,15 @@ export function VariablePanel({
       // previewed on before: the query is not asked, and an answer it kept is not shown. Nor is
       // the debounced request's own answer, while it is not yet what `target` now says
       // (`shownSettle.plan`) - that answer is an earlier target's, same as while any plan loads.
-      preview={broken === null ? shownSettle.plan : null}
+      preview={broken === null && !unsettledText ? shownSettle.plan : null}
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say - nor
       // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).
-      refusal={refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)}
+      refusal={
+        unsettledText
+          ? null
+          : refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)
+      }
       changesShown={changesShown}
       onChangesShown={(shown) => hold({ changesShown: shown })}
       onApply={() => apply.mutate()}

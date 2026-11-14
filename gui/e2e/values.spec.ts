@@ -81,11 +81,15 @@ function bigBlockA(init: string): (directory: string) => void {
   };
 }
 
-/** `text` typed into `cell` key by key, as a reader types it (decision 23.2): the cell emptied
- * with `clear()`, then each key pressed in turn. A grid cell is a field that handles keys, so
- * `.fill()` - which sets the value in one step - never meets the grid's own handling of a key
- * (16:C1); every journey that sets a grid cell does it here. */
+/** `text` typed into `cell` key by key, as a reader types it (decision 23.2): a click into the
+ * cell, the cell emptied with `clear()`, then each key pressed in turn. A grid cell is a field that
+ * handles keys, so `.fill()` - which sets the value in one step - never meets the grid's own
+ * handling of a key (16:C1); every journey that sets a grid cell does it here. The click is the
+ * reader's: a focus given by a call alone, into a cell while the table remembers another, is given
+ * back to the remembered one by the table (it is one tab stop), and the Delete of `clear()` lands
+ * there - measured in 2 of 20 runs of a Raw cell typed into after a Physical one. */
 async function typed(cell: Locator, text: string): Promise<void> {
+  await cell.click();
   await cell.clear();
   await cell.pressSequentially(text);
 }
@@ -353,7 +357,7 @@ test("every digit typed into a cell of a 16 by 16 map enters the cell", async ({
     await typed(cell, digit);
     await expect(cell).toHaveValue(digit);
     await expect(cell).toBeFocused();
-    await expect(page.getByText(`Sets element 3, 4 of MapA to ${digit}`).first()).toBeVisible();
+    await expect(page.getByText(`Sets element 3, 4 of MapA to ${digit}`)).toBeVisible();
   }
   await typed(cell, "127");
   await expect(cell).toHaveValue("127");
@@ -404,12 +408,64 @@ test("an arrow pressed in a cell's field moves to the neighbouring cell's field"
     await field(2, 2).press(key);
     await expect(field(row, column)).toBeFocused();
   }
-  // And from a field that took the focus by a call, not a click: the focus a key moves there is
-  // the one the grid also treats as keyboard's own.
-  await page.getByRole("button", { name: "Raw" }).click();
+});
+
+test("a field focused by a call on a fresh grid keeps the focus, and an arrow moves on from it", async ({
+  page,
+  gui,
+}) => {
+  // A fresh grid holds no focused cell, and a focus a call gives is not a click: the table used to
+  // move it to the first row. The field is the cell the arrows start from.
+  await openValues(page, gui.address, "MapA");
+  const field = (row: number, column: number) =>
+    page.getByRole("textbox", { name: `element ${row}, ${column}` });
   await field(3, 3).focus();
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  await expect(field(3, 3)).toBeFocused();
   await field(3, 3).press("ArrowDown");
   await expect(field(4, 3)).toBeFocused();
+});
+
+test("Tab out of a field and Shift+Tab back return to the cell being edited", async ({
+  page,
+  gui,
+}) => {
+  // The table is one tab stop: the focus comes back to the cell it held last, with what was
+  // typed in it, and the number goes on from there.
+  await openValues(page, gui.address, "MapA");
+  const field = (row: number, column: number) =>
+    page.getByRole("textbox", { name: `element ${row}, ${column}` });
+  await field(2, 2).click();
+  await typed(field(2, 2), "5");
+  await expect(page.getByText("Sets element 2, 2 of MapA to 5 %")).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(field(2, 2)).not.toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(field(2, 2)).toBeFocused();
+  await page.keyboard.press("9");
+  await expect(field(2, 2)).toHaveValue("59");
+  await expect(page.getByText("Sets element 2, 2 of MapA to 59 %")).toBeVisible();
+});
+
+test("Tab out of a field of a big map does not scroll the page", async ({ page, copiedGui }) => {
+  // The table's own scrolling follows its focused cell, which Tab must leave where it was.
+  const gui = await copiedGui("demo", bigMapA);
+  await openValues(page, gui.address, "MapA");
+  await page.getByRole("button", { name: "Raw" }).click();
+  const field = page.getByRole("textbox", { name: "element 1, 1", exact: true });
+  await field.click();
+  await expect(field).toBeFocused();
+  const scrolled = () => page.evaluate(() => [window.scrollX, window.scrollY]);
+  expect(await scrolled()).toEqual([0, 0]);
+  await page.keyboard.press("Tab");
+  await expect(field).not.toBeFocused();
+  // Two frames: the table scrolls to its focused cell in the render after the focus.
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  expect(await scrolled()).toEqual([0, 0]);
 });
 
 test("a click into a field after the focus left the grid keeps the focus in that field", async ({

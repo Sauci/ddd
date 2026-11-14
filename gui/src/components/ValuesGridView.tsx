@@ -1,8 +1,9 @@
 import { type InputHTMLAttributes, type ReactNode, useContext } from "react";
 import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
-import { cellId, keptByCell } from "../lib/cellKeys";
+import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
+import { cellId, takesFocusedCell } from "../lib/gridCells";
 import {
   cellSentence,
   columnAxisLabel,
@@ -87,15 +88,26 @@ interface GridRow {
   row: number;
 }
 
-/** A grid cell's field. The grid's focus follows it: the field takes the focus and the table is
- * told that its focused cell is this one, as the table does itself for a click but not for a
- * focus a key or a call gives (it then looks for no focused cell and moves the focus to the first
- * row, where the keys that follow go). With the cell known to the table, the focus stays in the
- * field and the arrows move on from it. */
-function CellField(props: InputHTMLAttributes<HTMLInputElement> & { cellId: string }) {
+/** What a grid cell's field takes: an input's own props but `onFocus`, which is the field's. */
+type CellFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onFocus"> & { cellId: string };
+
+/** A grid cell's field. On a grid's first entry the table holds no focused cell and moves the
+ * focus of a field to its first row, where the keys that follow go; so a field taking the focus
+ * tells the table that its own cell is the focused one, where the table holds none (`gridCells`'
+ * `takesFocusedCell`). Where it holds one, its own handling stands: a click sets the clicked cell,
+ * and Tab and Shift+Tab give the focus back to the cell it remembers. */
+function CellField(props: CellFieldProps) {
   const { cellId: key, ...field } = props;
   const state = useContext(TableStateContext);
-  return <input {...field} onFocus={() => state?.selectionManager.setFocusedKey(key)} />;
+  return (
+    <input
+      {...field}
+      onFocus={() => {
+        const manager = state?.selectionManager;
+        if (manager && takesFocusedCell(manager.focusedKey)) manager.setFocusedKey(key);
+      }}
+    />
+  );
 }
 
 /** One object's values (spec 5.2), drawn from what the api answered: a picture of its props. It
@@ -220,10 +232,11 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                       const shown = here
                         ? editing.typed
                         : String(physical ? physicalOf(value, reply.conversion) : value);
+                      const id = cellId(row, at);
                       return (
-                        <Cell id={cellId(row, at)}>
+                        <Cell id={id}>
                           <CellField
-                            cellId={cellId(row, at)}
+                            cellId={id}
                             type="text"
                             inputMode="decimal"
                             aria-label={elementLabel(row, at, reply.shape)}

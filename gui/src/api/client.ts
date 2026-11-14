@@ -11,6 +11,7 @@ import type {
   DeclarableQuery,
   DeclarableReply,
   DeclarationPlanQuery,
+  DescriptionPlanQuery,
   EditReply,
   FileContent,
   FileQuery,
@@ -321,6 +322,14 @@ export type DeclarationPlanRequest = DeclarationPlanQuery;
 
 export const getDeclarationPlan = (plan: DeclarationPlanRequest, fetchImpl: Fetch = fetch) =>
   request<PlanReply>(`/api/declaration-plan${queryOf<DeclarationPlanQuery>(plan)}`, {}, fetchImpl);
+
+/** What describing one component's declaration of a variable takes, as `GET /api/description-plan`
+ * takes it: `DescriptionPlanQuery`, the server's own model of the query - the description is the
+ * declaration's own, in the file given, and the empty text takes it away. */
+export type DescriptionPlanRequest = DescriptionPlanQuery;
+
+export const getDescriptionPlan = (plan: DescriptionPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/description-plan${queryOf<DescriptionPlanQuery>(plan)}`, {}, fetchImpl);
 
 /** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
  * soon as the answer arrives - a refused edit notes nothing. */

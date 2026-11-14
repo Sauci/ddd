@@ -8,6 +8,7 @@ import {
   getConstantPlan,
   getDeclarable,
   getDeclarationPlan,
+  getDescriptionPlan,
   getFile,
   getFiles,
   getFilesPlan,
@@ -258,6 +259,14 @@ describe("requests to the server", () => {
       { action: "declare", file: "/tmp/c.ddd.json", scope: "output", definition: '{"name":"P"}' },
       fetchImpl,
     );
+    await getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description: "a gain" },
+      fetchImpl,
+    );
+    await getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description: "" },
+      fetchImpl,
+    );
     // Noted into an instance of their own: this fetch answers `{}`, which carries no number.
     await postEdit(
       {
@@ -271,6 +280,7 @@ describe("requests to the server", () => {
     await postUndo(3, fetchImpl, new OwnEdits());
     await getValues("CurveA", fetchImpl);
     await getValuePlan({ name: "CurveA", at: "[2]", raw: 750 }, fetchImpl);
+    await getValuePlan({ name: "ParameterA", at: "", raw: 4000 }, fetchImpl);
     expect(fetchImpl.mock.calls).toEqual([
       ["/api/session", { credentials: "omit" }],
       ["/api/projects", { credentials: "omit" }],
@@ -369,6 +379,14 @@ describe("requests to the server", () => {
         { credentials: "omit" },
       ],
       [
+        "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=a%20gain",
+        { credentials: "omit" },
+      ],
+      [
+        "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=",
+        { credentials: "omit" },
+      ],
+      [
         "/api/edit",
         {
           credentials: "omit",
@@ -391,6 +409,7 @@ describe("requests to the server", () => {
       ],
       ["/api/values?name=CurveA", { credentials: "omit" }],
       ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "omit" }],
+      ["/api/value-plan?name=ParameterA&at=&raw=4000", { credentials: "omit" }],
     ]);
   });
 

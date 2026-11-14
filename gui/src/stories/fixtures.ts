@@ -232,6 +232,49 @@ export const AGREEING: VariableReply = {
   findings: [],
 };
 
+/** ParameterA, the controller's own calibration parameter: declared by Controller alone, `local`,
+ * so nothing disagrees - the panel a description is written from (DescriptionOfTheDeclaration). */
+export const PARAMETER_A: VariableReply = {
+  revision: 7,
+  name: "ParameterA",
+  declarations: [
+    {
+      path: CONTROLLER,
+      pointer: "component.interface[8].definition",
+      component: "Controller",
+      role: "local",
+      stated: {
+        kind: '"parameter"',
+        datatype: '"uint16"',
+        unit: '"Hz"',
+        conversion: '{"factor": 0.25}',
+        limits: '{"min": 500, "max": 1500}',
+      },
+      type: null,
+      fixed: {},
+    },
+  ],
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true)],
+      values: [inPlay('"uint16"', ["Controller"], true)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false)],
+      values: [inPlay('"Hz"', ["Controller"], true)],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+  ],
+  findings: [],
+};
+
 /** ValueA declared by a type that fixes its unit: SensorHub names Speed_t and states no unit. */
 export const FIXED_BY_TYPE: VariableReply = {
   revision: 7,
@@ -2099,6 +2142,140 @@ export const CURVE_CELLS_PLAN: PlanReply = {
           line: 205,
           before: ['          "init": [1200, 900, 800, 750, 700, 650],'],
           after: ['          "init": [1300, 1400, 1500, 750, 700, 650],'],
+        },
+      ],
+    },
+  ],
+};
+
+/** ParameterA: the controller's own calibration parameter, no dimensions, `init: 3200` and a
+ * factor of 0.25 - 3200 raw counts, 800 Hz. A scalar is a grid of one cell, and a served copy of
+ * examples/demo answers this reply for it (AScalarAsOneCell's own). */
+export const VALUES_PARAMETER_A: ValuesReply = {
+  revision: 1,
+  name: "ParameterA",
+  kind: "parameter",
+  datatype: "uint16",
+  unit: "Hz",
+  conversion: { kind: "linear", factor: 0.25, offset: 0 },
+  minimum: 500,
+  maximum: 1500,
+  shape: [],
+  rows: [[3200]],
+  stated: "scalar",
+  axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
+  owner: "Controller",
+  file: CONTROLLER,
+  findings: [],
+};
+
+/** ValueC: SensorHub's float32 measurement stating no `init`, so its one cell reads the zero the
+ * startup code makes of it. */
+export const VALUES_VALUE_C: ValuesReply = {
+  revision: 1,
+  name: "ValueC",
+  kind: "measurement",
+  datatype: "float32",
+  unit: "degC",
+  conversion: { kind: "identity" },
+  minimum: -3.4028234663852886e38,
+  maximum: 3.4028234663852886e38,
+  shape: [],
+  rows: [[0]],
+  stated: "none",
+  axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
+  owner: "SensorHub",
+  file: SENSOR_HUB,
+  findings: [],
+};
+
+/** ParameterA's one cell set to 4000 raw, 1000 Hz: one `set` at its own `init`, one line - what a
+ * served copy of examples/demo answers `GET /api/value-plan?name=ParameterA&at=&raw=4000`. */
+export const PARAMETER_CELL_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [{ op: "set", pointer: "component.interface[8].definition.init", raw: "4000" }],
+      hunks: [
+        {
+          line: 142,
+          before: ['          "init": 3200,'],
+          after: ['          "init": 4000,'],
+        },
+      ],
+    },
+  ],
+};
+
+/** ValueC's one cell set to 21.5, which its file did not state: the preview shows the `init` the
+ * declaration gains. */
+export const VALUE_C_INIT_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: SENSOR_HUB,
+      fingerprint: "bfb9ade8086f084a007f05b91d160a6c327df0f43f05745ab0ea5a90f291b80f",
+      operations: [{ op: "set", pointer: "component.interface[2].definition.init", raw: "21.5" }],
+      hunks: [
+        {
+          line: 93,
+          before: ['          "volatile": false'],
+          after: ['          "volatile": false,', '          "init": 21.5'],
+        },
+      ],
+    },
+  ],
+};
+
+/** ParameterA's description set to "Engine speed gain": one `set` at the declaration's own
+ * `description`, in the controller's file alone. */
+export const DESCRIPTION_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[8].definition.description",
+          raw: '"Engine speed gain"',
+        },
+      ],
+      hunks: [
+        {
+          line: 137,
+          before: ['          "description": "Single calibratable constant",'],
+          after: ['          "description": "Engine speed gain",'],
+        },
+      ],
+    },
+  ],
+};
+
+/** The same description emptied: the key goes, the default of the model being the empty text. */
+export const DESCRIPTION_REMOVED_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        { op: "remove", pointer: "component.interface[8].definition.description", raw: null },
+      ],
+      hunks: [
+        {
+          line: 137,
+          before: ['          "description": "Single calibratable constant",'],
+          after: [],
         },
       ],
     },

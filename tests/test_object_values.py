@@ -152,23 +152,58 @@ class TestWhatTheGridShows:
         grid = grid_of(dictionary, built, "CurveA")
         assert (grid.minimum, grid.maximum) == (0.0, 655.35)
 
-    def test_a_shapeless_object_has_an_empty_shape_and_no_rows(self, demo) -> None:
-        # ValueA is a plain scalar measurement: shape () is normal for most of a project -
-        # sensor_hub states its init as 0 - and a shapeless object has no cell for a value
-        # to sit in, so the empty grid is the answer, not a crash and not a refusal.
+    def test_a_scalar_is_one_cell(self, demo) -> None:
+        # ParameterA, a plain calibration parameter: no dimensions, uint16, init 3200 and a
+        # conversion of 0.25. Its one value sits in a grid of one cell, in raw counts as every
+        # grid holds them: 3200 raw reads 800 physical.
         dictionary, built = demo
-        grid = grid_of(dictionary, built, "ValueA")
+        grid = grid_of(dictionary, built, "ParameterA")
+        assert (grid.kind, grid.datatype, grid.unit) == ("parameter", "uint16", "Hz")
         assert grid.shape == ()
-        assert grid.rows == ()
+        assert grid.rows == ((3200,),)
         assert grid.stated == "scalar"
+        assert grid.conversion.factor == 0.25  # type: ignore[attr-defined]
+        assert grid.rows[0][0] * grid.conversion.factor == 800  # type: ignore[attr-defined]
+        assert grid.file is not None and grid.file.endswith("controller.ddd.json")
+        assert grid.pointer is not None
 
-    def test_a_shapeless_object_with_no_init_says_none_too(self, demo) -> None:
-        # The same shapeless case, the other way its producer can leave init: ValueC states
-        # none at all, so it draws the same "none" a shaped object with no init draws -
-        # shape alone does not collapse that distinction, only rows.
+    def test_a_scalar_stating_nothing_is_one_cell_of_zero(self, demo) -> None:
+        # The other way its producer can leave init: ValueC states none, so the startup code
+        # zeroes it - the one cell reads 0, and `stated` still says nothing is written.
         dictionary, built = demo
         grid = grid_of(dictionary, built, "ValueC")
-        assert (grid.shape, grid.rows, grid.stated) == ((), (), "none")
+        assert (grid.shape, grid.rows, grid.stated) == ((), ((0,),), "none")
+
+    def test_a_scalar_that_is_a_boolean_reads_as_a_count(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Flag", datatype="boolean", init=True)
+                ),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        grid = grid_of(revision.dictionary, revision.index, "Flag")
+        assert grid.rows == ((1,),)
+        assert type(grid.rows[0][0]) is int
+
+    def test_a_scalar_initialised_with_a_list_has_no_cell(self, tmp_path) -> None:
+        # A list on an object of no shape is a finding of its own (`init-invalid`) and no value to
+        # show: the grid holds no cell for it.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Odd", init=[1, 2])),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        grid = grid_of(revision.dictionary, revision.index, "Odd")
+        assert (grid.shape, grid.rows) == ((), ())
 
     def test_an_axis_with_no_init_gives_no_breakpoints(self, tmp_path) -> None:
         # An axis's own producer may state no init at all, legal like any other object's -
@@ -653,18 +688,30 @@ class TestChangingOne:
             session.stop()
         assert refused.value.message == "'Cube' has 3 dimensions, and a grid draws at most two"
 
-    def test_a_shapeless_object_has_no_cell_to_change(self, demo) -> None:
-        # ValueA is a plain scalar measurement with no dimensions at all - legal and common,
-        # the same object TestWhatTheGridShows reads against. Unlike a curve, a map or a
-        # value block it has no cell for a value to sit in, so set_cell refuses it outright,
+    def test_an_object_with_no_cell_has_none_to_change(self, tmp_path) -> None:
+        # A list written for an object of no shape, and text written for one, have no cell for a
+        # value to sit in; set_cell refuses either outright, in the words it always has,
         # checked before `at` is ever weighed against the empty shape.
-        dictionary, built = demo
-        with pytest.raises(ValueRefusalError) as refused:
-            set_cell(dictionary, built, "ValueA", "", 1, {})
-        assert (refused.value.code, refused.value.message) == (
-            "invalid",
-            "'ValueA' has no cell for a value to sit in",
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Odd", init=[1, 2]),
+                    declare("output", "Label", init="OFF"),
+                ),
+            },
         )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        for name in ("Odd", "Label"):
+            with pytest.raises(ValueRefusalError) as refused:
+                set_cell(revision.dictionary, revision.index, name, "", 1, {})
+            assert (refused.value.code, refused.value.message) == (
+                "invalid",
+                f"'{name}' has no cell for a value to sit in",
+            )
 
     def test_a_boolean_cell_takes_0_or_1_and_nothing_else(self, tmp_path) -> None:
         # analysis._check_init's own boolean arm, mirrored: a bool or a literal 0/1 passes,
@@ -733,6 +780,108 @@ class TestChangingOne:
         finally:
             session.stop()
         assert refused.value.message == "1e-50 rounds to zero in float32"
+
+
+class TestAScalarIsSetAsOneCell:
+    """A scalar's value is the one cell of a grid of one: ``set_cell`` takes it at no element, as
+    one ``set`` at the declaration's own ``init``."""
+
+    def test_a_value_set_is_one_set_at_the_init(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_cell(dictionary, built, "ParameterA", "", 4000, {})
+        (edit,) = plan.edits
+        assert edit.path.name == "controller.ddd.json"
+        (operation,) = edit.operations
+        assert (operation.op, operation.raw) == ("set", "4000")
+        assert operation.pointer.endswith(".definition.init")
+        text = edit.path.read_text(encoding="utf-8")
+        after = edit_text(text, edit.operations)
+        assert _definition_of(after, "ParameterA")["init"] == 4000
+        # The rest of the declaration is as it was.
+        before = _definition_of(text, "ParameterA")
+        assert {k: v for k, v in _definition_of(after, "ParameterA").items() if k != "init"} == {
+            k: v for k, v in before.items() if k != "init"
+        }
+
+    def test_a_scalar_stating_no_init_gains_one(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_cell(dictionary, built, "ValueC", "", 21.5, {})
+        (edit,) = plan.edits
+        (operation,) = edit.operations
+        assert operation.pointer.endswith(".definition.init")
+        text = edit.path.read_text(encoding="utf-8")
+        assert "init" not in _definition_of(text, "ValueC")
+        after = edit_text(text, edit.operations)
+        assert _definition_of(after, "ValueC")["init"] == 21.5
+
+    def test_the_value_is_weighed_by_its_datatype(self, demo) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(dictionary, built, "ParameterA", "", 70000, {})
+        assert refused.value.message == "70000 does not fit into uint16 (0 .. 65535)"
+
+    def test_an_element_of_a_scalar_is_no_element(self, demo) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(dictionary, built, "ParameterA", "[0]", 1, {})
+        assert refused.value.message == "'[0]' is not an element of this object"
+
+    def test_a_scalar_is_no_table_to_paste_into_nor_cells_to_pick(self, demo) -> None:
+        # One value needs no table and no list of elements: the plans of those keep refusing it
+        # in the words they always have.
+        dictionary, built = demo
+        scalar = "ParameterA"
+        with pytest.raises(ValueRefusalError) as by_table:
+            set_values(dictionary, built, scalar, [[1]], {})
+        with pytest.raises(ValueRefusalError) as by_cells:
+            set_cells(dictionary, built, scalar, [("[0]", 1)], {})
+        refused = "has no cell for a value to sit in"
+        assert by_table.value.message == f"'{scalar}' {refused}"
+        assert by_cells.value.message == by_table.value.message
+
+    def test_a_scalar_nothing_produces_has_no_value_to_set(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Lonely")),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(revision.dictionary, revision.index, "Lonely", "", 1, {})
+        assert refused.value.message == "nothing produces 'Lonely', so it has no values to set"
+
+    def test_a_scalar_produced_twice_has_no_one_file_to_set_it_in(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Twice", init=1)),
+                "b.ddd.json": component("B", declare("output", "Twice", init=2)),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(revision.dictionary, revision.index, "Twice", "", 3, {})
+        assert refused.value.message == (
+            "'Twice' is produced in more than one place, so there is no one file to set it in"
+        )
+
+    def test_a_scalar_whose_declaration_moved_is_refused_stale(self, tmp_path) -> None:
+        one = declare("output", "One", init=1)
+        other = declare("output", "Other", init=7)
+        write_tree(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A", one)}
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        write_tree(tmp_path, {"a.ddd.json": component("A", other, one)})
+        assert revision.dictionary is not None and revision.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(revision.dictionary, revision.index, "One", "", 5, {})
+        assert refused.value.code == "stale"
 
 
 class TestSetValues:

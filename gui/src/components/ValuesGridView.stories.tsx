@@ -6,6 +6,8 @@ import { holdOf } from "../lib/valuesHold";
 import {
   CURVE_CELL_PLAN,
   CURVE_CELLS_PLAN,
+  PARAMETER_CELL_PLAN,
+  VALUE_C_INIT_PLAN,
   VALUES_AXIS,
   VALUES_BLOCK,
   VALUES_BLOCK_PAST_2_53,
@@ -13,7 +15,9 @@ import {
   VALUES_CURVE,
   VALUES_CURVE_B,
   VALUES_MAP,
+  VALUES_PARAMETER_A,
   VALUES_SOFTWARE_LABEL,
+  VALUES_VALUE_C,
   VALUES_VALUE_D,
 } from "../stories/fixtures";
 import { Banner } from "../ui/Banner";
@@ -96,6 +100,41 @@ export const ABlockOfWideNumbers = () => (
 
 export const AScalarInitStatedOnce = () => (
   <View reply={VALUES_CURVE_B} backTo="UserInterface" physical />
+);
+
+// A scalar is a grid of one cell (16:I4): ParameterA's 3200 raw reads 800 Hz, with the toggle and
+// the cell and no table to paste into and no picture of one point.
+export const AScalarAsOneCell = () => (
+  <View reply={VALUES_PARAMETER_A} backTo="Controller" physical />
+);
+
+export const AScalarInRawCounts = () => (
+  <View reply={VALUES_PARAMETER_A} backTo="Controller" physical={false} />
+);
+
+// 1000 Hz typed into the one cell: one sentence naming the value, one line in the preview.
+export const AScalarMidChange = () => (
+  <View
+    reply={VALUES_PARAMETER_A}
+    backTo="Controller"
+    physical
+    typed={[{ row: 0, column: 0, typed: "1000", physical: true }]}
+    plan={PARAMETER_CELL_PLAN}
+    changesShown
+  />
+);
+
+// A scalar stating no init reads the zero the startup code makes of it, and the preview of a value
+// typed shows the declaration gaining the line.
+export const AScalarGainingAnInit = () => (
+  <View
+    reply={VALUES_VALUE_C}
+    backTo="SensorHub"
+    physical
+    typed={[{ row: 0, column: 0, typed: "21.5", physical: true }]}
+    plan={VALUE_C_INIT_PLAN}
+    changesShown
+  />
 );
 
 export const ACellMidChange = () => (

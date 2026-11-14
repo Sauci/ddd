@@ -40,6 +40,19 @@ const CURVE_A: ValuesReply = {
   findings: [],
 };
 
+/** ParameterA: a scalar, one cell of 3200 raw - 800 Hz at 0.25 a count. */
+const PARAMETER_A: ValuesReply = {
+  ...CURVE_A,
+  name: "ParameterA",
+  kind: "parameter",
+  unit: "Hz",
+  conversion: { kind: "linear", factor: 0.25, offset: 0 },
+  shape: [],
+  rows: [[3200]],
+  stated: "scalar",
+  axes: [],
+};
+
 /** MapA: four rows of six, 0.5 % a count. */
 const MAP_A: ValuesReply = {
   ...CURVE_A,
@@ -333,5 +346,52 @@ describe("offerName", () => {
     expect(offerName(1)).toBe("Set the cell");
     expect(offerName(3)).toBe("Set the cells");
     expect(offerName(0)).toBe("Replace the values");
+  });
+});
+
+describe("a scalar's one cell", () => {
+  const typed = (text: string, physical: boolean): TypedCell => ({
+    row: 0,
+    column: 0,
+    typed: text,
+    physical,
+  });
+
+  test("typed in physical, it sets the count that reads so", () => {
+    expect(typedOffer([typed("1000", true)], PARAMETER_A)).toEqual({
+      refusal: null,
+      changes: [{ row: 0, column: 0, raw: 4000 }],
+    });
+  });
+
+  test("typed back to the file's value it drops out", () => {
+    expect(typedOffer([typed("800", true)], PARAMETER_A)).toEqual({ refusal: null, changes: [] });
+  });
+
+  test("typed into a scalar stating none, it sets a value the file does not state", () => {
+    const none: ValuesReply = { ...PARAMETER_A, stated: "none", rows: [[0]] };
+    expect(typedOffer([typed("0", false)], none)).toEqual({
+      refusal: null,
+      changes: [{ row: 0, column: 0, raw: 0 }],
+    });
+  });
+
+  test("text that is no number is refused in the cell's own words", () => {
+    expect(typedOffer([typed("lots", true)], PARAMETER_A)).toEqual({
+      refusal: "'lots' is not a number",
+      changes: null,
+    });
+  });
+
+  test("it is planned as one cell at no element, the object's own pointer", () => {
+    expect(typedPlan(PARAMETER_A, [{ row: 0, column: 0, raw: 4000 }])).toEqual({
+      cell: { row: 0, column: 0, at: "", raw: 4000 },
+    });
+  });
+
+  test("its sentence names the value, with its unit", () => {
+    expect(changesSentence(PARAMETER_A, [{ row: 0, column: 0, raw: 4000 }], true)).toBe(
+      "Sets the value of ParameterA to 1000 Hz",
+    );
   });
 });

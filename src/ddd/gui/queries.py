@@ -1083,6 +1083,23 @@ class DeclarationPlanQuery(
     route: ClassVar[str] = "declaration-plan"
 
 
+class DescriptionPlanQuery(QueryModel):
+    """What ``GET /api/description-plan`` takes: the description one component's declaration of a
+    variable is to state."""
+
+    missing: ClassVar[str] = "description-plan takes ?file= and ?name= and ?description="
+
+    file: Annotated[str, file_path("description-plan takes ?file= as a file's path")]
+    """The component whose declaration it is: a description is the declaration's own."""
+
+    name: Annotated[str, named("description-plan takes ?name= as an object's name")]
+    """The object the declaration is of."""
+
+    description: str
+    """The description, any text; blank, the empty text, which takes the key away - the default
+    of the model."""
+
+
 class ValuePlanQuery(QueryModel):
     """What ``GET /api/value-plan`` takes: one element of an object's values set."""
 
@@ -1091,10 +1108,11 @@ class ValuePlanQuery(QueryModel):
     name: Annotated[str, named("value-plan takes ?name= as an object's name")]
     """The object."""
 
-    at: Annotated[str, named("value-plan takes ?at= as an element's indices")]
-    """The element, as a json pointer's suffix: ``[2]``, or ``[1][3]``. Its length bounded here,
-    so that no index of it holds more digits than a number does; whether it names an element of
-    the object is the handler's question."""
+    at: Annotated[str, named("value-plan takes ?at= as an element's indices", blank="")]
+    """The element, as a json pointer's suffix: ``[2]``, or ``[1][3]``; blank for the one value of
+    an object of no shape, which is the whole of it. Its length bounded here, so that no index of
+    it holds more digits than a number does; whether it names an element of the object is the
+    handler's question."""
 
     raw: Annotated[str, any_text("value-plan takes ?raw= as a number")]
     """The raw count to store; whether it is a number is the handler's question, answered as a

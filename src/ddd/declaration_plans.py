@@ -21,7 +21,7 @@ from ddd.analysis import PRODUCER_KEYS
 from ddd.editing import Operation
 from ddd.identity import new_id
 from ddd.lsp.edits import type_conversions
-from ddd.lsp.navigation import Index, changed_since, rename_problem
+from ddd.lsp.navigation import Index, Site, changed_since, drift, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.component import Scope
@@ -309,6 +309,46 @@ def remove_declaration(
             operation = Operation("remove", f"{INTERFACE}[{position}]")
             return DeclarationPlan((PlannedEdit(here, (operation,)),))
     raise DeclarationRefusalError("not-found", f"{here.name} declares no '{name}'")
+
+
+def describe_declaration(
+    built: Index, file: Path, name: str, description: str, cache: dict[Path, Document]
+) -> DeclarationPlan:
+    """What describing a declaration takes: one ``set`` at its own ``description``, or one
+    ``remove`` of that key where ``description`` is the empty text, which is the model's default.
+
+    The declaration is the one ``file`` holds: ``description`` is no key the declarations of a
+    variable share (:data:`ddd.lsp.edits.PROPAGATED_KEYS`), because two components may describe
+    one variable in their own words, and this changes no other component's. Found where the
+    index recorded it, and refused ``stale`` where that place no longer holds the name - a
+    declaration put in above it, or taken out, since the analysis read the file
+    (:func:`ddd.lsp.navigation.drift`) - rather than described under another's name. A file the
+    index records no declaration of the name in, whether it declares none or did not load, is
+    ``not-found``.
+
+    The empty text asks for a description to go, which there is none to take away from a
+    declaration that states none: refused, rather than planned as a ``remove`` of a key that is
+    not there.
+    """
+    here = file.resolve()
+    sites = [site for site in built.declarations.get(name, ()) if site.path.resolve() == here]
+    if not sites:
+        raise DeclarationRefusalError("not-found", f"{here.name} declares no '{name}'")
+    site = sites[0]
+    if drift((Site(site.path, f"{site.pointer}.name"),), name, cache):
+        raise DeclarationRefusalError(
+            "stale", changed_since((here,), f"the description of '{name}' cannot be set")
+        )
+    pointer = f"{site.pointer}.description"
+    if description:
+        operation = Operation("set", pointer, json.dumps(description))
+    elif read(here, cache).value_at(pointer) is None:
+        raise DeclarationRefusalError(
+            "invalid", f"{here.name} states no description of '{name}', so there is none to remove"
+        )
+    else:
+        operation = Operation("remove", pointer)
+    return DeclarationPlan((PlannedEdit(here, (operation,)),))
 
 
 def _stamped(name: str, definition: Mapping[str, object]) -> dict[str, object]:

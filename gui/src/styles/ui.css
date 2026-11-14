@@ -572,6 +572,11 @@ tr.changing td {
 .panel-field input:disabled {
   background: var(--ground);
 }
+/* The line a variable's panel closes on, saying what is edited elsewhere: one rhythm step off the
+   offers above it. */
+.panel-elsewhere {
+  margin: var(--space-3) 0 0;
+}
 .rename-note {
   margin: var(--space-1) 0 0;
   color: var(--ink-quiet);

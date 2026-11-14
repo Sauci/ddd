@@ -650,6 +650,7 @@ class TestTheRouteTable:
             ("GET", "/api/files-plan"),
             ("GET", "/api/declarable"),
             ("GET", "/api/declaration-plan"),
+            ("GET", "/api/description-plan"),
             ("GET", "/api/values"),
             ("GET", "/api/value-plan"),
             ("GET", "/api/cells-plan"),
@@ -3140,6 +3141,11 @@ class TestBeforeTheFirstAnalysis:
                 {"action": "remove", "file": "a.ddd.json", "name": "Speed"},
             ),
             ("GET", "/api/values", {"name": "Speed"}),
+            (
+                "GET",
+                "/api/description-plan",
+                {"file": "a.ddd.json", "name": "Speed", "description": "d"},
+            ),
             ("GET", "/api/value-plan", {"name": "Speed", "at": "[0]", "raw": "1"}),
             ("GET", "/api/cells-plan", {"name": "Speed", "at": "[0],[1]", "raw": "1,2"}),
             ("GET", "/api/values-plan", {"name": "Speed", "raw": "1"}),
@@ -3396,6 +3402,7 @@ class TestAPlanWhileAnEditWaits:
         ("path", "query"),
         [
             ("/api/declaration-plan", {"action": "remove", "name": "ValueH"}),
+            ("/api/description-plan", {"name": "ParameterA", "description": "Words"}),
             ("/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
             ("/api/cells-plan", {"name": "CurveA", "at": "[0],[2]", "raw": "1300,750"}),
             ("/api/values-plan", {"name": "CurveA", "raw": "1300,950,850,800,750,700"}),
@@ -3416,7 +3423,7 @@ class TestAPlanWhileAnEditWaits:
         api = gated(root / "demo.ddd.json")
         left_waiting(api, touching(root / "components" / touched, "component.description"))
         asked = dict(query)
-        if path == "/api/declaration-plan":
+        if path in ("/api/declaration-plan", "/api/description-plan"):
             asked["file"] = posix(root, "components/controller.ddd.json")
         reply = get(api, path, **asked)
         if refused:
@@ -8858,6 +8865,11 @@ class TestAPlanWritingBesideAProjectTheBuildCollected:
                 {"action": "remove", "file": "b.ddd.json", "name": "Count"},
                 "b.ddd.json",
             ),
+            (
+                "/api/description-plan",
+                {"file": "a.ddd.json", "name": "Speed", "description": "d"},
+                "a.ddd.json",
+            ),
             ("/api/value-plan", {"name": "Table", "at": "[1]", "raw": "5"}, "a.ddd.json"),
             ("/api/cells-plan", {"name": "Table", "at": "[0],[1]", "raw": "4,5"}, "a.ddd.json"),
             ("/api/values-plan", {"name": "Table", "raw": "4,5,6"}, "a.ddd.json"),
@@ -9185,6 +9197,284 @@ class TestPlanningAChangeOfAnInterface:
         assert (reply.status, reply.body["error"]) == (409, "unverified")
 
 
+class TestDescribingADeclarationOverHttp:
+    """``GET /api/description-plan``: a declaration's own description, planned for the one file."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def controller(self, root: Path) -> str:
+        return posix(root, "components/controller.ddd.json")
+
+    def test_a_description_is_previewed_then_written(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="A calibratable gain",
+        ).body
+        assert contents(root) == before
+        (change,) = preview["changes"]
+        assert Path(change["file"]).name == "controller.ddd.json"
+        (operation,) = change["operations"]
+        assert (operation["op"], operation["raw"]) == ("set", '"A calibratable gain"')
+        assert operation["pointer"].endswith(".definition.description")
+        assert applied(api, preview, "the description of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"description": "A calibratable gain"' in written
+        assert "Single calibratable constant" not in written
+
+    def test_the_empty_text_takes_the_description_away(self, demo) -> None:
+        api, root = demo
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="",
+        ).body
+        (change,) = preview["changes"]
+        assert [op["op"] for op in change["operations"]] == ["remove"]
+        assert applied(api, preview, "the description of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert "Single calibratable constant" not in written
+
+    def test_it_is_this_files_declaration_alone(self, demo) -> None:
+        # ValueA is declared by the controller and by the sensor hub: describing it in the
+        # controller's file writes the controller's file alone.
+        api, root = demo
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ValueA",
+            description="Read as a percentage",
+        ).body
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["controller.ddd.json"]
+
+    def test_without_a_part_it_says_which_it_takes(self, demo) -> None:
+        api, root = demo
+        reply = get(api, "/api/description-plan", file=self.controller(root), name="ParameterA")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == (
+            "description-plan takes ?file= and ?name= and ?description="
+        )
+
+    def test_a_declaration_this_file_does_not_hold_is_not_found(self, demo) -> None:
+        api, root = demo
+        reply = get(
+            api, "/api/description-plan", file=self.controller(root), name="Nope", description="x"
+        )
+        assert reply == Reply(
+            404, {"error": "not-found", "message": "controller.ddd.json declares no 'Nope'"}
+        )
+
+    def test_a_variable_another_component_declares_is_not_this_files_to_describe(
+        self, demo
+    ) -> None:
+        # ValueC is the sensor hub's: the project declares it, this file does not, and the refusal
+        # is about the file - its own sentence - not the "declared no longer" of a name nothing
+        # declares.
+        api, root = demo
+        reply = get(
+            api, "/api/description-plan", file=self.controller(root), name="ValueC", description="x"
+        )
+        assert reply == Reply(
+            404, {"error": "not-found", "message": "controller.ddd.json declares no 'ValueC'"}
+        )
+
+    def test_a_name_the_index_holds_is_not_said_undeclared_while_another_file_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        # b.ddd.json did not load, which a name only it declares is refused with; One is
+        # a.ddd.json's, so a refusal of c.ddd.json is about c.ddd.json.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "One", init=1)),
+                "b.ddd.json": {"component": 3},
+                "c.ddd.json": component("C", declare("output", "Two", init=2)),
+            },
+        )
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "c.ddd.json"),
+            name="One",
+            description="x",
+        )
+        assert reply == Reply(
+            404, {"error": "not-found", "message": "c.ddd.json declares no 'One'"}
+        )
+        unknown = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "c.ddd.json"),
+            name="Nobody",
+            description="x",
+        )
+        assert (unknown.status, unknown.body["error"]) == (409, "unreadable")
+        assert "b.ddd.json did not load" in unknown.body["message"]
+
+    def test_a_declaration_the_file_holds_no_more_where_the_index_found_it_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "One", init=1)),
+            },
+        )
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("output", "Other"), declare("output", "One", init=1)
+                )
+            },
+        )
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "a.ddd.json"),
+            name="One",
+            description="x",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "stale")
+
+    def test_a_file_that_did_not_load_is_named(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "One", init=1)),
+                "b.ddd.json": {"component": 3},
+            },
+        )
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "b.ddd.json"),
+            name="One",
+            description="x",
+        )
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "b.ddd.json did not load, so what it declares is unknown and nothing "
+                "can be described in it",
+            },
+        )
+
+    def test_a_project_that_did_not_load_has_nothing_to_describe(self, tmp_path: Path) -> None:
+        reply = get(
+            unloaded(tmp_path),
+            "/api/description-plan",
+            file=posix(tmp_path, "p.ddd.json"),
+            name="Anything",
+            description="x",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_file_outside_the_project_is_not_found(self, demo, tmp_path: Path) -> None:
+        api, _ = demo
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=(tmp_path / "elsewhere.ddd.json").as_posix(),
+            name="ParameterA",
+            description="x",
+        )
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, root = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="x",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+
+class TestAScalarIsOneCell:
+    """A scalar's value is planned, applied and read back as the one cell of its grid."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_a_value_is_previewed_then_written_at_the_init(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/value-plan", name="ParameterA", at="", raw="4000").body
+        assert contents(root) == before
+        (change,) = preview["changes"]
+        assert Path(change["file"]).name == "controller.ddd.json"
+        (operation,) = change["operations"]
+        assert (operation["op"], operation["raw"]) == ("set", "4000")
+        assert operation["pointer"].endswith(".definition.init")
+        assert applied(api, preview, "the value of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"init": 4000' in written
+        assert '"init": 3200' not in written
+
+    def test_a_scalar_stating_no_init_gains_one_in_the_preview(self, demo) -> None:
+        api, root = demo
+        preview = get(api, "/api/value-plan", name="ValueC", at="", raw="21.5").body
+        (change,) = preview["changes"]
+        (operation,) = change["operations"]
+        assert operation["pointer"].endswith(".definition.init")
+        # One line gained, the init, which the file did not state: the preview shows it.
+        assert any('"init": 21.5' in line for hunk in change["hunks"] for line in hunk["after"])
+        assert not any('"init"' in line for hunk in change["hunks"] for line in hunk["before"])
+        assert applied(api, preview, "the value of ValueC").status == 200
+        written = (root / "components" / "sensor_hub.ddd.json").read_text(encoding="utf-8")
+        assert '"init": 21.5' in written
+
+    def test_a_blank_element_of_a_shaped_object_is_no_element(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="CurveA", at="", raw="750")
+        assert reply == Reply(
+            409, {"error": "invalid", "message": "'' is not an element of this object"}
+        )
+
+    def test_text_is_no_value_to_set(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Label", init="OFF")),
+            },
+        )
+        assert get(api, "/api/value-plan", name="Label", at="", raw="1") == Reply(
+            409, {"error": "invalid", "message": "'Label' has no cell for a value to sit in"}
+        )
+
+    def test_a_value_beyond_its_datatype_is_refused(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="ParameterA", at="", raw="70000")
+        assert reply == Reply(
+            409, {"error": "invalid", "message": "70000 does not fit into uint16 (0 .. 65535)"}
+        )
+
+
 class TestTheValuesGrid:
     @pytest.fixture
     def demo(self, tmp_path: Path) -> tuple[Api, Path]:
@@ -9213,14 +9503,16 @@ class TestTheValuesGrid:
         assert body["rows"][1] == [18, 22, 26, 28, 30, 28]
         assert [a["position"] for a in body["axes"]] == ["x_axis", "y_axis"]
 
-    def test_an_object_with_no_shape_answers_an_empty_grid(self, demo) -> None:
-        # The name is what the brief called this before Task 1's own fix (see task-1's report):
-        # a shapeless object was once refused, and now answers the empty grid below instead -
-        # grid_of's one refusal is "not-found" alone, so there is nothing left to refuse here.
+    def test_an_object_with_no_shape_answers_a_grid_of_one_cell(self, demo) -> None:
+        # ParameterA: a scalar, which the page lays out as one cell holding its raw count.
         api, _ = demo
-        reply = get(api, "/api/values", name="ValueA")
+        reply = get(api, "/api/values", name="ParameterA")
         assert reply.status == 200
-        assert reply.body["shape"] == []
+        body = reply.body
+        assert (body["shape"], body["rows"], body["stated"]) == ([], [[3200]], "scalar")
+        assert (body["kind"], body["datatype"], body["unit"]) == ("parameter", "uint16", "Hz")
+        assert body["conversion"]["factor"] == 0.25
+        assert body["file"].endswith("controller.ddd.json")
 
     def test_without_a_name_it_says_so(self, demo) -> None:
         api, _ = demo
@@ -12364,6 +12656,12 @@ PLANS: Final = (
         "demo.ddd.json",
         "/api/declaration-plan",
         {"action": "remove", "name": "ValueH", "file": "components/controller.ddd.json"},
+    ),
+    (
+        "demo",
+        "demo.ddd.json",
+        "/api/description-plan",
+        {"name": "ParameterA", "description": "words", "file": "components/controller.ddd.json"},
     ),
     ("demo", "demo.ddd.json", "/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
     (

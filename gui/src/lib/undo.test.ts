@@ -209,6 +209,7 @@ test("an undone paste is named by the object whose table it replaced", () => {
 
 test("cells typed and applied together are named by the element one of them set, or by how many", () => {
   expect(valuesLabel("CurveA", [{ row: 0, column: 2 }], [6])).toBe("element 3 of CurveA");
+  expect(valuesLabel("ParameterA", [{ row: 0, column: 0 }], [])).toBe("the value of ParameterA");
   const three = [0, 1, 2].map((column) => ({ row: 0, column }));
   expect(valuesLabel("CurveA", three, [6])).toBe("3 elements of CurveA");
   expect(valuesLabel("MapA", [{ row: 1, column: 3 }, ...three], [4, 6])).toBe("4 elements of MapA");

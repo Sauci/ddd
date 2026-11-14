@@ -339,10 +339,27 @@ The commands
        project's own where there is not, or a new object of one of six kinds - and
        takes one away. A variable another component declares ``local`` is not offered: no
        other component may declare it in any scope, and writing the declaration would be a
-       ``local-conflict``. Its table's Shape column opens the page of a curve, a map, an
+       ``local-conflict``. A component's page also holds the description of that
+       component's own declaration of the variable, in the variable's panel, as a text
+       field: a description is the declaration's and not a key the declarations share,
+       two components describing one variable in their own words. It is planned,
+       previewed, applied and undone as any key the panel writes is - one ``set`` at the
+       declaration's ``description``, in its file alone - and emptying the field takes
+       the key away, the default being the empty text. The panel of the project screen,
+       where no component is in view, offers none. The panel says what it does not do:
+       renaming the variable and changing its scope are done in its file, in the editor.
+       Its table's Shape column opens the page of a curve, a map, an
        axis or any other declaration shaped in one or two dimensions: its values as a
        grid, laid against its axes' breakpoints or plain indices and named with the axis
-       on each edge, in physical or in raw by a toggle. A curve, a map and an axis are
+       on each edge, in physical or in raw by a toggle. A scalar, a declaration stating
+       its own datatype and no dimensions, reads ``scalar`` there and opens the same page
+       as a grid of one cell, its ``init``: the cell reads 3200 in raw and 800 in
+       physical for ``ParameterA`` of ``examples/demo``, a value typed into it is one
+       ``set`` at the declaration's own ``init`` - added, and shown as a line of the
+       preview, where the file states none - and nothing is drawn of one point, nor
+       pasted into it. A scalar a file initialises with text, or one produced in more
+       than one place, is refused as ever, and a declaration naming a type is offered no
+       grid, the type possibly being a structure. A curve, a map and an axis are
        offered whatever type they name; anything else states its own dimensions and its
        own datatype, so a dimensioned declaration naming a structured type is shown
        there and not offered, and so is a deeper shape. Cells

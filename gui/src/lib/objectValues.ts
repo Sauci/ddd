@@ -48,9 +48,32 @@ export function rounded(value: number): number {
   return Number.parseFloat(value.toPrecision(12));
 }
 
-/** Whether this object can be drawn as a grid at all: text is not one. */
+/** Whether this object can be drawn as a grid at all: text is not one, and nor is an object the
+ * server laid no cell out for - a list written for an object of no shape. An object of no shape
+ * that states a number, or nothing, is a grid of one cell: its value. */
 export function drawable(reply: ValuesReply): boolean {
-  return reply.stated !== "text" && reply.shape.length > 0;
+  return reply.stated !== "text" && (reply.shape.length > 0 || reply.rows.length > 0);
+}
+
+/** Whether a table is pasted into this object's grid: not into the one cell of a scalar, which
+ * the server refuses a table of (`set_values`) - one value is typed. */
+export function pastes(reply: ValuesReply): boolean {
+  return reply.shape.length > 0;
+}
+
+/** Whether the object's values are drawn as a picture under the grid: one point plots nothing, so
+ * a scalar has none. */
+export function plotDrawn(reply: ValuesReply): boolean {
+  return reply.shape.length > 0;
+}
+
+/** What a grid says of how its producer states the object, or `null` where the file writes the
+ * table out. Nothing at all is stated whatever the shape. One value stated for every element is a
+ * sentence only of a grid of several: a scalar's one value is the one cell it fills. */
+export function statedNote(reply: ValuesReply): string | null {
+  if (reply.stated === "none") return "Nothing is stated.";
+  if (reply.stated === "scalar" && reply.shape.length > 0) return "Stated once, for every cell.";
+  return null;
 }
 
 /** The axis at `position`, or `undefined` where this object references none there. */
@@ -265,13 +288,11 @@ function celled(text: string): string[][] {
 }
 
 /** The rows and columns the object itself takes, as a table is counted: what a paste must hold,
- * and what a cell typed into must lie inside (`typedCells.ts`). The `= 0` is defensive
- * and nothing tests it: a shapeless reply reaches no caller, since `ValuesPage` answers
- * "has no cell for a value to sit in" before it draws a grid at all - and the test that used to
- * cover it pinned `Paste 1 row of 0 values…`, a sentence no reader can reach. A destructuring
- * default is no branch to v8's coverage, so the gate is not hiding one here either. */
+ * and what a cell typed into must lie inside (`typedCells.ts`). A scalar, which has no shape, is
+ * one row of one: its value is its one cell. A reply with no cell at all never reaches here,
+ * since `ValuesPage` answers "has no cell for a value to sit in" before it draws a grid. */
 export function wanted(reply: ValuesReply): [number, number] {
-  const [first = 0, second] = reply.shape;
+  const [first = 1, second] = reply.shape;
   return second === undefined ? [1, first] : [first, second];
 }
 
@@ -404,11 +425,13 @@ function indices(count: number): string[] {
  * the grid degrades to indices there, as it does for an object with no axis, rather than to a
  * header of no columns and a row of no cells. */
 export function columnHeader(reply: ValuesReply, physical: boolean): string[] {
+  // A scalar has one column, which is its value; an object with no cell, none.
+  if (reply.shape.length === 0) return reply.rows.length > 0 ? ["Value"] : [];
   const axis = columnAxis(reply);
   if (axis !== undefined && axis.breakpoints.length > 0) {
     return axis.breakpoints.map((raw) => reading(raw, axis.conversion, physical));
   }
-  return indices(reply.shape[reply.shape.length - 1] ?? 0);
+  return indices(wanted(reply)[1]);
 }
 
 /** The label down the side of each row: the y axis's readings where it states any, else
@@ -419,8 +442,12 @@ export function rowHeader(reply: ValuesReply, physical: boolean): string[] {
   if (axis !== undefined && axis.breakpoints.length > 0) {
     return axis.breakpoints.map((raw) => reading(raw, axis.conversion, physical));
   }
+  // A scalar's one row is the object itself, as a single row's is.
+  if (reply.shape.length === 0) {
+    return reply.rows.length > 0 ? [labelled(reply.name, reply.unit, physical)] : [];
+  }
   if (reply.shape.length === 1) return [labelled(reply.name, reply.unit, physical)];
-  return indices(reply.shape[0] ?? 0);
+  return indices(wanted(reply)[0]);
 }
 
 /** A cell of the values grid the reader has typed into: where it is, what was typed, and whether
@@ -474,14 +501,17 @@ export function columnChars(
   );
 }
 
-/** `[2]` for a single row, `[1][3]` for a map. */
+/** `[2]` for a single row, `[1][3]` for a map, and none at all for a scalar, whose one cell is the
+ * object itself: the pointer ends at its `init`. */
 export function cellAt(row: number, column: number, shape: number[]): string {
+  if (shape.length === 0) return "";
   return shape.length === 1 ? `[${column}]` : `[${row}][${column}]`;
 }
 
 /** "element 3" for a single row, "element 2, 4" for a map - `cellAt`'s own one-based phrase,
- * for a sentence rather than a pointer. */
+ * for a sentence rather than a pointer - and "the value" for a scalar. */
 export function elementLabel(row: number, column: number, shape: number[]): string {
+  if (shape.length === 0) return "the value";
   return shape.length === 1 ? `element ${column + 1}` : `element ${row + 1}, ${column + 1}`;
 }
 

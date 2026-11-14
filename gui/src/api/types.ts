@@ -17,6 +17,7 @@ export type {
   DeclarableQuery,
   DeclarableReply,
   DeclarationPlanQuery,
+  DescriptionPlanQuery,
   EditReply,
   FileContent,
   FileQuery,

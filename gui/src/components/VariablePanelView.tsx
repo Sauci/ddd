@@ -1,5 +1,6 @@
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { removalSentence } from "../lib/declarations";
+import { describeSentence, EDITED_ELSEWHERE } from "../lib/description";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
 import { consequence, declaredUnits, shownChanges, unloadableOf } from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
@@ -43,6 +44,22 @@ export interface VariablePanelViewProps
         onRemove: () => void;
       }
     | undefined;
+  /** The description of this declaration, the component's own: the field, and what writing it
+   * would take. Absent on a screen that offers none - the graph's panel, where no one component
+   * is in view, and so no declaration is the one meant. */
+  description?:
+    | {
+        /** The component whose declaration it is, for the sentence. */
+        from: string;
+        /** What the field shows: what was typed, or the declaration's own. */
+        value: string;
+        onChange: (text: string) => void;
+        offer: Offer;
+        shown: boolean;
+        onShown: (shown: boolean) => void;
+        onApply: () => void;
+      }
+    | undefined;
   onClose: () => void;
   /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
    * also while it lists none - an edit may be about to bring the first. */
@@ -51,7 +68,7 @@ export interface VariablePanelViewProps
 
 /** One variable's panel, drawn from what the api answered: a picture of its props. */
 export function VariablePanelView(props: VariablePanelViewProps) {
-  const { variable, units, preview, refusal, selected, removal } = props;
+  const { variable, units, preview, refusal, selected, removal, description } = props;
   const changes = preview?.changes ?? [];
   const offer = selected === undefined ? undefined : offerOf(variable, selected);
   return (
@@ -147,6 +164,50 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           </>
         )}
       </section>
+      {description !== undefined && (
+        <section className="panel-offer" aria-label="Describe the declaration">
+          <label className="panel-field">
+            <span>Description in {description.from}</span>
+            <input
+              type="text"
+              value={description.value}
+              disabled={props.busy}
+              onChange={(event) => description.onChange(event.target.value)}
+            />
+          </label>
+          {description.offer.refusal !== null && (
+            <p className="panel-refusal" role="status">
+              {description.offer.refusal}
+            </p>
+          )}
+          {description.offer.refusal === null &&
+            description.offer.plan !== null &&
+            description.offer.plan.changes.length > 0 && (
+              <>
+                <p className="consequence">
+                  {describeSentence(variable.name, description.from, description.value)}.{" "}
+                  {consequence(description.offer.plan.changes)}
+                </p>
+                {description.shown && (
+                  <Changes changes={shownChanges(description.offer.plan.changes)} />
+                )}
+                <div className="panel-actions">
+                  <Button variant="link" onPress={() => description.onShown(!description.shown)}>
+                    {description.shown ? "Hide changes" : "Show changes"}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    isDisabled={props.busy || description.offer.pending}
+                    onPress={description.onApply}
+                  >
+                    Apply to {description.offer.plan.changes.length} file
+                    {description.offer.plan.changes.length === 1 ? "" : "s"}
+                  </Button>
+                </div>
+              </>
+            )}
+        </section>
+      )}
       {removal !== undefined && (
         <section className="panel-offer" aria-label="Remove the declaration">
           <p className="consequence">{removalSentence(variable, removal.from)}</p>
@@ -176,6 +237,7 @@ export function VariablePanelView(props: VariablePanelViewProps) {
             )}
         </section>
       )}
+      <p className="quiet panel-elsewhere">{EDITED_ELSEWHERE}</p>
     </Panel>
   );
 }

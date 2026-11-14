@@ -120,7 +120,10 @@ class Grid:
 
     shape: tuple[int, ...]
     rows: tuple[tuple[float, ...], ...]
-    """Always rows: a one dimensional object is one row, so one shape serves both."""
+    """Always rows: a one dimensional object is one row, so one shape serves both. A scalar - a
+    number or nothing written for an object of no shape - is one row of one cell, the value its
+    own ``init`` states, or the zero the startup code makes of none. Only text, and a list written
+    for an object of no shape, leave it empty: neither has a value to show."""
 
     stated: Literal["array", "scalar", "text", "none"]
     """What the producer writes: the values themselves, one value standing for every element,
@@ -360,15 +363,20 @@ def _laid_out(
 ) -> tuple[Literal["array", "scalar", "text", "none"], tuple[tuple[float, ...], ...]]:
     """What the producer states, and the rows it comes to.
 
-    A shapeless object - a plain measurement or parameter, most of a project - has no cell
-    for a value to sit in: ``stated`` still says whether the producer wrote one or nothing,
-    but ``rows`` is always empty for it, never reaching :func:`_filled`, which assumes at
-    least one dimension to index.
+    A shapeless object - a plain measurement or parameter, most of a project - is one cell: its
+    value, or the zero the startup code makes of none, as one row of one, which never reaches
+    :func:`_filled`, which assumes at least one dimension to index. A boolean's ``true`` is the
+    count 1 it is stored as. A list written for an object of no shape, which ``init-invalid``
+    reports, has no value to show, and no row is drawn for it.
     """
     if isinstance(init, str):
         return "text", ()
     if not shape:
-        return ("none" if init is None else "scalar"), ()
+        if init is None:
+            return "none", ((0,),)
+        if isinstance(init, tuple):
+            return "scalar", ()
+        return "scalar", ((int(init) if isinstance(init, bool) else init,),)
     if init is None:
         return "none", _filled(0, shape)
     if isinstance(init, list | tuple):
@@ -412,15 +420,17 @@ def set_cell(
     is one the array of which is too short to hold the cell: the cell past its end is set, the
     elements before it that the array lacks being zeros, as the startup code makes them.
 
-    A shapeless object - a plain measurement or a parameter, most of a project - has no cell
-    for a value to sit in, the same as :func:`grid_of` finds when it lays one out; refused
-    here before ``at`` is checked against the empty shape, rather than left to crash on one.
+    A shapeless object - a plain measurement or a parameter, most of a project - is a grid of
+    one cell, taken at no element (``at`` is empty): one ``set`` at the declaration's own
+    ``init``, added where it states none, the preview showing the object gaining it. What has no
+    value to show - text, and a list written for an object of no shape - has no cell for a value
+    to sit in, refused here before ``at`` is checked against the empty shape.
 
     Refused while the producing declaration's file no longer holds it where the index found it
     (:func:`_in_place`): the cell set there would be another declaration's.
     """
     grid = grid_of(dictionary, built, name)
-    if not grid.shape:
+    if not grid.shape and not grid.rows:
         raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
     if grid.stated == "text":
         raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
@@ -440,6 +450,10 @@ def set_cell(
     _acceptable(raw, Datatype(grid.datatype), name)
     site = sites[0]
     _in_place(site, name, cache)
+    if not grid.shape:
+        # The scalar's own pointer: its value is its ``init``, whether it is stated or not.
+        operation = Operation("set", f"{site.pointer}.init", json.dumps(raw))
+        return ValuePlan((PlannedEdit(site.path, (operation,)),))
     written = read(site.path, cache).value_at(f"{site.pointer}.init")
     if _has_cell(written, found):
         operation = Operation("set", f"{site.pointer}.init{at}", json.dumps(raw))

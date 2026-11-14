@@ -15,13 +15,17 @@ import {
   pasted,
   pasteHint,
   pasteSentence,
+  pastes,
   physicalOf,
+  plotDrawn,
   rawOf,
   readOnlyNote,
   rowHeader,
+  statedNote,
   type TypedCell,
   typedRaw,
   typedRefusal,
+  wanted,
 } from "./objectValues";
 
 // Every fixture below is `GET /api/values?name=…` against examples/demo, read verbatim off a
@@ -148,7 +152,40 @@ const VALUE_K: ValuesReply = {
   findings: [],
 };
 
-/** ValueA: a plain scalar measurement - shapeless, so there is no grid to draw at all. */
+/** ParameterA: a plain calibration parameter - shapeless, so its one value is a grid of one
+ * cell: 3200 raw, which its factor of 0.25 reads as 800 Hz. */
+const PARAMETER_A: ValuesReply = {
+  revision: 1,
+  name: "ParameterA",
+  kind: "parameter",
+  datatype: "uint16",
+  unit: "Hz",
+  conversion: { kind: "linear", factor: 0.25, offset: 0 },
+  minimum: 500,
+  maximum: 1500,
+  shape: [],
+  rows: [[3200]],
+  stated: "scalar",
+  axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
+  owner: "Controller",
+  file: "/repo/examples/demo/components/controller.ddd.json",
+  findings: [],
+};
+
+/** ValueC: a scalar stating no init, which the startup code zeroes: one cell of 0, unstated. */
+const VALUE_C: ValuesReply = {
+  ...PARAMETER_A,
+  name: "ValueC",
+  kind: "measurement",
+  rows: [[0]],
+  stated: "none",
+};
+
+/** A list written for an object of no shape (an `init-invalid` of its own): no value to show,
+ * so no cell for one to sit in. */
 const VALUE_A: ValuesReply = {
   revision: 1,
   name: "ValueA",
@@ -305,8 +342,13 @@ describe("columnHeader", () => {
     expect(columnHeader(CURVE_X, true)).toEqual(["0", "1", "2"]);
   });
 
-  test("a shapeless object draws no columns at all", () => {
+  test("an object with no cell draws no columns at all", () => {
     expect(columnHeader(VALUE_A, true)).toEqual([]);
+  });
+
+  test("a scalar is one column, its value", () => {
+    expect(columnHeader(PARAMETER_A, true)).toEqual(["Value"]);
+    expect(columnHeader(PARAMETER_A, false)).toEqual(["Value"]);
   });
 });
 
@@ -338,8 +380,13 @@ describe("rowHeader", () => {
     expect(rowHeader(MAP_WITHOUT_BREAKPOINTS, true)).toEqual(["0", "1", "2", "3"]);
   });
 
-  test("a shapeless object draws no rows at all", () => {
+  test("an object with no cell draws no rows at all", () => {
     expect(rowHeader(VALUE_A, true)).toEqual([]);
+  });
+
+  test("a scalar is one row, labelled with the object itself as a single row is", () => {
+    expect(rowHeader(PARAMETER_A, true)).toEqual(["ParameterA (Hz)"]);
+    expect(rowHeader(PARAMETER_A, false)).toEqual(["ParameterA"]);
   });
 });
 
@@ -717,6 +764,10 @@ describe("readOnlyNote", () => {
 });
 
 describe("cellAt", () => {
+  test("a scalar is the whole object, named by no element at all", () => {
+    expect(cellAt(0, 0, [])).toBe("");
+  });
+
   test("a single row names its element by the column alone", () => {
     expect(cellAt(0, 2, [6])).toBe("[2]");
   });
@@ -727,6 +778,10 @@ describe("cellAt", () => {
 });
 
 describe("elementLabel", () => {
+  test("a scalar's cell is its value", () => {
+    expect(elementLabel(0, 0, [])).toBe("the value");
+  });
+
   test("a single row names its element by the column alone, one-based", () => {
     expect(elementLabel(0, 2, [6])).toBe("element 3");
   });
@@ -737,6 +792,18 @@ describe("elementLabel", () => {
 });
 
 describe("cellSentence", () => {
+  test("a scalar's value, in physical with its own unit", () => {
+    expect(cellSentence(PARAMETER_A, 0, 0, 4000, true)).toBe(
+      "Sets the value of ParameterA to 1000 Hz",
+    );
+  });
+
+  test("a scalar's value, in raw", () => {
+    expect(cellSentence(PARAMETER_A, 0, 0, 4000, false)).toBe(
+      "Sets the value of ParameterA to 4000",
+    );
+  });
+
   test("a curve's cell, one-based, in physical", () => {
     // The same [2] and 750 the client tests plan onto CurveA: 750 raw ms-counts is 7.5 ms.
     expect(cellSentence(CURVE_A, 0, 2, 750, true)).toBe("Sets element 3 of CurveA to 7.5 ms");
@@ -868,8 +935,13 @@ describe("drawable", () => {
     expect(drawable(SOFTWARE_LABEL)).toBe(false);
   });
 
-  test("a shapeless object has no cell for a value to sit in", () => {
+  test("an object with no cell for a value to sit in is not", () => {
     expect(drawable(VALUE_A)).toBe(false);
+  });
+
+  test("a scalar is one cell, stated or not", () => {
+    expect(drawable(PARAMETER_A)).toBe(true);
+    expect(drawable(VALUE_C)).toBe(true);
   });
 
   test("a shaped, non-text object is drawable", () => {
@@ -1028,5 +1100,56 @@ describe("pasteHint", () => {
     expect(pasteHint(MAP_A)).toBe(
       "Paste 4 rows of 6 values from a spreadsheet to replace them all.",
     );
+  });
+});
+
+describe("wanted", () => {
+  test("a scalar takes one row of one", () => {
+    expect(wanted(PARAMETER_A)).toEqual([1, 1]);
+  });
+
+  test("a curve takes one row of its width and a map its own", () => {
+    expect(wanted(CURVE_A)).toEqual([1, 6]);
+    expect(wanted(MAP_A)).toEqual([4, 6]);
+  });
+});
+
+describe("pastes", () => {
+  test("a table is pasted into a grid of a shape", () => {
+    expect(pastes(CURVE_A)).toBe(true);
+    expect(pastes(MAP_A)).toBe(true);
+  });
+
+  test("one value is no table, which the server refuses it", () => {
+    expect(pastes(PARAMETER_A)).toBe(false);
+  });
+});
+
+describe("plotDrawn", () => {
+  test("a grid is drawn as a picture too", () => {
+    expect(plotDrawn(CURVE_A)).toBe(true);
+  });
+
+  test("one point plots nothing", () => {
+    expect(plotDrawn(PARAMETER_A)).toBe(false);
+  });
+});
+
+describe("statedNote", () => {
+  test("an object stating one value for every element says so", () => {
+    expect(statedNote({ ...CURVE_A, stated: "scalar" })).toBe("Stated once, for every cell.");
+  });
+
+  test("an object stating nothing says so, a scalar too", () => {
+    expect(statedNote({ ...CURVE_A, stated: "none" })).toBe("Nothing is stated.");
+    expect(statedNote(VALUE_C)).toBe("Nothing is stated.");
+  });
+
+  test("a table written out says nothing", () => {
+    expect(statedNote(CURVE_A)).toBeNull();
+  });
+
+  test("a scalar written is one value for one cell, which needs no sentence", () => {
+    expect(statedNote(PARAMETER_A)).toBeNull();
   });
 });

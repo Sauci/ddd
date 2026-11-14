@@ -16,6 +16,20 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
+* **`ddd gui` edits the value of a scalar and the description of a variable.**  A plain
+  calibration parameter or measurement, the commonest value in a project, had no control on the
+  page and no sentence saying so: its row had no Shape button, its panel listed neither its
+  `init` nor its description, and its values page answered that it had no cell for a value to sit
+  in.  A scalar's Shape column now reads `scalar` and opens its values page as a grid of one
+  cell - physical or raw by the toggle, its value one `set` at the declaration's own `init`,
+  added where the file states none - with no table to paste and no picture of one point.  A
+  variable's panel, opened from a component's page, holds that component's own description of it
+  as a text field, planned, previewed, applied and undone like the panel's other keys; emptying
+  the field takes the key away.  Renaming a variable and changing its scope stay in the file, in
+  the editor, and the panel says so.  `GET /api/description-plan` is the plan of the description,
+  and `GET /api/value-plan` takes a blank `at` for a scalar; the api is a preview's and changes
+  with the package.  No file format changes.
+
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
   Linux a file kept `0600` came out with the mode a new file gets, a file kept read-only was

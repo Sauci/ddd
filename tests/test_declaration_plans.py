@@ -28,6 +28,7 @@ from ddd.declaration_plans import (
     DeclarationRefusalError,
     declarable,
     declare_object,
+    describe_declaration,
     form_for,
     read_object,
     remove_declaration,
@@ -800,6 +801,112 @@ class TestDeclaringSomethingNew:
             cache,
         )
         assert checks_after(root, plan, "demo.ddd.json") == reported
+
+
+class TestDescribingADeclaration:
+    """A declaration's description is its own: two components may describe one variable in
+    their own words, so it is set at one declaration, in its file, and never carried."""
+
+    def test_a_description_is_one_set_at_the_declarations_own_key(self, demo, cache) -> None:
+        plan = describe_declaration(demo, CONTROLLER, "ParameterA", "A calibratable gain", cache)
+        (edit,) = plan.edits
+        assert edit.path == CONTROLLER
+        (operation,) = edit.operations
+        assert operation.op == "set"
+        assert operation.pointer.endswith(".definition.description")
+        assert operation.raw == '"A calibratable gain"'
+        text = CONTROLLER.read_text(encoding="utf-8")
+        after = edit_text(text, edit.operations)
+
+        def definition(of: str) -> dict[str, object]:
+            interface = json.loads(of)["component"]["interface"]
+            return next(
+                e["definition"] for e in interface if e["definition"]["name"] == "ParameterA"
+            )
+
+        assert definition(after)["description"] == "A calibratable gain"
+        rest = {k: v for k, v in definition(after).items() if k != "description"}
+        assert rest == {k: v for k, v in definition(text).items() if k != "description"}
+
+    def test_a_declaration_stating_none_gains_one(self, tmp_path, cache) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        plan = describe_declaration(built, tmp_path / "a.ddd.json", "Speed", "Shaft speed", cache)
+        (edit,) = plan.edits
+        after = edit_text((tmp_path / "a.ddd.json").read_text(encoding="utf-8"), edit.operations)
+        stated = json.loads(after)["component"]["interface"][0]["definition"]
+        assert stated["description"] == "Shaft speed"
+
+    def test_the_empty_text_takes_the_key_away(self, demo, cache) -> None:
+        # The model's default is the empty text, so a description of none is no key at all.
+        plan = describe_declaration(demo, CONTROLLER, "ParameterA", "", cache)
+        (edit,) = plan.edits
+        (operation,) = edit.operations
+        assert operation.op == "remove"
+        assert operation.pointer.endswith(".definition.description")
+        assert operation.raw is None
+        after = edit_text(CONTROLLER.read_text(encoding="utf-8"), edit.operations)
+        interface = json.loads(after)["component"]["interface"]
+        stated = next(e["definition"] for e in interface if e["definition"]["name"] == "ParameterA")
+        assert "description" not in stated
+
+    def test_the_empty_text_where_none_is_stated_has_nothing_to_remove(
+        self, tmp_path, cache
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed")),
+            },
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        with pytest.raises(DeclarationRefusalError) as refused:
+            describe_declaration(built, tmp_path / "a.ddd.json", "Speed", "", cache)
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "a.ddd.json states no description of 'Speed', so there is none to remove",
+        )
+
+    def test_a_name_this_file_does_not_declare_is_not_found(self, demo, cache) -> None:
+        with pytest.raises(DeclarationRefusalError) as refused:
+            describe_declaration(demo, CONTROLLER, "ValueI", "x", cache)
+        assert (refused.value.code, refused.value.message) == (
+            "not-found",
+            "controller.ddd.json declares no 'ValueI'",
+        )
+
+    def test_a_name_another_component_declares_is_not_this_files(self, demo, cache) -> None:
+        # ValueA is the sensor hub's, which the controller reads: each describes it in its own
+        # words, so the declaration is the one in the file asked.
+        hub = EXAMPLES / "demo" / "components" / "sensor_hub.ddd.json"
+        plan = describe_declaration(demo, hub, "ValueA", "Hub words", cache)
+        assert plan.edits[0].path == hub
+
+    def test_a_declaration_put_in_above_it_since_the_analysis_is_stale(
+        self, tmp_path, cache
+    ) -> None:
+        one = declare("output", "One", description="one")
+        other = declare("output", "Other")
+        write_tree(
+            tmp_path,
+            {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A", one)},
+        )
+        built = index(load_workspace(tmp_path / "p.ddd.json", DiagnosticBag()))
+        write_tree(tmp_path, {"a.ddd.json": component("A", other, one)})
+        with pytest.raises(DeclarationRefusalError) as refused:
+            describe_declaration(built, tmp_path / "a.ddd.json", "One", "new", cache)
+        assert (refused.value.code, refused.value.message) == (
+            "stale",
+            "a.ddd.json changed since the project was analysed, so the description of 'One' "
+            "cannot be set until the project is analysed again",
+        )
 
 
 class TestRemovingADeclaration:

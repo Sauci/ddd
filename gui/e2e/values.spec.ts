@@ -1390,10 +1390,23 @@ test("an object renamed under its open grid is said to be declared no longer, wi
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("a shapeless declaration opened by its values address says it has no cell, with the way back", async ({
+/** Controller's ValueH, a scalar, made to state a list for its `init` - an object of no shape
+ * holding a list, which `ddd check` reports as `init-invalid` and the grid has no value in. */
+function listedForAScalar(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  const declaration = data.component.interface.find(
+    (entry: { definition: { name: string } }) => entry.definition.name === "ValueH",
+  );
+  declaration.definition.init = [1, 2];
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+test("a scalar holding a list opened by its values address says it has no cell, with the way back", async ({
   page,
-  gui,
+  copiedGui,
 }) => {
+  const gui = await copiedGui("demo", listedForAScalar);
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
   await expect(page).toHaveURL(/\/component\?file=[^&]+$/);
@@ -1401,13 +1414,13 @@ test("a shapeless declaration opened by its values address says it has no cell, 
   // the way back finds the component by it.
   const component = page.url();
 
-  // The address a values route is written as (`hrefOf`, lib/route.ts), for a declaration no
-  // button of the Shape column offers a grid of: ValueA is a scalar. This tab's token is in local
+  // The address a values route is written as (`hrefOf`, lib/route.ts), for a declaration with no
+  // value to show: ValueH is a scalar, which holds a list here. This tab's token is in local
   // storage, so the page is signed in.
-  await page.goto(`${component}&variable=ValueA&view=values`);
-  await expect(page.getByRole("heading", { name: "ValueA", level: 1, exact: true })).toBeVisible();
+  await page.goto(`${component}&variable=ValueH&view=values`);
+  await expect(page.getByRole("heading", { name: "ValueH", level: 1, exact: true })).toBeVisible();
   await expect(
-    page.getByText("'ValueA' has no cell for a value to sit in", { exact: true }),
+    page.getByText("'ValueH' has no cell for a value to sit in", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("grid")).toHaveCount(0);
 
@@ -1418,6 +1431,77 @@ test("a shapeless declaration opened by its values address says it has no cell, 
     page.getByRole("heading", { name: "Controller", level: 1, exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("grid", { name: "Declarations of Controller" })).toBeVisible();
+});
+
+// 16:I4: the commonest value of a project, a calibration parameter's, had no control. Its row's
+// Shape column reads `scalar` and opens its page as a grid of one cell - 3200 raw, 800 Hz - with
+// the toggle every grid has, no table to paste into and no picture of one point.
+test("a scalar's value is one cell, read physical and raw", async ({ page, gui }) => {
+  await openValues(page, gui.address, "ParameterA");
+
+  const grid = page.getByRole("grid", { name: "Values of ParameterA" });
+  await expect(grid.getByRole("columnheader")).toHaveText(["", "Value"]);
+  await expect(grid.getByRole("rowheader")).toHaveText(["ParameterA (Hz)"]);
+  const cell = grid.getByRole("textbox", { name: "the value" });
+  await expect(cell).toHaveValue("800");
+
+  await page.getByRole("button", { name: "Raw" }).click();
+  await expect(grid.getByRole("rowheader")).toHaveText(["ParameterA"]);
+  await expect(cell).toHaveValue("3200");
+
+  // Nothing of a table or a picture: one value is typed, and one point plots nothing.
+  await expect(page.getByText(/values from a spreadsheet/)).toHaveCount(0);
+  await expect(page.getByRole("img", { name: /plotted against/ })).toHaveCount(0);
+  await expect(page.getByText("Stated once, for every cell.")).toHaveCount(0);
+  // A table pasted into the one cell is taken for nothing: no plan is asked, and no refusal drawn.
+  await paste(page, "5");
+  await expect(page.getByRole("region", { name: "Replace the values" })).toHaveCount(0);
+  await expect(page.getByText(/has no cell for a value to sit in/)).toHaveCount(0);
+});
+
+test("a scalar's value is typed key by key, written at its own init, and put back", async ({
+  page,
+  gui,
+}) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await openValues(page, gui.address, "ParameterA");
+
+  const cell = page.getByRole("textbox", { name: "the value" });
+  await typed(cell, "1000");
+  await expect(cell).toHaveValue("1000");
+  await expect(page.getByText("Sets the value of ParameterA to 1000 Hz")).toBeVisible();
+  await expect(page.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  await page.getByRole("button", { name: "Show changes" }).click();
+  await expect(page.getByText('"init": 4000,')).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA").init).toBe(4000);
+  // Only the one line: the rest of the declaration is as the file states it.
+  expect(definitionOf(gui.directory, CONTROLLER, "ParameterA").description).toBe(
+    "Single calibratable constant",
+  );
+  await expect(cell).toHaveValue("1000");
+
+  await page.getByRole("button", { name: "Undo the value of ParameterA" }).click();
+  const strip = page.getByRole("region", { name: "Undo" });
+  await strip.getByRole("button", { name: "Put back 1 file" }).click();
+  await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+test("a scalar stating no init gains one, which the preview shows", async ({ page, gui }) => {
+  expect(definitionOf(gui.directory, SENSOR_HUB, "ValueC")).not.toHaveProperty("init");
+  await openValues(page, gui.address, "ValueC", "SensorHub");
+
+  const cell = page.getByRole("textbox", { name: "the value" });
+  await expect(cell).toHaveValue("0");
+  await expect(page.getByText("Nothing is stated.")).toBeVisible();
+  await typed(cell, "21.5");
+  await expect(page.getByText("Sets the value of ValueC to 21.5 degC")).toBeVisible();
+  await page.getByRole("button", { name: "Show changes" }).click();
+  await expect(page.getByText('"init": 21.5')).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => definitionOf(gui.directory, SENSOR_HUB, "ValueC").init).toBe(21.5);
 });
 
 test("an object initialised with text says so on its values page, which only a reader offers", async ({
@@ -1606,4 +1690,104 @@ test("a values address naming a file the project does not include still draws th
   await expect(page.getByRole("alert")).toHaveText(
     `${retired} is not a description file of the open project`,
   );
+});
+
+// 16:I4: a variable's description is the declaration's own, written from the panel of the
+// component's page - one `set` at its `description` in that file, undone as any edit is - and the
+// panel says what is edited elsewhere.
+test("a declaration's description is read in its panel, written, put back, and taken away by the empty text", async ({
+  page,
+  gui,
+}) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ParameterA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  await expect(field).toHaveValue("Single calibratable constant");
+  // What the panel does not do, and where it is done.
+  await expect(
+    panel.getByText(
+      "Renaming the variable and changing its scope are done in its file, in the editor.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  await field.fill("Engine speed gain");
+  const describing = panel.getByRole("region", { name: "Describe the declaration" });
+  await expect(
+    describing.getByText(
+      "Sets the description of ParameterA in Controller. Changes 1 file: controller.ddd.json",
+    ),
+  ).toBeVisible();
+  await describing.getByRole("button", { name: "Show changes" }).click();
+  await expect(describing.getByText('"description": "Engine speed gain",')).toBeVisible();
+  await describing.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA").description)
+    .toBe("Engine speed gain");
+  await expect(field).toHaveValue("Engine speed gain");
+  await expect(describing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
+
+  // Emptied, the key goes: the model's default is the empty text.
+  await field.fill("");
+  await expect(
+    describing.getByText(
+      "Takes the description of ParameterA out of Controller. Changes 1 file: controller.ddd.json",
+    ),
+  ).toBeVisible();
+  await describing.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "ParameterA"))
+    .not.toHaveProperty("description");
+
+  // Both edits put back, one at a time: the second undo restores the file as it was.
+  for (let step = 0; step < 2; step += 1) {
+    await page.getByRole("button", { name: "Undo the description of ParameterA" }).click();
+    await page
+      .getByRole("region", { name: "Undo" })
+      .getByRole("button", { name: "Put back 1 file" })
+      .click();
+  }
+  await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+test("a description is one declaration's own: another component's stays as it was", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("row", { name: /ValueA/ }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const field = panel.getByRole("textbox", { name: "Description in Controller" });
+  await field.fill("As the controller reads it");
+  await panel
+    .getByRole("region", { name: "Describe the declaration" })
+    .getByRole("button", { name: "Apply to 1 file" })
+    .click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "ValueA").description)
+    .toBe("As the controller reads it");
+  expect(definitionOf(gui.directory, SENSOR_HUB, "ValueA").description).toBe(
+    "Scalar measurement with a linear conversion",
+  );
+});
+
+test("the project screen's own panel offers no description, and still says what is edited elsewhere", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.goto(`${new URL(page.url()).origin}/project?variable=ParameterA`);
+  const panel = page.getByRole("complementary", { name: "ParameterA" });
+  await expect(panel).toBeVisible();
+  await expect(
+    panel.getByText(
+      "Renaming the variable and changing its scope are done in its file, in the editor.",
+    ),
+  ).toBeVisible();
+  await expect(panel.getByRole("textbox")).toHaveCount(0);
+  await expect(panel.getByRole("region", { name: "Describe the declaration" })).toHaveCount(0);
 });

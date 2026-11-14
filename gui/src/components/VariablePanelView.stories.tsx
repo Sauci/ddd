@@ -12,12 +12,15 @@ import {
 } from "../lib/variableKeys";
 import {
   AGREEING,
+  DESCRIPTION_PLAN,
+  DESCRIPTION_REMOVED_PLAN,
   DISAGREEING,
   FIXED_BY_TYPE,
   FREE_UNITS,
   MIXED_KINDS,
   NOTHING,
   ONE_FILE,
+  PARAMETER_A,
   PREVIEW_CONVERSION,
   PREVIEW_LIMITS,
   PREVIEW_UNLOADABLE,
@@ -104,6 +107,10 @@ interface Props {
    * out for a story that shows no removal offer at all - the way a screen with no component in
    * view never offers one either. */
   removal?: { from: string; offer: Offer };
+  /** The description of the declaration in a component, which the field holds until the reader
+   * types: what it states, and what writing a typed one would take; left out for a story that
+   * shows none - the way the project screen's panel, with no component in view, never does. */
+  description?: { from: string; stored: string; typing?: string; offer?: Offer };
   /** The findings may be about to change: an edit waits for its analysis, or one runs. */
   updating?: boolean;
 }
@@ -125,6 +132,7 @@ function View({
   pickerOpen = false,
   typing,
   removal,
+  description,
   updating = false,
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(initialSelected);
@@ -133,6 +141,8 @@ function View({
   const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(initialChangesShown);
   const [removalShown, setRemovalShown] = useState(false);
+  const [typedDescription, setTypedDescription] = useState<string | undefined>(description?.typing);
+  const [descriptionShown, setDescriptionShown] = useState(false);
   // As in VariablePanel.tsx: for `limits` the two fields are the value, so what they say and
   // what would be applied are one thing, and a pair that is no range says so and offers none.
   // Derived here as the screen derives it - a story that seeded the fields instead would draw
@@ -206,6 +216,19 @@ function View({
               shown: removalShown,
               onShown: setRemovalShown,
               onRemove: () => undefined,
+            }
+      }
+      description={
+        description === undefined
+          ? undefined
+          : {
+              from: description.from,
+              value: typedDescription ?? description.stored,
+              onChange: setTypedDescription,
+              offer: description.offer ?? { plan: null, refusal: null, pending: false },
+              shown: descriptionShown,
+              onShown: setDescriptionShown,
+              onApply: () => undefined,
             }
       }
       onClose={() => undefined}
@@ -350,4 +373,63 @@ export const WithARemovalAndNothingLeft = () => (
  * and lists them below as they were. */
 export const FindingsUpdating = () => (
   <View variable={DISAGREEING} units={FREE_UNITS} preview={null} updating />
+);
+
+// A declaration's description is its own, written in the component the panel is open from
+// (16:I4): the field holds what the file states, and the line at the foot says what is edited
+// elsewhere.
+export const DescriptionOfTheDeclaration = () => (
+  <View
+    variable={PARAMETER_A}
+    units={FREE_UNITS}
+    preview={null}
+    description={{ from: "Controller", stored: "Single calibratable constant" }}
+  />
+);
+
+export const DescriptionMidChange = () => (
+  <View
+    variable={PARAMETER_A}
+    units={FREE_UNITS}
+    preview={null}
+    description={{
+      from: "Controller",
+      stored: "Single calibratable constant",
+      typing: "Engine speed gain",
+      offer: { plan: DESCRIPTION_PLAN, refusal: null, pending: false },
+    }}
+  />
+);
+
+export const DescriptionCleared = () => (
+  <View
+    variable={PARAMETER_A}
+    units={FREE_UNITS}
+    preview={null}
+    description={{
+      from: "Controller",
+      stored: "Single calibratable constant",
+      typing: "",
+      offer: { plan: DESCRIPTION_REMOVED_PLAN, refusal: null, pending: false },
+    }}
+  />
+);
+
+export const DescriptionRefusedAsStale = () => (
+  <View
+    variable={PARAMETER_A}
+    units={FREE_UNITS}
+    preview={null}
+    description={{
+      from: "Controller",
+      stored: "Single calibratable constant",
+      typing: "Engine speed gain",
+      offer: {
+        plan: null,
+        refusal:
+          "A file changed on disk, so nothing was written. The panel now shows the files as they are.",
+        pending: false,
+      },
+    }}
+  />
 );

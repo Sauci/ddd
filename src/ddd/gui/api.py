@@ -35,6 +35,7 @@ from ddd.declaration_plans import (
     DeclarationRefusalError,
     declarable,
     declare_object,
+    describe_declaration,
     form_for,
     read_object,
     remove_declaration,
@@ -86,6 +87,7 @@ from ddd.gui.queries import (
     DeclarationPlanQuery,
     DeclareObject,
     DescribeUnit,
+    DescriptionPlanQuery,
     FileQuery,
     FilesPlanQuery,
     FindingsQuery,
@@ -1486,6 +1488,51 @@ class Api:
             ),
         )
 
+    def _description_plan(self, query: DescriptionPlanQuery, body: None) -> Reply:
+        revision = self._opened()
+        try:
+            file = _source(revision, Path(query.file))
+        except NotInProjectError as outside:
+            return _error(404, "not-found", str(outside))
+        built = revision.index
+        if built is None:
+            return _error(409, UNREADABLE, _NOTHING_LOADED)
+        # Written into one file, as a declaration is: refused, naming that file alone, where it is
+        # the one that did not load, what it declares being unknown.
+        if not _file_of(revision, file).loaded:
+            return _error(
+                409,
+                UNREADABLE,
+                f"{file.name} did not load, so what it declares is unknown and nothing can be "
+                "described in it",
+            )
+        cache: dict[Path, Document] = {}
+        try:
+            plan = describe_declaration(built, file, query.name, query.description, cache)
+        except DeclarationRefusalError as refused:
+            # A refusal that nothing is found is about the name only where the index lacks it,
+            # as `_declaration_plan` asks: where it holds the name, the refusal is about this
+            # file, and its own sentence stands.
+            named = None
+            if query.name not in built.declarations:
+                named = query.name
+            return _refusal(revision, refused.code, refused.message, named)
+        derived = self._derive(revision)
+        try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = previewed(plan.edits, derived.stamps)
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
+        )
+
     def _values(self, query: ValuesQuery, body: None) -> Reply:
         name = query.name
         revision = self._opened()
@@ -1878,6 +1925,7 @@ ROUTES: Final[tuple[Route, ...]] = (
     ),
     Route("/api/declarable", "GET", DeclarableQuery, None, Api._declarable),
     Route("/api/declaration-plan", "GET", DeclarationPlanQuery, None, Api._declaration_plan),
+    Route("/api/description-plan", "GET", DescriptionPlanQuery, None, Api._description_plan),
     Route("/api/values", "GET", ValuesQuery, None, Api._values),
     Route("/api/value-plan", "GET", ValuePlanQuery, None, Api._value_plan),
     Route("/api/cells-plan", "GET", CellsPlanQuery, None, Api._cells_plan),

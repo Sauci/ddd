@@ -9,6 +9,7 @@ import { leadsElsewhere, routeHref, routeOf } from "../lib/findings";
 import { findingsByRow } from "../lib/findingsByRow";
 import type { ComponentFile } from "../lib/formats";
 import { pointerOf, valueAt } from "../lib/pointer";
+import { shapeColumn } from "../lib/shapeColumn";
 import { asList, asText } from "../lib/values";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
@@ -40,29 +41,6 @@ interface Props {
 /** No findings, while this file's own have not come: one array for every such render, so that
  * the rows grouped from them (`byRow`, below) are grouped once rather than again each render. */
 const NONE: readonly ListedFinding[] = [];
-
-/** The kinds whose definition states no `dimensions` at all and reads its own word instead - a
- * curve or a map over its axis or axes, or an axis itself. */
-const SHAPED_BY_KIND = new Set(["curve", "map", "axis"]);
-
-/** Whether this declaration's kind is one of those - a numeric table whose shape follows from
- * the axes it refers to, which the file itself cannot resolve. */
-function shapedByKind(kind: string | undefined): kind is string {
-  return kind !== undefined && SHAPED_BY_KIND.has(kind);
-}
-
-/** The Shape column's text for one declaration, read from the file already open rather than
- * asked of the server: `State` carries no dictionary - the revision, the project, its files and
- * how many findings there are - so there is no second source and no request per row.
- *
- * A `dimensions` on the definition is spelled the way the file spells each entry - `16`, or
- * `4 × 2` for more than one - exactly as a type member's own dimensions are (`projectTypes.ts`).
- * A curve, a map or an axis carries no `dimensions` at all, and reads its kind's own word; a
- * scalar - `dimensions` and a shaped kind both absent - is blank, `null`, and no button. */
-function shapeOf(kind: string | undefined, dimensions: readonly unknown[]): string | null {
-  if (dimensions.length > 0) return dimensions.map(String).join(" × ");
-  return shapedByKind(kind) ? kind : null;
-}
 
 /** One component: its declarations, the panel of the one selected, and the findings in it. */
 export function ComponentPage({
@@ -141,6 +119,7 @@ export function ComponentPage({
       const kind = text("definition.kind");
       const datatype = text("definition.datatype");
       const dimensions = asList(valueAt(data, `${at}.definition.dimensions`));
+      const shape = shapeColumn(kind, dimensions, datatype, valueAt(data, `${at}.definition.init`));
       return {
         id: at,
         name: text("definition.name") ?? `declaration ${index + 1}`,
@@ -148,25 +127,10 @@ export function ComponentPage({
         kind,
         type: datatype ?? text("definition.typename"),
         unit: text("definition.unit") ?? "",
-        shape: shapeOf(kind, dimensions),
-        // The shape is offered as a button only where the grid can draw what it opens, and
-        // shown as plain text otherwise: a button that refused the moment it was pressed would
-        // be a button that lies (spec 5.1). A curve, a map or an axis is a numeric table
-        // whatever type it names - measured, a curve naming a scalar type resolves exactly as
-        // one stating its own storage does - so its kind alone is enough. Anything else has to
-        // state both a `dimensions` and a `datatype` of its own: `dimensions` beside a
-        // `typename` is a structured declaration, which `DataDictionary.objects` does not hold
-        // at all, so the grid would answer that the project declares no such object. A
-        // structure cannot be a numeric table, which is why every `typename` declaration of
-        // examples/ is a measurement or a parameter. More dimensions than two is more than a
-        // grid draws, whichever way in. A text init in this very file is text and not a grid; a
-        // consumer's declaration cannot see its producer's init, so a text one elsewhere is
-        // offered anyway, and the grid it opens says so itself (`ValuesGridView`,
-        // `reply.stated`).
-        offered:
-          typeof valueAt(data, `${at}.definition.init`) !== "string" &&
-          dimensions.length <= 2 &&
-          (shapedByKind(kind) || (dimensions.length > 0 && datatype !== undefined)),
+        // The Shape column, a button to the values page where it can draw what it opens
+        // (`shapeColumn`): a scalar, which states its own datatype, is a grid of one cell.
+        shape: shape.text,
+        offered: shape.offered,
         own: byRow.get(at) ?? [],
       };
     });

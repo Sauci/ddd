@@ -46,10 +46,11 @@ interface Props {
  * live here, the way `ValuesGridView.stories.tsx`'s own `View` keeps them for a story.
  *
  * Two refusals are this screen's own rather than the component's: `GET /api/values` refused the
- * name - it is declared no longer, or its shape is more than a grid draws - or it has no shape at
- * all (a scalar's own `init`, reached by a finding filed on one or by typing the address by hand)
- * - `drawable` refuses that grid too, and a text-stated object is `ValuesGridView`'s own sentence
- * to say, not repeated here. Each of them keeps the heading and the way back.
+ * name - it is declared no longer, or its shape is more than a grid draws - or it has no cell for
+ * a value to sit in (a list written for an object of no shape, reached by a finding filed on one
+ * or by typing the address by hand) - `drawable` refuses that grid too, and a text-stated object
+ * is `ValuesGridView`'s own sentence to say, not repeated here. A scalar is a grid of one cell,
+ * typed into and planned as any cell is. Each of them keeps the heading and the way back.
  *
  * Cells typed into and a table pasted are two ways to reach the same mutation (spec 3's "a
  * paste is a second way to reach `init`"), so only one owns the preview, the sentence and Apply
@@ -249,9 +250,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // A server that stopped answering leaves the grid as it was, and says so under its heading.
   const banner = values.isError && <Banner tone="error">{values.error.message}</Banner>;
   if (!drawable(reply) && reply.stated !== "text") {
-    // A scalar's own init: no cell for a value to sit in, the same words `object_values.py`'s
-    // own `set_cell` refuses one with - reached by a finding on it or a typed address, never by
-    // this screen's own Shape button, which offers none for a scalar.
+    // A list written for an object of no shape: no cell for a value to sit in, the same words
+    // `object_values.py`'s own `set_cell` refuses one with - reached by a finding on it or a
+    // typed address, never by this screen's own Shape button.
     return (
       <section>
         <div className="heading">

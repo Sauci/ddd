@@ -22,8 +22,11 @@ import {
   limitsLine,
   noGridNote,
   pasteHint,
+  pastes,
+  plotDrawn,
   readOnlyNote,
   rowHeader,
+  statedNote,
   type TypedCell,
 } from "../lib/objectValues";
 import { offerName, offerSentence, typedOffer } from "../lib/typedCells";
@@ -173,6 +176,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   const sentence = offerSentence(reply, offered, physical);
   const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
+  const stated = statedNote(reply);
   const noGrid = noGridNote(reply);
   // A field under the offer held at the window's foot - the offer drawn over the field being typed
   // into, near the foot, or the focus moved by a key to a field it covers - is scrolled until it
@@ -195,7 +199,8 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       onPaste={(event) => {
         // A read-only grid has nothing to paste into, and says so via `readOnly` below rather
         // than by planning a refusal for a table it could never write (spec 4.3); nor has a
-        // page that draws no grid at all, and says why (`noGrid`). A grid with
+        // page that draws no grid at all, and says why (`noGrid`), nor has a scalar's one cell,
+        // which no table is pasted into (`pastes`). A grid with
         // an apply in flight takes nothing either: every input and Apply are disabled while
         // `busy`, so a cell cannot be typed into, and a paste taken here would be cleared
         // without a word by that apply's own `onSuccess` the moment it landed.
@@ -204,7 +209,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         // paste inside the window an apply is in flight, which it cannot open on purpose, and a
         // test that waited for it would be the race this suite refuses to write. It is left here
         // unguarded by any test on purpose, and said so rather than left to be discovered.
-        if (readOnly !== null || noGrid !== null || busy) return;
+        if (readOnly !== null || noGrid !== null || !pastes(reply) || busy) return;
         // A cell is a text field: without this the browser also drops the whole block into
         // whichever one has focus.
         event.preventDefault();
@@ -298,14 +303,15 @@ export function ValuesGridView(props: ValuesGridViewProps) {
               </TableBody>
             </Table>
           </div>
-          {reply.stated === "none" && <p className="quiet">Nothing is stated.</p>}
-          {reply.stated === "scalar" && <p className="quiet">Stated once, for every cell.</p>}
+          {stated !== null && <p className="quiet">{stated}</p>}
           {readOnly !== null && <p className="quiet">{readOnly}</p>}
           {/* A grid with nothing to write into has nothing to paste into either (spec 4.3) and
               already says so above, so the hint - the only way the feature is discoverable -
               belongs only where a paste would actually land. */}
-          {readOnly === null && <p className="quiet values-paste">{pasteHint(reply)}</p>}
-          <ValuesPlotView reply={reply} physical={physical} />
+          {readOnly === null && pastes(reply) && (
+            <p className="quiet values-paste">{pasteHint(reply)}</p>
+          )}
+          {plotDrawn(reply) && <ValuesPlotView reply={reply} physical={physical} />}
         </>
       )}
       <UpdatingNote updating={props.updating === true} />

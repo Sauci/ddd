@@ -1036,11 +1036,6 @@ PLANS_REFUSED = [
     ),
     (
         "/api/value-plan",
-        {"name": "CurveA", "at": "", "raw": "750"},
-        "value-plan takes ?name= and ?at= and ?raw=",
-    ),
-    (
-        "/api/value-plan",
         {"name": "CurveA", "at": "[2]", "raw": ""},
         "value-plan takes ?name= and ?at= and ?raw=",
     ),

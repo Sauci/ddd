@@ -18,6 +18,7 @@ from ddd.object_values import (
     ValuePlan,
     ValueRefusalError,
     grid_of,
+    limits_refusal,
     set_cell,
     set_cells,
     set_values,
@@ -1265,10 +1266,10 @@ class TestSettingSeveral:
 
     def test_a_number_nobody_typed_keeps_its_spelling(self, tmp_path) -> None:
         # The table the page held came back as 3 for the file's 3.0, and a whole init written a
-        # number to a line went back as one line.
+        # number to a line went back as one line. The cells typed are a float's, written as one.
         revision, _ = self._producing(tmp_path, "float64", dimensions=[3], init=[1.0, 2.5, 3.0])
         plan = self._plan(revision, "Grid", [("[0]", 9), ("[1]", 8)])
-        assert self._changed(plan) == [("1.0,", "9,"), ("2.5,", "8,")]
+        assert self._changed(plan) == [("1.0,", "9.0,"), ("2.5,", "8.0,")]
 
     def test_a_value_nobody_typed_is_left_as_it_is_whatever_it_holds(self, tmp_path) -> None:
         # 9999 is no uint8, and the analysis says so of the init; it refused the whole table the
@@ -1452,6 +1453,129 @@ class TestAProducerMovedSinceTheAnalysis:
             "invalid",
             "element 3 of 'Table' is refused: 300 does not fit into uint8 (0 .. 255)",
         )
+
+
+class TestAFloatIsWrittenAsAFloat:
+    """Task 1's n2: a float's value given as a whole number was written as one - 1e19 as
+    ``10000000000000000000``, a whole number past 2^53, which the grid then marked as one it cannot
+    show (:func:`~ddd.object_values._unshowable`), though a float holds 1e19 as it is."""
+
+    @staticmethod
+    def _revision(
+        tmp_path: Path, datatype: str, kind: str = "value_block", **definition: object
+    ) -> Revision:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Grid", kind=kind, datatype=datatype, **definition)
+                ),
+            },
+        )
+        return first_revision(tmp_path, tmp_path / "p.ddd.json")
+
+    @staticmethod
+    def _raws(plan: ValuePlan) -> list[str]:
+        (edit,) = plan.edits
+        return [operation.raw or "" for operation in edit.operations]
+
+    def test_one_cell(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[2], init=[0.5, 1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        made = [
+            set_cell(revision.dictionary, revision.index, "Grid", "[0]", raw, {})
+            for raw in (10**19, 3, 2.5)
+        ]
+        assert [self._raws(plan) for plan in made] == [["1e+19"], ["3.0"], ["2.5"]]
+
+    def test_several_cells(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float32", dimensions=[2], init=[0.5, 1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cells(revision.dictionary, revision.index, "Grid", [("[0]", 3), ("[1]", 7)], {})
+        assert self._raws(plan) == ["3.0", "7.0"]
+
+    def test_several_cells_written_whole_into_a_short_array(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[3], init=[1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cells(revision.dictionary, revision.index, "Grid", [("[2]", 4), ("[0]", 2)], {})
+        assert self._raws(plan) == ["[2.0, 0.0, 4.0]"]
+
+    def test_a_table(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[2], init=[0.5, 1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_values(revision.dictionary, revision.index, "Grid", [[1, 2.5]], {})
+        assert self._raws(plan) == ["[1.0, 2.5]"]
+
+    def test_the_zeros_a_whole_init_is_filled_out_with_are_a_floats_too(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[3], init=[1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cell(revision.dictionary, revision.index, "Grid", "[2]", 4, {})
+        assert self._raws(plan) == ["[1.5, 0.0, 4.0]"]
+
+    def test_a_scalar(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float32", kind="parameter", init=1.5)
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cell(revision.dictionary, revision.index, "Grid", "", 21, {})
+        assert self._raws(plan) == ["21.0"]
+
+    def test_any_other_datatypes_whole_number_stays_one(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "uint8", dimensions=[2], init=[1, 2])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cell(revision.dictionary, revision.index, "Grid", "[0]", 3, {})
+        assert self._raws(plan) == ["3"]
+
+
+class TestLimitsRefusal:
+    """What a range the page sends is refused for: a bound at or past 2^53 where a 64 bit integer is
+    among the declarations' datatypes, however the bound is written (task 1's n4) - a float's
+    spelling among them, which 1e21 sent from the page is, where only a whole number's was
+    weighed."""
+
+    SAID = (
+        "{bound} is at or past {side}2^53, where the page cannot hold every whole number exactly, "
+        "so no limit of a {datatype} is set to it here"
+    )
+
+    @pytest.mark.parametrize(
+        ("raw", "datatype", "bound", "side"),
+        [
+            pytest.param('{ "min": 0, "max": 1e+21 }', "uint64", "1e+21", "", id="an-exponent"),
+            pytest.param(
+                '{ "min": -9007199254740992.0, "max": 0 }',
+                "sint64",
+                "-9007199254740992.0",
+                "-",
+                id="a-point",
+            ),
+            pytest.param(
+                '{ "min": 0, "max": 9007199254740992 }',
+                "uint64",
+                "9007199254740992",
+                "",
+                id="digits",
+            ),
+        ],
+    )
+    def test_a_bound_at_or_past_2_53_is_refused_a_64_bit_integer_however_it_is_written(
+        self, raw: str, datatype: str, bound: str, side: str
+    ) -> None:
+        assert limits_refusal(raw, [None, datatype]) == self.SAID.format(
+            bound=bound, side=side, datatype=datatype
+        )
+
+    @pytest.mark.parametrize(
+        ("raw", "datatypes"),
+        [
+            pytest.param('{ "min": 0, "max": 1.5e15 }', ["uint64"], id="short-of-it"),
+            pytest.param('{ "min": 0, "max": 1e+21 }', ["float64"], id="a-float"),
+            pytest.param('{ "min": 0, "max": 1e+21 }', ["uint32"], id="a-narrower-integer"),
+            pytest.param('{ "min": false, "max": true }', ["uint64"], id="no-number-at-all"),
+            pytest.param("[1e+21]", ["uint64"], id="no-range-at-all"),
+        ],
+    )
+    def test_nothing_else_is(self, raw: str, datatypes: list[object]) -> None:
+        assert limits_refusal(raw, datatypes) is None
 
 
 def _definition_of(text: str, name: str) -> dict[str, object]:

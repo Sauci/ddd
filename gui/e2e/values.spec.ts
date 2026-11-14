@@ -170,6 +170,27 @@ function spelledValueD(directory: string): void {
   writeFileSync(path, changed, "utf8");
 }
 
+/** SensorHub's ValueD made a block of `datatype` under `conversion`, holding `init`, its file
+ * rewritten whole, as `wideNumbers` rewrites its own. */
+function valueDOf(
+  datatype: string,
+  conversion: Record<string, unknown>,
+  init: number[],
+): (directory: string) => void {
+  return (directory) => {
+    const path = join(directory, SENSOR_HUB);
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    const definition = data.component.interface.find(
+      (declaration: { definition: { name: string } }) => declaration.definition.name === "ValueD",
+    ).definition;
+    definition.datatype = datatype;
+    definition.conversion = conversion;
+    definition.dimensions = [init.length];
+    definition.init = init;
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  };
+}
+
 /** Each field of `grid` whose number runs past its edge, by its label and what it holds: a field
  * holding more than it shows scrolls wider than it is. */
 function cutFields(grid: Locator): Promise<string[]> {
@@ -798,13 +819,15 @@ test("a whole number past 2^53 typed or pasted into a uint64 block is refused, a
   await typed(cell, "0x8000000000000001");
   await expect(refused).toHaveText("'0x8000000000000001' is not a number in decimal notation");
   await expect(apply).toHaveCount(0);
-  // A fraction the page's double would drop is refused as one, not planned as the whole number
-  // the double reads it as.
+  // In raw, a fraction the page's double would drop is refused as one, not planned as the whole
+  // number the double reads it as - in physical it is the conversion's to round.
+  await page.getByRole("button", { name: "Raw" }).click();
   await typed(cell, "4503599627370496.5");
   await expect(refused).toHaveText(
     "'4503599627370496.5' is not a whole number, and the page cannot hold its fraction",
   );
   await expect(apply).toHaveCount(0);
+  await page.getByRole("button", { name: "Physical" }).click();
   // 2^53 the page holds, and sends; the server cannot tell it from 2^53 + 1 rounded, and refuses
   // it to a 64 bit integer.
   await typed(cell, "9007199254740992");
@@ -909,6 +932,55 @@ test("a boolean takes 0 and 1 alone, in physical as in raw", async ({ page, gui 
   await typed(cell, "1");
   await expect(offer.getByText("Sets the value of FlagA to 1")).toBeVisible();
   expect(readFileSync(join(gui.directory, SENSOR_HUB)).equals(before)).toBe(true);
+});
+
+// What the page writes of a number typed, and what Physical shows of one held (15:M5, 15:M6).
+
+test("a physical value typed into a float block is planned as the shortest float that reads back as it", async ({
+  page,
+  copiedGui,
+}) => {
+  // A float32 block counted in tenths, holding 3, 7, 1 and 2: the double arithmetic planned 0.7
+  // as 6.999999999999999 and 0.3 as 2.9999999999999996.
+  const gui = await copiedGui("demo", valueDOf("float32", { factor: 0.1 }, [3, 7, 1, 2]));
+  await openValues(page, gui.address, "ValueD", "SensorHub");
+  const grid = page.getByRole("grid", { name: "Values of ValueD" });
+  await expectRow(grid, ["0.3", "0.7", "0.1", "0.2"]);
+
+  // What a cell reads, typed back, is the count it holds: nothing to set.
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "0.3");
+  await expect(page.getByRole("region", { name: "Set the cell" })).toHaveCount(0);
+
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "0.7");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 1 of ValueD to 0.7")).toBeVisible();
+  await page.getByRole("button", { name: "Show changes" }).click();
+  // The file lays the array out a number to a line: 3 goes, and 7 comes, a float's written as a
+  // float - not 6.999999999999999.
+  await expect(offer.locator(".removed")).toHaveText([/^-\s+3,$/]);
+  await expect(offer.locator(".added")).toHaveText([/^\+\s+7\.0,$/]);
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, SENSOR_HUB, "ValueD").init)
+    .toEqual([7, 7, 1, 2]);
+  expect(readFileSync(join(gui.directory, SENSOR_HUB), "utf8")).toMatch(/\n\s+7\.0,\n/);
+});
+
+test("a value of more than twelve significant digits reads whole in physical", async ({
+  page,
+  copiedGui,
+}) => {
+  // A float64 counted one to one: twelve digits read 1234567890123 as 1234567890120, and
+  // 1.23456789012345 as 1.23456789012.
+  const gui = await copiedGui(
+    "demo",
+    valueDOf("float64", { factor: 1 }, [1234567890123, 1.23456789012345]),
+  );
+  await openValues(page, gui.address, "ValueD", "SensorHub");
+  const grid = page.getByRole("grid", { name: "Values of ValueD" });
+  await expectRow(grid, ["1234567890123", "1.23456789012345"]);
+  await page.getByRole("button", { name: "Raw" }).click();
+  await expectRow(grid, ["1234567890123", "1.23456789012345"]);
 });
 
 test("Enter settles what was typed and writes nothing", async ({ page, gui }) => {
@@ -1082,9 +1154,10 @@ test("the cells typed are written where they stand, the numbers nobody typed as 
     page.getByText("Sets 2 elements of ValueD: element 1 to 9; element 2 to 8"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  // The two typed are a float's, written as floats (task 1's n2); 3.0 is as the file spells it.
   await expect
     .poll(() => readFileSync(join(gui.directory, SENSOR_HUB), "utf8"))
-    .toContain('"init": [9, 8, 3.0]');
+    .toContain('"init": [9.0, 8.0, 3.0]');
 });
 
 test("a value nobody typed that its datatype cannot hold does not hold up the cells typed", async ({

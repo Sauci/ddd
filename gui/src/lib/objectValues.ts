@@ -2,9 +2,17 @@ import type { ValuesReply } from "../api/types";
 import {
   type CommaMeaning,
   type Decimal,
+  decimalOfDouble,
+  decimalText,
   doubleOf,
+  floatReading,
+  type Linear,
+  notANumber,
   pastedComma,
+  physicalValue,
+  rawCount,
   readNumber,
+  significant,
   typedComma,
 } from "./numbers";
 
@@ -25,12 +33,26 @@ function number(value: unknown, fallback: number): number {
   return typeof value === "number" ? value : fallback;
 }
 
-/** What one raw count reads as. Only a linear conversion multiplies; everything else - the
- * identity, an enum, a string - hands the raw count back, which is what `raw_reading` in the
- * models does and says. */
+/** A linear conversion's factor and offset as the decimals the reply spells them in, or `null` for
+ * any other conversion - the identity, an enum, a string - which hands the raw count back, as
+ * `raw_reading` in the models does and says. A factor of zero, which the models refuse, is none
+ * either. */
+function linearOf(conversion: Conversion): Linear | null {
+  if (conversion.kind !== "linear") return null;
+  const factor = number(conversion.factor, 1);
+  if (factor === 0) return null;
+  return {
+    factor: decimalOfDouble(factor),
+    offset: decimalOfDouble(number(conversion.offset, 0)),
+  };
+}
+
+/** Where one raw count sits as a physical value, for a picture to place it: the count through a
+ * linear conversion, in the double arithmetic, which a position needs no more digits of. What a
+ * reader reads is `physicalText`. */
 export function physicalOf(raw: number, conversion: Conversion): number {
   if (conversion.kind !== "linear") return raw;
-  return rounded(raw * number(conversion.factor, 1) + number(conversion.offset, 0));
+  return raw * number(conversion.factor, 1) + number(conversion.offset, 0);
 }
 
 /** Whether `datatype` stores a floating point number - which the double the page holds is too -
@@ -39,23 +61,57 @@ function floating(datatype: string): boolean {
   return datatype.startsWith("float");
 }
 
-/** The raw count a physical value needs, rounded to a whole number where the datatype stores
- * one. Most physical values are the image of no raw count at all, so this is where a typed
- * value becomes one the file can hold - and the grid then shows what was stored, not what was
- * typed. A boolean is not rounded: it takes 0 and 1 alone, in physical as in raw, and anything
- * else is the server's to refuse in the words it refuses it in raw - 0.6 rounded was 1, which
- * the file stored. */
-export function rawOf(physical: number, conversion: Conversion, datatype: string): number {
-  const exact =
-    conversion.kind === "linear"
-      ? (physical - number(conversion.offset, 0)) / number(conversion.factor, 1)
-      : physical;
-  return floating(datatype) || datatype === "boolean" ? exact : Math.round(exact);
+/** The readings worked out so far, by datatype, conversion and raw count: a grid draws each of its
+ * cells more than once a keystroke, and a float's reading is looked for. Let go whole once it holds
+ * more than `HELD` of them, so that a session reading grid after grid holds no more. */
+const READINGS = new Map<string, string>();
+
+/** The most readings `READINGS` holds before it is let go. */
+const HELD = 50_000;
+
+/** How many readings are held now, which is never more than one past `HELD`. */
+export function heldReadings(): number {
+  return READINGS.size;
 }
 
-/** The tail of the arithmetic taken off, as `round_physical` takes it off server side. */
+/**
+ * How a raw count of `datatype` reads in physical under `conversion` (15:M6): the shortest decimal
+ * that reads back as the raw count, never cut at twelve significant digits - 1234567890123 is
+ * 1234567890123, where twelve digits read 1234567890120 - and never with the tail of the double
+ * arithmetic - 255 counts of 0.03 are 7.65, not 7.6499999999999995. A whole datatype's count reads
+ * as the count times the factor, plus the offset, exactly; a float's as the shortest decimal whose
+ * own raw count is the count again (`floatReading`). Anything but a linear conversion reads as the
+ * count itself.
+ */
+export function physicalText(raw: number, conversion: Conversion, datatype: string): string {
+  const linear = linearOf(conversion);
+  if (linear === null) return String(raw);
+  const key = `${datatype}|${String(conversion.factor)}|${String(conversion.offset)}|${raw}`;
+  const known = READINGS.get(key);
+  if (known !== undefined) return known;
+  const text = decimalText(
+    floating(datatype) ? floatReading(raw, linear, datatype) : physicalValue(raw, linear),
+  );
+  if (READINGS.size > HELD) READINGS.clear();
+  READINGS.set(key, text);
+  return text;
+}
+
+/** The raw count a physical value needs, as a typed one comes to it (`rawCount`), for a picture to
+ * place a limit by; where the page could send none - a whole count past 2^53, a float beyond its
+ * datatype or rounding to zero - the count the double arithmetic places it at. */
+export function rawOf(physical: number, conversion: Conversion, datatype: string): number {
+  const count = rawCount(decimalOfDouble(physical), linearOf(conversion), datatype);
+  if ("raw" in count) return count.raw;
+  return conversion.kind === "linear"
+    ? (physical - number(conversion.offset, 0)) / number(conversion.factor, 1)
+    : physical;
+}
+
+/** A computed value with the tail of the arithmetic taken off, to twelve significant digits, as
+ * `round_physical` takes it off server side - an exact half to the even digit, as it does. */
 export function rounded(value: number): number {
-  return Number.parseFloat(value.toPrecision(12));
+  return significant(value, 12);
 }
 
 /** Whether this object can be drawn as a grid at all: text is not one, and nor is an object the
@@ -197,31 +253,101 @@ function sideOf(decimal: Decimal): -1 | 0 | 1 {
   return negative ? -1 : 1;
 }
 
-/** How a cell of `datatype` reads `text` - a comma that could be either read as `meaning` says -
- * the double it takes, or the sentence it is refused with (`numbers.ts`'s own, for a text that is
- * no number in decimal notation). A float cell takes the double whatever the digits - the double is
- * what a float holds, and FLT_MAX is a whole number past 2^53 as much as 2^64 is. Any other cell
- * refuses a number past ±2^53, and a fraction the double drops, which it would plan as the whole
- * number the double reads it as; a fraction the double keeps is the server's to refuse an integer,
- * in raw, and the conversion's to round, in physical. */
-function readOf(text: string, datatype: string, meaning: CommaMeaning | undefined): CellRead {
-  const read = readNumber(text, meaning);
-  if (!("decimal" in read)) return read;
-  const double = doubleOf(read.decimal);
-  if (floating(datatype)) return { double };
-  const side = sideOf(read.decimal);
-  if (side !== 0) return { refusal: pastSentence(text, side), ambiguous: false };
-  if (read.decimal.exponent < 0 && Number.isInteger(double)) {
+/** What a cell reads a text as: the raw count it writes, or the sentence it is refused with. */
+type CellRead = { raw: number } | { refusal: string; ambiguous: boolean };
+
+/** Why a float of `datatype` holds no value `said` comes to: past the most it holds, or nonzero
+ * where it rounds to zero - which the double it would be sent as could not say. */
+function floatRefusal(
+  said: string,
+  datatype: string,
+  beyond: boolean,
+): { refusal: string; ambiguous: false } {
+  return {
+    refusal: beyond
+      ? `'${said}' is past what a ${datatype} holds`
+      : `'${said}' rounds to zero in ${datatype}`,
+    ambiguous: false,
+  };
+}
+
+/** The raw count `decimal`, typed in raw into a cell of `datatype`, writes - the text read is the
+ * count - or the sentence it is refused with, naming it as `said`. A float cell takes the double
+ * whatever the digits - the double is what a float holds, and FLT_MAX is a whole number past 2^53
+ * as much as 2^64 is - but none past the most a double holds, nor one rounding to zero in it. Any
+ * other cell refuses a number past ±2^53, and a fraction the double drops, which it would plan as
+ * the whole number the double reads it as; a fraction the double keeps is the server's to refuse
+ * an integer. */
+function rawRead(decimal: Decimal, said: string, datatype: string): CellRead {
+  const double = doubleOf(decimal);
+  if (floating(datatype)) {
+    if (!Number.isFinite(double)) return floatRefusal(said, datatype, true);
+    if (double === 0 && decimal.digits !== "") return floatRefusal(said, datatype, false);
+    return { raw: double };
+  }
+  const side = sideOf(decimal);
+  if (side !== 0) return { refusal: pastSentence(said, side), ambiguous: false };
+  if (decimal.exponent < 0 && Number.isInteger(double)) {
     return {
-      refusal: `'${text}' is not a whole number, and the page cannot hold its fraction`,
+      refusal: `'${said}' is not a whole number, and the page cannot hold its fraction`,
       ambiguous: false,
     };
   }
-  return { double };
+  return { raw: double };
 }
 
-/** What a cell reads a text as: the double it takes, or the sentence it is refused with. */
-type CellRead = { double: number } | { refusal: string; ambiguous: boolean };
+/** The raw count `decimal`, typed in physical into a cell of `reply`, writes (`rawCount`), or the
+ * sentence it is refused with, naming it as `said`. A whole datatype's count is weighed against
+ * ±2^53, not the value typed (task 1's n1: 1e16 at a factor of 1000 is 1e13, inside it), and a
+ * float's against what its datatype holds. A fraction is the conversion's to round, the decimal
+ * holding every digit of it. */
+function physicalRead(decimal: Decimal, said: string, reply: ValuesReply): CellRead {
+  const linear = linearOf(reply.conversion);
+  const count = rawCount(decimal, linear, reply.datatype);
+  if ("raw" in count) return count;
+  if ("past" in count) {
+    // Under no conversion the value typed is the count, and is said to be past 2^53 itself.
+    if (linear === null) return { refusal: pastSentence(said, count.past), ambiguous: false };
+    return {
+      refusal: `'${said}' comes to a raw count past ${count.past < 0 ? "-" : ""}2^53, ${INEXACT}`,
+      ambiguous: false,
+    };
+  }
+  return floatRefusal(said, reply.datatype, "beyond" in count);
+}
+
+/** Whether two decimals are the one number. */
+function same(a: Decimal, b: Decimal): boolean {
+  return a.negative === b.negative && a.digits === b.digits && a.exponent === b.exponent;
+}
+
+/**
+ * One bound of a range typed for `datatype`, read as a cell of it reads a number (task 1's n3): the
+ * double the page sends, or the sentence it is refused with, naming it as `said`. A float's bound
+ * is the double it is, however it is spelled - 1e19 among them, which digits past 2^53 once
+ * refused - but none past the most the float holds, nor one rounding to zero in it. Any other
+ * datatype's is refused past ±2^53 in every spelling, an exponent's too, and wherever the double
+ * would send another number than the one typed: a fraction it cannot hold, which from 2^51 on it
+ * sent rounded.
+ */
+export function boundRead(
+  decimal: Decimal,
+  said: string,
+  datatype: string,
+): { value: number } | { refusal: string } {
+  const double = doubleOf(decimal);
+  if (floating(datatype)) {
+    if (Number.isFinite(double) && (double !== 0 || decimal.digits === ""))
+      return { value: double };
+    return { refusal: floatRefusal(said, datatype, !Number.isFinite(double)).refusal };
+  }
+  const side = sideOf(decimal);
+  if (side !== 0) return { refusal: pastSentence(said, side) };
+  if (!same(decimalOfDouble(double), decimal)) {
+    return { refusal: `'${said}' has a fraction the page cannot hold exactly` };
+  }
+  return { value: double };
+}
 
 /** What `text`, typed into a cell of `reply` in physical or in raw, comes to: the raw count it
  * writes, the sentence the cell refuses it with - `ambiguous` where that is a comma that could be
@@ -233,11 +359,13 @@ export function cellRead(
   reply: ValuesReply,
   physical: boolean,
   meaning?: CommaMeaning,
-): { raw: number } | { refusal: string; ambiguous: boolean } | null {
+): CellRead | null {
   if (text.trim() === "") return null;
-  const read = readOf(text, reply.datatype, meaning);
-  if (!("double" in read)) return read;
-  return { raw: physical ? rawOf(read.double, reply.conversion, reply.datatype) : read.double };
+  const read = readNumber(text, meaning);
+  if (!("decimal" in read)) return read;
+  return physical
+    ? physicalRead(read.decimal, text, reply)
+    : rawRead(read.decimal, text, reply.datatype);
 }
 
 /** The raw count `text`, typed into a cell of `reply`, writes, or `null` where it writes none:
@@ -373,11 +501,15 @@ export function pasted(
   for (const row of values) {
     const counts: number[] = [];
     for (const cell of row) {
-      const value = readOf(cell, reply.datatype, meaning);
-      if (!("double" in value)) {
+      // An empty cell is no value, where a cell typed into and emptied is nothing typed yet.
+      const value = cellRead(cell, reply, physical, meaning) ?? {
+        refusal: notANumber(cell),
+        ambiguous: false,
+      };
+      if ("refusal" in value) {
         return { rows: null, refusal: value.refusal, ambiguous: value.ambiguous ? cell : null };
       }
-      counts.push(physical ? rawOf(value.double, reply.conversion, reply.datatype) : value.double);
+      counts.push(value.raw);
     }
     read.push(counts);
   }
@@ -391,9 +523,11 @@ export function pasteHint(reply: ValuesReply): string {
   return `Paste ${table(rows, columns)} values from a spreadsheet to replace them all.`;
 }
 
-/** One breakpoint, in physical or in raw, as a column or a row header shows it. */
-function reading(raw: number, conversion: Conversion, physical: boolean): string {
-  return String(physical ? physicalOf(raw, conversion) : raw);
+/** One raw count in physical or in raw, as a cell, a column or a row header shows it - a
+ * breakpoint, whose axis's datatype the reply leaves out, read as a whole datatype's count is,
+ * exactly (`physicalText`). */
+function reading(raw: number, conversion: Conversion, physical: boolean, datatype = ""): string {
+  return physical ? physicalText(raw, conversion, datatype) : String(raw);
 }
 
 /** The indices `0`, `1`, `2`, … up to (not including) `count`. */
@@ -465,10 +599,10 @@ export function cellText(
 ): string {
   const held = typed.find((cell) => cell.row === row && cell.column === column);
   if (held === undefined)
-    return reading(reply.rows[row]?.[column] ?? 0, reply.conversion, physical);
+    return reading(reply.rows[row]?.[column] ?? 0, reply.conversion, physical, reply.datatype);
   if (held.physical === physical) return held.typed;
   const raw = typedRaw(held.typed, reply, held.physical, commaOf(typed, held));
-  return raw === null ? held.typed : reading(raw, reply.conversion, physical);
+  return raw === null ? held.typed : reading(raw, reply.conversion, physical, reply.datatype);
 }
 
 /** How many characters wide each of the grid's `columns` is drawn: the longest text its fields
@@ -520,8 +654,8 @@ export function cellSentence(
 
 /** A raw count's physical reading, with the object's own unit where it has one. */
 export function physicalReading(raw: number, reply: ValuesReply): string {
-  const value = physicalOf(raw, reply.conversion);
-  return reply.unit === "" ? String(value) : `${value} ${reply.unit}`;
+  const value = physicalText(raw, reply.conversion, reply.datatype);
+  return reply.unit === "" ? value : `${value} ${reply.unit}`;
 }
 
 /** The sentence above a pasted table's preview, as `cellSentence` is a cell's: what is about to

@@ -244,3 +244,270 @@ export function commaChoices(text: string): CommaChoice[] {
     { meaning: "grouping", label: `A thousands separator: ${readAs("grouping")}` },
   ];
 }
+
+/** A decimal as the double `value` is spelled by `String`, its shortest spelling that reads back
+ * as it: a raw count, a factor, an offset as the reply carries them. */
+export function decimalOfDouble(value: number): Decimal {
+  const read = readNumber(String(value));
+  return "decimal" in read ? read.decimal : { negative: false, digits: "", exponent: 0 };
+}
+
+/** A rational number held exactly: a numerator over a positive denominator. */
+interface Ratio {
+  num: bigint;
+  den: bigint;
+}
+
+/** Ten to `power`, a whole number of at least zero. */
+function tenTo(power: number): bigint {
+  return 10n ** BigInt(power);
+}
+
+/** A decimal as the ratio it is exactly. */
+function ratioOf(decimal: Decimal): Ratio {
+  const whole =
+    BigInt(decimal.digits === "" ? "0" : decimal.digits) * (decimal.negative ? -1n : 1n);
+  return decimal.exponent >= 0
+    ? { num: whole * tenTo(decimal.exponent), den: 1n }
+    : { num: whole, den: tenTo(-decimal.exponent) };
+}
+
+function minus(a: Ratio, b: Ratio): Ratio {
+  return { num: a.num * b.den - b.num * a.den, den: a.den * b.den };
+}
+
+/** `a` over `b`, `b` not zero. */
+function over(a: Ratio, b: Ratio): Ratio {
+  const sign = b.num < 0n ? -1n : 1n;
+  return { num: a.num * b.den * sign, den: a.den * b.num * sign };
+}
+
+/** The whole number nearest `ratio`, an exact half rounded to the even one - as python rounds, and
+ * as `round_physical` (`models/conversion.py`) rounds the digit it keeps: 2.5 is 2, 3.5 is 4, and
+ * -2.5 is -2, either side of zero alike. */
+function halfEven(ratio: Ratio): bigint {
+  const { num, den } = ratio;
+  const floor = num >= 0n ? num / den : -((-num + den - 1n) / den);
+  const twice = 2n * (num - floor * den);
+  if (twice < den) return floor;
+  if (twice > den) return floor + 1n;
+  return floor % 2n === 0n ? floor : floor + 1n;
+}
+
+/** How many binary digits a positive whole number takes. */
+function bits(whole: bigint): number {
+  return whole.toString(2).length;
+}
+
+/** A binary floating point format: the digits its significand holds, and the least and the most
+ * power of two a significand of those digits is scaled by. */
+interface Format {
+  digits: number;
+  least: number;
+  most: number;
+}
+
+/** A double, IEEE 754's binary64. */
+const DOUBLE: Format = { digits: 53, least: -1074, most: 971 };
+
+/** A float, binary32, which a `float32` stores. */
+const SINGLE: Format = { digits: 24, least: -149, most: 104 };
+
+/** The number of `format` nearest `ratio`, an exact half rounded to the even significand - the
+ * rounding a compiler and `Number` make of a literal - as the double holding it: zero below the
+ * least the format holds, and an infinity past the most. Computed on whole numbers alone, so that
+ * no rounding of the arithmetic's own comes before the one rounding there is. */
+function nearestIn(ratio: Ratio, format: Format): number {
+  if (ratio.num === 0n) return 0;
+  const negative = ratio.num < 0n;
+  const num = negative ? -ratio.num : ratio.num;
+  const den = ratio.den;
+  // The power of two that leaves the significand `format.digits` long: estimated from the lengths,
+  // then corrected by one where the estimate falls a digit short.
+  let power = bits(num) - bits(den) - format.digits;
+  const scaled = (at: number) => (at >= 0 ? [num, den << BigInt(at)] : [num << BigInt(-at), den]);
+  let [top, bottom] = scaled(power) as [bigint, bigint];
+  if (top / bottom >= 1n << BigInt(format.digits)) {
+    power += 1;
+    [top, bottom] = scaled(power) as [bigint, bigint];
+  }
+  if (power < format.least) {
+    power = format.least;
+    [top, bottom] = scaled(power) as [bigint, bigint];
+  }
+  let significand = halfEven({ num: top, den: bottom });
+  if (significand === 1n << BigInt(format.digits)) {
+    significand >>= 1n;
+    power += 1;
+  }
+  if (power > format.most) return negative ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+  const value = Number(significand) * 2 ** power;
+  return negative ? -value : value;
+}
+
+/** The shortest spelling of a float - a `float32`'s, as a double - that a compiler reads back as
+ * it: the double the digits are, so that `String` spells them - 0.1 for the float nearest 0.1,
+ * rather than the 0.10000000149011612 of its exact value. */
+function shortestSingle(value: number): number {
+  for (let digits = 1; digits < 9; digits += 1) {
+    const spelled = Number(value.toPrecision(digits));
+    if (Math.fround(spelled) === value) return spelled;
+  }
+  return Number(value.toPrecision(9));
+}
+
+/** The number a float datatype stores nearest the exact value of `ratio`, spelled as briefly as
+ * the datatype reads it back: a double for `float64`, and for `float32` the shortest spelling of
+ * the float (`shortestSingle`). */
+function nearestFloat(ratio: Ratio, datatype: string): number {
+  if (datatype !== "float32") return nearestIn(ratio, DOUBLE);
+  const single = nearestIn(ratio, SINGLE);
+  return Number.isFinite(single) && single !== 0 ? shortestSingle(single) : single;
+}
+
+/** A linear conversion's factor and offset, as the decimals the reply's doubles spell. */
+export interface Linear {
+  factor: Decimal;
+  offset: Decimal;
+}
+
+/** What the raw count of a physical value comes to: the double holding it, or why there is none
+ * the page can send - a whole raw count past ±2^53 (`past`), or a float beyond what the datatype
+ * holds (`beyond`) or rounding to zero in it (`zero`). */
+export type RawCount = { raw: number } | { past: -1 | 1 } | { beyond: true } | { zero: true };
+
+/** 2^53, where a double stops holding every whole number. */
+const WHOLE_LIMIT = 2n ** 53n;
+
+/** The decimal `value` is, held by its double where its exponent is so far from 0 that its exact
+ * digits would cost more than any datatype can tell apart: a typed `1e-2000` is the zero it reads
+ * as, and `1e2000` - an infinity to a double - is 1e1100, as far past every datatype and as few
+ * digits to work with. */
+function bounded(value: Decimal): Decimal {
+  if (Math.abs(value.digits.length + value.exponent) <= 1100) return value;
+  const double = doubleOf(value);
+  if (Number.isFinite(double)) return decimalOfDouble(double);
+  return { negative: value.negative, digits: "1", exponent: 1100 };
+}
+
+/**
+ * The raw count a physical value comes to under `linear` - the identity where it is `null` - for
+ * `datatype`, worked out exactly on the decimals, the one rounding there is made once, at the end:
+ *
+ * - a whole datatype's is the whole number nearest it, an exact half to the even one as
+ *   `round_physical` rounds (3:M4: `Math.round` made 2.5 3 and -2.5 -2); weighed against ±2^53
+ *   itself, where a double stops holding every whole number - not the physical value typed, which
+ *   past it may come to a count well inside (task 1's n1: 1e16 at a factor of 1000 is 1e13);
+ * - a boolean's is not rounded: it holds 0 and 1 alone, and anything else is the server's to
+ *   refuse in the words it refuses it in raw;
+ * - a float's is the float its datatype stores nearest, spelled as briefly as it reads back
+ *   (15:M5): 0.3 at a factor of 0.1 is 3, where the double arithmetic made it 2.9999999999999996.
+ */
+export function rawCount(physical: Decimal, linear: Linear | null, datatype: string): RawCount {
+  const value = ratioOf(bounded(physical));
+  const exact =
+    linear === null ? value : over(minus(value, ratioOf(linear.offset)), ratioOf(linear.factor));
+  if (datatype.startsWith("float")) {
+    const raw = nearestFloat(exact, datatype);
+    if (!Number.isFinite(raw)) return { beyond: true };
+    return raw === 0 && exact.num !== 0n ? { zero: true } : { raw };
+  }
+  if (datatype === "boolean") return { raw: nearestIn(exact, DOUBLE) };
+  const whole = halfEven(exact);
+  if (whole > WHOLE_LIMIT) return { past: 1 };
+  if (whole < -WHOLE_LIMIT) return { past: -1 };
+  return { raw: Number(whole) };
+}
+
+/** A decimal's digits as the whole number they spell, zero for none. */
+function wholeOf(decimal: Decimal): bigint {
+  return BigInt(decimal.digits || "0");
+}
+
+/** `a` times `b`, exactly. */
+function product(a: Decimal, b: Decimal): Decimal {
+  return normal(wholeOf(a) * wholeOf(b), a.negative !== b.negative, a.exponent + b.exponent);
+}
+
+/** `a` plus `b`, exactly. */
+function sum(a: Decimal, b: Decimal): Decimal {
+  const exponent = Math.min(a.exponent, b.exponent);
+  const signed = (d: Decimal) =>
+    wholeOf(d) * tenTo(d.exponent - exponent) * (d.negative ? -1n : 1n);
+  const total = signed(a) + signed(b);
+  return normal(total < 0n ? -total : total, total < 0n, exponent);
+}
+
+/** A whole number of digits, its sign and its power of ten, as a decimal: no trailing zero. */
+function normal(whole: bigint, negative: boolean, exponent: number): Decimal {
+  if (whole === 0n) return { negative: false, digits: "", exponent: 0 };
+  const text = whole.toString();
+  const digits = text.replace(/0+$/, "");
+  return { negative, digits, exponent: exponent + (text.length - digits.length) };
+}
+
+/** The physical value of a raw count under `linear`, exactly: the count times the factor, plus the
+ * offset, in decimal digits - no tail of the double arithmetic, and none of its digits cut off. */
+export function physicalValue(raw: number, linear: Linear): Decimal {
+  return sum(product(decimalOfDouble(raw), linear.factor), linear.offset);
+}
+
+/** The two decimals of `digits` significant digits either side of `value`, the nearer first. */
+function around(value: Decimal, digits: number): Decimal[] {
+  const kept = value.digits.slice(0, digits);
+  const exponent = value.exponent + value.digits.length - digits;
+  const lower = normal(BigInt(kept), value.negative, exponent);
+  const upper = normal(BigInt(kept) + 1n, value.negative, exponent);
+  return value.digits[digits] !== undefined && value.digits[digits] >= "5"
+    ? [upper, lower]
+    : [lower, upper];
+}
+
+/**
+ * How the physical value of the raw count `raw` of a float datatype reads: the shortest decimal
+ * whose own raw count (`rawCount`) is `raw` again - so that what the grid shows, typed back, sets
+ * nothing - never cut short and never with the tail of the double arithmetic; or, where no decimal
+ * shorter than the exact physical value reads back - a file stating more digits than its float
+ * holds - that exact value.
+ */
+export function floatReading(raw: number, linear: Linear, datatype: string): Decimal {
+  const exact = physicalValue(raw, linear);
+  for (let digits = 1; digits < exact.digits.length; digits += 1) {
+    for (const candidate of around(exact, digits)) {
+      const back = rawCount(candidate, linear, datatype);
+      if ("raw" in back && back.raw === raw) return candidate;
+    }
+  }
+  return exact;
+}
+
+/** The exact value of the double `value`, as a decimal: its significand times its power of two,
+ * every digit of it - `0.1` is 0.1000000000000000055511151231257827021181583404541015625. */
+function exactDecimalOf(value: number): Decimal {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value);
+  const pattern = view.getBigUint64(0);
+  const biased = Number((pattern >> 52n) & 0x7ffn);
+  const fraction = pattern & ((1n << 52n) - 1n);
+  const significand = biased === 0 ? fraction : fraction | (1n << 52n);
+  const power = (biased === 0 ? 1 : biased) - 1075;
+  // A negative power of two is that power of five over the same power of ten.
+  return power >= 0
+    ? normal(significand << BigInt(power), value < 0, 0)
+    : normal(significand * 5n ** BigInt(-power), value < 0, power);
+}
+
+/** `value` to `digits` significant digits as python's `format` takes them - correctly rounded from
+ * the double's exact value, an exact half to the even digit - where `toPrecision` takes an exact
+ * half away from zero: 1234567890.125 is 1234567890.12 to twelve, as `round_physical` makes it,
+ * and not 1234567890.13 (3:M4). Infinities, NaN and zero pass through. */
+export function significant(value: number, digits: number): number {
+  if (!Number.isFinite(value) || value === 0) return value;
+  const exact = exactDecimalOf(value);
+  if (exact.digits.length <= digits) return value;
+  const kept = BigInt(exact.digits.slice(0, digits));
+  const rest = exact.digits.slice(digits);
+  // `rest` ends in no zero, so it is an exact half only as the one digit 5.
+  const up = rest > "5" || (rest === "5" && kept % 2n === 1n);
+  return doubleOf(normal(up ? kept + 1n : kept, exact.negative, exact.exponent + rest.length));
+}

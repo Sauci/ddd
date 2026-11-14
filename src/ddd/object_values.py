@@ -275,8 +275,9 @@ def _unshowable(value: float, datatype: Datatype) -> bool:
 
 def limits_refusal(raw: str, datatypes: Iterable[object]) -> str | None:
     """The sentence ``limits`` stated as ``raw`` are refused with where they would give a 64 bit
-    integer among ``datatypes`` a bound at or past :data:`EXACT` - which the page may have rounded,
-    as it may a value :func:`_acceptable` refuses - or ``None``.
+    integer among ``datatypes`` a bound at or past :data:`EXACT`, written as a whole number or as a
+    float - which the page may have rounded, as it may a value :func:`_acceptable` refuses - or
+    ``None``.
 
     The route refuses what the page sends; a range written in the file holds its bounds exactly,
     and the panel shows them as written. ``raw`` is json text the route's query has read already,
@@ -288,7 +289,9 @@ def limits_refusal(raw: str, datatypes: Iterable[object]) -> str | None:
     if wide is None or not isinstance(limits, dict):
         return None
     for bound in (limits.get("min"), limits.get("max")):
-        if isinstance(bound, int) and abs(bound) >= EXACT:
+        # However it is written: a float's spelling, ``1e+21``, is a whole number at or past 2^53
+        # as much as its digits are, and was let through where they were refused.
+        if isinstance(bound, int | float) and abs(bound) >= EXACT:
             side = "-" if bound < 0 else ""
             return (
                 f"{bound} is at or past {side}2^53, where the page cannot hold every whole number "
@@ -447,7 +450,9 @@ def set_cell(
             f"'{name}' is produced in more than one place, so there is no one file to set it in",
         )
     found = _element(at, grid.shape)
-    _acceptable(raw, Datatype(grid.datatype), name)
+    datatype = Datatype(grid.datatype)
+    _acceptable(raw, datatype, name)
+    raw = _written(raw, datatype)
     site = sites[0]
     _in_place(site, name, cache)
     if not grid.shape:
@@ -460,7 +465,7 @@ def set_cell(
     else:
         # The array is not written yet, or is shorter than the shape: written whole, a short
         # one filled out with zeros - what the startup code makes of the elements it lacks.
-        rows = _filled_out(grid.rows, grid.shape)
+        rows = _filled_out(grid.rows, grid.shape, datatype)
         whole: list[float] | list[list[float]]
         if len(grid.shape) == 1:
             # A one dimensional object is one row, so its only index is the column.
@@ -530,15 +535,15 @@ def set_cells(
             Operation(
                 "set",
                 f"{site.pointer}.init" + "".join(f"[{index}]" for index in element),
-                json.dumps(raw),
+                json.dumps(_written(raw, datatype)),
             )
             for element, _, raw in found
         )
         return ValuePlan((PlannedEdit(site.path, operations),))
-    rows = _filled_out(grid.rows, grid.shape)
+    rows = _filled_out(grid.rows, grid.shape, datatype)
     for element, _, raw in found:
         row, column = (0, element[0]) if len(grid.shape) == 1 else element
-        rows[row][column] = raw
+        rows[row][column] = _written(raw, datatype)
     whole: list[float] | list[list[float]] = rows[0] if len(grid.shape) == 1 else rows
     operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
     return ValuePlan((PlannedEdit(site.path, (operation,)),))
@@ -613,9 +618,8 @@ def set_values(
         raise ValueRefusalError("invalid", _all_of_them(offenders, name))
     site = sites[0]
     _in_place(site, name, cache)
-    whole: list[float] | list[list[float]] = (
-        list(rows[0]) if len(grid.shape) == 1 else [list(row) for row in rows]
-    )
+    written = [[_written(value, datatype) for value in row] for row in rows]
+    whole: list[float] | list[list[float]] = written[0] if len(grid.shape) == 1 else written
     operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
     return ValuePlan((PlannedEdit(site.path, (operation,)),))
 
@@ -680,16 +684,28 @@ def _has_cell(written: object, found: tuple[int, ...]) -> bool:
     return isinstance(row, list) and found[1] < len(row)
 
 
-def _filled_out(rows: tuple[tuple[float, ...], ...], shape: tuple[int, ...]) -> list[list[float]]:
-    """``rows`` as lists, each row and the rows themselves taken to the shape with zeros; one
-    longer than the shape is left as it is, for its own finding to say so."""
+def _filled_out(
+    rows: tuple[tuple[float, ...], ...], shape: tuple[int, ...], datatype: Datatype
+) -> list[list[float]]:
+    """``rows`` as lists, each row and the rows themselves taken to the shape with zeros - a
+    float's written as one (:func:`_written`); one longer than the shape is left as it is, for its
+    own finding to say so."""
     filled = [list(row) for row in rows]
     width = shape[-1]
+    zero = _written(0, datatype)
     for row in filled:
-        row.extend([0] * (width - len(row)))
+        row.extend([zero] * (width - len(row)))
     while len(filled) < shape[0] and len(shape) > 1:
-        filled.append([0] * width)
+        filled.append([zero] * width)
     return filled
+
+
+def _written(raw: float, datatype: Datatype) -> float:
+    """``raw`` as its datatype's value is written: a float's as a float, ``3.0`` for the ``3`` the
+    page sends - and ``1e+19`` for ``10000000000000000000``, a whole number past :data:`EXACT` that
+    :func:`_unshowable` would otherwise mark as one the grid cannot show, though a float holds it
+    as it is. Any other datatype's as it was given."""
+    return float(raw) if datatype.is_float else raw
 
 
 def _indices(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:

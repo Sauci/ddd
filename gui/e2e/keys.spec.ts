@@ -238,6 +238,24 @@ test("a change refused as stale can be applied again once the analysis has caugh
   expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 60 });
 });
 
+test("a float variable's range takes any number a double holds, and is written as floats", async ({
+  page,
+  gui,
+}) => {
+  // ValueC is a float32, which holds 1e19 as it is: its digits past 2^53 were refused, and a
+  // bound past 2^53 the page sent was written as a whole number (task 1's n3 and n2).
+  const panel = await openPanel(page, gui.address, "ValueC", "SensorHub");
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await expect(panel.getByLabel("Max")).toHaveValue("90");
+  await panel.getByLabel("Max").fill("10000000000000000000");
+  const settling = panel.getByRole("region", { name: "Settle the key" });
+  await settling.getByRole("button", { name: "Show changes" }).click();
+  const added = settling.locator(".hunk .added");
+  await expect(added.filter({ hasText: '"max": 10000000000000000000.0' }).first()).toBeVisible();
+  await expect(added.filter({ hasText: '"min": -50.0' }).first()).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeVisible();
+});
+
 test("a range the two fields do not make offers no Apply, and changes nothing", async ({
   page,
   gui,

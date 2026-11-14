@@ -416,8 +416,9 @@ export const getValuesPlan = async (plan: ValuesPlanRequest, fetchImpl: Fetch = 
   const query = queryOf<ValuesPlanQuery>({ name: plan.name, raw: plan.raw.join(",") });
   const address = `/api/values-plan${query}`;
   // Refused before it is asked for, rather than sent and answered 414: a count costs its own
-  // digits plus the three of the `%2C` before it, which is about 8 000 whole counts and about
-  // 2 500 that carry decimals, `rawOf` answering an unrounded double for a float datatype. The
+  // digits plus the three of the `%2C` before it, which is about 8 000 whole counts and fewer of
+  // a float datatype's, each the shortest spelling of its float (`rawCount`) - up to seventeen
+  // digits for a float64 count no short decimal reads back as. The
   // shape of the block cannot bound this - the object's own shape is what makes it large - and
   // the alternative is a reader meeting `Request-URI Too Long` under the grid, which is true
   // and tells them nothing about their table.

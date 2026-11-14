@@ -4,8 +4,8 @@ import type {
   VariableKeyOffer,
   VariableReply,
 } from "../api/types";
-import { type CommaMeaning, decimalText, doubleOf, readNumber, typedComma } from "./numbers";
-import { wholePast } from "./objectValues";
+import { type CommaMeaning, decimalText, readNumber, typedComma } from "./numbers";
+import { boundRead, wholePast } from "./objectValues";
 import { hrefOf } from "./route";
 import { unsettledNote } from "./typing";
 import { textOf } from "./units";
@@ -576,22 +576,54 @@ function shownBound(value: unknown, text: string | undefined): string {
   return text !== undefined && wholePast(text) !== null ? text : String(value);
 }
 
+/** The datatype a range is read by, of the datatypes the declarations it is written into state: a
+ * whole one where any states one, whose rule is the stricter, else a float - and a whole one's
+ * rule, `""`, where none states any. */
+export function rangeDatatype(datatypes: readonly (string | null)[]): string {
+  const stated = datatypes.filter((datatype) => datatype !== null);
+  return stated.find((datatype) => !datatype.startsWith("float")) ?? stated[0] ?? "";
+}
+
+/** The datatype a variable's range is read by: its declarations' (`rangeDatatype`), each the one it
+ * states or its type fixes. */
+export function variableDatatype(variable: VariableReply): string {
+  return rangeDatatype(
+    variable.declarations.map((declaration) =>
+      textOf(declaration.stated.datatype ?? declaration.fixed.datatype),
+    ),
+  );
+}
+
+/** The datatype a type's range is read by: the one it fixes. */
+export function typeDatatype(keys: readonly VariableKeyOffer[]): string {
+  return rangeDatatype([textOf(keys.find((key) => key.key === "datatype")?.values[0]?.raw)]);
+}
+
+/** A bound as a range's json writes it: a float's as a float (task 1's n2) - `1e19` was written
+ * `10000000000000000000`, a whole number past 2^53 that a float holds as no other - and any
+ * other's as the shortest spelling of its double, which is the number typed. */
+function boundText(value: number, datatype: string): string {
+  const text = String(value);
+  return datatype.startsWith("float") && !/[.e]/.test(text) ? `${text}.0` : text;
+}
+
 /** The json text a range typed into the two fields travels as; `null` while it is not one.
  *
  * A range is two numbers with the maximum at least the minimum (spec 5.2), which is what
  * `Limits` itself allows: a pair the models refuse would be written into every declaration
- * and stop each of those files loading, so it never becomes a value to settle on.
+ * and stop each of those files loading, so it never becomes a value to settle on. `datatype` is
+ * what it is read by (`rangeDatatype`).
  */
-export function limitsRaw(min: string, max: string): string | null {
-  const range = rangeOf(min, max);
+export function limitsRaw(min: string, max: string, datatype = ""): string | null {
+  const range = rangeOf(min, max, datatype);
   if (range === null || "note" in range) return null;
-  return `{ "min": ${range.low}, "max": ${range.high} }`;
+  return `{ "min": ${boundText(range.low, datatype)}, "max": ${boundText(range.high, datatype)} }`;
 }
 
 /** What the chooser says is wrong with the two fields, or `null` while they say something the
  * panel can settle on (`rangeOf`). */
-export function limitsNote(min: string, max: string): string | null {
-  const range = rangeOf(min, max);
+export function limitsNote(min: string, max: string, datatype = ""): string | null {
+  const range = rangeOf(min, max, datatype);
   return range !== null && "note" in range ? range.note : null;
 }
 
@@ -602,36 +634,37 @@ export function limitsNote(min: string, max: string): string | null {
  * Two empty fields are not wrong: they are "state nothing", which the list offers as well and
  * which removes the key. Anything else that is not a range is nothing to apply, and saying so
  * is the whole of what the panel does about it - no Apply, and no preview behind it. Each sentence
- * but the last names the one field it is about (`fieldBound`); the two are read together, so that a
- * comma one shows to be a decimal point is one in the other too.
+ * but the last names the one field it is about (`fieldBound`); the two are read together, so that
+ * a comma one shows to be a decimal point is one in the other too.
  */
 function rangeOf(
   min: string,
   max: string,
+  datatype: string,
 ): { note: string } | { low: number; high: number } | null {
   if (min.trim() === "" && max.trim() === "") return null;
   const meaning = typedComma([min, max]);
-  const low = fieldBound("Min", min, meaning);
+  const low = fieldBound("Min", min, meaning, datatype);
   if ("note" in low) return low;
-  const high = fieldBound("Max", max, meaning);
+  const high = fieldBound("Max", max, meaning, datatype);
   if ("note" in high) return high;
   if (high.value < low.value) return { note: "The maximum is below the minimum" };
   return { low: low.value, high: high.value };
 }
 
-/** The number one of the two fields holds, read as every field reads one (`numbers.ts`), or what
- * is wrong with it, in a sentence naming the field: empty, a number in another notation, a comma
- * that could be either, no number at all - or a whole number past 2^53, refused in the grid's own
- * words (`wholePast`): sent, it would be the double nearest it, and a bound nobody typed. */
+/** The number one of the two fields holds, read as every field reads one (`numbers.ts`) and
+ * weighed as a cell of `datatype` weighs one (`boundRead`), or what is wrong with it, in a sentence
+ * naming the field: empty, a number in another notation, a comma that could be either, no number
+ * at all, or a number the page cannot send as typed. */
 function fieldBound(
   field: "Min" | "Max",
   text: string,
   meaning: CommaMeaning | undefined,
+  datatype: string,
 ): { note: string } | { value: number } {
   if (text.trim() === "") return { note: `${field} is empty` };
   const read = readNumber(text, meaning);
   if (!("decimal" in read)) return { note: `${field}: ${read.refusal}` };
-  const past = wholePast(text);
-  if (past !== null) return { note: `${field}: ${past}` };
-  return { value: doubleOf(read.decimal) };
+  const bound = boundRead(read.decimal, text, datatype);
+  return "refusal" in bound ? { note: `${field}: ${bound.refusal}` } : bound;
 }

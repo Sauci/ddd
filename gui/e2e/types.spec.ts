@@ -267,6 +267,40 @@ test("a type's limit past 2^53 is shown as its file writes it, and no range hold
     .toEqual({ min: 0, max: 9007199254740991 });
 });
 
+/** Temperature_t made a float64 read as it is stored, its limits -40 to 150. */
+function floatTemperature(directory: string): void {
+  const path = join(directory, TYPES);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /("name": "Temperature_t",[\s\S]*?"datatype": )"uint16"([\s\S]*?"conversion": )\{[^}]*\}/,
+    '$1"float64"$2{ "kind": "identity" }',
+  );
+  if (changed === text) throw new Error(`${TYPES} declares no Temperature_t of uint16`);
+  writeFileSync(path, changed, "utf8");
+}
+
+test("a float type's range takes any number a double holds, and is written as floats", async ({
+  page,
+  copiedGui,
+}) => {
+  // A float64 holds 1e19 as it is: its digits past 2^53 were refused, and a bound past 2^53 the
+  // page sent was written as a whole number (task 1's n3 and n2).
+  const gui = await copiedGui("structures", floatTemperature);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Limits", exact: true }).click();
+  await panel.getByRole("combobox", { name: "Limits of Temperature_t" }).press("Escape");
+  await panel.getByLabel("Max", { exact: true }).fill("10000000000000000000");
+  await expect(panel.getByText("Changes 1 file: types.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => readFileSync(join(gui.directory, TYPES), "utf8"))
+    .toMatch(/"max": 10000000000000000000\.0/);
+  expect(entryOf(gui.directory, "Temperature_t").limits).toEqual({ min: -40, max: 1e19 });
+});
+
 test("a type's datatype is picked from the list of datatypes, and written", async ({
   page,
   structuresGui,

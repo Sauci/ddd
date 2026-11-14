@@ -10491,18 +10491,27 @@ class TestAWholeNumberPastWhatADoubleHolds:
             409, {"error": "invalid", "message": says}
         )
 
+    @pytest.mark.parametrize(
+        ("sent", "written"),
+        [
+            pytest.param("9007199254740992", "9007199254740992.0", id="2^53"),
+            pytest.param("10000000000000000000", "1e+19", id="1e19"),
+        ],
+    )
     def test_a_float_is_set_to_a_whole_number_past_2_53_as_the_double_it_is(
-        self, tmp_path: Path
+        self, tmp_path: Path, sent: str, written: str
     ) -> None:
-        """A float64 is no 64 bit integer: it holds the double the page sends, and nothing else."""
+        """A float64 is no 64 bit integer: it holds the double the page sends, and nothing else -
+        written as a float (task 1's n2), where a whole number's spelling past 2^53 was then a
+        number the grid could not show."""
         api = big_block(tmp_path, [0.5, 1.5], "float64")
-        body = get(api, "/api/value-plan", name="Big", at="[0]", raw="9007199254740992").body
+        body = get(api, "/api/value-plan", name="Big", at="[0]", raw=sent).body
         assert [change["operations"] for change in body["changes"]] == [
             [
                 {
                     "op": "set",
                     "pointer": "component.interface[0].definition.init[0]",
-                    "raw": "9007199254740992",
+                    "raw": written,
                 }
             ]
         ]
@@ -10571,6 +10580,30 @@ class TestALimitPastWhatADoubleHolds:
         before = contents(tmp_path)
         said = LIMIT_AT_OR_PAST.format(value=value, side=side, datatype=datatype)
         assert get(api, "/api/settle", name="Speed", key="limits", raw=sent) == Reply(
+            409, {"error": "invalid", "message": said}
+        )
+        assert contents(tmp_path) == before
+
+    @pytest.mark.parametrize(
+        ("route", "query"),
+        [
+            pytest.param("/api/settle", {"name": "Speed", "key": "limits"}, id="a-variable"),
+            pytest.param(
+                "/api/type-plan",
+                {"action": "set", "name": "Wide_t", "key": "limits"},
+                id="a-type",
+            ),
+        ],
+    )
+    def test_a_bound_written_as_a_float_is_weighed_as_any_other(
+        self, tmp_path: Path, route: str, query: dict[str, str]
+    ) -> None:
+        """Task 1's n4: a 1e21 sent as the page spells it, an exponent, was not weighed, and the
+        range was planned - 200 - where its whole number's digits were refused."""
+        api = wide_limits(tmp_path)
+        before = contents(tmp_path)
+        said = LIMIT_AT_OR_PAST.format(value="1e+21", side="", datatype="uint64")
+        assert get(api, route, **query, raw='{ "min": 0, "max": 1e+21 }') == Reply(
             409, {"error": "invalid", "message": said}
         )
         assert contents(tmp_path) == before

@@ -460,17 +460,43 @@ class TestTheCommandPage:
         text = flattened(self.COMMAND_PAGE)
         assert (
             "a cell of an integer datatype refuses a number past 2^53 either side of zero, however "
-            "it is spelled, where it is typed or pasted, and a fraction the double would drop"
+            "it is spelled, where it is typed or pasted in raw, and a fraction the double would "
+            "drop with it; in physical it refuses a value whose raw count lies past 2^53"
         ) in text
-        assert "a float's cell takes every number as the double it is" in text
+        assert (
+            "A float's cell takes every number as the double it is, but none past what its float "
+            "holds, nor one rounding to zero in it"
+        ) in text
         assert "or one at 2^53 in a ``uint64`` or ``sint64``, says it cannot show it" in text
         assert (
             "from the page neither takes a whole number at 2^53 or past it, as a value or as a "
-            "limit"
+            "limit, however it is written - the server refuses a bound at or past 2^53 for either, "
+            "written in digits or as a float"
         ) in text
         assert (
-            "show a bound past 2^53 in its file's own digits, and refuse a whole number past it "
-            "rather than send the double"
+            "show a bound past 2^53 in its file's own digits, and read a bound as a cell of the "
+            "datatype the declarations state reads a number: a float's as the double it is, "
+            "written as a float, and any other's refused past 2^53 however it is spelled, and "
+            "wherever the double would send another number than the one typed"
+        ) in text
+
+    def test_the_values_grid_is_said_to_write_numbers_as_they_are(self) -> None:
+        """What ``numbers.ts`` and ``object_values.py`` write of a number typed, and what Physical
+        shows, said where the grid is described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "A physical value comes to its raw count exactly, worked out on the decimals typed "
+            "and the conversion's own: a whole datatype's count is the nearest one, an exact half "
+            "going to the even count, either side of zero, as ``round_physical`` rounds"
+        ) in text
+        assert (
+            "a float's is the float its datatype stores nearest, spelled as briefly as it reads "
+            "back, so 0.3 at a factor of 0.1 is 3"
+        ) in text
+        assert "A float's value is written as a float, its whole numbers too" in text
+        assert (
+            "Physical shows the shortest decimal that reads back as the raw count it shows, never "
+            "cut at twelve significant digits and never with the tail of the double arithmetic"
         ) in text
 
     def test_the_values_grid_is_said_to_read_numbers_by_one_grammar(self) -> None:

@@ -2,14 +2,21 @@ import { describe, expect, test } from "vitest";
 import {
   ambiguousComma,
   commaChoices,
+  type Decimal,
+  decimalOfDouble,
   decimalText,
   doubleOf,
+  floatReading,
   jsonNumber,
+  type Linear,
   MIXES,
   notANumber,
   notDecimal,
   pastedComma,
+  physicalValue,
+  rawCount,
   readNumber,
+  significant,
   typedComma,
 } from "./numbers";
 
@@ -283,5 +290,194 @@ describe("jsonNumber", () => {
     expect(jsonNumber("1,500", "grouping")).toEqual({ json: "1500" });
     expect(jsonNumber("1,500")).toEqual({ refusal: ambiguousComma("1,500"), ambiguous: true });
     expect(jsonNumber("0x10")).toEqual({ refusal: notDecimal("0x10"), ambiguous: false });
+  });
+});
+
+/** `text` read as a decimal, for a test that knows it is one. */
+function decimal(text: string): Decimal {
+  const read = readNumber(text);
+  if (!("decimal" in read)) throw new Error(`${text} reads as no number`);
+  return read.decimal;
+}
+
+/** A linear conversion of `factor` and `offset`, as the reply's doubles spell them. */
+function linear(factor: number, offset = 0): Linear {
+  return { factor: decimalOfDouble(factor), offset: decimalOfDouble(offset) };
+}
+
+describe("rawCount", () => {
+  test.each([
+    // 3:M4: an exact half to the even count, as `round_physical` rounds, either side of zero -
+    // where `Math.round` made 2.5 3 and -2.5 -2.
+    { physical: "2.5", raw: 2 },
+    { physical: "3.5", raw: 4 },
+    { physical: "-2.5", raw: -2 },
+    { physical: "-3.5", raw: -4 },
+    { physical: "2.4999999999999999999", raw: 2 },
+    { physical: "2.5000000000000000001", raw: 3 },
+  ])("$physical counts of the identity is $raw in a sint16", ({ physical, raw }) => {
+    expect(rawCount(decimal(physical), null, "sint16")).toEqual({ raw });
+  });
+
+  test("a half is weighed on the decimals, not on the double the division makes", () => {
+    // 0.25 at 0.1 a count is 2.5 exactly - 2, the even one - where 0.25 / 0.1 in doubles is not.
+    expect(rawCount(decimal("0.25"), linear(0.1), "uint8")).toEqual({ raw: 2 });
+    expect(rawCount(decimal("0.35"), linear(0.1), "uint8")).toEqual({ raw: 4 });
+    expect(rawCount(decimal("10"), linear(0.5, -40), "uint8")).toEqual({ raw: 100 });
+  });
+
+  test("a whole count is weighed against 2^53, not the physical value typed", () => {
+    // Task 1's n1: 1e16 at a factor of 1000 is 1e13 counts, which a sint64 holds; 10 at a
+    // factor of 1e-15 is 1e16, which the page cannot hold every neighbour of.
+    expect(rawCount(decimal("1e16"), linear(1000), "sint64")).toEqual({ raw: 1e13 });
+    expect(rawCount(decimal("10"), linear(1e-15), "sint64")).toEqual({ past: 1 });
+    expect(rawCount(decimal("-10"), linear(1e-15), "sint64")).toEqual({ past: -1 });
+    expect(rawCount(decimal("9007199254740992"), null, "uint64")).toEqual({ raw: 2 ** 53 });
+  });
+
+  test("a negative factor turns the count over", () => {
+    expect(rawCount(decimal("-0.3"), linear(-0.1), "float64")).toEqual({ raw: 3 });
+    expect(rawCount(decimal("1"), linear(-0.5), "sint8")).toEqual({ raw: -2 });
+    expect(rawCount(decimal("-0.7"), linear(0.1), "float32")).toEqual({ raw: -7 });
+  });
+
+  test("a boolean is not rounded, so what is no 0 and no 1 is the server's to refuse", () => {
+    expect(rawCount(decimal("0.6"), null, "boolean")).toEqual({ raw: 0.6 });
+    expect(rawCount(decimal("1"), linear(0.5), "boolean")).toEqual({ raw: 2 });
+  });
+
+  test.each([
+    // 15:M5: the float its datatype stores nearest the exact count, as briefly as it reads back -
+    // where the double arithmetic planned 2.9999999999999996 and 6.999999999999999.
+    { physical: "0.3", factor: 0.1, datatype: "float32", raw: 3 },
+    { physical: "0.7", factor: 0.1, datatype: "float32", raw: 7 },
+    { physical: "0.3", factor: 0.1, datatype: "float64", raw: 3 },
+    { physical: "1", factor: 0.3, datatype: "float64", raw: 3.3333333333333335 },
+    { physical: "1", factor: 3, datatype: "float32", raw: 0.33333334 },
+    { physical: "0.1", factor: 1, datatype: "float32", raw: 0.1 },
+    { physical: "16777217", factor: 1, datatype: "float32", raw: 16777216 },
+    { physical: "1.000000059604644775390625", factor: 1, datatype: "float32", raw: 1 },
+    { physical: "3.4028235e38", factor: 1, datatype: "float32", raw: 3.4028235e38 },
+    { physical: "1e-45", factor: 1, datatype: "float32", raw: 1e-45 },
+    { physical: "5e-324", factor: 1, datatype: "float64", raw: 5e-324 },
+    {
+      physical: "1.7976931348623157e308",
+      factor: 1,
+      datatype: "float64",
+      raw: 1.7976931348623157e308,
+    },
+    // Rounded up to the next power of two, and a float32 whose shortest spelling takes all nine
+    // digits a float32 needs.
+    { physical: "0.99999999999999999", factor: 1, datatype: "float64", raw: 1 },
+    { physical: "1.00025465e-36", factor: 1, datatype: "float32", raw: 1.00025465e-36 },
+  ])(
+    "$physical at $factor a count is $raw in a $datatype",
+    ({ physical, factor, datatype, raw }) => {
+      expect(rawCount(decimal(physical), linear(factor), datatype)).toEqual({ raw });
+    },
+  );
+
+  test("a float rounded up to the next power of two past the most its datatype holds is beyond it", () => {
+    // Past FLT_MAX by more than half its last unit: the significand rounds up to 2^24, and the
+    // power of two it is carried into is past the most a float32 has.
+    expect(rawCount(decimal("3.4028236e38"), null, "float32")).toEqual({ beyond: true });
+    expect(rawCount(decimal("3.4028235e38"), null, "float32")).toEqual({ raw: 3.4028235e38 });
+  });
+
+  test("a float the datatype cannot hold is said to be beyond it, or to round to zero", () => {
+    expect(rawCount(decimal("1e39"), null, "float32")).toEqual({ beyond: true });
+    expect(rawCount(decimal("-1e309"), null, "float64")).toEqual({ beyond: true });
+    expect(rawCount(decimal("1e-50"), null, "float32")).toEqual({ zero: true });
+    expect(rawCount(decimal("1e-400"), null, "float64")).toEqual({ zero: true });
+    expect(rawCount(decimal("0"), null, "float64")).toEqual({ raw: 0 });
+    expect(rawCount(decimal("-40"), linear(0.5, -40), "float32")).toEqual({ raw: 0 });
+  });
+
+  test("an exponent too far to work out digit by digit is what its double is", () => {
+    expect(rawCount(decimal("1e-2000"), null, "sint16")).toEqual({ raw: 0 });
+    expect(rawCount(decimal("1e-2000"), null, "float64")).toEqual({ raw: 0 });
+    expect(rawCount(decimal("1e999999"), null, "float64")).toEqual({ beyond: true });
+    expect(rawCount(decimal("-1e999999"), null, "sint64")).toEqual({ past: -1 });
+  });
+});
+
+describe("physicalValue", () => {
+  test.each([
+    // The count times the factor, plus the offset, exactly: no tail of the double arithmetic,
+    // and none of its digits cut at twelve.
+    { raw: 255, factor: 0.03, offset: 0, reads: "7.65" },
+    { raw: 3, factor: 0.3, offset: 0, reads: "0.9" },
+    { raw: 7, factor: 1.5, offset: 0, reads: "10.5" },
+    { raw: 1234567890123, factor: 1, offset: 0, reads: "1234567890123" },
+    { raw: 100, factor: 0.5, offset: -40, reads: "10" },
+    { raw: -3, factor: 0.25, offset: 0.5, reads: "-0.25" },
+    { raw: 80, factor: 0.5, offset: -40, reads: "0" },
+  ])("$raw at $factor and $offset reads $reads", ({ raw, factor, offset, reads }) => {
+    expect(decimalText(physicalValue(raw, linear(factor, offset)))).toBe(reads);
+  });
+});
+
+describe("floatReading", () => {
+  test.each([
+    // The shortest decimal whose own count is the count again.
+    { raw: 3, factor: 0.1, datatype: "float32", reads: "0.3" },
+    { raw: 7, factor: 0.1, datatype: "float32", reads: "0.7" },
+    { raw: 2.9999999999999996, factor: 0.1, datatype: "float64", reads: "0.29999999999999996" },
+    { raw: 0.3333333333333333, factor: 1.5, datatype: "float64", reads: "0.5" },
+    { raw: 1.23456789012345, factor: 1, datatype: "float64", reads: "1.23456789012345" },
+    { raw: -0.1, factor: 3, datatype: "float64", reads: "-0.3" },
+  ])("$raw at $factor in a $datatype reads $reads", ({ raw, factor, datatype, reads }) => {
+    expect(decimalText(floatReading(raw, linear(factor), datatype))).toBe(reads);
+  });
+
+  test("of two decimals as short that both read back, the one nearer the exact value", () => {
+    expect(decimalText(floatReading(1.2328999999999999, linear(3.3), "float64"))).toBe(
+      "4.0685699999999997",
+    );
+  });
+
+  test("a file stating more digits than its float holds reads as it is stated", () => {
+    // No spelling of a float32 reads back as 0.123456789123, so the exact value is what is shown.
+    expect(decimalText(floatReading(0.123456789123, linear(1), "float32"))).toBe("0.123456789123");
+    expect(decimalText(floatReading(0, linear(1), "float32"))).toBe("0");
+  });
+});
+
+describe("significant", () => {
+  test.each([
+    // 3:M4: an exact half to the even digit, as python's `format` and `round_physical` take it,
+    // where `toPrecision` takes it away from zero.
+    { value: 1234567890.125, digits: 12, rounded: 1234567890.12 },
+    { value: -1234567890.125, digits: 12, rounded: -1234567890.12 },
+    { value: 1234567890.375, digits: 12, rounded: 1234567890.38 },
+    { value: 2.5, digits: 1, rounded: 2 },
+    { value: 3.5, digits: 1, rounded: 4 },
+    // No half at all: correctly rounded, as both take it.
+    { value: 1.2345678901234567, digits: 12, rounded: 1.23456789012 },
+    { value: 0.1, digits: 12, rounded: 0.1 },
+    { value: 7.6499999999999995, digits: 12, rounded: 7.65 },
+    { value: 1200, digits: 12, rounded: 1200 },
+    { value: 5e-324, digits: 12, rounded: 5e-324 },
+    { value: 1e300, digits: 12, rounded: 1e300 },
+  ])("$value to $digits digits is $rounded", ({ value, digits, rounded }) => {
+    expect(significant(value, digits)).toBe(rounded);
+  });
+
+  test("infinities, NaN and zero pass through", () => {
+    expect(significant(Number.POSITIVE_INFINITY, 12)).toBe(Number.POSITIVE_INFINITY);
+    expect(significant(Number.NaN, 12)).toBeNaN();
+    expect(significant(0, 12)).toBe(0);
+  });
+});
+
+describe("decimalOfDouble", () => {
+  test("is the shortest spelling String gives, and nothing for what is no finite number", () => {
+    expect(decimalOfDouble(0.1)).toEqual({ negative: false, digits: "1", exponent: -1 });
+    expect(decimalOfDouble(-1200)).toEqual({ negative: true, digits: "12", exponent: 2 });
+    expect(decimalOfDouble(Number.POSITIVE_INFINITY)).toEqual({
+      negative: false,
+      digits: "",
+      exponent: 0,
+    });
   });
 });

@@ -40,6 +40,7 @@ import {
   settledRaw,
   staleHold,
   startingRaw,
+  variableDatatype,
 } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -223,12 +224,15 @@ export function VariablePanel({
     (selected === undefined || reply === undefined
       ? { min: "", max: "" }
       : limitsOf(startingRaw(reply, selected)));
-  const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
+  // The range is read by the datatype its declarations state (`variableDatatype`): a float's bound
+  // as the double it is, any other's refused where the page would send another number.
+  const datatype = reply === undefined ? "" : variableDatatype(reply);
+  const broken = selected === "limits" ? limitsNote(range.min, range.max, datatype) : null;
   const target =
     selected === undefined || reply === undefined || broken !== null
       ? null
       : selected === "limits"
-        ? limitsRaw(range.min, range.max)
+        ? limitsRaw(range.min, range.max, datatype)
         : settledRaw(chosen, startingRaw(reply, selected));
   // `target` is typed into directly while `selected` is `limits` (the two range fields commit on
   // every keystroke, like every other plain field on this screen) and otherwise set discretely by

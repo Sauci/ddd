@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import type { ValuesReply } from "../api/types";
+import { readNumber } from "./numbers";
 import {
+  boundRead,
   cellAt,
   cellRead,
   cellSentence,
@@ -12,6 +14,7 @@ import {
   cornerLabel,
   drawable,
   elementLabel,
+  heldReadings,
   limitsLine,
   noGridNote,
   oneCell,
@@ -20,9 +23,11 @@ import {
   pasteSentence,
   pastes,
   physicalOf,
+  physicalText,
   plotDrawn,
   rawOf,
   readOnlyNote,
+  rounded,
   rowHeader,
   statedNote,
   type TypedCell,
@@ -293,6 +298,10 @@ describe("physicalOf", () => {
     expect(physicalOf(1200, { kind: "linear", factor: 0.01, offset: 0 })).toBe(12);
   });
 
+  test("a position is the double arithmetic's, which needs no fewer digits", () => {
+    expect(physicalOf(255, { kind: "linear", factor: 0.03, offset: 0 })).toBe(7.6499999999999995);
+  });
+
   test("anything else hands the raw count back", () => {
     expect(physicalOf(1200, { kind: "identity" })).toBe(1200);
   });
@@ -307,15 +316,215 @@ describe("rawOf", () => {
     expect(rawOf(12.004, { kind: "linear", factor: 0.01, offset: 0 }, "uint16")).toBe(1200);
   });
 
-  test("a float datatype keeps the exact raw count", () => {
-    expect(rawOf(12.004, { kind: "linear", factor: 0.01, offset: 0 }, "float32")).toBeCloseTo(
-      1200.4,
-      9,
-    );
+  test("an exact half to the even count, as round_physical rounds, either side of zero", () => {
+    // 3:M4: `Math.round` made 2.5 3 and -2.5 -2.
+    expect(rawOf(0.025, { kind: "linear", factor: 0.01, offset: 0 }, "uint16")).toBe(2);
+    expect(rawOf(2.5, { kind: "identity" }, "sint8")).toBe(2);
+    expect(rawOf(-2.5, { kind: "identity" }, "sint8")).toBe(-2);
+    expect(rawOf(3.5, { kind: "identity" }, "uint8")).toBe(4);
+  });
+
+  test("a float datatype keeps the raw count, as the float nearest it spelled shortest", () => {
+    expect(rawOf(12.004, { kind: "linear", factor: 0.01, offset: 0 }, "float32")).toBe(1200.4);
+    // 15:M5: 0.3 at 0.1 a count is 3, where the double arithmetic made it 2.9999999999999996.
+    expect(rawOf(0.3, { kind: "linear", factor: 0.1, offset: 0 }, "float32")).toBe(3);
   });
 
   test("anything but a linear conversion takes the physical value as the raw one", () => {
     expect(rawOf(84, { kind: "identity" }, "uint8")).toBe(84);
+  });
+
+  test("a count the page could send none of is placed by the double arithmetic", () => {
+    expect(rawOf(1e20, { kind: "linear", factor: 0.01, offset: 0 }, "uint64")).toBe(1e22);
+    expect(rawOf(1e300, { kind: "identity" }, "uint8")).toBe(1e300);
+  });
+});
+
+describe("rounded", () => {
+  test("a computed value to twelve digits, an exact half to the even one as round_physical", () => {
+    // 3:M4: `toPrecision` read 1234567890.125 as 1234567890.13.
+    expect(rounded(1234567890.125)).toBe(1234567890.12);
+    expect(rounded(1.2349999999999999)).toBe(1.235);
+  });
+});
+
+/** BlockF: a float32 block of four counted in tenths, holding 3, 7, 1 and 2 - 0.3, 0.7, 0.1 and
+ * 0.2 in physical. */
+const BLOCK_F: ValuesReply = {
+  ...BLOCK_A,
+  name: "BlockF",
+  datatype: "float32",
+  conversion: { kind: "linear", factor: 0.1, offset: 0 },
+  shape: [4],
+  rows: [[3, 7, 1, 2]],
+};
+
+/** A float64 block counted one to one, holding numbers of thirteen and fifteen digits. */
+const LONG_FLOATS: ValuesReply = {
+  ...BLOCK_A,
+  name: "LongFloats",
+  datatype: "float64",
+  conversion: { kind: "linear", factor: 1, offset: 0 },
+  shape: [3],
+  rows: [[1234567890123, 1.23456789012345, 1234567890.125]],
+};
+
+describe("physicalText", () => {
+  test("a whole datatype's count reads as the count times the factor, exactly", () => {
+    expect(physicalText(255, { kind: "linear", factor: 0.03, offset: 0 }, "uint8")).toBe("7.65");
+    expect(physicalText(7, { kind: "linear", factor: 1.5, offset: 0 }, "uint8")).toBe("10.5");
+    expect(physicalText(100, { kind: "linear", factor: 0.5, offset: -40 }, "uint8")).toBe("10");
+  });
+
+  test("a float's reads as the shortest decimal that reads back as its count", () => {
+    expect(physicalText(3, BLOCK_F.conversion, "float32")).toBe("0.3");
+    // The exact product is 0.49999999999999995, the tail of the double a third is.
+    expect(
+      physicalText(0.3333333333333333, { kind: "linear", factor: 1.5, offset: 0 }, "float64"),
+    ).toBe("0.5");
+    expect(physicalText(2.9999999999999996, BLOCK_F.conversion, "float64")).toBe(
+      "0.29999999999999996",
+    );
+  });
+
+  test("anything but a linear conversion reads as the count", () => {
+    expect(physicalText(0.1, { kind: "identity" }, "float32")).toBe("0.1");
+    expect(physicalText(84, { kind: "linear", factor: 0 }, "uint8")).toBe("84");
+  });
+
+  test("a reading worked out once is the same the second time, and after many more", () => {
+    const conversion = { kind: "linear", factor: 0.5, offset: 0 };
+    expect(physicalText(3, conversion, "uint8")).toBe("1.5");
+    expect(physicalText(3, conversion, "uint8")).toBe("1.5");
+    for (let raw = 0; raw <= 50_001; raw += 1) physicalText(raw, conversion, "uint32");
+    expect(heldReadings()).toBeLessThanOrEqual(50_001);
+    expect(physicalText(3, conversion, "uint8")).toBe("1.5");
+  });
+});
+
+describe("Physical shows the digits a value needs (15:M6)", () => {
+  test("never cut at twelve significant digits", () => {
+    // Raw 1234567890123 read 1234567890120 and 1.23456789012345 read 1.23456789012.
+    expect(cellText(LONG_FLOATS, [], 0, 0, true)).toBe("1234567890123");
+    expect(cellText(LONG_FLOATS, [], 0, 1, true)).toBe("1.23456789012345");
+    // 3:M4: an exact half the page once rounded away from zero, and the server to the even digit.
+    expect(cellText(LONG_FLOATS, [], 0, 2, true)).toBe("1234567890.125");
+  });
+
+  test("and in a sentence too", () => {
+    expect(cellSentence(LONG_FLOATS, 0, 1, 1.23456789012345, true)).toBe(
+      "Sets element 2 of LongFloats to 1.23456789012345",
+    );
+  });
+});
+
+describe("a physical value typed into a float object (15:M5)", () => {
+  test("is planned as the shortest float that reads back as it", () => {
+    expect(typedRaw("0.3", BLOCK_F, true)).toBe(3);
+    expect(typedRaw("0.7", BLOCK_F, true)).toBe(7);
+    expect(pasted("0.3\t0.7\t0.1\t0.25", BLOCK_F, true).rows).toEqual([[3, 7, 1, 2.5]]);
+  });
+
+  test("and what each cell reads, typed back, is the count it holds", () => {
+    for (const column of [0, 1, 2, 3]) {
+      const read = cellText(BLOCK_F, [], 0, column, true);
+      expect(typedRaw(read, BLOCK_F, true)).toBe(BLOCK_F.rows[0]?.[column]);
+    }
+  });
+});
+
+describe("a whole count past 2^53, weighed as the count (task 1's n1)", () => {
+  const SINT64_THOUSANDS: ValuesReply = {
+    ...BIG,
+    datatype: "sint64",
+    conversion: { kind: "linear", factor: 1000, offset: 0 },
+    unshown: null,
+  };
+  const SINT64_FEMTO: ValuesReply = {
+    ...SINT64_THOUSANDS,
+    conversion: { kind: "linear", factor: 1e-15, offset: 0 },
+  };
+
+  test("a physical value past 2^53 whose count is inside it is taken", () => {
+    expect(typedRaw("1e16", SINT64_THOUSANDS, true)).toBe(1e13);
+    expect(typedRefusal("1e16", SINT64_THOUSANDS, true)).toBeNull();
+  });
+
+  test("a physical value inside 2^53 whose count is past it is refused, as the count", () => {
+    expect(typedRefusal("10", SINT64_FEMTO, true)).toBe(
+      "'10' comes to a raw count past 2^53, where the page cannot hold every whole number exactly",
+    );
+    expect(typedRefusal("-10", SINT64_FEMTO, true)).toBe(
+      "'-10' comes to a raw count past -2^53, where the page cannot hold every whole number exactly",
+    );
+  });
+
+  test("a fraction in physical is the conversion's to round, the page holding every digit", () => {
+    expect(
+      typedRaw(
+        "4503599627370496.5",
+        { ...SINT64_THOUSANDS, conversion: { kind: "identity" } },
+        true,
+      ),
+    ).toBe(4503599627370496);
+  });
+});
+
+describe("a float the datatype cannot hold", () => {
+  const FLOAT64: ValuesReply = { ...BLOCK_A, datatype: "float64" };
+  const FLOAT32: ValuesReply = { ...BLOCK_A, datatype: "float32" };
+
+  test.each([
+    { text: "1e400", cell: FLOAT64, physical: false, says: "'1e400' is past what a float64 holds" },
+    {
+      text: "-1e400",
+      cell: FLOAT32,
+      physical: false,
+      says: "'-1e400' is past what a float32 holds",
+    },
+    { text: "1e-400", cell: FLOAT64, physical: false, says: "'1e-400' rounds to zero in float64" },
+    { text: "1e39", cell: FLOAT32, physical: true, says: "'1e39' is past what a float32 holds" },
+    { text: "1e-50", cell: FLOAT32, physical: true, says: "'1e-50' rounds to zero in float32" },
+  ])(
+    "'$text' in a $cell.datatype cell, physical $physical: $says",
+    ({ text, cell, physical, says }) => {
+      expect(typedRefusal(text, cell, physical)).toBe(says);
+      expect(typedRaw(text, cell, physical)).toBeNull();
+    },
+  );
+});
+
+describe("boundRead", () => {
+  /** `text` read as a bound of a range of `datatype`. */
+  function bound(text: string, datatype: string) {
+    const read = readNumber(text);
+    if (!("decimal" in read)) throw new Error(`${text} reads as no number`);
+    return boundRead(read.decimal, text, datatype);
+  }
+
+  test("a float's bound is the double it is, however it is spelled", () => {
+    // Task 1's n3: digits past 2^53 were refused a float, though it holds 1e19 as it is.
+    expect(bound("10000000000000000000", "float64")).toEqual({ value: 1e19 });
+    expect(bound("1e19", "float32")).toEqual({ value: 1e19 });
+    expect(bound("0", "float32")).toEqual({ value: 0 });
+    expect(bound("1e400", "float64")).toEqual({ refusal: "'1e400' is past what a float64 holds" });
+    expect(bound("1e-400", "float64")).toEqual({ refusal: "'1e-400' rounds to zero in float64" });
+  });
+
+  test("any other's is refused past 2^53 in every spelling, and where the double would send another", () => {
+    // Task 1's n3: an exponent past 2^53 reached the server, and a fraction from 2^51 was sent
+    // rounded.
+    expect(bound("1e19", "uint64")).toEqual({
+      refusal: "'1e19' is past 2^53, where the page cannot hold every whole number exactly",
+    });
+    expect(bound("2251799813685248.25", "uint64")).toEqual({
+      refusal: "'2251799813685248.25' has a fraction the page cannot hold exactly",
+    });
+    expect(bound("2251799813685248.3", "")).toEqual({
+      refusal: "'2251799813685248.3' has a fraction the page cannot hold exactly",
+    });
+    expect(bound("0.1", "uint8")).toEqual({ value: 0.1 });
+    expect(bound("-40", "sint16")).toEqual({ value: -40 });
   });
 });
 

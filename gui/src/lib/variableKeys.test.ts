@@ -15,10 +15,13 @@ import {
   limitsOf,
   limitsRaw,
   offerOf,
+  rangeDatatype,
   settledRaw,
   shortValue,
   staleHold,
   startingRaw,
+  typeDatatype,
+  variableDatatype,
   willChangeKey,
 } from "./variableKeys";
 
@@ -836,6 +839,69 @@ describe("a range typed into two fields", () => {
   });
 });
 
+describe("a range read by its datatype, as a cell of it reads a number (task 1's n3)", () => {
+  const INEXACT = "where the page cannot hold every whole number exactly";
+
+  test("a whole datatype's bound past 2^53 is refused in any spelling, an exponent's too", () => {
+    expect(limitsNote("0", "1e19", "uint64")).toBe(`Max: '1e19' is past 2^53, ${INEXACT}`);
+    expect(limitsNote("-9.1e15", "0", "sint64")).toBe(`Min: '-9.1e15' is past -2^53, ${INEXACT}`);
+    // No datatype stated reads as a whole one's, the stricter.
+    expect(limitsNote("0", "1e19")).toBe(`Max: '1e19' is past 2^53, ${INEXACT}`);
+  });
+
+  test("and so is a bound the double would send as another number, a fraction from 2^51 on", () => {
+    expect(limitsNote("2251799813685248.25", "2251799813685249", "uint64")).toBe(
+      "Min: '2251799813685248.25' has a fraction the page cannot hold exactly",
+    );
+    expect(limitsNote("0", "2251799813685248.3", "uint64")).toBe(
+      "Max: '2251799813685248.3' has a fraction the page cannot hold exactly",
+    );
+    expect(limitsNote("0", "0.1", "uint8")).toBeNull();
+  });
+
+  test("a float's bound is the double it is, digits past 2^53 among them", () => {
+    expect(limitsNote("0", "10000000000000000000", "float64")).toBeNull();
+    expect(limitsNote("0", "1e400", "float64")).toBe("Max: '1e400' is past what a float64 holds");
+    expect(limitsNote("1e-400", "1", "float32")).toBe("Min: '1e-400' rounds to zero in float32");
+  });
+
+  test("a float's bound is written as a float (task 1's n2), any other's as typed", () => {
+    // 1e19 was written 10000000000000000000, a whole number past 2^53.
+    expect(limitsRaw("0", "1e19", "float64")).toBe('{ "min": 0.0, "max": 10000000000000000000.0 }');
+    expect(limitsRaw("-50", "90", "float32")).toBe('{ "min": -50.0, "max": 90.0 }');
+    expect(limitsRaw("0.5", "1e21", "float64")).toBe('{ "min": 0.5, "max": 1e+21 }');
+    expect(limitsRaw("-50", "90", "sint16")).toBe('{ "min": -50, "max": 90 }');
+  });
+});
+
+describe("the datatype a range is read by", () => {
+  test("a whole one where any declaration states one, else a float, else a whole one's rule", () => {
+    expect(rangeDatatype(["float32", "uint8"])).toBe("uint8");
+    expect(rangeDatatype(["float32", "float64"])).toBe("float32");
+    expect(rangeDatatype([null, "float64"])).toBe("float64");
+    expect(rangeDatatype([null, null])).toBe("");
+    expect(rangeDatatype([])).toBe("");
+  });
+
+  test("a variable's, from what each declaration states or its type fixes", () => {
+    const floats = variable([], [{ datatype: '"float32"' }, {}]);
+    expect(variableDatatype(floats)).toBe("float32");
+    const fixed = variable([]);
+    const declarations = fixed.declarations.map((declaration) => ({
+      ...declaration,
+      fixed: { datatype: '"uint16"' },
+    }));
+    expect(variableDatatype({ ...fixed, declarations })).toBe("uint16");
+  });
+
+  test("a type's, the one it fixes", () => {
+    expect(
+      typeDatatype([offer("unit"), offer("datatype", { values: [value('"float64"', [], false)] })]),
+    ).toBe("float64");
+    expect(typeDatatype([offer("unit")])).toBe("");
+  });
+});
+
 describe("a limit a double cannot hold", () => {
   // A uint64's limits as its file states them, read off `GET /api/variable` for a declaration
   // whose maximum is the most a uint64 holds. `JSON.parse` reads 18446744073709551615 as
@@ -851,6 +917,11 @@ describe("a limit a double cannot hold", () => {
 
   test("and so do the key's row and its chooser", () => {
     expect(shortValue("limits", STATED)).toBe("0 … 18446744073709551615");
+  });
+
+  test("on either side", () => {
+    const signed = '{ "min": -9223372036854775808, "max": 0 }';
+    expect(limitsOf(signed)).toEqual({ min: "-9223372036854775808", max: "0" });
   });
 
   test("a bound whose own text is not found is the double read", () => {
@@ -897,6 +968,6 @@ describe("a limit a double cannot hold", () => {
       min: "-3.4028234663852886e+38",
       max: "3.4028234663852886e+38",
     });
-    expect(limitsNote("-3.4028234663852886e38", "3.4028234663852886e38")).toBeNull();
+    expect(limitsNote("-3.4028234663852886e38", "3.4028234663852886e38", "float32")).toBeNull();
   });
 });

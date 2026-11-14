@@ -17,7 +17,14 @@ import type { Route } from "../lib/route";
 import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
-import { limitsNote, limitsOf, limitsRaw, settledRaw, shortValue } from "../lib/variableKeys";
+import {
+  limitsNote,
+  limitsOf,
+  limitsRaw,
+  settledRaw,
+  shortValue,
+  typeDatatype,
+} from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
@@ -141,12 +148,14 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // Judged on what the fields show, the type's own range among it: one whose bound the page
   // cannot hold is no range to send either, rather than a removal of the key.
   const range = edited ?? (selected === undefined ? { min: "", max: "" } : limitsOf(starting));
-  const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
+  // The range is read by the datatype the type fixes (`typeDatatype`), as a variable's by its own.
+  const datatype = typeDatatype(type?.keys ?? []);
+  const broken = selected === "limits" ? limitsNote(range.min, range.max, datatype) : null;
   const target =
     selected === undefined || broken !== null
       ? null
       : selected === "limits"
-        ? limitsRaw(range.min, range.max)
+        ? limitsRaw(range.min, range.max, datatype)
         : settledRaw(chosen, starting);
   // What the reader has changed the description away from, `null` while it reads the type's own -
   // the third write path, with no marker of its own the way `selected`/`renameTo` are.

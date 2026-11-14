@@ -398,14 +398,28 @@ The commands
        about. A boolean takes 0 and 1 alone, in physical as in raw. The page
        holds a number as a double, which past 2^53 no longer holds every whole number, so a
        cell of an integer datatype refuses a number past 2^53 either side of zero, however it
-       is spelled, where it is typed or pasted, and a fraction the double would drop with it;
-       a float's cell takes every number as the double it is. A grid holding a whole number
+       is spelled, where it is typed or pasted in raw, and a fraction the double would drop
+       with it; in physical it refuses a value whose raw count lies past 2^53. A float's cell
+       takes every number as the double it is, but none past what its float holds, nor one
+       rounding to zero in it. A physical value comes to its raw count exactly, worked out on
+       the decimals typed and the conversion's own: a whole datatype's count is the nearest
+       one, an exact half going to the even count, either side of zero, as ``round_physical``
+       rounds; a float's is the float its datatype stores nearest, spelled as briefly as it
+       reads back, so 0.3 at a factor of 0.1 is 3. A float's value is written as a float, its
+       whole numbers too. Physical shows the shortest decimal that reads back as the raw count
+       it shows, never cut at twelve significant digits and never with the tail of the double
+       arithmetic: 255 counts of 0.03 read 7.65, and a float64 of 1234567890123 reads so. A grid
+       holding a whole number
        past 2^53, among its values or its axis's breakpoints, or one at 2^53 in a ``uint64``
        or ``sint64``, says it cannot show it rather than draw another number. A ``uint64`` or
        ``sint64`` value that large is set in the file; from the page neither takes a whole
-       number at 2^53 or past it, as a value or as a limit. The two fields a variable's or a
-       type's range is typed into show a bound past 2^53 in its file's own digits, and refuse a
-       whole number past it rather than send the double. Under
+       number at 2^53 or past it, as a value or as a limit, however it is written - the server
+       refuses a bound at or past 2^53 for either, written in digits or as a float. The two
+       fields a variable's or a type's range is typed into show a bound past 2^53 in its file's
+       own digits, and read a bound as a cell of the datatype the declarations state reads a
+       number: a float's as the double it is, written as a float, and any other's refused past
+       2^53 however it is spelled, and wherever the double would send another number than the
+       one typed. Under
        the grid, the object's values are drawn as a picture too: a marker at each point
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over

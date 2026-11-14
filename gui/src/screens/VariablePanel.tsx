@@ -18,15 +18,17 @@ import { planShown } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
+  type Choice,
   type Held,
   heldFor,
-  holding,
+  holdOn,
   keyRows,
   labelOfRaw,
   limitsNote,
   limitsOf,
   limitsRaw,
   settledRaw,
+  staleHold,
   startingRaw,
 } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
@@ -116,33 +118,20 @@ export function VariablePanel({
   // `undefined` before the variable has loaded, or on the project screen, where `file` matches
   // none of them because there is none to match.
   const from = reply?.declarations.find((entry) => entry.path === file)?.component;
-  // The reader's own choice of key, kept as a tri-state the way `chosen` below is: `undefined`
-  // until they choose, `null` once they let a row go, a string for the key they picked.
+  // The reader's own choice of key, kept as a tri-state: `undefined` until they choose, `null`
+  // once they let a row go, a string for the key they picked.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
-  // `undefined` until the reader chooses: the chooser then settles on the producer's value, the
-  // direction the tool's own rule reads in, and says what that would change.
-  // Each of the three is held with the key it was made for, and read only while that key is the
-  // one on screen (`heldFor`): the panel moves by itself to the next row that disagrees once
-  // one is settled, and that row starts on the producer's value, as any row opened does.
-  const [heldChosen, holdChosen] = useState<Held<string | null> | undefined>(undefined);
-  const [heldTyped, holdTyped] = useState<Held<string> | undefined>(undefined);
-  // What the reader has put in the two fields of a range, `undefined` until they touch one:
-  // the same tri-state as `picked`, `chosen` and `typed`. What the fields read is derived
-  // below rather than seeded by a handler, so that a `limits` row reached by any path - by
+  // What the reader has chosen, typed, put in the two fields of a range, or opened the diff of,
+  // for the key on screen, with that key (`lib/variableKeys.ts`, `Held`). Every one of them
+  // starts as `undefined`: the chooser then settles on the producer's value, the direction the
+  // tool's own rule reads in, and says what that would change. What the range fields read is
+  // derived below rather than seeded by a handler, so that a `limits` row reached by any path - by
   // hand, or opened for the reader because it is the first row that disagrees - starts on the
-  // value the chooser starts on. Two empty fields are a removal, and a removal is something
-  // the reader asks for, never where a row opens.
-  const [heldEdited, holdEdited] = useState<Held<{ min: string; max: string }> | undefined>(
-    undefined,
-  );
-  // Whether `edited`'s own value came from typing into Min or Max, rather than a pick from the
-  // list: `onChosen` below writes `edited` too, for a range picked outright or "state nothing"
-  // chosen, so `edited !== undefined` alone cannot tell a pick from typing (fix round 2's own
-  // finding - that read every limits pick as typing, and waited `PLAN_DELAY_MS` for one that
-  // should go through at once, the same as every other pick on this screen already does). Reset
-  // wherever `edited` itself is, so it never outlives the row it was made for.
-  const [typedLimits, setTypedLimits] = useState(false);
-  const [changesShown, setChangesShown] = useState(false);
+  // value the chooser starts on; two empty fields are a removal, which a reader asks for, never
+  // where a row opens. The held choice is let go the moment the key on screen is not its own, so
+  // a row the panel opens by itself - the next that disagrees, or this one again after an undo or
+  // an outside edit - starts afresh, as every row opened does.
+  const [held, setHeld] = useState<Held | undefined>(undefined);
   // A settlement refused - a file changed on disk (`STALE`), a type fixing this key, a kind that
   // cannot carry one, the engine's own rule - and the key it was refused for: held until the
   // reader chooses again, exactly as every other choice made here, and never let go by a revision
@@ -176,15 +165,10 @@ export function VariablePanel({
   // fields say and what Apply writes cannot drift apart. Two empty fields are "state nothing",
   // which the list offers too; anything else that is not a range is not a value at all, and
   // the chooser says so instead of previewing something the reader did not ask for.
-  const chosen = heldFor(heldChosen, selected);
-  const typed = heldFor(heldTyped, selected);
-  const edited = heldFor(heldEdited, selected);
-  const setChosen = (raw: string | null | undefined) =>
-    holdChosen(raw === undefined ? undefined : holding(selected, raw));
-  const setTyped = (text: string | undefined) =>
-    holdTyped(text === undefined ? undefined : holding(selected, text));
-  const setEdited = (next: { min: string; max: string } | undefined) =>
-    holdEdited(next === undefined ? undefined : holding(selected, next));
+  if (staleHold(held, selected)) setHeld(undefined);
+  const { chosen, typed, range: edited, changesShown } = heldFor(held, selected);
+  const hold = (patch: Partial<Choice>) => setHeld((before) => holdOn(before, selected, patch));
+  const typedLimits = edited?.typed ?? false;
   const range =
     edited ??
     (selected === undefined || reply === undefined
@@ -207,7 +191,7 @@ export function VariablePanel({
   // `settleRequest` itself, never `target`.
   const settleRequest: SettleRequest | null =
     reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
-  const askedSettle = useDebounced(settleRequest, typedLimits && edited !== undefined);
+  const askedSettle = useDebounced(settleRequest, typedLimits);
   const preview = useQuery({
     queryKey: ["settle", name, askedSettle, revision],
     queryFn:
@@ -225,11 +209,7 @@ export function VariablePanel({
   // while a row still disagrees, not hand the reader straight back to it.
   const select = (key: string | undefined) => {
     setPicked(key ?? null);
-    setChosen(undefined);
-    setTyped(undefined);
-    setEdited(undefined);
-    setTypedLimits(false);
-    setChangesShown(false);
+    setHeld(undefined);
     setRefused(null);
   };
   // The unit cell of the component table hands the reader over to the unit's chooser, which is
@@ -242,9 +222,7 @@ export function VariablePanel({
   // so there is nothing to remember here: a half-typed one leaves no whole one behind to be
   // applied in its place.
   const onRange = (next: { min: string; max: string }) => {
-    setEdited(next);
-    setTypedLimits(true);
-    setTyped(undefined);
+    hold({ range: { ...next, typed: true }, typed: undefined });
     setRefused(null);
   };
   const apply = useMutation({
@@ -268,8 +246,7 @@ export function VariablePanel({
     // the ones the edit has just changed, and previewed undoing it. A success is a definite
     // answer, so it clears any refusal an earlier attempt left.
     onSuccess: () => {
-      setTyped(undefined);
-      setChangesShown(false);
+      hold({ typed: undefined, changesShown: false });
       setRefused(null);
     },
     onError: (error) =>
@@ -380,10 +357,9 @@ export function VariablePanel({
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
       narrow={typed ?? ""}
-      onTyped={setTyped}
+      onTyped={(text) => hold({ typed: text })}
       onChosen={(raw) => {
-        setChosen(raw);
-        setTyped(undefined);
+        hold({ chosen: raw, typed: undefined });
         setRefused(null);
         // A range chosen from the list - one in play, or "state nothing", which empties them -
         // is settled on by writing it into the two fields, since they are what is applied. It is
@@ -391,11 +367,10 @@ export function VariablePanel({
         // typed one: `typedLimits` stays `false`, so this takes effect at once, the same as
         // every other pick here.
         if (selected === "limits") {
-          setEdited(limitsOf(raw));
-          setTypedLimits(false);
+          hold({ range: { ...limitsOf(raw), typed: false } });
         }
       }}
-      onPickerClosed={() => setTyped(undefined)}
+      onPickerClosed={() => hold({ typed: undefined })}
       range={range}
       onRange={onRange}
       note={
@@ -414,7 +389,7 @@ export function VariablePanel({
       // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).
       refusal={refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)}
       changesShown={changesShown}
-      onChangesShown={setChangesShown}
+      onChangesShown={(shown) => hold({ changesShown: shown })}
       onApply={() => apply.mutate()}
       // Left out on the project screen's own panel (`file` is `undefined` there, and so is
       // `from`, since nothing in `variable.declarations` can match a file that names none):

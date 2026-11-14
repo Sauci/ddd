@@ -343,24 +343,55 @@ export function settledRaw(
   return chosen === undefined ? starting : chosen;
 }
 
-/** What a panel holds of one key's own choice, typing or edit: the key it was made for and the
- * value. A panel that moves by itself from one key to the next - the first that disagrees, once
- * the last is settled - must not hand the next key what was made for the last, so a held value
- * is read only while its key is the one on screen. */
-export interface Held<A> {
+/** What a panel holds of the reader's own work on one key: the value they picked, the text they
+ * typed into its field, the two fields of a range (and whether they were typed into, rather than
+ * a range picked from the list), and whether the diff is open. */
+export interface Choice {
+  chosen: string | null | undefined;
+  typed: string | undefined;
+  range: { min: string; max: string; typed: boolean } | undefined;
+  changesShown: boolean;
+}
+
+/** Nothing chosen, typed or opened: where every row starts. */
+export const FRESH: Choice = {
+  chosen: undefined,
+  typed: undefined,
+  range: undefined,
+  changesShown: false,
+};
+
+/** A `Choice` with the key it was made for. A panel moves by itself from one key to the next - the
+ * first that disagrees, once the last is settled - and a row opened by itself starts on the
+ * producer's value, so what was held for another key is never read, and is let go by
+ * `staleHold` the moment the key on screen is not its own: a later return to that key, by an
+ * undo or an outside edit, starts afresh too. */
+export interface Held {
   key: string;
-  value: A;
+  value: Choice;
 }
 
-/** The value held for `selected`, `undefined` when nothing is held or what is held was made for
- * another key (or no key is on screen). */
-export function heldFor<A>(held: Held<A> | undefined, selected: string | undefined): A | undefined {
-  return held !== undefined && held.key === selected ? held.value : undefined;
+/** What is held for `selected`: the choice made for it, else `FRESH`. */
+export function heldFor(held: Held | undefined, selected: string | undefined): Choice {
+  return held !== undefined && held.key === selected ? held.value : FRESH;
 }
 
-/** `value` held for `selected`: nothing when no key is on screen to hold it for. */
-export function holding<A>(selected: string | undefined, value: A): Held<A> | undefined {
-  return selected === undefined ? undefined : { key: selected, value };
+/** Whether what is held was made for a key other than the one on screen (none included), and so
+ * is to be let go. */
+export function staleHold(held: Held | undefined, selected: string | undefined): boolean {
+  return held !== undefined && held.key !== selected;
+}
+
+/** What is held after `patch` is made on `selected`: the choice held for it with `patch`
+ * laid over, or over `FRESH` when nothing - or another key's - is held. Nothing is held for no
+ * key. */
+export function holdOn(
+  held: Held | undefined,
+  selected: string | undefined,
+  patch: Partial<Choice>,
+): Held | undefined {
+  if (selected === undefined) return undefined;
+  return { key: selected, value: { ...heldFor(held, selected), ...patch } };
 }
 
 /** What the field reads for a value while nothing is being typed.

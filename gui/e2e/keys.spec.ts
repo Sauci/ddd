@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Page } from "@playwright/test";
 import {
   CONTROLLER,
   driftDatatypeIn,
@@ -347,10 +348,11 @@ test("a key that may be left unstated goes from every declaration", async ({ pag
   expect(valueA(gui.directory, CONTROLLER).unit).toBeUndefined();
 });
 
-test("a datatype picked on one row is not carried to the unit row the panel moves to", async ({
-  page,
-  gui,
-}) => {
+const datatypeOf = (directory: string, file: string): unknown => valueA(directory, file).datatype;
+
+/** Controller's ValueA drifted to a wider datatype and another unit, so that two keys disagree
+ * and the datatype is the first: the panel opens by itself on it. */
+async function openOnDatatype(page: Page, gui: { address: string; directory: string }) {
   driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint16");
   driftIn(gui.directory, CONTROLLER, "ValueA", "rpm");
   await page.goto(gui.address);
@@ -360,11 +362,92 @@ test("a datatype picked on one row is not carried to the unit row the panel move
   await expect(
     panel.getByRole("listitem").filter({ hasText: "definition-mismatch" }).first(),
   ).toBeVisible();
+  return panel;
+}
+
+test("a datatype picked on one row is not carried to the unit row the panel moves to", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
   const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
-  await datatype.fill("uint16");
+  await datatype.clear();
+  await datatype.pressSequentially("uint16");
   await datatype.press("Enter");
+  // The datatype's own diff is open when it is applied.
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+  await settle.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk .added")).toContainText('"datatype": "uint16"');
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
   // The datatype settled, the panel moves by itself to the unit, the one row still disagreeing:
-  // it starts on the producer's unit, not on the datatype that was picked for the last row.
+  // it starts on the producer's unit, not on the datatype that was picked for the last row, and
+  // what it would write is the producer's unit over Controller's.
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  // ... with its diff closed, not left open from the row before.
+  await expect(panel.locator(".hunk")).toHaveCount(0);
+  await settle.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk .removed")).toContainText('"unit": "rpm"');
+  await expect(panel.locator(".hunk .added")).toContainText('"unit": "%"');
+});
+
+test("a datatype undone comes back on the producer's value, not on the pick that was undone", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint16");
+  await datatype.press("Enter");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
+  await expect.poll(() => datatypeOf(gui.directory, SENSOR_HUB)).toBe("uint16");
+  await page.getByRole("button", { name: "Undo the datatype of ValueA" }).click();
+  await page
+    .getByRole("region", { name: "Undo" })
+    .getByRole("button", { name: "Put back 1 file" })
+    .click();
+  await expect.poll(() => datatypeOf(gui.directory, SENSOR_HUB)).toBe("uint8");
+  // The datatype disagrees again and is the first row that does: the panel goes back to it, on
+  // SensorHub's value, which is not what was picked before the undo.
+  await expect(panel.getByRole("combobox", { name: "Datatype of ValueA" })).toHaveValue("uint8");
+});
+
+test("a datatype settled, then widened from outside, comes back on the producer's value", async ({
+  page,
+  gui,
+}) => {
+  driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint16");
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("rowheader", { name: "ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await expect(datatype).toBeVisible();
+  await datatype.clear();
+  await datatype.pressSequentially("uint16");
+  await datatype.press("Enter");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => datatypeOf(gui.directory, SENSOR_HUB)).toBe("uint16");
+  // Nothing disagrees any more: the chooser closes.
+  await expect(panel.getByText("Select a key to settle it on every declaration.")).toBeVisible();
+  driftDatatypeIn(gui.directory, SENSOR_HUB, "ValueA", "uint32");
+  // The panel reopens by itself on the datatype, on the producer's uint32, not on the uint16
+  // that was settled before the chooser closed.
+  await expect(panel.getByRole("combobox", { name: "Datatype of ValueA" })).toHaveValue("uint32");
+});
+
+test("text typed on one row is not carried to the row the panel moves to", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint");
+  await expect(datatype).toHaveValue("uint");
+  // The datatype is settled from outside: the panel moves by itself to the unit.
+  driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint8");
   await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
 });

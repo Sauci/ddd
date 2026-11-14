@@ -4,8 +4,9 @@ import {
   chooserSections,
   describeVariable,
   enteredValue,
+  FRESH,
   heldFor,
-  holding,
+  holdOn,
   keyColumns,
   keyRows,
   labelOfRaw,
@@ -15,6 +16,7 @@ import {
   offerOf,
   settledRaw,
   shortValue,
+  staleHold,
   startingRaw,
   willChangeKey,
 } from "./variableKeys";
@@ -648,20 +650,42 @@ describe("the value a chooser starts on", () => {
 });
 
 describe("what a panel holds for one key", () => {
-  test("a value is read back only while its key is the one on screen", () => {
-    const held = holding("datatype", "uint16");
-    expect(heldFor(held, "datatype")).toBe("uint16");
-    expect(heldFor(held, "unit")).toBeUndefined();
-    expect(heldFor(held, undefined)).toBeUndefined();
+  test("a choice is read back only while its key is the one on screen", () => {
+    const held = holdOn(undefined, "datatype", { chosen: "uint16" });
+    expect(heldFor(held, "datatype").chosen).toBe("uint16");
+    expect(heldFor(held, "unit")).toBe(FRESH);
+    expect(heldFor(held, undefined)).toBe(FRESH);
+    expect(heldFor(undefined, "unit")).toBe(FRESH);
   });
 
   test("a pick of nothing is held, and is not nothing held", () => {
-    expect(heldFor(holding("unit", null), "unit")).toBeNull();
-    expect(heldFor(undefined, "unit")).toBeUndefined();
+    expect(heldFor(holdOn(undefined, "unit", { chosen: null }), "unit").chosen).toBeNull();
+  });
+
+  test("a patch is laid over what is held for the key, and over nothing for another's", () => {
+    const first = holdOn(undefined, "limits", { range: { min: "0", max: "5", typed: true } });
+    const second = holdOn(first, "limits", { changesShown: true });
+    expect(heldFor(second, "limits")).toEqual({
+      ...FRESH,
+      range: { min: "0", max: "5", typed: true },
+      changesShown: true,
+    });
+    expect(heldFor(holdOn(first, "unit", { typed: "rp" }), "unit")).toEqual({
+      ...FRESH,
+      typed: "rp",
+    });
   });
 
   test("nothing is held for no key", () => {
-    expect(holding(undefined, "rpm")).toBeUndefined();
+    expect(holdOn(undefined, undefined, { chosen: "rpm" })).toBeUndefined();
+  });
+
+  test("what was made for another key, or for none, is stale; nothing held is not", () => {
+    const held = holdOn(undefined, "datatype", { chosen: "uint16" });
+    expect(staleHold(held, "datatype")).toBe(false);
+    expect(staleHold(held, "unit")).toBe(true);
+    expect(staleHold(held, undefined)).toBe(true);
+    expect(staleHold(undefined, "unit")).toBe(false);
   });
 });
 

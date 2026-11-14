@@ -34,10 +34,10 @@ import {
   holdOn,
   keyRows,
   labelOfRaw,
-  limitsNote,
   limitsOf,
   limitsRaw,
   settledRaw,
+  settleNote,
   staleHold,
   startingRaw,
   variableDatatype,
@@ -227,13 +227,22 @@ export function VariablePanel({
   // The range is read by the datatype its declarations state (`variableDatatype`): a float's bound
   // as the double it is, any other's refused where the page would send another number.
   const datatype = reply === undefined ? "" : variableDatatype(reply);
-  const broken = selected === "limits" ? limitsNote(range.min, range.max, datatype) : null;
+  // What the chooser would settle on, read before anything is asked for it (`settleNote`): a
+  // range the two fields do not make, or a unit with spaces around it (15:M10).
+  const chosenRaw =
+    selected === undefined || reply === undefined
+      ? null
+      : settledRaw(chosen, startingRaw(reply, selected));
+  const broken =
+    selected === undefined || reply === undefined
+      ? null
+      : settleNote(selected, range, datatype, chosenRaw);
   const target =
     selected === undefined || reply === undefined || broken !== null
       ? null
       : selected === "limits"
         ? limitsRaw(range.min, range.max, datatype)
-        : settledRaw(chosen, startingRaw(reply, selected));
+        : chosenRaw;
   // `target` is typed into directly while `selected` is `limits` (the two range fields commit on
   // every keystroke, like every other plain field on this screen) and otherwise set discretely by
   // a chooser's pick or Enter. `typedLimits` says which this one is (fix round 2: `selected` and
@@ -248,10 +257,12 @@ export function VariablePanel({
   // What the field reads while nothing is being typed, and whether what is typed is not that:
   // text typed and left is no choice yet (decision 15.3), so while it stands nothing is previewed
   // - the table above says nothing of the earlier value either - and Apply is withheld.
+  // A range the fields do not make reads as nothing; a unit refused reads as what was chosen, the
+  // note under it saying why.
   const settledLabel =
-    reply === undefined || selected === undefined || broken !== null
+    reply === undefined || selected === undefined || (broken !== null && selected === "limits")
       ? ""
-      : labelOfRaw(reply, selected, target);
+      : labelOfRaw(reply, selected, selected === "limits" ? target : chosenRaw);
   const unsettledText = unsettled(typed, settledLabel);
   const preview = useQuery({
     queryKey: ["settle", name, askedSettle, revision],

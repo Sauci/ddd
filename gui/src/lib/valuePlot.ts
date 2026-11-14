@@ -7,6 +7,7 @@ import {
   rawOf,
   rounded,
   rowHeader,
+  wanted,
 } from "./objectValues";
 
 /** The drawn box, in the `viewBox`'s own units - one fixed frame scaled to whatever width the
@@ -45,20 +46,27 @@ export interface Plot {
 
 const PAD = 20;
 
-/** How many values a row holds - the shape's last dimension, and 0 for a shape of none. */
-function widthOf(reply: ValuesReply): number {
-  const [first = 0, second] = reply.shape;
-  return second === undefined ? first : second;
+/** Where the values sit along the bottom, one place for each column the object's shape has: the
+ * axis's own readings where it states one for every column, and the indices otherwise - evenly
+ * spaced because they are, while breakpoints are not. An axis stating fewer breakpoints than the
+ * shape places none of its columns, which no breakpoint of it could place in order, and one
+ * stating more places the shape's columns alone (15:M7). */
+function alongTheBottom(reply: ValuesReply, physical: boolean): number[] {
+  const width = wanted(reply)[1];
+  const axis = columnAxis(reply);
+  if (axis === undefined || axis.breakpoints.length < width) {
+    return Array.from({ length: width }, (_, index) => index);
+  }
+  return axis.breakpoints
+    .slice(0, width)
+    .map((raw) => (physical ? physicalOf(raw, axis.conversion) : raw));
 }
 
-/** Where the values sit along the bottom: the axis's own readings where there is one, and the
- * indices otherwise - which are evenly spaced because they are, while breakpoints are not. */
-function alongTheBottom(reply: ValuesReply, physical: boolean): number[] {
-  const axis = columnAxis(reply);
-  if (axis === undefined || axis.breakpoints.length === 0) {
-    return Array.from({ length: widthOf(reply) }, (_, index) => index);
-  }
-  return axis.breakpoints.map((raw) => (physical ? physicalOf(raw, axis.conversion) : raw));
+/** The rows the picture draws, each cut at the shape's last column, and no row past its last: the
+ * values the grid draws, and none it does not. */
+function drawnRows(reply: ValuesReply): number[][] {
+  const [height, width] = wanted(reply);
+  return reply.rows.slice(0, height).map((row) => row.slice(0, width));
 }
 
 /** The range the values are drawn in: their own span with a twentieth of it to spare above and
@@ -94,20 +102,24 @@ function placed(value: number, from: number, to: number, start: number, length: 
 
 export function plotted(reply: ValuesReply, physical: boolean): Plot {
   const xs = alongTheBottom(reply, physical);
-  const values = reply.rows.flatMap((row) =>
+  const rows = drawnRows(reply);
+  const values = rows.flatMap((row) =>
     row.map((raw) => (physical ? physicalOf(raw, reply.conversion) : raw)),
   );
   const [low, high] = rangeOf(values);
   const across = BOX.width - BOX.left - BOX.right;
   const down = BOX.height - BOX.top - BOX.bottom;
+  // A place for every column the shape has (`alongTheBottom`), and no row or tick drawn past the
+  // shape's last column (`drawnRows`, `columnHeader`): each index read here has its place.
   const xAt = (index: number) =>
-    placed(xs[index] ?? 0, Math.min(...xs), Math.max(...xs), BOX.left, across);
+    placed(xs[index] as number, Math.min(...xs), Math.max(...xs), BOX.left, across);
   const yAt = (value: number) => BOX.top + down - placed(value, low, high, 0, down);
-  const labels = reply.shape.length === 1 ? reply.rows.map(() => "") : rowHeader(reply, physical);
+  const labels = reply.shape.length === 1 ? rows.map(() => "") : rowHeader(reply, physical);
   const axis = columnAxis(reply);
   return {
-    lines: reply.rows.map((row, index) => ({
-      label: labels[index] ?? "",
+    // A label for every row the shape has (`rowHeader`), and no row drawn past its last.
+    lines: rows.map((row, index) => ({
+      label: labels[index] as string,
       points: row.map((raw, at) => ({
         x: xAt(at),
         y: yAt(physical ? physicalOf(raw, reply.conversion) : raw),

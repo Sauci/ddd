@@ -4,6 +4,7 @@ import { readNumber } from "./numbers";
 import {
   boundRead,
   cellAt,
+  cellName,
   cellRead,
   cellSentence,
   cellText,
@@ -30,6 +31,7 @@ import {
   rounded,
   rowHeader,
   statedNote,
+  statedValue,
   type TypedCell,
   typedRaw,
   typedRefusal,
@@ -1173,9 +1175,16 @@ describe("cellText", () => {
     expect(cellText(CURVE_A, [said], 0, 2, false)).toBe("150000");
   });
 
-  test("a cell its row does not reach reads zero, as the startup code makes it", () => {
-    expect(cellText({ ...CURVE_A, rows: [[1200, 900]] }, [], 0, 4, false)).toBe("0");
-    expect(cellText({ ...MAP_A, rows: MAP_A.rows.slice(0, 2) }, [], 3, 0, true)).toBe("0");
+  test("a cell the file does not state is hollow, where it read the zero the startup code makes", () => {
+    // 15:M7: a short init of [1, 2] showed zeros past its end, as though the file held them.
+    expect(cellText({ ...CURVE_A, rows: [[1200, 900]] }, [], 0, 4, false)).toBe("");
+    expect(cellText({ ...MAP_A, rows: MAP_A.rows.slice(0, 2) }, [], 3, 0, true)).toBe("");
+    expect(cellText({ ...CURVE_A, stated: "none" }, [], 0, 1, true)).toBe("");
+  });
+
+  test("and what is typed into one shows as it was typed", () => {
+    const short = { ...CURVE_A, rows: [[1200, 900]] };
+    expect(cellText(short, [typedCell(0, 4, "7.5")], 0, 4, true)).toBe("7.5");
   });
 });
 
@@ -1191,6 +1200,50 @@ describe("commaOf", () => {
     expect(commaOf([either], either)).toBeUndefined();
     const said = { ...either, comma: "grouping" as const };
     expect(commaOf([said], said)).toBe("grouping");
+  });
+});
+
+/** CurveA of six over an axis stating three breakpoints, its file writing two values: the grid of
+ * 15:M7, which drew three cells and left values 4 to 6 unreachable. */
+const SHORT_CURVE: ValuesReply = {
+  ...CURVE_A,
+  rows: [[1200, 900]],
+  axes: CURVE_A.axes.map((axis) => ({ ...axis, breakpoints: [0, 3200, 6400] })),
+};
+
+describe("the grid's columns and rows come from the shape (15:M7)", () => {
+  test("a breakpoint labels its own column, and the columns past the axis's last are unlabelled", () => {
+    expect(columnHeader(SHORT_CURVE, true)).toEqual(["0", "800", "1600", "", "", ""]);
+    expect(columnHeader(SHORT_CURVE, false)).toEqual(["0", "3200", "6400", "", "", ""]);
+  });
+
+  test("an axis stating more breakpoints than the shape labels the shape's columns alone", () => {
+    const narrow: ValuesReply = { ...CURVE_A, shape: [2], rows: [[7, 8]] };
+    expect(columnHeader(narrow, false)).toEqual(["0", "3200"]);
+  });
+
+  test("so does a map's y axis its rows", () => {
+    const tall: ValuesReply = {
+      ...MAP_A,
+      axes: MAP_A.axes.map((axis) =>
+        axis.position === "y_axis" ? { ...axis, breakpoints: [0, 60] } : axis,
+      ),
+    };
+    expect(rowHeader(tall, true)).toEqual(["0", "30", "", ""]);
+  });
+
+  test("a cell the file does not state is hollow, and its name says so", () => {
+    expect(statedValue(SHORT_CURVE, 0, 1)).toBe(900);
+    expect(statedValue(SHORT_CURVE, 0, 2)).toBeUndefined();
+    expect(cellName(SHORT_CURVE, 0, 1)).toBe("element 2");
+    expect(cellName(SHORT_CURVE, 0, 5)).toBe("element 6, not stated");
+    expect(cellName({ ...PARAMETER_A, stated: "none" }, 0, 0)).toBe("the value, not stated");
+    expect(cellName({ ...MAP_A, rows: [] }, 2, 3)).toBe("element 3, 4, not stated");
+  });
+
+  test("an object stated once states every cell, and one stating nothing none", () => {
+    expect(statedValue({ ...CURVE_A, stated: "scalar" }, 0, 3)).toBe(750);
+    expect(statedValue({ ...CURVE_A, stated: "none" }, 0, 3)).toBeUndefined();
   });
 });
 
@@ -1218,8 +1271,15 @@ describe("columnChars", () => {
     expect(columnChars(WIDE_WHOLE, [typedCell(0, 2, "", false)], false, 4)).toEqual([9, 10, 0, 7]);
   });
 
-  test("a column past the row's last value is counted as the zero it shows", () => {
-    expect(columnChars({ ...CURVE_A, rows: [[1200, 900]] }, [], false, 3)).toEqual([4, 3, 1]);
+  test("a column past the row's last value is a hollow cell, which shows nothing", () => {
+    expect(columnChars({ ...CURVE_A, rows: [[1200, 900]] }, [], false, 3)).toEqual([4, 3, 0]);
+  });
+
+  test("every row the shape has is counted, the ones the file does not write too", () => {
+    const short = { ...MAP_A, rows: MAP_A.rows.slice(0, 1) };
+    expect(columnChars(short, [typedCell(3, 0, "12345", false)], false, 6)).toEqual([
+      5, 2, 2, 2, 2, 2,
+    ]);
   });
 
   test("a grid of no rows has no width to give", () => {

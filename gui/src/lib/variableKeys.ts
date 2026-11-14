@@ -8,7 +8,7 @@ import { type CommaMeaning, decimalText, readNumber, typedComma } from "./number
 import { boundRead, wholePast } from "./objectValues";
 import { hrefOf } from "./route";
 import { unsettledNote } from "./typing";
-import { textOf } from "./units";
+import { textOf, unitRefusal } from "./units";
 
 /** One entry of a `dimensions` value: the text it reads as, and - for a name - the constant it
  * opens. `constant` and `href` are `null` together, exactly as `KeyCell`'s own `from`/`href` are:
@@ -605,6 +605,20 @@ export function typeDatatype(keys: readonly VariableKeyOffer[]): string {
 function boundText(value: number, datatype: string): string {
   const text = String(value);
   return datatype.startsWith("float") && !/[.e]/.test(text) ? `${text}.0` : text;
+}
+
+/** What is wrong with the value a key's chooser would settle on, said under the field in place of
+ * a plan, or `null` where nothing is: a range the two fields do not make (`limitsNote`), read by
+ * `datatype`; and a unit with spaces around it (`unitRefusal`), `raw` the json text chosen. */
+export function settleNote(
+  key: string | undefined,
+  range: { min: string; max: string },
+  datatype: string,
+  raw: string | null,
+): string | null {
+  if (key === "limits") return limitsNote(range.min, range.max, datatype);
+  if (key === "unit") return unitRefusal(textOf(raw ?? undefined));
+  return null;
 }
 
 /** The json text a range typed into the two fields travels as; `null` while it is not one.

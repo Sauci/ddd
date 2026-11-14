@@ -2053,9 +2053,9 @@ export const VALUES_CURVE_B: ValuesReply = {
 };
 
 /** ValueD: SensorHub's own real absent init - a measurement declared with `dimensions: [8]` and
- * no `init` at all (sensor_hub.ddd.json), so the startup code zeroes it - AnAbsentInitGreyed's
- * own "nothing is stated" note. No unit, the identity conversion, and no axis: a plain shaped
- * measurement, not a curve or a map. */
+ * no `init` at all (sensor_hub.ddd.json), so the startup code zeroes it - AnAbsentInitHollow's
+ * own "nothing is stated" note, over cells drawn hollow. No unit, the identity conversion, and no
+ * axis: a plain shaped measurement, not a curve or a map. */
 export const VALUES_VALUE_D: ValuesReply = {
   revision: 1,
   name: "ValueD",

@@ -8,7 +8,7 @@ import { useKept } from "../app/useKept";
 import { ValuesGridView } from "../components/ValuesGridView";
 import { drawable, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
-import { typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
+import { planOffered, typedOffer, typedPlan, withComma, withTyped } from "../lib/typedCells";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valuesLabel } from "../lib/undo";
 import {
@@ -182,7 +182,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   // Never the cell's plan while it is an earlier keystroke's (`shownCell.plan`, already `null`
   // then): that plan is for text the reader has since typed past, and is dropped exactly as one
   // still loading would be.
-  const shownPlan = pasting ? (table.data ?? null) : shownCell.plan;
+  // A plan that changes nothing is no offer at all (`planOffered`): the server answers one with no
+  // file to change (15:M4).
+  const shownPlan = planOffered(pasting ? (table.data ?? null) : shownCell.plan);
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
   // server's, for the one thing the parser cannot check - ahead of an apply refused either way.
   // A typed cell's own refusal is `ValuesGridView`'s to find, from the cells directly

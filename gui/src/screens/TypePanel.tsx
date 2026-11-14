@@ -18,10 +18,10 @@ import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
 import {
-  limitsNote,
   limitsOf,
   limitsRaw,
   settledRaw,
+  settleNote,
   shortValue,
   typeDatatype,
 } from "../lib/variableKeys";
@@ -150,7 +150,10 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   const range = edited ?? (selected === undefined ? { min: "", max: "" } : limitsOf(starting));
   // The range is read by the datatype the type fixes (`typeDatatype`), as a variable's by its own.
   const datatype = typeDatatype(type?.keys ?? []);
-  const broken = selected === "limits" ? limitsNote(range.min, range.max, datatype) : null;
+  // What the chooser would settle on, read before anything is asked for it (`settleNote`), as
+  // a variable's panel reads its own: a range the fields do not make, or a unit with spaces
+  // around it.
+  const broken = settleNote(selected, range, datatype, settledRaw(chosen, starting));
   const target =
     selected === undefined || broken !== null
       ? null
@@ -224,8 +227,16 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   // What the chooser's field reads while nothing is being typed, and whether what is typed is not
   // that: text typed and left is no choice yet (decision 15.3), so while it stands no plan is
   // drawn for the value before it and Apply is withheld.
+  // A range the fields do not make reads as nothing; a unit refused reads as what was chosen, the
+  // note under it saying why.
   const settledLabel =
-    selected === undefined || broken !== null ? "" : fieldLabel(offer?.editor, selected, target);
+    selected === undefined || (broken !== null && selected === "limits")
+      ? ""
+      : fieldLabel(
+          offer?.editor,
+          selected,
+          selected === "limits" ? target : settledRaw(chosen, starting),
+        );
   const unsettledText = unsettled(typed, settledLabel);
 
   const apply = useMutation({

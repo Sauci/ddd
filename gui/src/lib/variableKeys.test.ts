@@ -17,6 +17,7 @@ import {
   offerOf,
   rangeDatatype,
   settledRaw,
+  settleNote,
   shortValue,
   staleHold,
   startingRaw,
@@ -969,5 +970,25 @@ describe("a limit a double cannot hold", () => {
       max: "3.4028234663852886e+38",
     });
     expect(limitsNote("-3.4028234663852886e38", "3.4028234663852886e38", "float32")).toBeNull();
+  });
+});
+
+describe("settleNote", () => {
+  const EMPTY = { min: "", max: "" };
+
+  test("a range the two fields do not make, read by the datatype", () => {
+    expect(settleNote("limits", { min: "0", max: "" }, "", null)).toBe("Max is empty");
+    expect(settleNote("limits", { min: "0", max: "1e19" }, "float64", null)).toBeNull();
+  });
+
+  test("a unit with spaces around it, in the Units tab's words (15:M10)", () => {
+    expect(settleNote("unit", EMPTY, "", '"V "')).toBe("'V ' has spaces around it");
+    expect(settleNote("unit", EMPTY, "", '"V"')).toBeNull();
+    expect(settleNote("unit", EMPTY, "", null)).toBeNull();
+  });
+
+  test("nothing for any other key, nor for none", () => {
+    expect(settleNote("datatype", EMPTY, "", '" uint8"')).toBeNull();
+    expect(settleNote(undefined, EMPTY, "", null)).toBeNull();
   });
 });

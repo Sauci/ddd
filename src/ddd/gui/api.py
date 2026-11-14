@@ -218,7 +218,7 @@ from ddd.shared_plans import (
     set_entry,
 )
 from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
-from ddd.variable_keys import offer_for, offers
+from ddd.variable_keys import offer_for, offers, unit_refusal
 from ddd.variables import (
     Planned,
     declarations_of,
@@ -1338,6 +1338,11 @@ class Api:
             inexact = limits_refusal(raw, stated)
             if inexact is not None:
                 return _error(409, "invalid", inexact)
+        # A unit with spaces around it is refused, as the Units tab refuses that spelling.
+        if key == "unit" and raw is not None:
+            spaced = unit_refusal(raw)
+            if spaced is not None:
+                return _error(409, "invalid", spaced)
         # The reader chose this value, so a declaration it would leave unable to load is not
         # left out: it is planned, and told (`unloadable`) - where a button offering it is withheld.
         settlement = settle(built, name, key, raw, cache, withholding=False)
@@ -1521,7 +1526,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = _changing(previewed(plan.edits, derived.stamps))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1606,7 +1611,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = _changing(previewed(plan.edits, derived.stamps))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1638,7 +1643,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = _changing(previewed(plan.edits, derived.stamps))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1669,7 +1674,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = _changing(previewed(plan.edits, derived.stamps))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -2653,6 +2658,16 @@ def _declaration_plan_of(
     if not isinstance(definition, dict):
         raise DeclarationRefusalError("invalid", "the definition is not json")
     return declare_object(built, file, asked.scope, definition, cache)
+
+
+def _changing(planned: Sequence[Planned]) -> tuple[Planned, ...]:
+    """The files of a plan its edit changes: one the edit leaves as it was, every byte the same, is
+    no change, and a plan changing none is answered as one with nothing to change - as a settled
+    key every declaration already states is - for which the page offers nothing (15:M4). An Apply
+    of it wrote the file as it was, analysed it again and left an undo putting back nothing anybody
+    changed. A file's bytes change where its lines do: the edit engine writes every line break as
+    the file spells it, so an edit changing no line changes no byte."""
+    return tuple(entry for entry in planned if entry.hunks)
 
 
 def _planned_changes(

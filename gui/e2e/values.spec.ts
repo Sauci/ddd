@@ -191,6 +191,23 @@ function valueDOf(
   };
 }
 
+/** Controller's AxisA stating three of its six breakpoints, CurveA, laid against it, two of its
+ * six values, and MapA two of its four rows: each changed where it stands, so the file keeps its
+ * layout. */
+function shortCurveA(directory: string): void {
+  const path = join(directory, CONTROLLER);
+  const text = readFileSync(path, "utf8");
+  const changed = text
+    .replace('"init": [0, 3200, 6400, 12800, 19200, 32000],', '"init": [0, 3200, 6400],')
+    .replace('"init": [1200, 900, 800, 750, 700, 650],', '"init": [1200, 900],')
+    .replace(
+      /(\[18, 22, 26, 28, 30, 28\]),\s*\[12, 16, 20, 22, 24, 22\],\s*\[6, 10, 14, 16, 18, 16\]/,
+      "$1",
+    );
+  if (changed === text) throw new Error(`${CONTROLLER} states no AxisA and CurveA of six`);
+  writeFileSync(path, changed, "utf8");
+}
+
 /** Each field of `grid` whose number runs past its edge, by its label and what it holds: a field
  * holding more than it shows scrolls wider than it is. */
 function cutFields(grid: Locator): Promise<string[]> {
@@ -983,6 +1000,89 @@ test("a value of more than twelve significant digits reads whole in physical", a
   await expectRow(grid, ["1234567890123", "1.23456789012345"]);
 });
 
+// The grid's columns and rows are the shape's, and a cell the file does not state is drawn hollow
+// (15:M7): a curve of six over an axis stating three breakpoints drew three cells, and a short init
+// read 0 in the cells it lacks.
+
+test("a curve's grid has its shape's columns, and a cell the file does not state is hollow", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", shortCurveA);
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  // Six columns, the shape's; each breakpoint the axis states labels its own.
+  await expect(grid.getByRole("columnheader")).toHaveText([
+    "AxisA (Hz)",
+    "0",
+    "800",
+    "1600",
+    "",
+    "",
+    "",
+  ]);
+  await expect(grid.getByRole("textbox", { name: "element 1", exact: true })).toHaveValue("12");
+  await expect(grid.getByRole("textbox", { name: "element 2", exact: true })).toHaveValue("9");
+  for (const element of [3, 4, 5, 6]) {
+    const cell = grid.getByRole("textbox", { name: `element ${element}, not stated`, exact: true });
+    await expect(cell).toHaveValue("");
+    await expect(cell).toHaveClass("hollow");
+  }
+  await expect(
+    page.getByText("Paste 1 row of 6 values from a spreadsheet to replace them all.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  // Typed into, a hollow cell plans what `set_cell` writes: the whole init, the cells it lacked 0.
+  await typed(grid.getByRole("textbox", { name: "element 5, not stated", exact: true }), "7.5");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 5 of CurveA to 7.5 ms")).toBeVisible();
+  await offer.getByRole("button", { name: "Show changes" }).click();
+  await expect(offer.locator(".added")).toHaveText([/"init": \[1200, 900, 0, 0, 750, 0\],$/]);
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([1200, 900, 0, 0, 750, 0]);
+  // Shown at once: the file states every cell now.
+  await expect(grid.getByRole("textbox", { name: "element 5", exact: true })).toHaveValue("7.5");
+  await expect(grid.getByRole("textbox", { name: "element 6", exact: true })).toHaveValue("0");
+
+  // A map's rows are its shape's too: MapA's file writes two of its four, and the other two are
+  // drawn, every cell of them hollow - where the grid drew the rows the file wrote.
+  await openValues(page, gui.address, "MapA");
+  const map = page.getByRole("grid", { name: "Values of MapA" });
+  await expect(map.getByRole("rowheader")).toHaveText(["0", "30", "70", "100"]);
+  await expect(map.getByRole("textbox", { name: "element 2, 6", exact: true })).toHaveValue("14");
+  for (const column of [1, 6]) {
+    const cell = map.getByRole("textbox", {
+      name: `element 4, ${column}, not stated`,
+      exact: true,
+    });
+    await expect(cell).toHaveValue("");
+  }
+});
+
+test("a table pasted over the very values written offers nothing", async ({ page, gui }) => {
+  // 15:M4: the server answers a plan whose edit leaves the file as it was with no change, and the
+  // page draws no offer for it - where an Apply wrote the file as it was and left an undo.
+  await openValues(page, gui.address, "CurveA");
+  const offer = page.getByRole("region", { name: "Replace the values" });
+  await paste(page, "12\t9\t8\t7.5\t7\t6.6");
+  await expect(offer.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+
+  // CurveA's own six values: the page's own request for them is answered with nothing to change.
+  const answered = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/values-plan?") &&
+      response.url().includes(encodeURIComponent("1200,900,800,750,700,650")),
+  );
+  await paste(page, "12\t9\t8\t7.5\t7\t6.5");
+  expect((await (await answered).json()).changes).toEqual([]);
+  await expect(offer).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+});
+
 test("Enter settles what was typed and writes nothing", async ({ page, gui }) => {
   // Spec 5.3: "Type, press Enter, and the grid shows … the sentence … then `Show changes` and
   // `Apply to 1 file` … No cell writes on its own." Enter used to apply, so a reader finishing
@@ -1652,8 +1752,9 @@ test("a scalar stating no init gains one, which the preview shows", async ({ pag
   expect(definitionOf(gui.directory, SENSOR_HUB, "ValueC")).not.toHaveProperty("init");
   await openValues(page, gui.address, "ValueC", "SensorHub");
 
-  const cell = page.getByRole("textbox", { name: "the value" });
-  await expect(cell).toHaveValue("0");
+  // The one cell states no value, and is hollow (15:M7).
+  const cell = page.getByRole("textbox", { name: "the value, not stated", exact: true });
+  await expect(cell).toHaveValue("");
   await expect(page.getByText("Nothing is stated.")).toBeVisible();
   await typed(cell, "21.5");
   await expect(page.getByText("Sets the value of ValueC to 21.5 degC")).toBeVisible();
@@ -1696,18 +1797,20 @@ test("an object initialised with text says so on its values page, which only a r
   await expect(page.getByRole("button", { name: "Back to UserInterface" })).toBeVisible();
 });
 
-test("a grid that states nothing reads zero, greyed, says so, and takes its first values", async ({
+test("a grid that states nothing is drawn hollow, says so, and takes its first values", async ({
   page,
   copiedGui,
 }) => {
   // ValueB's init taken out of SensorHub, its one producer, before the server starts: the grid is
-  // of a shaped object that states nothing, which the startup code zeroes (`_filled`).
+  // of a shaped object that states nothing, which the startup code zeroes (`_filled`). No cell is
+  // one the file states, so each is hollow, where each read a greyed 0 (15:M7).
   const gui = await copiedGui("demo", stateNothingOfValueB);
   await openValues(page, gui.address, "ValueB");
   const grid = page.getByRole("grid", { name: "Values of ValueB" });
-  await expectRow(grid, ["0", "0", "0", "0"]);
   for (const element of [1, 2, 3, 4]) {
-    await expect(grid.getByRole("textbox", { name: `element ${element}` })).toHaveClass("unstated");
+    const cell = grid.getByRole("textbox", { name: `element ${element}, not stated`, exact: true });
+    await expect(cell).toHaveValue("");
+    await expect(cell).toHaveClass("hollow");
   }
   const nothing = page.getByText("Nothing is stated.", { exact: true });
   await expect(nothing).toBeVisible();
@@ -1718,7 +1821,7 @@ test("a grid that states nothing reads zero, greyed, says so, and takes its firs
     }),
   ).toBeVisible();
 
-  await typed(grid.getByRole("textbox", { name: "element 2" }), "1");
+  await typed(grid.getByRole("textbox", { name: "element 2, not stated", exact: true }), "1");
   await expect(page.getByText("Sets element 2 of ValueB to 1 V")).toBeVisible();
   await expect(page.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
   await page.getByRole("button", { name: "Apply to 1 file" }).click();

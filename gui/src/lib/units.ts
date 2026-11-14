@@ -153,6 +153,30 @@ export function outsideVocabulary(units: UnitsReply, unit: string | null): boole
   );
 }
 
+/** The white space python's `str.strip` takes off a text, by code point - what the Units tab judges
+ * a spelling by on the server (`ddd.lsp.units`): JavaScript's `trim` takes off a byte order mark
+ * python keeps, and keeps the four information separators and the next-line python takes off. */
+const STRIPPED: ReadonlySet<number> = new Set([
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x85, 0xa0, 0x1680, 0x2000, 0x2001,
+  0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f,
+  0x205f, 0x3000,
+]);
+
+/** Whether `text` begins or ends with white space python strips (`STRIPPED`). */
+function spaced(text: string): boolean {
+  return (
+    STRIPPED.has(text.codePointAt(0) ?? -1) || STRIPPED.has(text.codePointAt(text.length - 1) ?? -1)
+  );
+}
+
+/** Why a unit chosen for a variable or a type is refused, in the words the Units tab refuses a
+ * spelling with, or `null`: spaces around a unit are a slip of the keyboard rather than part of
+ * its spelling, and written they made the project hold two spellings of one unit, which no finding
+ * said without a units file (15:M10). No unit at all is none to refuse. */
+export function unitRefusal(unit: string | null): string | null {
+  return unit !== null && spaced(unit) ? `'${unit}' has spaces around it` : null;
+}
+
 /** The json text a chosen unit travels as, or `null` for no unit: the key then goes. */
 export function rawOf(unit: string | null): string | null {
   return unit === null ? null : JSON.stringify(unit);

@@ -351,7 +351,14 @@ The commands
        Its table's Shape column opens the page of a curve, a map, an
        axis or any other declaration shaped in one or two dimensions: its values as a
        grid, laid against its axes' breakpoints or plain indices and named with the axis
-       on each edge, in physical or in raw by a toggle. A scalar, a declaration stating
+       on each edge, in physical or in raw by a toggle. The grid has a column for each its
+       shape has, and a row for each: a breakpoint only labels its column, so the columns
+       past an axis's last breakpoint are drawn unlabelled and a breakpoint past the shape
+       labels none. A cell the file does not state - past the end of a short ``init``, or
+       any cell of a declaration stating none - is drawn hollow, empty under a dashed
+       border, its name saying it is not stated; typed into, it is planned as any cell is,
+       the whole ``init`` written where the array lacks it, and the preview shows what is
+       written. A scalar, a declaration stating
        its own datatype and no dimensions, reads ``scalar`` there and opens the same page
        as a grid of one cell, its ``init``: the cell reads 3200 in raw and 800 in
        physical for ``ParameterA`` of ``examples/demo``, a value typed into it is one
@@ -373,7 +380,10 @@ The commands
        file stays as it was, its spellings and its layout too. A cell keeps the reading
        it was typed in: turned from physical to raw, the grid shows the count it sets. A
        cell typed back to its file's value drops out of the change, and a cell
-       the page refuses holds Apply back for them all, named in the sentence. The
+       the page refuses holds Apply back for them all, named in the sentence. A plan
+       whose edit would leave its file as it was, every byte the same - a table pasted over
+       the values the file spells, a description typed as it stands - is no change, and is
+       offered as none. The
        sentence and Apply stay at the foot of the window while they are offered, however
        tall the grid. A table copied from a spreadsheet is pasted anywhere in
        the grid to replace every value of the object at once - the object's own shape,

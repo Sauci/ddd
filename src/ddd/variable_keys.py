@@ -75,6 +75,19 @@ a range, or part 1's unit picker.
 """
 
 
+def unit_refusal(raw: str) -> str | None:
+    """The sentence a unit settled as ``raw`` - json text the route's query has read already - is
+    refused with where it has spaces around it, in the words the Units tab refuses that spelling
+    with (``ddd.lsp.units``, ``GET /api/unit-plan``), or ``None``: a slip of the keyboard rather
+    than part of a spelling, which written made the project hold two spellings of one unit and no
+    finding said so without a units file. What is no unit's spelling - none, or no text - is
+    another refusal's, or none."""
+    unit = json.loads(raw)
+    if isinstance(unit, str) and unit != unit.strip():
+        return f"'{unit}' has spaces around it"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class Carried:
     """What one declaration's kind does with a key."""

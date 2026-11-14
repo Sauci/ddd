@@ -1,4 +1,4 @@
-import type { ValuesReply } from "../api/types";
+import type { PlanReply, ValuesReply } from "../api/types";
 import type { CommaMeaning } from "./numbers";
 import {
   cellAt,
@@ -8,6 +8,7 @@ import {
   elementLabel,
   pasteSentence,
   physicalReading,
+  statedValue,
   type TypedCell,
   typedRaw,
   wanted,
@@ -30,18 +31,13 @@ export function withTyped(cells: readonly TypedCell[], cell: TypedCell): TypedCe
   return [...others, cell].sort((a, b) => a.row - b.row || a.column - b.column);
 }
 
-/** The value the file holds at a cell, or `undefined` where it holds none there: an object that
- * states nothing, whose zeros are the startup code's, or a row too short to reach the cell. */
-function fileValue(reply: ValuesReply, row: number, column: number): number | undefined {
-  return reply.stated === "none" ? undefined : reply.rows[row]?.[column];
-}
-
 /** Why a cell refuses what was typed into it, or `null`: text that is no number it takes
  * (`cellRead`), a comma that could be either among it - `ambiguous`, which a choice of what it means
  * answers - or a number typed into a cell past the end of the object's shape, which has no element
- * to set - one an axis's breakpoints draw beyond it - in the words the server refuses one with. An
- * emptied cell is nothing typed yet, wherever it is. `typed` is every cell typed into the grid,
- * whose commas are read together (`commaOf`). */
+ * to set, in the words the server refuses one with. The grid draws the shape's own columns and
+ * rows, so a cell past it is one typed while the shape was larger: held through an analysis that
+ * shrank it. An emptied cell is nothing typed yet, wherever it is. `typed` is every cell typed
+ * into the grid, whose commas are read together (`commaOf`). */
 function refusalOf(
   cell: TypedCell,
   typed: readonly TypedCell[],
@@ -117,7 +113,7 @@ export function typedOffer(cells: readonly TypedCell[], reply: ValuesReply): Typ
   }
   const changes = cells.flatMap((cell) => {
     const raw = typedRaw(cell.typed, reply, cell.physical, commaOf(cells, cell));
-    if (raw === null || raw === fileValue(reply, cell.row, cell.column)) return [];
+    if (raw === null || raw === statedValue(reply, cell.row, cell.column)) return [];
     return [{ row: cell.row, column: cell.column, raw }];
   });
   return { refusal: null, changes, ambiguous: null };
@@ -205,6 +201,13 @@ export function typedPlan(reply: ValuesReply, changes: readonly CellChange[]): T
  * (`Pasted.ambiguous`). */
 export function commaAsked(offer: TypedOffer | null, pasted: string | null): string | null {
   return offer === null ? pasted : offer.ambiguous;
+}
+
+/** The plan as the offer draws it: none for a plan that changes nothing - a table pasted over the
+ * values the file writes, spelled as it spells them - which the server answers with no file to
+ * change (15:M4): an Apply that wrote the file as it was would only have left an undo behind. */
+export function planOffered(plan: PlanReply | null): PlanReply | null {
+  return plan !== null && plan.changes.length > 0 ? plan : null;
 }
 
 /** What the offer's region is called: the one cell or the cells typed into, or a pasted table's

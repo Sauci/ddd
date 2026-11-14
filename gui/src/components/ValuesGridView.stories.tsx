@@ -124,7 +124,7 @@ export const AScalarMidChange = () => (
   />
 );
 
-// A scalar stating no init reads the zero the startup code makes of it, and the preview of a value
+// A scalar stating no init states no value, so its one cell is hollow; the preview of a value
 // typed shows the declaration gaining the line.
 export const AScalarGainingAnInit = () => (
   <View
@@ -227,9 +227,28 @@ export function AnAppliedValueHeld() {
   );
 }
 
-// Spec 6's own list, beyond the brief's: an absent init greyed, and a grid nothing produces.
+// Spec 6's own list, beyond the brief's: an absent init, and a grid nothing produces. An absent
+// init states no cell, so every cell is hollow (15:M7), where each read a greyed 0.
 
-export const AnAbsentInitGreyed = () => <View reply={VALUES_VALUE_D} backTo="SensorHub" physical />;
+export const AnAbsentInitHollow = () => <View reply={VALUES_VALUE_D} backTo="SensorHub" physical />;
+
+// 15:M7: CurveA's six columns over an AxisA stating three breakpoints, its file writing two values:
+// the grid draws the shape's six, the three past the axis's last unlabelled, and the four the file
+// does not write hollow - where it drew three cells and left the values past them unreachable.
+export const AShortInitOverAShortAxis = () => (
+  <View
+    reply={{
+      ...VALUES_CURVE,
+      rows: [[1200, 900]],
+      axes: VALUES_CURVE.axes.map((axis) => ({
+        ...axis,
+        breakpoints: axis.breakpoints.slice(0, 3),
+      })),
+    }}
+    backTo="Controller"
+    physical
+  />
+);
 
 // No object in examples/demo answers with `file: null`, so this is BlockA's own reply with its
 // producing declaration taken away - a story drawing its own props, not a server's real answer.

@@ -9197,6 +9197,88 @@ class TestPlanningAChangeOfAnInterface:
         assert (reply.status, reply.body["error"]) == (409, "unverified")
 
 
+class TestAPlanThatChangesNothing:
+    """15:M4: a plan whose edit leaves its file as it was, every byte the same, is no change -
+    answered as a settled key every declaration already states is, with no file to change - where
+    it answered a file whose diff was empty, which an Apply wrote again and left an undo of."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    @pytest.mark.parametrize(
+        ("route", "query"),
+        [
+            pytest.param(
+                "/api/value-plan", {"name": "CurveA", "at": "[0]", "raw": "1200"}, id="a-cell"
+            ),
+            pytest.param(
+                "/api/cells-plan",
+                {"name": "CurveA", "at": "[0],[1]", "raw": "1200,900"},
+                id="cells",
+            ),
+            pytest.param(
+                "/api/values-plan",
+                {"name": "CurveA", "raw": "1200,900,800,750,700,650"},
+                id="a-table",
+            ),
+            pytest.param(
+                "/api/value-plan", {"name": "ParameterA", "at": "", "raw": "3200"}, id="a-scalar"
+            ),
+        ],
+    )
+    def test_the_values_the_file_holds_written_again_change_nothing(
+        self, demo: tuple[Api, Path], route: str, query: dict[str, str]
+    ) -> None:
+        api, root = demo
+        before = contents(root)
+        reply = get(api, route, **query)
+        assert (reply.status, reply.body["changes"]) == (200, [])
+        assert contents(root) == before
+
+    def test_a_description_written_as_it_stands_changes_nothing(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(root, "components/controller.ddd.json"),
+            name="ParameterA",
+            description="Single calibratable constant",
+        )
+        assert (reply.status, reply.body["changes"]) == (200, [])
+
+    def test_one_cell_of_two_changing_is_a_change_of_the_file(self, demo: tuple[Api, Path]) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0],[1]", raw="1200,950")
+        assert reply.status == 200
+        assert [Path(change["file"]).name for change in reply.body["changes"]] == [
+            "controller.ddd.json"
+        ]
+
+
+class TestAUnitSettledWithSpacesAroundIt:
+    """15:M10: ``GET /api/settle`` wrote ``"unit": "V "``, while ``GET /api/unit-plan`` refuses that
+    spelling; it is refused now in the same words, and nothing is planned."""
+
+    @pytest.mark.parametrize("unit", ["rpm ", " rpm"])
+    def test_is_refused_as_the_units_tab_refuses_it(self, api: Api, root: Path, unit: str) -> None:
+        before = contents(root)
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw=json.dumps(unit))
+        assert reply == Reply(
+            409, {"error": "invalid", "message": f"'{unit}' has spaces around it"}
+        )
+        tab = get(api, "/api/unit-plan", action="rename", unit="rpm", to=unit)
+        assert (tab.status, tab.body["message"]) == (409, reply.body["message"])
+        assert contents(root) == before
+
+    def test_a_unit_without_is_settled(self, api: Api) -> None:
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"Hz"')
+        assert reply.status == 200
+        assert len(reply.body["changes"]) == 2
+
+
 class TestDescribingADeclarationOverHttp:
     """``GET /api/description-plan``: a declaration's own description, planned for the one file."""
 

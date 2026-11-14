@@ -529,6 +529,26 @@ class TestTheCommandPage:
         ) in text
         assert "A boolean takes 0 and 1 alone, in physical as in raw" in text
 
+    def test_the_values_grid_is_said_to_draw_its_shape_and_its_hollow_cells(self) -> None:
+        """What ``objectValues.ts`` draws of a grid's columns and of a cell the file does not
+        state, and what the plan routes answer for a change of nothing, said where the grid is
+        described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "The grid has a column for each its shape has, and a row for each: a breakpoint only "
+            "labels its column"
+        ) in text
+        assert (
+            "A cell the file does not state - past the end of a short ``init``, or any cell of a "
+            "declaration stating none - is drawn hollow, empty under a dashed border, its name "
+            "saying it is not stated"
+        ) in text
+        assert (
+            "A plan whose edit would leave its file as it was, every byte the same - a table "
+            "pasted over the values the file spells, a description typed as it stands - is no "
+            "change, and is offered as none"
+        ) in text
+
     def test_the_values_grid_is_said_to_hold_the_cells_typed_as_one_change(self) -> None:
         """What ``ValuesPage.tsx`` and ``typedCells.ts`` do with cells typed one after another,
         said where the grid is described: held together, one change, one Apply and one undo."""

@@ -154,9 +154,12 @@ export function fixLabel(finding: Finding, title: string): string {
 }
 
 /** A label as the api takes it: a long one cut short, so that no edit is ever refused for the
- * length of a name somebody chose. */
+ * length of a name somebody chose. Counted and cut in code points, as the api counts the limit:
+ * cut in UTF-16 units, a character past the plane of the first 65,536 - an emoji - was cut in
+ * half, and the lone half refused the edit as json no file can hold (3:M5). */
 function fitted(label: string): string {
-  return label.length <= LIMIT ? label : `${label.slice(0, LIMIT - 1)}…`;
+  const points = [...label];
+  return points.length <= LIMIT ? label : `${points.slice(0, LIMIT - 1).join("")}…`;
 }
 
 /** An undo's changes as `Changes` prints them: a file the edit created is taken away again, and

@@ -127,6 +127,31 @@ describe("what an Apply in the grid holds", () => {
   );
 });
 
+describe("what an Apply into cells the file does not state holds (15:M7)", () => {
+  const SHORT: ValuesReply = { ...BEFORE, rows: [[1200, 900]] };
+
+  test("a cell past the row the file writes: the whole init, the rest of the shape zeros", () => {
+    // What `set_cell` writes there, and what the grid shows at once.
+    expect(holdOf(7, SHORT, { cells: [{ row: 0, column: 4, raw: 750 }] }).after.rows).toEqual([
+      [1200, 900, 0, 0, 750, 0],
+    ]);
+  });
+
+  test("a cell the file writes: set where it stands, the row as short as the file writes it", () => {
+    expect(holdOf(7, SHORT, { cells: [{ row: 0, column: 1, raw: 750 }] }).after.rows).toEqual([
+      [1200, 750],
+    ]);
+  });
+
+  test("a map's row the file does not write, filled out", () => {
+    const map: ValuesReply = { ...BEFORE, shape: [2, 2], rows: [[1, 2]] };
+    expect(holdOf(7, map, { cells: [{ row: 1, column: 0, raw: 5 }] }).after.rows).toEqual([
+      [1, 2],
+      [5, 0],
+    ]);
+  });
+});
+
 describe("which values the grid shows", () => {
   test("with nothing held, the server's answer", () => {
     expect(valuesShown(null, NONE, state(4, 6), served(4))).toEqual(served(4));

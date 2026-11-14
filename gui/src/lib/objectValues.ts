@@ -535,34 +535,58 @@ function indices(count: number): string[] {
   return Array.from({ length: count }, (_, index) => String(index));
 }
 
-/** The header above the columns: the x axis's readings where it states any, else indices. An
- * axis states a `size` and need not state an `init`, and then it has no breakpoints at all -
- * the grid degrades to indices there, as it does for an object with no axis, rather than to a
- * header of no columns and a row of no cells. */
+/** An axis as the reply carries it, beside the object laid against it. */
+type GridAxis = ValuesReply["axes"][number];
+
+/**
+ * The labels of `count` columns, or rows, laid against `axis` - `count` the object's own shape
+ * (15:M7): a breakpoint labels its own column and nothing more, so an axis stating fewer
+ * breakpoints than the shape leaves the columns past its last one unlabelled, rather than drawing
+ * the grid narrower than the object and leaving its values past them unreachable; and an axis
+ * stating more labels no column past the shape. An axis stating none at all - a `size` with no
+ * `init` - is laid out as no axis is, by the indices, rather than as a header of no columns.
+ */
+function laidAgainst(axis: GridAxis | undefined, count: number, physical: boolean): string[] {
+  if (axis === undefined || axis.breakpoints.length === 0) return indices(count);
+  return Array.from({ length: count }, (_, at) => {
+    const raw = axis.breakpoints[at];
+    return raw === undefined ? "" : reading(raw, axis.conversion, physical);
+  });
+}
+
+/** The header above the columns, one for each column the object's shape has (`laidAgainst`): the
+ * x axis's readings where it states them, else indices. */
 export function columnHeader(reply: ValuesReply, physical: boolean): string[] {
   // A scalar has one column, which is its value; an object with no cell, none.
   if (reply.shape.length === 0) return reply.rows.length > 0 ? ["Value"] : [];
-  const axis = columnAxis(reply);
-  if (axis !== undefined && axis.breakpoints.length > 0) {
-    return axis.breakpoints.map((raw) => reading(raw, axis.conversion, physical));
-  }
-  return indices(wanted(reply)[1]);
+  return laidAgainst(columnAxis(reply), wanted(reply)[1], physical);
 }
 
-/** The label down the side of each row: the y axis's readings where it states any, else
- * indices - and, for a single row, the object's own `name (unit)`, which is what spec 5.2
- * draws beside its values. */
+/** The label down the side of each row, one for each row the object's shape has: the object's own
+ * `name (unit)` for a single row, which is what spec 5.2 draws beside its values, and a map's y
+ * axis's readings where it states them, else indices (`laidAgainst`). */
 export function rowHeader(reply: ValuesReply, physical: boolean): string[] {
-  const axis = axisOf(reply, "y_axis");
-  if (axis !== undefined && axis.breakpoints.length > 0) {
-    return axis.breakpoints.map((raw) => reading(raw, axis.conversion, physical));
-  }
   // A scalar's one row is the object itself, as a single row's is.
   if (reply.shape.length === 0) {
     return reply.rows.length > 0 ? [labelled(reply.name, reply.unit, physical)] : [];
   }
   if (reply.shape.length === 1) return [labelled(reply.name, reply.unit, physical)];
-  return indices(wanted(reply)[0]);
+  return laidAgainst(axisOf(reply, "y_axis"), wanted(reply)[0], physical);
+}
+
+/** The value the file states at a cell, or `undefined` where it states none there: an object that
+ * states nothing, whose zeros are the startup code's, or a row too short to reach the cell - a
+ * cell its shape has and the file does not hold, which the grid draws hollow (15:M7). */
+export function statedValue(reply: ValuesReply, row: number, column: number): number | undefined {
+  return reply.stated === "none" ? undefined : reply.rows[row]?.[column];
+}
+
+/** What a cell is called: `elementLabel`'s phrase, and for a cell the file does not state
+ * (`statedValue`), that it does not - the one sign, for a reader who cannot see it, that the
+ * empty field is no value the file holds. */
+export function cellName(reply: ValuesReply, row: number, column: number): string {
+  const element = elementLabel(row, column, reply.shape);
+  return statedValue(reply, row, column) === undefined ? `${element}, not stated` : element;
 }
 
 /** A cell of the values grid the reader has typed into: where it is, what was typed, and whether
@@ -588,8 +612,8 @@ export function commaOf(typed: readonly TypedCell[], cell: TypedCell): CommaMean
  * typed in; in the other, the count its text comes to, read as the grid now reads - so that
  * turning the grid from physical to raw neither changes what a typed cell sets nor shows a
  * physical number among raw counts - or the text itself, where it comes to no count. Any other
- * cell shows its raw count, or what that count reads as in physical; one its row does not reach
- * reads 0, as the startup code makes it. */
+ * cell shows its raw count, or what that count reads as in physical; one the file does not state
+ * (`statedValue`) shows nothing, where it read 0 as though the file held it (15:M7). */
 export function cellText(
   reply: ValuesReply,
   typed: readonly TypedCell[],
@@ -598,30 +622,30 @@ export function cellText(
   physical: boolean,
 ): string {
   const held = typed.find((cell) => cell.row === row && cell.column === column);
-  if (held === undefined)
-    return reading(reply.rows[row]?.[column] ?? 0, reply.conversion, physical, reply.datatype);
+  if (held === undefined) {
+    const raw = statedValue(reply, row, column);
+    return raw === undefined ? "" : reading(raw, reply.conversion, physical, reply.datatype);
+  }
   if (held.physical === physical) return held.typed;
   const raw = typedRaw(held.typed, reply, held.physical, commaOf(typed, held));
   return raw === null ? held.typed : reading(raw, reply.conversion, physical, reply.datatype);
 }
 
 /** How many characters wide each of the grid's `columns` is drawn: the longest text its fields
- * show, the numbers of its rows and what is typed into them alike. A field cut short hides the end
- * of its number with no sign of it, and under right aligned digits a cut number reads as a smaller
- * one - 4000000000 as 400000. Column by column, so that one long number widens its own column and
- * leaves the others as narrow as theirs; counted in characters, which the grid's monospace sets
- * one `ch` apiece. */
+ * show, down every row the object's shape has, the numbers held and what is typed alike. A field
+ * cut short hides the end of its number with no sign of it, and under right aligned digits a cut
+ * number reads as a smaller one - 4000000000 as 400000. Column by column, so that one long number
+ * widens its own column and leaves the others as narrow as theirs; counted in characters, which
+ * the grid's monospace sets one `ch` apiece. */
 export function columnChars(
   reply: ValuesReply,
   typed: readonly TypedCell[],
   physical: boolean,
   columns: number,
 ): number[] {
+  const rows = Array.from({ length: wanted(reply)[0] }, (_, row) => row);
   return Array.from({ length: columns }, (_, column) =>
-    Math.max(
-      0,
-      ...reply.rows.map((_, row) => cellText(reply, typed, row, column, physical).length),
-    ),
+    Math.max(0, ...rows.map((row) => cellText(reply, typed, row, column, physical).length)),
   );
 }
 

@@ -1,4 +1,5 @@
 import type { State, ValuesReply } from "../api/types";
+import { statedValue, wanted } from "./objectValues";
 import type { TypedPlan } from "./typedCells";
 
 /** What one Apply in the grid wrote: the cells typed into it, each the raw count set where it
@@ -33,19 +34,33 @@ export interface ValuesHold {
 /** The hold of an Apply answered as edit `edit`, made over `before` - what the grid showed -
  * writing `written`. The values written are an array in the file from then on, whatever it stated
  * before: `ddd.object_values.set_cell` and `set_cells` write the whole `init` where the file held
- * one value for every cell, or none. */
+ * one value for every cell, or none, and where a cell set is one the file does not state -
+ * a row too short to reach it - the rest of the shape filled out with zeros, as the startup code
+ * makes them. */
 export function holdOf(edit: number, before: ValuesReply, written: Written): ValuesHold {
-  const rows =
-    "rows" in written
-      ? written.rows
-      : before.rows.map((cells, row) =>
-          cells.map(
-            (value, column) =>
-              written.cells.find((cell) => cell.row === row && cell.column === column)?.raw ??
-              value,
-          ),
-        );
+  const rows = "rows" in written ? written.rows : withCells(before, written.cells);
   return { edit, before, after: { ...before, rows, stated: "array" }, landed: null };
+}
+
+/** `before`'s rows with `cells` set in them: in place where the file states every one of them,
+ * and otherwise over the rows taken to the object's shape with zeros. */
+function withCells(
+  before: ValuesReply,
+  cells: readonly { row: number; column: number; raw: number }[],
+): number[][] {
+  const inside = cells.every((cell) => statedValue(before, cell.row, cell.column) !== undefined);
+  const [height, width] = wanted(before);
+  const base = inside
+    ? before.rows
+    : Array.from({ length: height }, (_, row) =>
+        Array.from({ length: width }, (_, column) => before.rows[row]?.[column] ?? 0),
+      );
+  return base.map((values, row) =>
+    values.map(
+      (value, column) =>
+        cells.find((cell) => cell.row === row && cell.column === column)?.raw ?? value,
+    ),
+  );
 }
 
 /** The hold's own last edit: the undo of its Apply, once one is noted in `undone`, else the

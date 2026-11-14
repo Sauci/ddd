@@ -6,6 +6,7 @@ import {
   commaAsked,
   offerName,
   offerSentence,
+  planOffered,
   typedOffer,
   typedPlan,
   withComma,
@@ -417,6 +418,32 @@ describe("typedPlan", () => {
         { row: 0, column: 9000, at: "[9000]", raw: 8 },
       ],
     });
+  });
+});
+
+describe("planOffered", () => {
+  test("a plan that changes nothing is no offer", () => {
+    // 15:M4: the server answers a plan whose edit leaves its file as it was with no change.
+    expect(planOffered({ revision: 1, changes: [] })).toBeNull();
+    expect(planOffered(null)).toBeNull();
+  });
+
+  test("a plan that changes a file is the offer", () => {
+    const plan = {
+      revision: 1,
+      changes: [{ file: "/a.ddd.json", fingerprint: "f", operations: [], hunks: [] }],
+    };
+    expect(planOffered(plan)).toBe(plan);
+  });
+});
+
+describe("a cell the file does not state", () => {
+  test("holds no value a cell could be typed back to, as an object stating nothing does not", () => {
+    const short: ValuesReply = { ...CURVE_A, rows: [[1200, 900]] };
+    expect(typedOffer([typed(0, 4, "0", false)], short).changes).toEqual([
+      { row: 0, column: 4, raw: 0 },
+    ]);
+    expect(typedOffer([typed(0, 1, "900", false)], short).changes).toEqual([]);
   });
 });
 

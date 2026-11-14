@@ -14,12 +14,12 @@ import { cellId, takesFocusedCell } from "../lib/gridCells";
 import { scrollFromUnder } from "../lib/heldOffer";
 import { type CommaMeaning, commaChoices } from "../lib/numbers";
 import {
+  cellName,
   cellText,
   columnAxisLabel,
   columnChars,
   columnHeader,
   cornerLabel,
-  elementLabel,
   limitsLine,
   noGridNote,
   oneCell,
@@ -29,7 +29,9 @@ import {
   readOnlyNote,
   rowHeader,
   statedNote,
+  statedValue,
   type TypedCell,
+  wanted,
 } from "../lib/objectValues";
 import { commaAsked, offerName, offerSentence, typedOffer } from "../lib/typedCells";
 import { consequence, NO_UNIT, shownChanges } from "../lib/units";
@@ -158,7 +160,10 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       index,
     })),
   ];
-  const gridRows: GridRow[] = reply.rows.map((_, row) => ({
+  // One row for each the object's shape has, and one column for each (`columnHeader`): what the
+  // file does not state is drawn as a hollow cell (`cellName`), where the rows the file wrote and
+  // the breakpoints its axis stated drew the grid, values past them unreachable (15:M7).
+  const gridRows: GridRow[] = Array.from({ length: wanted(reply)[0] }, (_, row) => ({
     id: `row:${row}`,
     label: rowLabels[row] ?? "",
     row,
@@ -280,8 +285,10 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                             onFocused={reveal}
                             type="text"
                             inputMode="decimal"
-                            aria-label={elementLabel(row, at, reply.shape)}
-                            className={reply.stated === "none" ? "unstated" : undefined}
+                            aria-label={cellName(reply, row, at)}
+                            className={
+                              statedValue(reply, row, at) === undefined ? "hollow" : undefined
+                            }
                             style={{ "--chars": chars[at] } as CSSProperties}
                             value={cellText(reply, typed, row, at, physical)}
                             disabled={reply.file === null || busy}

@@ -107,6 +107,29 @@ test("a type's unit settled from its panel is written, then undone", async ({
   await expect(undo).toBeHidden();
 });
 
+test("a type's unit with spaces around it is refused, as the Units tab refuses it", async ({
+  page,
+  structuresGui,
+}) => {
+  // 15:M10, on a type's own unit picker.
+  const before = readFileSync(join(structuresGui.directory, TYPES));
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Unit", exact: true }).click();
+  const picker = panel.getByRole("combobox", { name: "Unit of Temperature_t" });
+  await picker.click();
+  await picker.clear();
+  await picker.pressSequentially(" K");
+  await picker.press("Enter");
+  await expect(picker).toHaveAccessibleDescription("' K' has spaces around it");
+  // The field reads what was chosen, and the note under it why it is refused.
+  await expect(picker).toHaveValue(" K");
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(readFileSync(join(structuresGui.directory, TYPES)).equals(before)).toBe(true);
+});
+
 test("a type is renamed everywhere, and a rename onto another type's name is refused", async ({
   page,
   structuresGui,

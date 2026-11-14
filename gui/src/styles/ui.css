@@ -790,8 +790,10 @@ tr.changing td {
   background: var(--ground);
   color: var(--ink-quiet);
 }
-.values-table input.unstated {
-  color: var(--ink-quiet);
+/* A cell the file does not state (15:M7): hollow - empty, its border dashed - where it read 0 as
+   though the file held that zero. Its name says so to a reader who cannot see it (`cellName`). */
+.values-table input.hollow {
+  border-style: dashed;
 }
 /* The values page's offer - the sentence, Show changes and Apply - held at the window's foot while
    it is drawn, however tall the grid: under a map it stood below the plot, past the window's

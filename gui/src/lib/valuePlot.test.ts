@@ -280,15 +280,36 @@ describe("plotted", () => {
     expect(xs[5]).toBeCloseTo(BOX.left + inside);
   });
 
-  test("a column with no breakpoint of its own sits at the axis's own start", () => {
-    // AxisA normally states one breakpoint per column. State fewer than CurveA has columns, and
-    // the missing ones must still place somewhere rather than throw - at the start of the range
-    // the breakpoints that do exist describe, same as a missing row label reads as "".
+  test("an axis stating fewer breakpoints than the shape places its columns by their indices", () => {
+    // 15:M7: the columns are the shape's, and an axis stating three breakpoints for six columns
+    // places none of the three past it; the six are laid out evenly, as over no axis, where the
+    // three past the last breakpoint were piled up at the axis's start.
     const shortAxis: ValuesReply = {
       ...CURVE_A,
       axes: [{ ...AXIS_A, breakpoints: [0, 3200, 6400] }],
     };
     const xs = plotted(shortAxis, true).lines[0]?.points.map((p) => p.x) ?? [];
-    expect(xs[5]).toBeCloseTo(BOX.left);
+    expect(xs).toHaveLength(6);
+    expect(xs[0]).toBeCloseTo(BOX.left);
+    expect(xs[5]).toBeCloseTo(BOX.left + inside);
+    expect(plotted(shortAxis, true).ticks.map((tick) => tick.label)).toEqual([
+      "0",
+      "800",
+      "1600",
+      "",
+      "",
+      "",
+    ]);
+  });
+
+  test("an axis stating more breakpoints than the shape places the shape's columns by theirs", () => {
+    const narrow: ValuesReply = { ...CURVE_A, shape: [2], rows: [[1200, 900]] };
+    const xs = plotted(narrow, true).lines[0]?.points.map((p) => p.x) ?? [];
+    expect(xs).toEqual([BOX.left, BOX.left + inside]);
+  });
+
+  test("values past the shape are not drawn, as the grid draws none of them", () => {
+    const long: ValuesReply = { ...CURVE_A, rows: [[1, 2, 3, 4, 5, 6, 7, 8], [9]] };
+    expect(plotted(long, false).lines.map((line) => line.points.length)).toEqual([6]);
   });
 });

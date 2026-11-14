@@ -3705,6 +3705,66 @@ ddd_generate(img
         )
 
 
+class TestTheCheckTargetUnderTheDefaultPolicy:
+    """``<target>.ddd`` checks a component under the default policy, whatever the image asks.
+
+    One component may be linked into several images and ``ddd_add_component`` has no ``STRICT``
+    nor ``SEVERITY`` keyword, so the target has no image whose policy it could take. The build page
+    says so, and says that a supplier's check is therefore not the build's: green where the
+    image is red under ``STRICT``, and red where the image relaxed a check the component trips.
+    """
+
+    @staticmethod
+    def project(root: Path, interface: list[dict[str, object]], options: str) -> Path:
+        (root / "store.ddd.json").write_text(
+            json.dumps({"component": {"name": "Store", "interface": interface}}, indent=2),
+            encoding="utf-8",
+        )
+        (root / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        (root / "store.c").write_text("int store(void) { return 0; }\n", encoding="utf-8")
+        (root / "CMakeLists.txt").write_text(
+            f"""cmake_minimum_required(VERSION 3.30)
+project(Policy LANGUAGES C)
+list(APPEND CMAKE_MODULE_PATH "{(ROOT / "cmake").as_posix()}")
+include(Ddd)
+add_library(store STATIC store.c)
+ddd_add_component(store JSON "{(root / "store.ddd.json").as_posix()}")
+add_executable(img main.c)
+target_link_libraries(img PRIVATE store)
+ddd_generate(img
+             NAME PolicyDevice
+             TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
+             {options})
+""",
+            encoding="utf-8",
+        )
+        configure(root, root / "build")
+        return root / "build"
+
+    def test_a_warning_the_image_makes_an_error_passes_the_target(self, tmp_path: Path) -> None:
+        directory = self.project(
+            tmp_path, [declare("local", "Speed"), declare("local", "SPEED")], "STRICT"
+        )
+        image = cmake("--build", str(directory), "--target", "img", cwd=tmp_path)
+        assert image.returncode != 0, "STRICT let the image through on a warning"
+        output = build(directory, "store.ddd")
+        assert "name-similar" in output, "the target no longer reports the finding"
+
+    def test_an_error_the_image_relaxes_still_fails_the_target(self, tmp_path: Path) -> None:
+        interface = [declare("local", "Level", "uint8", init=300, id="ab3cd4ef5gh6")]
+        directory = self.project(tmp_path, interface, "SEVERITY init-invalid=warning")
+        build(directory, "img")
+        run = cmake("--build", str(directory), "--target", "store.ddd", cwd=tmp_path)
+        assert run.returncode != 0, "the target took the image's relaxation"
+        assert "init-invalid" in run.stdout + run.stderr
+
+    def test_the_build_page_says_which_policy_the_target_applies(self) -> None:
+        page = " ".join(BUILD_PAGE.read_text(encoding="utf-8").split())
+        assert "cannot drift apart" not in page, "the page still promises the three agree"
+        assert "under the default severity policy" in page
+        assert "not the build's" in page
+
+
 class TestPropagatingTheHeaders:
     """``NO_PROPAGATE_HEADERS``, which a project with two images has to give to both.
 

@@ -352,8 +352,8 @@ endfunction()
 # components belong together is a property of this build and nothing in the source tree names it at all.
 #
 # The same bargain as SCHEMA_DIRECTORY above: nothing in the build consumes this file, it exists so that a tool
-# outside the build can see what the build sees. "options" is the very list handed to "check" and "generate", so the
-# three cannot drift into applying different severities.
+# outside the build can see what the build sees. "options" is the very list handed to "check" and "generate", so those
+# three apply one severity policy. The <target>.ddd check of a component is not one of them: it applies the default.
 #
 # Configure time, and the project description is named rather than read - without PROJECT it is produced by
 # file(GENERATE) at the end of this configure run, so it does not exist yet while this executes.
@@ -519,6 +519,8 @@ function(ddd_add_component target)
     # is integrated into any image. A lone component has no counterpart and no shared vocabulary, so --standalone
     # holds back the checks that need every component of the project - the registry says which ones - and
     # everything else - datatypes, conversions, limits, initial values, bitfields, reserved names - is verified.
+    # It runs under the default severity policy: one component may be linked into several images and has no STRICT nor
+    # SEVERITY keyword of its own, so there is no image whose policy it could take (the build page says so).
     if(NOT TARGET ${target}.ddd)
         if(NOT DDD_EXECUTABLE)
             message(STATUS "ddd_add_component: not creating the ${target}.ddd check target (the ddd tool was not "

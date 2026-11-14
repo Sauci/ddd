@@ -97,6 +97,13 @@ declared in the registry - ``ddd checks`` marks each one ``(project)``, and
 everything else, from datatypes and conversions to initial values and bitfields, is verified
 as usual.
 
+That check runs under the default severity policy, whatever the image asks for. One component
+may be linked into several images, and ``ddd_add_component`` has no ``STRICT`` nor
+``SEVERITY`` keyword, so the target has no image whose policy it could take. A supplier's check is
+therefore not the build's: a warning that the image's ``STRICT`` turns into an error passes
+it, and an error the image's ``SEVERITY`` relaxes still fails it. The build decides; the
+target tells a supplier what the component itself holds.
+
 A registered vocabulary file is left out of that target: it declares no interface, so handing
 one to ``ddd check`` is a ``file-kind`` error the target could never pass. Such a file is
 checked in context instead, through the project of every image that collects it, and a target
@@ -354,8 +361,9 @@ key is what tells the two records apart.
 The second is **the severity policy**, from ``STRICT`` and ``SEVERITY``. A tool that ignores it
 reports a different set of findings than the build does, which is worse than reporting none:
 the same working tree would be clean in one place and failing in the other. The options handed
-to ``ddd build-info`` are the very list handed to ``ddd check`` and ``ddd generate``, so the
-three cannot drift apart.
+to ``ddd build-info`` are the very list handed to ``ddd check`` and ``ddd generate``, so those
+three apply one policy. The ``<target>.ddd`` check of a component is not among them: it applies
+the default policy, as described under "Registering a component".
 
 The project description is named rather than read, because in the collected mode it does not
 exist yet at that point - ``file(GENERATE)`` produces it at the end of the configure run, after

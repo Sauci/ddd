@@ -4,6 +4,7 @@ import type {
   VariableKeyOffer,
   VariableReply,
 } from "../api/types";
+import { wholePast } from "./objectValues";
 import { hrefOf } from "./route";
 import { textOf } from "./units";
 
@@ -243,7 +244,10 @@ export function shortValue(key: string, raw: string): string {
   if (Array.isArray(value)) return value.map((entry) => String(entry)).join(" × ");
   if (value === null || typeof value !== "object") return raw;
   const fields = value as Record<string, unknown>;
-  if (key === "limits") return `${format(fields.min)} … ${format(fields.max)}`;
+  if (key === "limits") {
+    const texts = boundTexts(raw);
+    return `${boundOf(fields.min, texts.get("min"))} … ${boundOf(fields.max, texts.get("max"))}`;
+  }
   if (key === "conversion") return conversion(fields);
   return raw.replace(/\s+/g, " ");
 }
@@ -258,7 +262,7 @@ function conversion(fields: Record<string, unknown>): string {
         ? "enum"
         : "identity");
   if (kind === "linear") {
-    const factor = `×${format(fields.factor ?? 1)}`;
+    const factor = `×${String(fields.factor ?? 1)}`;
     const offset =
       fields.offset === undefined || fields.offset === 0 ? "" : ` ${signed(fields.offset)}`;
     return `linear ${factor}${offset}`;
@@ -272,11 +276,13 @@ function conversion(fields: Record<string, unknown>): string {
 }
 
 function signed(value: unknown): string {
-  return typeof value === "number" && value > 0 ? `+${value}` : format(value);
+  return typeof value === "number" && value > 0 ? `+${value}` : String(value);
 }
 
-function format(value: unknown): string {
-  return value === undefined ? "?" : String(value);
+/** A range's bound in the key's row and its chooser, shown as its field shows it
+ * (`shownBound`). */
+function boundOf(value: unknown, text: string | undefined): string {
+  return value === undefined ? "?" : shownBound(value, text);
 }
 
 /** The panel's line under the variable's name. */
@@ -442,7 +448,8 @@ export function enteredValue(
   return typedRaw(key, text) ?? undefined;
 }
 
-/** The two fields of a range, read from what is stated. */
+/** The two fields of a range, read from what is stated: each bound as the double `JSON.parse`
+ * reads, but a whole number past 2^53 in its own digits (`shownBound`). */
 export function limitsOf(raw: string | null): { min: string; max: string } {
   if (raw === null) return { min: "", max: "" };
   let value: unknown;
@@ -452,11 +459,34 @@ export function limitsOf(raw: string | null): { min: string; max: string } {
     return { min: "", max: "" };
   }
   const fields = (value ?? {}) as Record<string, unknown>;
-  return { min: numberText(fields.min), max: numberText(fields.max) };
+  const texts = boundTexts(raw);
+  return {
+    min: numberText(fields.min, texts.get("min")),
+    max: numberText(fields.max, texts.get("max")),
+  };
 }
 
-function numberText(value: unknown): string {
-  return typeof value === "number" ? String(value) : "";
+function numberText(value: unknown, text: string | undefined): string {
+  return typeof value === "number" ? shownBound(value, text) : "";
+}
+
+/** Each bound of a stated range as its file spells it, before `JSON.parse` reads it as a double:
+ * the last one written of each, as `JSON.parse` takes the last. */
+const BOUND = /"(min|max)"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+
+function boundTexts(raw: string): Map<string, string> {
+  const texts = new Map<string, string>();
+  for (const [, bound = "", text = ""] of raw.matchAll(BOUND)) texts.set(bound, text);
+  return texts;
+}
+
+/** A stated bound as the page shows it: the double `JSON.parse` read it as - which is the
+ * number, for a fraction or anything short of 2^53 - but a whole number past 2^53 in its own
+ * digits, where the double reads as another: `18446744073709551615`, the most a uint64 holds, as
+ * `18446744073709552000`, which none holds. Its field then holds those digits, and a range made
+ * of them is refused (`limitsNote`) rather than sent back as the double. */
+function shownBound(value: unknown, text: string | undefined): string {
+  return text !== undefined && wholePast(text) !== null ? text : String(value);
 }
 
 /** The json text a range typed into the two fields travels as; `null` while it is not one.
@@ -481,14 +511,19 @@ export function limitsRaw(min: string, max: string): string | null {
  */
 export function limitsNote(min: string, max: string): string | null {
   if (min.trim() === "" && max.trim() === "") return null;
+  // A whole number past 2^53 is refused in the grid's own words (`wholePast`): sent, it would be
+  // the double nearest it, and a bound nobody typed.
+  const past = wholePast(min) ?? wholePast(max);
+  if (past !== null) return past;
   const low = numberOf(min);
   const high = numberOf(max);
   if (low === null || high === null) return "A range needs a minimum and a maximum";
   return high < low ? "The maximum is below the minimum" : null;
 }
 
-/** The number a field holds, or `null` where it holds none: empty, or not a number at all. */
+/** The number a field holds, or `null` where it holds none it can send: empty, not a number at
+ * all, or a whole number past 2^53, which the page holds as another (`wholePast`). */
 function numberOf(text: string): number | null {
   const value = Number(text);
-  return text.trim() === "" || Number.isNaN(value) ? null : value;
+  return text.trim() === "" || Number.isNaN(value) || wholePast(text) !== null ? null : value;
 }

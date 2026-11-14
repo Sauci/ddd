@@ -46,6 +46,10 @@ number the page sends at or past it may be another it rounded, which :func:`_acc
 refuses a 64 bit integer. Carrying every cell across as exact text instead was weighed and not
 taken: from 2^53 on, a 64 bit value is edited in the file."""
 
+WIDE: Final = frozenset({Datatype.UINT64, Datatype.SINT64})
+"""The integers whose range runs past :data:`EXACT`: the ones a number the page sends at or past
+it may be another the page rounded - narrower ones hold no number that large at all."""
+
 AXIS_REFERENCES: Final = ("axis", "x_axis", "y_axis")
 """The references that name an axis, in the order a grid lays them out.
 
@@ -241,9 +245,33 @@ def _unshowable(value: float, datatype: Datatype) -> bool:
     already, and is never one."""
     if not isinstance(value, int):
         return False
-    if datatype.is_integer and datatype.size == 8:
+    if datatype in WIDE:
         return abs(value) >= EXACT
     return abs(value) > EXACT
+
+
+def limits_refusal(raw: str, datatypes: Iterable[object]) -> str | None:
+    """The sentence ``limits`` stated as ``raw`` are refused with where they would give a 64 bit
+    integer among ``datatypes`` a bound at or past :data:`EXACT` - which the page may have rounded,
+    as it may a value :func:`_acceptable` refuses - or ``None``.
+
+    The route refuses what the page sends; a range written in the file holds its bounds exactly,
+    and the panel shows them as written. ``raw`` is json text the route's query has read already,
+    and ``datatypes`` are the declarations' own, as their files state them: what is no datatype
+    is no 64 bit integer either.
+    """
+    wide = next((d for d in datatypes if isinstance(d, str) and d in WIDE), None)
+    limits = json.loads(raw)
+    if wide is None or not isinstance(limits, dict):
+        return None
+    for bound in (limits.get("min"), limits.get("max")):
+        if isinstance(bound, int) and abs(bound) >= EXACT:
+            side = "-" if bound < 0 else ""
+            return (
+                f"{bound} is at or past {side}2^53, where the page cannot hold every whole number "
+                f"exactly, so no limit of a {wide} is set to it here"
+            )
+    return None
 
 
 def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:

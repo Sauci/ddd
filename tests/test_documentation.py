@@ -464,7 +464,13 @@ class TestTheCommandPage:
         ) in text
         assert "a float's cell takes every number as the double it is" in text
         assert "or one at 2^53 in a ``uint64`` or ``sint64``, says it cannot show it" in text
-        assert "from the page neither takes a whole number at 2^53 or past it" in text
+        assert (
+            "from the page neither takes a whole number at 2^53 or past it, as a value or as a limit"
+        ) in text
+        assert (
+            "show a bound past 2^53 in its file's own digits, and refuse a whole number past it "
+            "rather than send the double"
+        ) in text
 
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)

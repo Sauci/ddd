@@ -137,10 +137,11 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   const starting = offer?.values[0]?.raw ?? null;
   // Two empty fields are "state nothing", which removes the key; anything else that is not a
   // range is nothing to plan for, and no request is asked for while it is broken - the same
-  // gate `VariablePanel` gives its own settle query, though this panel's chooser has no field of
-  // its own to show the sentence in.
-  const broken = selected === "limits" ? limitsNote(edited?.min ?? "", edited?.max ?? "") : null;
+  // gate `VariablePanel` gives its own settle query, and the same sentence under the chooser.
+  // Judged on what the fields show, the type's own range among it: one whose bound the page
+  // cannot hold is no range to send either, rather than a removal of the key.
   const range = edited ?? (selected === undefined ? { min: "", max: "" } : limitsOf(starting));
+  const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
   const target =
     selected === undefined || broken !== null
       ? null
@@ -324,6 +325,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         setTyped(undefined);
         setRefused(null);
       }}
+      note={broken ?? undefined}
       description={description ?? type.description}
       onDescription={(text) => {
         setDescription(text);

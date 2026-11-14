@@ -331,6 +331,29 @@ export const SHAPED: VariableReply = {
   findings: [],
 };
 
+/** A range up to the most a uint64 holds, as a file writes it: `JSON.parse` reads the maximum as
+ * 18446744073709551616, which no uint64 holds. */
+const WIDE_RANGE = '{"min": 0, "max": 18446744073709551615}';
+
+/** Rpm_Axis made a uint64 whose two declarations state WIDE_RANGE: ARangeThePageCannotHold's
+ * own fields, the file's digits in Max and the grid's sentence under them. */
+export const WIDE_LIMITS: VariableReply = {
+  ...SHAPED,
+  declarations: SHAPED.declarations.map((declaration) => ({
+    ...declaration,
+    stated: { ...declaration.stated, datatype: '"uint64"', limits: WIDE_RANGE },
+  })),
+  keys: SHAPED.keys.map((key) =>
+    key.key === "limits"
+      ? {
+          ...key,
+          values: [inPlay(WIDE_RANGE, ["SensorHub", "Controller"], true)],
+          disagrees: false,
+        }
+      : key,
+  ),
+};
+
 /** SharedName as a measurement SensorHub produces, with dimensions, and as a parameter Pump
  * declares too: the "not on a parameter" cell. */
 export const MIXED_KINDS: VariableReply = {
@@ -1544,6 +1567,17 @@ export const SCALAR_TYPE: TypeReply = {
   ],
   members: [],
   findings: [],
+};
+
+/** Temperature_t made Mask_t, a uint64 stating WIDE_RANGE: ALimitThePageCannotHold's own fields
+ * and sentence, which this panel's chooser shows as the variable panel's does. */
+export const WIDE_TYPE: TypeReply = {
+  ...SCALAR_TYPE,
+  name: "Mask_t",
+  keys: SCALAR_TYPE.keys.map((key) => {
+    if (key.key === "datatype") return { ...key, values: [inPlay('"uint64"', [], false)] };
+    return key.key === "limits" ? { ...key, values: [inPlay(WIDE_RANGE, [], false)] } : key;
+  }),
 };
 
 /** Sensor_t filed as the second of two types sharing its name - Sensing's own inline types list,

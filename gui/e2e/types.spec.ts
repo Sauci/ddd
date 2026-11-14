@@ -189,6 +189,56 @@ test("a type's range is settled from its two fields, and written", async ({
   await expect(limits).toContainText("-40 … 120");
 });
 
+/** Temperature_t made a uint64 read as it is stored, its limits up to the most a uint64 holds,
+ * written as text: as a number here the maximum would already be the double nearest it. */
+function wideTemperature(directory: string): void {
+  const path = join(directory, TYPES);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /("name": "Temperature_t",[\s\S]*?"datatype": )"uint16"([\s\S]*?"conversion": )\{[^}]*\}([\s\S]*?"limits": )\{[^}]*\}/,
+    '$1"uint64"$2{ "kind": "identity" }$3{ "min": 0, "max": 18446744073709551615 }',
+  );
+  if (changed === text) throw new Error(`${TYPES} declares no Temperature_t of uint16`);
+  writeFileSync(path, changed, "utf8");
+}
+
+test("a type's limit past 2^53 is shown as its file writes it, and no range holding one is planned", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("structures", wideTemperature);
+  const path = join(gui.directory, TYPES);
+  const before = readFileSync(path);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  const limits = panel.getByRole("row", { name: "Limits", exact: true });
+  await expect(limits).toContainText("0 … 18446744073709551615");
+  await limits.click();
+  // The list opens as the row is picked, over everything under it: closed, as a reader closes it.
+  await panel.getByRole("combobox", { name: "Limits of Temperature_t" }).press("Escape");
+  await expect(panel.getByLabel("Max", { exact: true })).toHaveValue("18446744073709551615");
+  // The sentence the variable's panel says under the same two fields, and no plan: what the type
+  // states is no range to send, and never a removal of it.
+  await expect(
+    panel.getByText(
+      "'18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(readFileSync(path).equals(before)).toBe(true);
+
+  await panel.getByLabel("Max", { exact: true }).fill("9007199254740991");
+  await expect(panel.getByText("Changes 1 file: types.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => entryOf(gui.directory, "Temperature_t").limits)
+    .toEqual({ min: 0, max: 9007199254740991 });
+});
+
 test("a type's datatype is picked from the list of datatypes, and written", async ({
   page,
   structuresGui,

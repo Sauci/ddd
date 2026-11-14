@@ -23,6 +23,7 @@ import {
   SHAPED,
   TEXT_READER,
   VOCABULARY,
+  WIDE_LIMITS,
 } from "../stories/fixtures";
 import type { Offer } from "./UnitPanelView";
 import { VariablePanelView } from "./VariablePanelView";
@@ -264,6 +265,13 @@ export const ConversionChosen = () => (
 
 export const RangeTyped = () => (
   <View variable={SHAPED} units={FREE_UNITS} preview={PREVIEW_LIMITS} selected="limits" />
+);
+
+/** A uint64's range up to the most it holds: Max holds the file's own digits, which no double
+ * holds, and the grid's sentence says why no range holding them is applied - no preview, and no
+ * Apply. */
+export const ARangeThePageCannotHold = () => (
+  <View variable={WIDE_LIMITS} units={FREE_UNITS} preview={PREVIEW_LIMITS} selected="limits" />
 );
 
 /** The producer's datatype chosen for a reader of text: the plan names the file it would write,

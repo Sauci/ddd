@@ -360,7 +360,9 @@ The commands
        past 2^53, among its values or its axis's breakpoints, or one at 2^53 in a ``uint64``
        or ``sint64``, says it cannot show it rather than draw another number. A ``uint64`` or
        ``sint64`` value that large is set in the file; from the page neither takes a whole
-       number at 2^53 or past it. Under
+       number at 2^53 or past it, as a value or as a limit. The two fields a variable's or a
+       type's range is typed into show a bound past 2^53 in its file's own digits, and refuse a
+       whole number past it rather than send the double. Under
        the grid, the object's values are drawn as a picture too: a marker at each point
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over

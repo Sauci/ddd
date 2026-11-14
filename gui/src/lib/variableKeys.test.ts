@@ -699,3 +699,62 @@ describe("a range typed into two fields", () => {
     expect(limitsNote("0", "100")).toBeNull();
   });
 });
+
+describe("a limit a double cannot hold", () => {
+  // A uint64's limits as its file states them, read off `GET /api/variable` for a declaration
+  // whose maximum is the most a uint64 holds. `JSON.parse` reads 18446744073709551615 as
+  // 18446744073709551616: the Max field was filled with 18446744073709552000, a number no uint64
+  // holds, and an edit of Min alone sent it back - a file that would not load, over a bound
+  // nobody typed.
+  const STATED = '{\n            "min": 0,\n            "max": 18446744073709551615\n          }';
+  const INEXACT = "where the page cannot hold every whole number exactly";
+
+  test("the field shows the file's own digits, not the double they read as", () => {
+    expect(limitsOf(STATED)).toEqual({ min: "0", max: "18446744073709551615" });
+  });
+
+  test("and so do the key's row and its chooser", () => {
+    expect(shortValue("limits", STATED)).toBe("0 … 18446744073709551615");
+  });
+
+  test("a bound whose own text is not found is the double read", () => {
+    // `JSON.parse` reads a key spelled with an escape, which no file of the page's writes; its
+    // bound is then shown as the double it reads, as every bound was.
+    expect(limitsOf('{ "min": 0, "m\\u0061x": 100 }')).toEqual({ min: "0", max: "100" });
+  });
+
+  test("a range holding one says why it cannot be applied, in the grid's words", () => {
+    expect(limitsNote("1", "18446744073709551615")).toBe(
+      `'18446744073709551615' is past 2^53, ${INEXACT}`,
+    );
+    expect(limitsRaw("1", "18446744073709551615")).toBeNull();
+  });
+
+  test("so does one typed past 2^53, either side, in any whole number's spelling", () => {
+    expect(limitsNote("-9007199254740993", "0")).toBe(
+      `'-9007199254740993' is past -2^53, ${INEXACT}`,
+    );
+    expect(limitsNote("0", "0x8000000000000001")).toBe(
+      `'0x8000000000000001' is past 2^53, ${INEXACT}`,
+    );
+    expect(limitsRaw("0", "9007199254740993")).toBeNull();
+  });
+
+  test("up to 2^53 a bound is written as it is typed", () => {
+    expect(limitsRaw("-9007199254740992", "9007199254740991")).toBe(
+      '{ "min": -9007199254740992, "max": 9007199254740991 }',
+    );
+    expect(limitsNote("-9007199254740992", "9007199254740991")).toBeNull();
+  });
+
+  test("a float's bound past 2^53, spelled as a float, is the double it is", () => {
+    // FLT_MAX is a whole number past 2^53 too; a limit spelled with an exponent is read, and
+    // written, as the double it spells, which a float holds as it is.
+    const range = '{ "min": -3.4028234663852886e+38, "max": 3.4028234663852886e+38 }';
+    expect(limitsOf(range)).toEqual({
+      min: "-3.4028234663852886e+38",
+      max: "3.4028234663852886e+38",
+    });
+    expect(limitsNote("-3.4028234663852886e38", "3.4028234663852886e38")).toBeNull();
+  });
+});

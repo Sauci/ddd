@@ -127,6 +127,27 @@ const DECIMAL = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/;
 /** A whole number in hexadecimal, binary or octal digits, which `Number` reads with no sign. */
 const NONDECIMAL = /^0(?:[xX][0-9a-fA-F]+|[bB][01]+|[oO][0-7]+)$/;
 
+/** A whole number in decimal digits, with or without a sign. */
+const WHOLE = /^[+-]?\d+$/;
+
+/** The sentence a number past ±2^53 is refused with, naming it as `said` and its side. */
+function pastSentence(said: string, side: -1 | 1): string {
+  return `'${said}' is past ${side < 0 ? "-" : ""}2^53, ${INEXACT}`;
+}
+
+/** The sentence a whole number past ±2^53 is refused with where it is spelled as one - in
+ * digits, or in hexadecimal, binary or octal - or `null` for any other text. What a field with no
+ * datatype to weigh it by refuses: a limit, which a float states as freely as any number, and
+ * which a fraction or an exponent spells as the double it is. */
+export function wholePast(text: string): string | null {
+  const trimmed = text.trim();
+  if (!WHOLE.test(trimmed) && !NONDECIMAL.test(trimmed)) return null;
+  // `BigInt` reads exactly these spellings, a sign on decimal digits included.
+  const whole = BigInt(trimmed);
+  if (whole > EXACT) return pastSentence(text, 1);
+  return whole < -EXACT ? pastSentence(text, -1) : null;
+}
+
 /** What a text says as a number: the double `Number` reads it as; which side of ±2^53 the number
  * it spells lies past, `0` where it lies inside; and whether that number has a fraction. */
 interface Spelled {
@@ -185,9 +206,7 @@ function readOf(
   const read = spelled(text);
   if (read === null) return { refusal: `'${said}' is not a number` };
   if (floating(datatype)) return { double: read.double };
-  if (read.side !== 0) {
-    return { refusal: `'${said}' is past ${read.side < 0 ? "-" : ""}2^53, ${INEXACT}` };
-  }
+  if (read.side !== 0) return { refusal: pastSentence(said, read.side) };
   if (read.fraction && Number.isInteger(read.double)) {
     return { refusal: `'${said}' is not a whole number, and the page cannot hold its fraction` };
   }

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTROLLER,
@@ -10,8 +10,62 @@ import {
   PUMP,
   readAsText,
   SENSOR_HUB,
+  USER_INTERFACE,
 } from "./demo";
 import { expect, test } from "./fixtures";
+
+/** BlockA made a uint64 stating limits up to the most a uint64 holds, written as text: as a
+ * number here the maximum would already be the double nearest it. */
+function wideBlockA(directory: string): void {
+  const path = join(directory, USER_INTERFACE);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /("name": "BlockA",[\s\S]*?"datatype": )"uint8"/,
+    '$1"uint64",\n          "limits": { "min": 0, "max": 18446744073709551615 }',
+  );
+  if (changed === text) throw new Error(`${USER_INTERFACE} declares no BlockA of uint8`);
+  writeFileSync(path, changed, "utf8");
+}
+
+test("a limit past 2^53 is shown as its file writes it, and no range holding one is applied", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", wideBlockA);
+  const path = join(gui.directory, USER_INTERFACE);
+  const before = readFileSync(path);
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "UserInterface", exact: true }).click();
+  await page.getByRole("rowheader", { name: "BlockA" }).click();
+  const panel = page.getByRole("complementary", { name: "BlockA" });
+  await panel.getByRole("row", { name: /^limits/ }).click();
+
+  // The file's own digits in the field and in the key's row, not 18446744073709552000, the
+  // double they read as - which an edit of Min alone used to send back, a file that would not load.
+  await expect(panel.getByLabel("Max")).toHaveValue("18446744073709551615");
+  await expect(panel.getByRole("row", { name: /^limits/ })).toContainText(
+    "0 … 18446744073709551615",
+  );
+  const note = panel.getByText(
+    "'18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
+    { exact: true },
+  );
+  await expect(note).toBeVisible();
+  const apply = panel.getByRole("button", { name: /^Apply to/ });
+  await expect(apply).toHaveCount(0);
+  await panel.getByLabel("Min").fill("1");
+  await expect(note).toBeVisible();
+  await expect(apply).toHaveCount(0);
+  expect(readFileSync(path).equals(before)).toBe(true);
+
+  // A maximum the page holds is the range written, as it was typed.
+  await panel.getByLabel("Max").fill("9007199254740991");
+  await expect(panel.getByText("Changes 1 file: user_interface.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => readFileSync(path, "utf8"))
+    .toContain('"limits": { "min": 1, "max": 9007199254740991 }');
+});
 
 /** ValueA's definition in one file of the copy, read back from disk. */
 function valueA(directory: string, file: string): Record<string, never> {

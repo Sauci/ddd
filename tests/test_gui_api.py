@@ -9925,6 +9925,122 @@ class TestAWholeNumberPastWhatADoubleHolds:
         ]
 
 
+def wide_limits(
+    tmp_path: Path, datatype: str = "uint64", low: int = 0, high: int = 2**64 - 1
+) -> Api:
+    """A project of one variable, ``Speed``, of ``datatype``, stating the limits ``low`` and
+    ``high`` - written as their own digits, so a bound past 2^53 reaches the file exactly - and of
+    one scalar type, ``Wide_t``, of the same datatype and limits."""
+    limits = {"min": low, "max": high}
+    return opened(
+        tmp_path,
+        {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Speed", datatype, limits=limits),
+                types=[scalar_type("Wide_t", datatype=datatype, limits=limits)],
+            ),
+        },
+    )
+
+
+LIMIT_AT_OR_PAST: Final = (
+    "{value} is at or past {side}2^53, where the page cannot hold every whole number exactly, so "
+    "no limit of a {datatype} is set to it here"
+)
+"""The server's refusal of a 64 bit integer's limit."""
+
+
+class TestALimitPastWhatADoubleHolds:
+    """The limits fields send what the page holds, a double: a range typed past 2^53 reached
+    ``/api/settle`` as another, and the variable's own ``18446744073709551615``, pre-filled as
+    ``18446744073709552000``, came back with whatever bound was edited beside it - a file that would
+    not load, over a number nobody typed. A 64 bit integer takes no limit at or past 2^53 from the
+    page, as it takes no value there (``_acceptable``), and a type's limits are refused alike."""
+
+    @pytest.mark.parametrize(
+        ("datatype", "sent", "value", "side"),
+        [
+            pytest.param(
+                "uint64", '{ "min": 0, "max": 9007199254740992 }', 9007199254740992, "", id="2^53"
+            ),
+            pytest.param(
+                "uint64",
+                '{ "min": 1, "max": 18446744073709552000 }',
+                18446744073709552000,
+                "",
+                id="the-most-a-uint64-holds-pre-filled-as-a-double",
+            ),
+            pytest.param(
+                "sint64",
+                '{ "min": -9007199254740992, "max": 0 }',
+                -9007199254740992,
+                "-",
+                id="minus-2^53",
+            ),
+        ],
+    )
+    def test_a_variable_is_refused_a_limit_at_or_past_2_53(
+        self, tmp_path: Path, datatype: str, sent: str, value: int, side: str
+    ) -> None:
+        api = wide_limits(tmp_path, datatype, low=-1 if datatype == "sint64" else 0)
+        before = contents(tmp_path)
+        said = LIMIT_AT_OR_PAST.format(value=value, side=side, datatype=datatype)
+        assert get(api, "/api/settle", name="Speed", key="limits", raw=sent) == Reply(
+            409, {"error": "invalid", "message": said}
+        )
+        assert contents(tmp_path) == before
+
+    def test_a_variable_takes_a_limit_short_of_2_53_as_it_is_written(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740991 }'
+        body = get(api, "/api/settle", name="Speed", key="limits", raw=sent).body
+        assert body["unloadable"] == []
+        assert [hunk["after"] for change in body["changes"] for hunk in change["hunks"]] == [
+            [f'          "limits": {sent}']
+        ]
+
+    def test_a_float_takes_a_whole_limit_past_2_53(self, tmp_path: Path) -> None:
+        """A float holds the double the page sends, so its limit is no 64 bit integer's."""
+        api = wide_limits(tmp_path, "float64", high=1)
+        sent = '{ "min": 0, "max": 10000000000000000000 }'
+        reply = get(api, "/api/settle", name="Speed", key="limits", raw=sent)
+        assert (reply.status, reply.body["unloadable"]) == (200, [])
+
+    def test_a_type_is_refused_a_limit_at_or_past_2_53(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        before = contents(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740992 }'
+        said = LIMIT_AT_OR_PAST.format(value=9007199254740992, side="", datatype="uint64")
+        assert get(
+            api, "/api/type-plan", action="set", name="Wide_t", key="limits", raw=sent
+        ) == Reply(409, {"error": "invalid", "message": said})
+        assert contents(tmp_path) == before
+
+    def test_a_name_no_type_has_is_refused_as_the_plan_refuses_it(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740992 }'
+        reply = get(api, "/api/type-plan", action="set", name="Nope", key="limits", raw=sent)
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_range_that_is_no_object_is_left_to_the_models(self, tmp_path: Path) -> None:
+        """No bound to weigh: the settlement plans it, and says which declaration it leaves
+        unable to load, as for any value the reader chose."""
+        api = wide_limits(tmp_path)
+        body = get(api, "/api/settle", name="Speed", key="limits", raw="5").body
+        assert len(body["unloadable"]) == 1
+
+    def test_a_type_takes_a_limit_short_of_2_53(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740991 }'
+        reply = get(api, "/api/type-plan", action="set", name="Wide_t", key="limits", raw=sent)
+        assert reply.status == 200
+        assert [op["raw"] for change in reply.body["changes"] for op in change["operations"]] == [
+            sent
+        ]
+
+
 # The four shapes an entry of the root's includes takes, in one list: a literal naming a file, a
 # pattern matching two, a plain path naming no file and a pattern matching none. The last two carry
 # the findings filed at the entry itself - `file-not-found` and `include-empty` - and the first

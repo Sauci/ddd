@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PlanReply, TypeReply } from "../api/types";
 import { textOf, unitLabel } from "../lib/units";
-import { settledRaw } from "../lib/variableKeys";
+import { limitsNote, limitsOf, settledRaw } from "../lib/variableKeys";
 import {
   EXTERNAL_TYPE,
   PROJECT_UNITS,
@@ -9,6 +9,7 @@ import {
   SET_UNIT,
   STRUCT_TYPE,
   UNIT_TAKEN_OFF,
+  WIDE_TYPE,
 } from "../stories/fixtures";
 import { TypePanelView } from "./TypePanelView";
 
@@ -46,7 +47,7 @@ function PanelStory({
   const [selected, setSelected] = useState<string | undefined>(on);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [chosen, setChosen] = useState<string | null | undefined>(chosenSeed);
-  const [range, setRange] = useState({ min: "", max: "" });
+  const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [description, setDescription] = useState(reply.description);
   const [renameTo, setRenameTo] = useState<string | null>(renameSeed);
   const [changesShown, setChangesShown] = useState(shown);
@@ -54,9 +55,17 @@ function PanelStory({
     setSelected(key);
     setTyped(undefined);
     setChosen(undefined);
-    setRange({ min: "", max: "" });
+    setEdited(undefined);
     setChangesShown(false);
   };
+  // As in TypePanel.tsx: the two fields read the type's own range until they are edited, and
+  // what they say is judged, the sentence under the chooser saying why it is no range to send.
+  const range =
+    edited ??
+    (selected === undefined
+      ? { min: "", max: "" }
+      : limitsOf(reply.keys.find((entry) => entry.key === selected)?.values[0]?.raw ?? null));
+  const note = selected === "limits" ? (limitsNote(range.min, range.max) ?? undefined) : undefined;
   return (
     <TypePanelView
       type={reply}
@@ -72,7 +81,8 @@ function PanelStory({
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}
-      onRange={setRange}
+      onRange={setEdited}
+      note={note}
       description={description}
       onDescription={setDescription}
       renameTo={renameTo}
@@ -123,6 +133,10 @@ export const NoUnitChosen = () => (
 );
 
 /** Sensor_t: no "What it fixes" table, its four members, one with dimensions, its two uses. */
+/** A uint64 type's range up to the most it holds: Max holds the file's own digits, and the
+ * grid's sentence says why no range holding them is planned. */
+export const ALimitThePageCannotHold = () => <PanelStory reply={WIDE_TYPE} on="limits" />;
+
 export const AStructure = () => <PanelStory reply={STRUCT_TYPE} />;
 
 /** DriverStatus_t: an external's own header line, and its one use inside Sensor_t. */

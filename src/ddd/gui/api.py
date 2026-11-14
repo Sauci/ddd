@@ -165,7 +165,14 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
-from ddd.object_values import Grid, ValueRefusalError, grid_of, set_cell, set_values
+from ddd.object_values import (
+    Grid,
+    ValueRefusalError,
+    grid_of,
+    limits_refusal,
+    set_cell,
+    set_values,
+)
 from ddd.project_shared import (
     CONSTANTS,
     RASTERS,
@@ -979,6 +986,17 @@ class Api:
         if unseen is not None:
             return unseen
         cache: dict[Path, Document] = {}
+        # A type's limits refused as a variable's are (`_settle`), by the datatype it states.
+        if isinstance(asked, SetTypeKey) and asked.key == "limits" and asked.raw is not None:
+            site = built.types.get(asked.name)
+            stated: list[object] = []
+            # A statement, not a ternary, so the coverage gate sees a name no type has: the plan
+            # refuses that one in its own words below.
+            if site is not None:
+                stated.append(read(site.path, cache).value_at(f"{site.pointer}.datatype"))
+            inexact = limits_refusal(asked.raw, stated)
+            if inexact is not None:
+                return _refusal(revision, "invalid", inexact, asked.name)
         try:
             plan = _type_plan_of(asked, built, cache)
         except TypeRefusalError as refused:
@@ -1305,6 +1323,17 @@ class Api:
         # One cache for both reads below, so a declaration `settle` already read for this
         # request is not read from disk a second time to narrow what it comes to.
         cache: dict[Path, Document] = {}
+        # A bound the page sends at or past 2^53 may be another it rounded, which a 64 bit integer
+        # is refused, as a value is (`limits_refusal`). Read from each declaration's own datatype:
+        # one naming a type takes no limits of its own, the type fixing them.
+        if key == "limits" and raw is not None:
+            stated = [
+                read(site.path, cache).value_at(f"{site.pointer}.datatype")
+                for site in built.declarations[name]
+            ]
+            inexact = limits_refusal(raw, stated)
+            if inexact is not None:
+                return _error(409, "invalid", inexact)
         # The reader chose this value, so a declaration it would leave unable to load is not
         # left out: it is planned, and told (`unloadable`) - where a button offering it is withheld.
         settlement = settle(built, name, key, raw, cache, withholding=False)

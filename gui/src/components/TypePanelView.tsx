@@ -26,6 +26,9 @@ export interface TypePanelViewProps {
   onPickerClosed: () => void;
   range: { min: string; max: string };
   onRange: (range: { min: string; max: string }) => void;
+  /** Why the two fields say nothing to apply, while they say so - the sentence the variable
+   * panel's chooser shows under them (`limitsNote`). */
+  note?: string | undefined;
   /** What the reader types into the Description field, and into Rename. */
   description: string;
   onDescription: (text: string) => void;
@@ -130,7 +133,7 @@ export function TypePanelView(props: TypePanelViewProps) {
               onPickerClosed={props.onPickerClosed}
               range={props.range}
               onRange={props.onRange}
-              note={undefined}
+              note={props.note}
               busy={busy}
               focus={1}
               pickerTrigger="focus"

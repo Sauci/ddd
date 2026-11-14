@@ -6,7 +6,10 @@ import {
   definitionOf,
   dimensionsRaw,
   followedScope,
+  formUnsettled,
   keysOf,
+  keyUnsettled,
+  labelOf,
   modeOf,
   removalSentence,
   scopesOf,
@@ -270,5 +273,28 @@ describe("what removing a declaration leaves behind", () => {
     expect(removalSentence(variable, "SensorHub")).toBe(
       "Removes ValueA from SensorHub; Pump and Controller still declare it.",
     );
+  });
+});
+
+describe("text left in a key's field", () => {
+  test("a field with no text typed reads its value, and typed text equal to that reads as taken", () => {
+    expect(labelOf("volatile", undefined)).toBe("state nothing");
+    expect(labelOf("volatile", "")).toBe("state nothing");
+    expect(labelOf("volatile", "false")).toBe("false");
+    expect(keyUnsettled("volatile", {}, { volatile: "false" })).toBe(false);
+    expect(keyUnsettled("volatile", { volatile: "false" }, { volatile: "false" })).toBe(false);
+  });
+
+  test("typed text that is not what the form states is not taken", () => {
+    expect(keyUnsettled("volatile", { volatile: "fal" }, { volatile: "false" })).toBe(true);
+    expect(keyUnsettled("volatile", { volatile: "" }, {})).toBe(true);
+  });
+
+  test("the form is unsettled while a key it asks for holds such text, and only then", () => {
+    expect(formUnsettled("measurement", REPLY, {}, {})).toBe(false);
+    expect(formUnsettled("measurement", REPLY, { volatile: "fal" }, {})).toBe(true);
+    expect(formUnsettled("measurement", REPLY, { volatile: undefined }, {})).toBe(false);
+    // A key this kind does not ask for is not in the form.
+    expect(formUnsettled("value_block", REPLY, { datatype: "uin" }, {})).toBe(false);
   });
 });

@@ -1,4 +1,6 @@
 import type { DeclarableName, DeclarableReply, VariableKeyOffer } from "../api/types";
+import { unsettled } from "./typing";
+import { shortValue } from "./variableKeys";
 
 /** Which of the two verbs the name field has landed on. */
 export type Mode = "unchosen" | "read" | "declare";
@@ -131,4 +133,34 @@ export function removalSentence(
 function listed(names: string[]): string {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** The label a key's field shows for its committed value, `shortValue`'s own wording - the same
+ * idea `labelOfRaw` reads for an existing variable's chooser, adapted for `values`' "absent
+ * means unstated" instead of a `VariableReply` to read `null` from: a declaration being drafted
+ * has none yet. */
+export function labelOf(key: string, raw: string | undefined): string {
+  return raw === undefined || raw === "" ? "state nothing" : shortValue(key, raw);
+}
+
+/** Whether the text typed into a key's field is not the value the form states for it
+ * (`unsettled`, lib/typing.ts, decision 15.3). */
+export function keyUnsettled(
+  key: string,
+  typed: Record<string, string | undefined>,
+  values: Record<string, string>,
+): boolean {
+  return unsettled(typed[key], labelOf(key, values[key]));
+}
+
+/** Whether any key's field of this kind's form holds text not yet taken: the form then offers no
+ * Add, since it would write what the fields stated before it. A key the kind does not ask for is
+ * not in the form, whatever was typed into it earlier. */
+export function formUnsettled(
+  kind: string,
+  reply: DeclarableReply,
+  typed: Record<string, string | undefined>,
+  values: Record<string, string>,
+): boolean {
+  return keysOf(kind, reply).some((key) => keyUnsettled(key.key, typed, values));
 }

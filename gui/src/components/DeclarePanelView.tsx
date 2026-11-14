@@ -1,7 +1,14 @@
 import type { DeclarableReply, PlanReply, UnitsReply } from "../api/types";
-import { declareSentence, keysOf, modeOf, scopesOf } from "../lib/declarations";
+import {
+  declareSentence,
+  formUnsettled,
+  keysOf,
+  keyUnsettled,
+  labelOf,
+  modeOf,
+  scopesOf,
+} from "../lib/declarations";
 import { shownChanges } from "../lib/units";
-import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { ComboBox } from "../ui/ComboBox";
 import { Panel } from "../ui/Panel";
@@ -55,16 +62,6 @@ function scopeOf(scopes: string[], text: string): string {
   return scopes.find((scope) => (SCOPE_WORDS[scope] ?? scope) === text) ?? text;
 }
 
-const NOTHING = "state nothing";
-
-/** The label a key's field shows for its committed value, `shortValue`'s own wording - the same
- * idea `labelOfRaw` reads for an existing variable's chooser, adapted for `values`' "absent
- * means unstated" instead of a `VariableReply` to read `null` from: a declaration being drafted
- * has none yet. */
-function labelOf(key: string, raw: string | undefined): string {
-  return raw === undefined || raw === "" ? NOTHING : shortValue(key, raw);
-}
-
 /** `KeyChooser`'s `unit` and `limits` editors never appear in this form - `keysOf` excludes both
  * keys, since no kind requires either to become a loadable declaration (`declarations.ts`) - so
  * these satisfy its props' types without ever being read. */
@@ -86,6 +83,8 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
   const { reply } = props;
   const mode = modeOf(props.typed, reply.names);
   const scopeChoices = scopesOf(props.typed, reply);
+  // Text left in a key's field is no value yet (decision 15.3): no plan and no Add until it is.
+  const unsettledForm = formUnsettled(props.kind, reply, props.typed_, props.values);
   return (
     <Panel title="Add a declaration" onClose={props.onClose}>
       <div className="declare-fields">
@@ -182,9 +181,7 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
                     props.onTyped_(key.key, undefined);
                   }}
                   onPickerClosed={() => props.onTyped_(key.key, undefined)}
-                  // The form's own Add is not withheld for text left in a key's field: outside
-                  // task 4's three choosers, left for the branch's review.
-                  unsettled={false}
+                  unsettled={keyUnsettled(key.key, props.typed_, props.values)}
                   range={NO_RANGE}
                   onRange={() => undefined}
                   note={undefined}
@@ -203,20 +200,23 @@ export function DeclarePanelView(props: DeclarePanelViewProps) {
           {props.refusal}
         </p>
       )}
-      {props.refusal === null && props.plan !== null && props.plan.changes.length > 0 && (
-        <>
-          {props.changesShown && <Changes changes={shownChanges(props.plan.changes)} />}
-          <div className="panel-actions">
-            <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
-              {props.changesShown ? "Hide changes" : "Show changes"}
-            </Button>
-            <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
-              Apply to {props.plan.changes.length} file
-              {props.plan.changes.length === 1 ? "" : "s"}
-            </Button>
-          </div>
-        </>
-      )}
+      {props.refusal === null &&
+        !unsettledForm &&
+        props.plan !== null &&
+        props.plan.changes.length > 0 && (
+          <>
+            {props.changesShown && <Changes changes={shownChanges(props.plan.changes)} />}
+            <div className="panel-actions">
+              <Button variant="link" onPress={() => props.onChangesShown(!props.changesShown)}>
+                {props.changesShown ? "Hide changes" : "Show changes"}
+              </Button>
+              <Button variant="primary" isDisabled={props.busy} onPress={props.onApply}>
+                Apply to {props.plan.changes.length} file
+                {props.plan.changes.length === 1 ? "" : "s"}
+              </Button>
+            </div>
+          </>
+        )}
     </Panel>
   );
 }

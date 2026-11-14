@@ -343,6 +343,26 @@ export function settledRaw(
   return chosen === undefined ? starting : chosen;
 }
 
+/** What a panel holds of one key's own choice, typing or edit: the key it was made for and the
+ * value. A panel that moves by itself from one key to the next - the first that disagrees, once
+ * the last is settled - must not hand the next key what was made for the last, so a held value
+ * is read only while its key is the one on screen. */
+export interface Held<A> {
+  key: string;
+  value: A;
+}
+
+/** The value held for `selected`, `undefined` when nothing is held or what is held was made for
+ * another key (or no key is on screen). */
+export function heldFor<A>(held: Held<A> | undefined, selected: string | undefined): A | undefined {
+  return held !== undefined && held.key === selected ? held.value : undefined;
+}
+
+/** `value` held for `selected`: nothing when no key is on screen to hold it for. */
+export function holding<A>(selected: string | undefined, value: A): Held<A> | undefined {
+  return selected === undefined ? undefined : { key: selected, value };
+}
+
 /** What the field reads for a value while nothing is being typed.
  *
  * Takes the variable for symmetry with `startingRaw`, whose result this labels; the label

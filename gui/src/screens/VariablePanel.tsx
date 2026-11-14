@@ -18,6 +18,9 @@ import { planShown } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
+  type Held,
+  heldFor,
+  holding,
   keyRows,
   labelOfRaw,
   limitsNote,
@@ -118,15 +121,20 @@ export function VariablePanel({
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
   // `undefined` until the reader chooses: the chooser then settles on the producer's value, the
   // direction the tool's own rule reads in, and says what that would change.
-  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
-  const [typed, setTyped] = useState<string | undefined>(undefined);
+  // Each of the three is held with the key it was made for, and read only while that key is the
+  // one on screen (`heldFor`): the panel moves by itself to the next row that disagrees once
+  // one is settled, and that row starts on the producer's value, as any row opened does.
+  const [heldChosen, holdChosen] = useState<Held<string | null> | undefined>(undefined);
+  const [heldTyped, holdTyped] = useState<Held<string> | undefined>(undefined);
   // What the reader has put in the two fields of a range, `undefined` until they touch one:
   // the same tri-state as `picked`, `chosen` and `typed`. What the fields read is derived
   // below rather than seeded by a handler, so that a `limits` row reached by any path - by
   // hand, or opened for the reader because it is the first row that disagrees - starts on the
   // value the chooser starts on. Two empty fields are a removal, and a removal is something
   // the reader asks for, never where a row opens.
-  const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
+  const [heldEdited, holdEdited] = useState<Held<{ min: string; max: string }> | undefined>(
+    undefined,
+  );
   // Whether `edited`'s own value came from typing into Min or Max, rather than a pick from the
   // list: `onChosen` below writes `edited` too, for a range picked outright or "state nothing"
   // chosen, so `edited !== undefined` alone cannot tell a pick from typing (fix round 2's own
@@ -168,6 +176,15 @@ export function VariablePanel({
   // fields say and what Apply writes cannot drift apart. Two empty fields are "state nothing",
   // which the list offers too; anything else that is not a range is not a value at all, and
   // the chooser says so instead of previewing something the reader did not ask for.
+  const chosen = heldFor(heldChosen, selected);
+  const typed = heldFor(heldTyped, selected);
+  const edited = heldFor(heldEdited, selected);
+  const setChosen = (raw: string | null | undefined) =>
+    holdChosen(raw === undefined ? undefined : holding(selected, raw));
+  const setTyped = (text: string | undefined) =>
+    holdTyped(text === undefined ? undefined : holding(selected, text));
+  const setEdited = (next: { min: string; max: string } | undefined) =>
+    holdEdited(next === undefined ? undefined : holding(selected, next));
   const range =
     edited ??
     (selected === undefined || reply === undefined
@@ -190,7 +207,7 @@ export function VariablePanel({
   // `settleRequest` itself, never `target`.
   const settleRequest: SettleRequest | null =
     reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
-  const askedSettle = useDebounced(settleRequest, typedLimits);
+  const askedSettle = useDebounced(settleRequest, typedLimits && edited !== undefined);
   const preview = useQuery({
     queryKey: ["settle", name, askedSettle, revision],
     queryFn:

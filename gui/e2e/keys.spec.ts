@@ -4,6 +4,7 @@ import {
   CONTROLLER,
   driftDatatypeIn,
   driftFactor,
+  driftIn,
   driftMax,
   driftMaxUnseen,
   openPanel,
@@ -344,4 +345,26 @@ test("a key that may be left unstated goes from every declaration", async ({ pag
   await expect(panel.getByRole("row", { name: /^unit/ })).toContainText("none");
   expect(valueA(gui.directory, SENSOR_HUB).unit).toBeUndefined();
   expect(valueA(gui.directory, CONTROLLER).unit).toBeUndefined();
+});
+
+test("a datatype picked on one row is not carried to the unit row the panel moves to", async ({
+  page,
+  gui,
+}) => {
+  driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint16");
+  driftIn(gui.directory, CONTROLLER, "ValueA", "rpm");
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("rowheader", { name: "ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(
+    panel.getByRole("listitem").filter({ hasText: "definition-mismatch" }).first(),
+  ).toBeVisible();
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.fill("uint16");
+  await datatype.press("Enter");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  // The datatype settled, the panel moves by itself to the unit, the one row still disagreeing:
+  // it starts on the producer's unit, not on the datatype that was picked for the last row.
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
 });

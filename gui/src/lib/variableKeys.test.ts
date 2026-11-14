@@ -4,6 +4,8 @@ import {
   chooserSections,
   describeVariable,
   enteredValue,
+  heldFor,
+  holding,
   keyColumns,
   keyRows,
   labelOfRaw,
@@ -642,6 +644,24 @@ describe("the value a chooser starts on", () => {
     expect(startingRaw(variable([offer("unit")]), "nonsense")).toBeNull();
     // chooserSections no longer looks a key up itself (Task 6): it now takes the offer
     // directly, and a caller that finds none from offerOf - covered above - does not call it.
+  });
+});
+
+describe("what a panel holds for one key", () => {
+  test("a value is read back only while its key is the one on screen", () => {
+    const held = holding("datatype", "uint16");
+    expect(heldFor(held, "datatype")).toBe("uint16");
+    expect(heldFor(held, "unit")).toBeUndefined();
+    expect(heldFor(held, undefined)).toBeUndefined();
+  });
+
+  test("a pick of nothing is held, and is not nothing held", () => {
+    expect(heldFor(holding("unit", null), "unit")).toBeNull();
+    expect(heldFor(undefined, "unit")).toBeUndefined();
+  });
+
+  test("nothing is held for no key", () => {
+    expect(holding(undefined, "rpm")).toBeUndefined();
   });
 });
 

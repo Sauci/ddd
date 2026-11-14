@@ -1152,9 +1152,10 @@ class TestTheBuildAfterAnEdit:
         """A component named ``ddd_types`` has ``{component}.h.jinja2`` render ``ddd_types.h``,
         which ``ddd_types.h.jinja2`` renders too: ninja refused to load a build declaring that
         file twice, naming no component, and went on refusing once the description was put
-        right, the build being one that could no longer configure itself again. The configure
-        refuses it instead, naming the component and the template, and the build after the
-        repair configures again by itself."""
+        right, the build being one that could no longer configure itself again; under make the
+        tool refused to write the file twice, when the build ran it. The configure refuses it
+        instead, under either, naming the component and the template, and giving both reasons;
+        the build after the repair configures again by itself."""
         story = Story(tmp_path, STORY_SHAPES["collected"], generator)
         assert story.build().code == 0
         spare = tmp_path / "spare.ddd.json"
@@ -1166,8 +1167,9 @@ class TestTheBuildAfterAnEdit:
         assert refused.code != 0, said
         assert (
             'ddd_generate: the component "ddd_types" of "img" would have "{component}.h.jinja2" '
-            'render "ddd_types.h", which "ddd_types.h.jinja2" renders already: ninja refuses a '
-            "build that declares one file twice. Rename the component, or one of the templates."
+            'render "ddd_types.h", which "ddd_types.h.jinja2" renders already: the tool refuses to '
+            "write a file twice, and a build declaring it twice does not load under Ninja, not "
+            "even to configure again. Rename the component, or one of the templates."
         ) in said
         spare.write_text(named, encoding="utf-8")
         assert story.build().code == 0

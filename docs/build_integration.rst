@@ -274,10 +274,10 @@ into the image, so one template must produce a source file. For the same reason 
 calling ``ddd_generate()`` has to have C enabled by the time it is done - by
 ``project(<name> LANGUAGES C CXX)``, by an ``enable_language(C)`` in a directory above it
 before it is added, or by one in it, before or after the call - since the object library
-compiling those files is built there. One that has not is refused, naming the ``.c`` files, the directory and the two ways
-to enable it: ``project(<name> LANGUAGES CXX)`` was left to CMake, which cannot tell the
-linker language of that library and names it alone, and C enabled in a sibling directory alone
-stopped CMake on a variable of its own that the directory lacks.
+compiling those files is built there. One that has not is refused, naming the ``.c`` files, the
+directory and the two ways to enable it: ``project(<name> LANGUAGES CXX)`` was left to CMake,
+which cannot tell the linker language of that library and names it alone, and C enabled in a
+sibling directory alone stopped CMake on a variable of its own that the directory lacks.
 
 Collection follows the link graph
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -513,8 +513,8 @@ including the ones this image happens not to link.
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 
-The outputs declared for the generator - its byproducts under a Makefile generator, beside a
-stamp (below) - are the files the template names already give away, plus
+The outputs declared for the generator - under a Makefile generator the outputs of rules of
+their own, beside a stamp (below) - are the files the template names already give away, plus
 the a2l and the dictionary - the a2l being the output of ``<stem>_ddd_a2l``'s step instead
 where ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` gives it one - and its byproducts are the
 files of the ``{component}`` templates, one for each component of the image: in the collected

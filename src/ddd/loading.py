@@ -528,9 +528,9 @@ class Workspace:
     build has to run DDD again when one changes; ``sources()`` lists them for that reason.
     Those a project names and could not load are here too, a ``.py`` spelling being a file
     whether or not it imports, as a missing include is a source: the edit that repairs one is
-    what the build has to notice. A package is every ``.py`` file of it. A module with no file
-    - one planted into ``sys.modules`` - or one named by a module spelling that failed to
-    import, is not here.
+    what the build has to notice. A package is every ``.py`` file of it, and a module spelling
+    that failed to import is the file the finder locates for it. A module with no file - one
+    planted into ``sys.modules`` - or one the finder cannot locate either, is not here.
     """
 
     plugins: tuple[Plugin, ...] = ()
@@ -553,7 +553,9 @@ class Workspace:
     naming it, since a consumer's declaration is still where a reader looks for the object."""
 
     def sources(self) -> tuple[Path, ...]:
-        """Every file that was read to build this workspace, sorted and without duplicates.
+        """Every file this workspace is built out of, sorted and without duplicates: those that
+        were read, and the files of the plugins the project names, read or not
+        (:attr:`plugin_paths`).
 
         What a build system needs in order to know when to run DDD again: the root file
         alone is not enough, because a project pulls its components in through ``includes``.

@@ -885,7 +885,10 @@ the project description this image is generated from and the severity policy it 
 under - the two things no `*.ddd.json` records, since without `PROJECT` the project
 description is collected out of the link graph and does not exist in the source tree at all.
 Nothing in the build reads it; it is there so that the language server and `ddd gui` can
-report what the build reports.
+report what the build reports.  For a description handed to the module as `PROJECT` it says
+so as well, `"origin": "given"`, and is stamped format 2: `ddd gui` edits such a project, and
+refuses to write into any other, a collected description being written again at every
+configure.
 
 Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DIRECTORY`,
 `PLUGINS` (the collected project's plugins, written into the generated description and closing

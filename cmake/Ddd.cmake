@@ -201,11 +201,11 @@ endfunction()
 # Watches the "includes" wildcards of a project description, so that a file one starts or stops matching is noticed.
 # The files "ddd sources" lists are dependencies of the configure, which is a watch over the files there were when it
 # ran: one created later is not among them, and one deleted only leaves the generation with fewer inputs and the same
-# command. Each include is therefore globbed with CONFIGURE_DEPENDS, as the templates are, and the build looks at it again before it does
-# anything else, re-running configure when the files found differ. The result is not used: the tool is the one that
-# resolves the includes. A pattern with "**" is watched at every depth of the directory before its first wildcard, by
-# its last segment - more than it matches, so a file added anywhere below that directory runs configure, and every
-# build scans the whole tree below it, which an include of a large tree should keep in mind.
+# command. Each include is therefore globbed with CONFIGURE_DEPENDS, as the templates are, and the build looks at it
+# again before it does anything else, re-running configure when the files found differ. The result is not used: the
+# tool is the one that resolves the includes. A pattern with "**" is watched at every depth of the directory before its
+# first wildcard, by its last segment - more than it matches, so a file added anywhere below that directory runs
+# configure, and every build scans the whole tree below it, which an include of a large tree should keep in mind.
 #
 # A relative include is the tool's to read from the directory of the file naming it, whatever characters that
 # directory has, so those of the directory are escaped before the include is joined to it: a checkout in "proj [v2]"
@@ -778,8 +778,9 @@ function(_ddd_add_generation image)
             if("${directory}/${rendered}" IN_LIST rendered_by_templates)
                 message(FATAL_ERROR "ddd_generate: the component \"${name}\" of \"${image}\" would have "
                                     "\"${pattern}.jinja2\" render \"${rendered}\", which \"${rendered}.jinja2\" "
-                                    "renders already: ninja refuses a build that declares one file twice. Rename "
-                                    "the component, or one of the templates.")
+                                    "renders already: the tool refuses to write a file twice, and a build "
+                                    "declaring it twice does not load under Ninja, not even to configure again. "
+                                    "Rename the component, or one of the templates.")
             endif()
             list(APPEND byproducts "${directory}/${rendered}")
         endforeach()
@@ -1168,7 +1169,8 @@ function(ddd_generate image)
     set_property(TARGET ${image} PROPERTY DDD_DEFINITION_FILES "${definition_files}")
     set_property(TARGET ${image} PROPERTY DDD_TEMPLATE_DIRECTORY "${arg_TEMPLATE_DIRECTORY}")
     # What the templates render under names known now, so that a component whose file would be one of them is
-    # refused by name (_ddd_add_generation), rather than by ninja, which only says that a file is declared twice.
+    # refused by name (_ddd_add_generation), rather than by ninja, which only says that a file is declared twice, or by
+    # the tool when make runs it, which names the file and not the component.
     set_property(TARGET ${image} PROPERTY DDD_TEMPLATE_OUTPUTS "${generated_outputs}")
 
     if(NOT arg_NO_A2L)

@@ -146,34 +146,36 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 * **A call the module cannot honour fails the configure, naming why.**  `ddd_add_component()` took a
   project file for a component's description, and the next configure found no components; it now
   refuses a description whose top-level key is `project`, naming `PROJECT` of `ddd_generate()`.  A
-  call that gave a value keyword an empty variable configured with the keyword dropped - every
-  address 0 for `ADDRESS_MAP`, the collected mode for `PROJECT` - and it now fails, naming the
-  keyword, for every empty value of a value keyword of `ddd_generate()` or `ddd_add_component()`.  A
-  `PROJECT` has to exist, parse and name its project when the configure runs, where a missing one in
-  the build tree, or one that did not parse, was warned of and then stopped the configure on CMake's
-  own words, which name neither cause; and C has to be enabled in the directory calling
-  `ddd_generate()` by the time it is done, where a project that had not enabled it failed at CMake's
-  generate step, which could not determine the linker language of a target of the module's.
-  Migrating costs a line each.  Pass a project file to `ddd_generate(... PROJECT <file>)`, not to
-  `ddd_add_component()`.  Give a value keyword a value, or wrap the keyword and its value in `if()`.
-  Write the project file before configuring.  Declare `project(<name> LANGUAGES C CXX)`, or call
-  `enable_language(C)` there or above.  The advice of the refusal of a late link and the reason of
-  the one for `PROJECT` are reworded.  `ddd sources` is read as UTF-8, so a Windows checkout under a
-  non-ASCII path builds.
+  call that gave a value keyword an empty variable in quotes, `ADDRESS_MAP "${DDD_MAP}"`,
+  configured with the keyword dropped - every address 0 for `ADDRESS_MAP`, the collected mode for
+  `PROJECT` - the bare form being refused since 0.10.0, and an empty value among several was
+  dropped, or stopped the configure or the build on words that did not name it; each now fails
+  the configure, naming the keyword, for every empty value of a value keyword of `ddd_generate()`
+  or `ddd_add_component()`.  A `PROJECT` has to exist, parse and name its project when the
+  configure runs, where a missing one in the build tree, or one that did not parse, was warned of
+  and then stopped the configure on CMake's own words, which name neither cause; and C has to be
+  enabled in the directory calling `ddd_generate()` by the time it is done, where a project that
+  had not enabled it failed at CMake's generate step, which could not determine the linker
+  language of a target of the module's.  Migrating costs a line each.  Pass a project file to
+  `ddd_generate(... PROJECT <file>)`, not to `ddd_add_component()`.  Give a value keyword a value,
+  or wrap the keyword and its value in `if()`.  Write the project file before configuring.
+  Declare `project(<name> LANGUAGES C CXX)`, or call `enable_language(C)` there or above.  The
+  advice of the refusal of a late link and the reason of the one for `PROJECT` are reworded.
+  `ddd sources` is read as UTF-8, so a Windows checkout under a non-ASCII path builds.
 
 * **Makefile generators leave a build that changed nothing with nothing to do, and `make clean`
   cleans it.**  Under a Makefile generator a generation that changed nothing ran again at every
   build, and an edit that left a component's header as it was recompiled the component all the same,
   since every file of the step after the first was touched by each run, `ddd_types.h` among them;
-  the a2l step after the link read the map again at every build.  Each step now has a stamp of its
-  own as its one output - `ddd-generation.stamp` and `ddd-a2l.stamp` - touched by each run that
-  succeeds, and a rule per shared file depending on the step, so a step that depends on the
-  dictionary's or the pre-link a2l's path in the calling directory still runs after the generation;
-  `make clean` removes the step's files, a plugin's apart, which nothing declares.  Migrating costs
-  a line for a step in another directory, or one reading a `{component}` header: it depends on
-  `<stem>_ddd_generation`, or on `<stem>_ddd_a2l` for the linked a2l, and not on a generated
-  file's path.  A file of the step deleted by hand is not written again until the step's stamp is
-  deleted or the tree cleaned.
+  and the a2l step after the link, which `ADDRESSES_FROM_IMAGE` alone had, read the image again at
+  every build.  Each step now has a stamp of its own as its one output - `ddd-generation.stamp`
+  and `ddd-a2l.stamp` - touched by each run that succeeds, and a rule per shared file depending on
+  the step, so a step that depends on the dictionary's or the pre-link a2l's path in the calling
+  directory still runs after the generation; `make clean` removes the step's files, a plugin's
+  apart, which nothing declares.  Migrating costs a line for a step in another directory, or one
+  reading a `{component}` header: it depends on `<stem>_ddd_generation`, or on `<stem>_ddd_a2l`
+  for the linked a2l, and not on a generated file's path.  A file of the step deleted by hand is
+  not written again until the step's stamp is deleted or the tree cleaned.
 
 * **The configure follows the tool and the templates it renders with.**  The module asked
   `ddd --version` once and cached the answer as `DDD_VERSION_HANDSHAKE`, so a tool upgraded in
@@ -184,7 +186,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   directory reconfigures by itself, where a Ninja build stopped on the missing description until
   somebody configured by hand, so such a step can go.  A description the build itself writes,
   which does not exist yet at configure, is watched, so the first build to find it there
-  configures again; a status line says so where the configure used to warn.
+  configures again; a status line says so, where the configure said nothing of such a file.
 
 * **`ddd check`'s count line agrees in number, and a dictionary cannot take the manifest's name.**
   The line read "1 variable in 1 component are consistent" for a single one, and now reads "1

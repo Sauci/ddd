@@ -19,6 +19,7 @@ import {
   rawOf,
   readOnlyNote,
   rowHeader,
+  type TypedCell,
   typedRaw,
   typedRefusal,
 } from "./objectValues";
@@ -781,55 +782,74 @@ const EIGHTHS: ValuesReply = {
   rows: [[83, 24, 28, 30, 32, 30], ...MAP_A.rows.slice(1)],
 };
 
+/** A cell typed into, in physical unless said. */
+function typedCell(row: number, column: number, typed: string, physical = true): TypedCell {
+  return { row, column, typed, physical };
+}
+
 describe("cellText", () => {
   test("a cell shows what its count reads as in physical, and the count itself in raw", () => {
-    expect(cellText(CURVE_A, null, 0, 2, true)).toBe("8");
-    expect(cellText(CURVE_A, null, 0, 2, false)).toBe("800");
+    expect(cellText(CURVE_A, [], 0, 2, true)).toBe("8");
+    expect(cellText(CURVE_A, [], 0, 2, false)).toBe("800");
   });
 
-  test("the cell being typed into shows what was typed, in either reading, and no other does", () => {
-    const editing = { row: 0, column: 2, typed: "7.25" };
-    expect(cellText(CURVE_A, editing, 0, 2, true)).toBe("7.25");
-    expect(cellText(CURVE_A, editing, 0, 2, false)).toBe("7.25");
-    expect(cellText(CURVE_A, editing, 0, 1, true)).toBe("9");
-    expect(cellText(MAP_A, { row: 1, column: 3, typed: "7.25" }, 3, 1, false)).toBe("10");
+  test("a cell typed into shows what was typed, in the reading it was typed in, and no other does", () => {
+    const typed = [typedCell(0, 2, "7.25")];
+    expect(cellText(CURVE_A, typed, 0, 2, true)).toBe("7.25");
+    expect(cellText(CURVE_A, typed, 0, 1, true)).toBe("9");
+    expect(cellText(MAP_A, [typedCell(1, 3, "7.25", false)], 1, 3, false)).toBe("7.25");
+    expect(cellText(MAP_A, [typedCell(1, 3, "7.25", false)], 3, 1, false)).toBe("10");
+  });
+
+  test("in the other reading, it shows the count its text comes to, read as the grid now reads", () => {
+    // 7.25 ms typed comes to 725 counts; 13 counts typed read 0.13 ms.
+    expect(cellText(CURVE_A, [typedCell(0, 2, "7.25")], 0, 2, false)).toBe("725");
+    expect(cellText(CURVE_A, [typedCell(0, 2, "13", false)], 0, 2, true)).toBe("0.13");
+    // 5.1 % comes to the 10 counts a sint8 map can hold, which read 5 %.
+    expect(cellText(MAP_A, [typedCell(0, 1, "5.1")], 0, 1, false)).toBe("10");
+  });
+
+  test("text that comes to no count is shown as typed in either reading", () => {
+    expect(cellText(CURVE_A, [typedCell(0, 2, "1,5")], 0, 2, false)).toBe("1,5");
+    expect(cellText(CURVE_A, [typedCell(0, 2, "")], 0, 2, false)).toBe("");
   });
 
   test("a cell its row does not reach reads zero, as the startup code makes it", () => {
-    expect(cellText({ ...CURVE_A, rows: [[1200, 900]] }, null, 0, 4, false)).toBe("0");
-    expect(cellText({ ...MAP_A, rows: MAP_A.rows.slice(0, 2) }, null, 3, 0, true)).toBe("0");
+    expect(cellText({ ...CURVE_A, rows: [[1200, 900]] }, [], 0, 4, false)).toBe("0");
+    expect(cellText({ ...MAP_A, rows: MAP_A.rows.slice(0, 2) }, [], 3, 0, true)).toBe("0");
   });
 });
 
 describe("columnChars", () => {
   test("each column of a uint32 block holds its own number whole", () => {
-    expect(columnChars(WIDE_WHOLE, null, false, 4)).toEqual([9, 10, 2, 7]);
-    expect(columnChars(WIDE_WHOLE, null, true, 4)).toEqual([9, 10, 2, 7]);
+    expect(columnChars(WIDE_WHOLE, [], false, 4)).toEqual([9, 10, 2, 7]);
+    expect(columnChars(WIDE_WHOLE, [], true, 4)).toEqual([9, 10, 2, 7]);
   });
 
   test("a float64 block's fractions are counted as the page spells them", () => {
-    expect(columnChars(WIDE_FRACTIONS, null, true, 3)).toEqual([15, 11, 9]);
+    expect(columnChars(WIDE_FRACTIONS, [], true, 3)).toEqual([15, 11, 9]);
   });
 
   test("a map's column is as wide as the longest number of its rows, read as the grid reads it", () => {
     // 83, 18, 12 and 6 counts read 10.375, 2.25, 1.5 and 0.75 %; the next column's longest are
     // 2.75 and 1.25. In raw every count of the map is two digits at most.
-    expect(columnChars(EIGHTHS, null, true, 6)).toEqual([6, 4, 4, 4, 4, 4]);
-    expect(columnChars(EIGHTHS, null, false, 6)).toEqual([2, 2, 2, 2, 2, 2]);
+    expect(columnChars(EIGHTHS, [], true, 6)).toEqual([6, 4, 4, 4, 4, 4]);
+    expect(columnChars(EIGHTHS, [], false, 6)).toEqual([2, 2, 2, 2, 2, 2]);
   });
 
   test("what is typed into a cell widens its own column alone, while it is typed", () => {
-    const editing = { row: 0, column: 2, typed: "4294967295" };
-    expect(columnChars(WIDE_WHOLE, editing, false, 4)).toEqual([9, 10, 10, 7]);
-    expect(columnChars(WIDE_WHOLE, { ...editing, typed: "" }, false, 4)).toEqual([9, 10, 0, 7]);
+    expect(columnChars(WIDE_WHOLE, [typedCell(0, 2, "4294967295", false)], false, 4)).toEqual([
+      9, 10, 10, 7,
+    ]);
+    expect(columnChars(WIDE_WHOLE, [typedCell(0, 2, "", false)], false, 4)).toEqual([9, 10, 0, 7]);
   });
 
   test("a column past the row's last value is counted as the zero it shows", () => {
-    expect(columnChars({ ...CURVE_A, rows: [[1200, 900]] }, null, false, 3)).toEqual([4, 3, 1]);
+    expect(columnChars({ ...CURVE_A, rows: [[1200, 900]] }, [], false, 3)).toEqual([4, 3, 1]);
   });
 
   test("a grid of no rows has no width to give", () => {
-    expect(columnChars({ ...CURVE_A, rows: [] }, null, true, 6)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(columnChars({ ...CURVE_A, rows: [] }, [], true, 6)).toEqual([0, 0, 0, 0, 0, 0]);
   });
 });
 

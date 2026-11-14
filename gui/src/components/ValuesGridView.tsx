@@ -13,7 +13,6 @@ import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
 import { scrollFromUnder } from "../lib/heldOffer";
 import {
-  cellSentence,
   cellText,
   columnAxisLabel,
   columnChars,
@@ -23,12 +22,11 @@ import {
   limitsLine,
   noGridNote,
   pasteHint,
-  pasteSentence,
   readOnlyNote,
   rowHeader,
-  typedRaw,
-  typedRefusal,
+  type TypedCell,
 } from "../lib/objectValues";
+import { offerName, offerSentence, typedOffer } from "../lib/typedCells";
 import { consequence, NO_UNIT, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
@@ -55,14 +53,16 @@ export interface ValuesGridViewProps {
   banner?: ReactNode;
   /** Reading in physical values rather than raw counts. */
   physical: boolean;
-  /** The cell being typed into, and its text; `null` when none is. */
-  editing: { row: number; column: number; typed: string } | null;
+  /** Every cell typed into and held, with its text (`typedCells.ts`); none while a pasted table
+   * owns the offer, or nothing has been typed. */
+  typed: readonly TypedCell[];
   plan: PlanReply | null;
   refusal: string | null;
   changesShown: boolean;
   busy: boolean;
   onPhysical: (physical: boolean) => void;
-  onEditing: (editing: { row: number; column: number; typed: string } | null) => void;
+  /** A cell typed into: its text, and the reading it was typed in. */
+  onTyped: (cell: TypedCell) => void;
   onChangesShown: (shown: boolean) => void;
   onApply: () => void;
   onBack: () => void;
@@ -123,10 +123,10 @@ function CellField(props: CellFieldProps) {
 }
 
 /** One object's values (spec 5.2), drawn from what the api answered: a picture of its props. It
- * holds no state - the raw/physical toggle, the cell being typed into, Show changes and busy all
- * live in the screen behind it. */
+ * holds no state - the raw/physical toggle, the cells typed into, Show changes and busy all live
+ * in the screen behind it. */
 export function ValuesGridView(props: ValuesGridViewProps) {
-  const { reply, backTo, undoStrip, banner, physical, editing, plan, refusal, changesShown, busy } =
+  const { reply, backTo, undoStrip, banner, physical, typed, plan, refusal, changesShown, busy } =
     props;
   const columnLabels = columnHeader(reply, physical);
   const rowLabels = rowHeader(reply, physical);
@@ -153,7 +153,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     row,
   }));
   // How many characters each column's fields hold (`columnChars`), for ui.css to widen them by.
-  const chars = columnChars(reply, editing, physical, columnLabels.length);
+  const chars = columnChars(reply, typed, physical, columnLabels.length);
   const meta = [
     reply.kind,
     reply.datatype,
@@ -161,16 +161,16 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     shortValue("conversion", JSON.stringify(reply.conversion)),
     limitsLine(reply),
   ].join(" · ");
-  // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
-  // what is typed is no number the cell takes - the same gate the screen itself keys its
-  // value-plan query on, so `plan` and this either agree or `plan` is still null.
-  const raw = editing === null ? null : typedRaw(editing.typed, reply, physical);
-  // What was typed is refused here rather than by the server, which is never asked for a plan
-  // for it, and ahead of whatever refusal came back for an earlier value: that one is about a
-  // number no longer in the cell. Where no cell is being typed into - a pasted table owns the
-  // offer instead - there is no typed refusal to take priority, so the screen's own refusal (a
-  // pasted block's own sentence among them) is what shows.
-  const refused = (editing === null ? null : typedRefusal(editing.typed, reply)) ?? refusal;
+  // What the cells typed into offer (`typedOffer`): the elements they set, or the sentence one of
+  // them is refused with - found here rather than by the server, which is never asked for a plan
+  // of them then, and ahead of whatever refusal came back for earlier text, which is about numbers
+  // no longer in the cells. `null` where no cell is typed into: a pasted table owns the offer
+  // instead, and the screen's own refusal (a pasted block's own sentence among them) is what shows.
+  // The same judgement the screen keys its plan query on, so `plan` and this either agree or
+  // `plan` is still null.
+  const offered = typed.length === 0 ? null : typedOffer(typed, reply);
+  const refused = offered?.refusal ?? refusal;
+  const sentence = offerSentence(reply, offered, physical);
   const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
   const noGrid = noGridNote(reply);
@@ -267,10 +267,15 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                             aria-label={elementLabel(row, at, reply.shape)}
                             className={reply.stated === "none" ? "unstated" : undefined}
                             style={{ "--chars": chars[at] } as CSSProperties}
-                            value={cellText(reply, editing, row, at, physical)}
+                            value={cellText(reply, typed, row, at, physical)}
                             disabled={reply.file === null || busy}
                             onChange={(event) =>
-                              props.onEditing({ row, column: at, typed: event.target.value })
+                              props.onTyped({
+                                row,
+                                column: at,
+                                typed: event.target.value,
+                                physical,
+                              })
                             }
                             // Enter settles what was typed and nothing more: the preview is
                             // already below the grid, and spec 5.3 is explicit that no cell
@@ -315,36 +320,32 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         </ul>
       )}
       {(refused !== null || plan !== null) && (
-        // Gated on what there is to show rather than on `editing` alone: a pasted table owns
-        // this same section too, with no one cell of its own to name (spec 2: "one edit, one
+        // Gated on what there is to show rather than on the cells typed alone: a pasted table
+        // owns this same section too, with no cell of its own to name (spec 2: "one edit, one
         // preview, one entry in the undo stack" either way). Held at the window's foot while it
         // is drawn (`.values-offer`), however tall the grid and its plot above it are.
         <section
           ref={offer}
           className="panel-offer values-offer"
-          aria-label={editing !== null ? "Set the cell" : "Replace the values"}
+          aria-label={offerName(typed.length)}
         >
           {refused !== null && (
             <p className="panel-refusal" role="status">
               {refused}
             </p>
           )}
-          {plan !== null && (editing === null || raw !== null) && (
+          {plan !== null && sentence !== null && (
             // What it sets, and the file it lands in - the way `renameConsequence` folds
             // `consequence()` into its own sentence, and for the same reason every sibling
             // write path names its files: an object's numbers live in its producer's file,
             // which need not be the one the reader opened the grid from (spec 5.3's ValueB
             // on Controller, whose numbers are SensorHub's), and learning that should not
-            // take opening Show changes. A pasted table names no one cell, so `pasteSentence`
-            // takes `cellSentence`'s place - both worth it for the same reason: a reader who
-            // pasted physical values and sees raw counts in the hunks is told the two are one
-            // change, not two, without opening Show changes to find out.
+            // take opening Show changes. The elements the typed cells set, or a pasted table,
+            // which names no one cell (`offerSentence`) - both worth it for the same reason: a
+            // reader who typed or pasted physical values and sees raw counts in the hunks is
+            // told the two are one change, not two, without opening Show changes to find out.
             <p className="consequence">
-              {editing !== null && raw !== null && (
-                <>{cellSentence(reply, editing.row, editing.column, raw, physical)}. </>
-              )}
-              {editing === null && <>{pasteSentence(reply)}. </>}
-              {consequence(plan.changes)}
+              {sentence}. {consequence(plan.changes)}
             </p>
           )}
           {plan !== null && plan.changes.length > 0 && (

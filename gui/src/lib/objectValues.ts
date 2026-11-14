@@ -264,12 +264,13 @@ function celled(text: string): string[][] {
   return lines.map((line) => line.split("\t"));
 }
 
-/** The rows and columns the object itself takes, as a table is counted. The `= 0` is defensive
- * and nothing tests it: a shapeless reply reaches neither caller, since `ValuesPage` answers
+/** The rows and columns the object itself takes, as a table is counted: what a paste must hold,
+ * and the table several typed cells are planned as (`typedCells.ts`). The `= 0` is defensive
+ * and nothing tests it: a shapeless reply reaches no caller, since `ValuesPage` answers
  * "has no cell for a value to sit in" before it draws a grid at all - and the test that used to
  * cover it pinned `Paste 1 row of 0 values…`, a sentence no reader can reach. A destructuring
  * default is no branch to v8's coverage, so the gate is not hiding one here either. */
-function wanted(reply: ValuesReply): [number, number] {
+export function wanted(reply: ValuesReply): [number, number] {
   const [first = 0, second] = reply.shape;
   return second === undefined ? [1, first] : [first, second];
 }
@@ -422,37 +423,53 @@ export function rowHeader(reply: ValuesReply, physical: boolean): string[] {
   return indices(reply.shape[0] ?? 0);
 }
 
-/** What one cell's field shows: the text typed into it, while it is the cell being typed into;
- * else its raw count, or what that count reads as in physical. A cell its row does not reach reads
- * 0, as the startup code makes it. */
+/** A cell of the values grid the reader has typed into: where it is, what was typed, and whether
+ * it was typed in physical - the reading its text is read in, whichever the grid shows now. The
+ * grid holds every cell typed into (`typedCells.ts`). */
+export interface TypedCell {
+  row: number;
+  column: number;
+  typed: string;
+  physical: boolean;
+}
+
+/** What one cell's field shows. A cell typed into shows what was typed, in the reading it was
+ * typed in; in the other, the count its text comes to, read as the grid now reads - so that
+ * turning the grid from physical to raw neither changes what a typed cell sets nor shows a
+ * physical number among raw counts - or the text itself, where it comes to no count. Any other
+ * cell shows its raw count, or what that count reads as in physical; one its row does not reach
+ * reads 0, as the startup code makes it. */
 export function cellText(
   reply: ValuesReply,
-  editing: { row: number; column: number; typed: string } | null,
+  typed: readonly TypedCell[],
   row: number,
   column: number,
   physical: boolean,
 ): string {
-  if (editing !== null && editing.row === row && editing.column === column) return editing.typed;
-  const value = reply.rows[row]?.[column] ?? 0;
-  return String(physical ? physicalOf(value, reply.conversion) : value);
+  const held = typed.find((cell) => cell.row === row && cell.column === column);
+  if (held === undefined)
+    return reading(reply.rows[row]?.[column] ?? 0, reply.conversion, physical);
+  if (held.physical === physical) return held.typed;
+  const raw = typedRaw(held.typed, reply, held.physical);
+  return raw === null ? held.typed : reading(raw, reply.conversion, physical);
 }
 
 /** How many characters wide each of the grid's `columns` is drawn: the longest text its fields
- * show, the numbers of its rows and what is being typed into one of them alike. A field cut short
- * hides the end of its number with no sign of it, and under right aligned digits a cut number
- * reads as a smaller one - 4000000000 as 400000. Column by column, so that one long number widens
- * its own column and leaves the others as narrow as theirs; counted in characters, which the
- * grid's monospace sets one `ch` apiece. */
+ * show, the numbers of its rows and what is typed into them alike. A field cut short hides the end
+ * of its number with no sign of it, and under right aligned digits a cut number reads as a smaller
+ * one - 4000000000 as 400000. Column by column, so that one long number widens its own column and
+ * leaves the others as narrow as theirs; counted in characters, which the grid's monospace sets
+ * one `ch` apiece. */
 export function columnChars(
   reply: ValuesReply,
-  editing: { row: number; column: number; typed: string } | null,
+  typed: readonly TypedCell[],
   physical: boolean,
   columns: number,
 ): number[] {
   return Array.from({ length: columns }, (_, column) =>
     Math.max(
       0,
-      ...reply.rows.map((_, row) => cellText(reply, editing, row, column, physical).length),
+      ...reply.rows.map((_, row) => cellText(reply, typed, row, column, physical).length),
     ),
   );
 }
@@ -482,7 +499,7 @@ export function cellSentence(
 }
 
 /** A raw count's physical reading, with the object's own unit where it has one. */
-function physicalReading(raw: number, reply: ValuesReply): string {
+export function physicalReading(raw: number, reply: ValuesReply): string {
   const value = physicalOf(raw, reply.conversion);
   return reply.unit === "" ? String(value) : `${value} ${reply.unit}`;
 }

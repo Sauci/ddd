@@ -125,6 +125,21 @@ export function pasteLabel(name: string): string {
   return fitted(`the values of ${name}`);
 }
 
+/** What the cells typed into the grid and applied together are called when they come to be
+ * undone: the one element they set (`valueLabel`), or how many of the object's they set - "3
+ * elements of CurveA", which one undo puts back. */
+export function valuesLabel(
+  name: string,
+  cells: readonly { row: number; column: number }[],
+  shape: number[],
+): string {
+  const [only] = cells;
+  if (only !== undefined && cells.length === 1) {
+    return valueLabel(name, only.row, only.column, shape);
+  }
+  return fitted(`${cells.length} elements of ${name}`);
+}
+
 /**
  * What a fix applied from the Findings tab is called.
  *

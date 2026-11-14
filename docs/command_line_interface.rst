@@ -345,13 +345,18 @@ The commands
        on each edge, in physical or in raw by a toggle. A curve, a map and an axis are
        offered whatever type they name; anything else states its own dimensions and its
        own datatype, so a dimensioned declaration naming a structured type is shown
-       there and not offered, and so is a deeper shape. One cell
-       is changed at a time, previewed - in a sentence naming what it sets and the
-       producing file it lands in - and applied like every other change here, and put
-       back by the same undo. A table copied from a spreadsheet is pasted anywhere in
+       there and not offered, and so is a deeper shape. Cells
+       typed into are held together, each showing what was typed into it, and previewed
+       as one change - in a sentence naming what each sets and the producing file it
+       lands in - that one Apply writes, like every other change here, and one undo puts
+       back. A cell typed back to its file's value drops out of the change, and a cell
+       the page refuses holds Apply back for them all, named in the sentence. The
+       sentence and Apply stay at the foot of the window while they are offered, however
+       tall the grid. A table copied from a spreadsheet is pasted anywhere in
        the grid to replace every value of the object at once - the object's own shape,
        or exactly one row and one column larger for the header pasted along with it -
-       previewed and undone the same way. Its header is discarded unread, so one naming
+       previewed and undone the same way, in place of any cells typed before it, as a
+       cell typed after it takes the table's place. Its header is discarded unread, so one naming
        a different axis is caught only by that preview, not by the paste itself. The page
        holds a number as a double, which past 2^53 no longer holds every whole number, so a
        cell of an integer datatype refuses a number past 2^53 either side of zero, however it

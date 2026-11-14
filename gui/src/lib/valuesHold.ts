@@ -1,19 +1,17 @@
 import type { State, ValuesReply } from "../api/types";
+import type { TypedPlan } from "./typedCells";
 
-/** What one Apply in the grid wrote: one cell's raw count, or a whole pasted table's, row by row
- * as `ValuesReply.rows` holds them. */
+/** What one Apply in the grid wrote: one cell's raw count, or a whole table's - pasted, or made by
+ * several cells typed - row by row as `ValuesReply.rows` holds them. */
 export type Written = { cell: { row: number; column: number }; raw: number } | { rows: number[][] };
 
-/** What an Apply would write: a pasted table's rows, where one was pasted; else the cell being
- * typed into and the raw count its text comes to; `null` while neither makes anything to write. */
-export function writtenBy(
-  pasted: number[][] | null,
-  editing: { row: number; column: number } | null,
-  raw: number | null,
-): Written | null {
+/** What an Apply would write: a pasted table's rows, where one was pasted; else what the cells
+ * typed into set (`typedPlan`) - the one element and its raw count, or the table several make;
+ * `null` while neither makes anything to write. */
+export function writtenBy(pasted: number[][] | null, typed: TypedPlan | null): Written | null {
   if (pasted !== null) return { rows: pasted };
-  if (editing === null || raw === null) return null;
-  return { cell: { row: editing.row, column: editing.column }, raw };
+  if (typed === null) return null;
+  return "rows" in typed ? { rows: typed.rows } : { cell: typed.cell, raw: typed.raw };
 }
 
 /** What the grid holds of one Apply of its own: the number its edit was answered with, the

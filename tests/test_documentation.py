@@ -473,6 +473,26 @@ class TestTheCommandPage:
             "rather than send the double"
         ) in text
 
+    def test_the_values_grid_is_said_to_hold_the_cells_typed_as_one_change(self) -> None:
+        """What ``ValuesPage.tsx`` and ``typedCells.ts`` do with cells typed one after another,
+        said where the grid is described: held together, one change, one Apply and one undo."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "One cell is changed at a time" not in text
+        assert (
+            "Cells typed into are held together, each showing what was typed into it, and "
+            "previewed as one change"
+        ) in text
+        assert "that one Apply writes, like every other change here, and one undo puts back" in text
+        assert "A cell typed back to its file's value drops out of the change" in text
+        assert (
+            "a cell the page refuses holds Apply back for them all, named in the sentence"
+        ) in text
+        assert "The sentence and Apply stay at the foot of the window" in text
+        assert (
+            "in place of any cells typed before it, as a cell typed after it takes the table's "
+            "place"
+        ) in text
+
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None

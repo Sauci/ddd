@@ -96,7 +96,9 @@ async function typed(cell: Locator, text: string): Promise<void> {
 
 /** Controller's MapA made a 16 by 16 map over 0, 10, ..., 150 on both axes: the shape whose row
  * labels are every digit's first character, which no fixture has. Its cells and both axes'
- * breakpoints are written as raw counts, which a sint8 map and a uint8 and a uint16 axis hold. */
+ * breakpoints are written as raw counts, which a sint8 map and a uint8 and a uint16 axis hold.
+ * Each cell holds 100 counts, a number no digit typed alone spells: a cell typed back to the value
+ * its file holds sets nothing (16:I3). */
 function bigMapA(directory: string): void {
   const path = join(directory, CONTROLLER);
   const data = JSON.parse(readFileSync(path, "utf8"));
@@ -109,7 +111,7 @@ function bigMapA(directory: string): void {
   definition("AxisA").init = steps;
   definition("AxisB").size = 16;
   definition("AxisB").init = steps;
-  definition("MapA").init = steps.map(() => steps.map(() => 0));
+  definition("MapA").init = steps.map(() => steps.map(() => 100));
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
@@ -454,8 +456,8 @@ test("a cell typed into at the window's foot is not left under the offer it make
   await expect(cell).toBeInViewport({ ratio: 1 });
   // What was typed stays in sight: the field's foot is above the offer's top.
   await expect.poll(() => clearOf(cell, offer)).toBeGreaterThanOrEqual(0);
-  await page.keyboard.press("0");
-  await expect(offer.getByText("Sets element 14, 2 of MapA to 50 %")).toBeVisible();
+  await page.keyboard.press("1");
+  await expect(offer.getByText("Sets element 14, 2 of MapA to 51 %")).toBeVisible();
   await expect(cell).toBeFocused();
   // And a field the focus is moved to by a key, under the offer, comes out from under it too.
   await page.keyboard.press("ArrowDown");
@@ -513,6 +515,9 @@ test("a number typed key by key into a map's cell reaches the cell, not the tabl
   // The row headers read 0, 30, 70, 100 again at the end: nothing but the cell was typed into.
   await expect(grid.getByRole("rowheader")).toHaveText(["0", "30", "70", "100"]);
 
+  // The cell stays typed, beside the next one typed (16:I3): typed back to its own 12 %, it sets
+  // nothing, and the Raw cell below is planned alone.
+  await typed(cell, "12");
   await page.getByRole("button", { name: "Raw" }).click();
   const raw = page.getByRole("textbox", { name: "element 2, 4" });
   await typed(raw, "50");
@@ -676,12 +681,14 @@ test("a click into a field after the focus left the grid keeps the focus in that
 test("a physical value no raw count represents shows what was stored", async ({ page, gui }) => {
   await openValues(page, gui.address, "CurveA");
 
-  await typed(page.getByRole("textbox", { name: "element 1" }), "12.004");
-  await expect(page.getByText("Sets element 1 of CurveA to 12 ms")).toBeVisible();
+  // Element 2, whose own 9 ms 12.004 is not: element 1 holds the 1200 counts it comes to already,
+  // and a cell typed back to its file's value sets nothing.
+  await typed(page.getByRole("textbox", { name: "element 2" }), "12.004");
+  await expect(page.getByText("Sets element 2 of CurveA to 12 ms")).toBeVisible();
   await page.getByRole("button", { name: "Apply to 1 file" }).click();
 
-  await expect(page.getByRole("textbox", { name: "element 1" })).toHaveValue("12");
-  await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init[0]).toBe(1200);
+  await expect(page.getByRole("textbox", { name: "element 2" })).toHaveValue("12");
+  await expect.poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init[1]).toBe(1200);
 });
 
 test("a value the datatype cannot hold is refused, and nothing is written", async ({
@@ -842,6 +849,120 @@ test("a cell changed is put back", async ({ page, gui }) => {
   await strip.getByRole("button", { name: "Put back 1 file" }).click();
 
   await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+// A second cell typed put the first back as it was, with nothing said, and offered the one change:
+// a curve retuned in three points took an Apply for each. The cells typed are held together, and
+// one plan, one Apply and one undo cover them all (decision 16.2).
+test("three cells typed into a curve are held together, written by one Apply and put back by one undo", async ({
+  page,
+  gui,
+}) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "13");
+  await typed(grid.getByRole("textbox", { name: "element 2" }), "14");
+  await typed(grid.getByRole("textbox", { name: "element 3" }), "15");
+  await expectRow(grid, ["13", "14", "15", "7.5", "7", "6.5"]);
+  const offer = page.getByRole("region", { name: "Set the cells" });
+  await expect(
+    offer.getByText(
+      "Sets 3 elements of CurveA: element 1 to 13 ms; element 2 to 14 ms; element 3 to 15 ms. " +
+        "Changes 1 file: controller.ddd.json",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await offer.getByRole("button", { name: "Show changes" }).click();
+  await expect(offer.getByText('"init": [1300, 1400, 1500, 750, 700, 650],')).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(1);
+
+  await offer.getByRole("button", { name: "Apply to 1 file" }).click();
+  // 13, 14 and 15 ms, in the file's counts of 0.01 ms.
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([1300, 1400, 1500, 750, 700, 650]);
+  await expectRow(grid, ["13", "14", "15", "7.5", "7", "6.5"]);
+  await expect(page.getByRole("region", { name: "Set the cells" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Undo 3 elements of CurveA" }).click();
+  const strip = page.getByRole("region", { name: "Undo" });
+  await expect(strip.getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  await strip.getByRole("button", { name: "Put back 1 file" }).click();
+  await expect.poll(() => readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+  await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
+});
+
+// A refused cell holds Apply back for every cell typed, since one Apply writes them all, and says
+// which it is; a cell typed back to its file's value sets nothing. A cell keeps the reading it was
+// typed in: turned to raw, the grid shows the count it sets.
+test("a refused cell among those typed holds Apply back and is named, and one typed back sets nothing", async ({
+  page,
+  gui,
+}) => {
+  const before = readFileSync(join(gui.directory, CONTROLLER));
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  const offer = page.getByRole("region", { name: "Set the cells" });
+  const apply = page.getByRole("button", { name: /^Apply to/ });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "13");
+  await typed(grid.getByRole("textbox", { name: "element 2" }), "1,5");
+  await expect(offer.getByRole("status")).toHaveText(
+    "element 2 of 'CurveA' is refused: '1,5' is not a number",
+  );
+  await expect(apply).toHaveCount(0);
+
+  // Element 2's own 9 ms: it sets nothing, and element 1 is planned alone.
+  await typed(grid.getByRole("textbox", { name: "element 2" }), "9");
+  await expect(offer.getByText("Sets element 1 of CurveA to 13 ms")).toBeVisible();
+  await expect(offer.getByRole("status")).toHaveCount(0);
+
+  // In raw, element 1 shows the 1300 counts its 13 ms sets, and 70000 typed into element 3 is
+  // refused by the server, which names it among the elements of the table it is sent.
+  await page.getByRole("button", { name: "Raw" }).click();
+  await expectRow(grid, ["1300", "900", "800", "750", "700", "650"]);
+  await typed(grid.getByRole("textbox", { name: "element 3" }), "70000");
+  await expect(offer.getByRole("status")).toHaveText(
+    "element 3 of 'CurveA' is refused: 70000 does not fit into uint16 (0 .. 65535)",
+  );
+  await expect(apply).toHaveCount(0);
+  expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+// A pasted table replaces every value, and takes the place of the cells typed before it; a cell
+// typed after it takes the table's place in turn.
+test("a table pasted over typed cells takes their place, and a cell typed after it takes the table's", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "CurveA");
+  const grid = page.getByRole("grid", { name: "Values of CurveA" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "13");
+  await typed(grid.getByRole("textbox", { name: "element 2" }), "14");
+  await expect(
+    page.getByText("Sets 2 elements of CurveA: element 1 to 13 ms; element 2 to 14 ms"),
+  ).toBeVisible();
+
+  await paste(page, "12.5\t9.5\t8.5\t8\t7.5\t7");
+  await expect(
+    page
+      .getByRole("region", { name: "Replace the values" })
+      .getByText("Replaces every value of CurveA"),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Set the cells" })).toHaveCount(0);
+  await expectRow(grid, ["12", "9", "8", "7.5", "7", "6.5"]);
+
+  await typed(grid.getByRole("textbox", { name: "element 3" }), "15");
+  await expect(
+    page
+      .getByRole("region", { name: "Set the cell" })
+      .getByText("Sets element 3 of CurveA to 15 ms"),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Replace the values" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, CONTROLLER, "CurveA").init)
+    .toEqual([1200, 900, 1500, 750, 700, 650]);
 });
 
 test("a value applied from a file that changed on disk is refused, and applied once the page has caught up", async ({

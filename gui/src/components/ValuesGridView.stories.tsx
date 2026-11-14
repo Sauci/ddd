@@ -1,8 +1,11 @@
 import { type ReactNode, useState } from "react";
 import type { PlanReply, ValuesReply } from "../api/types";
+import type { TypedCell } from "../lib/objectValues";
+import { withTyped } from "../lib/typedCells";
 import { holdOf } from "../lib/valuesHold";
 import {
   CURVE_CELL_PLAN,
+  CURVE_CELLS_PLAN,
   VALUES_AXIS,
   VALUES_BLOCK,
   VALUES_BLOCK_PAST_2_53,
@@ -24,7 +27,7 @@ interface Props {
   reply: ValuesReply;
   backTo: string;
   physical: boolean;
-  editing?: { row: number; column: number; typed: string };
+  typed?: TypedCell[];
   plan?: PlanReply | null;
   refusal?: string | null;
   changesShown?: boolean;
@@ -32,13 +35,13 @@ interface Props {
   banner?: ReactNode;
 }
 
-/** The grid over one scenario's fixtures, with its own toggle, cell being typed into and Show
- * changes - kept as ValuesPage.tsx keeps them. */
+/** The grid over one scenario's fixtures, with its own toggle, cells typed into and Show changes
+ * - kept as ValuesPage.tsx keeps them. */
 function View({
   reply,
   backTo,
   physical: initialPhysical,
-  editing: initialEditing,
+  typed: initialTyped = [],
   plan = null,
   refusal = null,
   changesShown: initialChangesShown = false,
@@ -46,7 +49,7 @@ function View({
   banner,
 }: Props) {
   const [physical, setPhysical] = useState(initialPhysical);
-  const [editing, setEditing] = useState(initialEditing ?? null);
+  const [typed, setTyped] = useState<readonly TypedCell[]>(initialTyped);
   const [changesShown, setChangesShown] = useState(initialChangesShown);
   return (
     <ValuesGridView
@@ -55,8 +58,8 @@ function View({
       banner={banner}
       physical={physical}
       onPhysical={setPhysical}
-      editing={editing}
-      onEditing={setEditing}
+      typed={typed}
+      onTyped={(cell) => setTyped((held) => withTyped(held, cell))}
       plan={plan}
       refusal={refusal}
       changesShown={changesShown}
@@ -100,7 +103,7 @@ export const ACellMidChange = () => (
     reply={VALUES_CURVE}
     backTo="Controller"
     physical
-    editing={{ row: 0, column: 2, typed: "7.5" }}
+    typed={[{ row: 0, column: 2, typed: "7.5", physical: true }]}
     plan={CURVE_CELL_PLAN}
     changesShown
   />
@@ -111,8 +114,26 @@ export const ARefusedCell = () => (
     reply={VALUES_MAP}
     backTo="Controller"
     physical={false}
-    editing={{ row: 0, column: 0, typed: "200" }}
+    typed={[{ row: 0, column: 0, typed: "200", physical: false }]}
     refusal="200 does not fit into sint8 (-128 .. 127)"
+  />
+);
+
+// Three of CurveA's elements typed 13, 14 and 15 ms and held together: each field shows what was
+// typed into it, and one sentence, one preview and one Apply cover all three (16:I3).
+export const ThreeCellsTypedAsOneChange = () => (
+  <View
+    reply={VALUES_CURVE}
+    backTo="Controller"
+    physical
+    typed={[13, 14, 15].map((value, column) => ({
+      row: 0,
+      column,
+      typed: String(value),
+      physical: true,
+    }))}
+    plan={CURVE_CELLS_PLAN}
+    changesShown
   />
 );
 
@@ -141,13 +162,13 @@ export function AnAppliedValueHeld() {
         />
       }
       physical={physical}
-      editing={null}
+      typed={[]}
       plan={null}
       refusal={null}
       changesShown={false}
       busy={false}
       onPhysical={setPhysical}
-      onEditing={() => {}}
+      onTyped={() => {}}
       onChangesShown={() => {}}
       onApply={() => {}}
       onBack={() => {}}
@@ -188,13 +209,13 @@ export function ATableWaitingForAPaste() {
       reply={VALUES_CURVE}
       backTo="Controller"
       physical={physical}
-      editing={null}
+      typed={[]}
       plan={null}
       refusal={null}
       changesShown={false}
       busy={false}
       onPhysical={setPhysical}
-      onEditing={() => {}}
+      onTyped={() => {}}
       onChangesShown={() => {}}
       onApply={() => {}}
       onBack={() => {}}

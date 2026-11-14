@@ -2080,6 +2080,33 @@ export const CURVE_CELL_PLAN: PlanReply = {
   ],
 };
 
+/** CurveA's first three elements, 1200, 900 and 800, set to 1300, 1400 and 1500 - 13, 14 and 15
+ * ms typed into three cells - and planned as the table they make (ThreeCellsTypedAsOneChange): one
+ * `set` of the whole init, which a served copy of examples/demo answers with this one hunk. */
+export const CURVE_CELLS_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[12].definition.init",
+          raw: "[1300, 1400, 1500, 750, 700, 650]",
+        },
+      ],
+      hunks: [
+        {
+          line: 205,
+          before: ['          "init": [1200, 900, 800, 750, 700, 650],'],
+          after: ['          "init": [1300, 1400, 1500, 750, 700, 650],'],
+        },
+      ],
+    },
+  ],
+};
+
 // The Compare tab (spec 2026-09-26-gui-compare-design.md §6): can examples/demo replace a
 // baseline delivery archived somewhere under this session's own root? Every finding `compare`
 // itself reports is filed at one shared location, the candidate's own project file with an

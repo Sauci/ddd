@@ -47,21 +47,24 @@ function state(revision: number, edits: number) {
 const NONE: ReadonlyMap<number, number> = new Map();
 
 describe("what an Apply would write", () => {
+  const ONE = { cell: { row: 1, column: 3 }, at: "[1][3]", raw: 50 };
+
   test("a pasted table: its rows, whatever cell was typed into before", () => {
     const rows = [[1, 2, 3, 4, 5, 6]];
-    expect(writtenBy(rows, { row: 0, column: 2 }, 750)).toEqual({ rows });
+    expect(writtenBy(rows, ONE)).toEqual({ rows });
   });
 
-  test("else the cell being typed into, and the raw count its text comes to", () => {
-    expect(writtenBy(null, { row: 1, column: 3 }, 50)).toEqual({
-      cell: { row: 1, column: 3 },
-      raw: 50,
-    });
+  test("else the one element the typed cells set, and the raw count it is set to", () => {
+    expect(writtenBy(null, ONE)).toEqual({ cell: { row: 1, column: 3 }, raw: 50 });
   });
 
-  test("nothing, while no cell is typed into or its text is no number", () => {
-    expect(writtenBy(null, null, null)).toBeNull();
-    expect(writtenBy(null, { row: 0, column: 2 }, null)).toBeNull();
+  test("or the whole table several of them make", () => {
+    const rows = [[1300, 1400, 1500, 750, 700, 650]];
+    expect(writtenBy(null, { rows })).toEqual({ rows });
+  });
+
+  test("nothing, while the typed cells set nothing", () => {
+    expect(writtenBy(null, null)).toBeNull();
   });
 });
 

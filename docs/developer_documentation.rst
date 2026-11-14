@@ -1196,7 +1196,10 @@ values and the breakpoints of the axes it is laid against - and what changing on
 it takes: an edit-engine ``set`` at the element's own pointer where the file already holds
 an array, or of the whole ``init`` where it states one value for every element or none at
 all, written into the file that produces it either way. ``set_values`` sits beside
-``set_cell`` for a whole table pasted at once. The shape is checked here too, because
+``set_cell`` for a whole table pasted at once, and for cells typed into the grid where
+more than one of them sets an element: the page sends the table they make of the values
+it shows, as it sends a pasted one, and ``set_cell`` plans the one cell that does. The
+shape is checked here too, because
 the page that already checked it is not this function's only caller, and every element
 is weighed by the same ``_acceptable``, a refusal naming up to five that fail - each
 with its own reason, since a block can fail two checks at once - and, beyond that, how

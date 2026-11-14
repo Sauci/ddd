@@ -18,6 +18,7 @@ import {
   undoConsequence,
   unitLabel,
   valueLabel,
+  valuesLabel,
 } from "./undo";
 
 const MISSING_ID: Finding = {
@@ -204,6 +205,13 @@ test.each([
 
 test("an undone paste is named by the object whose table it replaced", () => {
   expect(pasteLabel("CurveA")).toBe("the values of CurveA");
+});
+
+test("cells typed and applied together are named by the element one of them set, or by how many", () => {
+  expect(valuesLabel("CurveA", [{ row: 0, column: 2 }], [6])).toBe("element 3 of CurveA");
+  const three = [0, 1, 2].map((column) => ({ row: 0, column }));
+  expect(valuesLabel("CurveA", three, [6])).toBe("3 elements of CurveA");
+  expect(valuesLabel("MapA", [{ row: 1, column: 3 }, ...three], [4, 6])).toBe("4 elements of MapA");
 });
 
 const CHANGED: UndoneChange = {

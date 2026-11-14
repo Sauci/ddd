@@ -6,10 +6,11 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { useKept } from "../app/useKept";
 import { ValuesGridView } from "../components/ValuesGridView";
-import { cellAt, drawable, pasted, typedRaw } from "../lib/objectValues";
+import { drawable, pasted, type TypedCell } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
+import { typedOffer, typedPlan, withTyped } from "../lib/typedCells";
 import { gated, planShown } from "../lib/typing";
-import { pasteLabel, valueLabel } from "../lib/undo";
+import { pasteLabel, valuesLabel } from "../lib/undo";
 import {
   appliesOver,
   holdAfter,
@@ -37,15 +38,12 @@ interface Props {
   onBack: () => void;
 }
 
-/** The cell being typed into, and its text; `null` when none is - `ValuesGridView`'s own. */
-type Editing = { row: number; column: number; typed: string } | null;
-
 /**
  * The open project's values grid (spec 5.4): one object's `init` against its axes, read fresh at
- * every revision, with the mutation that sets one cell of it, or a whole pasted table of them
- * (part 9). `ValuesGridView` draws all of it from props - the raw/physical toggle, the cell being
- * typed into and Show changes live here, the way `ValuesGridView.stories.tsx`'s own `View` keeps
- * them for a story.
+ * every revision, with the mutation that sets the cells typed into it, held together as one plan
+ * (`typedCells.ts`, decision 16.2), or a whole pasted table of them (part 9). `ValuesGridView`
+ * draws all of it from props - the raw/physical toggle, the cells typed into and Show changes
+ * live here, the way `ValuesGridView.stories.tsx`'s own `View` keeps them for a story.
  *
  * Two refusals are this screen's own rather than the component's: `GET /api/values` refused the
  * name - it is declared no longer, or its shape is more than a grid draws - or it has no shape at
@@ -53,10 +51,12 @@ type Editing = { row: number; column: number; typed: string } | null;
  * - `drawable` refuses that grid too, and a text-stated object is `ValuesGridView`'s own sentence
  * to say, not repeated here. Each of them keeps the heading and the way back.
  *
- * A cell typed into and a table pasted are two ways to reach the same mutation (spec 3's "a
+ * Cells typed into and a table pasted are two ways to reach the same mutation (spec 3's "a
  * paste is a second way to reach `init`"), so only one owns the preview, the sentence and Apply
- * at a time: `pastedRows` and `editing` are cleared by each other's own action, and `shownPlan`/
- * `shownSentence`/`label` below choose between the two once, rather than at each prop.
+ * at a time: `pastedRows` and `typed` are cleared by each other's own action - a table pasted
+ * takes the place of every cell typed before it, and a cell typed after it takes the table's -
+ * and `shownPlan`/`shownSentence`/`label` below choose between the two once, rather than at each
+ * prop.
  *
  * What an Apply wrote shows at once (spec 6): `GET /api/values` answers what the last analysis
  * read, so while the grid stays open it holds the values its own Apply wrote - and, once the Undo
@@ -98,10 +98,13 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const current = shown !== undefined && appliesOver(shown, state);
 
   const [physical, setPhysical] = useState(true);
-  const [editing, setEditing] = useState<Editing>(null);
+  // Every cell typed into, held until an Apply writes them or a pasted table takes their place
+  // (`withTyped`): each keeps the reading it was typed in, so the toggle changes what it shows,
+  // never what it sets.
+  const [typed, setTyped] = useState<readonly TypedCell[]>([]);
   const [changesShown, setChangesShown] = useState(false);
   // A refused apply, if any, in the page's own words (`refusalOf`), whatever its code, a file
-  // changed on disk included: held until the reader takes a fresh action - types into the cell
+  // changed on disk included: held until the reader takes a fresh action - types into a cell
   // again, pastes a fresh table over it, or applies again - exactly as `UnitPanel`'s own fields
   // clear on a fresh choice, and never let go by a revision landing (`Refused`, lib/refusals.ts).
   // Without the paste side of that, a failure left over from an earlier cell apply would sit under
@@ -109,33 +112,31 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const [failed, setFailed] = useState<string | null>(null);
   // A pasted table's counts, row-major, or `null` where nothing has been pasted; and the
   // sentence a pasted block was refused with, if any - the two ways `onPaste` below can answer,
-  // from Task 2's `Pasted`. Held apart from `editing`'s own cell so a paste and a typed cell
-  // never both hold something (each clears the other's state below).
+  // from Task 2's `Pasted`. Held apart from the typed cells so a paste and a typed cell never
+  // both hold something (each clears the other's state below).
   const [pastedRows, setPastedRows] = useState<number[][] | null>(null);
   const [pasteRefusal, setPasteRefusal] = useState<string | null>(null);
 
-  // Every use below tolerates `shown` not having arrived yet, which is what keeps `at` and `raw`
-  // `null` and the plan query skipped until it has.
-  const shape = shown?.shape;
-  const at =
-    editing !== null && shape !== undefined ? cellAt(editing.row, editing.column, shape) : null;
-  // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
-  // what is typed is no number the cell takes - the same gate `ValuesGridView` itself keys its
-  // own sentence on, so the two either agree or the plan below is still not asked for.
-  const raw =
-    shown === undefined || editing === null ? null : typedRaw(editing.typed, shown, physical);
-  // A cell is typed into character by character, so its plan is debounced (spec §6): `at`/`raw`
-  // change on every keystroke the same way every other plain field in this part does. Folded
-  // into one request so one `useDebounced` call covers both, as `VariablePanel`'s own settle
-  // request is. A pasted table is not: `pastedRows` is set once, by the one paste event, never a
-  // stream of keystrokes to wait out, so `table` below keeps asking for its plan at once, as
-  // every query in this file did before this task. Task 8's own `appliesOver` gate (`current`)
-  // is applied after the debounce, never before it (`gated`, Ruling T12b-1): it closes as a
-  // revision lands, so the query never asks for a cell over the older answer kept on screen,
-  // from the very render the key it shares with `revision` changes in; and once an answer of
-  // the new revision has come and it opens again, the cell typed before is asked for at once -
-  // nothing was typed meanwhile to wait out.
-  const cellRequest = at === null || raw === null ? null : { at, raw };
+  // What the cells typed into set, read against the values shown (`typedOffer`): `null` while
+  // `shown` has not arrived yet, or one of the cells is refused - `ValuesGridView` finds that same
+  // refusal and says it - and none where every cell is empty or typed back to its file's value.
+  // The plan asked for them is one element's own, or the whole table several make (`typedPlan`),
+  // `null` while they set nothing, which keeps the plan query skipped.
+  const offered = shown === undefined ? null : typedOffer(typed, shown);
+  const changes = offered === null ? null : offered.changes;
+  const cellRequest = shown === undefined || changes === null ? null : typedPlan(shown, changes);
+  // A cell is typed into character by character, so its plan is debounced (spec §6): the request
+  // changes on every keystroke the same way every other plain field in this part does, one
+  // `useDebounced` call covering every cell, as `VariablePanel`'s own settle request is. A pasted
+  // table is not: `pastedRows` is set once, by the one paste event, never a stream of keystrokes
+  // to wait out, so `table` below keeps asking for its plan at once, as every query in this file
+  // did before this task. Task 8's own `appliesOver` gate (`current`) is applied after the
+  // debounce, never before it (`gated`, Ruling T12b-1): it closes as a revision lands, so the
+  // query never asks for cells over the older answer kept on screen, from the very render the key
+  // it shares with `revision` changes in; and once an answer of the new revision has come and it
+  // opens again, the cells typed before are asked for at once - nothing was typed meanwhile to
+  // wait out. One element is asked of `value-plan`, a `set` at its own pointer; several, of
+  // `values-plan`, as the table they make.
   const debouncedCell = useDebounced(cellRequest);
   const askedCell = gated(debouncedCell, cellRequest, current);
   const plan = useQuery({
@@ -143,7 +144,9 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
     queryFn:
       askedCell === null
         ? skipToken
-        : () => getValuePlan({ name, at: askedCell.at, raw: askedCell.raw }),
+        : "rows" in askedCell
+          ? () => getValuesPlan({ name, raw: askedCell.rows.flat() })
+          : () => getValuePlan({ name, at: askedCell.at, raw: askedCell.raw }),
   });
   // The cell plan to draw, why its own fetch was refused if it was, and whether it may still
   // change - `planShown`'s own, `lib/typing.ts` (review fix round 1): this grid has no separate
@@ -161,7 +164,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   });
 
   // One offer under the grid at a time: whichever of the two was last acted on owns the preview,
-  // the sentence and Apply. `pastedRows` is cleared when a cell is typed into and `editing` when
+  // the sentence and Apply. `pastedRows` is cleared when a cell is typed into and `typed` when
   // a block is pasted (both below), so these never both hold something. `pasteRefusal` alone -
   // `pastedRows` still `null` - is still a paste: a block the parser itself refuses (a wrong
   // shape, a cell that is not a number) never reaches `pastedRows` at all, since `Pasted` (Task
@@ -176,21 +179,22 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const shownPlan = pasting ? (table.data ?? null) : shownCell.plan;
   // The pre-apply refusal each offer can find for itself - a pasted block's own sentence, or the
   // server's, for the one thing the parser cannot check - ahead of an apply refused either way.
-  // A typed cell's own refusal is `ValuesGridView`'s to find, from `editing` directly
-  // (`typedRefusal`), so it is not repeated here - repeating it would only recompute the same
+  // A typed cell's own refusal is `ValuesGridView`'s to find, from the cells directly
+  // (`typedOffer`), so it is not repeated here - repeating it would only recompute the same
   // sentence a second time for no reader to see any sooner.
   const shownSentence = pasting
     ? (pasteRefusal ?? failed ?? (table.isError ? table.error.message : null))
     : (failed ?? shownCell.refusal);
   // What either offer's own edit is called, for the undo stack: the whole object for a paste,
-  // the one element for a cell - `pasteLabel`'s and `valueLabel`'s own difference.
+  // the element or the elements the typed cells set - `pasteLabel`'s and `valuesLabel`'s own
+  // difference.
   const label = pasting
     ? pasteLabel(name)
-    : shown === undefined || editing === null
+    : shown === undefined || changes === null || changes.length === 0
       ? null
-      : valueLabel(shown.name, editing.row, editing.column, shown.shape);
+      : valuesLabel(shown.name, changes, shown.shape);
   // What Apply would write, held once it is written.
-  const written = writtenBy(pastedRows, editing, raw);
+  const written = writtenBy(pastedRows, cellRequest);
 
   const apply = useMutation({
     mutationFn: (_applied: { before: ValuesReply; written: Written }) => {
@@ -199,14 +203,14 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       return postEdit(edit);
     },
     onMutate: () => setFailed(null),
-    // Applying clears the cell being edited or the table being pasted and, with them, the plan
+    // Applying clears the cells typed into or the table being pasted and, with them, the plan
     // and the refusal either may have shown; the values this grid reads, the file's own content
     // and every value-plan preview - one cell's and a whole table's - are asked for again, since
     // the edit just spent the fingerprints they were made from. What it wrote is held, over the
     // values the grid showed when it was made, until an answer of a revision including it comes.
     onSuccess: (reply, applied) => {
       setHold(holdOf(reply.edit, applied.before, applied.written));
-      setEditing(null);
+      setTyped([]);
       setPastedRows(null);
       setPasteRefusal(null);
       return Promise.all([
@@ -270,14 +274,14 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
       banner={banner}
       undoStrip={<UndoStrip state={state} stopped={stopped} />}
       physical={physical}
-      editing={editing}
+      typed={typed}
       plan={shownPlan}
       refusal={shownSentence}
       changesShown={changesShown}
       busy={stopped || apply.isPending}
       onPhysical={setPhysical}
-      onEditing={(next) => {
-        setEditing(next);
+      onTyped={(cell) => {
+        setTyped((held) => withTyped(held, cell));
         setFailed(null);
         setPastedRows(null);
         setPasteRefusal(null);
@@ -293,7 +297,7 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
         setPastedRows(block.rows);
         setPasteRefusal(block.refusal);
         setFailed(null);
-        setEditing(null);
+        setTyped([]);
       }}
     />
   );

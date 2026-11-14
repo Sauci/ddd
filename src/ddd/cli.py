@@ -436,6 +436,16 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
     )
     build_info.add_argument("--image", default="", help="name of the build target this belongs to")
     build_info.add_argument(
+        "--description",
+        choices=("collected", "given"),
+        default="given",
+        help=(
+            "how the build has the project description: 'collected' by the build out of the link "
+            "closure of the image, and written again at every configure, or 'given' to it as a "
+            "file somebody wrote (the default). ddd gui refuses to write into a collected one"
+        ),
+    )
+    build_info.add_argument(
         "-W",
         "--severity",
         action="append",
@@ -1669,6 +1679,7 @@ def _command_build_info(args: argparse.Namespace) -> int:
         # Absolute, because whoever reads this file is not in the directory the build ran in.
         project=args.project.resolve().as_posix(),
         image=args.image,
+        description=args.description,
         strict=args.strict,
         severity=tuple(args.severity),
     )

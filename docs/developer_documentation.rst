@@ -1222,14 +1222,15 @@ another file under the build tree it is generated in, each refused as ``generate
 writes the description again at every configure, and which files belong to the project is
 ``ddd_add_component()``'s to say. That tree is the nearest directory at or above the record
 holding a ``CMakeCache.txt``, unless the source tree that cache names lies under it, as an
-in-source build's does, and the description's own directory otherwise. The record is all that
-says a description is generated, so one given to ``ddd_generate()`` with ``PROJECT`` and an
-``OUTPUT_DIRECTORY`` of its own directory, the record written beside it and naming it, is taken
-for one the build generates: every change of its files under that directory is refused, in a
-sentence saying the build writes it, which it does not. Nothing in the record or the
-description tells the two apart yet. The file it creates takes the mode, and where the process
-may set them the owner and group, of the project description beside it, so ``ddd gui`` running
-in a container leaves the developer a file of their own rather than root's.
+in-source build's does, and the description's own directory otherwise. The record is what
+says a description is generated: its ``description`` key, ``collected`` where the module
+assembled the description and ``given`` where it was handed to ``ddd_generate()`` as
+``PROJECT``, so that a description given with an ``OUTPUT_DIRECTORY`` of its own directory,
+the record written beside it and naming it, is not taken for one the build generates. A
+record without the key, written by a module before it said, is read as collected. The file it
+creates takes the mode, and where the process may set them the owner and group, of the project
+description beside it, so ``ddd gui`` running in a container leaves the developer a file of their
+own rather than root's.
 
 Every write of the engine, an edit's and an undo's alike, looks at its file once more after
 the stage is written and right before the rename - or the removal, for a file an edit

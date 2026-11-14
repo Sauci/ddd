@@ -245,8 +245,8 @@ The commands
        writes the resolved data dictionary - the text ``ddd dump`` prints - in the same write as
        the artefacts, so that all of them are written or none is; a path an artefact of the
        run is written to is refused, and so is ``.ddd-manifest.json`` in the output directory,
-       the name the run's manifest is kept under. That is how a build keeps the dictionary beside what it
-       generated, in one analysis and one report of its findings.
+       the name the run's manifest is kept under. That is how a build keeps the dictionary
+       beside what it generated, in one analysis and one report of its findings.
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, initial value
        with its physical reading, producer and consumers - the quickest answer to "who
@@ -585,11 +585,10 @@ The commands
        <target> with your component's target``. The record beside the description is what says
        so, read for the project it names whatever its format and its severities, and whether or
        not ``-b`` names the build directory. A project given to ``ddd_generate()`` with
-       ``PROJECT`` is edited as any other while its record lies in the build tree, and taken for
-       a generated one, every change of its files under that directory refused in that
-       sentence, which then says something untrue, where ``OUTPUT_DIRECTORY`` is the
-       description's own directory and leaves the record beside it: nothing yet tells the two
-       apart.
+       ``PROJECT`` is edited as any other: its record says the description was given, whether it
+       lies in the build tree or, where ``OUTPUT_DIRECTORY`` is the description's own directory,
+       beside it. Only a record that says collected, or that does not say, as one written before
+       the record did not, makes a project a generated one.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until
@@ -651,10 +650,11 @@ The commands
        ``--no-browser`` only prints the address. It serves until interrupted, and its
        options are not yet part of the stable interface.
    * - ``ddd build-info FILE -o FILE``
-     - record which project description a build runs DDD on and under which severity policy,
-       the ``ddd-build.json`` the language server and ``ddd gui`` read; ``ddd_generate()``
-       calls it at configure time, so a hand-rolled build is the only caller that needs it
-       directly.
+     - record which project description a build runs DDD on, whether the build collected it or
+       was given it (``--description collected`` or ``given``, the default), and under which
+       severity policy, the ``ddd-build.json`` the language server and ``ddd gui`` read;
+       ``ddd_generate()`` calls it at configure time, so a hand-rolled build is the only caller
+       that needs it directly.
    * - ``ddd checks``
      - list every check with its identifier, its default severity, whether it can be relaxed
        (``(fixed)`` if not), whether it needs every component of a project (``(project)``)

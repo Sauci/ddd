@@ -1092,6 +1092,43 @@ class TestCommandLineHelp:
         )
 
 
+class TestTheRecordSaysHowTheBuildHasTheDescription:
+    """The build record's ``description`` key, in every page that states what ``ddd gui`` does
+    with a project whose record sits beside it."""
+
+    def test_the_record_table_has_the_key_and_the_format_that_came_with_it(self) -> None:
+        rows = [line for line in SPEC.splitlines() if line.startswith("| `")]
+        keys = {line.split("`")[1]: line for line in rows}
+        assert "`collected`" in keys["description"] and "`given`" in keys["description"]
+        assert "today `2`" in keys["format"]
+        text = flattened(SPEC)
+        assert "A record that does not say, as every record of format `1` does not" in text
+        assert (
+            "stamped `2`, the record is declined by that reader as written by a newer DDD" in text
+        )
+
+    def test_the_pages_state_the_key_and_no_longer_a_limit_it_removed(self) -> None:
+        build = flattened(PAGES["docs/build_integration.rst"])
+        assert '"description": "collected"' in build
+        assert 'A record that says nothing, as every record of ``"format": 1`` does' in build
+        command_line = flattened(PAGES["docs/command_line_interface.rst"])
+        assert "``--description collected`` or ``given``, the default" in command_line
+        assert "nothing yet tells the two apart" not in command_line.lower()
+        developer = flattened(PAGES["docs/developer_documentation.rst"])
+        assert "tells the two apart yet" not in developer
+        for page in (command_line, developer):
+            assert "that does not say" in page or "without the key" in page
+
+    def test_the_help_of_the_command_says_it(self) -> None:
+        said = ""
+        for action in _build_parser()._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for action_of_command in action.choices["build-info"]._actions:
+                    if "--description" in action_of_command.option_strings:
+                        said = action_of_command.help or ""
+        assert "collected" in said and "given" in said and "ddd gui refuses" in said
+
+
 def published_kinds() -> list[str]:
     """The file formats ``ddd schema`` publishes, which is what these tests are about."""
     from ddd.cli import schema_models

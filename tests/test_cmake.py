@@ -1760,6 +1760,55 @@ class TestAPluginThatBreaksStillWatchedByTheBuild:
         assert Step(0, "ninja: no work to do.", frozenset(), "").did_nothing()
 
 
+class TestTheRecordSaysHowTheBuildHasTheDescription:
+    """``ddd-build.json`` says whether the description it names was collected by the module out of
+    the link graph or given to it as ``PROJECT``, which ``ddd gui`` takes a project for generated
+    by. Configured only: the module writes the record while it configures."""
+
+    @pytest.mark.parametrize(
+        ("shape", "described"),
+        [
+            pytest.param(STORY_SHAPES["collected"], "collected", id="without PROJECT"),
+            pytest.param(STORY_SHAPES["project"], "given", id="with PROJECT"),
+        ],
+    )
+    def test_the_module_writes_the_key(self, tmp_path: Path, shape: Shape, described: str) -> None:
+        story = Story(tmp_path, shape, "Ninja")
+        record = story.images() / "ddd" / "img" / "ddd-build.json"
+        written = json.loads(record.read_text(encoding="utf-8"))
+        assert written["description"] == described
+        assert written["format"] == 2
+
+
+class TestACleanUnderMake:
+    """``make clean`` takes what the generation and the a2l wrote, a Makefile generator having
+    made each of those files the output of a rule of its own, which CMake cleans only in the
+    target that reads it: they were byproducts of the generation's target, where it cleaned
+    them, and nothing else read them."""
+
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            pytest.param(Shape(), id="the a2l written before the link"),
+            pytest.param(MAPPED, id="the a2l written after the link"),
+        ],
+    )
+    def test_nothing_the_steps_wrote_is_left(self, tmp_path: Path, shape: Shape) -> None:
+        story = Story(tmp_path, shape, MAKE)
+        assert story.build().code == 0
+        generated = story.images() / "ddd" / "img"
+        written = {
+            path.name
+            for path in generated.iterdir()
+            if path.suffix in {".h", ".a2l"} or path.name.endswith(".dictionary.json")
+        }
+        assert {"ddd_types.h", "ddd_globals.h", "StoryDevice.a2l"} <= written
+        assert any(name.endswith(".dictionary.json") for name in written)
+        cleaned = story.build_target("clean")
+        assert cleaned.returncode == 0, cleaned.stdout + cleaned.stderr
+        assert [name for name in written if (generated / name).exists()] == []
+
+
 class TestTheMapReadOnceTheImageIsLinked:
     """``ADDRESS_MAP`` with the build page's recipe, under ``STRICT``: the a2l a build writes
     holds the addresses of the image that build linked.

@@ -794,11 +794,27 @@ project rather than a description of one.
 
 | key | meaning |
 | --- | --- |
-| `format` | version of this document format, raised only when its shape changes; today `1` |
+| `format` | version of this document format, raised only when its shape changes; today `2` |
 | `project` | absolute path of the project description the build runs DDD on; absolute because this file lives in the build tree while the project need not |
 | `image` | the build target the record was written for, by name, for example `firmware.elf`; a component linked into both a firmware and a test binary belongs to two projects, which need not agree about it. Optional on the command line (`--image`) and written as the empty string `""`, never as `null`, when no target is named; the build integration of [section 7.1](#71-build-system-integration) always names one |
+| `description` | how the build has the project description: `collected`, which the build assembles itself out of the C link closure and writes again at every configure, or `given`, a file somebody wrote and passed as `PROJECT`, which the build only reads. `ddd build-info` takes it as `--description` and writes `given` where it is not asked, and the CMake integration passes the one of the mode `ddd_generate` was called in. Written as one of those two words, never as `null`; a record of format `1` has no such key |
 | `strict` | whether the build reports warnings as errors |
 | `severity` | the severity overrides the build applies, as `check=severity` ([section 4](#4-consistency-checks)), in the order given |
+
+The `description` key is what lets a tool tell a description the build writes from one it was
+given: where `ddd_generate` is given a `PROJECT` and an `OUTPUT_DIRECTORY` that is the
+description's own directory, the record lies beside a hand-written project and names it. The
+browser interface refuses to write into a project its record says was `collected`, which the
+next configure writes again, and treats one that says `given` as any other. A record that does
+not say, as every record of format `1` does not, is read as `collected`, which is what it was
+taken for before the key existed: reading it as `given` would open every build made before to
+edits the next configure undoes.
+
+The key raised `format` to `2`. The record is a closed object and a reader of format `1`
+validates it as one, so it declines a record with a key it does not know without saying why,
+being written by a build and not by a person; stamped `2`, the record is declined by that
+reader as written by a newer DDD, with the reason announced. A reader of this version reads a
+record of format `1` and of format `2` alike.
 
 The path in `project` is recorded and never checked when the record is written: in the
 collected mode the description is produced at the end of the configure run, after the
@@ -2351,28 +2367,28 @@ generation: the build after a file left a wildcard regenerates, and the one afte
 to do. A relative entry is read from the directory of the file naming it whatever characters that
 directory has. A registered file that does not parse when the build is configured names no
 component and is a dependency of the configure step until it does. One that does not exist
-yet, being generated into the build tree later, names no component either and says nothing of its kind, and no file the
-build writes is a dependency of the configure step; it is watched instead, as a glob of its
-own path with `CONFIGURE_DEPENDS`, so that the first build to find it there configures again
-before anything else and reads both, and the configure step says so, naming the file. Until
-then its `<target>.ddd` checks it as a component. The generation depends on every `*.jinja2`
-below the template directory, which it reads as a directory whatever characters it has - a
-template in a subdirectory is never rendered and may be imported or included - and on the list
-of them, which the configure step keeps in the build tree as `<stem>_ddd_templates.txt` and
-rewrites only when it differs, so that a template removed runs the generation, which takes
-back the file it rendered. Under a Makefile generator, which looks at no file again once a
-step has run, each of the two steps - the generation and the A2L's after the link - has a
-stamp in the output directory for its one output, touched by every run that succeeds: a run
-that changed nothing leaves the build after it nothing to do, and a file it left as it was
-compiles nothing again. Each file a step of the project may read by its path - the A2L, the
-dictionary and the files the template names give away - is the output of a rule of its own
-there, which does nothing and depends on the step's target, so that a step depending on the
-file, in the directory calling `ddd_generate`, runs once the step writing it has, the generation
-or, for the A2L written after the link, `<stem>_ddd_a2l`; a `{component}` file, and any file
-read from another directory, is known to make by no rule, and a step reading one depends on
-`<stem>_ddd_generation`, or on `<stem>_ddd_a2l` for that A2L, instead. A file of the
-step deleted by hand under make is not written again until the step runs for another reason -
-every build reading it stops on it until then - and deleting the stamp, or a clean, runs it.
+yet, being generated into the build tree later, names no component either and says nothing of its
+kind, and no file the build writes is a dependency of the configure step; it is watched instead,
+as a glob of its own path with `CONFIGURE_DEPENDS`, so that the first build to find it there
+configures again before anything else and reads both, and the configure step says so, naming the
+file. Until then its `<target>.ddd` checks it as a component. The generation depends on every
+`*.jinja2` below the template directory, which it reads as a directory whatever characters it has -
+a template in a subdirectory is never rendered and may be imported or included - and on the
+list of them, which the configure step keeps in the build tree as `<stem>_ddd_templates.txt` and
+rewrites only when it differs, so that a template removed runs the generation, which takes back
+the file it rendered. Under a Makefile generator, which looks at no file again once a step has
+run, each of the two steps - the generation and the A2L's after the link - has a stamp in the
+output directory for its one output, touched by every run that succeeds: a run that changed
+nothing leaves the build after it nothing to do, and a file it left as it was compiles nothing
+again. Each file a step of the project may read by its path - the A2L, the dictionary and the
+files the template names give away - is the output of a rule of its own there, which does nothing
+and depends on the step's target, so that a step depending on the file, in the directory calling
+`ddd_generate`, runs once the step writing it has, the generation or, for the A2L written after
+the link, `<stem>_ddd_a2l`; a `{component}` file, and any file read from another directory, is
+known to make by no rule, and a step reading one depends on `<stem>_ddd_generation`, or on
+`<stem>_ddd_a2l` for that A2L, instead. A file of the step deleted by hand under make is not
+written again until the step runs for another reason - every build reading it stops on it until
+then - and deleting the stamp, or a clean, runs it.
 
 `ADDRESSES_FROM_IMAGE` takes the addresses out of the linked image instead
 ([section 6](#6-address-information)). With either keyword one build gives the complete A2L:
@@ -2386,11 +2402,12 @@ description does, and never otherwise. A target `<stem>_ddd_a2l`, built by defau
 drives it; a build that names its targets, `cmake --build --target <image>` or
 `<stem>_ddd_generation` say, does not build it and leaves the A2L of the last build that did,
 or none on a first build. The A2L keeps its path and its `DDD_A2L` property, and the step
-writes it into the directory the generation before the link writes into, whose manifest keeps either run from
-taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`, `SEVERITY` and
-`BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot place, or a
-map with entries leaves out, stops the build; a map with none, read after the link, does not.
-`ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L` is a configure error naming both.
+writes it into the directory the generation before the link writes into, whose manifest keeps
+either run from taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`,
+`SEVERITY` and `BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot
+place, or a map with entries leaves out, stops the build; a map with none, read after the link,
+does not. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L` is a configure error
+naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,

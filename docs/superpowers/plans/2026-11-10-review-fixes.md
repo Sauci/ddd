@@ -1403,7 +1403,12 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   saying the build writes it. Nothing is written wrongly, and the CLI and developer pages state the
   limit. Branch 2, which owns `cmake/Ddd.cmake`, can say precisely which description the build
   writes, by a key it adds to the description it collects or to the record: an addition to the
-  format, which its changelog would then state.
+  format, which its changelog would then state. *(Done by branch 2, task 10, ruling B2-2: the
+  record's `description` key says `collected` or `given`, and `ddd gui` refuses as generated only a
+  description its record says was collected, or that it does not say, as every record before the key.
+  The record's closed object made an older reader skip a record with the key in silence, so
+  `format` rose to 2, which such a reader declines with a reason. The CLI and developer pages state
+  the limit no more, and the branch's changelog entry states the key and the format.)*
 - **A removal refused as stale waits for the panel to close, or a key to settle** (R22): the
   variable panel's removal offer withdraws Remove while any refusal stands (P19b-24), so its
   sentence, kept now until the reader's next choice, goes when they settle a key or close the
@@ -1514,7 +1519,8 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R2.** Task 4 recognises a generated project by the build record naming it, and could have
   marked it from `cmake/Ddd.cmake` where the record did not suffice; it sufficed for the projects
   the task names, so the module is unchanged. It does not suffice for a description given with
-  `PROJECT` whose record sits beside it, which is taken for generated (*Left open*, branch 2).
+  `PROJECT` whose record sits beside it, which was taken for generated until branch 2's task 10
+  (*Left open*, branch 2).
 - **R3.** A stage is created by an exclusive open of `<name>.<8 hexadecimal digits>.ddd-staging`,
   not by `tempfile.mkstemp`, whose `0600` would carry into a file the engine creates, which takes
   the access any new file gets; the name is as much its own either way.

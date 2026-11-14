@@ -355,11 +355,16 @@ endfunction()
 # outside the build can see what the build sees. "options" is the very list handed to "check" and "generate", so those
 # three apply one severity policy. The <target>.ddd check of a component is not one of them: it applies the default.
 #
+# "description" says how this build has the project description - "collected" by this module out of the link graph, which
+# writes it again at every configure, or "given" to it as PROJECT, a file somebody wrote - which ddd gui tells a project
+# it may not write into by.
+#
 # Configure time, and the project description is named rather than read - without PROJECT it is produced by
 # file(GENERATE) at the end of this configure run, so it does not exist yet while this executes.
-function(_ddd_write_build_info directory image project_file options)
+function(_ddd_write_build_info directory image project_file description options)
     execute_process(COMMAND "${DDD_EXECUTABLE}" build-info "${project_file}"
-                            --output "${directory}/ddd-build.json" --image "${image}" ${options}
+                            --output "${directory}/ddd-build.json" --image "${image}"
+                            --description "${description}" ${options}
                     RESULT_VARIABLE status
                     ERROR_VARIABLE error
                     OUTPUT_QUIET)
@@ -1062,7 +1067,13 @@ function(ddd_generate image)
         _ddd_write_schemas("${arg_SCHEMA_DIRECTORY}" "${plugin_specs}")
     endif()
 
-    _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${common_options}")
+    if(arg_PROJECT)
+        set(description_mode given)
+    else()
+        set(description_mode collected)
+    endif()
+    _ddd_write_build_info("${arg_OUTPUT_DIRECTORY}" "${image}" "${project_file}" "${description_mode}"
+                          "${common_options}")
     # The output directory holds what the configure writes - the record above and, in the collected mode, the project
     # description - which no step of the build writes again: deleted, the build stopped under Ninja on that description,
     # missing and with no rule to make it, and only a configure by hand mended it. Watched, the record's deletion runs
@@ -1217,6 +1228,9 @@ function(ddd_generate image)
     add_custom_target(${image_stem}_ddd_generation DEPENDS ${generation_outputs})
     if(stamped)
         _ddd_files_of_a_step("${generated_outputs}" ${image_stem}_ddd_generation)
+        # Cleaned with the target that runs the step: a clean takes the outputs of the rules of the targets that read
+        # them, and no target reads these but by the rule above, which a clean passes over.
+        set_property(TARGET ${image_stem}_ddd_generation PROPERTY ADDITIONAL_CLEAN_FILES ${generated_outputs})
     endif()
 
     # ADDRESSES_FROM_IMAGE and ADDRESS_MAP: the a2l is written once the image is linked, by a second run reading every
@@ -1266,6 +1280,7 @@ function(ddd_generate image)
         add_custom_target(${image_stem}_ddd_a2l ALL DEPENDS ${a2l_outputs})
         if(stamped)
             _ddd_files_of_a_step("${a2l_file}" ${image_stem}_ddd_a2l)
+            set_property(TARGET ${image_stem}_ddd_a2l PROPERTY ADDITIONAL_CLEAN_FILES "${a2l_file}")
         endif()
     endif()
 

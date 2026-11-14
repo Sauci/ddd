@@ -25,16 +25,22 @@ Two properties are deliberate and easy to lose:
 from __future__ import annotations
 
 import json
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-BUILD_INFO_FORMAT: Final = 1
+BUILD_INFO_FORMAT: Final = 2
 """Version of the document format itself.
 
 Raised only when the shape of the document changes, so that a reader older than the build that
 wrote the file can say so instead of misreading it. The same discipline as the data dictionary,
 for the same reason: these two are the documents DDD produces rather than reads.
+
+Raised to 2 for ``description``. The record's object is closed, so a reader of format 1 declines
+a record carrying a key it does not know and says nothing of why, a build record being written by
+a build and not by a person; stamped 2, the record is declined with the reason - written by a
+newer DDD - which is what the stamp is for. A record of format 1 has no such key, and is read as
+it always was.
 """
 
 BUILD_INFO_FILENAME: Final = "ddd-build.json"
@@ -66,6 +72,16 @@ class BuildInfo(BaseModel):
 
     What tells two of these apart: a component linked into both a firmware and a test binary
     belongs to two projects, and they need not agree about it.
+    """
+
+    description: Literal["collected", "given"] = "given"
+    """How the build has the project description: ``collected`` by ``ddd_generate`` out of the
+    link closure of the image, written into the build tree again at every configure, or ``given``
+    to it as ``PROJECT``, a file somebody wrote and the build only reads.
+
+    What ``ddd gui`` tells the two apart by, refusing to write into the first. A record of format
+    1 has no such key: it was written by a build that did not say, and ``ddd gui`` reads it as
+    collected, which is what it took every record for.
     """
 
     strict: bool = False

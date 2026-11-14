@@ -450,7 +450,7 @@ def collected_project(
         encoding="utf-8",
         newline="",
     )
-    record = BuildInfo(project=described.as_posix(), image=image)
+    record = BuildInfo(project=described.as_posix(), image=image, description="collected")
     (directory / BUILD_INFO_FILENAME).write_text(
         build_info_text(record), encoding="utf-8", newline=""
     )

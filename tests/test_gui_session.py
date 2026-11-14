@@ -2121,6 +2121,66 @@ class TestAProjectTheBuildGenerates:
         assert refused == ("generated", membership(tmp_path))
         assert described.read_bytes() == before
 
+    def test_a_project_given_to_the_build_beside_its_record_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        """``ddd_generate(... PROJECT p.ddd.json OUTPUT_DIRECTORY <its own directory>)``: the
+        record the build writes into that directory names a description somebody wrote, and
+        says it was given. It is the project's own to edit, as it is where the record lies
+        elsewhere, and an edit of it is answered as written."""
+        sources = collected_sources(tmp_path)
+        described = collected_project(tmp_path, *sources)
+        record = described.parent / "ddd-build.json"
+        given = BuildInfo(project=described.as_posix(), image="fw", description="given")
+        record.write_text(build_info_text(given), encoding="utf-8")
+        session = Session(tmp_path)
+        session.open(described)
+        revision = session.revision
+        assert revision is not None
+        assert revision.generated is None
+        _, written = session.edit([an_include_taken_out(described)], "an include taken out")
+        assert [file.path for file in written] == [described.resolve()]
+
+    def test_a_record_saying_the_description_was_collected_is_the_builds(
+        self, tmp_path: Path
+    ) -> None:
+        """What ``ddd_generate`` without ``PROJECT`` writes: refused, with the sentence that
+        says the build writes the description again at every configure."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        record = json.loads((described.parent / "ddd-build.json").read_text(encoding="utf-8"))
+        assert record["description"] == "collected"
+        session = Session(tmp_path)
+        session.open(described)
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", membership(tmp_path))
+
+    def test_a_record_that_does_not_say_is_still_the_builds(self, tmp_path: Path) -> None:
+        """One a module wrote before the record said how the build had the description: read as
+        it was, or every build made before this one would have its generated description open
+        to edits the next configure undoes."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        record = described.parent / "ddd-build.json"
+        written = json.loads(record.read_text(encoding="utf-8"))
+        del written["description"]
+        written["format"] = 1
+        record.write_text(json.dumps(written), encoding="utf-8")
+        session = Session(tmp_path)
+        session.open(described)
+        before = described.read_bytes()
+        refused = refusal_of(session, [an_include_taken_out(described)])
+        assert refused == ("generated", membership(tmp_path))
+        assert described.read_bytes() == before
+
+    def test_a_record_saying_a_word_this_version_does_not_know_is_not_the_builds(
+        self, tmp_path: Path
+    ) -> None:
+        """Refused as generated only where the record says collected."""
+        described = collected_project(tmp_path, *collected_sources(tmp_path))
+        record = described.parent / "ddd-build.json"
+        written = {**json.loads(record.read_text(encoding="utf-8")), "description": "guessed"}
+        record.write_text(json.dumps(written), encoding="utf-8")
+        assert first_revision(tmp_path, described).generated is None
+
     @pytest.mark.parametrize("image", ["", 7])
     def test_a_record_naming_no_image_is_said_to_be_the_builds(
         self, tmp_path: Path, image: str | int

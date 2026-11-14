@@ -1267,10 +1267,13 @@ def _generated(project: Path) -> Generated | None:
 
     What ``ddd_generate`` leaves where it collects a project out of an image's link closure: the
     description and the record of that build, written into one directory, its output directory.
-    A project somebody wrote has no such record beside it: given with ``PROJECT``, its record lies
-    in the build tree and names it from there. Looked for beside the description whatever build
-    directories the session was given, which are where it finds the builds whose severities
-    apply: a build tree under any other name is the build's all the same.
+    A project somebody wrote has the record beside it too where its output directory is the
+    description's own, and that record says the description was given, which is no description
+    the build writes: ``None``, as for a record saying anything but collected. A record that does
+    not say, written by a module before it did, is read as it was - collected. Looked for beside
+    the description whatever build directories the session was given, which are where it finds
+    the builds whose severities apply: a build tree under any other name is the build's all the
+    same.
 
     Read for what it names alone - the project, and the image for the sentence - by the loader's
     reading of json, and not as :func:`ddd.lsp.discovery.load_builds` reads a record. That reader
@@ -1285,6 +1288,11 @@ def _generated(project: Path) -> Generated | None:
     if not isinstance(named, str):
         return None
     if resolve_path(Path(named)) != project:
+        return None
+    # A record without the key was written by a module that did not say, and is read as it always
+    # was: the build's. One that says anything but collected - given, as PROJECT, or a word this
+    # version does not know - names a description no build writes that this version can tell of.
+    if "description" in record and record["description"] != "collected":
         return None
     image = record.get("image")
     if not isinstance(image, str):

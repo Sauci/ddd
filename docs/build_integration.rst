@@ -351,9 +351,10 @@ time, with ``ddd build-info``:
 .. code-block:: json
 
    {
-     "format": 1,
+     "format": 2,
      "project": "/home/me/firmware/build/ddd/firmware.elf/firmware.ddd.json",
      "image": "firmware.elf",
+     "description": "collected",
      "strict": false,
      "severity": ["unused-output=info"]
    }
@@ -375,6 +376,15 @@ the same working tree would be clean in one place and failing in the other. The 
 to ``ddd build-info`` are the very list handed to ``ddd check`` and ``ddd generate``, so those
 three apply one policy. The ``<target>.ddd`` check of a component is not among them: it applies
 the default policy, as described under "Registering a component".
+
+The record also says **how the build has the project description**: ``"collected"`` where the
+module assembles it out of the link graph, and ``"given"`` where it was handed to
+``ddd_generate()`` as ``PROJECT``. ``ddd gui`` refuses to write into a description the record says
+was collected, which the build writes again at every configure, and not into one it says was
+given, even where ``OUTPUT_DIRECTORY`` is that description's own directory and the record lies
+beside it. A record that says nothing, as every record of ``"format": 1`` does, is read as
+collected. The key raised the record's ``format`` to 2: a DDD that reads up to format 1 skips such
+a record and says it was written by a newer DDD.
 
 The project description is named rather than read, because in the collected mode it does not
 exist yet at that point - ``file(GENERATE)`` produces it at the end of the configure run, after
@@ -493,9 +503,9 @@ including the ones this image happens not to link.
        the image is linked, every address it carries read out of the image or out of the map
        (see below). It depends on the image, on the map with ``ADDRESS_MAP``, on the project
        description and the files collected into it, on a ``.py`` plugin the call names and on the
-       tool, and on nothing the c alone is rendered from. A build that names its targets - ``cmake --build
-       --target firmware.elf``, say, or ``firmware_ddd_generation`` - does not build it, so it
-       leaves the a2l of the last build that did, or none on a first build.
+       tool, and on nothing the c alone is rendered from. A build that names its targets -
+       ``cmake --build --target firmware.elf``, say, or ``firmware_ddd_generation`` - does not
+       build it, so it leaves the a2l of the last build that did, or none on a first build.
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 

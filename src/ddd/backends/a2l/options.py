@@ -28,8 +28,9 @@ class A2lOptions:
 
     has_address_source: bool = False
     """Whether the run had a source of addresses: the linked image, or an address map with an
-    entry. Without one every address is 0 and no ``address-missing`` says so, there being
-    nothing to miss, so the file says it itself, under its version."""
+    entry. Without one every address is 0 and no ``address-missing`` says so, an empty map
+    naming nothing to miss, and ``--strict`` does not fail it, so the file says it itself,
+    under its version."""
 
     def filename(self, project: str) -> str:
         return f"{project}.a2l"

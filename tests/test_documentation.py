@@ -3132,7 +3132,7 @@ class TestTheCiRun:
         browser, and would have held the run, and any re-run of its failed jobs, for the rest.
         Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
         gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
-        1); the test legs 40, the windows ones taking 15 to 20 since the Makefile cell."""
+        1); the test legs 40, the windows ones taking about 18 to 22 since the Makefile cell."""
         limits = {}
         for name in job_names(CI_WORKFLOW):
             limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)

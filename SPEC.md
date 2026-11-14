@@ -1453,10 +1453,12 @@ Warnings:
   to read both.
 - `address-missing`: an object the A2L carries gets no address from the address map or the
   image the run was given. It fires for a map only when the map has at least one entry:
-  without a map, or with an empty one, every address is zero by construction, which is the
-  run a build makes
-  before it has linked anything ([section 7.1](#71-build-system-integration)), and the A2L
-  says so itself ([section 6](#6-address-information)). With one, a
+  without a map, or with an empty one, every address is zero by construction. That is the run
+  a build makes before it has linked anything, and it is as well the step after the link
+  when the map it reads has no entry, one the project's step extracted nothing into among
+  them ([section 7.1](#71-build-system-integration)): neither is `address-missing`, so
+  `--strict` does not fail either, and the A2L says so itself
+  ([section 6](#6-address-information)). With one, a
   symbol the map omits is written at address zero, and a calibration tool reads and writes
   there as readily as anywhere else. It is one finding per run, naming up to five of the
   uncovered objects and counting the rest, with a note naming, the same way, the entries of
@@ -2062,8 +2064,9 @@ A map with entries, or an image, that leaves an object of the A2L uncovered is
 addresses it has just been told are incomplete, unless `--force` asks for the file anyway
 ([section 7](#7-tool-interface)). A run given neither, or given a map with no entry, has no
 address source: every address of its A2L is `0x00000000`, and no `address-missing` reports
-it, there being nothing to miss, so the file says so itself, on the line under
-`ASAP2_VERSION`: `/* written with no address source: every address below is 0x00000000 */`.
+it, an empty map naming no object for the A2L to miss, and `--strict` does not fail it,
+so the file says so itself, on the line under `ASAP2_VERSION`:
+`/* written with no address source: every address below is 0x00000000 */`.
 `ddd generate a2l` writes the A2L alone - no C is rendered
 and no template directory is accepted - so the post-link run regenerates the A2L without
 touching the sources the image was built from. Reading IEEE-695 images, and cross-checking
@@ -2256,19 +2259,21 @@ named by the ones that do: `types`, `units`, `sections`, `constants` and `raster
 `ddd_generate(<image> ...)` generates every artefact of an image - the built-in ones and
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
-built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30, and
-a registered file not named `*.ddd.json`, or whose top level key is `project`, is a configure
-error - a project file is named with `PROJECT` of `ddd_generate`, which follows what it includes,
-where nothing follows the includes of a registered file; so, in both calls, is a
-keyword given no value, which the error names: a variable that expanded to nothing reads
-exactly like a keyword nobody gave, and each one silently changes what the call does - the
-quoted form `ADDRESS_MAP "${DDD_MAP}"`, a keyword followed by an empty argument, included,
-and so is an empty argument among the values of a keyword taking several, which would
-otherwise drop out of the list without a word; it defines an on-demand
+built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30. A
+registered file not named `*.ddd.json` is a configure error, and so is one whose top level key
+is `project`, where the file exists when the build is configured - one the build writes later
+passes, saying nothing of its kind. A project file is named with `PROJECT` of `ddd_generate`,
+which follows what it includes, where nothing follows the includes of a registered file. So,
+in both calls, is a keyword given no value, which the error names: a variable that expanded to
+nothing reads exactly like a keyword nobody gave, and each one silently changes what the call
+does - the quoted form `ADDRESS_MAP "${DDD_MAP}"`, a keyword followed by an empty argument,
+included, and so is an empty argument among the values of a keyword taking several, which
+would otherwise drop out of the list without a word. `ddd_add_component` defines an on-demand
 target `<target>.ddd` that runs `ddd check <file> --standalone` on each registered
 component file under the default severity policy, a vocabulary file getting none because it
 declares no interface of its own; a registered file whose JSON does not parse at all is
-checked like a component, what is wrong with it being exactly what that check reports. `ddd_generate` generates into the build tree and defines
+checked like a component, what is wrong with it being exactly what that check reports.
+`ddd_generate` generates into the build tree and defines
 two libraries, named after the image without its extension: an interface library
 `<stem>_ddd_headers`, carrying the output directory as an include directory and, in the
 collected mode, the compile usage described at the end of this section; and an object
@@ -2313,7 +2318,8 @@ it once the project's step has written it; an empty map raises no `address-missi
 ([section 6](#6-address-information)). With `NO_A2L` the map is neither seeded nor read, the
 A2L being the only artefact that reads it.
 
-The generation declares as its outputs the files the template names give away, the A2L and
+The generation declares as its outputs the files the template names give away, the A2L
+(unless `ADDRESSES_FROM_IMAGE` or `ADDRESS_MAP` has the step after the link write it) and
 the dictionary, and as its byproducts the files of each `{component}` template, one for every
 component of the image - in the collected mode every component it links, with `PROJECT` every
 component the project names, whatever the image links - named when the build is configured:
@@ -2342,11 +2348,10 @@ includes among them, so that a file a wildcard starts or stops matching runs the
 step, and the list of the files the project is made of, which the configure step keeps in the
 build tree, as `<stem>_ddd_sources.txt` and rewrites only when it differs, is an input of the
 generation: the build after a file left a wildcard regenerates, and the one after has nothing
-to do. A relative entry is read from the directory of the file naming it whatever characters
-that directory has. A registered
-file that does not parse when the build is configured names no component and is a dependency
-of the configure step until it does. One that does not exist yet, being generated into the
-build tree later, names no component either and says nothing of its kind, and no file the
+to do. A relative entry is read from the directory of the file naming it whatever characters that
+directory has. A registered file that does not parse when the build is configured names no
+component and is a dependency of the configure step until it does. One that does not exist
+yet, being generated into the build tree later, names no component either and says nothing of its kind, and no file the
 build writes is a dependency of the configure step; it is watched instead, as a glob of its
 own path with `CONFIGURE_DEPENDS`, so that the first build to find it there configures again
 before anything else and reads both, and the configure step says so, naming the file. Until
@@ -2362,9 +2367,10 @@ that changed nothing leaves the build after it nothing to do, and a file it left
 compiles nothing again. Each file a step of the project may read by its path - the A2L, the
 dictionary and the files the template names give away - is the output of a rule of its own
 there, which does nothing and depends on the step's target, so that a step depending on the
-file, in the directory calling `ddd_generate`, runs once the generation has; a `{component}`
-file, and any file read from another directory, is known to make by no rule, and a step
-reading one depends on `<stem>_ddd_generation`, or `<stem>_ddd_a2l`, instead. A file of the
+file, in the directory calling `ddd_generate`, runs once the step writing it has, the generation
+or, for the A2L written after the link, `<stem>_ddd_a2l`; a `{component}` file, and any file
+read from another directory, is known to make by no rule, and a step reading one depends on
+`<stem>_ddd_generation`, or on `<stem>_ddd_a2l` for that A2L, instead. A file of the
 step deleted by hand under make is not written again until the step runs for another reason -
 every build reading it stops on it until then - and deleting the stamp, or a clean, runs it.
 
@@ -2372,16 +2378,19 @@ every build reading it stops on it until then - and deleting the stamp, or a cle
 ([section 6](#6-address-information)). With either keyword one build gives the complete A2L:
 the generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after
 the link runs `ddd generate a2l` over the image with `--image`, or over the map with
-`--address-map`, the A2L its output. The step depends on the image, on the map, and on what
-the project is read from - its description, the files it is collected or included from, the
-`.py` plugins, the list of those files that `PROJECT` keeps in the build tree, and the tool - so it runs again when the image relinks, the map changes or a
+`--address-map`, the A2L its output. The step depends on the image, on the map with
+`ADDRESS_MAP`, and on what the project is read from - its description, the files it is
+collected or included from, the `.py` plugins, the list of those files that `PROJECT` keeps in
+the build tree, and the tool - so it runs again when the image relinks, the map changes or a
 description does, and never otherwise. A target `<stem>_ddd_a2l`, built by default,
-drives it. The A2L keeps its path and its `DDD_A2L` property, and the step writes it into the
-directory the generation before the link writes into, whose manifest keeps either run from
+drives it; a build that names its targets, `cmake --build --target <image>` or
+`<stem>_ddd_generation` say, does not build it and leaves the A2L of the last build that did,
+or none on a first build. The A2L keeps its path and its `DDD_A2L` property, and the step
+writes it into the directory the generation before the link writes into, whose manifest keeps either run from
 taking back the other's files ([section 5](#5-generated-artefacts)). `STRICT`, `SEVERITY` and
-`BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot place, or the
-map leaves out, stops the build. `ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside
-`NO_A2L` is a configure error naming both.
+`BYTE_ORDER` apply to the step, so that under `STRICT` a symbol the image cannot place, or a
+map with entries leaves out, stops the build; a map with none, read after the link, does not.
+`ADDRESSES_FROM_IMAGE` beside `ADDRESS_MAP` or beside `NO_A2L` is a configure error naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,
@@ -2414,8 +2423,10 @@ its one `ddd generate`, so that the dictionary is part of the same write as the 
 a run failing its checks writes none of them; its path is published as the image's
 `DDD_DICTIONARY` property, and `NO_DICTIONARY` leaves the file and the property out. The tool
 itself is found by `find_program`
-into the cache variable `DDD_EXECUTABLE` and is a dependency of the generation, so an
-upgraded DDD regenerates; multi-config generators are refused at configure time, because
+into the cache variable `DDD_EXECUTABLE` and that file is a dependency of the generation, so
+an executable replaced by an upgraded DDD regenerates, and a wrapper script running
+`python -m ddd` is the file depended on, so an upgrade behind it does not; multi-config
+generators are refused at configure time, because
 the generated files have one path that every configuration would write to, and so is a
 directory calling `ddd_generate` in which C is not enabled by the time it is done, the
 definitions the templates render being C and compiled there. The module and

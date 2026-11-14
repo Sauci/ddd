@@ -953,8 +953,9 @@ def _check_address_coverage(
     """Report the objects a supplied address map does not cover, and the entries nobody wants.
 
     Only when a map with entries was given: without one, or with an empty one, every address
-    is zero on purpose, because that is the run a build makes before it has linked anything.
-    With entries, a symbol the map does not
+    is zero by construction, and nothing is reported or failed, ``--strict`` included. That is
+    the run a build makes before it has linked anything, and as well a step after the link
+    whose map holds no entry. With entries, a symbol the map does not
     carry silently became address zero - and the map is written by a linker script or a patch
     tool against the names of one build, so a renamed variable or a stale file covers some of
     the objects and not the rest. What comes out is an a2l pointing a calibration tool at
@@ -969,10 +970,13 @@ def _check_address_coverage(
     anything, and this note is where the rest are accounted for.
     """
     if not addresses:
-        # The run a build makes before it has linked: the cmake module seeds an empty map so
-        # that the two-run flow has a file to depend on, and a strict first build that failed
-        # on it could never reach the second run that fills the map. A map that names some
-        # objects and not others is another thing, and is reported below.
+        # An empty map is every address zero by construction, and it is not failed under
+        # --strict either: the run a build makes before it has linked reads one, the cmake
+        # module seeding it so that the build has a file to depend on, and a strict first build
+        # that failed on it could never reach the step that fills the map. The step after the
+        # link reads one too when nothing was extracted into the map, and passes the same
+        # way. A map that names some objects and not others is another thing, and is
+        # reported below.
         return
     missing = [symbol for symbol in carried if symbol not in addresses]
     if not missing:

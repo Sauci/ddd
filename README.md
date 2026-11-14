@@ -861,7 +861,10 @@ needs no 3.30 and no `ddd_add_component`.
 | `firmware_ddd_globals` | object library compiling every generated definition file, linked into the image; links `firmware_ddd_headers` for that compile usage |
 
 plus `firmware_ddd_check` to run the consistency check on its own in ci, `firmware_ddd_list`
-to print the table of the image's variables, and one
+to print the table of the image's variables, `firmware_ddd_a2l` - with `ADDRESSES_FROM_IMAGE`
+or `ADDRESS_MAP`, built by default - to write the a2l once the image is linked (a build that
+names its targets does not build it, and leaves the a2l of the last build that did, or none on a
+first build), and one
 `<target>.ddd` per component that checks a single component before it is integrated.  The
 path of the generated a2l is available as the `DDD_A2L` property of the image, and that of
 `<project name>.dictionary.json` - the resolved dictionary the generation writes beside the
@@ -903,12 +906,17 @@ reaches every registered component rather than only the ones that image links.
 The declared outputs are derived from the template names, and the a2l; the files of a
 `{component}` template are declared as byproducts, one for each component of the image - each
 one it links, or with `PROJECT` each one the project names - under the names the module reads
-out of the descriptions when the build is configured; under a Makefile generator, since make
+out of the descriptions when the build is configured.  A link made behind `$<CONFIG:...>`
+alone is read for the `CMAKE_BUILD_TYPE` the build is configured with, as CMake reads it; a link
+behind any other generator expression cannot be evaluated then, so every component it names is
+declared, whatever the expression comes to.  Under a Makefile generator, since make
 looks at no file again once a step has run, a stamp is the step's one output, and each shared
-file a rule of its own depending on `firmware_ddd_generation`, so that a step reading the
-dictionary or the a2l by its path, in the directory calling `ddd_generate`, runs after the
-generation - a `{component}` header, or a file read from another directory, is read after
-depending on that target instead - so
+file a rule of its own depending on `firmware_ddd_generation` - on `firmware_ddd_a2l` for the
+a2l written after the link, which `ADDRESSES_FROM_IMAGE` or `ADDRESS_MAP` give - so that a step
+reading the dictionary or the a2l by its path, in the directory calling `ddd_generate`, runs
+after the step that writes it.  A `{component}` header, or a file read from another directory,
+is read after depending on `firmware_ddd_generation` instead - which, for the a2l written after
+the link, is the a2l of the build before, `firmware_ddd_a2l` being the target to depend on.  So
 the build after a description change recompiles exactly the components whose header changed,
 and in the collected mode a component renamed in its description needs a reconfigure.
 Consumers find the headers through `firmware_ddd_headers`, which carries their include

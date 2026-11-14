@@ -7,9 +7,12 @@ makes it usable from wherever the build already lives - a makefile, a cmake proj
 :doc:`build_integration`), a batch file on an engineer's machine, or a ci job that never sees
 a terminal. Two commands do not exit: ``ddd lsp``, the language server an editor keeps running
 (see :doc:`editor_integration`), and ``ddd gui``, the preview of a browser interface, which
-serves until it is interrupted. The one file the tool leaves behind for its own use is the
-``ddd-build.json`` that ``ddd build-info`` writes for the language server and for ``ddd gui``,
-which both apply the severities of the build that names a project.
+serves until it is interrupted. Two files are left behind for the tool's own use: the
+``.ddd-manifest.json`` that ``ddd generate`` keeps in its output directory, the record of the
+files it wrote there, by which the next run takes back those it no longer writes (see
+:ref:`what-a-run-owns`), and the ``ddd-build.json`` that ``ddd build-info`` writes for the
+language server and for ``ddd gui``, which both apply the severities of the build that names a
+project.
 
 The same discipline governs the output. The findings - everything the tool has to say about
 a project - are written to standard error, one line per finding followed by a summary, while
@@ -702,7 +705,8 @@ actually running where they are instead of hard-coding a guess:
    $ ddd templates-dir
    /home/you/ddd/examples/templates
 
-How both directories are used from a ``CMakeLists.txt`` is in :doc:`build_integration`.
+How a ``CMakeLists.txt`` finds the module with ``cmake-dir``, and what it does with a template
+directory, is in :doc:`build_integration`.
 
 Severity options
 ----------------
@@ -784,7 +788,8 @@ itself, every description it includes however deeply, and the module of every
 :doc:`plugin <plugins>` those files name, since a plugin decides what the generation writes
 as much as a description does. A plugin that is a package is listed by every ``.py`` file of
 it, and one named by a ``.py`` path is listed whether or not it imports, as a missing include
-is; one named as a module, by the file the finder locates for it. The demo names none, so its listing is descriptions alone:
+is; one named as a module, by the file the finder locates for it. The demo names none, so its
+listing is descriptions alone:
 
 .. code-block:: text
 

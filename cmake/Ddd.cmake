@@ -820,7 +820,8 @@ function(_ddd_refuse_late_links image)
                "defined, after \"${directory}\" - where ddd_generate() is called - was done. Their headers are not "
                "declared as outputs of the generation, so the build after one of them changed would compile the "
                "components reading it against the old one. Link the image's components, and define every library "
-               "on the way to them, before that directory is done - or call ddd_generate() where they are. A link "
+               "on the way to them, before that directory is done - or define the image and call ddd_generate() where "
+               "they are. A link "
                "behind a generator expression is taken whatever the expression comes to, the names being read when "
                "the build is configured, before CMake evaluates any; one behind $<CONFIG:...> alone is read for the "
                "CMAKE_BUILD_TYPE configured.\n")
@@ -1001,14 +1002,14 @@ function(ddd_generate image)
     set(descriptions "")
     set(source_list "")
     if(arg_PROJECT)
-        # Read now - the files it is made of, its plugins and its name - so it has to exist, and parse, now. A file in
-        # the build tree that a step would write later, as a description may be, was let through, and so was one that
-        # does not parse: each was warned of as a project the generation would depend on alone, and each then stopped
-        # the configure on a reading of CMake's own, which names neither cause.
+        # Read now - the files it is made of, its plugins and its name - so it has to exist, parse and name its
+        # project now. A file in the build tree that a step would write later, as a description may be, was let
+        # through, and so was one that does not parse: each was warned of as a project the generation would depend on
+        # alone, and each then stopped the configure on a reading of CMake's own, which names neither cause.
         cmake_path(ABSOLUTE_PATH arg_PROJECT BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
         string(CONCAT read_when_configured
                "The project description is read when the build is configured - the files it is made of, its "
-               "plugins and its name - so it has to exist, and parse, by then")
+               "plugins and its name - so it has to exist, parse and name its project by then")
         if(NOT EXISTS "${arg_PROJECT}")
             message(FATAL_ERROR "ddd_generate: PROJECT names \"${arg_PROJECT}\", which does not exist. "
                                 "${read_when_configured}: a file the build has yet to write is no project "

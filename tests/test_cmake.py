@@ -1124,8 +1124,8 @@ class TestTheBuildAfterAnEdit:
             "ddd_generate() is called - was done. Their headers are not declared as "
             "outputs of the generation, so the build after one of them changed would compile "
             "the components reading it against the old one. Link the image's components, and "
-            "define every library on the way to them, before that directory is done - or call "
-            "ddd_generate() where they are."
+            "define every library on the way to them, before that directory is done - or define "
+            "the image and call ddd_generate() where they are."
         ) in said
 
     @pytest.mark.parametrize("generator", STORY_GENERATORS)
@@ -2483,7 +2483,7 @@ class TestAProjectThatEnablesNoC:
 
 class TestAProjectFileReadWhenConfigured:
     """``PROJECT`` is read when the build is configured - the files it is made of, its plugins,
-    its name - so it has to exist, and parse, by then.
+    its name - so it has to exist, parse and name its project by then.
 
     A file in the build tree was let through as one the build might write later, and the call
     then said it could not resolve the project *yet* and that the generation would depend on
@@ -2517,8 +2517,9 @@ ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
         assert (
             f'ddd_generate: PROJECT names "{(tmp_path / "build" / "later.ddd.json").as_posix()}", '
             "which does not exist. The project description is read when the build is configured "
-            "- the files it is made of, its plugins and its name - so it has to exist, and "
-            "parse, by then: a file the build has yet to write is no project description."
+            "- the files it is made of, its plugins and its name - so it has to exist, "
+            "parse and name its project by then: a file the build has yet to write is no "
+            "project description."
         ) in said
 
     def test_one_that_does_not_parse_is_refused_saying_so(self, tmp_path: Path) -> None:
@@ -2532,7 +2533,8 @@ ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
         assert (
             f'ddd_generate: PROJECT names "{project.as_posix()}", which does not parse as json. '
             "The project description is read when the build is configured - the files it is "
-            "made of, its plugins and its name - so it has to exist, and parse, by then:"
+            "made of, its plugins and its name - so it has to exist, parse and name its project "
+            "by then:"
         ) in said
 
     def test_one_that_names_nothing_is_refused_saying_so(self, tmp_path: Path) -> None:
@@ -2551,7 +2553,8 @@ ddd_generate(img PROJECT "{project}" TEMPLATE_DIRECTORY "{TEMPLATES.as_posix()}"
             f'ddd_generate: PROJECT names "{project.as_posix()}", which gives its project - or '
             "its component - no name. The project description is read when the build is "
             "configured - the files it is made of, its plugins and its name - so it has to exist, "
-            "and parse, by then: the a2l and the dictionary are named after that name."
+            "parse and name its project by then: the a2l and the dictionary are named after "
+            "that name."
         ) in said
 
 

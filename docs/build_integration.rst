@@ -28,8 +28,15 @@ the tool itself rather than guessed:
 
 .. code-block:: cmake
 
-   list(APPEND CMAKE_MODULE_PATH "/path/to/ddd/cmake")   # what `ddd cmake-dir` printed
+   find_program(DDD_EXECUTABLE NAMES ddd REQUIRED)
+   execute_process(COMMAND "${DDD_EXECUTABLE}" cmake-dir
+                   OUTPUT_VARIABLE ddd_cmake_dir OUTPUT_STRIP_TRAILING_WHITESPACE
+                   COMMAND_ERROR_IS_FATAL ANY)
+   list(APPEND CMAKE_MODULE_PATH "${ddd_cmake_dir}")
    include(Ddd)
+
+A project that has copied the module into its tree adds that directory instead, and the
+module then refuses a tool of another release than the copy (below).
 
 Including the module looks for the ``ddd`` executable and remembers it in the cache variable
 ``DDD_EXECUTABLE``. Configure with ``-DDDD_EXECUTABLE=<path>`` to pin a particular
@@ -58,12 +65,12 @@ build tree and are generated later, must exist at configure time; a violation of
 fatal error, because the alternative is an image whose data dictionary is quietly incomplete.
 
 A project description is not a component, and a file whose top-level key is ``project`` is refused
-at configure time: only the file itself would be a dependency of the build, so an edit to what it
+at configure time, where it exists then - one the build writes later passes, saying nothing of
+its kind: only the file itself would be a dependency of the build, so an edit to what it
 includes, or to a plugin it names, would build to ``no work to do`` over generated sources that
 no longer match the project. The error reads ``ddd_add_component: "<file>" registered on target
 "<target>" describes a project, and a component is not one. Name a project file with PROJECT of
-ddd_generate(), which follows what it includes.`` A project file is named with ``PROJECT`` of
-``ddd_generate()``, which follows its includes.
+ddd_generate(), which follows what it includes.``
 
 A :doc:`vocabulary file <file_formats/units>` registers the same way - a units, sections,
 constants, rasters or types file is a ``*.ddd.json`` like any other, and the call takes it
@@ -299,7 +306,11 @@ carries project-level ``extensions``, the one key the generated description does
 it with ``PROJECT <file>``. That mode needs neither cmake 3.30 (3.20, the module's own floor,
 is enough) nor ``ddd_add_component``, and the
 a2l and the dictionary are then named after the project name inside the description, so a
-``NAME`` given as well is ignored with a status message.
+``NAME`` given as well is ignored with a status message. Without ``ddd_add_component`` nothing
+hands a component ``<stem>_ddd_headers`` either - that is done for the components registered -
+so a component that includes a generated header links it itself, ``target_link_libraries(
+sensor_hub PRIVATE firmware_ddd_headers)`` for the image ``firmware.elf``, or fails to compile
+for want of the header.
 
 A hand written project pulls its components in through ``includes``, possibly with wildcards,
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
@@ -443,8 +454,9 @@ including the ones this image happens not to link.
      - custom target running the generator. It depends on the project description and the
        files collected into it, on the templates - every ``*.jinja2`` below the directory, and
        the list of them - on a ``.py`` plugin the call names, on whatever ``DEPENDS`` adds and
-       on the tool itself, so any of those changing regenerates - and the c code the image is
-       otherwise built from does not enter into it.
+       on the tool's executable file, so any of those changing regenerates - a wrapper script
+       running ``python -m ddd`` being the file depended on, an upgrade behind it does not - and
+       the c code the image is otherwise built from does not enter into it.
    * - ``<stem>_ddd_headers``
      - interface library carrying the include directory of the generated headers, and
        depending on the generation. Every registered component links it, so a component
@@ -479,9 +491,11 @@ including the ones this image happens not to link.
    * - ``<stem>_ddd_a2l``
      - with ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP``, built by default: writes the a2l once
        the image is linked, every address it carries read out of the image or out of the map
-       (see below). It depends on the image, on the map, on the project description and the
-       files collected into it, on a ``.py`` plugin the call names and on the tool, and on
-       nothing the c alone is rendered from.
+       (see below). It depends on the image, on the map with ``ADDRESS_MAP``, on the project
+       description and the files collected into it, on a ``.py`` plugin the call names and on the
+       tool, and on nothing the c alone is rendered from. A build that names its targets - ``cmake --build
+       --target firmware.elf``, say, or ``firmware_ddd_generation`` - does not build it, so it
+       leaves the a2l of the last build that did, or none on a first build.
    * - ``<component>.ddd``
      - one per registered component, checking that component alone (see above).
 
@@ -580,7 +594,8 @@ Where ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP`` has the a2l written after the 
 that reads it in the course of the build depends on ``<stem>_ddd_a2l``, or on the a2l by its
 path in the directory calling ``ddd_generate()``, which comes to the same under either
 generator (see the Makefile generators above): a ``POST_BUILD`` command of the image runs
-before that target's step, and would read the a2l of the build before.
+before that target's step, and would read the a2l of the build before, which a first build
+on a clean tree has none of.
 
 Beside the artefacts the generation step writes ``<project name>.dictionary.json`` - the
 name the a2l takes, which beside ``PROJECT`` is the one written inside that file rather than
@@ -612,7 +627,7 @@ Options
      - meaning
    * - ``PROJECT <file>``
      - use this project description instead of collecting the link closure. It is read when
-       the build is configured, so it has to exist and parse by then.
+       the build is configured, so it has to exist, parse and name its project by then.
    * - ``PLUGINS <spec>...``
      - the plugins of the collected project: a ``.py`` path relative to the current source
        directory, which has to exist, or a dotted module name passed through as written. They

@@ -553,9 +553,10 @@ ordered after the generation. A description change that reaches a plugin's file 
 dictionary as well, which the generation declares, so a project making the component's object
 depend on the dictionary - ``set_source_files_properties(<file> PROPERTIES OBJECT_DEPENDS
 <dictionary>)``, the path being the image's ``DDD_DICTIONARY`` property - has such a change
-reach the component in one build. An edit of the plugin's own code leaves the dictionary as it
-was, and reaches the component a build late all the same. Under a Makefile generator the build
-after either is right. A clean leaves a plugin's files, ``ninja -t clean`` and ``make clean``
+reach the component in one build, as does an edit of the plugin's model, which the dictionary
+carries. An edit of the plugin's own code that changes only what it writes, and not its model,
+leaves the dictionary as it was, and reaches the component a build late all the same. Under a
+Makefile generator the build after either is right. A clean leaves a plugin's files, ``ninja -t clean`` and ``make clean``
 alike.
 
 A Makefile generator is supported as well, and looks at no file again once a step has run. A
@@ -947,8 +948,8 @@ so it answers beyond its own loopback. The project it opens is still the checkou
 in the browser is written into the developer's own checkout there, the file keeping its owner and
 permissions although this service runs as root, as every service does. ``docker compose up
 gui`` builds the image first - the code it runs is the image's, so an image built before a
-change would serve what it was built from - and starts it, publishing the same port number on the host's loopback
-alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have the Host header
+change would serve what it was built from - and starts it, publishing the same port number on
+the host's loopback alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have the Host header
 ``ddd gui`` sees name a port it is not listening on, answered ``421 misdirected request``, and
 beyond the container's loopback the token in the address it prints is the only guard, which is
 why nothing wider is published. Opening that address in a browser on the host is the image's own

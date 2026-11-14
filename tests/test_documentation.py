@@ -1856,8 +1856,9 @@ class TestTheBuildIntegrationPage:
             "component in one build"
         ) in page
         assert (
-            "An edit of the plugin's own code leaves the dictionary as it was, and reaches the "
-            "component a build late all the same. Under a Makefile generator the build after "
+            "An edit of the plugin's own code that changes only what it writes, and not its model, "
+            "leaves the dictionary as it was, and reaches the component a build late all the "
+            "same. Under a Makefile generator the build after "
             "either is right. A clean leaves a plugin's files"
         ) in page
         assert "A ``{component}`` header has no such rule, nor has a plugin's file" in page
@@ -1870,7 +1871,8 @@ class TestTheBuildIntegrationPage:
         assert (
             "a component whose object depends on the dictionary - `OBJECT_DEPENDS` on the path of "
             "`DDD_DICTIONARY` - is compiled again in that build, while an edit of the plugin's own "
-            "code leaves the dictionary as it was and still reaches it a build late"
+            "code that changes only what it writes, and not its model, leaves the dictionary as "
+            "it was and still reaches it a build late"
         ) in spec
 
     def test_the_pages_say_a_renamed_component_reaches_its_readers_a_build_late(self) -> None:
@@ -3293,7 +3295,7 @@ class TestTheCiRun:
         browser, and would have held the run, and any re-run of its failed jobs, for the rest.
         Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
         gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
-        1); the test legs 40, the windows ones taking about 18 to 22 since the Makefile cell."""
+        1); the test legs 40, the windows ones taking 12 to 15 minutes since the Makefile cell."""
         limits = {}
         for name in job_names(CI_WORKFLOW):
             limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)

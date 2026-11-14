@@ -2369,9 +2369,9 @@ declared by nothing, so under Ninja a change of one reaches a component compilin
 late, however that component is ordered after the generation; a description change reaching
 one reaches the dictionary too, which the generation declares, so a component whose object
 depends on the dictionary - `OBJECT_DEPENDS` on the path of `DDD_DICTIONARY` - is compiled
-again in that build, while an edit of the plugin's own code leaves the dictionary as it was and
-still reaches it a build late. Under a Makefile generator the build after either is right, and
-a clean leaves a plugin's files under either generator. With `PROJECT`
+again in that build, while an edit of the plugin's own code that changes only what it writes,
+and not its model, leaves the dictionary as it was and still reaches it a build late. Under a
+Makefile generator the build after either is right, and a clean leaves a plugin's files under either generator. With `PROJECT`
 each `includes` entry is also globbed with `CONFIGURE_DEPENDS`, those of the projects it
 includes among them, so that a file a wildcard starts or stops matching runs the configure
 step, and the list of the files the project is made of, which the configure step keeps in the

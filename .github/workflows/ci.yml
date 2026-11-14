@@ -36,8 +36,8 @@ jobs:
     # Skipped by a hunt, which is the journeys' alone.
     if: ${{ !(inputs.repeat > 1) }}
     # Since the cmake story is told under the platform's Makefile generator as well, the windows
-    # legs take about 18 to 22 minutes, where they took 8 to 14 before: most of the increase is
-    # that cell's own configures and builds through mingw32-make. The limit is there to stop a
+    # legs take 12.5 to 15 minutes, where they took 8 to 14 before it: the
+    # increase is that cell's own configures and builds through mingw32-make. The limit is there to stop a
     # hang, not to time the suite, so it leaves a slow runner room.
     timeout-minutes: 40
     # The package claims python 3.12, 3.13 and 3.14, and claims to be os independent. This is

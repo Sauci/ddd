@@ -79,18 +79,22 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   components themselves are edited as before.  A build record written by a newer DDD no longer
   hides that the description is generated.  No file format changes.
 
-* **Under Ninja, a build after a description change compiles what the change reached.**  The
-  per-component headers a description change rewrites were not declared as outputs of the
-  generation, so a component reading one was compiled against the old header and linked with the new
-  globals: the build exited 0, and only a second build compiled it again.  `ddd_generate()` now
-  declares the header of every component the image links, named at configure from
-  `ddd_add_component()`, or from `ddd sources` with `PROJECT`, so the build recompiles exactly the
-  components whose header changed, and `ninja -t clean` removes those headers too.  Migrating costs
+* **Under Ninja, a build after a description change compiles the components whose header it
+  changed.**  The per-component headers a description change rewrites were not declared as
+  outputs of the generation, so a component reading one was compiled against the old header and
+  linked with the new globals: the build exited 0, and only a second build compiled it again.
+  `ddd_generate()` now declares the header of every component the image links, named at
+  configure from `ddd_add_component()`, or from `ddd sources` with `PROJECT`, so the build
+  recompiles exactly the components whose header changed, and `ninja -t clean` removes those
+  headers too.  A plugin's files are still declared by nothing, their names being the plugin's,
+  so a component compiling one meets a change of it a build late; the build page says how a
+  project has a description change reach such a component in one build.  Migrating costs
   three things.  A component the image reaches only through a link made, or a library defined, after
   the directory calling `ddd_generate()` is done, or registered after it, now fails the configure,
   naming each such component and what to do; link it, define it or register it before the end of
-  that directory.  In the collected mode a renamed component needs a reconfigure, and until then
-  every build runs the generation.  And the generation's command is now added at the end of the
+  that directory.  In the collected mode a renamed component needs a reconfigure: until then every
+  build runs the generation, and a change of that component's header reaches the components
+  reading it a build late.  And the generation's command is now added at the end of the
   calling directory, so nothing there can `APPEND` to it earlier.  A generator expression in a link
   list counts whatever it comes to, except `$<CONFIG:...>` around plain names, which is read for
   `CMAKE_BUILD_TYPE`.  Under Makefile generators the generation is built as the entry on them below
@@ -165,10 +169,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   own as its one output - `ddd-generation.stamp` and `ddd-a2l.stamp` - touched by each run that
   succeeds, and a rule per shared file depending on the step, so a step that depends on the
   dictionary's or the pre-link a2l's path in the calling directory still runs after the generation;
-  `make clean` removes the step's files.  Migrating costs a line for a step in another directory, or
-  one reading a `{component}` header: it depends on `<stem>_ddd_generation`, or on `<stem>_ddd_a2l`
-  for the linked a2l, and not on a generated file's path.  A file of the step deleted by hand is not
-  written again until the step's stamp is deleted or the tree cleaned.
+  `make clean` removes the step's files, a plugin's apart, which nothing declares.  Migrating costs
+  a line for a step in another directory, or one reading a `{component}` header: it depends on
+  `<stem>_ddd_generation`, or on `<stem>_ddd_a2l` for the linked a2l, and not on a generated
+  file's path.  A file of the step deleted by hand is not written again until the step's stamp is
+  deleted or the tree cleaned.
 
 * **The configure follows the tool and the templates it renders with.**  The module asked
   `ddd --version` once and cached the answer as `DDD_VERSION_HANDSHAKE`, so a tool upgraded in

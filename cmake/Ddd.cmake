@@ -898,12 +898,13 @@ endfunction()
 # generation rewrites it, so the build after a description change compiled the components reading it against the old
 # header and linked them with the new globals; declared, each header is looked at again after the generation, and the
 # components whose header changed are recompiled, and no others. A component renamed in its description therefore
-# needs a reconfigure in the collected mode: until then its header is not declared under the new name, and the
-# generation runs at every build for the one under the old name, which it no longer writes. <stem>_ddd_headers is what
-# carries the include directory, and what orders every consumer after the generation. With ADDRESSES_FROM_IMAGE or
-# ADDRESS_MAP the a2l is the output of <stem>_ddd_a2l's step instead, which runs after the link. Under a Makefile
-# generator each of the two steps has a stamp for its one output, and each shared file a rule of its own, depending on
-# the step's target (_ddd_files_of_a_step); the {component} files stay byproducts, with no rule under make.
+# needs a reconfigure in the collected mode: until then its header is not declared under the new name, so under Ninja
+# the generation runs at every build for the one under the old name, which it no longer writes, and a change of the
+# new one reaches the components reading it a build late. <stem>_ddd_headers is what carries the include directory,
+# and what orders every consumer after the generation. With ADDRESSES_FROM_IMAGE or ADDRESS_MAP the a2l is the output
+# of <stem>_ddd_a2l's step instead, which runs after the link. Under a Makefile generator each of the two steps has a
+# stamp for its one output, and each shared file a rule of its own, depending on the step's target
+# (_ddd_files_of_a_step); the {component} files stay byproducts, with no rule under make.
 function(ddd_generate image)
     cmake_parse_arguments(PARSE_ARGV 1 arg
                           "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"

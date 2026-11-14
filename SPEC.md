@@ -2279,7 +2279,8 @@ named by the ones that do: `types`, `units`, `sections`, `constants` and `raster
 `ddd_generate(<image> ...)` generates every artefact of an image - the built-in ones and
 those of the plugins the call names with `PLUGINS` ([section 3.11](#311-plugins)), which it
 writes into the collected project description; a plugin's files are produced beside the
-built-in ones without being declared as outputs. `ddd_add_component` needs CMake 3.30. A
+built-in ones without being declared as outputs, their names being the plugin's own, which
+the module cannot know before it runs (below). `ddd_add_component` needs CMake 3.30. A
 registered file not named `*.ddd.json` is a configure error, and so is one whose top level key
 is `project`, where the file exists when the build is configured - one the build writes later
 passes, saying nothing of its kind. A project file is named with `PROJECT` of `ddd_generate`,
@@ -2361,8 +2362,16 @@ afterwards. A declared header is one the build looks at again after
 the generation ran, so the build after a description change compiles the components whose
 header changed, and only those, rather than linking the new definitions with readers compiled
 against the old header. A component renamed in its description therefore needs the build
-configured again, until which the generation runs at every build; with `PROJECT` that happens
-by itself, the files of the project being dependencies of the configure step. With `PROJECT`
+configured again, until which, under Ninja, the generation runs at every build and a change of
+that component's header reaches its readers a build late; with `PROJECT` that happens by
+itself, the files of the project being dependencies of the configure step. A plugin's files are
+declared by nothing, so under Ninja a change of one reaches a component compiling it a build
+late, however that component is ordered after the generation; a description change reaching
+one reaches the dictionary too, which the generation declares, so a component whose object
+depends on the dictionary - `OBJECT_DEPENDS` on the path of `DDD_DICTIONARY` - is compiled
+again in that build, while an edit of the plugin's own code leaves the dictionary as it was and
+still reaches it a build late. Under a Makefile generator the build after either is right, and
+a clean leaves a plugin's files under either generator. With `PROJECT`
 each `includes` entry is also globbed with `CONFIGURE_DEPENDS`, those of the projects it
 includes among them, so that a file a wildcard starts or stops matching runs the configure
 step, and the list of the files the project is made of, which the configure step keeps in the

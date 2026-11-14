@@ -918,7 +918,8 @@ after the step that writes it.  A `{component}` header, or a file read from anot
 is read after depending on `firmware_ddd_generation` instead - which, for the a2l written after
 the link, is the a2l of the build before, `firmware_ddd_a2l` being the target to depend on.  So
 the build after a description change recompiles exactly the components whose header changed,
-and in the collected mode a component renamed in its description needs a reconfigure.
+and in the collected mode a component renamed in its description needs a reconfigure, until
+which, under Ninja, a change of its header reaches the components reading it a build late.
 Consumers find the headers through `firmware_ddd_headers`, which carries their include
 directory.
 

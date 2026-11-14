@@ -130,13 +130,16 @@ Generating an image
 ``ddd_generate(<image> ...)`` collects the descriptions of every component in the link closure
 of the image, writes the project description tying them together, runs the generator - ``ddd
 generate all``, so the artefact of every plugin named with ``PLUGINS`` arrives beside the
-built-in files - and links the result back into the image. A plugin's file names are its own
-and are not declared as outputs, so a target that consumes one depends on
-``<stem>_ddd_generation`` - the helper targets are named after the image without its
-extension, so ``firmware.elf`` gives ``firmware_ddd_generation``. It has to be called in the
-``CMakeLists.txt`` that defines the image, and after the components have been added, because
-it hands ``<stem>_ddd_headers`` to the components registered up to that point - which settles
-both which components get the generated headers and whose compile usage travels with them.
+built-in files - and links the result back into the image. The helper targets it creates are
+named after the image without its extension, so ``firmware.elf`` gives
+``firmware_ddd_generation``. A plugin's file names are its own, known once the plugin has run,
+so the generation does not declare them: a target reading one has to come after the
+generation, as a component linking ``<stem>_ddd_headers`` does, and under Ninja that is not
+enough, a change of the file reaching a component compiling it a build late (see *The targets
+it creates* below). It has to be called in the ``CMakeLists.txt`` that defines the image, and
+after the components have been added, because it hands ``<stem>_ddd_headers`` to the
+components registered up to that point - which settles both which components get the
+generated headers and whose compile usage travels with them.
 In the collected mode the image also has to be linked to its components by the time that
 directory is done: a component it reaches only through a link made, or a library defined,
 later is a configure error naming the component, and so is one registered with
@@ -543,6 +546,18 @@ after that one compiled them again. A declared header is looked at again once th
 has run, and since an unchanged file is left untouched, the components whose header changed
 are recompiled and no others.
 
+A plugin's files are the exception. Their names are the plugin's own, known once it has run, so
+nothing declares them, and under Ninja a change of one reaches a component compiling it a build
+late: ninja looked at the file before the generation rewrote it, however the component is
+ordered after the generation. A description change that reaches a plugin's file reaches the
+dictionary as well, which the generation declares, so a project making the component's object
+depend on the dictionary - ``set_source_files_properties(<file> PROPERTIES OBJECT_DEPENDS
+<dictionary>)``, the path being the image's ``DDD_DICTIONARY`` property - has such a change
+reach the component in one build. An edit of the plugin's own code leaves the dictionary as it
+was, and reaches the component a build late all the same. Under a Makefile generator the build
+after either is right. A clean leaves a plugin's files, ``ninja -t clean`` and ``make clean``
+alike.
+
 A Makefile generator is supported as well, and looks at no file again once a step has run. A
 run that changed nothing left the first file of the generation older than the description
 that ran it, so every build after ran the whole analysis again, and CMake touched every other
@@ -559,9 +574,9 @@ a rule of its own there, which does nothing and depends on ``<stem>_ddd_generati
 a2l written after the link on ``<stem>_ddd_a2l``. A step depending on such a file by its path,
 in the directory calling ``ddd_generate()``, therefore runs once the generation has, under
 ``make -j`` too, and reads what it wrote, as under Ninja. A ``{component}`` header has no such
-rule, and a file read from another directory is known to make by no rule there either: a step
-reading one depends on ``<stem>_ddd_generation`` (``add_dependencies``), as it would have to
-under make in any case.
+rule, nor has a plugin's file, and a file read from another directory is known to make by no
+rule there either: a step reading one depends on ``<stem>_ddd_generation``
+(``add_dependencies``), as it would have to under make in any case.
 
 A file deleted from the output directory by hand is not written again under make until the
 step runs for another reason - an edit, a clean - and every build reading the file stops on it
@@ -572,17 +587,19 @@ deleted output directory is noticed without either (see *What the build tells an
 above).
 
 The names are read at configure time, so a component renamed in its description needs a
-reconfigure: until then its header is not declared under the new name, and the generation runs
-at every build for the header of the old one, which it no longer writes. With ``PROJECT`` the
-configure runs again by itself, every file of the project being one of its dependencies. A
-registered description whose json does not parse when the build is configured names no
-component, and is a dependency of the configure until it does, so the build after its repair
-configures again. One generated into the build tree later names its component only from the
-first configure that finds it, and CMake takes no configure dependency on a file the build
-writes, so it is watched instead, as a wildcard of ``includes`` is: the first build to find
-it there configures again before it does anything else, and that configure reads the
-component it describes, or that it is a vocabulary. Its header is therefore declared before a
-change of it can reach a reader. The configure that does not find it says so, naming the file.
+reconfigure: until then its header is not declared under the new name, so under Ninja the
+generation runs at every build for the header of the old one, which it no longer writes, and a
+change of the new one reaches the components reading it a build late, as an undeclared header
+did (above). With ``PROJECT`` the configure runs again by itself, every file of the project
+being one of its dependencies. A registered description whose json does not parse when the
+build is configured names no component, and is a dependency of the configure until it does, so
+the build after its repair configures again. One generated into the build tree later names its
+component only from the first configure that finds it, and CMake takes no configure dependency
+on a file the build writes, so it is watched instead, as a wildcard of ``includes`` is: the
+first build to find it there configures again before it does anything else, and that configure
+reads the component it describes, or that it is a vocabulary. Its header is therefore declared
+before a change of it can reach a reader. The configure that does not find it says so, naming
+the file.
 
 A header whose component has left the image is another matter: once the image no longer links
 the component, nothing declares the header and the build leaves it where it is, which is why

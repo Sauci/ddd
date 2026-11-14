@@ -1831,6 +1831,65 @@ class TestTheBuildIntegrationPage:
         """Two lists of plugins would be two sources of truth; the module refuses the pair."""
         assert re.search(r"FATAL_ERROR \"ddd_generate: PLUGINS[^\"]*PROJECT", self.CMAKE_MODULE)
 
+    def test_the_pages_say_when_a_plugins_file_reaches_a_component_compiling_it(self) -> None:
+        """The module cannot declare a plugin's files, whose names the plugin chooses when it
+        runs, so under Ninja a change of one reaches a component compiling it a build late,
+        however that component is ordered after the generation: the page offered that ordering
+        as what keeps the component right. It says what happens instead, under either generator,
+        and what a project can do - depending on the dictionary, which a description change
+        reaches and an edit of the plugin's code does not - and so does the specification."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert "so a target that consumes one depends on" not in page
+        assert (
+            "under Ninja that is not enough, a change of the file reaching a component compiling "
+            "it a build late"
+        ) in page
+        assert (
+            "under Ninja a change of one reaches a component compiling it a build late: ninja "
+            "looked at the file before the generation rewrote it, however the component is "
+            "ordered after the generation"
+        ) in page
+        assert (
+            "a project making the component's object depend on the dictionary - "
+            "``set_source_files_properties(<file> PROPERTIES OBJECT_DEPENDS <dictionary>)``, the "
+            "path being the image's ``DDD_DICTIONARY`` property - has such a change reach the "
+            "component in one build"
+        ) in page
+        assert (
+            "An edit of the plugin's own code leaves the dictionary as it was, and reaches the "
+            "component a build late all the same. Under a Makefile generator the build after "
+            "either is right. A clean leaves a plugin's files"
+        ) in page
+        assert "A ``{component}`` header has no such rule, nor has a plugin's file" in page
+        spec = flattened(SPEC)
+        assert (
+            "A plugin's files are declared by nothing, so under Ninja a change of one reaches a "
+            "component compiling it a build late, however that component is ordered after the "
+            "generation"
+        ) in spec
+        assert (
+            "a component whose object depends on the dictionary - `OBJECT_DEPENDS` on the path of "
+            "`DDD_DICTIONARY` - is compiled again in that build, while an edit of the plugin's own "
+            "code leaves the dictionary as it was and still reaches it a build late"
+        ) in spec
+
+    def test_the_pages_say_a_renamed_component_reaches_its_readers_a_build_late(self) -> None:
+        """A component renamed in its description, in the collected mode, has its header
+        declared under the old name until the build is configured again: under Ninja the build
+        after a change of the new header compiles its readers against the old one, which is
+        what declaring the headers is for, and the pages said only that the generation runs at
+        every build."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert (
+            "so under Ninja the generation runs at every build for the header of the old one, "
+            "which it no longer writes, and a change of the new one reaches the components "
+            "reading it a build late"
+        ) in page
+        assert (
+            "until which, under Ninja, the generation runs at every build and a change of that "
+            "component's header reaches its readers a build late"
+        ) in flattened(SPEC)
+
     def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
         """The page calls its block the shipped file minus comments, so that is what it is."""
         shipped = (ROOT / "examples" / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")

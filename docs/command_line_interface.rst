@@ -352,7 +352,13 @@ The commands
        the grid to replace every value of the object at once - the object's own shape,
        or exactly one row and one column larger for the header pasted along with it -
        previewed and undone the same way. Its header is discarded unread, so one naming
-       a different axis is caught only by that preview, not by the paste itself. Under
+       a different axis is caught only by that preview, not by the paste itself. A whole
+       number past 2^53, in decimal, hexadecimal, binary or octal digits, is refused where
+       it is typed or pasted, and a grid holding one, among its values or its axis's
+       breakpoints, says it cannot show it rather than draw another number: the page holds a
+       number as a double, which past 2^53 no longer holds every whole number. A ``uint64``
+       or ``sint64`` value that large is set in the file; from the page neither takes a whole
+       number at 2^53 or past it. Under
        the grid, the object's values are drawn as a picture too: a marker at each point
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over

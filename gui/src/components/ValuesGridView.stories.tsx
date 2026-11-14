@@ -5,6 +5,7 @@ import {
   CURVE_CELL_PLAN,
   VALUES_AXIS,
   VALUES_BLOCK,
+  VALUES_BLOCK_PAST_2_53,
   VALUES_CURVE,
   VALUES_CURVE_B,
   VALUES_MAP,
@@ -162,6 +163,12 @@ export const AReadOnlyGrid = () => (
 
 // The fourth and last `stated`, with no picture until now: a text init draws no grid at all.
 export const ATextInit = () => <View reply={VALUES_SOFTWARE_LABEL} backTo="Controller" physical />;
+
+// Nor does a block holding a whole number past 2^53: its numbers reach the page as the doubles
+// nearest them, and a grid drawing those would offer them as the ones written.
+export const ABlockTheGridCannotShow = () => (
+  <View reply={VALUES_BLOCK_PAST_2_53} backTo="UserInterface" physical />
+);
 
 // Part 9's own story: the hint line under a writable grid, waiting for Ctrl-V - drawn straight
 // from `ValuesGridView` rather than through `View`, since nothing here is mid-paste yet. CurveA

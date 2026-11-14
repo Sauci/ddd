@@ -1465,6 +1465,12 @@ class ValuesReply(_Frozen):
     axes: tuple[GridAxis, ...]
     """One entry per axis this object references, in the order a grid lays them out."""
 
+    unshown: str | None
+    """The object - this one, or an axis it is laid against - whose numbers hold a whole number
+    past 2^53, or ``None``. Every number here is a double, which past 2^53 no longer holds every
+    whole number, so :attr:`rows` or an axis's breakpoints would carry another number in its
+    place: the page draws no grid of them and says why."""
+
     owner: str | None
     """Component owning the object; ``None`` only when nothing produces it at all, which is
     what tells that read-only grid from the one more than one producer leaves."""

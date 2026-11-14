@@ -23,6 +23,7 @@ const BEFORE: ValuesReply = {
   rows: [[1200, 900, 800, 750, 700, 650]],
   stated: "array",
   axes: [],
+  unshown: null,
   owner: "Controller",
   file: "C:/work/demo/components/controller.ddd.json",
   findings: [],

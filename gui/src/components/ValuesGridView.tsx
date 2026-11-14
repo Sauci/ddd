@@ -15,6 +15,7 @@ import {
   rowHeader,
   typedNumber,
   typedRefusal,
+  unshownNote,
 } from "../lib/objectValues";
 import { consequence, NO_UNIT, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
@@ -139,6 +140,12 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   const refused = (editing === null ? null : typedRefusal(editing.typed)) ?? refusal;
   const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
+  // Why no grid is drawn, where none is: text is no grid at all, and a block holding a whole
+  // number past 2^53 would be drawn as other numbers (`unshownNote`).
+  const instead =
+    reply.stated === "text"
+      ? `'${reply.name}' is initialised with text, not with a grid`
+      : unshownNote(reply);
   return (
     <section
       onPaste={(event) => {
@@ -169,8 +176,8 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       </div>
       {banner}
       <p className="values-meta">{meta}</p>
-      {reply.stated === "text" ? (
-        <p className="quiet">{`'${reply.name}' is initialised with text, not with a grid`}</p>
+      {instead !== null ? (
+        <p className="quiet">{instead}</p>
       ) : (
         <>
           <fieldset className="values-toggle" aria-label="Physical or raw">

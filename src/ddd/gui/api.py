@@ -1498,6 +1498,7 @@ class Api:
                         }
                         for axis in grid.axes
                     ],
+                    unshown=grid.unshown,
                     owner=grid.owner,
                     file=grid.file,
                     findings=_listed(derived, _grid_findings(derived, grid), cache),

@@ -9184,6 +9184,7 @@ class TestTheValuesGrid:
         assert body["axes"][0]["breakpoints"] == [0, 3200, 6400, 12800, 19200, 32000]
         assert body["owner"] == "Controller"
         assert body["file"].endswith("controller.ddd.json")
+        assert body["unshown"] is None
 
     def test_a_map_answers_four_rows_of_six(self, demo) -> None:
         api, _ = demo
@@ -9734,6 +9735,182 @@ class TestTheValuesGrid:
         reply = get(api, "/api/values-plan", name="ValueA", raw="1")
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert reply.body["message"] == "'ValueA' has no cell for a value to sit in"
+
+
+def big_block(tmp_path: Path, init: object, datatype: str = "uint64") -> Api:
+    """A project of one block of two, ``Big``, of ``datatype`` and holding ``init`` as written:
+    ``write_tree`` writes a python ``int`` as its own digits, so a number past 2^53 reaches the
+    file exactly."""
+    return opened(
+        tmp_path,
+        {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Big", datatype, kind="value_block", dimensions=[2], init=init),
+            ),
+        },
+    )
+
+
+AT_OR_PAST: Final = (
+    "is at or past 2^53, where the page cannot hold every whole number exactly, so no {} is set "
+    "to it here"
+)
+"""The server's refusal of a 64 bit integer's value, the number and the datatype left out."""
+
+
+class TestAWholeNumberPastWhatADoubleHolds:
+    """Past 2^53 a double, the number the page holds, no longer holds every whole number:
+    ``9007199254740993`` reaches it as ``9007199254740992``, and ``18446744073709551615``, the
+    most a uint64 holds, as ``18446744073709551616``, which none holds. The grid drew those and
+    planned from them, so a value it showed or was given was not the file's. Rather than carry
+    every cell across as exact text, the page refuses such a number, the values route marks a
+    block holding one so that the grid says it cannot show it, and the server refuses a 64 bit
+    integer any whole number at or past 2^53: a number it is sent there may be another the page
+    rounded."""
+
+    def test_a_block_holding_one_is_marked_as_one_the_grid_cannot_show(
+        self, tmp_path: Path
+    ) -> None:
+        api = big_block(tmp_path, [9007199254740993, 18446744073709551615])
+        body = get(api, "/api/values", name="Big").body
+        # What the wire answers for it, each the double nearest it: the mark is what says so.
+        assert body["rows"] == [[9007199254740992.0, 1.8446744073709552e19]]
+        assert body["unshown"] == "Big"
+
+    @pytest.mark.parametrize(
+        ("datatype", "init", "unshown"),
+        [
+            pytest.param("uint64", [2**53, 1], None, id="2^53-which-a-double-holds"),
+            pytest.param("uint64", [1, 2**53 + 1], "Big", id="2^53-and-one"),
+            pytest.param("sint64", [-(2**53), 1], None, id="minus-2^53"),
+            pytest.param("sint64", [-(2**53) - 1, 1], "Big", id="minus-2^53-and-one"),
+            pytest.param("uint64", 2**64 - 1, "Big", id="one-value-stated-for-every-cell"),
+            pytest.param("float64", [1e300, 0.5], None, id="a-float-is-the-double-it-is"),
+            pytest.param("float64", [2**53 + 1, 0.5], "Big", id="a-whole-number-on-a-float"),
+        ],
+    )
+    def test_the_mark_falls_past_2_53_on_a_whole_number_alone(
+        self, tmp_path: Path, datatype: str, init: object, unshown: str | None
+    ) -> None:
+        """A float in the file is a double already, so the page holds it as it is; a whole number
+        is exact in the file and in the server, and is the page's to lose."""
+        api = big_block(tmp_path, init, datatype)
+        assert get(api, "/api/values", name="Big").body["unshown"] == unshown
+
+    @pytest.mark.parametrize(
+        ("curve", "unshown"),
+        [
+            pytest.param([1, 2], "AxisX", id="the-axis-alone"),
+            pytest.param([1, 2**53 + 1], "CurveX", id="the-object-before-its-axis"),
+        ],
+    )
+    def test_an_axis_holding_one_is_named_by_the_grid_lying_against_it(
+        self, tmp_path: Path, curve: list[int], unshown: str
+    ) -> None:
+        """Its breakpoints are drawn as the grid's own header, so they would be the rounded
+        numbers drawn there."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "AxisX", "uint64", kind="axis", size=2, init=[0, 2**53 + 1]),
+                    declare("local", "CurveX", "uint64", kind="curve", axis="AxisX", init=curve),
+                ),
+            },
+        )
+        assert get(api, "/api/values", name="CurveX").body["unshown"] == unshown
+
+    @pytest.mark.parametrize(
+        ("datatype", "raw"),
+        [
+            pytest.param("uint64", "9007199254740992", id="2^53"),
+            pytest.param("uint64", "18446744073709551615", id="the-most-a-uint64-holds"),
+            pytest.param("sint64", "-9007199254740992", id="minus-2^53"),
+            pytest.param("sint64", "9223372036854775807", id="the-most-a-sint64-holds"),
+        ],
+    )
+    def test_a_64_bit_integer_is_refused_a_whole_number_at_or_past_2_53(
+        self, tmp_path: Path, datatype: str, raw: str
+    ) -> None:
+        api = big_block(tmp_path, [1, 2], datatype)
+        before = contents(tmp_path)
+        assert get(api, "/api/value-plan", name="Big", at="[0]", raw=raw) == Reply(
+            409, {"error": "invalid", "message": f"{raw} {AT_OR_PAST.format(datatype)}"}
+        )
+        assert contents(tmp_path) == before
+
+    @pytest.mark.parametrize(
+        ("datatype", "raw"),
+        [
+            pytest.param("uint64", "9007199254740991", id="2^53-less-one"),
+            pytest.param("sint64", "-9007199254740991", id="minus-2^53-less-one"),
+        ],
+    )
+    def test_a_64_bit_integer_takes_a_whole_number_short_of_2_53_as_it_is_written(
+        self, tmp_path: Path, datatype: str, raw: str
+    ) -> None:
+        api = big_block(tmp_path, [1, 2], datatype)
+        body = get(api, "/api/value-plan", name="Big", at="[0]", raw=raw).body
+        assert [change["operations"] for change in body["changes"]] == [
+            [{"op": "set", "pointer": "component.interface[0].definition.init[0]", "raw": raw}]
+        ]
+
+    def test_a_pasted_table_names_each_element_at_or_past_2_53(self, tmp_path: Path) -> None:
+        api = big_block(tmp_path, [1, 2])
+        reply = get(api, "/api/values-plan", name="Big", raw="9007199254740991,9007199254740992")
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "element 2 of 'Big' is refused: "
+                f"9007199254740992 {AT_OR_PAST.format('uint64')}",
+            },
+        )
+
+    @pytest.mark.parametrize(
+        ("datatype", "raw", "says"),
+        [
+            pytest.param(
+                "uint32",
+                "9007199254740992",
+                "9007199254740992 does not fit into uint32 (0 .. 4294967295)",
+                id="a-narrower-integer-for-which-it-is-out-of-range",
+            ),
+            pytest.param(
+                "uint64",
+                "18446744073709551616",
+                "18446744073709551616 does not fit into uint64 (0 .. 18446744073709551615)",
+                id="a-number-past-the-datatype-is-refused-as-not-fitting",
+            ),
+        ],
+    )
+    def test_a_number_the_datatype_cannot_hold_is_refused_as_not_fitting_first(
+        self, tmp_path: Path, datatype: str, raw: str, says: str
+    ) -> None:
+        api = big_block(tmp_path, [1, 2], datatype)
+        assert get(api, "/api/value-plan", name="Big", at="[0]", raw=raw) == Reply(
+            409, {"error": "invalid", "message": says}
+        )
+
+    def test_a_float_is_set_to_a_whole_number_past_2_53_as_the_double_it_is(
+        self, tmp_path: Path
+    ) -> None:
+        """A float64 is no 64 bit integer: it holds the double the page sends, and nothing else."""
+        api = big_block(tmp_path, [0.5, 1.5], "float64")
+        body = get(api, "/api/value-plan", name="Big", at="[0]", raw="9007199254740992").body
+        assert [change["operations"] for change in body["changes"]] == [
+            [
+                {
+                    "op": "set",
+                    "pointer": "component.interface[0].definition.init[0]",
+                    "raw": "9007199254740992",
+                }
+            ]
+        ]
 
 
 # The four shapes an entry of the root's includes takes, in one list: a literal naming a file, a

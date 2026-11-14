@@ -35,6 +35,16 @@ _ELEMENT: Final = re.compile(r"(?:\[[0-9]+\])+")
 
 _INDEX: Final = re.compile(r"\[([0-9]+)\]")
 
+EXACT: Final = 2**53
+"""Where a double, the number the page holds, stops holding every whole number.
+
+``2**53 + 1`` reaches the page as ``2**53``, a 64 bit mask loses its low bits, and ``2**64 - 1``,
+the most a uint64 holds, arrives as ``2**64``, which none holds. The page refuses a whole number
+past it where one is typed or pasted, and draws no grid holding one (:attr:`Grid.unshown`); a
+number it sends at or past it may be another it rounded, which :func:`_acceptable` refuses a 64
+bit integer. Carrying every cell across as exact text instead was weighed and not taken: past
+2^53, a 64 bit value is edited in the file."""
+
 AXIS_REFERENCES: Final = ("axis", "x_axis", "y_axis")
 """The references that name an axis, in the order a grid lays them out.
 
@@ -104,6 +114,13 @@ class Grid:
     text - which is no grid - or nothing, which the startup code zeroes."""
 
     axes: tuple[Axis, ...]
+    unshown: str | None
+    """The object whose numbers this grid would draw as other numbers, or ``None``: this one
+    where its rows hold a whole number past :data:`EXACT`, else the first of :attr:`axes` whose
+    breakpoints hold one. Each reaches the page as the double nearest it, so drawn it is not the
+    number the file holds, and the page draws no grid of them and says why. A float in the file
+    is a double already and is never one."""
+
     owner: str | None
     """The component the analysis reads the values from, and ``None`` where nothing produces
     this object at all - which is what tells a read-only grid nothing produces from one that
@@ -188,10 +205,22 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         rows=rows,
         stated=stated,
         axes=axes,
+        unshown=_unshown(name, rows, axes),
         owner=resolved.owner,
         file=file,
         pointer=pointer,
     )
+
+
+def _unshown(name: str, rows: tuple[tuple[float, ...], ...], axes: tuple[Axis, ...]) -> str | None:
+    """:attr:`Grid.unshown`: the first of the object and its axes whose numbers the grid draws -
+    its rows, their breakpoints - hold a whole number past :data:`EXACT`."""
+    drawn = [(name, [value for row in rows for value in row])]
+    drawn += [(axis.name, list(axis.breakpoints)) for axis in axes]
+    for named, values in drawn:
+        if any(isinstance(value, int) and abs(value) > EXACT for value in values):
+            return named
+    return None
 
 
 def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
@@ -543,6 +572,13 @@ def _acceptable(raw: float, datatype: Datatype, name: str) -> None:
     it is read back by cannot then drift apart. The object's limits are deliberately not
     weighed - nothing in the analysis weighs an init against them, and a grid stricter than
     ``ddd check`` would leave cells a person wrote by hand that it could not edit.
+
+    One refusal is stricter than the check, and on purpose: a 64 bit integer is refused a whole
+    number at or past :data:`EXACT`, which ``ddd check`` takes. The number the page sends there
+    may be another it rounded - ``2**53`` stands for ``2**53 + 1`` too - and nothing here can tell
+    which was meant. What it costs is the cells it leaves: a value past 2^53 is set in the
+    file, and the grid holding one says it cannot show it. Asked after the range, so that a
+    number the datatype cannot hold at all is still refused as not fitting.
     """
     if datatype is Datatype.BOOLEAN:
         if not isinstance(raw, bool) and raw not in (0, 1):
@@ -559,6 +595,14 @@ def _acceptable(raw: float, datatype: Datatype, name: str) -> None:
         raise ValueRefusalError(
             "invalid",
             f"{raw} does not fit into {datatype.value} ({info.raw_min} .. {info.raw_max})",
+        )
+    if datatype.is_integer and abs(raw) >= EXACT:
+        # Only a 64 bit integer reaches this: a narrower one holds no number this large, and
+        # is refused it above as not fitting.
+        raise ValueRefusalError(
+            "invalid",
+            f"{raw} is at or past 2^53, where the page cannot hold every whole number exactly, "
+            f"so no {datatype.value} is set to it here",
         )
     if datatype.rounds_to_zero(raw):
         raise ValueRefusalError("invalid", f"{raw} rounds to zero in {datatype.value}")

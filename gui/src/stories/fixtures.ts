@@ -1844,6 +1844,7 @@ export const VALUES_CURVE: ValuesReply = {
   rows: [[1200, 900, 800, 750, 700, 650]],
   stated: "array",
   axes: [axisA("axis")],
+  unshown: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],
@@ -1869,6 +1870,7 @@ export const VALUES_MAP: ValuesReply = {
   ],
   stated: "array",
   axes: [axisA("x_axis"), axisB("y_axis")],
+  unshown: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],
@@ -1889,9 +1891,23 @@ export const VALUES_BLOCK: ValuesReply = {
   rows: [[0, 12, 28, 52, 84, 124, 180, 255]],
   stated: "array",
   axes: [],
+  unshown: null,
   owner: "UserInterface",
   file: USER_INTERFACE,
   findings: [],
+};
+
+/** BlockA made a uint64 block of two whose file holds 9007199254740993 and 18446744073709551615.
+ * The route answers each as the double nearest it, 2^53 and 2^64, and marks the block, so that
+ * ABlockTheGridCannotShow draws its sentence and no grid. Built from BlockA's own answer, as
+ * AReadOnlyGrid's is: no example holds a number past 2^53. */
+export const VALUES_BLOCK_PAST_2_53: ValuesReply = {
+  ...VALUES_BLOCK,
+  datatype: "uint64",
+  maximum: 2 ** 64,
+  shape: [2],
+  rows: [[2 ** 53, 2 ** 64]],
+  unshown: "BlockA",
 };
 
 /** AxisA drawn as an object in its own right, rather than as CurveA's or MapA's own axis: it
@@ -1910,6 +1926,7 @@ export const VALUES_AXIS: ValuesReply = {
   rows: [[0, 3200, 6400, 12800, 19200, 32000]],
   stated: "array",
   axes: [],
+  unshown: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],
@@ -1930,6 +1947,7 @@ export const VALUES_CURVE_B: ValuesReply = {
   rows: [[200, 200, 200, 200, 200, 200]],
   stated: "scalar",
   axes: [axisA("axis")],
+  unshown: null,
   owner: "UserInterface",
   file: USER_INTERFACE,
   findings: [],
@@ -1952,6 +1970,7 @@ export const VALUES_VALUE_D: ValuesReply = {
   rows: [[0, 0, 0, 0, 0, 0, 0, 0]],
   stated: "none",
   axes: [],
+  unshown: null,
   owner: "SensorHub",
   file: SENSOR_HUB,
   findings: [],
@@ -1972,6 +1991,7 @@ export const VALUES_SOFTWARE_LABEL: ValuesReply = {
   rows: [],
   stated: "text",
   axes: [],
+  unshown: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],

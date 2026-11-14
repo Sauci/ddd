@@ -454,6 +454,17 @@ class TestTheCommandPage:
         assert listed is not None
         assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(schema_models())
 
+    def test_the_values_grid_is_said_to_refuse_a_whole_number_past_2_53(self) -> None:
+        """What ``objectValues.ts`` and ``object_values.py`` do with a number the page's double
+        cannot hold, said where the grid is described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "A whole number past 2^53, in decimal, hexadecimal, binary or octal digits, is "
+            "refused where it is typed or pasted"
+        ) in text
+        assert "says it cannot show it rather than draw another number" in text
+        assert "from the page neither takes a whole number at 2^53 or past it" in text
+
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None

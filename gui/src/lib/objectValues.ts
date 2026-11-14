@@ -97,20 +97,63 @@ export function readOnlyNote(reply: ValuesReply): string | null {
   return `'${reply.name}' is produced in more than one place, so there is no one file to set it in`;
 }
 
-/** What a reader typed, as a number: `NaN` for anything that is not wholly one. `parseFloat`
- * takes a numeric prefix, so `1,5` - a decimal comma, which half the world writes - would read
- * as `1` and plan a write of it; `Number` weighs the whole string, and an empty cell is
- * nothing typed rather than the zero `Number("")` answers. */
+/** 2^53, where a double - the number the page holds - stops holding every whole number. Past it
+ * `Number` reads a whole number as one beside it, without a word: `9007199254740993` as
+ * `9007199254740992`, the 64 bit mask `0x8000000000000001` as `0x8000000000000000`, bit 0 gone,
+ * and `18446744073709551615`, the most a uint64 holds, as `18446744073709551616`, which none
+ * holds. Planned from what it read, each was the number the file was given. */
+const EXACT = 2n ** 53n;
+
+/** Why a whole number past `EXACT` is refused, the same words wherever it was typed or pasted. */
+const INEXACT = "where the page cannot hold every whole number exactly";
+
+/** Whether `text` spells a whole number past 2^53. `BigInt` reads exactly the spellings of a whole
+ * number that `Number` reads - digits with or without a sign, `0x`, `0b` and `0o` - and refuses a
+ * fraction, an exponent and `Infinity`, so it answers the number such a text spells, exactly. A
+ * fraction or an exponent spells a real number and is read as the double it is: a float holds
+ * that double, and a 64 bit integer is refused it by the server, which cannot tell it from the
+ * whole number next to it. */
+function pastExact(text: string): boolean {
+  let whole: bigint;
+  try {
+    whole = BigInt(text);
+  } catch {
+    return false;
+  }
+  return whole > EXACT || whole < -EXACT;
+}
+
+/** What a reader typed, as a number: `NaN` for anything that is not wholly one, and for a whole
+ * number past 2^53, which `Number` reads as another (`pastExact`). `parseFloat` takes a numeric
+ * prefix, so `1,5` - a decimal comma, which half the world writes - would read as `1` and plan a
+ * write of it; `Number` weighs the whole string, and an empty cell is nothing typed rather than
+ * the zero `Number("")` answers. */
 export function typedNumber(text: string): number {
-  return text.trim() === "" ? Number.NaN : Number(text);
+  return text.trim() === "" || pastExact(text) ? Number.NaN : Number(text);
+}
+
+/** The sentence `text` is refused with as a number, naming it as `said` - or `null` where it is
+ * one. A cell typed into and a cell pasted are refused in the same words. An empty text is no
+ * number here; a cell nothing has been typed into is `typedRefusal`'s to pass over. */
+function numberRefusal(text: string, said: string): string | null {
+  if (pastExact(text)) return `'${said}' is past 2^53, ${INEXACT}`;
+  return Number.isNaN(typedNumber(text)) ? `'${said}' is not a number` : null;
 }
 
 /** The sentence a cell refuses what was typed with, or `null` where there is nothing to
  * refuse: a cell the reader has emptied is not a mistake, it is a cell nothing has been typed
  * into yet. */
 export function typedRefusal(text: string): string | null {
-  if (text.trim() === "" || !Number.isNaN(typedNumber(text))) return null;
-  return `'${text}' is not a number`;
+  return text.trim() === "" ? null : numberRefusal(text, text);
+}
+
+/** Why this grid draws none of its numbers, or `null` where it draws them. The route marks a
+ * block holding a whole number past 2^53 (`ValuesReply.unshown`), this one's or an axis's: it
+ * reaches the page as the double nearest it, a number the file does not hold, and a grid drawing
+ * it would offer that number as the one written. */
+export function unshownNote(reply: ValuesReply): string | null {
+  if (reply.unshown === null) return null;
+  return `'${reply.unshown}' holds a whole number past 2^53, ${INEXACT}, so the grid cannot show it`;
 }
 
 /** A pasted block, read against the object the grid is showing. Exactly one of the two fields is
@@ -232,8 +275,10 @@ export function pasted(text: string, reply: ValuesReply, physical: boolean): Pas
   for (const row of values) {
     const counts: number[] = [];
     for (const cell of row) {
-      const typed = typedNumber(decimal ? cell.replace(",", ".") : cell);
-      if (Number.isNaN(typed)) return { rows: null, refusal: `'${cell}' is not a number` };
+      const text = decimal ? cell.replace(",", ".") : cell;
+      const refusal = numberRefusal(text, cell);
+      if (refusal !== null) return { rows: null, refusal };
+      const typed = typedNumber(text);
       counts.push(physical ? rawOf(typed, reply.conversion, reply.datatype) : typed);
     }
     read.push(counts);

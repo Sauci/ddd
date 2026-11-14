@@ -17,6 +17,7 @@ import {
   rowHeader,
   typedNumber,
   typedRefusal,
+  unshownNote,
 } from "./objectValues";
 
 // Every fixture below is `GET /api/values?name=…` against examples/demo, read verbatim off a
@@ -44,6 +45,7 @@ const CURVE_A: ValuesReply = {
       conversion: { kind: "linear", factor: 0.25, offset: 0 },
     },
   ],
+  unshown: null,
   owner: "Controller",
   file: "/repo/examples/demo/components/controller.ddd.json",
   findings: [],
@@ -83,6 +85,7 @@ const MAP_A: ValuesReply = {
       conversion: { kind: "linear", factor: 0.5, offset: 0 },
     },
   ],
+  unshown: null,
   owner: "Controller",
   file: "/repo/examples/demo/components/controller.ddd.json",
   findings: [],
@@ -102,6 +105,7 @@ const BLOCK_A: ValuesReply = {
   rows: [[0, 12, 28, 52, 84, 124, 180, 255]],
   stated: "array",
   axes: [],
+  unshown: null,
   owner: "UserInterface",
   file: "/repo/examples/demo/components/user_interface.ddd.json",
   findings: [],
@@ -126,6 +130,7 @@ const VALUE_K: ValuesReply = {
   ],
   stated: "array",
   axes: [],
+  unshown: null,
   owner: "EventLogger",
   file: "/repo/examples/demo/subsystems/logging/event_logger.ddd.json",
   findings: [],
@@ -145,6 +150,7 @@ const VALUE_A: ValuesReply = {
   rows: [],
   stated: "scalar",
   axes: [],
+  unshown: null,
   owner: "SensorHub",
   file: "/repo/examples/demo/components/sensor_hub.ddd.json",
   findings: [],
@@ -176,6 +182,7 @@ const CURVE_X: ValuesReply = {
       conversion: { kind: "identity" },
     },
   ],
+  unshown: null,
   owner: "A",
   file: "/repo/a.ddd.json",
   findings: [],
@@ -187,6 +194,19 @@ const CURVE_X: ValuesReply = {
 const MAP_WITHOUT_BREAKPOINTS: ValuesReply = {
   ...MAP_A,
   axes: MAP_A.axes.map((axis) => ({ ...axis, breakpoints: [] })),
+};
+
+/** BlockA made a uint64 block of two whose file holds 9007199254740993 and 18446744073709551615,
+ * as the route answers it: each the double nearest it, 2^53 and 2^64 - which no uint64 holds -
+ * and the block marked as one the grid cannot show. Built from BlockA's own answer rather than
+ * measured, the way `MAP_WITHOUT_BREAKPOINTS` is: no example holds a number past 2^53. */
+const BIG: ValuesReply = {
+  ...BLOCK_A,
+  datatype: "uint64",
+  maximum: 2 ** 64,
+  shape: [2],
+  rows: [[2 ** 53, 2 ** 64]],
+  unshown: "BlockA",
 };
 
 /** SoftwareLabel: a shaped object initialised with text - no grid either, the other way. */
@@ -203,6 +223,7 @@ const SOFTWARE_LABEL: ValuesReply = {
   rows: [],
   stated: "text",
   axes: [],
+  unshown: null,
   owner: "Controller",
   file: "/repo/examples/demo/components/controller.ddd.json",
   findings: [],
@@ -381,6 +402,83 @@ describe("typedRefusal", () => {
 
   test("an empty cell is not refused - nothing has been typed yet", () => {
     expect(typedRefusal("")).toBeNull();
+  });
+});
+
+describe("a whole number past 2^53", () => {
+  // Past 2^53 a double - the number the page holds - no longer holds every whole number, and
+  // `Number` reads the rest as one beside them without a word: 9007199254740993 as
+  // 9007199254740992, the 64 bit mask 0x8000000000000001 as 0x8000000000000000, bit 0 gone,
+  // and 18446744073709551615, the most a uint64 holds, as 18446744073709551616, which none
+  // holds. Planned from what `Number` read, each was the number the file was given.
+  const PAST = "is past 2^53, where the page cannot hold every whole number exactly";
+
+  test.each([
+    { text: "9007199254740991", reads: 9007199254740991, refused: null },
+    { text: "9007199254740992", reads: 2 ** 53, refused: null },
+    { text: "-9007199254740992", reads: -(2 ** 53), refused: null },
+    { text: "9007199254740993", reads: Number.NaN, refused: `'9007199254740993' ${PAST}` },
+    { text: "-9007199254740993", reads: Number.NaN, refused: `'-9007199254740993' ${PAST}` },
+    { text: "0x8000000000000001", reads: Number.NaN, refused: `'0x8000000000000001' ${PAST}` },
+    {
+      text: "18446744073709551615",
+      reads: Number.NaN,
+      refused: `'18446744073709551615' ${PAST}`,
+    },
+    // 2^53 + 1 in every other spelling `Number` reads a whole number in, and with the space
+    // around it that `Number` reads past.
+    { text: "0x20000000000001", reads: Number.NaN, refused: `'0x20000000000001' ${PAST}` },
+    {
+      text: `0b1${"0".repeat(52)}1`,
+      reads: Number.NaN,
+      refused: `'0b1${"0".repeat(52)}1' ${PAST}`,
+    },
+    { text: "0o400000000000000001", reads: Number.NaN, refused: `'0o400000000000000001' ${PAST}` },
+    { text: " 9007199254740993 ", reads: Number.NaN, refused: `' 9007199254740993 ' ${PAST}` },
+    // A fraction and an exponent spell a real number, read as the double they are: a float holds
+    // that double as it is, and a 64 bit integer is refused it by the server (`_acceptable`).
+    { text: "1e19", reads: 1e19, refused: null },
+  ])("'$text' reads as $reads", ({ text, reads, refused }) => {
+    expect(typedNumber(text)).toBe(reads);
+    expect(typedRefusal(text)).toBe(refused);
+  });
+
+  test("a pasted block holding one is refused in the same words, and plans nothing", () => {
+    expect(pasted("9007199254740993\t9007199254740995", BIG, false)).toEqual({
+      rows: null,
+      refusal: `'9007199254740993' ${PAST}`,
+    });
+  });
+
+  test("so is a block holding one in the cell a header row and column leave", () => {
+    const text = ["\t0\t1", `BlockA\t1\t18446744073709551615`].join("\n");
+    expect(pasted(text, BIG, true).refusal).toBe(`'18446744073709551615' ${PAST}`);
+  });
+
+  test("a pasted block up to 2^53 is read as it is written", () => {
+    expect(pasted("9007199254740991\t-9007199254740992", BIG, false).rows).toEqual([
+      [9007199254740991, -(2 ** 53)],
+    ]);
+  });
+});
+
+describe("unshownNote", () => {
+  test("a grid of numbers a double holds has nothing to say", () => {
+    expect(unshownNote(CURVE_A)).toBeNull();
+  });
+
+  test("a block holding a whole number past 2^53 is not drawn as other numbers", () => {
+    expect(unshownNote(BIG)).toBe(
+      "'BlockA' holds a whole number past 2^53, where the page cannot hold every whole number " +
+        "exactly, so the grid cannot show it",
+    );
+  });
+
+  test("an axis holding one is named, whichever object's grid lies against it", () => {
+    expect(unshownNote({ ...CURVE_A, unshown: "AxisA" })).toBe(
+      "'AxisA' holds a whole number past 2^53, where the page cannot hold every whole number " +
+        "exactly, so the grid cannot show it",
+    );
   });
 });
 

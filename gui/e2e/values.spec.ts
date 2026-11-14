@@ -65,6 +65,35 @@ function producedByNobody(directory: string): void {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+/** BlockA made a uint64 block of two holding `init`, which is written as text: a number past 2^53
+ * is what the journeys using this are about, and as a number here it would already be the double
+ * nearest it. */
+function bigBlockA(init: string): (directory: string) => void {
+  return (directory) => {
+    const path = join(directory, USER_INTERFACE);
+    const text = readFileSync(path, "utf8");
+    const changed = text.replace(
+      /("name": "BlockA",[\s\S]*?"datatype": )"uint8"([\s\S]*?"dimensions": )\[\s*8\s*\]([\s\S]*?"init": )\[[^\]]*\]/,
+      `$1"uint64"$2[2]$3${init}`,
+    );
+    if (changed === text) throw new Error(`${USER_INTERFACE} declares no BlockA of eight uint8`);
+    writeFileSync(path, changed, "utf8");
+  };
+}
+
+/** `text` typed into `cell` key by key, as a reader types it (decision 23.2), over a cell emptied
+ * until it reads empty. The first time a cell's field takes the focus, React Aria moves the focus
+ * on to the cell's row, and a Delete landing after that empties nothing: measured once, in the
+ * trace of a run that cleared the cell 12 ms after the grid was drawn, the field still reading its
+ * 1 when the typing began and the typed number planned with that 1 after it. */
+async function retyped(cell: Locator, text: string): Promise<void> {
+  await expect(async () => {
+    await cell.clear();
+    await expect(cell).toHaveValue("", { timeout: 1000 });
+  }).toPass();
+  await cell.pressSequentially(text);
+}
+
 /** UserInterface's reading of ValueB made a second producing declaration of it, beside
  * SensorHub's. */
 function producedTwice(directory: string): void {
@@ -287,6 +316,77 @@ test("a value the datatype cannot hold is refused, and nothing is written", asyn
   await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+});
+
+// Past 2^53 a double, the number the page holds, no longer holds every whole number, and the grid
+// read and planned from one: a uint64 block whose file holds 9007199254740993 and
+// 18446744073709551615 came over the wire as 9007199254740992 and 18446744073709551616 and was drawn
+// so, and a number typed or pasted past 2^53 was planned, and written, as the double nearest it.
+
+const PAST_2_53 = "is past 2^53, where the page cannot hold every whole number exactly";
+
+test("a block holding a whole number past 2^53 says the grid cannot show it, and draws no number of it", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", bigBlockA("[9007199254740993, 18446744073709551615]"));
+  await openValues(page, gui.address, "BlockA", "UserInterface");
+
+  await expect(page.getByRole("heading", { name: "BlockA", level: 1 })).toBeVisible();
+  // Drawn with the heading, from the same answer: no cell holds a number nobody wrote.
+  await expect(page.getByRole("textbox", { name: /^element / })).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "'BlockA' holds a whole number past 2^53, where the page cannot hold every whole number " +
+        "exactly, so the grid cannot show it",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Values of BlockA" })).toHaveCount(0);
+  await expect(page.getByRole("img", { name: /plotted against/ })).toHaveCount(0);
+  await expect(page.getByText(/^Paste /)).toHaveCount(0);
+});
+
+test("a whole number past 2^53 typed or pasted into a uint64 block is refused, and one short of it is written as typed", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", bigBlockA("[1, 2]"));
+  const path = join(gui.directory, USER_INTERFACE);
+  const before = readFileSync(path);
+  await openValues(page, gui.address, "BlockA", "UserInterface");
+  const cell = page.getByRole("textbox", { name: "element 1" });
+  const refused = page.getByRole("region", { name: "Set the cell" }).getByRole("status");
+  const apply = page.getByRole("button", { name: /^Apply to/ });
+
+  // 2^53 + 1, a 64 bit mask whose bit 0 a double drops, and the most a uint64 holds: each refused
+  // as it was typed, key by key, before anything is asked of the server.
+  await expect(cell).toHaveValue("1");
+  for (const typed of ["9007199254740993", "0x8000000000000001", "18446744073709551615"]) {
+    await retyped(cell, typed);
+    await expect(refused).toHaveText(`'${typed}' ${PAST_2_53}`);
+    await expect(apply).toHaveCount(0);
+  }
+  // 2^53 the page holds, and sends; the server cannot tell it from 2^53 + 1 rounded, and refuses
+  // it to a 64 bit integer.
+  await retyped(cell, "9007199254740992");
+  await expect(refused).toHaveText(
+    "9007199254740992 is at or past 2^53, where the page cannot hold every whole number " +
+      "exactly, so no uint64 is set to it here",
+  );
+  await expect(apply).toHaveCount(0);
+
+  await paste(page, "9007199254740993\t9007199254740995");
+  await expect(
+    page.getByRole("region", { name: "Replace the values" }).getByRole("status"),
+  ).toHaveText(`'9007199254740993' ${PAST_2_53}`);
+  await expect(apply).toHaveCount(0);
+  expect(readFileSync(path).equals(before)).toBe(true);
+
+  await retyped(cell, "9007199254740991");
+  await expect(page.getByText("Sets element 1 of BlockA to 9007199254740991")).toBeVisible();
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => readFileSync(path, "utf8")).toMatch(/"init": \[9007199254740991, 2\]/);
 });
 
 test("Enter settles what was typed and writes nothing", async ({ page, gui }) => {

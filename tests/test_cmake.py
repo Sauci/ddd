@@ -3572,7 +3572,9 @@ message(STATUS "DDD_A2L=${{a2l}}")
     def test_the_check_target_checks_without_generating(self, built: Configured) -> None:
         """What a ci job runs for the verdict alone: the whole project under the same policy,
         and not one artefact written."""
-        assert "are consistent" in built.checked, built.checked
+        assert re.search(
+            r"ok: \d+ variables? in \d+ components? (is|are) consistent", built.checked
+        ), built.checked
         # Both of these are written by the configure step, not by the build: the record of
         # what the build runs, and the project description assembled from the link closure.
         assert built.after_check == ["N2nd_image.ddd.json", "ddd-build.json"], (

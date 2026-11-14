@@ -2737,6 +2737,37 @@ class TestSchemaAll:
         assert target.read_text(encoding="utf-8") == printed
 
 
+@pytest.mark.parametrize(
+    ("in_a", "in_b", "said"),
+    [
+        (["X"], None, "ok: 1 variable in 1 component is consistent"),
+        (["X", "Y"], None, "ok: 2 variables in 1 component are consistent"),
+        (["X"], ["X"], "ok: 1 variable in 2 components is consistent"),
+        (["X", "Y"], ["X"], "ok: 2 variables in 2 components are consistent"),
+    ],
+)
+def test_the_count_line_agrees_in_number(tree, capsys, in_a, in_b, said):
+    """The verb follows the variables counted, not the components: ``1 variable in 2
+    components is consistent``, ``2 variables in 1 component are``. The second component,
+    where there is one, only consumes ``X``."""
+    ids = {"X": "k7m2q9xr4t8w", "Y": "p3n6v8c2d5fz"}
+
+    def scope(name):
+        return "output" if name == "X" and in_b is not None else "local"
+
+    files = {
+        "a.ddd.json": component("A", *(declare(scope(name), name, id=ids[name]) for name in in_a))
+    }
+    includes = ["a.ddd.json"]
+    if in_b is not None:
+        files["b.ddd.json"] = component("B", declare("input", "X"))
+        includes.append("b.ddd.json")
+    files["project.ddd.json"] = project("P", *includes)
+    write_tree(tree, files)
+    assert main(["check", str(tree / "project.ddd.json")]) == EXIT_OK
+    assert said in capsys.readouterr().err
+
+
 def test_the_dictionary_carries_the_identity_and_states_the_format(tree, capsys):
     write_tree(
         tree,
@@ -2989,6 +3020,23 @@ class TestGenerateTheDictionary:
         assert main(self.a2l(output, output / "DemoDevice.a2l")) == EXIT_USAGE
         assert "would both write 'DemoDevice.a2l'" in capsys.readouterr().err
         assert not output.exists()
+
+    def test_the_name_the_runs_manifest_is_kept_under_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The manifest is the record of what the run wrote there, so a dictionary under its name
+        would be taken for that record by the next run. It was refused with a message about the
+        length of the path, which is not the reason."""
+        output = tmp_path / "gen"
+        output.mkdir()
+        assert main(self.a2l(output, output / ".ddd-manifest.json")) == EXIT_USAGE
+        said = capsys.readouterr().err
+        assert (
+            "the dictionary would be written as '.ddd-manifest.json', which is the name the "
+            "manifest of this run is kept under; give --dictionary another file"
+        ) in said
+        assert "characters" not in said
+        assert not (output / "DemoDevice.a2l").exists()
 
     def test_a_run_left_with_the_dictionary_alone_still_writes_it(self, tmp_path: Path) -> None:
         """``--without`` may take every built-in artefact away; the dictionary is still a file

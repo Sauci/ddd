@@ -244,7 +244,8 @@ The commands
        generates in spite of errors. Every artefact also takes ``--dictionary FILE``, which
        writes the resolved data dictionary - the text ``ddd dump`` prints - in the same write as
        the artefacts, so that all of them are written or none is; a path an artefact of the
-       run is written to is refused. That is how a build keeps the dictionary beside what it
+       run is written to is refused, and so is ``.ddd-manifest.json`` in the output directory,
+       the name the run's manifest is kept under. That is how a build keeps the dictionary beside what it
        generated, in one analysis and one report of its findings.
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, initial value

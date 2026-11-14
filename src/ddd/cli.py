@@ -873,7 +873,8 @@ def _command_check(args: argparse.Namespace) -> int:
         components = len(dictionary.components)
         print(
             f"ok: {count} variable{'s' if count != 1 else ''} in "
-            f"{components} component{'s' if components != 1 else ''} are consistent",
+            f"{components} component{'s' if components != 1 else ''} "
+            f"{'is' if count == 1 else 'are'} consistent",
             file=sys.stderr,
         )
     return EXIT_FINDINGS if bag.has_errors else EXIT_OK
@@ -1118,7 +1119,7 @@ def _dictionary_text(dictionary: DataDictionary) -> str:
 
 
 def _dictionary_file(
-    dictionary: DataDictionary, path: Path, artefacts: Sequence[GeneratedFile]
+    dictionary: DataDictionary, path: Path, artefacts: Sequence[GeneratedFile], output_dir: Path
 ) -> GeneratedFile:
     """``generate --dictionary``: the dictionary as one more file of the run's single write.
 
@@ -1128,14 +1129,23 @@ def _dictionary_file(
     the one typed, relative to the working directory like every path on the command line
     rather than a file a backend names inside the output directory, so it is resolved before
     it is weighed against the files the backends claim; a clash is refused before anything is
-    written, as :func:`~ddd.backends.base.render` refuses two backends claiming one file.
+    written, as :func:`~ddd.backends.base.render` refuses two backends claiming one file. The
+    name the run's manifest is kept under in the output directory is refused the same way: a
+    dictionary written there would be taken, by the next run, for the record of what was written.
     """
     from ddd.backends import DICTIONARY_ARTEFACT, GeneratedFile
+    from ddd.backends.base import MANIFEST_NAME
 
     if path.resolve() in {artefact.path for artefact in artefacts}:
         msg = (
             f"the dictionary and an artefact of this run would both write '{path.name}'; "
             "give --dictionary another file"
+        )
+        raise ValueError(msg)
+    if path.resolve() == output_dir.resolve() / MANIFEST_NAME:
+        msg = (
+            f"the dictionary would be written as '{MANIFEST_NAME}', which is the name the "
+            "manifest of this run is kept under; give --dictionary another file"
         )
         raise ValueError(msg)
     return GeneratedFile(path, _dictionary_text(dictionary), DICTIONARY_ARTEFACT)
@@ -1274,7 +1284,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         if args.dictionary is not None:
             _refuse_a_directory(args.dictionary, "--dictionary")
             _refuse_a_source(args.dictionary, "--dictionary", *resolved.sources)
-            files.append(_dictionary_file(dictionary, args.dictionary, files))
+            files.append(_dictionary_file(dictionary, args.dictionary, files, args.output_dir))
             produced.add(DICTIONARY_ARTEFACT)
         try:
             results = write(

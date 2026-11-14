@@ -1467,9 +1467,11 @@ class ValuesReply(_Frozen):
 
     unshown: str | None
     """The object - this one, or an axis it is laid against - whose numbers hold a whole number
-    past 2^53, or ``None``. Every number here is a double, which past 2^53 no longer holds every
-    whole number, so :attr:`rows` or an axis's breakpoints would carry another number in its
-    place: the page draws no grid of them and says why."""
+    past 2^53, or one at 2^53 in a 64 bit integer, or ``None``. Every number here is a double,
+    which past 2^53 no longer holds every whole number, so :attr:`rows` or an axis's breakpoints
+    would carry another number in its place; and a 64 bit integer is set no value at 2^53 from
+    the page, which could not tell it from the next. The page draws no grid of them, and says
+    why."""
 
     owner: str | None
     """Component owning the object; ``None`` only when nothing produces it at all, which is

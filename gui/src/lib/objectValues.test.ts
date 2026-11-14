@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { ValuesReply } from "../api/types";
 import {
   cellAt,
@@ -8,6 +8,7 @@ import {
   cornerLabel,
   drawable,
   elementLabel,
+  noGridNote,
   pasted,
   pasteHint,
   pasteSentence,
@@ -15,9 +16,8 @@ import {
   rawOf,
   readOnlyNote,
   rowHeader,
-  typedNumber,
+  typedRaw,
   typedRefusal,
-  unshownNote,
 } from "./objectValues";
 
 // Every fixture below is `GET /api/values?name=…` against examples/demo, read verbatim off a
@@ -367,117 +367,286 @@ describe("columnAxisLabel", () => {
   });
 });
 
-describe("typedNumber", () => {
+describe("typedRaw", () => {
   test("a decimal comma is not a number, rather than the whole part of one", () => {
     // `parseFloat("1,5")` is 1: half the world's decimal separator, silently planning a write
     // of a value the reader did not type.
-    expect(typedNumber("1,5")).toBeNaN();
+    expect(typedRaw("1,5", BLOCK_A, false)).toBeNull();
   });
 
   test("a numeric prefix is not a number either", () => {
-    expect(typedNumber("7abc")).toBeNaN();
+    expect(typedRaw("7abc", BLOCK_A, false)).toBeNull();
   });
 
   test("an empty cell is nothing typed, not zero", () => {
-    expect(typedNumber("  ")).toBeNaN();
+    expect(typedRaw("  ", BLOCK_A, false)).toBeNull();
   });
 
   test("a number with space around it is that number", () => {
-    expect(typedNumber(" 12 ")).toBe(12);
+    expect(typedRaw(" 12 ", BLOCK_A, false)).toBe(12);
   });
 
-  test("a fractional number reads whole", () => {
-    expect(typedNumber("7.5")).toBe(7.5);
+  test("a fraction in raw is the fraction, for the server to weigh against the datatype", () => {
+    expect(typedRaw("7.5", BLOCK_A, false)).toBe(7.5);
+  });
+
+  test("in physical it is the raw count the conversion comes to, rounded for an integer", () => {
+    expect(typedRaw("12.004", CURVE_A, true)).toBe(1200);
   });
 });
 
 describe("typedRefusal", () => {
   test("what is not wholly a number is refused in the grid's own voice", () => {
-    expect(typedRefusal("1,5")).toBe("'1,5' is not a number");
+    expect(typedRefusal("1,5", BLOCK_A)).toBe("'1,5' is not a number");
   });
 
   test("a number is not refused", () => {
-    expect(typedRefusal("7.5")).toBeNull();
+    expect(typedRefusal("7.5", BLOCK_A)).toBeNull();
   });
 
   test("an empty cell is not refused - nothing has been typed yet", () => {
-    expect(typedRefusal("")).toBeNull();
+    expect(typedRefusal("", BLOCK_A)).toBeNull();
   });
 });
 
-describe("a whole number past 2^53", () => {
-  // Past 2^53 a double - the number the page holds - no longer holds every whole number, and
-  // `Number` reads the rest as one beside them without a word: 9007199254740993 as
-  // 9007199254740992, the 64 bit mask 0x8000000000000001 as 0x8000000000000000, bit 0 gone,
-  // and 18446744073709551615, the most a uint64 holds, as 18446744073709551616, which none
-  // holds. Planned from what `Number` read, each was the number the file was given.
-  const PAST = "is past 2^53, where the page cannot hold every whole number exactly";
+describe("a number a double cannot hold", () => {
+  // Past 2^53 a double, the number the page holds, no longer holds every whole number, and
+  // `Number` reads the others as a double beside them, saying nothing. Planned from what it
+  // read, 9007199254740993 was written as 9007199254740992; the 64 bit mask
+  // 0x8000000000000001, read as 2^63, was written as 9223372036854776000, the shortest decimal
+  // of that double, which is 0x80000000000000C0 - its low bit cleared and two others set; and
+  // 18446744073709551615, the most a uint64 holds, read as 2^64, was refused as a number that
+  // does not fit, though nobody typed it. Below 2^53 a double holds every whole number, but from
+  // 2^51 it no longer holds every fraction: 4503599627370496.5 read as 4503599627370496, and
+  // planned so for an integer.
+  const INEXACT = "where the page cannot hold every whole number exactly";
+  const FRACTION = "is not a whole number, and the page cannot hold its fraction";
+  const UINT64 = BIG;
+  const SINT64: ValuesReply = { ...BIG, datatype: "sint64" };
+  const FLOAT64: ValuesReply = { ...BIG, datatype: "float64", unshown: null };
+  const FLOAT32: ValuesReply = { ...BIG, datatype: "float32", unshown: null };
 
   test.each([
-    { text: "9007199254740991", reads: 9007199254740991, refused: null },
-    { text: "9007199254740992", reads: 2 ** 53, refused: null },
-    { text: "-9007199254740992", reads: -(2 ** 53), refused: null },
-    { text: "9007199254740993", reads: Number.NaN, refused: `'9007199254740993' ${PAST}` },
-    { text: "-9007199254740993", reads: Number.NaN, refused: `'-9007199254740993' ${PAST}` },
-    { text: "0x8000000000000001", reads: Number.NaN, refused: `'0x8000000000000001' ${PAST}` },
+    // An integer cell takes a whole number up to 2^53, as it is written - 2^53 itself the
+    // server refuses a 64 bit integer, which cannot tell it from 2^53 + 1 rounded.
+    { text: "9007199254740991", cell: UINT64, raw: 9007199254740991, refused: null },
+    { text: "9007199254740992", cell: UINT64, raw: 2 ** 53, refused: null },
+    { text: "-9007199254740992", cell: SINT64, raw: -(2 ** 53), refused: null },
+    { text: "0x1F", cell: UINT64, raw: 31, refused: null },
+    // `Infinity` is read as the double it is, on no side of 2^53: no whole number at all, and
+    // the server's range refuses it.
+    { text: "Infinity", cell: UINT64, raw: Number.POSITIVE_INFINITY, refused: null },
+    // Past it, whichever side, in every spelling `Number` reads, the space around it included.
+    {
+      text: "9007199254740993",
+      cell: UINT64,
+      raw: null,
+      refused: `'9007199254740993' is past 2^53, ${INEXACT}`,
+    },
+    {
+      text: "-9007199254740993",
+      cell: SINT64,
+      raw: null,
+      refused: `'-9007199254740993' is past -2^53, ${INEXACT}`,
+    },
+    {
+      text: "0x8000000000000001",
+      cell: UINT64,
+      raw: null,
+      refused: `'0x8000000000000001' is past 2^53, ${INEXACT}`,
+    },
     {
       text: "18446744073709551615",
-      reads: Number.NaN,
-      refused: `'18446744073709551615' ${PAST}`,
+      cell: UINT64,
+      raw: null,
+      refused: `'18446744073709551615' is past 2^53, ${INEXACT}`,
     },
-    // 2^53 + 1 in every other spelling `Number` reads a whole number in, and with the space
-    // around it that `Number` reads past.
-    { text: "0x20000000000001", reads: Number.NaN, refused: `'0x20000000000001' ${PAST}` },
+    {
+      text: "0x20000000000001",
+      cell: UINT64,
+      raw: null,
+      refused: `'0x20000000000001' is past 2^53, ${INEXACT}`,
+    },
     {
       text: `0b1${"0".repeat(52)}1`,
-      reads: Number.NaN,
-      refused: `'0b1${"0".repeat(52)}1' ${PAST}`,
+      cell: UINT64,
+      raw: null,
+      refused: `'0b1${"0".repeat(52)}1' is past 2^53, ${INEXACT}`,
     },
-    { text: "0o400000000000000001", reads: Number.NaN, refused: `'0o400000000000000001' ${PAST}` },
-    { text: " 9007199254740993 ", reads: Number.NaN, refused: `' 9007199254740993 ' ${PAST}` },
-    // A fraction and an exponent spell a real number, read as the double they are: a float holds
-    // that double as it is, and a 64 bit integer is refused it by the server (`_acceptable`).
-    { text: "1e19", reads: 1e19, refused: null },
-  ])("'$text' reads as $reads", ({ text, reads, refused }) => {
-    expect(typedNumber(text)).toBe(reads);
-    expect(typedRefusal(text)).toBe(refused);
+    {
+      text: "0o400000000000000001",
+      cell: UINT64,
+      raw: null,
+      refused: `'0o400000000000000001' is past 2^53, ${INEXACT}`,
+    },
+    {
+      text: " 9007199254740993 ",
+      cell: UINT64,
+      raw: null,
+      refused: `' 9007199254740993 ' is past 2^53, ${INEXACT}`,
+    },
+    {
+      text: "9007199254740993.0",
+      cell: UINT64,
+      raw: null,
+      refused: `'9007199254740993.0' is past 2^53, ${INEXACT}`,
+    },
+    {
+      text: "1.8446744073709551615e19",
+      cell: UINT64,
+      raw: null,
+      refused: `'1.8446744073709551615e19' is past 2^53, ${INEXACT}`,
+    },
+    { text: "1e19", cell: UINT64, raw: null, refused: `'1e19' is past 2^53, ${INEXACT}` },
+    {
+      text: "9007199254740992.5",
+      cell: UINT64,
+      raw: null,
+      refused: `'9007199254740992.5' is past 2^53, ${INEXACT}`,
+    },
+    {
+      text: "-9.007199254740993e15",
+      cell: SINT64,
+      raw: null,
+      refused: `'-9.007199254740993e15' is past -2^53, ${INEXACT}`,
+    },
+    // A fraction the double cannot hold is no whole number, rather than the one it reads as; a
+    // fraction it holds is the fraction, which the server refuses an integer in raw.
+    {
+      text: "4503599627370496.5",
+      cell: UINT64,
+      raw: null,
+      refused: `'4503599627370496.5' ${FRACTION}`,
+    },
+    {
+      text: "2251799813685248.25",
+      cell: UINT64,
+      raw: null,
+      refused: `'2251799813685248.25' ${FRACTION}`,
+    },
+    { text: "2251799813685248.5", cell: UINT64, raw: 2251799813685248.5, refused: null },
+    // A float cell takes the double whatever the spelling: FLT_MAX is a whole number past 2^53
+    // too, and the double is what the float holds.
+    { text: "9007199254740993", cell: FLOAT64, raw: 2 ** 53, refused: null },
+    { text: "10000000000000000000", cell: FLOAT64, raw: 1e19, refused: null },
+    { text: "1e19", cell: FLOAT64, raw: 1e19, refused: null },
+    { text: "4503599627370496.5", cell: FLOAT64, raw: 4503599627370496, refused: null },
+    {
+      text: "3.4028234663852886e38",
+      cell: FLOAT32,
+      raw: 3.4028234663852886e38,
+      refused: null,
+    },
+  ])("'$text' in a $cell.datatype cell", ({ text, cell, raw, refused }) => {
+    expect(typedRaw(text, cell, false)).toBe(raw);
+    expect(typedRefusal(text, cell)).toBe(refused);
   });
 
   test("a pasted block holding one is refused in the same words, and plans nothing", () => {
     expect(pasted("9007199254740993\t9007199254740995", BIG, false)).toEqual({
       rows: null,
-      refusal: `'9007199254740993' ${PAST}`,
+      refusal: `'9007199254740993' is past 2^53, ${INEXACT}`,
     });
   });
 
   test("so is a block holding one in the cell a header row and column leave", () => {
     const text = ["\t0\t1", `BlockA\t1\t18446744073709551615`].join("\n");
-    expect(pasted(text, BIG, true).refusal).toBe(`'18446744073709551615' ${PAST}`);
+    expect(pasted(text, BIG, true).refusal).toBe(`'18446744073709551615' is past 2^53, ${INEXACT}`);
+  });
+
+  test("and a pasted fraction an integer cell would lose", () => {
+    expect(pasted("1\t4503599627370496.5", BIG, false).refusal).toBe(
+      `'4503599627370496.5' ${FRACTION}`,
+    );
   });
 
   test("a pasted block up to 2^53 is read as it is written", () => {
-    expect(pasted("9007199254740991\t-9007199254740992", BIG, false).rows).toEqual([
+    expect(pasted("9007199254740991\t-9007199254740992", SINT64, false).rows).toEqual([
       [9007199254740991, -(2 ** 53)],
+    ]);
+  });
+
+  test("a float block takes a whole number past 2^53 as the double it is", () => {
+    expect(pasted("9007199254740993\t10000000000000000000", FLOAT64, false).rows).toEqual([
+      [2 ** 53, 1e19],
     ]);
   });
 });
 
-describe("unshownNote", () => {
-  test("a grid of numbers a double holds has nothing to say", () => {
-    expect(unshownNote(CURVE_A)).toBeNull();
+describe("the work a pasted block costs", () => {
+  // A 64 by 64 map's 4,096 cells, counted rather than timed: each cell is read once, and only a
+  // cell of sixteen whole digits, the one length that falls either side of 2^53, asks `BigInt` -
+  // which throws for a fraction, so asking it of every cell made a block of fractions cost about
+  // a hundred times what reading their numbers does.
+  const MAP_64: ValuesReply = {
+    ...MAP_A,
+    datatype: "uint64",
+    conversion: { kind: "identity" },
+    shape: [64, 64],
+    axes: [],
+  };
+  const block = (cell: (index: number) => string) =>
+    Array.from({ length: 64 }, (_, row) =>
+      Array.from({ length: 64 }, (_, column) => cell(row * 64 + column)).join("\t"),
+    ).join("\n");
+
+  test("a block of fractions asks BigInt nothing", () => {
+    const asked = vi.spyOn(globalThis, "BigInt");
+    try {
+      const read = pasted(
+        block((index) => (index * 0.37).toFixed(2)),
+        MAP_64,
+        false,
+      );
+      expect(read.rows?.flat()).toHaveLength(4096);
+      expect(asked).not.toHaveBeenCalled();
+    } finally {
+      asked.mockRestore();
+    }
   });
 
-  test("a block holding a whole number past 2^53 is not drawn as other numbers", () => {
-    expect(unshownNote(BIG)).toBe(
-      "'BlockA' holds a whole number past 2^53, where the page cannot hold every whole number " +
-        "exactly, so the grid cannot show it",
+  test("a block of sixteen digit numbers asks it once a cell", () => {
+    const asked = vi.spyOn(globalThis, "BigInt");
+    try {
+      const read = pasted(
+        block(() => "9007199254740991"),
+        MAP_64,
+        false,
+      );
+      expect(read.rows?.flat()).toHaveLength(4096);
+      expect(asked).toHaveBeenCalledTimes(4096);
+    } finally {
+      asked.mockRestore();
+    }
+  });
+});
+
+describe("noGridNote", () => {
+  const AT_OR_PAST =
+    "holds a whole number at or past ±2^53, where the page cannot hold every whole number " +
+    "exactly, so the grid cannot show it";
+
+  test("a grid of numbers the page holds has nothing to say", () => {
+    expect(noGridNote(CURVE_A)).toBeNull();
+  });
+
+  test("text is no grid at all", () => {
+    expect(noGridNote(SOFTWARE_LABEL)).toBe(
+      "'SoftwareLabel' is initialised with text, not with a grid",
     );
   });
 
-  test("an axis holding one is named, whichever object's grid lies against it", () => {
-    expect(unshownNote({ ...CURVE_A, unshown: "AxisA" })).toBe(
-      "'AxisA' holds a whole number past 2^53, where the page cannot hold every whole number " +
-        "exactly, so the grid cannot show it",
+  test("a block the route marks is not drawn as other numbers", () => {
+    expect(noGridNote(BIG)).toBe(`'BlockA' ${AT_OR_PAST}`);
+  });
+
+  test("an axis it marks is named, whichever object's grid lies against it", () => {
+    expect(noGridNote({ ...CURVE_A, unshown: "AxisA" })).toBe(`'AxisA' ${AT_OR_PAST}`);
+  });
+
+  test("text is said first: it is no grid whatever it holds", () => {
+    expect(noGridNote({ ...SOFTWARE_LABEL, unshown: "SoftwareLabel" })).toBe(
+      "'SoftwareLabel' is initialised with text, not with a grid",
     );
   });
 });

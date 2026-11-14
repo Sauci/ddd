@@ -6,7 +6,7 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { useKept } from "../app/useKept";
 import { ValuesGridView } from "../components/ValuesGridView";
-import { cellAt, drawable, pasted, rawOf, typedNumber } from "../lib/objectValues";
+import { cellAt, drawable, pasted, typedRaw } from "../lib/objectValues";
 import { planEdit } from "../lib/projectUnits";
 import { gated, planShown } from "../lib/typing";
 import { pasteLabel, valueLabel } from "../lib/undo";
@@ -120,15 +120,10 @@ export function ValuesPage({ name, file, state, stopped, onBack }: Props) {
   const at =
     editing !== null && shape !== undefined ? cellAt(editing.row, editing.column, shape) : null;
   // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
-  // what is typed is not a number - the same gate `ValuesGridView` itself keys its own sentence
-  // on, so the two either agree or the plan below is still not asked for.
-  const typed = editing === null ? Number.NaN : typedNumber(editing.typed);
+  // what is typed is no number the cell takes - the same gate `ValuesGridView` itself keys its
+  // own sentence on, so the two either agree or the plan below is still not asked for.
   const raw =
-    shown === undefined || Number.isNaN(typed)
-      ? null
-      : physical
-        ? rawOf(typed, shown.conversion, shown.datatype)
-        : typed;
+    shown === undefined || editing === null ? null : typedRaw(editing.typed, shown, physical);
   // A cell is typed into character by character, so its plan is debounced (spec §6): `at`/`raw`
   // change on every keystroke the same way every other plain field in this part does. Folded
   // into one request so one `useDebounced` call covers both, as `VariablePanel`'s own settle

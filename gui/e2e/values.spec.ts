@@ -85,7 +85,9 @@ function bigBlockA(init: string): (directory: string) => void {
  * until it reads empty. The first time a cell's field takes the focus, React Aria moves the focus
  * on to the cell's row, and a Delete landing after that empties nothing: measured once, in the
  * trace of a run that cleared the cell 12 ms after the grid was drawn, the field still reading its
- * 1 when the typing began and the typed number planned with that 1 after it. */
+ * 1 when the typing began and the typed number planned with that 1 after it. This works around
+ * the grid's handling of keys and focus in a cell that 16:C1 names, the only `toPass` the suite
+ * has: branch 3's task 3, which fixes that, takes the loop out with it. */
 async function retyped(cell: Locator, text: string): Promise<void> {
   await expect(async () => {
     await cell.clear();
@@ -337,14 +339,20 @@ test("a block holding a whole number past 2^53 says the grid cannot show it, and
   await expect(page.getByRole("textbox", { name: /^element / })).toHaveCount(0);
   await expect(
     page.getByText(
-      "'BlockA' holds a whole number past 2^53, where the page cannot hold every whole number " +
-        "exactly, so the grid cannot show it",
+      "'BlockA' holds a whole number at or past ±2^53, where the page cannot hold every whole " +
+        "number exactly, so the grid cannot show it",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(page.getByRole("grid", { name: "Values of BlockA" })).toHaveCount(0);
   await expect(page.getByRole("img", { name: /plotted against/ })).toHaveCount(0);
   await expect(page.getByText(/^Paste /)).toHaveCount(0);
+
+  // Nor does it take a paste, as a grid with no file to write into takes none: a block of the
+  // wrong shape, which a grid it took would refuse in the same event, plans and says nothing.
+  await paste(page, "1\t2\t3", page.getByRole("heading", { name: "BlockA", level: 1 }));
+  await expect(page.getByRole("region", { name: "Replace the values" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 });
 
 test("a whole number past 2^53 typed or pasted into a uint64 block is refused, and one short of it is written as typed", async ({
@@ -359,14 +367,28 @@ test("a whole number past 2^53 typed or pasted into a uint64 block is refused, a
   const refused = page.getByRole("region", { name: "Set the cell" }).getByRole("status");
   const apply = page.getByRole("button", { name: /^Apply to/ });
 
-  // 2^53 + 1, a 64 bit mask whose bit 0 a double drops, and the most a uint64 holds: each refused
-  // as it was typed, key by key, before anything is asked of the server.
+  // 2^53 + 1, a 64 bit mask whose bit 0 a double drops, the most a uint64 holds, and 2^53 + 1
+  // with a point and in an exponent: each refused as it was typed, key by key, before anything is
+  // asked of the server.
   await expect(cell).toHaveValue("1");
-  for (const typed of ["9007199254740993", "0x8000000000000001", "18446744073709551615"]) {
+  for (const typed of [
+    "9007199254740993",
+    "0x8000000000000001",
+    "18446744073709551615",
+    "9007199254740993.0",
+    "9.007199254740993e15",
+  ]) {
     await retyped(cell, typed);
     await expect(refused).toHaveText(`'${typed}' ${PAST_2_53}`);
     await expect(apply).toHaveCount(0);
   }
+  // A fraction the page's double would drop is refused as one, not planned as the whole number
+  // the double reads it as.
+  await retyped(cell, "4503599627370496.5");
+  await expect(refused).toHaveText(
+    "'4503599627370496.5' is not a whole number, and the page cannot hold its fraction",
+  );
+  await expect(apply).toHaveCount(0);
   // 2^53 the page holds, and sends; the server cannot tell it from 2^53 + 1 rounded, and refuses
   // it to a 64 bit integer.
   await retyped(cell, "9007199254740992");

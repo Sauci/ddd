@@ -7,15 +7,14 @@ import {
   columnHeader,
   cornerLabel,
   elementLabel,
+  noGridNote,
   pasteHint,
   pasteSentence,
   physicalOf,
-  rawOf,
   readOnlyNote,
   rowHeader,
-  typedNumber,
+  typedRaw,
   typedRefusal,
-  unshownNote,
 } from "../lib/objectValues";
 import { consequence, NO_UNIT, shownChanges } from "../lib/units";
 import { shortValue } from "../lib/variableKeys";
@@ -124,33 +123,24 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     `${reply.minimum} … ${reply.maximum}`,
   ].join(" · ");
   // What `editing.typed` would write, as a raw count: `null` while nothing is being edited or
-  // what is typed is not a number - the same gate the screen itself keys its value-plan query
-  // on, so `plan` and this either agree or `plan` is still null.
-  const typed = editing === null ? Number.NaN : typedNumber(editing.typed);
-  const raw = Number.isNaN(typed)
-    ? null
-    : physical
-      ? rawOf(typed, reply.conversion, reply.datatype)
-      : typed;
+  // what is typed is no number the cell takes - the same gate the screen itself keys its
+  // value-plan query on, so `plan` and this either agree or `plan` is still null.
+  const raw = editing === null ? null : typedRaw(editing.typed, reply, physical);
   // What was typed is refused here rather than by the server, which is never asked for a plan
   // for it, and ahead of whatever refusal came back for an earlier value: that one is about a
   // number no longer in the cell. Where no cell is being typed into - a pasted table owns the
   // offer instead - there is no typed refusal to take priority, so the screen's own refusal (a
   // pasted block's own sentence among them) is what shows.
-  const refused = (editing === null ? null : typedRefusal(editing.typed)) ?? refusal;
+  const refused = (editing === null ? null : typedRefusal(editing.typed, reply)) ?? refusal;
   const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
-  // Why no grid is drawn, where none is: text is no grid at all, and a block holding a whole
-  // number past 2^53 would be drawn as other numbers (`unshownNote`).
-  const instead =
-    reply.stated === "text"
-      ? `'${reply.name}' is initialised with text, not with a grid`
-      : unshownNote(reply);
+  const noGrid = noGridNote(reply);
   return (
     <section
       onPaste={(event) => {
         // A read-only grid has nothing to paste into, and says so via `readOnly` below rather
-        // than by planning a refusal for a table it could never write (spec 4.3). A grid with
+        // than by planning a refusal for a table it could never write (spec 4.3); nor has a
+        // page that draws no grid at all, and says why (`noGrid`). A grid with
         // an apply in flight takes nothing either: every input and Apply are disabled while
         // `busy`, so a cell cannot be typed into, and a paste taken here would be cleared
         // without a word by that apply's own `onSuccess` the moment it landed.
@@ -159,7 +149,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
         // paste inside the window an apply is in flight, which it cannot open on purpose, and a
         // test that waited for it would be the race this suite refuses to write. It is left here
         // unguarded by any test on purpose, and said so rather than left to be discovered.
-        if (readOnly !== null || busy) return;
+        if (readOnly !== null || noGrid !== null || busy) return;
         // A cell is a text field: without this the browser also drops the whole block into
         // whichever one has focus.
         event.preventDefault();
@@ -176,8 +166,8 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       </div>
       {banner}
       <p className="values-meta">{meta}</p>
-      {instead !== null ? (
-        <p className="quiet">{instead}</p>
+      {noGrid !== null ? (
+        <p className="quiet">{noGrid}</p>
       ) : (
         <>
           <fieldset className="values-toggle" aria-label="Physical or raw">

@@ -9754,10 +9754,11 @@ def big_block(tmp_path: Path, init: object, datatype: str = "uint64") -> Api:
 
 
 AT_OR_PAST: Final = (
-    "is at or past 2^53, where the page cannot hold every whole number exactly, so no {} is set "
-    "to it here"
+    "is at or past {side}2^53, where the page cannot hold every whole number exactly, so no "
+    "{datatype} is set to it here"
 )
-"""The server's refusal of a 64 bit integer's value, the number and the datatype left out."""
+"""The server's refusal of a 64 bit integer's value, the number, its side and the datatype left
+out."""
 
 
 class TestAWholeNumberPastWhatADoubleHolds:
@@ -9782,42 +9783,51 @@ class TestAWholeNumberPastWhatADoubleHolds:
     @pytest.mark.parametrize(
         ("datatype", "init", "unshown"),
         [
-            pytest.param("uint64", [2**53, 1], None, id="2^53-which-a-double-holds"),
+            pytest.param("uint64", [2**53 - 1, 1], None, id="2^53-less-one"),
+            pytest.param("uint64", [2**53, 1], "Big", id="2^53-which-a-uint64-cannot-be-set-back"),
             pytest.param("uint64", [1, 2**53 + 1], "Big", id="2^53-and-one"),
-            pytest.param("sint64", [-(2**53), 1], None, id="minus-2^53"),
+            pytest.param("sint64", [-(2**53) + 1, 1], None, id="minus-2^53-less-one"),
+            pytest.param("sint64", [-(2**53), 1], "Big", id="minus-2^53"),
             pytest.param("sint64", [-(2**53) - 1, 1], "Big", id="minus-2^53-and-one"),
             pytest.param("uint64", 2**64 - 1, "Big", id="one-value-stated-for-every-cell"),
+            pytest.param("uint32", [2**53, 1], None, id="2^53-on-a-narrower-integer"),
+            pytest.param("uint32", [2**53 + 1, 1], "Big", id="2^53-and-one-on-a-narrower-integer"),
+            pytest.param("float64", [2**53, 0.5], None, id="2^53-on-a-float"),
             pytest.param("float64", [1e300, 0.5], None, id="a-float-is-the-double-it-is"),
             pytest.param("float64", [2**53 + 1, 0.5], "Big", id="a-whole-number-on-a-float"),
         ],
     )
-    def test_the_mark_falls_past_2_53_on_a_whole_number_alone(
+    def test_the_mark_falls_where_the_page_cannot_hold_or_set_back_a_whole_number(
         self, tmp_path: Path, datatype: str, init: object, unshown: str | None
     ) -> None:
-        """A float in the file is a double already, so the page holds it as it is; a whole number
-        is exact in the file and in the server, and is the page's to lose."""
+        """Past 2^53 for any datatype, and at it for a 64 bit integer, which the server refuses a
+        value at 2^53: drawn, it would be a value its own cell cannot be set back to. A float in
+        the file is a double already, so the page holds it as it is; a whole number is exact in
+        the file and in the server, and is the page's to lose. A narrower integer holding 2^53 -
+        which it cannot store, and the analysis says so - is drawn as written."""
         api = big_block(tmp_path, init, datatype)
         assert get(api, "/api/values", name="Big").body["unshown"] == unshown
 
     @pytest.mark.parametrize(
-        ("curve", "unshown"),
+        ("axis", "curve", "unshown"),
         [
-            pytest.param([1, 2], "AxisX", id="the-axis-alone"),
-            pytest.param([1, 2**53 + 1], "CurveX", id="the-object-before-its-axis"),
+            pytest.param([0, 2**53 + 1], [1, 2], "AxisX", id="the-axis-alone"),
+            pytest.param([0, 2**53], [1, 2], "AxisX", id="2^53-on-a-uint64-axis"),
+            pytest.param([0, 2**53 + 1], [1, 2**53 + 1], "CurveX", id="the-object-before-its-axis"),
         ],
     )
     def test_an_axis_holding_one_is_named_by_the_grid_lying_against_it(
-        self, tmp_path: Path, curve: list[int], unshown: str
+        self, tmp_path: Path, axis: list[int], curve: list[int], unshown: str
     ) -> None:
         """Its breakpoints are drawn as the grid's own header, so they would be the rounded
-        numbers drawn there."""
+        numbers drawn there; weighed by the axis's own datatype, which is its cells'."""
         api = opened(
             tmp_path,
             {
                 "p.ddd.json": project("P", "a.ddd.json"),
                 "a.ddd.json": component(
                     "A",
-                    declare("local", "AxisX", "uint64", kind="axis", size=2, init=[0, 2**53 + 1]),
+                    declare("local", "AxisX", "uint64", kind="axis", size=2, init=axis),
                     declare("local", "CurveX", "uint64", kind="curve", axis="AxisX", init=curve),
                 ),
             },
@@ -9825,21 +9835,23 @@ class TestAWholeNumberPastWhatADoubleHolds:
         assert get(api, "/api/values", name="CurveX").body["unshown"] == unshown
 
     @pytest.mark.parametrize(
-        ("datatype", "raw"),
+        ("datatype", "raw", "side"),
         [
-            pytest.param("uint64", "9007199254740992", id="2^53"),
-            pytest.param("uint64", "18446744073709551615", id="the-most-a-uint64-holds"),
-            pytest.param("sint64", "-9007199254740992", id="minus-2^53"),
-            pytest.param("sint64", "9223372036854775807", id="the-most-a-sint64-holds"),
+            pytest.param("uint64", "9007199254740992", "", id="2^53"),
+            pytest.param("uint64", "18446744073709551615", "", id="the-most-a-uint64-holds"),
+            pytest.param("sint64", "-9007199254740992", "-", id="minus-2^53"),
+            pytest.param("sint64", "-9223372036854775808", "-", id="the-least-a-sint64-holds"),
+            pytest.param("sint64", "9223372036854775807", "", id="the-most-a-sint64-holds"),
         ],
     )
     def test_a_64_bit_integer_is_refused_a_whole_number_at_or_past_2_53(
-        self, tmp_path: Path, datatype: str, raw: str
+        self, tmp_path: Path, datatype: str, raw: str, side: str
     ) -> None:
         api = big_block(tmp_path, [1, 2], datatype)
         before = contents(tmp_path)
+        said = AT_OR_PAST.format(side=side, datatype=datatype)
         assert get(api, "/api/value-plan", name="Big", at="[0]", raw=raw) == Reply(
-            409, {"error": "invalid", "message": f"{raw} {AT_OR_PAST.format(datatype)}"}
+            409, {"error": "invalid", "message": f"{raw} {said}"}
         )
         assert contents(tmp_path) == before
 
@@ -9867,7 +9879,7 @@ class TestAWholeNumberPastWhatADoubleHolds:
             {
                 "error": "invalid",
                 "message": "element 2 of 'Big' is refused: "
-                f"9007199254740992 {AT_OR_PAST.format('uint64')}",
+                f"9007199254740992 {AT_OR_PAST.format(side='', datatype='uint64')}",
             },
         )
 

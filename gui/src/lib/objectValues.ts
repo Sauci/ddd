@@ -25,6 +25,12 @@ export function physicalOf(raw: number, conversion: Conversion): number {
   return rounded(raw * number(conversion.factor, 1) + number(conversion.offset, 0));
 }
 
+/** Whether `datatype` stores a floating point number - which the double the page holds is too -
+ * rather than a whole one. */
+function floating(datatype: string): boolean {
+  return datatype.startsWith("float");
+}
+
 /** The raw count a physical value needs, rounded to a whole number where the datatype stores
  * one. Most physical values are the image of no raw count at all, so this is where a typed
  * value becomes one the file can hold - and the grid then shows what was stored, not what was
@@ -34,7 +40,7 @@ export function rawOf(physical: number, conversion: Conversion, datatype: string
     conversion.kind === "linear"
       ? (physical - number(conversion.offset, 0)) / number(conversion.factor, 1)
       : physical;
-  return datatype.startsWith("float") ? exact : Math.round(exact);
+  return floating(datatype) ? exact : Math.round(exact);
 }
 
 /** The tail of the arithmetic taken off, as `round_physical` takes it off server side. */
@@ -98,62 +104,126 @@ export function readOnlyNote(reply: ValuesReply): string | null {
 }
 
 /** 2^53, where a double - the number the page holds - stops holding every whole number. Past it
- * `Number` reads a whole number as one beside it, without a word: `9007199254740993` as
- * `9007199254740992`, the 64 bit mask `0x8000000000000001` as `0x8000000000000000`, bit 0 gone,
- * and `18446744073709551615`, the most a uint64 holds, as `18446744073709551616`, which none
- * holds. Planned from what it read, each was the number the file was given. */
+ * `Number` reads a whole number as a double beside it, saying nothing: `9007199254740993` as
+ * `9007199254740992`, and `0x8000000000000001`, a 64 bit mask, as 2^63. Planned from what it
+ * read, the first was written as `9007199254740992`; the mask as `9223372036854776000`, the
+ * shortest decimal of 2^63, which is `0x80000000000000C0` - its low bit cleared and two others
+ * set; and `18446744073709551615`, the most a uint64 holds, read as 2^64, was refused as a number
+ * that does not fit, which nobody typed. */
 const EXACT = 2n ** 53n;
 
-/** Why a whole number past `EXACT` is refused, the same words wherever it was typed or pasted. */
+/** How many digits 2^53 is written in, `9007199254740992`: a whole part of fewer is inside it,
+ * and a whole part of more is past it, whatever the digits. */
+const EXACT_DIGITS = 16;
+
+/** Why a number past ±2^53 is refused, in the same words wherever it was typed or pasted. */
 const INEXACT = "where the page cannot hold every whole number exactly";
 
-/** Whether `text` spells a whole number past 2^53. `BigInt` reads exactly the spellings of a whole
- * number that `Number` reads - digits with or without a sign, `0x`, `0b` and `0o` - and refuses a
- * fraction, an exponent and `Infinity`, so it answers the number such a text spells, exactly. A
- * fraction or an exponent spells a real number and is read as the double it is: a float holds
- * that double, and a 64 bit integer is refused it by the server, which cannot tell it from the
- * whole number next to it. */
-function pastExact(text: string): boolean {
-  let whole: bigint;
-  try {
-    whole = BigInt(text);
-  } catch {
-    return false;
+/** A decimal spelling `Number` reads, its sign, whole digits, fraction and exponent apart: `5.`,
+ * `.5` and `1e19` among them. `Number` has read the text before this is asked, so a match holds a
+ * digit somewhere - `.` and `e5` are no numbers. */
+const DECIMAL = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/;
+
+/** A whole number in hexadecimal, binary or octal digits, which `Number` reads with no sign. */
+const NONDECIMAL = /^0(?:[xX][0-9a-fA-F]+|[bB][01]+|[oO][0-7]+)$/;
+
+/** What a text says as a number: the double `Number` reads it as; which side of ±2^53 the number
+ * it spells lies past, `0` where it lies inside; and whether that number has a fraction. */
+interface Spelled {
+  double: number;
+  side: -1 | 0 | 1;
+  fraction: boolean;
+}
+
+/** `text` read once as the number it spells, or `null` where it spells none `Number` reads. The
+ * spelling decides before `BigInt` is asked anything: only a whole part of sixteen digits - the
+ * one length that falls either side of 2^53 - and a hexadecimal, binary or octal number are
+ * compared with 2^53 exactly, so a block of fractions costs what reading their numbers does.
+ * `Infinity` is read as the double it is, on no side. */
+function spelled(text: string): Spelled | null {
+  const trimmed = text.trim();
+  const double = Number(trimmed);
+  if (trimmed === "" || Number.isNaN(double)) return null;
+  const decimal = DECIMAL.exec(trimmed);
+  if (decimal !== null) return exactly(double, decimal);
+  if (NONDECIMAL.test(trimmed)) {
+    return { double, side: BigInt(trimmed) > EXACT ? 1 : 0, fraction: false };
   }
-  return whole > EXACT || whole < -EXACT;
+  return { double, side: 0, fraction: false };
 }
 
-/** What a reader typed, as a number: `NaN` for anything that is not wholly one, and for a whole
- * number past 2^53, which `Number` reads as another (`pastExact`). `parseFloat` takes a numeric
- * prefix, so `1,5` - a decimal comma, which half the world writes - would read as `1` and plan a
- * write of it; `Number` weighs the whole string, and an empty cell is nothing typed rather than
- * the zero `Number("")` answers. */
-export function typedNumber(text: string): number {
-  return text.trim() === "" || pastExact(text) ? Number.NaN : Number(text);
+/** A decimal spelling's side of ±2^53 and whether it has a fraction, from its digits: the number
+ * is its significant digits times ten to `scale`, so its whole part has `wholeDigits` digits -
+ * none, or fewer, for a number under one - and is compared with 2^53 itself only where those are
+ * sixteen. Past 2^53 by a fraction, `9007199254740992.5`, is past it. */
+function exactly(double: number, match: RegExpExecArray): Spelled {
+  const [, sign, whole = "", fraction = "", power = "0"] = match;
+  const digits = `${whole}${fraction}`.replace(/^0+/, "");
+  const significant = digits.replace(/0+$/, "");
+  if (significant === "") return { double, side: 0, fraction: false };
+  const scale = Number(power) - fraction.length + (digits.length - significant.length);
+  const wholeDigits = significant.length + scale;
+  let past = wholeDigits > EXACT_DIGITS;
+  if (wholeDigits === EXACT_DIGITS) {
+    const head = BigInt(significant.slice(0, EXACT_DIGITS).padEnd(EXACT_DIGITS, "0"));
+    past = head > EXACT || (head === EXACT && scale < 0);
+  }
+  return { double, side: past ? (sign === "-" ? -1 : 1) : 0, fraction: scale < 0 };
 }
 
-/** The sentence `text` is refused with as a number, naming it as `said` - or `null` where it is
- * one. A cell typed into and a cell pasted are refused in the same words. An empty text is no
- * number here; a cell nothing has been typed into is `typedRefusal`'s to pass over. */
-function numberRefusal(text: string, said: string): string | null {
-  if (pastExact(text)) return `'${said}' is past 2^53, ${INEXACT}`;
-  return Number.isNaN(typedNumber(text)) ? `'${said}' is not a number` : null;
+/** How a cell of `datatype` reads `text`, naming it as `said` where it refuses it: the double it
+ * takes, or the sentence. A float cell takes the double whatever the spelling - the double is
+ * what a float holds, and FLT_MAX is a whole number past 2^53 as much as 2^64 is. Any other cell
+ * refuses a number past ±2^53 in any spelling, and a fraction the double drops, which it would
+ * plan as the whole number the double reads it as; a fraction the double keeps is the server's
+ * to refuse an integer, in raw, and the conversion's to round, in physical. */
+function readOf(
+  text: string,
+  said: string,
+  datatype: string,
+): { double: number } | { refusal: string } {
+  const read = spelled(text);
+  if (read === null) return { refusal: `'${said}' is not a number` };
+  if (floating(datatype)) return { double: read.double };
+  if (read.side !== 0) {
+    return { refusal: `'${said}' is past ${read.side < 0 ? "-" : ""}2^53, ${INEXACT}` };
+  }
+  if (read.fraction && Number.isInteger(read.double)) {
+    return { refusal: `'${said}' is not a whole number, and the page cannot hold its fraction` };
+  }
+  return { double: read.double };
 }
 
-/** The sentence a cell refuses what was typed with, or `null` where there is nothing to
- * refuse: a cell the reader has emptied is not a mistake, it is a cell nothing has been typed
+/** The raw count `text`, typed into a cell of `reply`, writes, or `null` where it writes none:
+ * nothing typed, or a text the cell refuses (`typedRefusal`), for which no plan is asked.
+ * `parseFloat` takes a numeric prefix, so `1,5` - a decimal comma, which half the world writes -
+ * would read as `1` and plan a write of it; `Number` weighs the whole string, and an empty cell is
+ * nothing typed rather than the zero `Number("")` answers. */
+export function typedRaw(text: string, reply: ValuesReply, physical: boolean): number | null {
+  if (text.trim() === "") return null;
+  const read = readOf(text, text, reply.datatype);
+  if ("refusal" in read) return null;
+  return physical ? rawOf(read.double, reply.conversion, reply.datatype) : read.double;
+}
+
+/** The sentence a cell of `reply` refuses what was typed with, or `null` where there is nothing
+ * to refuse: a cell the reader has emptied is not a mistake, it is a cell nothing has been typed
  * into yet. */
-export function typedRefusal(text: string): string | null {
-  return text.trim() === "" ? null : numberRefusal(text, text);
+export function typedRefusal(text: string, reply: ValuesReply): string | null {
+  if (text.trim() === "") return null;
+  const read = readOf(text, text, reply.datatype);
+  return "refusal" in read ? read.refusal : null;
 }
 
-/** Why this grid draws none of its numbers, or `null` where it draws them. The route marks a
- * block holding a whole number past 2^53 (`ValuesReply.unshown`), this one's or an axis's: it
- * reaches the page as the double nearest it, a number the file does not hold, and a grid drawing
- * it would offer that number as the one written. */
-export function unshownNote(reply: ValuesReply): string | null {
+/** Why this grid draws none of its numbers, or `null` where it draws them. Text is no grid at
+ * all, whatever it holds. And the route marks a block whose numbers - this one's or an axis's -
+ * hold a whole number the page cannot draw as the number it is and set back (`ValuesReply.
+ * unshown`): past 2^53, which reaches the page as the double nearest it, or at 2^53 in a 64 bit
+ * integer, which refuses a value at 2^53. */
+export function noGridNote(reply: ValuesReply): string | null {
+  if (reply.stated === "text") return `'${reply.name}' is initialised with text, not with a grid`;
   if (reply.unshown === null) return null;
-  return `'${reply.unshown}' holds a whole number past 2^53, ${INEXACT}, so the grid cannot show it`;
+  return `'${reply.unshown}' holds a whole number at or past ±2^53, ${INEXACT}, so the grid cannot show it`;
 }
 
 /** A pasted block, read against the object the grid is showing. Exactly one of the two fields is
@@ -275,11 +345,9 @@ export function pasted(text: string, reply: ValuesReply, physical: boolean): Pas
   for (const row of values) {
     const counts: number[] = [];
     for (const cell of row) {
-      const text = decimal ? cell.replace(",", ".") : cell;
-      const refusal = numberRefusal(text, cell);
-      if (refusal !== null) return { rows: null, refusal };
-      const typed = typedNumber(text);
-      counts.push(physical ? rawOf(typed, reply.conversion, reply.datatype) : typed);
+      const read = readOf(decimal ? cell.replace(",", ".") : cell, cell, reply.datatype);
+      if ("refusal" in read) return { rows: null, refusal: read.refusal };
+      counts.push(physical ? rawOf(read.double, reply.conversion, reply.datatype) : read.double);
     }
     read.push(counts);
   }

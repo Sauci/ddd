@@ -459,10 +459,11 @@ class TestTheCommandPage:
         cannot hold, said where the grid is described."""
         text = flattened(self.COMMAND_PAGE)
         assert (
-            "A whole number past 2^53, in decimal, hexadecimal, binary or octal digits, is "
-            "refused where it is typed or pasted"
+            "a cell of an integer datatype refuses a number past 2^53 either side of zero, however "
+            "it is spelled, where it is typed or pasted, and a fraction the double would drop"
         ) in text
-        assert "says it cannot show it rather than draw another number" in text
+        assert "a float's cell takes every number as the double it is" in text
+        assert "or one at 2^53 in a ``uint64`` or ``sint64``, says it cannot show it" in text
         assert "from the page neither takes a whole number at 2^53 or past it" in text
 
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:

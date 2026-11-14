@@ -39,11 +39,12 @@ EXACT: Final = 2**53
 """Where a double, the number the page holds, stops holding every whole number.
 
 ``2**53 + 1`` reaches the page as ``2**53``, a 64 bit mask loses its low bits, and ``2**64 - 1``,
-the most a uint64 holds, arrives as ``2**64``, which none holds. The page refuses a whole number
-past it where one is typed or pasted, and draws no grid holding one (:attr:`Grid.unshown`); a
-number it sends at or past it may be another it rounded, which :func:`_acceptable` refuses a 64
-bit integer. Carrying every cell across as exact text instead was weighed and not taken: past
-2^53, a 64 bit value is edited in the file."""
+the most a uint64 holds, arrives as ``2**64``, which none holds. Typed or pasted into an integer
+cell, a number past it either side is refused by the page in any spelling, and the page draws no
+grid holding one, nor one holding a value at it in a 64 bit integer (:attr:`Grid.unshown`); a
+number the page sends at or past it may be another it rounded, which :func:`_acceptable`
+refuses a 64 bit integer. Carrying every cell across as exact text instead was weighed and not
+taken: from 2^53 on, a 64 bit value is edited in the file."""
 
 AXIS_REFERENCES: Final = ("axis", "x_axis", "y_axis")
 """The references that name an axis, in the order a grid lays them out.
@@ -115,11 +116,12 @@ class Grid:
 
     axes: tuple[Axis, ...]
     unshown: str | None
-    """The object whose numbers this grid would draw as other numbers, or ``None``: this one
-    where its rows hold a whole number past :data:`EXACT`, else the first of :attr:`axes` whose
-    breakpoints hold one. Each reaches the page as the double nearest it, so drawn it is not the
-    number the file holds, and the page draws no grid of them and says why. A float in the file
-    is a double already and is never one."""
+    """The object whose numbers this grid cannot draw as they are, or ``None``: this one where its
+    rows hold such a number, else the first of :attr:`axes` whose breakpoints hold one. A whole
+    number past :data:`EXACT` reaches the page as the double nearest it, and one at it in a 64 bit
+    integer is a value its cell cannot be set back to, so drawn, either would be a number nobody
+    can keep: the page draws no grid of them and says why. A float in the file is a double
+    already and is never one."""
 
     owner: str | None
     """The component the analysis reads the values from, and ``None`` where nothing produces
@@ -205,22 +207,43 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         rows=rows,
         stated=stated,
         axes=axes,
-        unshown=_unshown(name, rows, axes),
+        unshown=_unshown(name, resolved.datatype, rows, axes, dictionary),
         owner=resolved.owner,
         file=file,
         pointer=pointer,
     )
 
 
-def _unshown(name: str, rows: tuple[tuple[float, ...], ...], axes: tuple[Axis, ...]) -> str | None:
+def _unshown(
+    name: str,
+    datatype: Datatype,
+    rows: tuple[tuple[float, ...], ...],
+    axes: tuple[Axis, ...],
+    dictionary: DataDictionary,
+) -> str | None:
     """:attr:`Grid.unshown`: the first of the object and its axes whose numbers the grid draws -
-    its rows, their breakpoints - hold a whole number past :data:`EXACT`."""
-    drawn = [(name, [value for row in rows for value in row])]
-    drawn += [(axis.name, list(axis.breakpoints)) for axis in axes]
-    for named, values in drawn:
-        if any(isinstance(value, int) and abs(value) > EXACT for value in values):
+    its rows, their breakpoints - hold one it cannot draw (:func:`_unshowable`), each weighed by
+    its own datatype."""
+    drawn = [(name, datatype, [value for row in rows for value in row])]
+    drawn += [
+        (axis.name, dictionary.by_name[axis.name].datatype, list(axis.breakpoints)) for axis in axes
+    ]
+    for named, stored, values in drawn:
+        if any(_unshowable(value, stored) for value in values):
             return named
     return None
+
+
+def _unshowable(value: float, datatype: Datatype) -> bool:
+    """Whether the page cannot draw ``value`` as the number it is and have its cell set back to it:
+    a whole number past :data:`EXACT`, which reaches the page as the double nearest it, or one at
+    it in a 64 bit integer, which :func:`_acceptable` refuses a value at it. A float is a double
+    already, and is never one."""
+    if not isinstance(value, int):
+        return False
+    if datatype.is_integer and datatype.size == 8:
+        return abs(value) >= EXACT
+    return abs(value) > EXACT
 
 
 def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
@@ -601,8 +624,8 @@ def _acceptable(raw: float, datatype: Datatype, name: str) -> None:
         # is refused it above as not fitting.
         raise ValueRefusalError(
             "invalid",
-            f"{raw} is at or past 2^53, where the page cannot hold every whole number exactly, "
-            f"so no {datatype.value} is set to it here",
+            f"{raw} is at or past {'-' if raw < 0 else ''}2^53, where the page cannot hold every "
+            f"whole number exactly, so no {datatype.value} is set to it here",
         )
     if datatype.rounds_to_zero(raw):
         raise ValueRefusalError("invalid", f"{raw} rounds to zero in {datatype.value}")

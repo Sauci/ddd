@@ -388,6 +388,106 @@ test("a cell's field shows the whole number it holds, and the whole of what is t
   await expect.poll(() => cutFields(map)).toEqual([]);
 });
 
+// The offer a typed cell made stood under the grid and its plot, past the bottom of the window for
+// a map, and nothing in view said a value was waiting to be applied. It is held at the window's
+// foot while it is drawn.
+test("the sentence, Show changes and Apply a typed map cell offers are in view", async ({
+  page,
+  gui,
+}) => {
+  await openValues(page, gui.address, "MapA");
+  await typed(page.getByRole("textbox", { name: "element 2, 4" }), "50");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 2, 4 of MapA to 50 %")).toBeInViewport({ ratio: 1 });
+  await expect(offer.getByRole("button", { name: "Show changes" })).toBeInViewport({ ratio: 1 });
+  await expect(offer.getByRole("button", { name: "Apply to 1 file" })).toBeInViewport({
+    ratio: 1,
+  });
+});
+
+test("the offer of a cell typed near the top of a 16 by 16 map is in view at 1280 by 800", async ({
+  page,
+  copiedGui,
+}) => {
+  // The grid alone is taller than the window: an offer drawn above the plot would still be below
+  // the window's edge.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const gui = await copiedGui("demo", bigMapA);
+  await openValues(page, gui.address, "MapA");
+  const cell = page.getByRole("textbox", { name: "element 2, 3" });
+  await typed(cell, "5");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 2, 3 of MapA to 5 %")).toBeInViewport({ ratio: 1 });
+  const show = offer.getByRole("button", { name: "Show changes" });
+  await expect(show).toBeInViewport({ ratio: 1 });
+  const apply = offer.getByRole("button", { name: "Apply to 1 file" });
+  await expect(apply).toBeInViewport({ ratio: 1 });
+  await expect(cell).toBeInViewport({ ratio: 1 });
+  // The lines it would change, opened, leave Apply where it is.
+  await show.click();
+  await expect(offer.locator(".hunk")).toHaveCount(1);
+  await expect(apply).toBeInViewport({ ratio: 1 });
+});
+
+/** How far `field`'s foot stands above `offer`'s top, in pixels: below zero where the offer, held
+ * at the window's foot, covers it. */
+async function clearOf(field: Locator, offer: Locator): Promise<number> {
+  const foot = await field.evaluate((node) => node.getBoundingClientRect().bottom);
+  return (await offer.evaluate((node) => node.getBoundingClientRect().top)) - foot;
+}
+
+test("a cell typed into at the window's foot is not left under the offer it makes", async ({
+  page,
+  copiedGui,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const gui = await copiedGui("demo", bigMapA);
+  await openValues(page, gui.address, "MapA");
+  const cell = page.getByRole("textbox", { name: "element 14, 2" });
+  // The field's foot 10px above the window's.
+  await cell.evaluate((field) =>
+    window.scrollBy(0, field.getBoundingClientRect().bottom - window.innerHeight + 10),
+  );
+  await typed(cell, "5");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 14, 2 of MapA to 5 %")).toBeInViewport({ ratio: 1 });
+  await expect(cell).toBeInViewport({ ratio: 1 });
+  // What was typed stays in sight: the field's foot is above the offer's top.
+  await expect.poll(() => clearOf(cell, offer)).toBeGreaterThanOrEqual(0);
+  await page.keyboard.press("0");
+  await expect(offer.getByText("Sets element 14, 2 of MapA to 50 %")).toBeVisible();
+  await expect(cell).toBeFocused();
+  // And a field the focus is moved to by a key, under the offer, comes out from under it too.
+  await page.keyboard.press("ArrowDown");
+  const next = page.getByRole("textbox", { name: "element 15, 2" });
+  await expect(next).toBeFocused();
+  await expect.poll(() => clearOf(next, offer)).toBeGreaterThanOrEqual(0);
+});
+
+test("an offer whose changes run past the window's height keeps its sentence and Apply in view", async ({
+  page,
+  copiedGui,
+}) => {
+  // `bigMapA` writes each of the map's 256 counts on a line of its own, and a pasted table is
+  // written as rows: the lines it would change run thousands of pixels down. They scroll within
+  // the offer, which keeps to the window it is held in.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const gui = await copiedGui("demo", bigMapA);
+  await openValues(page, gui.address, "MapA");
+  await page.getByRole("button", { name: "Raw" }).click();
+  const rows = Array.from({ length: 16 }, (_, row) =>
+    Array.from({ length: 16 }, (_, column) => String((row + column) % 64)).join("\t"),
+  );
+  await paste(page, rows.join("\n"));
+  const offer = page.getByRole("region", { name: "Replace the values" });
+  const sentence = offer.getByText("Replaces every value of MapA");
+  await expect(sentence).toBeInViewport({ ratio: 1 });
+  await offer.getByRole("button", { name: "Show changes" }).click();
+  await expect(offer.getByRole("button", { name: "Hide changes" })).toBeVisible();
+  await expect(sentence).toBeInViewport({ ratio: 1 });
+  await expect(offer.getByRole("button", { name: "Apply to 1 file" })).toBeInViewport({ ratio: 1 });
+});
+
 test("a number typed key by key into a map's cell reaches the cell, not the table's type-to-find", async ({
   page,
   gui,

@@ -1,9 +1,17 @@
-import { type CSSProperties, type InputHTMLAttributes, type ReactNode, useContext } from "react";
+import {
+  type CSSProperties,
+  type InputHTMLAttributes,
+  type ReactNode,
+  useContext,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
 import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
+import { scrollFromUnder } from "../lib/heldOffer";
 import {
   cellSentence,
   cellText,
@@ -87,8 +95,12 @@ interface GridRow {
   row: number;
 }
 
-/** What a grid cell's field takes: an input's own props but `onFocus`, which is the field's. */
-type CellFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onFocus"> & { cellId: string };
+/** What a grid cell's field takes: an input's own props but `onFocus`, which is the field's, and
+ * `onFocused`, called with the field once it has the focus. */
+type CellFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onFocus"> & {
+  cellId: string;
+  onFocused: (field: HTMLInputElement) => void;
+};
 
 /** A grid cell's field. On a grid's first entry the table holds no focused cell and moves the
  * focus of a field to its first row, where the keys that follow go; so a field taking the focus
@@ -96,14 +108,15 @@ type CellFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onFocus"> & {
  * `takesFocusedCell`). Where it holds one, its own handling stands: a click sets the clicked cell,
  * and Tab and Shift+Tab give the focus back to the cell it remembers. */
 function CellField(props: CellFieldProps) {
-  const { cellId: key, ...field } = props;
+  const { cellId: key, onFocused, ...field } = props;
   const state = useContext(TableStateContext);
   return (
     <input
       {...field}
-      onFocus={() => {
+      onFocus={(event) => {
         const manager = state?.selectionManager;
         if (manager && takesFocusedCell(manager.focusedKey)) manager.setFocusedKey(key);
+        onFocused(event.currentTarget);
       }}
     />
   );
@@ -161,6 +174,22 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   const columnAxis = columnAxisLabel(reply, physical);
   const readOnly = readOnlyNote(reply);
   const noGrid = noGridNote(reply);
+  // A field under the offer held at the window's foot - the offer drawn over the field being typed
+  // into, near the foot, or the focus moved by a key to a field it covers - is scrolled until it
+  // stands above it (`scrollFromUnder`): on the field's focus, and after every render, since the
+  // offer comes and grows as its plan does.
+  const offer = useRef<HTMLElement>(null);
+  const reveal = (field: Element) => {
+    if (offer.current === null) return;
+    const placed = (node: Element) => node.getBoundingClientRect();
+    window.scrollBy(0, scrollFromUnder(placed(field), placed(offer.current)));
+  };
+  useLayoutEffect(() => {
+    const field = document.activeElement;
+    if (field instanceof HTMLInputElement && field.closest(".values-table") !== null) {
+      reveal(field);
+    }
+  });
   return (
     <section
       onPaste={(event) => {
@@ -232,6 +261,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
                         <Cell id={id}>
                           <CellField
                             cellId={id}
+                            onFocused={reveal}
                             type="text"
                             inputMode="decimal"
                             aria-label={elementLabel(row, at, reply.shape)}
@@ -287,9 +317,11 @@ export function ValuesGridView(props: ValuesGridViewProps) {
       {(refused !== null || plan !== null) && (
         // Gated on what there is to show rather than on `editing` alone: a pasted table owns
         // this same section too, with no one cell of its own to name (spec 2: "one edit, one
-        // preview, one entry in the undo stack" either way).
+        // preview, one entry in the undo stack" either way). Held at the window's foot while it
+        // is drawn (`.values-offer`), however tall the grid and its plot above it are.
         <section
-          className="panel-offer"
+          ref={offer}
+          className="panel-offer values-offer"
           aria-label={editing !== null ? "Set the cell" : "Replace the values"}
         >
           {refused !== null && (

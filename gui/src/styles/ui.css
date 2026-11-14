@@ -784,6 +784,25 @@ tr.changing td {
 .values-table input.unstated {
   color: var(--ink-quiet);
 }
+/* The values page's offer - the sentence, Show changes and Apply - held at the window's foot while
+   it is drawn, however tall the grid: under a map it stood below the plot, past the window's
+   edge, with nothing to say it was there, and a typed cell looked done. Sticky, so that where the
+   page ends inside the window it stays in its place under the findings; the page's own ground
+   behind it, and a rule above it, keep the grid it passes over from showing through. The lines
+   it would change scroll within two fifths of the window: an offer held at the foot of a window
+   shorter than itself has its first lines above the window's top, where no scroll reaches them. */
+.values-offer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-bottom: var(--space-3);
+  background: var(--ground);
+  border-top: 1px solid var(--rule);
+}
+.values-offer .changes {
+  max-height: 40vh;
+  overflow: auto;
+}
 /* The paste hint (part 9): set small like the meta and axis lines above the grid, since it is
    the same kind of annotation, and pulled in close under the table rather than left at the
    paragraph's own default margin. */

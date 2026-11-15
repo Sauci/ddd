@@ -467,6 +467,10 @@ class TestTheCommandPage:
             "A float's cell takes every number as the double it is, but none past what its float "
             "holds, nor one rounding to zero in it"
         ) in text
+        assert (
+            "typed or pasted in raw into a ``float32`` cell, a number is planned as the float32 it "
+            "rounds to, so C's ``3.4028235e38`` is FLT_MAX's own double"
+        ) in text
         assert "or one at 2^53 in a ``uint64`` or ``sint64``, says it cannot show it" in text
         assert (
             "from the page neither takes a whole number at 2^53 or past it, as a value or as a "
@@ -1822,6 +1826,17 @@ class TestTheReleaseNote:
     A note is held to every claim it makes rather than required to make it: the note after a
     release starts with whatever its first change says.
     """
+
+    def test_the_respelling_names_what_migrating_costs_for_a_boolean_too(self) -> None:
+        """A description may spell a boolean ``1`` or ``0``, and a cell typed, or a table pasted,
+        over such a value respells it, as it does a float array's whole numbers."""
+        text = flattened(UNRELEASED)
+        assert (
+            "Migrating costs a diff: a table pasted over a float array whose file spells whole "
+            "numbers, or spells a `float32` at double precision, rewrites that spelling, and so "
+            "does a cell typed, or a table pasted, over a boolean the file spells `1` or `0`, "
+            "which is rewritten `true` or `false`; the diff shows it. The values mean the same."
+        ) in text
 
     def test_it_counts_the_checks_needing_every_component_as_the_registry_does(self) -> None:
         for word in project_wide_counts(UNRELEASED):

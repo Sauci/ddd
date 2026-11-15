@@ -2373,11 +2373,10 @@ again in that build, while an edit of the plugin's own code that changes only wh
 and not its model, leaves the dictionary as it was and still reaches it a build late. Under a
 Makefile generator the build after either is right, and a clean leaves a plugin's files under
 either generator. With `PROJECT` each `includes` entry is also globbed with `CONFIGURE_DEPENDS`,
-those of the projects it
-includes among them, so that a file a wildcard starts or stops matching runs the configure
-step, and the list of the files the project is made of, which the configure step keeps in the
-build tree, as `<stem>_ddd_sources.txt` and rewrites only when it differs, is an input of the
-generation: the build after a file left a wildcard regenerates, and the one after has nothing
+those of the projects it includes among them, so that a file a wildcard starts or stops matching
+runs the configure step, and the list of the files the project is made of, which the configure step
+keeps in the build tree, as `<stem>_ddd_sources.txt` and rewrites only when it differs, is an input
+of the generation: the build after a file left a wildcard regenerates, and the one after has nothing
 to do. A relative entry is read from the directory of the file naming it whatever characters that
 directory has. A registered file that does not parse when the build is configured names no
 component and is a dependency of the configure step until it does. One that does not exist

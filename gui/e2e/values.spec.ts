@@ -1039,6 +1039,26 @@ test("FLT_MAX typed into a float32 cell is planned as its own double, which the 
   );
 });
 
+test("C's FLT_MAX typed into a float32 cell in raw is planned as the float32 it rounds to", async ({
+  page,
+  copiedGui,
+}) => {
+  // 3.4028235e38 lies past FLT_MAX's own double, which the server's range for a float32 refuses;
+  // in raw it is sent as the float32 it rounds to, FLT_MAX's own double, as in physical.
+  const gui = await copiedGui("demo", valueDOf("float32", { kind: "identity" }, [1, 2]));
+  await openValues(page, gui.address, "ValueD", "SensorHub");
+  await page.getByRole("button", { name: "Raw" }).click();
+  const grid = page.getByRole("grid", { name: "Values of ValueD" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "3.4028235e38");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 1 of ValueD to 3.4028234663852886e+38")).toBeVisible();
+  await expect(offer.getByRole("status")).toHaveCount(0);
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, SENSOR_HUB, "ValueD").init)
+    .toEqual([3.4028234663852886e38, 2]);
+});
+
 test("a value of more than twelve significant digits reads whole in physical", async ({
   page,
   copiedGui,

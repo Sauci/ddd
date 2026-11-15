@@ -899,6 +899,15 @@ describe("a number a double cannot hold", () => {
       raw: 3.4028234663852886e38,
       refused: null,
     },
+    // Raw on a float32 plans the float32 the number rounds to, spelled as briefly as it reads
+    // back: C's FLT_MAX, 3.4028235e38, lies past FLT_MAX's own double, which the server refuses.
+    { text: "3.4028235e38", cell: FLOAT32, raw: 3.4028234663852886e38, refused: null },
+    { text: "-3.4028235e38", cell: FLOAT32, raw: -3.4028234663852886e38, refused: null },
+    { text: "0.1", cell: FLOAT32, raw: 0.1, refused: null },
+    // Past what a float32 holds it is sent as typed, and the server refuses it.
+    { text: "1e39", cell: FLOAT32, raw: 1e39, refused: null },
+    // A float64 cell's entry is the double typed.
+    { text: "3.4028235e38", cell: FLOAT64, raw: 3.4028235e38, refused: null },
   ])("'$text' in a $cell.datatype cell", ({ text, cell, raw, refused }) => {
     expect(typedRaw(text, cell, false)).toBe(raw);
     expect(typedRefusal(text, cell, false)).toBe(refused);

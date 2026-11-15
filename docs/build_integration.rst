@@ -951,10 +951,9 @@ gui`` builds the image first - the code it runs is the image's, so an image buil
 change would serve what it was built from - and starts it, publishing the same port number on
 the host's loopback alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have
 the Host header ``ddd gui`` sees name a port it is not listening on, answered
-``421 misdirected request``, and
-beyond the container's loopback the token in the address it prints is the only guard, which is
-why nothing wider is published. Opening that address in a browser on the host is the image's own
-``ddd gui`` serving the checkout's demo project.
+``421 misdirected request``, and beyond the container's loopback the token in the address it prints
+is the only guard, which is why nothing wider is published. Opening that address in a browser on
+the host is the image's own ``ddd gui`` serving the checkout's demo project.
 
 What the compile service proves
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

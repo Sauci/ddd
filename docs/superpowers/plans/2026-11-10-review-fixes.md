@@ -1859,6 +1859,7 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 | --- | --- | --- | --- |
 | 1, `fix/edit-engine` | #84 | not merged | Its four Criticals and the edit engine's Importants; the re-review's residuals carried into branch 2's D0 |
 | 2, `fix/build-integration` | #85 | not merged | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
+| 3, `fix/gui-values` | #86 | not merged | `3:C1` and `15:C1`, what the page writes when a person types, picks or pastes a value; the re-review's residuals carried into branch 4's D0 |
 
 ## Self-review
 

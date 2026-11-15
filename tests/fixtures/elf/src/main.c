@@ -44,7 +44,7 @@ union {
 /* 4.3 enums */
 typedef enum { STATE_OFF = 0, STATE_ON = 1, STATE_FAULT = 200 } State_t;
 State_t Enum_State = STATE_ON;
-enum Signed_e { SIGNED_NEG = -2, SIGNED_POS = 3 };
+enum Signed_e { SIGNED_NEG = -2, SIGNED_POS = 3, SIGNED_BIG = 200, SIGNED_WIDE = 40000, SIGNED_MIN8 = -128, SIGNED_MIN16 = -32768 };
 enum Signed_e Enum_Signed = SIGNED_NEG;
 enum { ANON_A = 1, ANON_B = 2 } Enum_Anonymous = ANON_B;
 const State_t Enum_Table[2] = {STATE_FAULT, STATE_OFF};

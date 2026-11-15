@@ -317,32 +317,61 @@ class TestTypes:
         assert type_of(entry) == Enum(None, 2, True, (("WIDE", 255),))
 
     @pytest.mark.parametrize(
-        ("form", "raw"),
+        ("size", "form", "raw", "expected"),
         [
-            ("DW_FORM_data1", 0xFF),
-            ("DW_FORM_data2", 0xFFFF),
-            ("DW_FORM_data4", 0xFFFF_FFFF),
-            ("DW_FORM_data8", 0xFFFF_FFFF_FFFF_FFFF),
+            (1, "DW_FORM_data1", 0xFF, -1),
+            (1, "DW_FORM_data1", 0x80, -128),
+            (1, "DW_FORM_data1", 0x7F, 127),
+            (2, "DW_FORM_data2", 0xFFFF, -1),
+            (2, "DW_FORM_data2", 0x8000, -32768),
+            (4, "DW_FORM_data4", 0xFFFF_FFFF, -1),
+            (4, "DW_FORM_data4", 0x8000_0000, -(2**31)),
+            (8, "DW_FORM_data8", 0xFFFF_FFFF_FFFF_FFFF, -1),
+            (8, "DW_FORM_data8", 1 << 63, -(2**63)),
         ],
     )
-    def test_an_enumerator_is_sign_extended_from_the_width_of_its_form(
-        self, form: str, raw: int
+    def test_an_enumerator_at_the_full_width_of_its_enum_is_sign_extended(
+        self, size: int, form: str, raw: int, expected: int
     ) -> None:
-        """Each ``DW_FORM_dataN`` sign-extends from its own width: ``raw`` is all ones at
-        that width and no wider, so it reads as -1 only where the width is the right one."""
+        """Review Focus 4: a constant as wide as its enum cannot hold a value above the signed
+        maximum, so its top bit says negative - all ones is -1, the top bit alone the minimum."""
         entry = die(
             "DW_TAG_enumeration_type",
-            enumerator(b"NEG", raw, form),
-            of=die(
-                "DW_TAG_base_type",
-                DW_AT_name=b"int",
-                DW_AT_encoding=DW_ATE_SIGNED,
-                DW_AT_byte_size=4,
-            ),
-            DW_AT_name=b"Wide_e",
-            DW_AT_byte_size=4,
+            enumerator(b"EDGE", raw, form),
+            DW_AT_encoding=DW_ATE_SIGNED,
+            DW_AT_byte_size=size,
         )
-        assert type_of(entry) == Enum("Wide_e", 4, True, (("NEG", -1),))
+        assert type_of(entry) == Enum(None, size, True, (("EDGE", expected),))
+
+    @pytest.mark.parametrize(
+        ("size", "form", "raw"),
+        [
+            (4, "DW_FORM_data1", 0xFF),
+            (4, "DW_FORM_data1", 200),
+            (4, "DW_FORM_data1", 128),
+            (4, "DW_FORM_data2", 40000),
+            (4, "DW_FORM_data2", 32768),
+            (4, "DW_FORM_data2", 0xFFFF),
+            (8, "DW_FORM_data4", 2**31),
+            (8, "DW_FORM_data4", 0xFFFF_FFFF),
+            (2, "DW_FORM_data1", 0xFF),
+            (4, "DW_FORM_data8", 0xFFFF_FFFF_FFFF_FFFF),
+        ],
+    )
+    def test_an_enumerator_below_the_full_width_of_its_enum_is_zero_extended(
+        self, size: int, form: str, raw: int
+    ) -> None:
+        """Review Focus 4, and finding 11:C1: a negative enumerator is ``DW_FORM_sdata`` in gcc's
+        output and a positive one is the ``DW_FORM_dataN`` that holds it, so a ``dataN`` not as
+        wide as its enum is positive, whatever the enum's sign: 200 is not -56 and 40000 is
+        not -25536."""
+        entry = die(
+            "DW_TAG_enumeration_type",
+            enumerator(b"EDGE", raw, form),
+            DW_AT_encoding=DW_ATE_SIGNED,
+            DW_AT_byte_size=size,
+        )
+        assert type_of(entry) == Enum(None, size, True, (("EDGE", raw),))
 
     def test_an_enum_declared_but_never_defined_is_unsupported(self) -> None:
         entry = die("DW_TAG_enumeration_type", DW_AT_declaration=DECLARATION)
@@ -998,7 +1027,8 @@ class TestTheMatrix:
         self, row: tuple[Image, dict[str, Any]]
     ) -> None:
         """Review Focus 2: on strict DWARF 2 an enum states no underlying type and no
-        encoding, and only its negative enumerator says it is signed."""
+        encoding, and only its negative enumerator says it is signed. ``Signed_e`` holds 40000
+        and -32768, so it is 32 bits wide even on a target whose other enums are one byte."""
         image, entry = row
         state = core(by_name(image, "Enum_State").type)
         signed = core(by_name(image, "Enum_Signed").type)
@@ -1006,8 +1036,15 @@ class TestTheMatrix:
         assert isinstance(signed, Enum)
         width = entry["traits"]["sizeof_enum"]
         assert (state.size, state.signed) == (width, False)
-        assert (signed.size, signed.signed) == (width, True)
-        assert signed.enumerators == (("SIGNED_NEG", -2), ("SIGNED_POS", 3))
+        assert (signed.size, signed.signed) == (4, True)
+        assert signed.enumerators == (
+            ("SIGNED_NEG", -2),
+            ("SIGNED_POS", 3),
+            ("SIGNED_BIG", 200),
+            ("SIGNED_WIDE", 40000),
+            ("SIGNED_MIN8", -128),
+            ("SIGNED_MIN16", -32768),
+        )
 
     def test_bitfields_start_at_the_same_bits_whatever_the_byte_order_or_the_dwarf(
         self, row: tuple[Image, dict[str, Any]]

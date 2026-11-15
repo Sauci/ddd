@@ -2,7 +2,7 @@
   "hashes": {
     "tests/fixtures/elf/src/gc_sections.c": "b21f09df1a69edf70fca8a540a4575d8f2dac669f586958794711c554e744241",
     "tests/fixtures/elf/src/lto.c": "cbb3ae9ca73fe507ccd6903ad2d4402efead45c1513ed6092e697cc4c2844253",
-    "tests/fixtures/elf/src/main.c": "5f0da95dc72442539ed57bb7cf3cdd644940c0a488a4bc3191d7545fcb1b068b",
+    "tests/fixtures/elf/src/main.c": "e0e11e9903e460df10881c44fbd0d59863e189f8d0a61df283a3900395801179",
     "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
     "tests/fixtures/elf/src/shared.h": "9cdfa71b5de8dd20c26451a0102a1de36c6f0f07d9c71941e9cc6cf6f761f214",
     "tests/fixtures/elf/src/type_units.c": "93fcd051c5a9047f87cff9b57cf39ac34732adb4f30a6311bd92299f402fe93c",
@@ -867,7 +867,7 @@
           "name": "Enum_Signed",
           "section": ".data",
           "contents": true,
-          "size": 1
+          "size": 4
         },
         {
           "name": "Enum_State",
@@ -1248,7 +1248,7 @@
           "name": "Enum_Signed",
           "section": ".data",
           "contents": true,
-          "size": 1
+          "size": 4
         },
         {
           "name": "Enum_State",
@@ -1629,7 +1629,7 @@
           "name": "Enum_Signed",
           "section": ".data",
           "contents": true,
-          "size": 1
+          "size": 4
         },
         {
           "name": "Enum_State",

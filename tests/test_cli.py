@@ -4378,12 +4378,24 @@ def from_elf(capsys: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, 
     return code, out, err
 
 
+SIGNED_ENUMERATORS = {
+    "SIGNED_NEG": -2,
+    "SIGNED_POS": 3,
+    "SIGNED_BIG": 200,
+    "SIGNED_WIDE": 40000,
+    "SIGNED_MIN8": -128,
+    "SIGNED_MIN16": -32768,
+}
+"""``Signed_e`` of main.c: 40000 and -32768 make it a 32 bit enum on every row, the short-enum
+rows included. gcc writes -2, -128 and -32768 as ``DW_FORM_sdata`` and 3, 200 and 40000 as the
+``DW_FORM_dataN`` that holds each."""
+
+
 def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """What a row must print for the variables of main.c every row describes: the values the
     source states, and what the row's own toolchain said its target makes of the rest."""
     identity = {"kind": "identity"}
     unsigned_enum = {1: "uint8", 4: "uint32"}[traits["sizeof_enum"]]
-    signed_enum = {1: "sint8", 4: "sint32"}[traits["sizeof_enum"]]
     state = {
         "kind": "enum",
         "name": "State_t",
@@ -4439,12 +4451,12 @@ def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
         value(
             "Enum_Signed",
             "measurement",
-            signed_enum,
+            "sint32",
             -2,
             conversion={
                 "kind": "enum",
                 "name": "Signed_e",
-                "enumerators": {"SIGNED_NEG": -2, "SIGNED_POS": 3},
+                "enumerators": SIGNED_ENUMERATORS,
             },
         ),
         value(
@@ -4975,6 +4987,60 @@ def with_a_window(described: dict[str, Any]) -> None:
     """``Tuning_t`` gains a member, ``window``, that the C of every image lacks."""
     (tuning,) = [entry for entry in described["types"] if entry["name"] == "Tuning_t"]
     tuning["members"].append(value_member("window", "uint16"))
+
+
+class TestASignedEnumFromAnImage:
+    """Finding 11:C1: 200 and 40000 stay 200 and 40000 in what the reader says of a signed
+    enum, and in everything generated from it."""
+
+    @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
+    def test_every_row_reads_200_and_40000_positive_and_minus_128_and_32768_negative(
+        self, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """Review Focus 4, over DWARF 2, 3, 4 and 5: the rows carry every version."""
+        code, out, err = from_elf(capsys, str(FIXTURES / f"{row}.elf"), "Enum_Signed")
+        assert code == EXIT_OK, err
+        (entry,) = json.loads(out)
+        assert entry["definition"]["conversion"]["enumerators"] == SIGNED_ENUMERATORS
+        assert entry["definition"]["datatype"] == "sint32"
+
+    @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
+    def test_every_row_generates_them_with_the_values_and_limits_of_the_source(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """What ``from-elf`` prints is a component, and ``generate all --image`` of it writes
+        the header, the a2l's conversion table and the limits derived from the enumerators:
+        the limits were -25536 .. 0 when 200 and 40000 read negative."""
+        image = FIXTURES / f"{row}.elf"
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "project.ddd.json").write_text(
+            json.dumps({"project": {"name": "Signed", "includes": ["component.ddd.json"]}}),
+            encoding="utf-8",
+        )
+        code, _, err = from_elf(
+            capsys,
+            str(image),
+            "Enum_Signed",
+            "--component",
+            "Fixture",
+            "-o",
+            str(project / "component.ddd.json"),
+        )
+        assert code == EXIT_OK, err
+        output = tmp_path / "gen"
+        arguments = ["generate", "all", str(project / "project.ddd.json"), "-o", str(output)]
+        assert main([*arguments, "-t", str(TEMPLATES), "--image", str(image)]) == EXIT_OK
+        header = (output / "ddd_types.h").read_text(encoding="utf-8")
+        for name, value in SIGNED_ENUMERATORS.items():
+            assert f"    {name} = {value}" in header
+        a2l = (output / "Signed.a2l").read_text(encoding="utf-8")
+        for name, value in SIGNED_ENUMERATORS.items():
+            assert f'      {value} "{name}"\n' in a2l
+        assert "      SLONG CM_Signed_e 0 0 -32768 40000\n" in a2l
+        assert "      ECU_ADDRESS 0x" in a2l
+        definitions = (output / "ddd_globals.c").read_text(encoding="utf-8")
+        assert "int32_t Enum_Signed = -2;" in definitions
 
 
 class TestGenerateFromAnImage:

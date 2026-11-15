@@ -86,7 +86,10 @@ What an image states, and what it does not
        target that built the image.
    * - ``conversion``
      - the identity, or an ``enum`` conversion carrying the enumerators in declaration order,
-       named after the typedef closest to the enum, else its tag.
+       named after the typedef closest to the enum, else its tag. An enumerator
+       the image writes as a fixed-width constant is negative only where that constant is as
+       wide as the enum and its top bit is set: 200 and 40000 in a signed 32 bit enum stay
+       positive.
    * - ``dimensions``
      - the array's extents, in C order.
    * - ``init``

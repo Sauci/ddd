@@ -72,7 +72,9 @@ _DATA_WIDTHS: Final = {
     "DW_FORM_data8": 64,
 }
 """The forms whose constant carries no sign of its own, by width in bits: an enumerator of a
-signed enum written in one of them is sign-extended from that width."""
+signed enum written in one of them is sign-extended from that width only where that is the
+enum's whole width (gcc writes a positive enumerator as the ``dataN`` that holds it, so a
+narrower one is positive)."""
 
 _UNSUPPORTED: Final = {
     "DW_TAG_pointer_type": "a pointer",
@@ -711,11 +713,12 @@ class _Types:
             return Unsupported("an enum declared but never defined")
         children = [child for child in entry.iter_children() if child.tag == "DW_TAG_enumerator"]
         signed = self._signed(entry, children, unit)
+        size = int(_value(entry, "DW_AT_byte_size"))
         return Enum(
             tag=_text(entry.attributes.get("DW_AT_name")),
-            size=int(_value(entry, "DW_AT_byte_size")),
+            size=size,
             signed=signed,
-            enumerators=tuple(_enumerator(child, signed=signed) for child in children),
+            enumerators=tuple(_enumerator(child, signed=signed, size=size) for child in children),
             declared_at=_declared(entry, entry, unit),
         )
 
@@ -822,11 +825,11 @@ def _extent(entry: Entry) -> int | None:
     return upper - lower + 1
 
 
-def _enumerator(entry: Entry, *, signed: bool) -> tuple[str, int]:
+def _enumerator(entry: Entry, *, signed: bool, size: int) -> tuple[str, int]:
     attribute = entry.attributes["DW_AT_const_value"]
     value = int(attribute.value)
     width = _DATA_WIDTHS.get(attribute.form)
-    if signed and width is not None and value >= 1 << (width - 1):
+    if signed and width == 8 * size and value >= 1 << (width - 1):
         value -= 1 << width
     return _text(entry.attributes.get("DW_AT_name")) or "", value
 

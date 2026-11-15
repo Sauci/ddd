@@ -2648,6 +2648,9 @@ What the image states, the declaration states:
 - `conversion`: the identity, or an `enum` conversion carrying the enumerators in declaration
   order, named by the typedef closest to the enum, else by its tag, else by a name made from
   what first reaches it.
+  An enumerator the image writes as a constant of the enum's own width, with its top bit set,
+  is negative; one written in a narrower fixed-width form is positive, whatever the sign of
+  the enum, so that 200 and 40000 in a signed 32 bit enum are not read as -56 and -25536.
 - a structure: its `typename`, and one `struct` entry of `types`, members in declaration
   order, a bitfield a `bits` member. `const` or `volatile` on a member cannot be stated, and a
   `_Bool` bitfield is described as a `uint8` one.

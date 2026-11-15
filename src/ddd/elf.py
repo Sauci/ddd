@@ -238,8 +238,12 @@ class Image:
     them (``-Wl,-x``), and then the symbol table says nothing of a ``static``."""
 
     machine: int | None = None
-    """The header's ``e_machine``, which names the ABI the structures are laid out by; None where
-    a caller built the image by hand and states none."""
+    """The header's ``e_machine``, which names the machine, and with ``flags`` the ABI the
+    structures are laid out by; None where a caller built the image by hand and states none."""
+
+    flags: int = 0
+    """The header's ``e_flags``: which ABI of the machine the image was built for, where a
+    machine has more than one (ARM's EABI version, RISC-V's reduced register set)."""
 
     def has_object(self, name: str, address: int) -> bool:
         """Whether the symbol table holds an object symbol ``name`` at ``address``."""
@@ -547,6 +551,7 @@ def _image(path: Path, contents: bytes) -> Image:
         objects=objects,
         local_objects=_symbols(elf, "STT_OBJECT", local=True),
         machine=_machine(elf.header["e_machine"]),
+        flags=int(elf.header["e_flags"]),
     )
 
 

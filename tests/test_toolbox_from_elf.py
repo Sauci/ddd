@@ -63,6 +63,7 @@ def image(
     local_objects: frozenset[tuple[str, int]] = frozenset(),
     byte_order: Literal["little", "big"] = "little",
     machine: int | None = None,
+    flags: int = 0,
 ) -> Image:
     """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
     each global at its address, as a linker that kept the variable leaves it."""
@@ -82,6 +83,7 @@ def image(
         objects,
         local_objects,
         machine,
+        flags,
     )
 
 
@@ -843,6 +845,9 @@ class TestLayout:
 
 X86_64 = 62
 I386 = 3
+ARM = 40
+RISCV = 243
+AAPCS = 0x5000200
 
 
 class TestWhereTheSourceLaidAStructureOutDifferently:
@@ -850,10 +855,15 @@ class TestWhereTheSourceLaidAStructureOutDifferently:
     put it elsewhere - packing, ``#pragma pack``, an unnamed or a zero width bitfield."""
 
     def layout(
-        self, *members: Member, size: int, machine: int | None = X86_64, **extra: Any
+        self,
+        *members: Member,
+        size: int,
+        machine: int | None = X86_64,
+        flags: int = 0,
+        **extra: Any,
     ) -> list[tuple[str, Severity, str]]:
         bag = DiagnosticBag()
-        mapper = Mapper(image(machine=machine), bag)
+        mapper = Mapper(image(machine=machine, flags=flags), bag)
         mapped(structure("L_s", *members, size=size, **extra), bag=bag, mapper=mapper)
         return [item for item in found(bag) if item[0] in ("elf-layout", "elf-layout-unchecked")]
 
@@ -948,6 +958,17 @@ class TestWhereTheSourceLaidAStructureOutDifferently:
         mapped(sized, bag=bag, mapper=Mapper(image(machine=X86_64), bag))
         (whole,) = [d for d in bag.sorted if d.check == "elf-layout"]
         assert whole.location == Location(Path("main.c"), line=5)
+        bag = DiagnosticBag()
+        undeclared = structure(
+            "L_s",
+            Member("a", U8, 0),
+            Member("b", U32, 8),
+            size=5,
+            declared_at=Declared("main.c", 5),
+        )
+        mapped(undeclared, bag=bag, mapper=Mapper(image(machine=X86_64), bag))
+        (fallen,) = [d for d in bag.sorted if d.check == "elf-layout"]
+        assert fallen.location == Location(Path("main.c"), line=5)
 
     def test_a_natural_structure_is_not_warned(self) -> None:
         members = (
@@ -1007,7 +1028,38 @@ class TestWhereTheSourceLaidAStructureOutDifferently:
             packed = structure(f"{name}_s", Member("a", U8, 0), Member("b", U32, 8), size=5)
             mapped(packed, bag=bag, mapper=mapper)
         assert [(c, s) for c, s, _ in found(bag)] == [("elf-layout-unchecked", Severity.INFO)]
-        assert "e_machine 4660" in found(bag)[0][2]
+        assert found(bag)[0][2] == (
+            "the layout of a structure is not checked against what DDD generates: the image is "
+            "for a machine and ABI (e_machine 4660, e_flags 0x0) whose alignment rules this "
+            "tool does not hold"
+        )
+
+    PACKED = (Member("a", U8, 0), Member("b", U32, 8))
+
+    @pytest.mark.parametrize(("machine", "flags"), [(ARM, AAPCS), (RISCV, 0x1)])
+    def test_an_abi_the_table_holds_is_checked(self, machine: int, flags: int) -> None:
+        assert len(self.layout(*self.PACKED, size=5, machine=machine, flags=flags)) == 1
+
+    @pytest.mark.parametrize(
+        ("machine", "flags", "said"),
+        [
+            (ARM, 0, "e_machine 40, e_flags 0x0"),
+            (ARM, 0x600, "e_machine 40, e_flags 0x600"),
+            (RISCV, 0x9, "e_machine 243, e_flags 0x9"),
+        ],
+    )
+    def test_an_abi_of_a_machine_the_table_holds_in_part_is_not_checked_and_says_so(
+        self, machine: int, flags: int, said: str
+    ) -> None:
+        assert self.layout(*self.PACKED, size=5, machine=machine, flags=flags) == [
+            (
+                "elf-layout-unchecked",
+                Severity.INFO,
+                f"the layout of a structure is not checked against what DDD generates: the "
+                f"image is for a machine and ABI ({said}) whose alignment rules this tool "
+                f"does not hold",
+            )
+        ]
 
     def test_a_hand_built_image_that_states_no_machine_is_not_checked(self) -> None:
         assert self.layout(Member("a", U8, 0), Member("b", U32, 8), size=5, machine=None) == []

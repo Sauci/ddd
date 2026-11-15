@@ -980,6 +980,33 @@ class TestTheMatrix:
         path.write_bytes(patched)
         assert open_image(path).machine == 0x1234
 
+    @pytest.mark.parametrize(
+        ("row", "flags", "checked"),
+        [
+            ("armv7m", 0x600, False),
+            ("armv7m", 0x5000200, True),
+            ("riscv32", 0x9, False),
+            ("riscv32", 0x1, True),
+        ],
+    )
+    def test_the_abi_an_image_names_in_e_flags_decides_whether_its_layouts_are_checked(
+        self, tmp_path: Path, row: str, flags: int, checked: bool
+    ) -> None:
+        """An ARM image built for the older ABIs names no EABI version, and aligns a 64 bit
+        scalar to 4: its cap is not AAPCS's. An RV32E image is left out as well."""
+        patched = bytearray((FIXTURES / f"{row}.elf").read_bytes())
+        order = "little"
+        patched[36:40] = flags.to_bytes(4, order)
+        path = tmp_path / "abi.elf"
+        path.write_bytes(patched)
+        image = open_image(path)
+        assert image.flags == flags
+        bag = DiagnosticBag()
+        describe(image, ["Laid_Packed"], scope="output", component=None, bag=bag)
+        assert [d.check for d in bag.sorted if d.check.startswith("elf-layout")] == [
+            "elf-layout" if checked else "elf-layout-unchecked"
+        ]
+
     def test_the_alignment_cap_of_the_machine_is_what_its_toolchain_measured(
         self, row: tuple[Image, dict[str, Any]]
     ) -> None:

@@ -59,12 +59,15 @@ _DATATYPES: Final = {
     ("float", 4): "float32",
     ("float", 8): "float64",
 }
+_EM_ARM: Final = 40
+_EM_RISCV: Final = 243
 ALIGNMENT_CAPS: Final = {
     # The largest alignment, in bytes, a scalar has inside a structure, by the ELF header's
-    # e_machine. A 64 bit integer or a double is the widest scalar DDD states, so the cap says
-    # whether it is aligned to its size. Each entry is the ABI document of the machine, and the
-    # fixtures hold it to the compiler: tests/test_elf.py compares it with the alignment of a
-    # uint64_t each toolchain measured.
+    # e_machine (alignment_cap narrows ARM and RISC-V by e_flags). A 64 bit integer or a
+    # double is the widest scalar DDD states, so the cap says whether it is aligned to its
+    # size. Each entry is the ABI document of the machine, and the fixtures hold it to the
+    # compiler: tests/test_elf.py compares it with the alignment of a uint64_t each toolchain
+    # measured.
     3: 4,  # EM_386: System V i386 ABI supplement, fundamental types: a double and a long long
     # are 8 bytes, aligned to 4.
     20: 8,  # EM_PPC: the System V PowerPC ABI supplement (and the Linux ABI): a double and a
@@ -450,14 +453,15 @@ class Mapper:
         machine = self._image.machine
         if machine is None:
             return
-        cap = ALIGNMENT_CAPS.get(machine)
+        flags = self._image.flags
+        cap = alignment_cap(machine, flags)
         if cap is None:
             self._once(
                 "elf-layout-unchecked",
                 "",
                 f"the layout of a structure is not checked against what DDD generates: the "
-                f"image is for a machine (e_machine {machine}) whose alignment rules this tool "
-                f"does not hold",
+                f"image is for a machine and ABI (e_machine {machine}, e_flags {flags:#x}) "
+                f"whose alignment rules this tool does not hold",
                 None,
             )
             return
@@ -563,6 +567,26 @@ def _end(member: Member) -> int | None:
     # Every member's type is described by the time the layout is looked at.
     assert size is not None
     return member.bit_offset + 8 * size
+
+
+_EF_ARM_EABIMASK: Final = 0xFF000000
+_EF_RISCV_RVE: Final = 0x8
+
+
+def alignment_cap(machine: int, flags: int) -> int | None:
+    """The cap of the ABI an image of ``machine`` and ``e_flags`` was built for, or None where
+    the tool holds none.
+
+    ARM's table entry is AAPCS's: an image of the older ABIs (``-mabi=apcs-gnu``, ``atpcs``)
+    names no EABI version, aligns a 64 bit scalar to 4 and rounds a structure to 4 bytes. RV32E
+    is left out as well: compilers differ on its cap, and no fixture measures GCC's.
+    """
+    cap = ALIGNMENT_CAPS.get(machine)
+    if machine == _EM_ARM and not flags & _EF_ARM_EABIMASK:
+        return None
+    if machine == _EM_RISCV and flags & _EF_RISCV_RVE:
+        return None
+    return cap
 
 
 def _offsets(struct: Struct) -> str:

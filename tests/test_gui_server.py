@@ -2619,7 +2619,8 @@ class TestEveryEndpointOnTheDemo:
         server, root = demo
         controller = (root / "components" / "controller.ddd.json").as_posix()
         answer = answered(server, "GET", f"/api/declarable?file={quote(controller)}")
-        assert [entry["name"] for entry in answer["names"]][:2] == ["BlockA", "CurveB"]
+        # Sorted by name: BlockA and CurveB, which would come first, are UserInterface's locals.
+        assert [entry["name"] for entry in answer["names"]][:2] == ["FlagA", "ValueC"]
         assert next(form["kind"] for form in answer["kinds"]) == "measurement"
         # Every field of the reply crosses the wire, `constants` included - empty here because
         # examples/demo declares none, but present, which is what the page reads a value

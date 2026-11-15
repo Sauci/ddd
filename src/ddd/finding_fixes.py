@@ -5,9 +5,10 @@ reader settles it. One has a fix with nowhere else to go - ``missing-id``, an id
 producing declaration that states none - and this plans it as operations on json pointers, the
 form ``POST /api/edit`` applies.
 
-The language server offers the same fix as a text edit with a range, computed by
-:mod:`ddd.identity` from the same walk this reads: which declarations want an id is decided in
-one place, and only how the edit is spelled differs between the two clients.
+``ddd id`` hands the edit engine the same operation (:func:`ddd.identity.stamp`), and the
+language server offers the same fix as a text edit with a range, computed by :mod:`ddd.identity`
+from the same walk this reads: which declarations want an id, and what is written for each, is
+decided in one place, and only how the edit is spelled differs between the clients.
 
 A list of fixes rather than one, so that the second check to grow a fix needs no new shape. A
 fix carries whatever files its decision names, and the page previews each before anything is
@@ -16,13 +17,12 @@ written.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
 from ddd.editing import Operation
-from ddd.identity import new_id, unstamped
+from ddd.identity import stamp, unstamped
 from ddd.lsp.edits import WITHIN_DEFINITION, reconciliations
 from ddd.lsp.navigation import Index
 from ddd.lsp.ranges import Document, read
@@ -86,8 +86,7 @@ def _an_identity(path: Path, pointer: str, cache: dict[Path, Document]) -> tuple
     if not isinstance(name, str):
         return ()
     # A fresh id per call: the page applies the preview it was given, never one asked for twice.
-    operation = Operation("set", f"{definition}.id", json.dumps(new_id()))
-    return (Fix(f"Give '{name}' an id", (FileEdit(path, (operation,)),)),)
+    return (Fix(f"Give '{name}' an id", (FileEdit(path, (stamp(definition),)),)),)
 
 
 def _reconciled(

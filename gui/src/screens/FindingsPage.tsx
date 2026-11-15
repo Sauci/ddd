@@ -6,19 +6,16 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { ApiError, getFindings, getFix, postEdit } from "../api/client";
+import { getFindings, getFix, postEdit } from "../api/client";
 import type { ListedFinding, State } from "../api/types";
 import { useUpdating } from "../app/updating";
 import { FindingPanelView } from "../components/FindingPanelView";
 import { FindingsTableView } from "../components/FindingsTableView";
 import {
-  type FixRefusals,
   findingCounts,
   findingsTotal,
   fixEdit,
-  NO_REFUSALS,
   noRouteReason,
-  refusalsAfterChoice,
   routeHref,
   routeLabel,
   routeOf,
@@ -36,7 +33,7 @@ import {
   spanOf,
   windowRows,
 } from "../lib/findingsWindow";
-import { shownRefusal } from "../lib/refusals";
+import { isStale } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { fixLabel } from "../lib/undo";
 import { baseName } from "../lib/units";
@@ -126,16 +123,12 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
   const [selected, setSelected] = useState<ListedFinding | undefined>(undefined);
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const [changesShown, setChangesShown] = useState(false);
-  // What the server refused the last apply for, if it did. One for a reason other than staleness
-  // is cleared whenever the reader chooses again (`refusalsAfterChoice`). One because a file
-  // changed on disk, with the row it was made from and the revision it happened at, is not: as in
-  // the variable and unit panels, a reader who chooses again straight away would otherwise send the
-  // same stale fingerprints the server just refused, so `shownRefusal` keeps it shown until a later
-  // revision arrives. Kept with the row's own key, the way `UnitPanel` keeps it with the action it
-  // belongs to: the wait is about the fix that was refused, so another finding selected in the
-  // meantime must not be given its sentence - the file it names need not even be one that finding
-  // is about.
-  const [refusals, setRefusals] = useState<FixRefusals>(NO_REFUSALS);
+  // What the server refused the last apply for, if it did, in the tab's own words where a file
+  // changed on disk (`STALE`): held until the reader chooses again - another finding, another fix,
+  // the same one let go and chosen again, or Apply pressed once more - whatever its code, and never
+  // let go by a revision landing (`Refused`, lib/refusals.ts). Another finding selected meanwhile is
+  // a choice, so it is never given this one's sentence.
+  const [refused, setRefused] = useState<string | null>(null);
   // The finding whose panel closed because the next revision no longer reports it - the
   // analysis moved on, or somebody else fixed it (spec 5.3) - named above the table until
   // another finding is selected or the reader leaves the tab. `UnitsPage`'s `gone` is the same
@@ -177,27 +170,18 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
       if (edit === null) throw new Error("there is nothing to apply");
       return postEdit(edit);
     },
-    onMutate: () => setRefusals(refusalsAfterChoice),
+    onMutate: () => setRefused(null),
     // The reader's own apply closes the panel quietly, exactly as it left it open: the finding
     // is about to be gone from the next revision's rows, but that is the reader's own doing
     // (spec 5.3 reserves the "somebody else fixed it" warning for a finding gone some other
     // way), and clearing `selected` here, before that revision even arrives, is what keeps the
-    // render-phase check of whether it is still reported from mistaking this for one. A success
-    // is a definite answer, so it also clears a stale wait left over from an earlier attempt.
+    // render-phase check of whether it is still reported from mistaking this for one.
     onSuccess: () => {
       setChangesShown(false);
       setSelected(undefined);
-      setRefusals(NO_REFUSALS);
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so the panel never shows two different answers to the same apply.
-    onError: (error) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setRefusals({ refused: null, stale: { key: finding?.key, text: STALE, revision } });
-      } else {
-        setRefusals({ refused: `The change was refused: ${error.message}`, stale: null });
-      }
-    },
+    onError: (error) =>
+      setRefused(isStale(error) ? STALE : `The change was refused: ${error.message}`),
     // Applying a fix changes the file it wrote to, the findings the next revision reports, and
     // any panel reading what it edited: asked for again, as `UnitsPage` does for its own edits.
     onSettled: () =>
@@ -214,13 +198,13 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
     setSelected(finding);
     setChosen(undefined);
     setChangesShown(false);
-    setRefusals(refusalsAfterChoice);
+    setRefused(null);
   };
 
   // Choosing a fix, or letting it go, is the reader's next choice too.
   const choose = (title: string | undefined) => {
     setChosen(title);
-    setRefusals(refusalsAfterChoice);
+    setRefused(null);
   };
 
   return (
@@ -261,11 +245,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
               changesShown={changesShown}
               onChangesShown={setChangesShown}
               onApply={() => apply.mutate()}
-              refusal={
-                (refusals.stale !== null && refusals.stale.key === finding.key
-                  ? shownRefusal(refusals.stale, revision)
-                  : null) ?? refusals.refused
-              }
+              refusal={refused}
               busy={stopped || apply.isPending}
               onClose={() => select(undefined)}
             />

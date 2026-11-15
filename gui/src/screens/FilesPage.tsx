@@ -26,7 +26,6 @@ import {
   rowsOf,
 } from "../lib/files";
 import { type FilesHold, filesHoldAfter, filesHoldOf, filesShown } from "../lib/filesHold";
-import { isStale, type Refused, refusalShown } from "../lib/refusals";
 import { planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { filesLabel } from "../lib/undo";
@@ -170,10 +169,10 @@ function useFilesPlan(request: FilesPlanRequest | null, revision: number | undef
  * Applying one of the three plans the way every other panel applies its own: the edit posted is
  * the plan's, under the label an undo of it will offer (`filesLabel`, from the very request the
  * plan was asked with and the plan itself: a created file named as the plan creates it, a
- * removal's key relative to `project`); a refusal because a file changed on disk is held until
- * the analysis moves past it, and any other until the reader chooses again - `refusalShown`
- * (`lib/refusals.ts`) says which is shown, read with `shown.refusal` (`planShown`,
- * `lib/typing.ts`) as the plan-fetch refusal it already takes a `string | null` for.
+ * removal's key relative to `project`); its refusal, whatever its code, a file changed on disk
+ * included, is held until the reader chooses again and never let go by a revision landing
+ * (`Refused`, `lib/refusals.ts`), and shown over `shown.refusal` (`planShown`, `lib/typing.ts`),
+ * the plan's own.
  * Once an Apply is answered, applied or refused, the tab's entries and every plan are asked for
  * again - each of the three edits the project description, whose fingerprint every plan carries -
  * and applied, `onApplied` closes the panel, and `onHeld` is handed what the plan it posted
@@ -187,13 +186,11 @@ function useFilesApply(
   asked: FilesPlanRequest | null,
   project: string,
   plan: UseQueryResult<FilesPlanReply>,
-  revision: number | undefined,
   onApplied: () => void,
   onHeld: (hold: FilesHold | null) => void,
 ) {
   const queries = useQueryClient();
   const [refused, setRefused] = useState<string | null>(null);
-  const [stale, setStale] = useState<Refused | null>(null);
   // The plan to offer, and why its own fetch was refused if it was - `planShown`'s own,
   // `lib/typing.ts` (review fix round 1): `null`/`null` while `asked` has not caught up with
   // `request`, or while `plan`'s answer is an earlier request's kept as a placeholder - never a
@@ -215,24 +212,11 @@ function useFilesApply(
       return { reply: await postEdit(edit), applied, requested: request };
     },
     onMutate: () => setRefused(null),
-    // A success is a definite answer, so it also clears a stale wait left over from an earlier
-    // attempt; `onMutate` above only ever clears the other refusal.
     onSuccess: ({ reply, applied, requested }) => {
-      setStale(null);
       onHeld(filesHoldOf(reply.edit, applied, project, requested));
       onApplied();
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so an action never shows two different answers to the same Apply.
-    onError: (error) => {
-      if (isStale(error)) {
-        setStale({ text: refusalOf(error), revision });
-        setRefused(null);
-      } else {
-        setRefused(refusalOf(error));
-        setStale(null);
-      }
-    },
+    onError: (error) => setRefused(refusalOf(error)),
     onSettled: () =>
       Promise.all([
         queries.invalidateQueries({ queryKey: ["files"] }),
@@ -242,9 +226,9 @@ function useFilesApply(
   return {
     apply,
     plan: shown.plan,
-    // Stale or a plain apply failure takes precedence, as it always did - both are about an
-    // Apply already made, not a plan still loading, so neither is affected by `shown`.
-    refusal: refusalShown(stale, refused, shown.refusal, revision),
+    // An Apply refused takes precedence, as it always did - it is about an Apply already made,
+    // not a plan still loading, so it is not affected by `shown`.
+    refusal: refused ?? shown.refusal,
     /** The reader chose again: what an earlier Apply was refused for says nothing of this plan. */
     chose: () => setRefused(null),
   };
@@ -287,7 +271,7 @@ function NewFile({
     plan: offerPlan,
     refusal,
     chose,
-  } = useFilesApply(request, asked, project, plan, revision, onClose, onHeld);
+  } = useFilesApply(request, asked, project, plan, onClose, onHeld);
   return (
     <NewFileView
       project={project}
@@ -352,7 +336,7 @@ function AddFile({
     plan: offerPlan,
     refusal,
     chose,
-  } = useFilesApply(request, asked, project, plan, revision, onClose, onHeld);
+  } = useFilesApply(request, asked, project, plan, onClose, onHeld);
   return (
     <AddFileView
       project={project}
@@ -411,7 +395,7 @@ function RemoveFile({
     apply,
     plan: offerPlan,
     refusal,
-  } = useFilesApply(removal.request, requested, project, plan, revision, onClose, onHeld);
+  } = useFilesApply(removal.request, requested, project, plan, onClose, onHeld);
   return (
     <RemoveFileView
       removal={removal}

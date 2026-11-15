@@ -10,7 +10,6 @@ import {
   held,
   openPanel,
   PUMP,
-  restamp,
   SENSOR_HUB,
   SERVER_FAILED,
 } from "./demo";
@@ -274,21 +273,24 @@ test("a declaration made from a file that changed on disk is refused, and made o
   driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
   const drifted = readFileSync(path);
   await apply.click();
-  await expect(adding.getByRole("status")).toHaveText(
-    "A file changed on disk, so nothing was written. The page now shows the files as they are.",
-  );
+  const refused = adding.getByRole("status");
+  const stale =
+    "A file changed on disk, so nothing was written. The page now shows the files as they are.";
+  await expect(refused).toHaveText(stale);
   await expect(apply).toHaveCount(0);
   expect(readFileSync(path).equals(drifted)).toBe(true);
 
-  // A stamp moved with no byte touched is what lets the next poll read the drifted file. The
-  // analysis landing shows as the disagreement the drift made, in Controller's own findings.
-  restamp(gui.directory, CONTROLLER);
+  // The watcher never notices the drift, and nothing needs it to: refusing the declaration as
+  // stale, the server asks for the analysis itself (`Session._refused`), which reads the drifted
+  // bytes. That analysis landing shows as the disagreement the drift made, in Controller's own
+  // findings, and the sentence is still there: it is held until the reader's next choice.
   await expect(
     page.getByRole("link", {
       name: "'ValueA' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 999] != [0, 100])",
       exact: true,
     }),
   ).toBeVisible({ timeout: 15000 });
+  await expect(refused).toHaveText(stale);
 
   // Asked again, against the files as they are now: the refusal goes with the edit, and the
   // declaration is made.
@@ -318,16 +320,33 @@ test("a removal made from a file that changed on disk is refused, and made once 
   driftMaxUnseen(gui.directory, CONTROLLER, "ValueA", 999);
   const drifted = readFileSync(path);
   await remove.click();
-  await expect(removing.getByRole("status")).toHaveText(
-    "A file changed on disk, so nothing was written. The panel now shows the files as they are.",
-  );
+  const refused = removing.getByRole("status");
+  const stale =
+    "A file changed on disk, so nothing was written. The panel now shows the files as they are.";
+  await expect(refused).toHaveText(stale);
   await expect(remove).toHaveCount(0);
   expect(readFileSync(path).equals(drifted)).toBe(true);
 
-  // A stamp moved with no byte touched lets the next poll read the drifted file; the refusal is
-  // held until the analysis moves on, and goes with it.
-  restamp(gui.directory, CONTROLLER);
-  await expect(removing.getByRole("status")).toHaveCount(0, { timeout: 15000 });
+  // The watcher never notices the drift, and nothing needs it to: refusing the removal as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the drifted bytes.
+  // The page shows that analysis landed, as the disagreement the drift made in Controller's own
+  // findings, and the sentence is still there, Remove withdrawn under it (P19b-24): it is held
+  // until the reader's next choice, not until a revision.
+  await expect(
+    page.getByRole("link", {
+      name: "'ValueA' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 999] != [0, 100])",
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 15000 });
+  await expect(refused).toHaveText(stale);
+  await expect(remove).toHaveCount(0);
+
+  // With Remove withdrawn, closing the panel is the choice left in it, and the sentence goes with
+  // the panel. Opened again, it offers the removal of the file as it now is, and the declaration
+  // is removed.
+  await page.getByRole("button", { name: "Close ValueB" }).click();
+  await expect(refused).toHaveCount(0);
+  await page.getByRole("row", { name: /ValueB/ }).click();
   await remove.click();
   await expect(page.getByRole("rowheader", { name: "ValueB", exact: true })).toHaveCount(0);
   expect(readFileSync(path, "utf8")).not.toContain('"ValueB"');

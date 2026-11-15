@@ -44,7 +44,7 @@ on access paths for exactly this reason.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -53,6 +53,8 @@ from pydantic import (
     Field,
     PositiveInt,
     StringConstraints,
+    TypeAdapter,
+    ValidationError,
     model_validator,
 )
 
@@ -502,6 +504,26 @@ Discriminated on a stated key rather than inferred from which other keys are pre
 reason the member shapes already give: a file that omits a key by mistake should be told which
 shape it failed to describe, not silently become another one.
 """
+
+_TYPE: Final[TypeAdapter[AnyType]] = TypeAdapter(AnyType)
+"""The union an entry validates against, built once: compiling a discriminated union's schema is
+not free, and every question about a type asks it."""
+
+
+def scalar_conversion(entry: object) -> Conversion | None:
+    """The conversion the type written as ``entry`` fixes for what names it, or ``None``.
+
+    ``None`` for a structure, which fixes none, for an external type, which fixes nothing DDD
+    can see, and for an entry the loader would not take: whether a type loads is its own file's
+    finding, and what a declaration names is not told anything by it. Read through the model of
+    the entry rather than by the key it is written under, so that what a question about a
+    declaration is told of its type is what the analysis is told of it.
+    """
+    try:
+        parsed = _TYPE.validate_python(entry)
+    except ValidationError:
+        return None
+    return parsed.conversion if isinstance(parsed, ScalarType) else None
 
 
 def check_distinct_type_names(entries: tuple[StructType | ScalarType | ExternalType, ...]) -> None:

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftIn, driftMaxUnseen, failing, held, PUMP, restamp, SERVER_FAILED } from "./demo";
+import { driftIn, driftMaxUnseen, failing, held, PUMP, SERVER_FAILED } from "./demo";
 import { expect, test } from "./fixtures";
 
 const MONITORING = "monitoring.ddd.json";
@@ -381,18 +381,22 @@ test("an apply made from a type's panel that is out of date is refused, and goes
     limits: { min: -40, max: 999 },
   });
 
-  // Hidden from the watcher for good, the drift is not what the rest can wait on: a plain bump of
-  // the file's modification time is a real difference in what the watcher compares, so the next
-  // poll reads the file as it is - drifted - and the page takes that revision on board, which is
-  // when the sentence goes and the preview is asked for again against the bytes just read.
-  restamp(structuresGui.directory, TYPES);
-  await expect(refused).toBeHidden({ timeout: 15000 });
+  // The watcher never notices the drift, and nothing needs it to: refusing the Apply as stale, the
+  // server asks for the analysis itself (`Session._refused`), which reads the drifted bytes. The
+  // panel shows that analysis landed - the type's limits as the drift left them - and the sentence
+  // is still there: it is held until the reader's next choice, not until a revision.
   await expect(limits).toContainText("-40 … 999");
+  await expect(refused).toHaveText(STALE);
+
+  // The reader's next choice, a new maximum typed, takes the sentence away, and is planned against
+  // the file as it now is: applied, the type states it.
+  await panel.getByLabel("Max", { exact: true }).fill("130");
+  await expect(refused).toBeHidden();
   await apply.click();
   await expect
     .poll(() => entryOf(structuresGui.directory, "Temperature_t"))
-    .toEqual({ ...before, limits: { min: -40, max: 120 } });
-  await expect(limits).toContainText("-40 … 120");
+    .toEqual({ ...before, limits: { min: -40, max: 130 } });
+  await expect(limits).toContainText("-40 … 130");
 });
 
 /** An entry with one key left out, as the file holds it once that key is taken away. */

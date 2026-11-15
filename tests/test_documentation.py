@@ -35,12 +35,12 @@ from pydantic import BaseModel, ValidationError
 
 from conftest import DEMO
 from ddd import __version__
-from ddd.analysis import _MAX_ELEMENTS, _MAX_LEAVES
+from ddd.analysis import _MAX_LEAVES
 from ddd.backends.c.model import CodeModel, MemberView, ObjectView
 from ddd.cli import EXIT_OK, _build_parser, main, schema_models
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
-from ddd.models import Component, DataObject, Datatype, ObjectKind, ScalarType
+from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
 from ddd.toolbox.findings import FINDINGS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -369,7 +369,7 @@ class TestTheCapsOnAShape:
     @pytest.mark.parametrize("document", sorted(CAPPED))
     def test_the_caps_are_stated_as_the_analysis_applies_them(self, document: str) -> None:
         text = flattened(CAPPED[document])
-        for cap in (_MAX_ELEMENTS, _MAX_LEAVES):
+        for cap in (MAX_ELEMENTS, _MAX_LEAVES):
             spelled = f"{cap:,}".replace(",", " ")
             assert spelled in text, f"{document} does not state the cap of {spelled}"
 

@@ -819,6 +819,13 @@ class SettleReply(_Frozen):
     changes: tuple[PlannedChange, ...]
     """One per file, sorted by path; empty when every declaration already agrees."""
 
+    unloadable: tuple[str, ...]
+    """One sentence for each declaration the change would leave unable to load, by file: which
+    declaration, in which file, and why, in the words ``ddd check`` files it in - as ``schema``,
+    once the change is written. The reader chose the value, so the change is planned
+    all the same and applying it writes it; a button offering the same value is withheld instead
+    (``GET /api/fix``). Empty where every declaration still loads."""
+
 
 # --- GET /api/fix ---------------------------------------------------------------------------
 
@@ -1380,6 +1387,10 @@ class DeclarableReply(_Frozen):
     """Absolute, posix-separated path of the component asked about."""
 
     names: tuple[DeclarableName, ...]
+    """The variables this component may add: every name the project declares that it does not,
+    except one a component declares ``local``, which no other component may declare in any
+    scope."""
+
     kinds: tuple[KindForm, ...]
     scopes: tuple[str, ...]
     """What a name the project has never seen may be declared with."""
@@ -1654,10 +1665,13 @@ class Change(_Request):
 
 
 class Changes(_Request):
-    """What ``POST /api/edit`` takes: every file it changes, in one all-or-nothing edit."""
+    """What ``POST /api/edit`` takes: every file it changes, in one edit that is refused as a
+    whole."""
 
     changes: tuple[Change, ...] = Field(min_length=1)
-    """Every file this edit changes; made all at once, or not at all."""
+    """Every file this edit changes. A refusal leaves every one of them as it was, or names the
+    ones it could not put back; a server killed while it writes - a closed terminal, ``kill``, a
+    power cut - can leave some of them written and the rest not, with nothing to undo."""
 
     label: str = Field(min_length=1, max_length=120)
     """What this edit is, as a noun phrase: "the unit of ValueA", "the rename of 'rpm' to

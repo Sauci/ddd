@@ -1,7 +1,7 @@
 import type { SettleReply, UnitsReply, VariableReply } from "../api/types";
 import { removalSentence } from "../lib/declarations";
 import { distinctFindings, keyedFindings, namesThisVariable, routeHref } from "../lib/findings";
-import { consequence, declaredUnits, shownChanges } from "../lib/units";
+import { consequence, declaredUnits, shownChanges, unloadableOf } from "../lib/units";
 import { describeVariable, offerOf } from "../lib/variableKeys";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
@@ -124,6 +124,14 @@ export function VariablePanelView(props: VariablePanelViewProps) {
           selected !== undefined &&
           preview !== null && <p className="consequence">{consequence(changes)}</p>
         )}
+        {/* What the server says of the files this plan would leave unable to load, in its words:
+            drawn with the plan, above Apply, which stays - the value is the reader's to write.
+            `unloadableOf` says which sentences: none where a refusal stands in the plan's place. */}
+        {unloadableOf(preview, refusal).map((sentence) => (
+          <p key={sentence} className="panel-unloadable" role="status">
+            {sentence}
+          </p>
+        ))}
         {refusal === null && changes.length > 0 && (
           <>
             {props.changesShown && <Changes changes={shownChanges(changes)} />}

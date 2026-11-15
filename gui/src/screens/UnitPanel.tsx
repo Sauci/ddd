@@ -12,7 +12,7 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import { type Offer, type UnitAction, UnitPanelView } from "../components/UnitPanelView";
 import { offers, planEdit } from "../lib/projectUnits";
-import { panelShows, type Refused, shownRefusal } from "../lib/refusals";
+import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import { planShown } from "../lib/typing";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -93,14 +93,11 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
   const [to, setTo] = useState<string | null>(null);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [shown, setShown] = useState<UnitAction | null>(null);
-  // The one action refused for a reason other than staleness, if any: cleared whenever the
-  // reader chooses again, exactly as before.
-  const [failed, setFailed] = useState<{ action: UnitAction; message: string } | null>(null);
-  // The one action refused because a file changed on disk, and the revision it happened at. As
-  // in `VariablePanel`, a reader who chooses again straight away would otherwise send the same
-  // stale fingerprints the server just refused; `shownRefusal` keeps it shown until a later
-  // revision arrives.
-  const [staleFailed, setStaleFailed] = useState<({ action: UnitAction } & Refused) | null>(null);
+  // The one action refused, if any, in the tab's own words (`refusalOf`): held until the reader
+  // chooses again - another Apply, a description typed, a spelling chosen - whatever its code, a
+  // file changed on disk included, and never let go by a revision landing (`Refused`,
+  // lib/refusals.ts).
+  const [failed, setFailed] = useState<Refused<UnitAction> | null>(null);
 
   const row = units.data?.units.find((entry) => entry.unit === name);
   const offered =
@@ -152,10 +149,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
     onMutate: () => setFailed(null),
     // Renamed, the unit is the new spelling now, and the tab opens its panel; removed, it is gone
     // as the reader asked. Neither is the unit disappearing that spec 5.4 has the tab announce.
-    // A success is a definite answer, so it also clears a stale wait left over from an earlier
-    // attempt at this same action - `onMutate` above only ever clears the other refusal.
     onSuccess: (_reply, action) => {
-      setStaleFailed(null);
       setShown(null);
       if (action === "rename" && to !== null) {
         moving.current = true;
@@ -165,17 +159,7 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
         onMoved(undefined);
       }
     },
-    // Stale is the one refusal that waits for a later revision rather than clearing; setting one
-    // kind clears the other, so an action never shows two different answers to the same Apply.
-    onError: (error, action) => {
-      if (error instanceof ApiError && error.code === "stale") {
-        setStaleFailed({ action, text: refusalOf(error), revision });
-        setFailed(null);
-      } else {
-        setFailed({ action, message: refusalOf(error) });
-        setStaleFailed(null);
-      }
-    },
+    onError: (error, action) => setFailed({ about: action, text: refusalOf(error) }),
     // An Apply changes the unit's places, the tab's rows and every plan, whose fingerprints the
     // edit spent: they are asked for again, and nothing can be applied until they answer. The
     // description saved is let go only then, so that the field goes from what was typed straight
@@ -193,19 +177,14 @@ export function UnitPanel({ name, revision, stopped, onClose, onGone, onMoved }:
    * `plan`/`refusal`/`pending` are `planShown`'s own, `lib/typing.ts` (review fix round 1):
    * `null`/`null`/pending while the debounced request has not caught up with what the fields now
    * say, or while the answer is an earlier request's kept as a placeholder - never a plan, nor
-   * its own fetch refusal, for text the reader has since typed past. A stale or a plain apply
-   * failure takes precedence, as it always did. Never held back for `add`/`remove`/`rename`
+   * its own fetch refusal, for text the reader has since typed past. A refusal of its Apply takes
+   * precedence, as it always did (`refusalShown`). Never held back for `add`/`remove`/`rename`
    * beyond their own query settling, whose `asked` entries are never behind `requests`'. */
   const offer = (action: UnitAction): Offer => {
     const shown = planShown(asked[action], requests[action], plans[action]);
     return {
       plan: shown.plan,
-      refusal:
-        staleFailed?.action === action
-          ? shownRefusal(staleFailed, revision)
-          : failed?.action === action
-            ? failed.message
-            : shown.refusal,
+      refusal: refusalShown(failed, shown.refusal, action),
       pending: shown.pending,
     };
   };

@@ -73,6 +73,28 @@ export function driftDatatypeIn(
   return before;
 }
 
+/** A variable's declaration in one file of a copy turned into one that reads text - a byte
+ * datatype, the string conversion and one dimension of eight - so stating no unit and no limits,
+ * which text has none of. A producer's datatype wider than a byte, settled onto it, is then a
+ * change the loader refuses (`driftDatatypeIn` makes one). Saved from outside, before the server
+ * starts. */
+export function readAsText(directory: string, file: string, variable: string): void {
+  const path = join(directory, file);
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  const entry = data.component.interface.find(
+    (declaration: { definition: { name: string } }) => declaration.definition.name === variable,
+  );
+  entry.definition = {
+    ...Object.fromEntries(
+      Object.entries(entry.definition).filter(([key]) => key !== "unit" && key !== "limits"),
+    ),
+    datatype: "uint8",
+    conversion: { kind: "string" },
+    dimensions: [8],
+  };
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
 /** ValueA renamed from outside in every file of the demo that declares or names it. */
 export function renameValueA(directory: string, name: string): void {
   for (const file of [CONTROLLER, SENSOR_HUB]) {
@@ -606,8 +628,8 @@ export async function held(
  * Moves `file`'s modification time to now and changes none of its bytes. The watcher compares a
  * file's `(st_mtime_ns, st_size)` alone (`stamped` and `poll`, session.py), so its next poll
  * reads a new revision, and the server's long poll, which would otherwise wait out its
- * `WAIT_SECONDS`, answers at once (P19b-9). For a journey that needs the next revision now: a
- * held refusal let go, or the page's next state read failed.
+ * `WAIT_SECONDS`, answers at once (P19b-9). For a journey that needs the next revision now: one
+ * whose reads it fails, the state read after it failed, or a pattern expanded again.
  */
 export function restamp(directory: string, file: string): void {
   const now = new Date();

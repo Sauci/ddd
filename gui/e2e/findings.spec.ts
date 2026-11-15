@@ -143,8 +143,9 @@ test("a missing id is fixed", async ({ page, gui }) => {
 
   await panel.getByRole("button", { name: "Give 'ValueH' an id" }).click();
   await panel.getByRole("button", { name: "Show changes" }).click();
+  // Written right after the name, where `ddd id` writes it, so another member follows it.
   const added = panel.locator(".hunk .added").filter({ hasText: '"id":' });
-  await expect(added).toHaveText(/^\+\s*"id": "[abcdefghjkmnpqrstvwxyz0-9]{12}"$/);
+  await expect(added).toHaveText(/^\+\s*"id": "[abcdefghjkmnpqrstvwxyz0-9]{12}",$/);
 
   await panel.getByRole("button", { name: "Apply to 1 file" }).click();
   await expect(page.getByText("Nothing to report")).toBeVisible();
@@ -206,7 +207,7 @@ test("a finding fixed from outside while its panel is open is no longer reported
 });
 
 /** What the Findings tab says when a fix's Apply is refused because a file changed under its
- * preview: `FindingsPage.tsx`'s own sentence, held until a later revision. */
+ * preview: `FindingsPage.tsx`'s own sentence, held until the reader's next choice. */
 const STALE =
   "A file changed on disk, so nothing was written. The tab now shows the findings as they are.";
 
@@ -227,11 +228,9 @@ test("a fix applied while its file changed on disk is refused, and nothing is wr
   await expect(panel.locator(".hunk .added").filter({ hasText: '"id":' })).toBeVisible();
 
   // Controller's description gains its full stop as the Apply goes out, written where the
-  // session's own watcher does not see it (`writeUnseen`): seen, it brought a revision of its
-  // own, and the tab holds a stale refusal only until the next (`shownRefusal`, lib/refusals.ts),
-  // which a journey can miss, as skeleton.spec.ts's out-of-date edit once did. A space taken out
-  // and a full stop put in keep the file as long as it was. Written once, then the request goes
-  // through to the server, which reads the bytes fresh.
+  // session's own watcher does not see it (`writeUnseen`), so that only the Apply's own fresh read
+  // of the bytes sees it. A space taken out and a full stop put in keep the file as long as it
+  // was. Written once, then the request goes through to the server, which reads the bytes fresh.
   const original = readFileSync(file, "utf8");
   const changed = original.replace(
     '"description": "Consumes the raw values and produces the derived ones"',
@@ -354,8 +353,8 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
   const failed = await failing(page, "/api/edit", "http");
   await fixing.getByRole("button", { name: "Apply to 1 file" }).click();
 
-  // Not a refusal of a file changed on disk, so it stays until the reader chooses again, and
-  // the panel draws it in place of the consequence and the Apply.
+  // It stays until the reader chooses again, as every refusal of the tab does, and the panel
+  // draws it in place of the consequence and the Apply.
   await expect(fixing.getByRole("status")).toHaveText(`The change was refused: ${SERVER_FAILED}`);
   await expect(fixing.getByRole("button", { name: "Apply to 1 file" })).toHaveCount(0);
   // The finding is still reported, and the panel still shows it.
@@ -366,8 +365,8 @@ test("a fix the server fails on shows its refusal in the panel in place of the f
 
   // The reader chooses again - the fix pressed off and on - with the server answering as it does:
   // the refusal says nothing of what is chosen now, so it goes with the choice, and the fix is
-  // offered as it was before the server failed on it (`refusalsAfterChoice`). Left standing, it
-  // withdrew the Apply until the finding was pressed again.
+  // offered as it was before the server failed on it (`choose`, FindingsPage.tsx). Left standing,
+  // it withdrew the Apply until the finding was pressed again.
   await page.unrouteAll({ behavior: "wait" });
   const fix = panel.getByRole("button", { name: "Give 'ValueH' an id" });
   await fix.click();

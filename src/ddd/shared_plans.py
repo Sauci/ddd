@@ -35,11 +35,11 @@ from typing import Any, Final, Literal
 
 from ddd.editing import Operation
 from ddd.loading import included_files, resolve_path
-from ddd.lsp.navigation import Index, Site, rename_sites
+from ddd.lsp.navigation import Index, Site, changed_since, drift, rename_sites
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit, appended_at, created_beside
 from ddd.pointers import parent_pointer
-from ddd.project_shared import CONSTANTS, Vocabulary
+from ddd.project_shared import CONSTANTS, Vocabulary, entry_in_place
 
 _VOWELS: Final = frozenset("aeio")
 """The letters :func:`_article` writes ``an`` in front of. ``u`` is not one of them, for the reason
@@ -96,15 +96,19 @@ class SharedPlan:
 class SharedRefusalError(Exception):
     """A change of an entry that cannot be planned, and the code both clients refuse it with."""
 
-    code: Literal["unreadable", "invalid", "not-found"]
+    code: Literal["unreadable", "invalid", "not-found", "stale"]
     """``unreadable``: a file the change has to see did not load. ``invalid``: the change cannot
     be made - a key a constant has not, a name that may not be used, a constant a shape still
-    names. ``not-found``: no file of the project declares a constant of that name."""
+    names. ``not-found``: no file of the project declares a constant of that name. ``stale``: a
+    file the change points into no longer holds the entry, or a shape naming it, where the index
+    found it, having changed since the analysis read it."""
 
     message: str
     """The sentence the refusal is shown with, naming the file it concerns."""
 
-    def __init__(self, code: Literal["unreadable", "invalid", "not-found"], message: str) -> None:
+    def __init__(
+        self, code: Literal["unreadable", "invalid", "not-found", "stale"], message: str
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -191,9 +195,13 @@ def set_entry(
     ``required``, so that judging and asking happen in exactly one place. The refusal of a required
     key taken away still comes before any judging, since nothing is judged on that arm at all, and
     its sentence is untouched.
+
+    Refused, before the entry is read or written at the place the index recorded, while that
+    place no longer names it (:func:`_in_place`).
     """
     entry = _entry(vocabulary, built, name)
     _settable(vocabulary, key, entry.path)
+    _in_place(vocabulary, built, name, cache, f"'{name}' cannot be changed")
     if raw is None:
         if key in vocabulary.required:
             raise SharedRefusalError(
@@ -224,13 +232,22 @@ def rename_entry(
 
     Refused before a file is touched: a rename writes into every file naming the entry, and a
     name that turned out to be unusable would leave the project broken across all of them at once.
+    Refused too while a file no longer names the entry at a place the index recorded - its own, or
+    a shape's (:func:`~ddd.lsp.navigation.drift`): the rename would write the new name over
+    whatever sits there now.
     """
     _entry(vocabulary, built, name)
     problem = vocabulary.taken[vocabulary.name_key](built, name, to, cache)
     if problem is not None:
         raise SharedRefusalError("invalid", problem)
+    sites = rename_sites(built, vocabulary.kind, name)
+    moved = drift(sites, name, cache)
+    if moved:
+        raise SharedRefusalError(
+            "stale", changed_since(moved, f"renaming '{name}' cannot be planned")
+        )
     by_file: dict[Path, list[Operation]] = {}
-    for site in rename_sites(built, vocabulary.kind, name):
+    for site in sites:
         by_file.setdefault(site.path, []).append(Operation("set", site.pointer, _raw(to)))
     return _plan(by_file)
 
@@ -358,6 +375,9 @@ def remove_entry(
     A nested list is read from the file rather than counted off the index, because the index holds
     the project's entries by name across every file, not the entries of one list; ``cache`` is the
     one this plan's other reads already share.
+
+    Refused, before the entry's place is read or taken out, while that place no longer names it
+    (:func:`_in_place`): the entry taken out would be another.
     """
     entry = _entry(vocabulary, built, name)
     used = vocabulary.used(built).get(name, ())
@@ -371,6 +391,7 @@ def remove_entry(
             f"'{name}' is named by {_plural(len(used), 'shape')}, the first in "
             f"{used[0].path.name}; nothing may name it before it goes",
         )
+    _in_place(vocabulary, built, name, cache, f"'{name}' cannot be removed")
     holding = parent_pointer(entry.pointer)
     if holding != vocabulary.containers[0]:
         listed = read(entry.path, cache).value_at(holding)
@@ -389,6 +410,20 @@ def _entry(vocabulary: Vocabulary, built: Index, name: str) -> Site:
             f"called '{name}'",
         )
     return entry
+
+
+def _in_place(
+    vocabulary: Vocabulary, built: Index, name: str, cache: dict[Path, Document], consequence: str
+) -> None:
+    """Refuse a plan of that entry while the place the index recorded for it no longer names it,
+    its file read as it now stands - the question its panel asks before it reads the entry
+    (:func:`~ddd.project_shared.entry_in_place`). An entry above taken out of the list, or put
+    in, moves it, and a key set or the entry taken out there would be another's. ``stale``: the
+    next analysis reads the file again, and the plan asked then is made where the entry now is.
+    """
+    if not entry_in_place(vocabulary, built, name, cache):
+        where = vocabulary.entries(built)[name].path
+        raise SharedRefusalError("stale", changed_since((where,), consequence))
 
 
 def _settable(vocabulary: Vocabulary, key: str, file: Path) -> None:

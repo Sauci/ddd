@@ -2,19 +2,24 @@
 
 ``edit_text`` makes a batch of sets none of which can depend on what another one writes from the
 one reading of the file, and reads the text it leaves once; ``_independent`` decides which batches
-those are. Every other batch, and one that is refused or does not read back once made at once, is
-made one operation at a time and verified after each, as before. Both ways have to answer alike:
-``oracle`` below is ``edit_text`` as it stood before a batch could be made at once, and the engine
-is held to its every answer - the text, or the refusal's code and sentence - on every example's
-files, on a generated project's rename, and on random documents and batches.
+those are - literals set in place of values, and members added to objects, as ``ddd id`` gives
+every declaration of a file its id. Every other batch, and one that is refused or does not read
+back once made at once, is made one operation at a time and verified after each, as before. Both
+ways have to answer alike: ``oracle`` below is ``edit_text`` as it stood before a batch could be
+made at once, and the engine is held to its every answer - the text, or the refusal's code and
+sentence - on every example's files, on a generated project's rename and ids, on random documents
+and batches, and on batches one operation of which is made wrong. What an edit reads is counted,
+never timed, and grows with the file rather than with its square.
 """
 
 from __future__ import annotations
 
 import copy
 import json
+import math
 import random
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,17 +27,22 @@ import pytest
 from generate_project import generate
 
 import ddd.editing as editing
-from conftest import EXAMPLES
+from conftest import EXAMPLES, component, declare
+from ddd import identity
 from ddd.diagnostics import DiagnosticBag
 from ddd.editing import (
+    DEFAULT_INDENT_UNIT,
     INVALID,
     UNREADABLE,
     UNVERIFIED,
     EditError,
+    FileChange,
     Operation,
     TextEdit,
+    apply_changes,
     edit_text,
     fingerprint,
+    indent_unit,
 )
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import index
@@ -116,6 +126,93 @@ def tried(monkeypatch: pytest.MonkeyPatch, reads: list[str]) -> list[tuple[bool,
     return attempts
 
 
+class OverBudgetError(AssertionError):
+    """An edit read more characters than the work it was allowed (:class:`Work`)."""
+
+
+@dataclass
+class Work:
+    """The characters an edit reads: every character of each text it parses, and every one a
+    slice of a parsed text copies or a search of one goes over, the search for a line's
+    indentation among them - up to ``budget``, past which the edit is stopped rather than
+    finished."""
+
+    count: int = 0
+    budget: float = math.inf
+
+    def add(self, characters: int) -> None:
+        self.count += characters
+        if self.count > self.budget:
+            raise OverBudgetError(f"the edit read more than {self.budget:,.0f} characters")
+
+
+class Counted(str):
+    """A text whose slices and searches count into ``work`` the characters they copy or go over:
+    what each of the engine's measures of the lines around a place costs, which python's own
+    methods do not say."""
+
+    work: Work
+
+    def __new__(cls, text: str, work: Work) -> Counted:
+        made = super().__new__(cls, text)
+        made.work = work
+        return made
+
+    def __getitem__(self, key):
+        found = str.__getitem__(self, key)
+        self.work.add(len(found))
+        return found
+
+    def find(self, sub, start=None, end=None):
+        begin, stop, _ = slice(start, end).indices(len(self))
+        found = str.find(self, sub, begin, stop)
+        self.work.add(max(0, (found + len(sub) if found >= 0 else stop) - begin))
+        return found
+
+    def rfind(self, sub, start=None, end=None):
+        begin, stop, _ = slice(start, end).indices(len(self))
+        found = str.rfind(self, sub, begin, stop)
+        self.work.add(max(0, stop - (found if found >= 0 else begin)))
+        return found
+
+
+@pytest.fixture
+def work(monkeypatch: pytest.MonkeyPatch) -> Work:
+    """The work of every edit made while a test runs: each text ``_read`` parses is counted
+    whole, and read on as a :class:`Counted` text, so that the document every measure is taken
+    of counts as well; and each search for a line's indentation, which a regular expression
+    makes, by the characters it goes over - the indentation, and the one ending it."""
+    counted = Work()
+    real_read = editing._read
+    real_indentation = editing._indentation
+
+    def read(text: str, code: str, refusal: str) -> Document:
+        counted.add(len(text))
+        return real_read(Counted(text, counted), code, refusal)
+
+    def indentation(text: str, start: int) -> str:
+        found = real_indentation(text, start)
+        counted.add(len(found) + 1)
+        return found
+
+    monkeypatch.setattr(editing, "_read", read)
+    monkeypatch.setattr(editing, "_indentation", indentation)
+    return counted
+
+
+def grows_linearly(work: Work, edit: Callable[[int], object]) -> None:
+    """Asserts that ``edit`` made at 4,000 declarations reads between three and five times the
+    characters it reads at 1,000. Four times the file is four times the reading for work that
+    grows with the file, and sixteen for work that grows with its square - which is stopped at
+    five times rather than finished."""
+    work.count, work.budget = 0, math.inf
+    edit(1_000)
+    small = work.count
+    work.count, work.budget = 0, 5 * small
+    edit(4_000)
+    assert work.count >= 3 * small
+
+
 def literal_leaves(value: Any, pointer: str = "") -> Iterator[tuple[str, Any]]:
     """Every value of a parsed document that is not a container, with the pointer naming it, in
     document order - but for those under a key holding a dot or a bracket, which no pointer can
@@ -131,6 +228,21 @@ def literal_leaves(value: Any, pointer: str = "") -> Iterator[tuple[str, Any]]:
         yield pointer, value
 
 
+def objects_of(value: Any, pointer: str = "") -> Iterator[tuple[str, dict[str, Any]]]:
+    """Every object of a parsed document that holds members, with the pointer naming it, in
+    document order - but for those under a key holding a dot or a bracket, as
+    :func:`literal_leaves` leaves them out."""
+    if isinstance(value, dict):
+        if value:
+            yield pointer, value
+        for key, item in value.items():
+            if not any(mark in key for mark in ".[]"):
+                yield from objects_of(item, f"{pointer}.{key}" if pointer else key)
+    elif isinstance(value, list):
+        for index_, item in enumerate(value):
+            yield from objects_of(item, f"{pointer}[{index_}]")
+
+
 def another(value: Any, rng: random.Random) -> str:
     """A literal to set in place of ``value``, as json text: a string with a quote, a backslash
     and characters outside ascii added, written as themselves or as escapes; the other truth
@@ -144,6 +256,20 @@ def another(value: Any, rng: random.Random) -> str:
     return rng.choice(["1.0", "-0", "2.50", "1E+2", "-7"])
 
 
+def declarations(count: int) -> dict[str, Any]:
+    """A component of ``count`` output declarations, ``V0`` onwards, none of which states an id."""
+    return component("B", *(declare("output", f"V{n}") for n in range(count)))
+
+
+def ids_for(text: str) -> list[Operation]:
+    """``ddd id``'s batch for a file: an id for every producing declaration it states none for,
+    each id told apart from the others by the declaration's place."""
+    return [
+        Operation("set", f"{definition}.id", f'"k{index:011d}"')
+        for index, (definition, _) in enumerate(identity.unstamped(Document(text)))
+    ]
+
+
 class TestABatchIsReadOnce:
     def test_a_file_set_at_many_places_is_read_twice_not_once_per_place(self, reads):
         """Read once as it was given and once as it was left, where one operation after another
@@ -152,6 +278,15 @@ class TestABatchIsReadOnce:
         operations = [Operation("set", f"units[{n}].unit", f'"v{n}"') for n in range(40)]
         assert alike(text, operations, reads) == (2, 41)
         assert reads[-1] == text.replace('"unit": "u', '"unit": "v')
+
+    def test_a_file_given_an_id_at_many_places_is_read_twice_not_once_per_place(self, reads):
+        """``ddd id``'s batch: an id added after the name of every declaration, each on a line of
+        its own. Made one operation after another, the file was read 41 times for these forty."""
+        text = json.dumps(declarations(40), indent=2)
+        operations = ids_for(text)
+        assert len(operations) == 40
+        assert alike(text, operations, reads) == (2, 41)
+        assert reads[-1].count('"id": "k') == 40
 
 
 class TestWhichBatchIsMadeAtOnce:
@@ -175,6 +310,45 @@ class TestWhichBatchIsMadeAtOnce:
         assert at_once(self.TEXT, operations)
         assert alike(self.TEXT, operations, reads) == (2, 2)
 
+    def test_members_added_to_objects_apart_are_made_at_once(self, reads):
+        """A member its object has not got, added to an object that holds members already and is
+        given no other: laid out from the lines around it, which neither a literal set in place
+        of another nor a member added to another object changes."""
+        operations = [
+            Operation("set", "a.e", "3"),
+            Operation("set", "e", '"z"'),
+            Operation("set", "a.b", "2.0"),
+            Operation("set", "list[2]", "4"),
+        ]
+        assert at_once(self.TEXT, operations)
+        assert alike(self.TEXT, operations, reads) == (2, 5)
+        assert edit_text(self.TEXT, operations) == (
+            '{"a": {"b": 2.0, "c": "x", "e": 3}, "list": [1, 2, 4], "d": null, "e": "z"}'
+        )
+
+    def test_ids_given_to_the_declarations_of_a_file_are_made_at_once(self, reads):
+        """``ddd id``'s batch over a file whose definitions are written one member to a line, on
+        one line, with the name last, and with an id stated as ``null``: each id after the name,
+        on a line of its own or on the name's, and in place of the ``null``."""
+        text = (
+            '{\n  "component": {\n    "name": "A",\n    "interface": [\n'
+            '      {"scope": "output", "definition": {\n'
+            '        "name": "S",\n        "kind": "measurement"\n      }},\n'
+            '      {"scope": "local", "definition": {"name": "T", "kind": "measurement"}},\n'
+            '      {"scope": "output", "definition": {"kind": "measurement", "name": "U"}},\n'
+            '      {"scope": "output", "definition": {"name": "W", "id": null, "kind": "v"}}\n'
+            "    ]\n  }\n}\n"
+        )
+        operations = ids_for(text)
+        assert at_once(text, operations)
+        assert alike(text, operations, reads) == (2, 5)
+        assert edit_text(text, operations) == (
+            text.replace('"name": "S",\n', '"name": "S",\n        "id": "k00000000000",\n')
+            .replace('"name": "T",', '"name": "T", "id": "k00000000001",')
+            .replace('"name": "U"}', '"name": "U", "id": "k00000000002"}')
+            .replace('"id": null', '"id": "k00000000003"')
+        )
+
     @pytest.mark.parametrize(
         "operations",
         [
@@ -186,7 +360,13 @@ class TestWhichBatchIsMadeAtOnce:
             [Operation("set", "list[1]", "5"), Operation("set", "list", "0")],
             [Operation("set", "", "1"), Operation("set", "d", "2")],
             [Operation("set", "a.b", "2"), Operation("set", "a.b", "3")],
-            [Operation("set", "a.b", "2"), Operation("set", "a.e", "3")],
+            [Operation("set", "a.e", "2"), Operation("set", "a.f", "3")],
+            [Operation("set", "a", "1"), Operation("set", "e", "3")],
+            [Operation("set", "e", "3"), Operation("set", "list", '"none"')],
+            [Operation("set", "a.b", "2"), Operation("set", "a.e", '{"k": 1}')],
+            [Operation("set", "a.b", "2"), Operation("set", "d.k", "3")],
+            [Operation("set", "a.b", "2"), Operation("set", "x.k", "3")],
+            [Operation("set", "a.b", "2"), Operation("set", "a[0]", "3")],
             [Operation("set", "a.b", "2"), Operation("set", "list[3]", "4")],
             [Operation("set", "a.b", "2"), Operation("set", "d", '{"k": [1]}')],
             [Operation("set", "a.b", "2"), Operation("set", "d", " [1]")],
@@ -202,7 +382,13 @@ class TestWhichBatchIsMadeAtOnce:
             "an element of an array set beside the array",
             "the whole document beside one of its values",
             "the same pointer twice",
-            "a member its object has not got",
+            "two members added to one object",
+            "a member added beside an object set in place of a literal",
+            "a member added beside an array set in place of a literal",
+            "a member added holding an object",
+            "a member of a literal",
+            "a member of nothing",
+            "an index into an object",
             "an element past the end of its array",
             "an object",
             "an array, after whitespace",
@@ -215,6 +401,41 @@ class TestWhichBatchIsMadeAtOnce:
         once first."""
         assert not at_once(self.TEXT, operations)
         made, by_oracle = alike(self.TEXT, operations, reads)
+        assert made == by_oracle
+
+    def test_a_member_added_to_an_object_holding_none_is_made_one_operation_at_a_time(self, reads):
+        """Its object is written anew, the member on a line of its own indented by the file's
+        unit, which the member added before it changes: that one goes on a line of its own
+        indented deeper than its object opens, the first entry the file so writes, and the unit
+        is read off it - four spaces, where read off the lines as they were it was the two of a
+        file that nests nothing that way."""
+        text = '{"name": {"q": 1\n    },\n"e": {}}'
+        operations = [Operation("set", "id", '"abc"'), Operation("set", "e.k", "1")]
+        assert not at_once(text, operations)
+        assert answer(edit_text, text, operations) == (
+            "text",
+            '{"name": {"q": 1\n    },\n    "id": "abc",\n"e": {\n    "k": 1\n}}',
+        )
+        made, by_oracle = alike(text, operations, reads)
+        assert made == by_oracle
+
+    def test_a_member_whose_pointer_a_key_holding_a_dot_spells_is_made_one_operation_at_a_time(
+        self, reads
+    ):
+        """The member ``"b.c"`` is recorded under the pointer the ``c`` added to ``b`` takes,
+        which names the member added from then on: one operation after another, the member added
+        to the top of the file next finds ``b``'s ``c`` the last entry the top of the file
+        writes, goes after it, inside ``b``, and does not read back. Made at once, from the text
+        as it was read, it went after ``b`` and read back - an answer no order of the operations
+        gives."""
+        text = '{"b.c": 1, "b": {"a": 2}}'
+        operations = [Operation("set", "b.c", "3"), Operation("set", "d", "4")]
+        assert not at_once(text, operations)
+        assert answer(edit_text, text, operations) == (
+            UNVERIFIED,
+            "the edited file does not read back as the intended document",
+        )
+        made, by_oracle = alike(text, operations, reads)
         assert made == by_oracle
 
     def test_a_batch_that_does_not_read_back_is_refused_as_one_at_a_time_refuses_it(self, reads):
@@ -317,6 +538,190 @@ class TestWhichBatchIsMadeAtOnce:
         alike(text, operations, reads)
 
 
+# Ways a member's edit can be made wrong: each is handed the document the edit was made on, the
+# definition the member goes into, and the edit the engine made, and answers the edit made wrong.
+
+
+def another_id(document: Document, definition: str, edit: TextEdit) -> TextEdit:
+    return TextEdit(edit.start, edit.end, edit.text.replace('"k', '"x'))
+
+
+def another_key(document: Document, definition: str, edit: TextEdit) -> TextEdit:
+    return TextEdit(edit.start, edit.end, edit.text.replace('"id"', '"di"'))
+
+
+def the_key_twice(document: Document, definition: str, edit: TextEdit) -> TextEdit:
+    return TextEdit(edit.start, edit.end, edit.text * 2)
+
+
+def no_comma(document: Document, definition: str, edit: TextEdit) -> TextEdit:
+    return TextEdit(edit.start, edit.end, edit.text.removeprefix(","))
+
+
+def nothing(document: Document, definition: str, edit: TextEdit) -> TextEdit:
+    return TextEdit(edit.start, edit.end, "")
+
+
+def in_another_declaration(document: Document, definition: str, edit: TextEdit) -> TextEdit:
+    """After the name of the declaration that follows, or of the first for the last."""
+    index = int(definition.removeprefix("component.interface[").split("]")[0])
+    count = len(document.value_at("component.interface"))
+    span = document.span_of(f"component.interface[{(index + 1) % count}].definition.name")
+    assert span is not None
+    return TextEdit(span[1], span[1], edit.text)
+
+
+def in_the_entry_around_it(document: Document, definition: str, edit: TextEdit) -> TextEdit:
+    """After the entry's ``scope``: the entry states the id, and its definition none."""
+    span = document.span_of(f"{definition.removesuffix('.definition')}.scope")
+    assert span is not None
+    return TextEdit(span[1], span[1], edit.text)
+
+
+class TestOneOperationOfABatchMadeWrong:
+    """A batch made at once is verified once, against the document every one of its operations
+    was meant to leave, where one operation after another is verified after each of them.
+    Whatever one operation's edit is made to write wrong, wherever it sits in the batch, that one
+    reading catches it as the reading after the operation did: the batch made at once does not
+    read back, and made again one operation at a time it is refused at that operation, as it
+    always was."""
+
+    TEXT = json.dumps(declarations(40), indent=2)
+    IDS = ids_for(TEXT)
+
+    @pytest.mark.parametrize("wrong", [0, 17, 39], ids=["first", "within", "last"])
+    @pytest.mark.parametrize(
+        "way",
+        [
+            another_id,
+            another_key,
+            the_key_twice,
+            no_comma,
+            nothing,
+            in_another_declaration,
+            in_the_entry_around_it,
+        ],
+        ids=lambda way: way.__name__.replace("_", " "),
+    )
+    def test_a_member_added_wrong_is_refused_as_the_reading_after_it_refused_it(
+        self, monkeypatch, reads, tried, wrong, way
+    ):
+        """The id of the first, a middle or the last declaration written wrong: refused at that
+        operation, as the oracle refuses it, after the one reading of the batch made at once."""
+        real = editing.member_addition
+        definition = f"component.interface[{wrong}].definition"
+
+        def added(document, pointer, key, raw, *, verbatim=False):
+            edit = real(document, pointer, key, raw, verbatim=verbatim)
+            return way(document, pointer, edit) if pointer == definition else edit
+
+        monkeypatch.setattr(editing, "member_addition", added)
+        assert at_once(self.TEXT, self.IDS)
+        refused, by_engine, by_oracle = refusals(self.TEXT, self.IDS, reads)
+        assert refused[0] == UNVERIFIED
+        assert tried == [(False, 1)]
+        assert (by_engine, by_oracle) == (wrong + 3, wrong + 2)
+
+    NULLED = json.dumps(
+        component(
+            "B", *(declare("output", f"V{n}", **({"id": None} if n % 2 else {})) for n in range(40))
+        ),
+        indent=2,
+    )
+    """Every other declaration stating its id as ``null``, which the id is set in place of."""
+
+    @pytest.mark.parametrize(
+        "written",
+        ['"x00000000017"', '"k00000000017", "id": "x"', '"k00000000017" "x"', "17"],
+        ids=["another id", "the key twice", "no json", "a number"],
+    )
+    def test_an_id_set_in_place_of_a_null_wrong_is_refused_as_the_reading_after_it_refused_it(
+        self, monkeypatch, reads, tried, written
+    ):
+        """A set in place of a value, in a batch whose other half adds members: the id of the
+        eighteenth declaration, which states it as ``null``, written wrong."""
+        operations = ids_for(self.NULLED)
+        assert operations[17].raw == '"k00000000017"'
+        assert self.NULLED.count('"id": null') == 20
+        real = editing.lay_out
+        monkeypatch.setattr(
+            editing,
+            "lay_out",
+            lambda raw, **layout: written if raw == '"k00000000017"' else real(raw, **layout),
+        )
+        assert at_once(self.NULLED, operations)
+        refused, by_engine, by_oracle = refusals(self.NULLED, operations, reads)
+        assert refused[0] == UNVERIFIED
+        assert tried == [(False, 1)]
+        assert (by_engine, by_oracle) == (20, 19)
+
+    @pytest.mark.parametrize("wrong", [16, 17], ids=["a set in place", "a member added"])
+    def test_a_number_written_in_another_spelling_is_refused(
+        self, monkeypatch, reads, tried, wrong
+    ):
+        """``1`` where ``1.0`` was meant is another value to DDD, the first an integer: the one
+        reading tells the two apart as the reading after the operation did."""
+        text = json.dumps({"list": [{"f": 0.5} for _ in range(40)]}, indent=2)
+        operations = [
+            Operation("set", f"list[{n}].{'g' if n % 2 else 'f'}", f"{n}.0") for n in range(40)
+        ]
+        real = editing.lay_out
+        monkeypatch.setattr(
+            editing,
+            "lay_out",
+            lambda raw, **layout: str(wrong) if raw == f"{wrong}.0" else real(raw, **layout),
+        )
+        assert at_once(text, operations)
+        refused, by_engine, by_oracle = refusals(text, operations, reads)
+        assert refused == (
+            UNVERIFIED,
+            "the edited file does not read back as the intended document",
+        )
+        assert tried == [(False, 1)]
+        assert (by_engine, by_oracle) == (wrong + 3, wrong + 2)
+
+    @pytest.mark.parametrize(
+        ("pointer", "sentence"),
+        [
+            (
+                "component.interface[40].definition.id",
+                "component.interface[40].definition is not an object",
+            ),
+            ("component.name.id", "component.name is not an object"),
+            (
+                "component.interface[3]..definition.id",
+                "'component.interface[3]..definition.id' is not a pointer",
+            ),
+        ],
+        ids=["a declaration the file has not got", "a member of a string", "no pointer"],
+    )
+    def test_an_operation_that_names_nothing_is_refused_among_operations_that_do(
+        self, reads, tried, pointer, sentence
+    ):
+        """Never tried at once: made one operation at a time from the start, and refused at it."""
+        operations = [*self.IDS[:17], Operation("set", pointer, '"k99999999999"'), *self.IDS[17:]]
+        assert not at_once(self.TEXT, operations)
+        refused, by_engine, by_oracle = refusals(self.TEXT, operations, reads)
+        assert refused == (INVALID, sentence)
+        assert tried == []
+        assert (by_engine, by_oracle) == (18, 18)
+
+
+def refusals(
+    text: str, operations: Sequence[Operation], read: list[str]
+) -> tuple[tuple[str, str], int, int]:
+    """Asserts that the engine refuses the batch as the oracle refuses it, and hands back the
+    refusal's code and sentence and how many texts each of the two read: the engine's, then the
+    oracle's."""
+    read.clear()
+    refused = answer(edit_text, text, operations)
+    by_engine = len(read)
+    read.clear()
+    assert answer(oracle, text, operations) == refused
+    assert refused[0] != "text"
+    return refused, by_engine, len(read)
+
+
 class TestEditsMadeFromTheBack:
     def test_every_edit_lands_where_the_text_as_read_puts_it(self):
         """Made from the last back, so that one making the text longer or shorter moves none of
@@ -335,8 +740,9 @@ class TestTheSameAnswer:
         ids=lambda path: path.relative_to(EXAMPLES).as_posix(),
     )
     def test_every_example(self, path: Path, reads):
-        """Every value of the file that is not a container set anew, made at once; then random
-        batches of every kind over the same file."""
+        """Every value of the file that is not a container set anew, made at once; every object
+        holding members given one more, made at once; then random batches of every kind over the
+        same file."""
         text = path.read_text(encoding="utf-8-sig")
         rng = random.Random(path.name)
         operations = [
@@ -346,6 +752,14 @@ class TestTheSameAnswer:
         rng.shuffle(operations)
         assert at_once(text, operations)
         assert alike(text, operations, reads) == (2, len(operations) + 1)
+        added = [
+            Operation("set", f"{pointer}.{key}" if pointer else key, rng.choice(LITERALS))
+            for pointer, members in objects_of(json.loads(text))
+            for key in [next(key for key in ("id", "added", "added2") if key not in members)]
+        ]
+        rng.shuffle(added)
+        assert at_once(text, added)
+        assert alike(text, added, reads) == (2, len(added) + 1)
         for _ in range(40):
             alike(text, batch(json.loads(text), rng), reads)
 
@@ -372,12 +786,26 @@ class TestTheSameAnswer:
             )
             assert previewed.hunks == hunks(text, oracle(text, edit.operations))
 
+    def test_a_generated_projects_ids(self, tmp_path: Path, reads):
+        """``ddd id --assign`` over a project of three thousand declarations in thirty components,
+        no output of which states an id: every file's ids made at once."""
+        made = generate(tmp_path / "p", 3_000, "large", missing_ids=1.0)
+        files = sorted((made.project.parent / "components").glob("*.ddd.json"))
+        assert len(files) == 30
+        stamped = 0
+        for path in files:
+            text = path.read_text(encoding="utf-8")
+            operations = ids_for(text)
+            stamped += len(operations)
+            assert alike(text, operations, reads) == (2, len(operations) + 1)
+        assert stamped == made.unnamed > 0
+
     def test_random_documents_and_batches(self, reads, tried):
         """Documents of literals, strings with escapes, nested objects and arrays, laid out on
         one line, one entry per line, or both, with line feeds, carriage returns, both, or a mix;
         batches of sets at places apart and of everything else. Of these three thousand batches,
-        1,025 are made at once; 21 are tried at once and do not read back, and 8 are refused while
-        their edits are computed, each of those then made one operation at a time; and 1,946 are
+        1,028 are made at once; 21 are tried at once and do not read back, and 9 are refused while
+        their edits are computed, each of those then made one operation at a time; and 1,942 are
         made one operation at a time from the start."""
         rng = random.Random(11)
         ways = {"at once": 0, "did not read back": 0, "refused computing": 0, "in turn": 0}
@@ -397,11 +825,117 @@ class TestTheSameAnswer:
                 assert made == by_oracle + tried[0][1]
                 ways["did not read back" if tried[0][1] else "refused computing"] += 1
         assert ways == {
-            "at once": 1025,
+            "at once": 1028,
             "did not read back": 21,
-            "refused computing": 8,
-            "in turn": 1946,
+            "refused computing": 9,
+            "in turn": 1942,
         }
+
+    def test_random_documents_and_batches_of_places_apart(self, reads, tried):
+        """Documents as above, and batches of sets of literals at places none of which nests
+        within another: in place of a value, or a member added to an object - an ``id`` where it
+        states a ``name``, or another key it has not got - at most one to an object. Of these
+        three thousand batches, 1,205 are made at once; 29 are tried at once and do not read back,
+        each then made one operation at a time, and none is refused while its edits are computed;
+        and 1,766 are made one operation at a time from the start - a member added to an object
+        holding none, or beside an object or an array a literal is set in place of, among them."""
+        rng = random.Random(13)
+        ways = {"at once": 0, "did not read back": 0, "refused computing": 0, "in turn": 0}
+        for _ in range(3_000):
+            text = document(rng)
+            operations = apart(json.loads(text), rng)
+            tried.clear()
+            made, by_oracle = alike(text, operations, reads)
+            if not at_once(text, operations):
+                assert tried == []
+                assert made == by_oracle
+                ways["in turn"] += 1
+            elif tried[0][0]:
+                assert made == 2
+                ways["at once"] += 1
+            else:
+                assert made == by_oracle + tried[0][1]
+                ways["did not read back" if tried[0][1] else "refused computing"] += 1
+        assert ways == {
+            "at once": 1205,
+            "did not read back": 29,
+            "refused computing": 0,
+            "in turn": 1766,
+        }
+
+
+class TestTheWorkGrowsWithTheFile:
+    """What an edit reads grows with the file it edits, not with the square of it: counted in
+    the characters it parses, copies and searches (:class:`Work`), at 1,000 declarations and at
+    4,000, and never timed."""
+
+    @pytest.mark.parametrize(
+        "newline",
+        ["\n", "\r\n", "\r"],
+        ids=["line feeds", "carriage return and line feed", "carriage returns"],
+    )
+    @pytest.mark.parametrize(
+        "indent", [2, None, 0], ids=["indented", "on one line", "on lines indented by nothing"]
+    )
+    def test_ddd_id_over_one_file(self, tmp_path, work, indent, newline):
+        """``ddd id --assign`` hands the engine one batch for the file, an id for every
+        declaration. Made one id after another, each verified, the file was read again for every
+        id; and each id's line was measured by copying the rest of the text, and by searching it
+        to its end for a carriage return - and, in a file that nests nothing on a line of its
+        own, the whole document looked through for the indentation unit, which no id is laid out
+        in."""
+
+        def stamped(count: int) -> None:
+            path = tmp_path / f"{count}.ddd.json"
+            text = json.dumps(declarations(count), indent=indent).replace("\n", newline)
+            path.write_bytes(text.encode("utf-8"))
+            assert identity.assign(path) == count
+
+        grows_linearly(work, stamped)
+
+    @pytest.mark.parametrize(
+        ("key", "raw", "written"),
+        [
+            ("unit", '"rpm"', '"rpm"'),
+            ("limits", '{"min":0,"max":255}', '{ "min": 0, "max": 255 }'),
+        ],
+        ids=["a literal", "an object"],
+    )
+    def test_a_member_added_to_a_file_written_on_one_line(self, tmp_path, work, key, raw, written):
+        """Added to the last declaration of the component, as ``ddd gui`` applies it: the member
+        joins its object's line, which reads nothing of the lines around it. The engine looked
+        for the file's indentation unit first, asking every entry of the file whether it sat on
+        a line of its own, and with what indentation - copying the rest of the text for each."""
+
+        def added(count: int) -> None:
+            path = tmp_path / f"{count}.ddd.json"
+            path.write_text(json.dumps(declarations(count)), encoding="utf-8")
+            pointer = f"component.interface[{count - 1}].definition.{key}"
+            operation = Operation("set", pointer, raw)
+            apply_changes([FileChange(path, fingerprint(path.read_bytes()), (operation,))])
+            assert path.read_text(encoding="utf-8").endswith(f', "{key}": {written}}}}}]}}}}')
+
+        grows_linearly(work, added)
+
+    @pytest.mark.parametrize(
+        ("indent", "margin"),
+        [(None, 0), (0, 0), (None, 10)],
+        ids=["on one line", "on lines indented by nothing", "on one line indented far"],
+    )
+    def test_the_indentation_unit_of_a_file_that_nests_nothing_on_a_line_of_its_own(
+        self, work, indent, margin
+    ):
+        """Read off the first entry written on a line of its own, indented deeper than the line
+        its container opens on - which none of these files has, so that every entry is looked
+        at, and each used to copy the rest of the text to find its own indentation. The last is
+        indented by ten spaces a declaration, which every one of its entries sits on: read once
+        for the line, and not again for each."""
+
+        def unit(count: int) -> None:
+            spelled = " " * (margin * count) + json.dumps(declarations(count), indent=indent)
+            assert indent_unit(Document(Counted(spelled, work))) == DEFAULT_INDENT_UNIT
+
+        grows_linearly(work, unit)
 
 
 LITERALS = (
@@ -530,6 +1064,26 @@ def batch(data: Any, rng: random.Random) -> list[Operation]:
         else:
             operations.append(Operation("move", pointer, to=rng.randint(0, 3)))
     return operations
+
+
+def apart(data: Any, rng: random.Random) -> list[Operation]:
+    """A random batch of up to six sets of literals at places none of which nests within another:
+    in place of a value, or - for an object, more often than not - a member it has not got added
+    to it, an ``id`` where it states a ``name``, or one of :data:`KEYS`; at most one to an
+    object, every object being looked at once."""
+    found = list(_pointers(data))
+    chosen: list[str] = []
+    for pointer, value in rng.sample(found, len(found)):
+        target = pointer
+        if isinstance(value, dict) and rng.random() < 0.6:
+            keys = [key for key in KEYS if key not in value]
+            if "name" in value and "id" not in value and rng.random() < 0.5:
+                keys = ["id"]
+            key = rng.choice(keys)
+            target = f"{pointer}.{key}" if pointer else key
+        if not any(_nests(target, other) or _nests(other, target) for other in chosen):
+            chosen.append(target)
+    return [Operation("set", target, rng.choice(LITERALS)) for target in chosen[:6]]
 
 
 def _raw(rng: random.Random) -> str | None:

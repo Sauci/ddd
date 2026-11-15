@@ -25,6 +25,7 @@ from conftest import (
     run_analysis,
     write_tree,
 )
+from ddd import loading
 from ddd.addresses import load_address_map
 from ddd.backends import weigh_addresses
 from ddd.backends.c.literals import c_literal
@@ -620,14 +621,30 @@ class TestInputTheToolMustSurvive:
         directory - is a located finding and the run goes on to the rest of the tree.
         """
         write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
-        reading = Path.read_text
+        reading = Path.read_bytes
 
-        def refusing(self: Path, *args: Any, **kwargs: Any) -> str:
+        def refusing(self: Path) -> bytes:
             if self.name == "a.ddd.json":
                 raise MemoryError
-            return str(reading(self, *args, **kwargs))
+            return reading(self)
 
-        monkeypatch.setattr(Path, "read_text", refusing)
+        monkeypatch.setattr(Path, "read_bytes", refusing)
+        bag = DiagnosticBag()
+        assert load_workspace(tree / "a.ddd.json", bag) is None
+        assert checks(bag) == ["file-not-found"]
+        assert "is too large to read" in messages(bag)
+
+    def test_a_file_whose_text_is_too_large_to_hold_is_a_finding_too(
+        self, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Its bytes held and the text they decode to not: the read is two steps, the bytes
+        and then their text, and either can run out of memory."""
+        write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
+
+        def refusing(*args: Any, **kwargs: Any) -> Any:
+            raise MemoryError
+
+        monkeypatch.setattr(loading, "TextIOWrapper", refusing)
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
         assert checks(bag) == ["file-not-found"]
@@ -1278,11 +1295,11 @@ class TestTheRestOfTheEdges:
         """
         write_tree(tree, {"a.ddd.json": component("A", declare("local", "X"))})
 
-        def refuse(self: Path, *args: object, **kwargs: object) -> str:
+        def refuse(self: Path) -> bytes:
             msg = "Input/output error"
             raise OSError(5, msg)
 
-        monkeypatch.setattr(Path, "read_text", refuse)
+        monkeypatch.setattr(Path, "read_bytes", refuse)
         bag = DiagnosticBag()
         assert load_workspace(tree / "a.ddd.json", bag) is None
         assert "cannot read" in messages(bag)

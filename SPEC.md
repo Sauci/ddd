@@ -2108,14 +2108,17 @@ errors included, which is where it parts from `generate` ([section 5](#5-generat
 and a build archiving a delivery therefore gates on the exit code rather than on the file
 appearing); writing an identity into every
 producing declaration that has none (`ddd id --assign FILE...`, editing the named
-description files textually - the new key is staged in a sibling file and renamed onto the
-description, so a run that dies leaves it as it was), so that a later `ddd compare`
+description files textually, as `ddd gui` writes an edit - the new key goes right after the
+declaration's `name`, and is staged in a sibling file under a name of its own and renamed onto
+the description, which keeps its mode and, for a symbolic link, is the file the link names,
+so a run that dies leaves it as it was), so that a later `ddd compare`
 reports a rename as a rename rather than a removal and an unrelated addition - a
 declaration that already carries one is left untouched, so running it again changes
 nothing, an explicit `"id": null` is filled in place, a file that is not a component
-description is left alone, and a file that cannot be parsed, that nests more deeply than
-a position in it can be located, or that cannot be written back, is reported while the
-others are stamped, the run exiting 1;
+description is left alone, and a file that is not json as `ddd check` reads it - one that
+spells a key twice in an object, or holds `NaN`, among them - that nests more deeply than
+a position in it can be located, or that cannot be written back, a read-only file among
+them, is reported while the others are stamped, the run exiting 1;
 printing the JSON schema of the file
 formats and of the dictionary (`ddd schema`, one kind to stdout or every kind written into
 a directory with `ddd schema all -o`, each file named `ddd_<kind>.schema.json`; `--plugin`
@@ -2134,7 +2137,12 @@ project and the same severities; serving the checks to an editor over the Langua
 Protocol (`ddd lsp`, [section 7.2](#72-editor-integration)); editing a project's description
 files in a browser on the developer's own computer, or, from a container, on its host once a
 fixed port is published there (`ddd gui`, a preview whose options are not yet part of this
-interface); listing the available checks
+interface, which writes nothing under the build tree a project description is generated in,
+its build record beside it ([section 3.6](#36-build-record)): which files belong to such a
+project is `ddd_add_component`'s to say, [section 7.1](#71-build-system-integration); it
+writes no file that is read-only, on any system, and makes an edit in every file or in none
+against a refusal, though not against being killed while it writes); listing
+the available checks
 (`ddd checks`, each with its default severity, the unrelaxable ones marked, the ones that
 need every component of a project marked `(project)` and the ones that grade a delivery
 comparison marked `(comparison)`; in JSON a list rather than an object, one entry per check
@@ -2357,7 +2365,8 @@ allow, a type name spelling a base datatype, or one the project already uses, wh
 another object, an enum, an enumerator, a type or a constant, because a rename that silently
 merges two objects compiles, links, and shares storage nobody intended to share; and quick
 fixes that reconcile one key across the declarations of one object, in either direction,
-including removing a key the others do not have; and, on a `missing-id`, a fix that gives the
+including removing a key the others do not have, none of which is offered where writing it
+would leave a file the loader refuses; and, on a `missing-id`, a fix that gives the
 declaration an identity, writing what `ddd id --assign` would write and offered only where
 that finding is reported.
 

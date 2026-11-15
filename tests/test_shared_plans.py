@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 
@@ -571,6 +571,121 @@ class TestRenaming:
         with pytest.raises(SharedRefusalError) as raised:
             rename_entry(project_shared.CONSTANTS, built, "NOTHING", "SOMETHING", cache)
         assert raised.value.code == "not-found"
+
+
+class Moved(NamedTuple):
+    """One vocabulary's file of two entries, the entry put in above both after the index was
+    built, and what each verb is asked of the second: the key it sets, and the name it takes."""
+
+    vocabulary: Vocabulary
+    file: str
+    entries: list[dict[str, Any]]
+    above: dict[str, Any]
+    name: str
+    key: str
+    raw: str
+    to: str
+
+
+MOVED: dict[str, Moved] = {
+    "constant": Moved(
+        project_shared.CONSTANTS,
+        "c.ddd.json",
+        [{"name": "KEPT", "value": 2}, {"name": "SPARE", "value": 3}],
+        {"name": "NEW", "value": 1},
+        "SPARE",
+        "value",
+        "4",
+        "SPARE_CELLS",
+    ),
+    "section": Moved(
+        SECTIONS,
+        "s.ddd.json",
+        [
+            {"section": ".kept", "access": "read-write", "alignment": 4},
+            {"section": ".unused", "access": "read-only", "alignment": 4},
+        ],
+        {"section": ".new", "access": "read-write", "alignment": 8},
+        ".unused",
+        "alignment",
+        "8",
+        ".spare",
+    ),
+    "raster": Moved(
+        RASTERS,
+        "r.ddd.json",
+        [{"raster": "1ms", "event": 0, "cycle": "1ms"}, {"raster": "10ms", "event": 1}],
+        {"raster": "5ms", "event": 2, "cycle": "5ms"},
+        "10ms",
+        "cycle",
+        '"10ms"',
+        "20ms",
+    ),
+}
+
+VERBS: dict[str, tuple[Callable[[Moved, Index], SharedPlan], str]] = {
+    "set": (
+        lambda moved, built: set_entry(
+            moved.vocabulary, built, moved.name, moved.key, moved.raw, {}
+        ),
+        "'{name}' cannot be changed",
+    ),
+    "rename": (
+        lambda moved, built: rename_entry(moved.vocabulary, built, moved.name, moved.to, {}),
+        "renaming '{name}' cannot be planned",
+    ),
+    "remove": (
+        lambda moved, built: remove_entry(moved.vocabulary, built, moved.name, {}),
+        "'{name}' cannot be removed",
+    ),
+}
+"""Each verb pointing at an entry by the index, and what its refusal says cannot be done."""
+
+
+class TestAnEntryMovedSinceTheIndex:
+    """Each verb asked after an entry was put in above the one it changes, before an analysis
+    reads the file again: the place the index recorded holds the entry that was above, and a key
+    set there, a name written there or the entry taken out there would be that one's."""
+
+    @pytest.mark.parametrize("verb", list(VERBS))
+    @pytest.mark.parametrize("kind", list(MOVED))
+    def test_a_verb_is_refused_as_stale_naming_the_file(
+        self, tmp_path: Path, kind: str, verb: str
+    ) -> None:
+        moved = MOVED[kind]
+        container = moved.vocabulary.containers[0]
+        built = _index(tmp_path, {moved.file: {container: moved.entries}})
+        write_tree(tmp_path, {moved.file: {container: [moved.above, *moved.entries]}})
+        plan, consequence = VERBS[verb]
+        with pytest.raises(SharedRefusalError) as raised:
+            plan(moved, built)
+        assert (raised.value.code, raised.value.message) == (
+            "stale",
+            f"{moved.file} changed since the project was analysed, so "
+            f"{consequence.format(name=moved.name)} until the project is analysed again",
+        )
+
+    def test_a_rename_reaching_a_shape_that_moved_is_refused_too(self, tmp_path: Path) -> None:
+        """The entry where it was, and the component naming it in a shape given a declaration
+        above that one: a rename asks every place it writes, as the editor's rename does."""
+        built = _index(tmp_path, TWO_HOMES)
+        described = TWO_HOMES["a.ddd.json"]["component"]
+        above = declare("output", "Other")
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": {
+                    "component": {**described, "interface": [above, *described["interface"]]}
+                }
+            },
+        )
+        with pytest.raises(SharedRefusalError) as raised:
+            rename_entry(project_shared.CONSTANTS, built, "TREND_SAMPLES", "TREND_SLOTS", {})
+        assert (raised.value.code, raised.value.message) == (
+            "stale",
+            "a.ddd.json changed since the project was analysed, so renaming 'TREND_SAMPLES' "
+            "cannot be planned until the project is analysed again",
+        )
 
 
 class TestDeclaringOne:

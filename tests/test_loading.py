@@ -19,7 +19,9 @@ from conftest import (
 )
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import (
+    FileRead,
     _pattern_anchor,
+    fingerprint,
     load_dictionary,
     load_workspace,
     parse_json_text,
@@ -862,3 +864,99 @@ class TestTheRootsIncludesReplaced:
         workspace = load_workspace(tmp_path / "p.ddd.json", DiagnosticBag())
         assert workspace is not None
         assert [loaded.name for loaded in workspace.components] == ["A"]
+
+
+class TestWhatEachFileIsReadAs:
+    """What the loader keeps of each file it opens, for a caller that asks (``files_read``): the
+    fingerprint of the very bytes it parsed, and what their top level says the file is - what
+    ``ddd gui`` describes the files of a revision by, rather than reading them again once the
+    analysis is over, by when a save may have landed."""
+
+    def test_each_file_opened_is_recorded_whatever_came_of_it(self, tree: Path) -> None:
+        latin = b'{"component": {"name": "\xe9"}}'
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project(
+                    "P", "a.ddd.json", "missing.ddd.json", "broken.ddd.json", "latin.ddd.json"
+                ),
+                "a.ddd.json": component("A"),
+                "broken.ddd.json": "{ not json",
+            },
+        )
+        (tree / "latin.ddd.json").write_bytes(latin)
+        files_read: dict[Path, FileRead] = {}
+        assert load_workspace(tree / "p.ddd.json", DiagnosticBag(), files_read=files_read)
+
+        def read(name: str) -> bytes:
+            return (tree / name).read_bytes()
+
+        assert files_read == {
+            resolve_path(tree / "p.ddd.json"): FileRead(
+                fingerprint(read("p.ddd.json")), "project", "P"
+            ),
+            resolve_path(tree / "a.ddd.json"): FileRead(
+                fingerprint(read("a.ddd.json")), "component", "A"
+            ),
+            resolve_path(tree / "missing.ddd.json"): FileRead(fingerprint(b""), None, None),
+            resolve_path(tree / "broken.ddd.json"): FileRead(
+                fingerprint(b"{ not json"), None, None
+            ),
+            resolve_path(tree / "latin.ddd.json"): FileRead(fingerprint(latin), None, None),
+        }
+
+    def test_the_root_is_recorded_where_no_workspace_comes_back(self, tree: Path) -> None:
+        write_tree(tree, {"t.ddd.json": {"types": []}})
+        files_read: dict[Path, FileRead] = {}
+        assert load_workspace(tree / "t.ddd.json", DiagnosticBag(), files_read=files_read) is None
+        root = resolve_path(tree / "t.ddd.json")
+        assert files_read == {root: FileRead(fingerprint(root.read_bytes()), "types", None)}
+
+    @pytest.mark.parametrize(
+        ("document", "kind", "name"),
+        [
+            ({"component": {"name": "A"}}, "component", "A"),
+            ({"types": [], "component": {"name": "A"}}, "component", "A"),
+            ({"component": {"name": 7}}, "component", None),
+            ({"component": 7}, "component", None),
+            ({"other": {"name": "A"}}, None, None),
+            ([{"component": {"name": "A"}}], None, None),
+            (None, None, None),
+        ],
+        ids=[
+            "a kind and its name",
+            "the first kind the loader offers, not the first the file spells",
+            "a name that is no string",
+            "a block that is no object",
+            "no kind at all",
+            "no object at all",
+            "nothing parsed",
+        ],
+    )
+    def test_what_a_document_says_it_is(self, document: Any, kind: str | None, name: str | None):
+        assert FileRead.of(b"{}", document) == FileRead(fingerprint(b"{}"), kind, name)
+
+    @pytest.mark.parametrize(
+        ("data", "line"),
+        [(b'{\r"component": \r}', 3), (b"\xef\xbb", 1)],
+        ids=["lines each ended by a carriage return alone", "the start of a byte order mark"],
+    )
+    def test_the_text_parsed_is_what_reading_the_file_as_text_gives(
+        self, tree: Path, data: bytes, line: int
+    ) -> None:
+        """Read as bytes, to be fingerprinted, and decoded as reading the file as text decodes
+        it: a carriage return alone ends a line, and the start of a byte order mark with nothing
+        after it is no text at all rather than text that is not utf-8 - so every finding of the
+        read stands where it stood."""
+        path = tree / "a.ddd.json"
+        path.write_bytes(data)
+        bag = DiagnosticBag()
+        assert load_workspace(path, bag) is None
+        (found,) = bag.sorted
+        assert found.location is not None
+        assert (found.check, found.message, found.location.line, found.location.column) == (
+            "json-syntax",
+            "Expecting value",
+            line,
+            1,
+        )

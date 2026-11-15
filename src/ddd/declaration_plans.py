@@ -17,16 +17,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import TypeAdapter, ValidationError
-
 from ddd.analysis import PRODUCER_KEYS
 from ddd.editing import Operation
 from ddd.identity import new_id
-from ddd.lsp.navigation import Index, rename_problem
+from ddd.lsp.edits import type_conversions
+from ddd.lsp.navigation import Index, changed_since, rename_problem
 from ddd.lsp.ranges import Document, read
 from ddd.lsp.units import PlannedEdit
 from ddd.models.component import Scope
-from ddd.models.objects import AnyDataObject, definition_keys
+from ddd.models.objects import definition_keys, definition_problem
+from ddd.pointers import parent_pointer
 from ddd.variable_keys import KEY_ORDER, KeyOffer, offer_for
 from ddd.variables import component_of
 
@@ -81,7 +81,12 @@ class Declarable:
 
 
 def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[Declarable, ...]:
-    """Every name the project declares that ``file`` does not, sorted by name."""
+    """Every name the project declares that ``file`` does not and a scope may take there, sorted
+    by name.
+
+    A name some component declares ``local`` is left out: :func:`scopes_for` answers it no scope,
+    and the name field is not offered a name the form has no scope to write it with.
+    """
     here = file.resolve()
     return tuple(
         Declarable(
@@ -94,21 +99,43 @@ def declarable(built: Index, file: Path, cache: dict[Path, Document]) -> tuple[D
             ),
         )
         for name, sites in sorted(built.declarations.items())
-        if all(site.path != here for site in sites)
+        if all(site.path != here for site in sites) and scopes_for(built, name)
     )
 
 
 def scopes_for(built: Index, name: str) -> tuple[str, ...]:
     """Which of :data:`SCOPES` this name may be declared with, in that order.
 
-    ``input`` always. ``output`` only while nothing produces the name, so the menu cannot make
-    a ``multiple-producers`` - and when something is missing a producer, this is the repair.
-    ``local`` only for a name nothing declares at all, because ``local-conflict`` is exactly a
-    local beside another declaration.
+    ``input`` while no component keeps the name ``local``. ``output`` only while nothing
+    produces the name, so the menu cannot make a ``multiple-producers`` - and when something is
+    missing a producer, this is the repair. ``local`` only for a name nothing declares at all,
+    because ``local-conflict`` is exactly a local beside another declaration.
+
+    No scope at all where a component declares the name ``local``: it owns the object
+    exclusively, so a declaration of it anywhere else is a ``local-conflict`` whatever its scope -
+    an ``input`` no less than a second producer, and one more where the project holds one already.
+    The index lists a local among the producers of a name, which the editor jumps by and the grid
+    reads values from (:attr:`ddd.lsp.navigation.Index.producers`), so this is not read off them:
+    it is asked of the scope each declaration states.
     """
     if name not in built.declarations:
         return SCOPES
+    if _kept_by(built, name) is not None:
+        return ()
     return ("input",) if built.producers.get(name) else ("output", "input")
+
+
+def _kept_by(built: Index, name: str) -> str | None:
+    """The name of the component that declares ``name`` ``local``, as the analysis loaded it, or
+    ``None`` where none does.
+
+    The first, in the order the project lists its components: the one ``local-conflict`` names
+    when it files each declaration of the name beside it.
+    """
+    for site in built.declarations.get(name, ()):
+        if built.scopes[site] == Scope.LOCAL.value:
+            return built.components[site.path]
+    return None
 
 
 def form_for(built: Index, kind: str) -> tuple[KeyOffer, ...]:
@@ -141,15 +168,17 @@ class DeclarationPlan:
 class DeclarationRefusalError(Exception):
     """A change of an interface that cannot be planned, and the code both clients refuse with."""
 
-    code: Literal["invalid", "not-found"]
+    code: Literal["invalid", "not-found", "stale"]
     """``invalid``: the change cannot be made - a name that may not be used, a key the kind has
     not, a required key left out, a scope this name may not take, a value the models themselves
-    refuse. ``not-found``: the file declares no interface, or no declaration of that name."""
+    refuse. ``not-found``: the file declares no interface, or no declaration of that name.
+    ``stale``: the declaration read from holds another object where the index found it, its file
+    having changed since the analysis read it."""
 
     message: str
     """The sentence the refusal is shown with."""
 
-    def __init__(self, code: Literal["invalid", "not-found"], message: str) -> None:
+    def __init__(self, code: Literal["invalid", "not-found", "stale"], message: str) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -166,10 +195,24 @@ def read_object(
     declaration there is: there is no owner's definition to copy, and the alternative is
     refusing the very repair the reader came for.
 
+    A name a component declares ``local`` is refused in every scope, saying whose it is rather than
+    only that the scope asked is none it may take: the declaration would be a ``local-conflict``,
+    which is why :func:`scopes_for` answers it no scope and :func:`declarable` leaves it out.
+
     That repair is what a :data:`PRODUCING_SCOPES` scope means here - ``scopes_for`` offers
     ``output`` exactly while nothing produces the name - so the declaration written is stamped,
     as :func:`declare_object` stamps one. Without it the verb would trade a ``missing-producer``
     for a ``missing-id``, which is not a repair.
+
+    The definition carried is read where the index recorded it, and refused ``stale`` where that
+    place holds another object's, or no object at all - a declaration put in above it, or taken
+    out, since the analysis read the file - rather than carried under this name, or answered as a
+    name the project does not declare, which the index the reader took it from still names: the
+    question :func:`ddd.variables.declarations_of` asks before it reads a declaration. The
+    producer's entry states what the declaration is compiled under as well - its ``condition``,
+    which is no part of the definition - and the reader carries it, the analysis comparing the two
+    (``condition-mismatch``). The write goes to ``file`` alone, so no fingerprint the edit
+    carries is of the file read from.
     """
     here, entries = _interface(file, cache)
     sites = built.declarations.get(name)
@@ -177,26 +220,26 @@ def read_object(
         raise DeclarationRefusalError("not-found", f"the project declares no '{name}'")
     if any(site.path == here for site in sites):
         raise DeclarationRefusalError("invalid", f"this component already declares '{name}'")
+    if (keeper := _kept_by(built, name)) is not None:
+        raise DeclarationRefusalError(
+            "invalid",
+            f"'{name}' is local to component '{keeper}', so no other component may declare it",
+        )
     if scope not in scopes_for(built, name):
         raise DeclarationRefusalError("invalid", f"'{name}' may not be declared '{scope}' here")
     owner = (built.producers.get(name) or sites)[0]
     stated = read(owner.path, cache).value_at(owner.pointer)
-    if not isinstance(stated, dict):
-        raise DeclarationRefusalError("not-found", f"the project declares no '{name}'")
+    if not isinstance(stated, dict) or stated.get("name") != name:
+        raise DeclarationRefusalError(
+            "stale", changed_since((owner.path,), f"'{name}' cannot be declared here")
+        )
     definition = {key: value for key, value in stated.items() if key not in CARRIED_BY_A_READER}
     if scope in PRODUCING_SCOPES:
         definition = _stamped(name, definition)
-    return _appended(here, entries, scope, definition)
-
-
-_DEFINITION: Final[TypeAdapter[AnyDataObject]] = TypeAdapter(AnyDataObject)
-"""Built once: compiling a discriminated union's schema is not free, and :func:`declare_object`
-asks it once per call.
-
-The same union :class:`~ddd.models.component.Declaration` validates a file's own ``definition``
-against - asked here, before a definition is planned, rather than only once the file it was
-written into is read back.
-"""
+    condition = read(owner.path, cache).value_at(f"{parent_pointer(owner.pointer)}.condition")
+    return _appended(
+        here, entries, scope, definition, condition if isinstance(condition, str) else None
+    )
 
 
 def declare_object(
@@ -214,10 +257,13 @@ def declare_object(
     here. A declaration whose scope is one of :data:`PRODUCING_SCOPES` is stamped with a fresh
     id, after its ``name``, where every stamped declaration of the examples carries one.
 
-    Stamped, the definition is asked of :data:`_DEFINITION` - a rule crossing two keys, a
-    ``datatype`` wanting a ``conversion`` among them, is not something a key-by-key check above
-    can see, and is refused in the model's own sentence rather than left for the file it is
-    written into to refuse back.
+    Stamped, the definition is asked of the models (:func:`~ddd.models.definition_problem`) - a
+    rule crossing two keys, a ``datatype`` wanting a ``conversion`` among them, is not something
+    a key-by-key check above can see, and is refused in the model's own sentence rather than
+    left for the file it is written into to refuse back. The same question asks the rules of the
+    analysis that need no more of the project than the declaration and the type it names - limits
+    that run past the largest float, a shape past the caps, a string type named with none or with
+    two dimensions - and refuses them in the analysis's own sentence.
     """
     here, entries = _interface(file, cache)
     name, kind = definition.get("name"), definition.get("kind")
@@ -240,10 +286,9 @@ def declare_object(
     stated = dict(definition)
     if scope in PRODUCING_SCOPES:
         stated = _stamped(name, stated)
-    try:
-        _DEFINITION.validate_python(stated)
-    except ValidationError as error:
-        raise DeclarationRefusalError("invalid", _model_problem(error)) from error
+    problem = definition_problem(stated, type_conversions(built, cache))
+    if problem is not None:
+        raise DeclarationRefusalError("invalid", problem)
     return _appended(here, entries, scope, stated)
 
 
@@ -289,21 +334,6 @@ def _statable(kind: str) -> frozenset[str]:
     return frozenset({"name", "kind", "description"}) | (accepted & frozenset(KEY_ORDER))
 
 
-def _model_problem(error: ValidationError) -> str:
-    """One sentence naming the first way the models refuse a definition the checks above did not.
-
-    A rule crossing two keys - :func:`~ddd.models.objects.check_conversion_stated` and its
-    neighbours - already raises one english sentence, which is what a page can act on; pydantic
-    wraps it as ``"Value error, <that sentence>"``, so it is unwrapped here rather than shown
-    wrapped. A key's value of the wrong shape - nothing above checks that ``datatype`` names a
-    real one, or that ``volatile`` is a boolean - has no such sentence to unwrap, and is shown
-    as pydantic states it.
-    """
-    first = error.errors(include_url=False)[0]
-    cause = first.get("ctx", {}).get("error")
-    return str(cause) if isinstance(cause, Exception) else first["msg"]
-
-
 def _interface(file: Path, cache: dict[Path, Document]) -> tuple[Path, list[object]]:
     """The file resolved, and the declarations it holds."""
     here = file.resolve()
@@ -314,9 +344,19 @@ def _interface(file: Path, cache: dict[Path, Document]) -> tuple[Path, list[obje
 
 
 def _appended(
-    here: Path, entries: list[object], scope: str, definition: Mapping[str, object]
+    here: Path,
+    entries: list[object],
+    scope: str,
+    definition: Mapping[str, object],
+    condition: str | None = None,
 ) -> DeclarationPlan:
-    """The plan that appends one declaration: an ``insert`` at the end of the interface."""
-    raw = json.dumps({"scope": scope, "definition": definition})
+    """The plan that appends one declaration: an ``insert`` at the end of the interface, its
+    ``condition`` - where it has one - between its scope and its definition, as the model orders
+    them."""
+    entry: dict[str, object] = {"scope": scope}
+    if condition is not None:
+        entry["condition"] = condition
+    entry["definition"] = definition
+    raw = json.dumps(entry)
     operation = Operation("insert", f"{INTERFACE}[{len(entries)}]", raw)
     return DeclarationPlan((PlannedEdit(here, (operation,)),))

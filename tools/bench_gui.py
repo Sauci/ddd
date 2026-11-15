@@ -43,9 +43,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
-from ddd.editing import fingerprint
 from ddd.gui.api import Api, Reply
 from ddd.gui.session import Revision, Session
+from ddd.loading import fingerprint
 from ddd.lsp.navigation import Index
 from ddd.variables import Declared, declarations_of
 

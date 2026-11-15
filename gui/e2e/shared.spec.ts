@@ -453,7 +453,7 @@ test("a constant nothing names is removed, row and panel, where one in use says 
 const STALE =
   "A file changed on disk, so nothing was written. The page now shows the files as they are.";
 
-test("a save made from a constant's panel that is out of date is refused, and nothing is written", async ({
+test("a save made from a constant's panel that is out of date is refused, nothing is written, and it is saved once the page has caught up", async ({
   page,
   vocabularyGui,
 }) => {
@@ -472,9 +472,35 @@ test("a save made from a constant's panel that is out of date is refused, and no
   if (changed === before) throw new Error(`TREND_SAMPLES describes no sample slots in ${path}`);
   writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
   await save.click();
-  await expect(value.getByRole("status")).toHaveText(STALE);
+  const refused = value.getByRole("status");
+  await expect(refused).toHaveText(STALE);
   // Nothing was written: the file is as the change from outside left it.
   expect(readFileSync(path, "utf8")).toBe(changed);
+
+  // The watcher never notices the change, and nothing needs it to: refusing the save as stale, the
+  // server asks for the analysis itself (`Session._refused`), which reads the file as it is. The
+  // panel shows that analysis landed - the description written from outside - and the sentence is
+  // still there: it is held until the reader's next choice, not until a revision.
+  const description = panel
+    .getByRole("region", { name: "Description" })
+    .getByRole("textbox", { name: "Description" });
+  await expect(description).toHaveValue(
+    "sample cells of a pressure trend buffer, a device wide size no single component owns",
+  );
+  await expect(refused).toHaveText(STALE);
+
+  // Save, offered under the sentence for the file as it now is, pressed again is that choice: the
+  // sentence goes, and the value is written beside the outside change.
+  await save.click();
+  await expect
+    .poll(() => entryOf(vocabularyGui.directory, "constants", "TREND_SAMPLES"))
+    .toEqual({
+      name: "TREND_SAMPLES",
+      value: 32,
+      description:
+        "sample cells of a pressure trend buffer, a device wide size no single component owns",
+    });
+  await expect(refused).toHaveCount(0);
 });
 
 test("a constant whose file does not load keeps its panel, naming the file, until the file loads again", async ({

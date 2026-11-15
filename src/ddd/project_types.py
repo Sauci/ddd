@@ -230,10 +230,14 @@ def _within_entry(finding: Diagnostic, site: Site) -> bool:
 def kind_of(built: Index, name: str, cache: dict[Path, Document]) -> str:
     """What kind of type this is, as its own entry says it: ``scalar``, ``external`` or ``struct``.
 
-    ``""`` for a name the index does not hold, and for an entry whose file has drifted since the
-    analysis read it. Public because changing a type reads it too - which keys a kind lets the
-    interface set is :data:`ddd.type_plans.SETTABLE`'s answer, and a second module spelling out
-    where a kind is written would be a second place to keep in step.
+    ``""`` for a name the index does not hold, and where the place the index recorded holds no
+    ``type`` now. Read at that place whatever stands there: once an entry above is put in or taken
+    out since the analysis read the file, the place holds another type, whose kind this answers -
+    so whoever must know the entry is still this one asks :func:`type_in_place` first, as the
+    type's panel does and :func:`ddd.type_plans.set_key` does. Public because changing a type
+    reads it too - which keys a kind lets the interface set is :data:`ddd.type_plans.SETTABLE`'s
+    answer, and a second module spelling out where a kind is written would be a second place to
+    keep in step.
     """
     return _string(built, name, "type", cache) if name in built.types else ""
 

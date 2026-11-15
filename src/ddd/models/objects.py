@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Container, Iterable
+import math
+from collections.abc import Callable, Container, Iterable, Mapping
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, cast, get_args
 
@@ -12,6 +13,8 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    TypeAdapter,
+    ValidationError,
     model_validator,
 )
 
@@ -30,7 +33,14 @@ from ddd.models.common import (
     hash_excluding_mappings,
     within_64_bits,
 )
-from ddd.models.conversion import Conversion, EnumConversion, StringConversion, conversion_range
+from ddd.models.conversion import (
+    Conversion,
+    EnumConversion,
+    StringConversion,
+    conversion_range,
+    derived_range_is_finite,
+    infinite_limits_message,
+)
 
 type InitScalar = (
     Annotated[int, Field(strict=True, ge=-(2**63), le=2**64 - 1)]
@@ -97,6 +107,60 @@ target's memory long before it exhausted this bound.
 
 type WrittenShape = tuple[int | str, ...]
 """An array shape as it is written: each dimension a number or the name of a constant."""
+
+type TypeConversions = Callable[[str], Conversion | None]
+"""What a project says of the types a declaration may name: the conversion the scalar type of
+that name fixes, or ``None`` for a name that is no scalar type the project declares.
+
+A definition does not hold it - the type is somebody else's entry - so whatever asks a question
+of a definition that names one (:func:`definition_problem`) is handed this, by whoever has the
+project in front of it."""
+
+MAX_ELEMENTS: Final = 10_000_000
+"""How many elements one array holds.
+
+The dictionary, the a2l and the generated code carry every element, so a shape is not a
+number DDD can hold at arm's length: the c backend broadcasts a scalar ``init`` into one
+literal per element, and every element of an array of structures is spread out into leaves of
+its own. An array of a billion is a run that writes no file and reports no finding for as
+long as anybody cares to wait, so the shape is refused where it is written instead. The limit
+sits well past any array a description means to state, and already past what a build would
+enjoy - ten million literals is a generated file no compiler is happy with - because a shape
+larger than this is a constant that resolved to the wrong number rather than storage anybody
+planned.
+"""
+
+MAX_DIMENSIONS: Final = 64
+"""How many dimensions one shape states.
+
+Nothing about the storage: sixty-four dimensions of one element each are one element, so
+:data:`MAX_ELEMENTS` never sees them. What the number bounds is the descent - the walks that
+expand a shape take one call per dimension, so a scalar ``init`` over a few hundred of them
+ended ``ddd generate c`` in python's ``RecursionError``, a traceback where the conventions
+ask for a finding. The same limit the analysis puts on a chain of structures, for the same
+reason, and as far past any array a description means to state: the a2l already says out loud
+that it carries three.
+"""
+
+
+def dimensions_problem(name: str, shape: WrittenShape) -> str | None:
+    """Why a shape states more dimensions than DDD carries, or ``None`` where it does not.
+
+    Said of the shape as it is written - a name counts as one dimension, whatever it comes to -
+    so that it is the definition's to say, before anything is known of the project.
+    """
+    if len(shape) <= MAX_DIMENSIONS:
+        return None
+    return f"'{name}' has {len(shape)} dimensions; DDD carries at most {MAX_DIMENSIONS}"
+
+
+def elements_problem(name: str, elements: int) -> str | None:
+    """Why an array of that many elements is more than DDD carries, or ``None`` where it is
+    not: one spelling for a shape the definition spells in numbers and one the analysis has
+    resolved."""
+    if elements <= MAX_ELEMENTS:
+        return None
+    return f"'{name}' has {elements} elements; DDD carries at most {MAX_ELEMENTS}"
 
 
 class ObjectKind(StrEnum):
@@ -951,8 +1015,10 @@ def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:
     between models cannot be left behind in a copy of the answer.
 
     The caller is an editor offering to change one key of one definition. Both halves are what
-    stops it offering an edit that produces a file the loader then refuses - removing a key the
-    kind requires, or writing one the kind does not have.
+    stops it offering an edit that removes a key the kind requires, or writes one the kind does
+    not have: the keys one at a time, which is the cheap half of what keeps it from offering an
+    edit that produces a file the loader then refuses. The other half is the rules between keys,
+    which no list of keys can express and :func:`definition_problem` asks the models.
     """
     variant = _VARIANTS.get(kind)
     if variant is None:
@@ -965,6 +1031,116 @@ def definition_keys(kind: str) -> tuple[frozenset[str], frozenset[str]]:
         frozenset(fields),
         frozenset(name for name, field in fields.items() if field.is_required()),
     )
+
+
+_DEFINITION: Final[TypeAdapter[AnyDataObject]] = TypeAdapter(AnyDataObject)
+"""The union :class:`~ddd.models.component.Declaration` validates a ``definition`` against, built
+once: compiling a discriminated union's schema is not free, and every plan asks it."""
+
+
+def definition_problem(
+    definition: Mapping[str, object], types: TypeConversions | None = None
+) -> str | None:
+    """The first thing the project would refuse of a definition written like this, in one
+    sentence, or ``None`` where it takes it: the model of its ``kind`` first, and then the rules
+    of the analysis that ask nothing of the project beyond the declaration and its type.
+
+    The question an edit has to ask of the definition *as it would leave it*, before it is
+    offered or made: a key written against another - an enumeration beside a float, a string
+    beside a unit - is a ``schema`` error, which no severity setting turns down and which stops
+    the project being analysed at all. So is what the analysis files as ``schema`` from the
+    definition alone: a datatype and conversion whose derived limits run past the largest float,
+    and a shape of numbers past the caps (:func:`dimensions_problem`, :func:`elements_problem`)
+    - which the models take, because they derive no limit and count no element. And so is what
+    the type a declaration names asks of it, when that type is a string: exactly one dimension,
+    no display format (:func:`string_type_problem`) - which no definition holds, the type being
+    another entry. ``types`` is how it is told (:data:`TypeConversions`); a caller that does not
+    have the project in front of it passes none, and nothing is asked of a type. And ``ddd gui``
+    counts a file with one of them as a file that did not load, and settles nothing further
+    until it is mended. What these do not hold, because they need more of the project than the
+    declaration and the type it names - a ``typename`` naming a type nobody declares, an axis
+    that is not there, a shape naming a constant, the leaves of a structure - is no answer of
+    theirs, and stays a finding the analysis reports.
+
+    A rule crossing keys raises one english sentence, which pydantic wraps as ``"Value error,
+    <that sentence>"``: unwrapped here, rather than shown wrapped, since it is what a person can
+    act on. A key of the wrong shape has no such sentence to unwrap, and is said as pydantic
+    says it - the first of what ``ddd check`` files, in the order it files them. A rule of the
+    analysis is said in the sentence ``ddd check`` files it in. The caller's mapping is read and
+    not changed.
+    """
+    try:
+        accepted = _DEFINITION.validate_python(definition)
+    except ValidationError as error:
+        first = error.errors(include_url=False)[0]
+        cause = first.get("ctx", {}).get("error")
+        return str(cause) if isinstance(cause, Exception) else first["msg"]
+    return _refused_by_the_analysis(accepted, types)
+
+
+def string_type_problem(
+    definition: DataObject, named: str, conversion: Conversion | None
+) -> str | None:
+    """Why a declaration naming the string type ``named`` is refused, or ``None``.
+
+    A string is a one dimensional array of bytes, which a ``parameter``, an axis, a curve and a
+    map are not, and it has no display format - what the contract answers of a definition that
+    states the conversion itself (:func:`check_string_shape`, :func:`refuse_string_misuse`),
+    answered here of one that names a scalar type carrying it, which is only known once the type
+    is. ``conversion`` is the type's: anything but a string is no business of this rule, and
+    nothing is said of it. The unit and the limits the type fixes are the type's own and are
+    refused where it is written, so none is asked here.
+
+    The analysis files the sentence as ``schema`` at the declaration, and whatever writes a
+    definition says it first, in the same words.
+    """
+    if not isinstance(conversion, StringConversion):
+        return None
+    try:
+        check_string_shape(definition.kind, definition.declared_shape)
+        refuse_string_misuse(
+            None, conversion, unit="", limits=None, display_format=definition.a2l.format
+        )
+    except ValueError as error:
+        return f"'{definition.name}' is declared as '{named}', which is a string: {error}"
+    return None
+
+
+def _refused_by_the_analysis(definition: DataObject, types: TypeConversions | None) -> str | None:
+    """The first ``schema`` the analysis files of a definition the models took, from the
+    definition and the type it names, or ``None``.
+
+    In the order the analysis files them: the limits of a declaration that states its own
+    datatype and conversion, or what the type a declaration names asks of it when that type is
+    a string - either resolves the declaration, and one that is refused is dropped and its shape
+    never weighed - and then the dimensions its shape states and, where it states every one as a
+    number, the elements they come to.
+
+    What the analysis weighs with more of the project beside it is left out, because neither the
+    definition nor its type holds it: a shape naming a constant, the leaves of a structure, the
+    elements a map's two axes come to. ``ddd check`` reports those, and nothing that writes a
+    definition can say them first.
+    """
+    datatype, conversion = definition.datatype, definition.conversion
+    if (
+        datatype is not None
+        and conversion is not None
+        and not derived_range_is_finite(conversion, datatype.raw_min, datatype.raw_max)
+    ):
+        return infinite_limits_message(datatype)
+    named = definition.declared_type
+    if named is not None and types is not None:
+        problem = string_type_problem(definition, named, types(named))
+        if problem is not None:
+            return problem
+    shape = definition.declared_shape
+    if shape is None:
+        return None
+    problem = dimensions_problem(definition.name, shape)
+    numbers = [dimension for dimension in shape if isinstance(dimension, int)]
+    if problem is None and len(numbers) == len(shape):
+        problem = elements_problem(definition.name, math.prod(numbers))
+    return problem
 
 
 def discriminator_tags(*unions: Any) -> frozenset[str]:

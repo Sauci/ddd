@@ -3,7 +3,6 @@ import { useState } from "react";
 import { ApiError, getUndo, postUndo } from "../api/client";
 import type { State } from "../api/types";
 import { UndoStripView } from "../components/UndoStripView";
-import { type Refused, shownRefusal } from "../lib/refusals";
 import { askedAgainAfterUndo, undoButton } from "../lib/undo";
 
 interface Props {
@@ -26,16 +25,17 @@ function refusalOf(error: Error): string {
  *
  * The preview is asked for only once the strip is open, and keyed by the entry and the
  * revision, so that a file changing on disk - or another window undoing first - is noticed
- * without a request of its own. A refusal of the mutation is held to the revision it happened
- * at, as the panels hold theirs: sending the same entry again before the analysis has caught up
- * would be refused a second time. An undo answered, every query `askedAgainAfterUndo` names is
- * asked for again at once: the files are back before the revision says so.
+ * without a request of its own. A refusal of the mutation, whatever its code, is held until the
+ * reader closes the strip, as the panels hold theirs until the reader's next choice, and a
+ * revision landing - the one a stale refusal asks for, which comes within milliseconds - never
+ * takes it away (`Refused`, lib/refusals.ts). An undo answered, every query `askedAgainAfterUndo`
+ * names is asked for again at once: the files are back before the revision says so.
  */
 export function UndoStrip({ state, stopped }: Props) {
   const queries = useQueryClient();
   const [open, setOpen] = useState(false);
   const [changesShown, setChangesShown] = useState(false);
-  const [refused, setRefused] = useState<Refused | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
   const undoable = state?.undoable ?? null;
   const revision = state?.revision;
   const preview = useQuery({
@@ -53,7 +53,7 @@ export function UndoStrip({ state, stopped }: Props) {
       setOpen(false);
       setChangesShown(false);
     },
-    onError: (error) => setRefused({ text: refusalOf(error), revision }),
+    onError: (error) => setRefused(refusalOf(error)),
     // An undo is answered once its files are back, its analysis following: whatever on screen
     // draws what it put back asks again now, rather than when the revision moves.
     onSettled: () =>
@@ -67,10 +67,8 @@ export function UndoStrip({ state, stopped }: Props) {
       open={open}
       onOpen={(next) => {
         setOpen(next);
-        // A refusal that is not stale changes no file, so no new revision ever arrives to age
-        // it out of `shownRefusal` on its own; the button that would let the reader try again is
-        // the one the refusal hides. Closing the strip is the only gesture left, so it is what
-        // clears the refusal too.
+        // A refusal is the whole of the strip, hiding the button that would let the reader try
+        // again: closing the strip is the one gesture left, so it is what clears the refusal.
         if (!next) {
           setChangesShown(false);
           setRefused(null);
@@ -83,9 +81,7 @@ export function UndoStrip({ state, stopped }: Props) {
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onUndo={() => undo.mutate()}
-      refusal={
-        shownRefusal(refused, revision) ?? (preview.isError ? refusalOf(preview.error) : null)
-      }
+      refusal={refused ?? (preview.isError ? refusalOf(preview.error) : null)}
       busy={stopped || undo.isPending}
     />
   );

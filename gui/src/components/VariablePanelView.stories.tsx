@@ -19,7 +19,9 @@ import {
   ONE_FILE,
   PREVIEW_CONVERSION,
   PREVIEW_LIMITS,
+  PREVIEW_UNLOADABLE,
   SHAPED,
+  TEXT_READER,
   VOCABULARY,
 } from "../stories/fixtures";
 import type { Offer } from "./UnitPanelView";
@@ -262,6 +264,29 @@ export const ConversionChosen = () => (
 
 export const RangeTyped = () => (
   <View variable={SHAPED} units={FREE_UNITS} preview={PREVIEW_LIMITS} selected="limits" />
+);
+
+/** The producer's datatype chosen for a reader of text: the plan names the file it would write,
+ * and says in the server's words that it would not load - above Apply, which stays. */
+export const ValueThatLeavesAFileUnableToLoad = () => (
+  <View
+    variable={TEXT_READER}
+    units={FREE_UNITS}
+    preview={PREVIEW_UNLOADABLE}
+    selected="datatype"
+  />
+);
+
+/** The same plan once applying it was refused: the panel says why, and draws neither the plan nor
+ * what it said of the files - they describe a change that was not written. */
+export const StaleAfterAValueThatLeavesAFileUnableToLoad = () => (
+  <View
+    variable={TEXT_READER}
+    units={FREE_UNITS}
+    preview={PREVIEW_UNLOADABLE}
+    selected="datatype"
+    refusal="A file changed on disk, so nothing was written. The panel now shows the files as they are."
+  />
 );
 
 export const NameChosen = () => (

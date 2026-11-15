@@ -5,10 +5,11 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
@@ -23,13 +24,14 @@ from ddd.backends import (
     GeneratedFile,
     render,
 )
-from ddd.build_info import BUILD_INFO_FILENAME
+from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo, build_info_text
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
 from ddd.gui.session import Revision, Session, Snapshot
 from ddd.ir import DataDictionary
 from ddd.loading import load_workspace
 from ddd.lsp.navigation import Index, index
 from ddd.lsp.protocol import read_message, write_message
+from ddd.models.common import OBJECT_ID_ALPHABET, OBJECT_ID_LENGTH
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 DEMO = EXAMPLES / "demo" / "demo.ddd.json"
@@ -68,6 +70,47 @@ def declare(
     if condition is not None:
         entry["condition"] = condition
     return entry
+
+
+MODE_T: Final = {
+    "kind": "enum",
+    "name": "Mode_t",
+    "enumerators": [{"name": "MODE_OFF", "value": 0}, {"name": "MODE_ON", "value": 1}],
+}
+"""An enumeration, which storage that is not an integer cannot hold exactly: a float32 that is
+given it stops loading."""
+
+TEXT: Final = {"kind": "string"}
+"""Bytes read as text: stated on a byte datatype and one dimension, and with no unit and no limits -
+anything else a declaration is given beside it stops loading."""
+
+
+FLOAT_BESIDE_ENUM: Final = {
+    "w.ddd.json": component("W", declare("output", "V", "float32")),
+    "r.ddd.json": component("R", declare("input", "V", "uint8", conversion=MODE_T)),
+}
+"""A writer storing a float and a reader whose enumeration needs an integer to hold it: of the
+fixes the two of them are offered, one writes the float under the enumeration, another the
+enumeration into the float writer, and the rest leave both files loading."""
+
+UNIT_BESIDE_TEXT: Final = {
+    "w.ddd.json": component("W", declare("output", "V", "uint8", unit="rpm", dimensions=[8])),
+    "r.ddd.json": component("R", declare("input", "V", "uint8", conversion=TEXT, dimensions=[8])),
+}
+"""A writer stating a unit and a reader that reads text, which has none to state: the unit written
+into the reader, and the text into the writer, stop a file loading."""
+
+DOUBLE_BESIDE_SCALED: Final = {
+    "w.ddd.json": component("W", declare("output", "V", "float64")),
+    "r.ddd.json": component(
+        "R", declare("input", "V", "uint16", conversion={"kind": "linear", "factor": 2})
+    ),
+}
+"""A writer storing a double and a reader that doubles a 16 bit integer: each loads, and the
+double under the reader's factor - or the factor over the double - has limits past the largest
+float there is. The models take either file; the analysis refuses it (``schema``, which no
+severity turns down), and only a rule it applies to the definition alone tells the fix that
+writes it from one that loads."""
 
 
 # One family for the other half of a description - the types a declaration names. Five test
@@ -117,6 +160,43 @@ def types(*entries: dict[str, Any]) -> dict[str, Any]:
     return {"types": list(entries)}
 
 
+TEXT_TYPE: Final = scalar_type("Text_t", "uint8", conversion=TEXT)
+"""A type that says its bytes are text. What a declaration naming it has to state - exactly one
+dimension, and no display format - is the analysis's to say, with the type beside the declaration:
+no definition holds it."""
+
+STRING_TYPE_BESIDE_SCALAR: Final = {
+    "t.ddd.json": types(TEXT_TYPE),
+    "w.ddd.json": component("W", declare("output", "V", "uint8")),
+    "r.ddd.json": component("R", declare("input", "V", typename="Text_t", dimensions=[8])),
+}
+"""A writer storing one byte and a reader naming a string type, with the one dimension it states.
+Each loads. Taking that dimension out of the reader, which the writer does not state, leaves a
+string of none: the models take it, for the type is nobody's but the project's, and the analysis
+files ``schema`` once the file is written."""
+
+STRING_TYPE_BESIDE_GRID: Final = {
+    "t.ddd.json": types(TEXT_TYPE),
+    "w.ddd.json": component("W", declare("output", "V", "uint8", dimensions=[2, 4])),
+    "r.ddd.json": component("R", declare("input", "V", typename="Text_t", dimensions=[8])),
+}
+"""The same reader beside a writer that states two dimensions: giving the reader the writer's
+dimensions leaves a string of two, which an array of strings is not allowed to be."""
+
+LOCAL_BESIDE_OUTPUT: Final = {
+    "w.ddd.json": component(
+        "W",
+        declare("local", "Loc", id="aaaaaaaaaaaa"),
+        declare("output", "Out", id="bbbbbbbbbbbb"),
+    ),
+    "x.ddd.json": component("X", declare("input", "Out")),
+    "r.ddd.json": component("R", declare("local", "Mine", id="cccccccccccc")),
+}
+"""A writer that keeps ``Loc`` to itself and writes ``Out``, which a second component reads, and a
+reader that keeps one object of its own: the project reports nothing, and ``Out`` is all ``R`` may
+read of it. ``Loc`` declared in ``R``, in any scope, is a ``local-conflict``."""
+
+
 def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
     """Write a mapping of relative path -> json document (or raw string).
 
@@ -132,6 +212,16 @@ def write_tree(base: Path, files: Mapping[str, Any]) -> Path:
         written = content if isinstance(content, str) else json.dumps(content, indent=2)
         path.write_text(written, encoding="utf-8", newline="")
     return base
+
+
+def without_ids(text: str) -> str:
+    """A description with every id it states, twelve characters, spelled as one placeholder.
+
+    What two writers made of one file differs in nothing but the ids they minted, when each put
+    its id in the same place: the text of the one is the text of the other once those are
+    taken out.
+    """
+    return re.sub(rf'"id": "[{OBJECT_ID_ALPHABET}]{{{OBJECT_ID_LENGTH}}}"', '"id": "<id>"', text)
 
 
 def built_of(tmp_path: Path, **files: Any) -> tuple[Index, Path]:
@@ -293,6 +383,103 @@ def build_record(base: Path, project_file: Path, image: str = "firmware.elf", **
     payload = {"format": 1, "project": project_file.as_posix(), "image": image, **extra}
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+def collected_project(
+    root: Path,
+    *descriptions: Path,
+    image: str = "fw",
+    name: str = "Fw",
+    plugins: Sequence[Path] = (),
+    build: str = "b",
+    source: Path | None = None,
+    cache: bool = True,
+) -> Path:
+    """The project description ``ddd_generate`` collects out of ``image``'s link closure when no
+    ``PROJECT`` is given, and the build record beside it, both where a build tree configured in
+    ``root / build`` leaves them: ``<build>/ddd/<image>/``, the default output directory, ``build``
+    being ``.`` for an in-source build. Written as the module writes them - the description in the
+    layout ``file(GENERATE)`` renders, naming each of ``descriptions`` by its absolute path as
+    ``ddd_add_component`` registered it, and each of ``plugins`` as ``PLUGINS`` names one, and the
+    record as ``ddd build-info`` writes it: both files byte for byte what CMake 4.4.3 and Ninja
+    wrote, configuring two components registered on what ``fw`` links and
+    ``ddd_generate(fw NAME Fw)``, which is ``b/ddd/fw/Fw.ddd.json``, the default here.
+
+    Unless ``cache`` is false, the tree's ``CMakeCache.txt`` too, reduced to the two entries
+    naming its trees, spelled as CMake spells them: ``CMAKE_CACHEFILE_DIR``, the build tree, and
+    ``CMAKE_HOME_DIRECTORY``, the source tree it was configured from - ``source``, ``root`` by
+    default. Returns the project description."""
+    tree = root / build
+    directory = tree / "ddd" / image
+    directory.mkdir(parents=True, exist_ok=True)
+    if cache:
+        configured = root if source is None else source
+        (tree / "CMakeCache.txt").write_text(
+            "# This is the CMakeCache file.\n"
+            f"CMAKE_CACHEFILE_DIR:INTERNAL={tree.as_posix()}\n"
+            f"CMAKE_HOME_DIRECTORY:INTERNAL={configured.as_posix()}\n",
+            encoding="utf-8",
+            newline="",
+        )
+    described = directory / f"{name}.ddd.json"
+    listed = ""
+    if descriptions:
+        joined = '",\n      "'.join(path.as_posix() for path in descriptions)
+        listed = f'\n      "{joined}"\n    '
+    named = ""
+    if plugins:
+        joined = '", "'.join(path.as_posix() for path in plugins)
+        named = f'"{joined}"'
+    described.write_text(
+        "{\n"
+        '  "project": {\n'
+        f'    "name": "{name}",\n'
+        f'    "description": "Collected from the link closure of {image} by ddd_generate()",\n'
+        f'    "plugins": [{named}],\n'
+        f'    "includes": [{listed}]\n'
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+        newline="",
+    )
+    record = BuildInfo(project=described.as_posix(), image=image)
+    (directory / BUILD_INFO_FILENAME).write_text(
+        build_info_text(record), encoding="utf-8", newline=""
+    )
+    return described
+
+
+def membership(root: Path, tree: str = "b", build: str = "the build of fw") -> str:
+    """What a change writing under the build tree of :func:`collected_project`'s project is
+    refused with, ``tree`` being where nothing is written, relative to ``root``: which files
+    belong to the project is the build's, and decided by ``ddd_add_component``."""
+    under = (root / tree).resolve().as_posix()
+    return (
+        f"Fw.ddd.json is generated by {build} at every configure, so which files belong to it is "
+        f"ddd_add_component's to say, and nothing under {under} is written from here"
+    )
+
+
+def lying_under(root: Path, name: str, tree: str = "b") -> str:
+    """The refusal of a change of the file ``name`` alone, lying under the build tree of
+    :func:`collected_project`'s project: the file named, and the tree."""
+    under = (root / tree).resolve().as_posix()
+    return (
+        f"{name} lies under {under}, where Fw.ddd.json is generated by the build of fw at every "
+        "configure: which files belong to it is ddd_add_component's to say, and nothing there is "
+        "written from here"
+    )
+
+
+def offered_beside(root: Path, name: str, beside: str, tree: str = "b") -> str:
+    """The refusal of a new file ``name`` in :func:`collected_project`'s project, offering it
+    beside ``beside`` - the posix path of a description the build collects from the source tree -
+    with the line registering it there, its placeholder for the reader to fill."""
+    return (
+        f"{membership(root, tree)}; create {name} beside {beside} instead, and add "
+        f"ddd_add_component(<target> JSON {name}) to the CMakeLists.txt there, replacing <target> "
+        "with your component's target"
+    )
 
 
 # The session of `ddd gui`, for the suites that open a project in one: the api's, the server's

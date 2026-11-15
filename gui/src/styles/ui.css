@@ -211,7 +211,8 @@ tr.changing td {
 .heading > .updating-status::before {
   content: "\200b";
 }
-.panel-refusal {
+.panel-refusal,
+.panel-unloadable {
   margin: var(--space-2) 0 0;
   color: var(--warning);
   font-size: var(--text-small);

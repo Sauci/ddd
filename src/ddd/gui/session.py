@@ -20,11 +20,22 @@ preview.
 
 The analysis is the language server's, run the way ``ddd lsp`` runs it: under the severities of
 every build record naming the project, or under the defaults when none does.
+
+A project a build generates is the exception to the description files being the project.
+``ddd_generate`` without ``PROJECT`` writes the description into its output directory, beside the
+build record naming it, out of what ``ddd_add_component`` registers on what the image links, and
+writes it again at every configure: which files belong to it is the build's. A revision of one
+says so, and which tree the build owns (:attr:`Revision.generated`), and nothing under that tree
+is written - the description, a file created beside it, any file the tree holds - each such
+change refused :data:`GENERATED`, in a sentence saying where membership is decided
+(:func:`generated_refusal`). The components it collects from the source tree are edited as in any
+other project.
 """
 
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 import threading
 from collections.abc import Iterable, Mapping, Sequence
@@ -33,7 +44,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Final
 
-from ddd.build_info import BuildInfo
+from ddd.build_info import BUILD_INFO_FILENAME, BuildInfo
 from ddd.deliveries import Resolved
 from ddd.diagnostics import CheckInfo, Diagnostic, Severity
 from ddd.editing import (
@@ -44,19 +55,27 @@ from ddd.editing import (
     Written,
     apply_changes,
     edited,
-    fingerprint,
     restore,
 )
 from ddd.file_names import uncreatable
 from ddd.ir import DataDictionary
-from ddd.loading import included_files, parse_json_text, resolve_path
+from ddd.loading import (
+    FILE_KINDS,
+    FileRead,
+    fingerprint,
+    included_files,
+    parse_json_text,
+    resolve_path,
+    top_level_kind,
+)
 from ddd.lsp.diagnostics import Run, group_findings, run_build, run_project
 from ddd.lsp.discovery import BUILD_DIRECTORY_PATTERNS, discover
 from ddd.lsp.navigation import LOAD_CHECKS, Index
 from ddd.lsp.ranges import Document
 
-KINDS: Final = ("project", "component", "types", "units", "sections", "constants", "rasters")
-"""The top-level keys that say what a description file is, as the loader reads them."""
+KINDS: Final = FILE_KINDS
+"""The top-level keys that say what a description file is, as the loader reads them: the
+loader's own, which :func:`kind_of` tells a file's kind by."""
 
 SEARCH_DEPTH: Final = 4
 """How many directories below the start the search for project descriptions goes."""
@@ -70,6 +89,38 @@ it stamped so, and the next poll asks again."""
 MAX_UNDO: Final = 50
 """How many edits the stack keeps, the oldest falling off: a session that runs all day does not
 grow without bound, and fifty is far past what a reader walks back by hand."""
+
+GENERATED: Final = "generated"
+"""The refusal of a change writing under the build tree a build generates the open project in
+(:func:`generated_refusal`): its description, a file created beside it, or any other file the
+tree holds, every one the build's. Answered 409, and refused again for as long as the build record
+beside the description names it."""
+
+_CMAKE_CACHE: Final = "CMakeCache.txt"
+"""The file CMake writes at the top of every build tree it configures: what says where a build
+tree begins (:func:`_build_tree`)."""
+
+_CMAKE_LISTS: Final = "CMakeLists.txt"
+"""The file a CMake source directory is configured from: the one a ``ddd_add_component`` call
+registering a new description goes into (:func:`_instead`)."""
+
+_HOME_DIRECTORY: Final = "CMAKE_HOME_DIRECTORY:INTERNAL="
+"""The entry of a CMake cache naming the source tree it was configured from, as CMake spells it:
+the one entry :func:`_source_tree` reads."""
+
+
+@dataclass(frozen=True, slots=True)
+class Generated:
+    """How a build generates the open project, as the build record beside its description says
+    (:func:`_generated`)."""
+
+    image: str
+    """The image the record names, empty where it names none."""
+
+    tree: Path
+    """Resolved: the build tree the description is generated in, every file under which is the
+    build's (:func:`_build_tree`) - the description's own directory, where no CMake build tree is
+    known to hold it apart from the source tree."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +152,11 @@ class SourceFile:
     name: str | None
     loaded: bool
     fingerprint: str
+    """Of the bytes the analysis read (:class:`~ddd.loading.FileRead`), never of the disk once it
+    is over: what every plan made from the revision carries, so that an Apply after the file
+    changed - while the analysis ran, too - is refused as stale. A file no run's read parsed, a
+    plugin, is fingerprinted as it stands once the analysis is over."""
+
     errors: int
     warnings: int
     infos: int
@@ -177,6 +233,14 @@ class Revision:
     again, a system call for each directory of the path, each of which waits out any busy
     thread's turn of the interpreter. Empty for a revision made any other way - a test's - whose
     paths are resolved when they are first asked about (:func:`ddd.gui.derived.derived`)."""
+
+    generated: Generated | None = None
+    """How a build generates the project, where a build record beside its description names it
+    (:func:`_generated`): ``ddd_generate`` collecting it out of an image's link closure, and
+    nothing under the build tree it is generated in written (:func:`generated_refusal`). Read
+    whether or not this version could apply that record's severities, which are another question.
+    ``None`` for a project somebody wrote, its record, where a build has one, lying in a build
+    tree it is not in."""
 
     @property
     def dictionary(self) -> DataDictionary | None:
@@ -479,12 +543,27 @@ class Session:
         vocabulary writes: one beside the project description, in an edit whose change of that
         description includes it. Any other is refused before a file is touched.
 
+        Nothing is written under the build tree a description a build generates is in
+        (:attr:`Revision.generated`): an edit changing that description, creating a file beside
+        it or changing any other file of the tree is refused :data:`GENERATED`, before a file is
+        touched (:func:`generated_refusal`). A file this process may not write - one kept
+        read-only, on any system - is refused ``unwritable`` as well, before any file of the
+        edit is written or staged (:func:`ddd.editing.apply_changes`).
+
         ``label`` is what the page calls this edit - "the unit of ValueA" - and is what an undo
         of it offers to put back.
         """
+        try:
+            return self._edited(changes, label)
+        except EditError as refused:
+            self._refused(refused)
+            raise
+
+    def _edited(self, changes: Sequence[FileChange], label: str) -> tuple[int, tuple[Written, ...]]:
         with self._lock:
             revision = self._required()
             _creatable(changes)
+            _refuse_generated(revision, changes)
             confined = [_confined(revision, pending, changes) for pending in changes]
             written = apply_changes(confined)
             self._edits += 1
@@ -509,6 +588,13 @@ class Session:
         changed since, or one that could not be written - leaves the stack as it is, so the
         reader may put that file back and ask again.
         """
+        try:
+            return self._undone(at)
+        except EditError as refused:
+            self._refused(refused)
+            raise
+
+    def _undone(self, at: int) -> int:
         with self._lock:
             self._required()
             top = self._stack[-1] if self._stack else None
@@ -579,7 +665,10 @@ class Session:
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
-        files = tuple(_described(path, grouped.get(path, ())) for path in sorted(covered))
+        read = _files_read(runs)
+        files = tuple(
+            _described(path, grouped.get(path, ()), read.get(path)) for path in sorted(covered)
+        )
         findings = _filed(grouped)
         return Revision(
             # Numbered when it is published (`_finished`): an analysis thrown away takes none.
@@ -597,6 +686,7 @@ class Session:
             index=next((run.index for run in runs if run.index is not None), None),
             served=served,
             resolved_paths=_resolved_paths(files, findings),
+            generated=_generated(project),
         )
 
     def _request(self) -> None:
@@ -605,6 +695,25 @@ class Session:
         self._asked = self._project
         self._version += 1
         self._changed.notify_all()
+
+    def _refused(self, refused: EditError) -> None:
+        """Ask for an analysis, and make it, when a write was refused ``stale``, then let the
+        refusal stand. A file changed in a way the poll cannot see - the same size and modification
+        time - keeps every plan carrying the fingerprint of the bytes read before, which would be
+        refused for good; the analysis reads what is on disk and its revision fingerprints that.
+        Called without the lock.
+
+        The refusal is the answer whatever the analysis does: one that raises - the change may
+        have left the project unanalysable - is printed as the analyser prints its own, and its
+        files stay stamped unknown (:meth:`_finished`), so that the next poll asks again.
+        """
+        if refused.code == STALE:
+            with self._lock:
+                self._request()
+            try:
+                self._analyse_here()
+            except Exception as error:
+                print(f"ddd gui: analysing the project failed: {error}", file=sys.stderr)
 
     def _analyse_here(self) -> None:
         """Make the analyses asked for on this thread, where no analyser was started."""
@@ -696,15 +805,16 @@ class Session:
         nothing is published and every file it stamped is stamped unknown, so that the next poll
         asks again.
 
-        Before, never after: stamped after the analysis, a save landing while it ran was already
-        in the stamps, so no poll ever saw it and the page kept the findings of bytes no longer
-        on disk. A file with no stamp from before - a sub-project's file or a plugin, when the
-        project was just opened, or a file the analysis found newly included - is stamped
-        :data:`UNKNOWN`, and the revision is published asking for the next analysis: one
-        analysis more, which catches a save made to that file while this one ran. Asked here
-        rather than left to the next poll, which asked for it up to ``poll_interval`` later, so
-        that the session says it is analysing until that analysis lands, rather than that it is
-        done and then, a poll later, that it is analysing again.
+        Before, never after: stamped after the analysis, a save landing while it ran was already in
+        the stamps, so no poll ever saw it and the page kept the findings of bytes no longer on
+        disk. The revision's fingerprints are of what its analysis read for the same reason
+        (:func:`_described`), never of the disk once it is over. A file with no stamp from before -
+        a sub-project's file or a plugin, when the project was just opened, or a file the analysis
+        found newly included - is stamped :data:`UNKNOWN`, and the revision is published asking for
+        the next analysis: one analysis more, which catches a save made to that file while this one
+        ran. Asked here rather than left to the next poll, which asked for it up to
+        ``poll_interval`` later, so that the session says it is analysing until that analysis
+        lands, rather than that it is done and then, a poll later, that it is analysing again.
 
         A revision published lets go of the files every edit it includes wrote: none of them is
         waiting for an analysis any more. Whatever it leaves, the version moves, since what the
@@ -862,6 +972,113 @@ def _creatable(changes: Sequence[FileChange]) -> None:
                 raise EditError(INVALID, f"{pending.path} cannot be created: {refused}")
 
 
+def generated_refusal(
+    revision: Revision, written: Iterable[Path], created: Iterable[Path] = ()
+) -> str | None:
+    """Why a change writing the files ``written`` - each resolved, ``created`` the ones of them it
+    creates - cannot be made, where ``revision``'s project is one a build generates
+    (:attr:`Revision.generated`) and one of them lies under the build tree it is generated in;
+    ``None`` otherwise, which is every change of a project somebody wrote.
+
+    Every file under that tree is the build's. The description is written again at every
+    configure out of what ``ddd_add_component`` registers, so an entry added or taken out here
+    does not outlive that configure, and no other change of it does either; a file created beside
+    it is in no ``ddd_add_component`` call, so the project no longer includes it after that
+    configure, and it is deleted with the build tree, as is every other file the tree holds - one
+    a custom command generates there, the build writing it again. The sentence says so, naming the
+    tree, and the description where the change writes it or creates a file - membership being what
+    both are about - and otherwise the first file it writes under the tree, which the reader asked
+    to change. Where it creates one, it offers the file in the source tree instead
+    (:func:`_instead`).
+    """
+    generated = revision.generated
+    if generated is None:
+        return None
+    there: list[Path] = []
+    for path in written:
+        if path.is_relative_to(generated.tree):
+            there.append(path)
+    if not there:
+        return None
+    # Two statements rather than a conditional expression, which coverage.py counts no branch in:
+    # a record written without --image names no image.
+    build = "the build"
+    if generated.image:
+        build = f"the build of {generated.image}"
+    name = revision.project.name
+    tree = generated.tree.as_posix()
+    membership = "which files belong to it is ddd_add_component's to say"
+    said = (
+        f"{name} is generated by {build} at every configure, so {membership}, and nothing under "
+        f"{tree} is written from here"
+    )
+    new = next(iter(created), None)
+    if new is not None:
+        return f"{said}{_instead(revision, generated.tree, new.name)}"
+    if revision.project in there:
+        return said
+    return (
+        f"{min(there).name} lies under {tree}, where {name} is generated by {build} at every "
+        f"configure: {membership}, and nothing there is written from here"
+    )
+
+
+def _instead(revision: Revision, tree: Path, filename: str) -> str:
+    """Where a new file ``filename`` goes rather than beside a description a build generates under
+    ``tree``: beside the first description of ``revision`` the build collects from the source
+    tree, and into a ``ddd_add_component`` call of the CMakeLists.txt beside it, by its name,
+    which the call reads against the directory it is made in. Passed over, so that no sentence
+    sends the reader where the file would not stay or the line could not go:
+
+    * a plugin, which is no description: ``ddd_generate`` names it with ``PLUGINS``;
+    * a description under ``tree`` - one a custom command writes there, or a dependency fetched
+      into it - which would go with the tree;
+    * one outside every directory the session serves, an installed package or a checkout beside
+      this one, which is not where the reader works;
+    * one with no CMakeLists.txt beside it, where "the CMakeLists.txt there" would name nothing.
+
+    A project collecting no such description is pointed at the source tree alone. ``<target>``
+    stays for the reader to replace with their component's target, which no file DDD reads
+    names."""
+    line = f"ddd_add_component(<target> JSON {filename})"
+    target = "replacing <target> with your component's target"
+    for file in revision.files:
+        if file.kind == "plugin":
+            continue
+        path = resolve_path(file.path)
+        if path.is_relative_to(tree):
+            continue
+        if not any(path.is_relative_to(directory) for directory in revision.served):
+            continue
+        if not os.path.isfile(path.parent / _CMAKE_LISTS):  # noqa: PTH113
+            continue
+        return (
+            f"; create {filename} beside {path.as_posix()} instead, and add {line} to the "
+            f"CMakeLists.txt there, {target}"
+        )
+    return (
+        f"; create {filename} in the source tree instead, and add {line} to the CMakeLists.txt "
+        f"beside it, {target}"
+    )
+
+
+def _refuse_generated(revision: Revision, changes: Sequence[FileChange]) -> None:
+    """Refuse an edit writing under the build tree a build generates the open project in
+    (:func:`generated_refusal`), each change's file resolved as the loader resolves one.
+
+    Before any change of it is confined: :func:`_confined` refuses a file created beside the
+    description that the same edit does not include, saying it is created only by an edit
+    including it there - which, under the build tree of a description the build writes, is a
+    change refused too."""
+    refused = generated_refusal(
+        revision,
+        (resolve_path(change.path) for change in changes),
+        (resolve_path(change.path) for change in changes if change.fingerprint is None),
+    )
+    if refused is not None:
+        raise EditError(GENERATED, refused)
+
+
 def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileChange]) -> FileChange:
     """One change of an edit, its file resolved and allowed: a description file of the open
     project, or a file the edit may create, which takes the access of the project description.
@@ -908,41 +1125,76 @@ def _included(project: Path, change: FileChange) -> frozenset[Path]:
     )
 
 
-def _described(path: Path, findings: Iterable[Diagnostic]) -> SourceFile:
+def _files_read(runs: Sequence[Run]) -> dict[Path, FileRead]:
+    """What each file the runs read was read as, by the first run reading it.
+
+    Every run of one project reads the same files, and reads the same bytes of each unless a save
+    lands between two of them. The revision's index is the first run's (:attr:`Revision.index`) -
+    or a later run's, where the first read no further than the root - so the first run's
+    fingerprint of a file is never of bytes newer than the ones the index was built from: a plan
+    made from the index, changing a file a save has reached since, is refused as stale rather than
+    applied to bytes the index does not describe."""
+    read: dict[Path, FileRead] = {}
+    for run in runs:
+        for path, file in run.files_read.items():
+            read.setdefault(path, file)
+    return read
+
+
+def _described(path: Path, findings: Iterable[Diagnostic], read: FileRead | None) -> SourceFile:
+    """One file of a revision, as its analysis read it (``read``) and never as the disk holds it
+    once the analysis is over: a save landing in between holds other bytes than the ones the
+    findings and the index are of. A file no run's read parsed has no such record and is read as
+    it stands (:func:`_as_it_stands`)."""
     listed = list(findings)
-    try:
-        data = path.read_bytes()
-    except (OSError, ValueError):
-        # Read as empty, a path the system refuses even to look at - a NUL byte - as much as one
-        # that cannot be read: the loader has said why already, and the revision carries it.
-        data = b""
-    parsed = None if path.suffix == ".py" else _parsed(data)
-    kind = kind_of(path, parsed)
+    if read is None:
+        read = _as_it_stands(path)
     return SourceFile(
         path=path,
-        kind=kind,
-        name=_name_in(parsed, kind),
+        kind=_kind_shown(path, read.kind),
+        name=read.name,
         loaded=not any(f.check in LOAD_CHECKS and f.severity is Severity.ERROR for f in listed),
-        fingerprint=fingerprint(data),
+        fingerprint=read.fingerprint,
         errors=sum(1 for f in listed if f.severity is Severity.ERROR),
         warnings=sum(1 for f in listed if f.severity is Severity.WARNING),
         infos=sum(1 for f in listed if f.severity is Severity.INFO),
     )
 
 
+def _as_it_stands(path: Path) -> FileRead:
+    """A file no run's read parsed, as it stands: a plugin, which the loader imports and never
+    parses, so its bytes alone; or a file only a finding names."""
+    try:
+        data = path.read_bytes()
+    except (OSError, ValueError):
+        # Read as empty, a path the system refuses even to look at - a NUL byte - as much as one
+        # that cannot be read: the run has said why already, and the revision carries it.
+        data = b""
+    if path.suffix == ".py":
+        return FileRead.of(data, None)
+    return FileRead.of(data, _parsed(data))
+
+
 def kind_of(path: Path, parsed: Any) -> str:
     """What a file is, as ``State.files`` tells the page: ``plugin`` for a file whose name ends
     ``.py``, whatever it holds; otherwise the first of :data:`KINDS` at the top level of
-    ``parsed`` - the file read by the loader's own rule, ``None`` where it does not parse - and
-    ``unknown`` where none is.
+    ``parsed`` (:func:`~ddd.loading.top_level_kind`) - the file read by the loader's own rule,
+    ``None`` where it does not parse - and ``unknown`` where none is.
 
     Public for ``GET /api/files-plan``, which asks it of a file a reader would add to the
-    project, so that the Files tab refuses a file by the very rule its rows are shown by."""
+    project, so that the Files tab refuses a file by the very rule its rows are shown by: a
+    revision's files are shown by the kind their analysis read (:func:`_described`), told by the
+    same rule."""
+    return _kind_shown(path, top_level_kind(parsed))
+
+
+def _kind_shown(path: Path, stated: str | None) -> str:
+    """What :func:`kind_of` shows a file as, its top level stating ``stated``."""
     if path.suffix == ".py":
         return "plugin"
-    if isinstance(parsed, dict):
-        return next((key for key in KINDS if key in parsed), "unknown")
-    return "unknown"
+    if stated is None:
+        return "unknown"
+    return stated
 
 
 def _descriptions(root: Path) -> list[Path]:
@@ -1007,6 +1259,75 @@ def _named_by(project: Path) -> set[Path]:
         for entry in listed:
             named.update(included_files(project, entry))
     return named
+
+
+def _generated(project: Path) -> Generated | None:
+    """How a build generates the project description ``project``, where the build record beside
+    it names it; ``None`` otherwise.
+
+    What ``ddd_generate`` leaves where it collects a project out of an image's link closure: the
+    description and the record of that build, written into one directory, its output directory.
+    A project somebody wrote has no such record beside it: given with ``PROJECT``, its record lies
+    in the build tree and names it from there. Looked for beside the description whatever build
+    directories the session was given, which are where it finds the builds whose severities
+    apply: a build tree under any other name is the build's all the same.
+
+    Read for what it names alone - the project, and the image for the sentence - by the loader's
+    reading of json, and not as :func:`ddd.lsp.discovery.load_builds` reads a record. That reader
+    asks whether this version can apply the record's severities, and declines one written by a
+    newer DDD, in a format past its own, or naming a check it has not got; the description beside
+    such a record is written again at every configure all the same. A record that does not read
+    as json, or names no project by a path, names nothing here."""
+    record = _read_json(project.parent / BUILD_INFO_FILENAME)
+    if not isinstance(record, dict):
+        return None
+    named = record.get("project")
+    if not isinstance(named, str):
+        return None
+    if resolve_path(Path(named)) != project:
+        return None
+    image = record.get("image")
+    if not isinstance(image, str):
+        image = ""
+    return Generated(image, _build_tree(project.parent))
+
+
+def _build_tree(directory: Path) -> Path:
+    """The build tree a build record in ``directory`` belongs to, every file under which the build
+    writes: the nearest directory at or above ``directory`` holding a ``CMakeCache.txt``, unless
+    the source tree that cache was configured from lies at or under it - an in-source build, or a
+    source tree inside its build tree - where refusing the tree would refuse every component, and
+    ``directory`` alone is the build's. So it is where no cache is found, the record written by
+    another build system or into an output directory outside the build tree, and where the cache
+    does not say which source tree it was configured from (:func:`_source_tree`).
+
+    Asked with :func:`os.path.isfile`, which answers false for a path it cannot look at, where
+    ``Path.is_file`` raises for some on python 3.12."""
+    for candidate in (directory, *directory.parents):
+        cache = candidate / _CMAKE_CACHE
+        if not os.path.isfile(cache):  # noqa: PTH113
+            continue
+        source = _source_tree(cache)
+        if source is None:
+            return directory
+        if source.is_relative_to(candidate):
+            return directory
+        return candidate
+    return directory
+
+
+def _source_tree(cache: Path) -> Path | None:
+    """The source tree the CMake cache ``cache`` was configured from - its
+    ``CMAKE_HOME_DIRECTORY``, resolved - or ``None`` where the cache cannot be read or does not
+    say."""
+    try:
+        text = cache.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith(_HOME_DIRECTORY):
+            return resolve_path(Path(line.removeprefix(_HOME_DIRECTORY)))
+    return None
 
 
 def _name_in(data: Any, kind: str) -> str | None:

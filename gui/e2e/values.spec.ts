@@ -2269,7 +2269,10 @@ test("the project screen's own panel offers no description, and still says what 
   page,
   gui,
 }) => {
+  // Signed in, and drawn, before the address is left: the page keeps its token for the next
+  // address this tab opens only once the sign-in has been answered.
   await page.goto(gui.address);
+  await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();
   await page.goto(`${new URL(page.url()).origin}/project?variable=ParameterA`);
   const panel = page.getByRole("complementary", { name: "ParameterA" });
   await expect(panel).toBeVisible();

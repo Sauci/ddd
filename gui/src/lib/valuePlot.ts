@@ -154,7 +154,11 @@ function drawn(reply: ValuesReply, physical: boolean): Plot {
   const xAt = (index: number) => placed(xs[index] as number, first, last, BOX.left, across);
   const yAt = (value: number) => BOX.top + down - placed(value, low, high, 0, down);
   const labels = reply.shape.length === 1 ? rows.map(() => "") : rowHeader(reply, physical);
-  const axis = columnAxis(reply);
+  // The axis placing the values along the bottom (`placing`), or none where they sit at their
+  // indices - an axis stating fewer breakpoints than the shape included, which is not named under
+  // ticks reading the indices: its name and unit there made readings of them, `AxisA (Hz)` under
+  // 0 to 5, where the grid's header above reads its breakpoints.
+  const axis = placing(reply);
   return {
     // A label for every row the shape has (`rowHeader`), and no row drawn past its last.
     lines: rows.map((row, index) => ({
@@ -167,7 +171,7 @@ function drawn(reply: ValuesReply, physical: boolean): Plot {
     // Where the values sit at their indices, the ticks read them, as over an axis stating no
     // breakpoints: a breakpoint read at an index's place said what the place is not - 100, of
     // breakpoints 0, 100 and 5000, drawn halfway between 0 and 5000 (fix round 1, M10).
-    ticks: (placing(reply) === undefined
+    ticks: (axis === undefined
       ? Array.from({ length: wanted(reply)[1] }, (_, index) => String(index))
       : columnHeader(reply, physical)
     ).map((label, index) => ({ x: xAt(index), label })),

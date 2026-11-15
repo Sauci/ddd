@@ -603,7 +603,8 @@ class TestTheCommandPage:
         assert "left undrawn only where there is no grid to begin with" not in text
         assert (
             "or over plain indices where it has no axis, or one stating fewer breakpoints than "
-            "the shape has columns, its ticks then reading the indices too"
+            "the shape has columns, its ticks then reading the indices too, and no axis named "
+            "under them"
         ) in text
         assert (
             "It draws what the file states, as the cells do: a scalar's one value draws none, "

@@ -15,6 +15,7 @@ import {
   limitsOf,
   limitsRaw,
   offerOf,
+  rangeChars,
   rangeDatatype,
   settledLabel,
   settledRaw,
@@ -929,6 +930,12 @@ describe("a limit a double cannot hold", () => {
 
   test("and so do the key's row and its chooser", () => {
     expect(shortValue("limits", STATED)).toBe("0 … 18446744073709551615");
+  });
+
+  test("each field is as wide as its own text, so the twenty digits read whole", () => {
+    // Both fields were 6em wide, whatever they held: Max read 1844674 of its twenty digits.
+    expect(rangeChars(limitsOf(STATED))).toEqual({ min: 1, max: 20 });
+    expect(rangeChars({ min: "-9223372036854775808", max: "" })).toEqual({ min: 20, max: 0 });
   });
 
   test("on either side", () => {

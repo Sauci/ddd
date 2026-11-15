@@ -685,7 +685,7 @@ tr.changing td {
 /* VariableKeysTable / KeyChooser (spec 5.1, 5.2): the key column reads as a name; a row that
    disagrees already keeps the has-error tint above, since both tables share react-aria-Row and
    react-aria-Cell. The chooser stacks its field over the range a `limits` key takes, and the
-   range's two fields sit side by side, each a short width. */
+   range's two fields sit side by side, each as wide as its own text. */
 .react-aria-Cell.key {
   font-family: var(--mono);
 }
@@ -714,8 +714,11 @@ tr.changing td {
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
+/* A field is as wide as its text, which `--chars` counts (`rangeChars`, variableKeys.ts): one `ch`
+   a character - the width of a digit in the page's font - and the 22px of its padding and border,
+   and never narrower than the 6em each field was, so a short bound keeps the look it had. */
 .key-range input {
-  width: 6em;
+  width: max(6em, calc(var(--chars, 0) * 1ch + 22px));
   padding: var(--cell);
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -789,6 +792,13 @@ tr.changing td {
 .values-table input:disabled {
   background: var(--ground);
   color: var(--ink-quiet);
+}
+/* While the offer is held at the window's foot, a cell keeps its height clear below it
+   (`--offer-clear`, `marginBelow` in heldOffer.ts): the table scrolls a cell the keys moved the
+   focus to into view - Ctrl+End to the last cell of a grid taller than the window - and stops with
+   it above the offer, not under it. */
+.values-table [role="gridcell"] {
+  scroll-margin-bottom: var(--offer-clear, 0px);
 }
 /* A cell the file does not state (15:M7): hollow - empty, its border dashed - where it read 0 as
    though the file held that zero. Its name says so to a reader who cannot see it (`cellName`). */

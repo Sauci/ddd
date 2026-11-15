@@ -518,6 +518,36 @@ test("a cell typed into at the window's foot is not left under the offer it make
   await expect.poll(() => clearOf(next, offer)).toBeGreaterThanOrEqual(0);
 });
 
+test("a field a key moves the focus to far below the window is not left under the offer", async ({
+  page,
+  copiedGui,
+}) => {
+  // Ctrl+End and PageDown move the focus to a field below the window, which the table scrolls into
+  // view once the field has taken the focus: Ctrl+End's to the window's foot, where the offer is
+  // held (`marginBelow`).
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const gui = await copiedGui("demo", bigMapA);
+  await openValues(page, gui.address, "MapA");
+  await page.getByRole("button", { name: "Raw" }).click();
+  const first = page.getByRole("textbox", { name: "element 1, 1", exact: true });
+  await typed(first, "5");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 1, 1 of MapA to 5")).toBeVisible();
+
+  await page.keyboard.press("Control+End");
+  const last = page.getByRole("textbox", { name: "element 16, 16", exact: true });
+  await expect(last).toBeFocused();
+  await expect.poll(() => clearOf(last, offer)).toBeGreaterThanOrEqual(0);
+
+  // PageDown from the first row: the grid's last row, in the same column.
+  await first.click();
+  await expect(first).toBeFocused();
+  await page.keyboard.press("PageDown");
+  const down = page.getByRole("textbox", { name: "element 16, 1", exact: true });
+  await expect(down).toBeFocused();
+  await expect.poll(() => clearOf(down, offer)).toBeGreaterThanOrEqual(0);
+});
+
 test("an offer whose changes run past the window's height keeps its sentence and Apply in view", async ({
   page,
   copiedGui,

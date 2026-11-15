@@ -20,3 +20,16 @@ export function scrollFromUnder(field: Placed, offer: Placed): number {
   if (field.bottom <= offer.top || field.top >= offer.bottom) return 0;
   return field.bottom - offer.top + GAP;
 }
+
+/**
+ * How far a cell of the values grid keeps the window's foot off while the offer is held there, as
+ * its `scroll-margin-bottom` spells it: the offer's height and the gap. The table scrolls a cell
+ * the keys moved the focus to into view only after its field has taken the focus - Ctrl+End to the
+ * last cell of a grid taller than the window, which `scrollFromUnder` then found below the window
+ * and left there - and stops this far short of the window's foot, above the offer, where it stopped
+ * at the foot, under it. Nothing else scrolls by it: the offer's own buttons are no cells, and a
+ * scroll the reader makes scrolls nothing into view. None while no offer is drawn.
+ */
+export function marginBelow(offer: Placed | null): string {
+  return offer === null ? "0px" : `${offer.bottom - offer.top + GAP}px`;
+}

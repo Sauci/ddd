@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { scrollFromUnder } from "./heldOffer";
+import { marginBelow, scrollFromUnder } from "./heldOffer";
 
 /** The offer held at the foot of an 800px window, 84px tall. */
 const OFFER = { top: 716, bottom: 800 };
@@ -22,5 +22,17 @@ describe("scrollFromUnder", () => {
   test("a field below the window, where the reader scrolled away from it, is left there", () => {
     expect(scrollFromUnder({ top: 800, bottom: 834 }, OFFER)).toBe(0);
     expect(scrollFromUnder({ top: 1200, bottom: 1234 }, OFFER)).toBe(0);
+  });
+});
+
+describe("marginBelow", () => {
+  test("a cell keeps the offer's height clear below it, and the room to spare", () => {
+    // The table scrolls a cell the keys moved the focus to into view at the window's foot: kept
+    // this far off it, the cell stops above the offer, with the gap `scrollFromUnder` leaves.
+    expect(marginBelow(OFFER)).toBe("92px");
+  });
+
+  test("and none while no offer is drawn", () => {
+    expect(marginBelow(null)).toBe("0px");
   });
 });

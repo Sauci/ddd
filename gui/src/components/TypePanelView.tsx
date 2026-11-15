@@ -50,6 +50,10 @@ export interface TypePanelViewProps {
   /** Whether the findings may be about to change (spec 6): the panel says so where it lists them,
    * also while it lists none - an edit may be about to bring the first. */
   updating?: boolean;
+  /** When the chooser's list opens: as its field takes the focus, as the panel's does once a key
+   * is picked (`focus`, left out), or once it is typed into (`input`), for a story to show what
+   * the open list covers - a range's two fields and the sentence under them. */
+  pickerTrigger?: "input" | "focus" | undefined;
 }
 
 /** What a kind is called on the page: the file says `struct`, a reader reads "structure" - the
@@ -121,8 +125,8 @@ export function TypePanelView(props: TypePanelViewProps) {
           {selectedRow !== undefined && (
             <KeyChooser
               // A fresh instance per key selected, so the field the reader just opened always
-              // takes the focus - hardcoding `focus`/`pickerTrigger` below would otherwise never
-              // change and so never ask again for a row picked after the first.
+              // takes the focus - `focus` below never changes, and would otherwise never ask again
+              // for a row picked after the first.
               key={selectedRow.key}
               offer={selectedRow.offer}
               owner={type.name}
@@ -140,7 +144,7 @@ export function TypePanelView(props: TypePanelViewProps) {
               note={props.note}
               busy={busy}
               focus={1}
-              pickerTrigger="focus"
+              pickerTrigger={props.pickerTrigger ?? "focus"}
             />
           )}
         </>

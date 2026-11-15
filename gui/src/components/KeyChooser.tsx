@@ -1,6 +1,7 @@
+import type { CSSProperties } from "react";
 import type { UnitsReply, VariableKeyOffer } from "../api/types";
 import { pickerSections, rawOf } from "../lib/units";
-import { chooserNote, chooserSections, enteredValue } from "../lib/variableKeys";
+import { chooserNote, chooserSections, enteredValue, rangeChars } from "../lib/variableKeys";
 import { ComboBox } from "../ui/ComboBox";
 import { UnitPicker } from "./UnitPicker";
 
@@ -61,6 +62,7 @@ export function KeyChooser(props: KeyChooserProps) {
     );
   }
   const sections = chooserSections(offer, props.owner, keyName, props.narrow);
+  const chars = rangeChars(props.range);
   return (
     <div className="key-chooser">
       <ComboBox
@@ -89,6 +91,8 @@ export function KeyChooser(props: KeyChooserProps) {
             <input
               type="text"
               inputMode="decimal"
+              // How many characters each field holds (`rangeChars`), for ui.css to widen it by.
+              style={{ "--chars": chars.min } as CSSProperties}
               value={props.range.min}
               disabled={props.busy}
               onChange={(event) => props.onRange({ ...props.range, min: event.target.value })}
@@ -99,6 +103,7 @@ export function KeyChooser(props: KeyChooserProps) {
             <input
               type="text"
               inputMode="decimal"
+              style={{ "--chars": chars.max } as CSSProperties}
               value={props.range.max}
               disabled={props.busy}
               onChange={(event) => props.onRange({ ...props.range, max: event.target.value })}

@@ -279,6 +279,8 @@ describe("plotted", () => {
     const xs = plotted(noInit, true).lines[0]?.points.map((p) => p.x) ?? [];
     expect(xs).toHaveLength(6);
     expect(xs[5]).toBeCloseTo(BOX.left + inside);
+    // Laid against indices, it names no axis below, as over none.
+    expect(plotted(noInit, true).xLabel).toBe("");
   });
 
   test("an axis stating fewer breakpoints than the shape places its columns by their indices", () => {
@@ -309,8 +311,9 @@ describe("plotted", () => {
       plotted(uneven, true).lines[0]?.points.map((point) => point.x),
     );
     expect(ticks[1]?.x).toBeCloseTo(BOX.left + inside / 5);
-    // The axis is still the one named beside them.
-    expect(plotted(uneven, true).xLabel).toBe("AxisA (Hz)");
+    // And no axis is named under them: its name and unit over ticks reading 0 to 5 read as hertz,
+    // where the grid's header above reads the breakpoints.
+    expect(plotted(uneven, true).xLabel).toBe("");
   });
 
   test("an axis stating more breakpoints than the shape places the shape's columns by theirs", () => {

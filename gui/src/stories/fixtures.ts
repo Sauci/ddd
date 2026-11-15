@@ -1612,15 +1612,63 @@ export const SCALAR_TYPE: TypeReply = {
   findings: [],
 };
 
-/** Temperature_t made Mask_t, a uint64 stating WIDE_RANGE: ALimitThePageCannotHold's own fields
- * and sentence, which this panel's chooser shows as the variable panel's does. */
-export const WIDE_TYPE: TypeReply = {
-  ...SCALAR_TYPE,
+/** Mask_t, a uint64 bit mask stating WIDE_RANGE, the whole range a uint64 holds, read as it is
+ * stored and in no unit, and named by one variable: ALimitThePageCannotHold's own fields and
+ * sentence, which this panel's chooser shows as the variable panel's does. */
+export const MASK_TYPE: TypeReply = {
+  revision: 7,
   name: "Mask_t",
-  keys: SCALAR_TYPE.keys.map((key) => {
-    if (key.key === "datatype") return { ...key, values: [inPlay('"uint64"', [], false)] };
-    return key.key === "limits" ? { ...key, values: [inPlay(WIDE_RANGE, [], false)] } : key;
-  }),
+  kind: "scalar",
+  file: TYPES,
+  pointer: "types[6]",
+  description: "A fault mask, one bit for each fault a sensor reports",
+  header: null,
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true)],
+      values: [inPlay('"uint64"', [], false)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false)],
+      values: [],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+    {
+      key: "conversion",
+      carried: [carried(true)],
+      values: [inPlay('{"kind": "identity"}', [], false)],
+      disagrees: false,
+      editor: "none",
+      choices: [],
+    },
+    {
+      key: "limits",
+      carried: [carried(false)],
+      values: [inPlay(WIDE_RANGE, [], false)],
+      disagrees: false,
+      editor: "limits",
+      choices: [],
+    },
+  ],
+  uses: [
+    {
+      path: SENSING,
+      pointer: "component.interface[3].definition.typename",
+      kind: "variable",
+      name: "FaultMask",
+      component: "Sensing",
+      role: "produces",
+    },
+  ],
+  members: [],
+  findings: [],
 };
 
 /** Sensor_t filed as the second of two types sharing its name - Sensing's own inline types list,

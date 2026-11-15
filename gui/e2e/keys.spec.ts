@@ -49,6 +49,15 @@ test("a limit past 2^53 is shown as its file writes it, and no range holding one
   // The file's own digits in the field and in the key's row, not 18446744073709552000, the
   // double they read as - which an edit of Min alone used to send back, a file that would not load.
   await expect(panel.getByLabel("Max")).toHaveValue("18446744073709551615");
+  // And all of them: the field is as wide as its text, where a field of a fixed width showed
+  // 1844674 and hid the rest, with no sign of it.
+  await expect
+    .poll(() =>
+      panel
+        .getByLabel("Max")
+        .evaluate((field: HTMLInputElement) => field.scrollWidth - field.clientWidth),
+    )
+    .toBeLessThanOrEqual(0);
   await expect(panel.getByRole("row", { name: /^limits/ })).toContainText(
     "0 … 18446744073709551615",
   );

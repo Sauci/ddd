@@ -5,12 +5,12 @@ import { textOf, unitLabel } from "../lib/units";
 import { limitsNote, limitsOf, settledRaw } from "../lib/variableKeys";
 import {
   EXTERNAL_TYPE,
+  MASK_TYPE,
   PROJECT_UNITS,
   SCALAR_TYPE,
   SET_UNIT,
   STRUCT_TYPE,
   UNIT_TAKEN_OFF,
-  WIDE_TYPE,
 } from "../stories/fixtures";
 import { TypePanelView } from "./TypePanelView";
 
@@ -29,6 +29,9 @@ interface Props {
   /** What the Rename field starts on: the type's own name, unless a scenario means to show it
    * already typed - a refusal only ever appears with the offending name still in the field. */
   renameTo?: string | null;
+  /** When the chooser's list opens (`TypePanelView`'s own prop): as the panel opens it, unless a
+   * scenario means to show what the list would cover. */
+  pickerTrigger?: "input" | "focus" | undefined;
 }
 
 /** The panel over one scenario's fixtures, with its own selection, typing, description and
@@ -44,6 +47,7 @@ function PanelStory({
   shown = false,
   refusal,
   renameTo: renameSeed = null,
+  pickerTrigger,
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(on);
   const [typed, setTyped] = useState<string | undefined>(undefined);
@@ -97,6 +101,7 @@ function PanelStory({
       refusal={refusal ?? null}
       busy={false}
       onClose={() => undefined}
+      pickerTrigger={pickerTrigger}
     />
   );
 }
@@ -135,9 +140,12 @@ export const NoUnitChosen = () => (
 );
 
 /** Sensor_t: no "What it fixes" table, its four members, one with dimensions, its two uses. */
-/** A uint64 type's range up to the most it holds: Max holds the file's own digits, and the
- * grid's sentence says why no range holding them is planned. */
-export const ALimitThePageCannotHold = () => <PanelStory reply={WIDE_TYPE} on="limits" />;
+/** A uint64 type's range up to the most it holds: Max holds the file's own digits, all twenty of
+ * them, and the grid's sentence says why no range holding them is planned - the list left closed,
+ * which open covers both. */
+export const ALimitThePageCannotHold = () => (
+  <PanelStory reply={MASK_TYPE} on="limits" pickerTrigger="input" />
+);
 
 export const AStructure = () => <PanelStory reply={STRUCT_TYPE} />;
 

@@ -16,7 +16,7 @@ import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
 import { GridStore, gridTexts } from "../lib/gridTexts";
-import { scrollFromUnder } from "../lib/heldOffer";
+import { marginBelow, scrollFromUnder } from "../lib/heldOffer";
 import { type CommaMeaning, commaChoices } from "../lib/numbers";
 import {
   cellName,
@@ -309,11 +309,18 @@ export function ValuesGridView(props: ValuesGridViewProps) {
     const placed = (node: Element) => node.getBoundingClientRect();
     window.scrollBy(0, scrollFromUnder(placed(field), placed(offer.current)));
   }, []);
+  // And a cell keeps the offer's height clear below it (`marginBelow`, ui.css): the table scrolls a
+  // cell the keys moved the focus to into view after its field has taken the focus - Ctrl+End to
+  // the last cell of a grid taller than the window, which `reveal` found below the window and left
+  // there - and stops with it above the offer rather than under it.
+  const table = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const field = document.activeElement;
     if (field instanceof HTMLInputElement && field.closest(".values-table") !== null) {
       reveal(field);
     }
+    const held = offer.current === null ? null : offer.current.getBoundingClientRect();
+    table.current?.style.setProperty("--offer-clear", marginBelow(held));
   });
   return (
     <section
@@ -370,7 +377,7 @@ export function ValuesGridView(props: ValuesGridViewProps) {
             </Button>
           </fieldset>
           {columnAxis !== "" && <p className="values-axis">{columnAxis} →</p>}
-          <div className={oneCell(reply) ? "values-table values-one" : "values-table"}>
+          <div ref={table} className={oneCell(reply) ? "values-table values-one" : "values-table"}>
             <GridTable
               reply={reply}
               physical={physical}

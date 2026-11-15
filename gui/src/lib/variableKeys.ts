@@ -553,6 +553,15 @@ export function limitsOf(raw: string | null): { min: string; max: string } {
   };
 }
 
+/** How many characters wide each of a range's two fields is drawn: as many as its own text holds,
+ * as a cell of the values grid is as wide as its column's text (`gridTexts`). A field of a fixed
+ * width cut a bound short with no sign of it - Max's 18446744073709551615 read 1844674 - and a
+ * long one widens its own field and leaves the other as narrow as its own. ui.css keeps the
+ * width each had as the least. */
+export function rangeChars(range: { min: string; max: string }): { min: number; max: number } {
+  return { min: range.min.length, max: range.max.length };
+}
+
 function numberText(value: unknown, text: string | undefined): string {
   return typeof value === "number" ? shownBound(value, text) : "";
 }

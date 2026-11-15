@@ -449,9 +449,10 @@ The commands
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
        plain indices where it has no axis, or one stating fewer breakpoints than the shape
-       has columns, its ticks then reading the indices too, with its declared limits ruled
-       across it wherever they fall inside the drawn range. It follows the same toggle, offers no control of its own, changes
-       nothing, and is drawn under a read-only grid exactly as under a writable one. It
+       has columns, its ticks then reading the indices too, and no axis named under them,
+       with its declared limits ruled across it wherever they fall inside the drawn range. It
+       follows the same toggle, offers no control of its own, changes nothing, and is drawn
+       under a read-only grid exactly as under a writable one. It
        draws what the file states, as the cells do: a scalar's one value draws none, and
        nor does a grid whose file states nothing, every cell of it hollow.
        The toggle always rescales to its own range: for a positive conversion the same

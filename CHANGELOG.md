@@ -294,8 +294,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   state, past a short `init` or any cell of a declaration with no `init`, is drawn hollow and
   named so, where the second read as greyed zeros.  A grid that states nothing draws no picture,
   and where an axis states fewer breakpoints than the shape the picture lies over indices, its
-  ticks reading them.  A cell keeps the reading it was typed in when the toggle is turned.  No
-  file format changes.
+  ticks reading them and no axis named under them.  A cell keeps the reading it was typed in when
+  the toggle is turned.  No file format changes.
 
 * **A value chosen for one key of a variable's panel is never applied to another.**  The panel
   carried what was chosen, typed or edited for one key to the key it moved to by itself, so Apply

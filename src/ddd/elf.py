@@ -32,6 +32,7 @@ from elftools.common.exceptions import DWARFError, ELFError
 from elftools.dwarf.dwarf_expr import DWARFExprParser
 from elftools.elf.constants import SH_FLAGS
 from elftools.elf.elffile import ELFFile
+from elftools.elf.enums import ENUM_E_MACHINE
 from elftools.elf.sections import SymbolTableSection
 
 DW_ATE_BOOLEAN: Final = 0x02
@@ -235,6 +236,10 @@ class Image:
     local_objects: frozenset[tuple[str, int]] = frozenset()
     """The name and address of the object symbols of local binding: empty where the link dropped
     them (``-Wl,-x``), and then the symbol table says nothing of a ``static``."""
+
+    machine: int | None = None
+    """The header's ``e_machine``, which names the ABI the structures are laid out by; None where
+    a caller built the image by hand and states none."""
 
     def has_object(self, name: str, address: int) -> bool:
         """Whether the symbol table holds an object symbol ``name`` at ``address``."""
@@ -442,6 +447,14 @@ def open_image(path: Path) -> Image:
         raise ElfReadError(msg) from None
 
 
+def _machine(stored: object) -> int:
+    """``e_machine`` as its number: pyelftools names the machines it knows and leaves the rest as
+    the number they are."""
+    if isinstance(stored, int):
+        return stored
+    return int(ENUM_E_MACHINE[str(stored)])
+
+
 def _named(error: Exception) -> str:
     """An exception as a refusal names it: its type, qualified by its module unless it is a
     builtin - ``zlib.error`` says more than ``error`` - and its message, where it has one."""
@@ -533,6 +546,7 @@ def _image(path: Path, contents: bytes) -> Image:
         contents=contents,
         objects=objects,
         local_objects=_symbols(elf, "STT_OBJECT", local=True),
+        machine=_machine(elf.header["e_machine"]),
     )
 
 

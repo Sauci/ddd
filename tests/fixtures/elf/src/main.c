@@ -169,3 +169,49 @@ struct Anonymous_s {
     };
 };
 struct Anonymous_s Member_Anonymous;
+
+/* Appended last, so that no line above it moves: layouts DDD's generated C does not reproduce.
+   Each is one the source asked for with packing or with an unnamed or zero width bitfield, and
+   Laid_Natural, laid out by the target's own alignment, is the control. */
+struct Packed_s {
+    uint8_t kind;
+    uint32_t value;
+} __attribute__((packed));
+struct Packed_s Laid_Packed;
+
+#pragma pack(push, 2)
+struct Pack2_s {
+    uint8_t a;
+    uint32_t b;
+};
+#pragma pack(pop)
+struct Pack2_s Laid_Pack2;
+
+struct Packed_Member_s {
+    uint8_t tag;
+    uint32_t word __attribute__((packed));
+};
+struct Packed_Member_s Laid_Packed_Member;
+
+struct Unnamed_s {
+    uint32_t : 8;
+    uint8_t a;
+};
+struct Unnamed_s Laid_Unnamed;
+
+struct Zero_Width_s {
+    uint16_t head;
+    uint32_t : 0;
+    uint8_t tail;
+};
+struct Zero_Width_s Laid_Zero_Width;
+
+struct Natural_s {
+    uint8_t a;
+    uint32_t b;
+    uint8_t c : 3;
+    uint16_t d;
+    uint64_t e;
+    uint8_t f[3];
+};
+struct Natural_s Laid_Natural;

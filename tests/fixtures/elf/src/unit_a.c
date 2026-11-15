@@ -15,3 +15,10 @@ struct Clash_s {
 /* Appended: a tentative definition of one name in both units, which the common attribute - or
    -fcommon - makes one variable at one address, described by the DWARF of each. */
 __attribute__((common)) uint32_t Common_Counter;
+
+/* Appended: the other half of unit_b.c's pair, one name packed here and laid out naturally
+   there. */
+struct Pair_s {
+    uint8_t id;
+    uint32_t count;
+} __attribute__((packed)) Pair_A;

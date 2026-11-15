@@ -33,7 +33,7 @@ TRAITS = {
     "uint64_alignment",
     "alignment_attribute",
 }
-FACTS = {"elf_type", "dwarf_versions", "unit_types", "debug_sections", "compressed"}
+FACTS = {"elf_type", "machine", "dwarf_versions", "unit_types", "debug_sections", "compressed"}
 
 
 def test_the_images_are_built_from_what_is_committed() -> None:

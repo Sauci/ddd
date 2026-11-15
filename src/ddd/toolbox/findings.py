@@ -26,12 +26,14 @@ FINDINGS: Final[dict[str, Severity]] = {
     "elf-init-dropped": Severity.WARNING,
     "elf-bitfield-gap": Severity.WARNING,
     "elf-alignment": Severity.WARNING,
+    "elf-layout": Severity.WARNING,
     "elf-qualifier-dropped": Severity.WARNING,
     "elf-section": Severity.WARNING,
     "elf-name-synthesized": Severity.WARNING,
     "elf-types-omitted": Severity.WARNING,
     "elf-boolean-bitfield": Severity.INFO,
     "elf-not-inferred": Severity.INFO,
+    "elf-layout-unchecked": Severity.INFO,
 }
 
 

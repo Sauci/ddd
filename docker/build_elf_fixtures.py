@@ -270,12 +270,12 @@ def variables(image: Path) -> list[dict[str, object]]:
 
 
 def facts(image: Path) -> dict[str, object]:
-    """What readelf says of an image as a file: its type, the versions and unit types of its
-    DWARF, its debug sections and whether they are compressed."""
-    (kind,) = [
-        line.split()[1]
-        for line in run(["readelf", "-h", str(image)]).splitlines()
-        if line.strip().startswith("Type:")
+    """What readelf says of an image as a file: its type, its machine, the versions and unit
+    types of its DWARF, its debug sections and whether they are compressed."""
+    header = run(["readelf", "-h", str(image)]).splitlines()
+    (kind,) = [line.split()[1] for line in header if line.strip().startswith("Type:")]
+    (machine,) = [
+        line.split(":", 1)[1].strip() for line in header if line.strip().startswith("Machine:")
     ]
     dump = run(["readelf", "--debug-dump=info", str(image)])
     debug: dict[str, str] = {}
@@ -285,6 +285,7 @@ def facts(image: Path) -> dict[str, object]:
             debug[match["name"]] = match["flags"]
     return {
         "elf_type": kind,
+        "machine": machine,
         "dwarf_versions": sorted(
             {int(version) for version in re.findall(r"^\s+Version:\s+(\d+)$", dump, re.M)}
         ),

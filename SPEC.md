@@ -2693,15 +2693,23 @@ identifiers.
 The tool's own findings are not checks of [section 4](#4-consistency-checks) and take no `-W`:
 `elf-symbol-missing`, `elf-symbol-ambiguous`, `elf-no-storage`, `elf-type-unsupported`,
 `elf-type-conflict` and `elf-init-unsupported` are errors; `elf-init-dropped`,
-`elf-bitfield-gap`, `elf-alignment`, `elf-qualifier-dropped`, `elf-section`,
-`elf-name-synthesized` and `elf-types-omitted` warnings; `elf-boolean-bitfield` and
-`elf-not-inferred` infos. A finding about a variable is located at its declaration in the C
+`elf-bitfield-gap`, `elf-alignment`, `elf-layout`, `elf-qualifier-dropped`, `elf-section`,
+`elf-name-synthesized` and `elf-types-omitted` warnings; `elf-boolean-bitfield`,
+`elf-not-inferred` and `elf-layout-unchecked` infos. A finding about a variable is located at its declaration in the C
 source, as the image recorded the path.
 
-The layout of a structure is not checked: DDD states no offsets
-([section 3.7](#37-type-description)), and DWARF records neither packing nor an unnamed
-bitfield. The gap such a bitfield leaves where the next one would have fit is
-`elf-bitfield-gap`, and an alignment the source states is `elf-alignment`.
+DDD states no offsets ([section 3.7](#37-type-description)), and DWARF records neither packing
+nor an unnamed bitfield, but it records where each member is and how large the structure is. The
+tool lays each structure out as DDD's generated C would, every member at the next offset its
+alignment allows, a scalar's alignment held to the cap of the image's machine (`e_machine`: 4
+on i386, 8 on the machines the fixtures build for), and states `elf-layout` where a member's
+offset or the structure's size differs, once per structure. Packing, `#pragma pack`, a packed
+member and an unnamed or zero width bitfield are found this way; the gap such a bitfield leaves
+where the next one would have fit is `elf-bitfield-gap` instead, an alignment the source states
+is `elf-alignment` as well, and a structure laid out as the target would is not warned. An image
+of a machine whose cap the tool does not hold is not checked, and `elf-layout-unchecked` says so
+once. Two structures of one name that differ in a member's offset or in size are
+`elf-type-conflict`, as two that differ in their members are.
 
 The exit code is `0` when every argument was described, and `1` when one was not; nothing is
 written then unless `--force`, which writes what was described. An image that cannot be read,

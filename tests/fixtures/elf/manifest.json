@@ -4,14 +4,14 @@
     "tests/fixtures/elf/src/gold_kept.c": "0018a4d99dd7556c080585a1f258607521dfec3bd78250c76ed03c5d7f111c92",
     "tests/fixtures/elf/src/gold_unused.c": "33d28690cef5712c8111cbb817d3e4295ab1dd241031d3351f7b28507925a5c1",
     "tests/fixtures/elf/src/lto.c": "cbb3ae9ca73fe507ccd6903ad2d4402efead45c1513ed6092e697cc4c2844253",
-    "tests/fixtures/elf/src/main.c": "e0e11e9903e460df10881c44fbd0d59863e189f8d0a61df283a3900395801179",
+    "tests/fixtures/elf/src/main.c": "936f3d4d646a82955177e374769d908bdc0558fe4654910cfa1431dbd2da9b65",
     "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
     "tests/fixtures/elf/src/shared.h": "9cdfa71b5de8dd20c26451a0102a1de36c6f0f07d9c71941e9cc6cf6f761f214",
     "tests/fixtures/elf/src/type_units.c": "93fcd051c5a9047f87cff9b57cf39ac34732adb4f30a6311bd92299f402fe93c",
-    "tests/fixtures/elf/src/unit_a.c": "60b8b97082da5fa21d31c0e2a6d11aed61e2e5f3abde74bbb7b6d4d9ed6f68ad",
-    "tests/fixtures/elf/src/unit_b.c": "e4a43b175f1f6c5c2e5706a553d827f34dd6255c9599898cec2897ca1904dad2",
+    "tests/fixtures/elf/src/unit_a.c": "2c1ad445a0e8436d8cfd4583f3c6ce7372509cdf4f9348c152d4aeb94d7cbd3a",
+    "tests/fixtures/elf/src/unit_b.c": "d01310e13f21f7e58ddf908944b4cb003aba9bbbe5b4850f2e08d77251591d1c",
     "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
-    "docker/build_elf_fixtures.py": "5a35d1362922d26b6d733437d3dea5aea2e8df3dfb22702fc6e49fd56a4bc056"
+    "docker/build_elf_fixtures.py": "3b3868734e174f353cb3f02465304cbefb11f5db900e2035983255ade28e0f0e"
   },
   "rows": {
     "x86_64": {
@@ -42,6 +42,7 @@
       },
       "image": {
         "elf_type": "DYN",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -132,6 +133,42 @@
           "size": 8
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -214,6 +251,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -419,6 +468,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "Intel 80386",
         "dwarf_versions": [
           4
         ],
@@ -506,6 +556,42 @@
           "size": 8
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -588,6 +674,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -793,6 +891,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "ARM",
         "dwarf_versions": [
           4
         ],
@@ -887,6 +986,42 @@
           "size": 2
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -969,6 +1104,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -1175,6 +1322,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "ARM",
         "dwarf_versions": [
           2
         ],
@@ -1269,6 +1417,42 @@
           "size": 2
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -1351,6 +1535,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -1557,6 +1753,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "ARM",
         "dwarf_versions": [
           4
         ],
@@ -1651,6 +1848,42 @@
           "size": 2
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -1733,6 +1966,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -1938,6 +2183,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "AArch64",
         "dwarf_versions": [
           5
         ],
@@ -2034,6 +2280,42 @@
           "size": 8
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -2116,6 +2398,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -2321,6 +2615,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "PowerPC",
         "dwarf_versions": [
           3
         ],
@@ -2408,6 +2703,42 @@
           "size": 8
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".sbss",
           "contents": false,
@@ -2490,6 +2821,18 @@
           "section": ".sdata",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -2690,6 +3033,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "IBM S/390",
         "dwarf_versions": [
           5
         ],
@@ -2779,6 +3123,42 @@
           "size": 8
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -2861,6 +3241,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -3061,6 +3453,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "RISC-V",
         "dwarf_versions": [
           5
         ],
@@ -3153,6 +3546,42 @@
           "size": 8
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".sbss",
           "contents": false,
@@ -3235,6 +3664,18 @@
           "section": ".sdata",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -3433,6 +3874,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "AArch64",
         "dwarf_versions": [
           4
         ],
@@ -3520,6 +3962,42 @@
           "size": 8
         },
         {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
+        },
+        {
           "name": "Layout_Aligned",
           "section": ".bss",
           "contents": false,
@@ -3602,6 +4080,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -3791,6 +4281,7 @@
       "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           4
         ],
@@ -3842,6 +4333,7 @@
       "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -3896,6 +4388,7 @@
       "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -3952,6 +4445,7 @@
       "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -3995,6 +4489,7 @@
       "linker": "GNU gold (GNU Binutils for Debian 2.44) 1.16",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -4043,6 +4538,7 @@
       "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],

@@ -62,6 +62,7 @@ def image(
     objects: frozenset[tuple[str, int]] | None = None,
     local_objects: frozenset[tuple[str, int]] = frozenset(),
     byte_order: Literal["little", "big"] = "little",
+    machine: int | None = None,
 ) -> Image:
     """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
     each global at its address, as a linker that kept the variable leaves it."""
@@ -72,7 +73,15 @@ def image(
             if variable.external and variable.address is not None
         )
     return Image(
-        Path("hand.elf"), byte_order, variables, sections, symbols, contents, objects, local_objects
+        Path("hand.elf"),
+        byte_order,
+        variables,
+        sections,
+        symbols,
+        contents,
+        objects,
+        local_objects,
+        machine,
     )
 
 
@@ -328,6 +337,8 @@ class TestSelect:
 
 
 U16 = Base("short unsigned int", DW_ATE_UNSIGNED, 2)
+U32 = Base("unsigned int", DW_ATE_UNSIGNED, 4)
+U64 = Base("long unsigned int", DW_ATE_UNSIGNED, 8)
 S32 = Base("int", DW_ATE_SIGNED, 4)
 F32 = Base("float", DW_ATE_FLOAT, 4)
 BOOL = Base("_Bool", DW_ATE_BOOLEAN, 1)
@@ -828,6 +839,183 @@ class TestLayout:
 
     def test_a_member_whose_offset_is_unknown_leaves_the_next_unjudged(self) -> None:
         assert self.layout(Member("a", U8, None, 2), Member("b", U8, 5, 2)) == []
+
+
+X86_64 = 62
+I386 = 3
+
+
+class TestWhereTheSourceLaidAStructureOutDifferently:
+    """``elf-layout``: a member's offset, or the structure's size, where the generated C would
+    put it elsewhere - packing, ``#pragma pack``, an unnamed or a zero width bitfield."""
+
+    def layout(
+        self, *members: Member, size: int, machine: int | None = X86_64, **extra: Any
+    ) -> list[tuple[str, Severity, str]]:
+        bag = DiagnosticBag()
+        mapper = Mapper(image(machine=machine), bag)
+        mapped(structure("L_s", *members, size=size, **extra), bag=bag, mapper=mapper)
+        return [item for item in found(bag) if item[0] in ("elf-layout", "elf-layout-unchecked")]
+
+    def test_a_packed_structure_puts_its_member_where_the_generated_one_does_not(self) -> None:
+        assert self.layout(Member("a", U8, 0), Member("b", U32, 8), size=5) == [
+            (
+                "elf-layout",
+                Severity.WARNING,
+                "'L_s.b' is at byte 1 in C, where the structure DDD generates puts it at byte 4: "
+                "the source packed the structure, or left room with an unnamed or zero width "
+                "bitfield, which DDD cannot state",
+            )
+        ]
+
+    def test_pack_two_is_the_same_departure_at_another_offset(self) -> None:
+        (only,) = self.layout(Member("a", U8, 0), Member("b", U32, 16), size=6)
+        assert (
+            "'L_s.b' is at byte 2 in C, where the structure DDD generates puts it at byte 4"
+            in (only[2])
+        )
+
+    def test_only_the_size_departs_where_the_members_sit_as_generated(self) -> None:
+        assert self.layout(Member("a", U32, 0), Member("b", U8, 32), size=5) == [
+            (
+                "elf-layout",
+                Severity.WARNING,
+                "'L_s' is 5 bytes in C, where the structure DDD generates is 8: the source "
+                "packed, aligned or padded the structure, which DDD cannot state",
+            )
+        ]
+
+    def test_an_unnamed_bitfield_moves_the_member_after_it(self) -> None:
+        (only,) = self.layout(Member("a", U8, 8), size=2)
+        assert (
+            "'L_s.a' is at byte 1 in C, where the structure DDD generates puts it at byte 0"
+            in (only[2])
+        )
+
+    def test_a_zero_width_bitfield_moves_the_member_after_it(self) -> None:
+        (only,) = self.layout(Member("a", U8, 0), Member("b", U8, 32), size=5)
+        assert (
+            "'L_s.b' is at byte 4 in C, where the structure DDD generates puts it at byte 1"
+            in (only[2])
+        )
+
+    def test_a_trailing_zero_width_bitfield_is_seen_in_the_size_alone(self) -> None:
+        assert self.layout(Member("a", U8, 0, 2), size=4) == [
+            (
+                "elf-layout",
+                Severity.WARNING,
+                "'L_s' is 4 bytes in C, where the structure DDD generates is 1: the source "
+                "packed, aligned or padded the structure, which DDD cannot state",
+            )
+        ]
+
+    def test_a_bitfield_is_named_at_its_bit(self) -> None:
+        (only,) = self.layout(Member("a", U8, 0, 7), Member("b", U8, 16, 2), size=4)
+        assert (
+            "'L_s.b' is at bit 16 in C, where the structure DDD generates puts it at bit 8"
+            in (only[2])
+        )
+
+    def test_only_the_first_member_that_departs_is_named(self) -> None:
+        assert (
+            len(self.layout(Member("a", U8, 0), Member("b", U32, 8), Member("c", U8, 40), size=6))
+            == 1
+        )
+
+    def test_a_natural_structure_is_not_warned(self) -> None:
+        members = (
+            Member("a", U8, 0),
+            Member("b", U32, 32),
+            Member("c", U8, 64, 3),
+            Member("d", U16, 80),
+            Member("e", U64, 128),
+            Member("f", Array(U8, (3,)), 192),
+        )
+        assert self.layout(*members, size=32) == []
+
+    def test_a_double_is_aligned_to_four_inside_a_structure_on_i386_and_to_eight_on_x86_64(
+        self,
+    ) -> None:
+        members = (Member("a", U8, 0), Member("b", U64, 32))
+        assert self.layout(*members, size=12, machine=I386) == []
+        assert len(self.layout(*members, size=12, machine=X86_64)) == 1
+
+    def test_a_structure_inside_one_is_aligned_as_its_own_members_are(self) -> None:
+        inner = structure("In_s", Member("x", U32, 0), size=4)
+        members = (Member("a", U8, 0), Member("i", inner, 32), Member("b", U8, 64))
+        assert self.layout(*members, size=12) == []
+        assert len(self.layout(Member("a", U8, 0), Member("i", inner, 8), size=5)) == 1
+
+    def test_an_array_of_structures_counts_every_element(self) -> None:
+        inner = structure("In_s", Member("x", U16, 0), Member("y", U8, 16), size=4)
+        members = (Member("i", Array(inner, (3,)), 0), Member("b", U8, 96))
+        assert self.layout(*members, size=14) == []
+
+    def test_a_member_whose_offset_is_unknown_is_not_judged_and_the_size_still_is(self) -> None:
+        assert self.layout(Member("a", U8, None), size=1) == []
+        assert len(self.layout(Member("a", U8, None), size=4)) == 1
+
+    def test_an_alignment_the_source_states_departs_by_the_size_it_gives_the_structure(
+        self,
+    ) -> None:
+        (only,) = self.layout(Member("x", U8, 0, alignment=8), alignment=8, size=8)
+        assert only[2].startswith("'L_s' is 8 bytes in C, where the structure DDD generates is 1")
+
+    def test_a_gap_already_reported_is_not_reported_twice(self) -> None:
+        members = (Member("a", U8, 0, 2), Member("b", U8, 5, 2), Member("c", U16, 7, 9))
+        assert self.layout(*members, size=2) == []
+
+    def test_a_bitfield_wider_than_the_alignment_cap_is_not_judged(self) -> None:
+        assert self.layout(Member("a", U64, 0, 3), Member("b", U8, 8), size=4, machine=I386) == []
+
+    def test_a_structure_inside_one_that_is_not_judged_leaves_the_outer_one_unjudged(self) -> None:
+        inner = structure("In_s", Member("x", U64, 0, 3), size=8)
+        outer = (Member("a", U8, 0), Member("i", inner, 8))
+        assert self.layout(*outer, size=40, machine=I386) == []
+
+    def test_a_machine_whose_rules_are_not_held_is_not_checked_and_says_so_once(self) -> None:
+        bag = DiagnosticBag()
+        mapper = Mapper(image(machine=4660), bag)
+        for name in ("a", "b"):
+            packed = structure(f"{name}_s", Member("a", U8, 0), Member("b", U32, 8), size=5)
+            mapped(packed, bag=bag, mapper=mapper)
+        assert [(c, s) for c, s, _ in found(bag)] == [("elf-layout-unchecked", Severity.INFO)]
+        assert "e_machine 4660" in found(bag)[0][2]
+
+    def test_a_hand_built_image_that_states_no_machine_is_not_checked(self) -> None:
+        assert self.layout(Member("a", U8, 0), Member("b", U32, 8), size=5, machine=None) == []
+
+    def test_one_name_laid_out_two_ways_is_a_conflict_though_its_members_read_alike(self) -> None:
+        mapper = Mapper(image(machine=X86_64), DiagnosticBag())
+        packed = structure(
+            "Pair_s",
+            Member("a", U8, 0),
+            Member("b", U32, 8),
+            size=5,
+            declared_at=Declared("unit_a.c", 3),
+        )
+        natural = structure(
+            "Pair_s",
+            Member("a", U8, 0),
+            Member("b", U32, 32),
+            size=8,
+            declared_at=Declared("unit_b.c", 3),
+        )
+        mapped(packed, "A", mapper=mapper)
+        mapped(natural, "B", mapper=mapper)
+        assert mapper.conflicts() == {"Pair_s": [Declared("unit_a.c", 3), Declared("unit_b.c", 3)]}
+
+    def test_two_structures_that_differ_in_size_alone_conflict(self) -> None:
+        mapper = Mapper(image(machine=X86_64), DiagnosticBag())
+        mapped(structure("T_s", Member("a", U8, 0), size=1), "A", mapper=mapper)
+        mapped(structure("T_s", Member("a", U8, 0), size=4), "B", mapper=mapper)
+        assert set(mapper.conflicts()) == {"T_s"}
+
+    def test_two_structures_laid_out_alike_are_one(self) -> None:
+        mapper = Mapper(image(machine=X86_64), DiagnosticBag())
+        mapped(structure("T_s", Member("a", U8, 0), size=1), "A", mapper=mapper)
+        mapped(structure("T_s", Member("a", U8, 0), size=1), "B", mapper=mapper)
+        assert mapper.conflicts() == {}
 
 
 class TestValues:

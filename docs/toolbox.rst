@@ -151,7 +151,9 @@ shared types file rather than pasting it into both.
 A structure is named by the typedef closest to it, else by its tag, and an anonymous one after
 the first thing that reaches it (``elf-name-synthesized``). Two structures of one name that
 differ - one per compilation unit, each unit's own - are ``elf-type-conflict``, and no
-variable reaching either is printed. A ``_Bool`` bitfield is described as a ``uint8`` one
+variable reaching either is printed. They differ when their members do, and also when they lay
+the same members out at other offsets or to another size: a name that one unit packs and
+another lays out as the target does is a conflict. A ``_Bool`` bitfield is described as a ``uint8`` one
 (``elf-boolean-bitfield``), since DDD refuses a boolean bitfield, and ``const`` or ``volatile``
 on a member is dropped (``elf-qualifier-dropped``): DDD qualifies whole objects. A structured
 object states no initial value, as DDD requires; values the image holds for one are dropped
@@ -163,11 +165,24 @@ The layout of a structure
 DDD states member order, datatypes and widths, never offsets, and the compiler lays out the
 structure it generates. Nothing in the a2l depends on that, but the structure DDD generates can
 lay out differently from the source's where the source asked for a layout its members do not
-imply - and DWARF records none of those requests directly. The tool warns about the two traces
-it can read: bits skipped where the next bitfield would have fit, which an unnamed or zero
-width bitfield leaves (``elf-bitfield-gap``), and an alignment the source states
-(``elf-alignment``). Packing - ``#pragma pack``, ``packed`` - is not detected: whether an
-offset is packed or merely the target's own alignment depends on the ABI.
+imply: packing (``#pragma pack``, ``packed``), an alignment, an unnamed bitfield or a zero
+width one. DWARF records none of those requests, and states what they did: where each member
+is, and how large the structure is.
+
+The tool lays each structure out as DDD's generated C would, every member at the next offset
+its alignment allows, a scalar's alignment held to what the image's target allows inside a
+structure (``e_machine`` of its header names it: a ``double`` is aligned to 4 on i386 and to 8
+on the others), and warns ``elf-layout`` where the image differs: the first member at another
+offset than the generated structure puts it at, or, where every member sits as generated, a
+size of its own. Packing, ``pack(2)``, a packed member, and an unnamed or zero width bitfield
+anywhere in the structure are all found this way, and so is an alignment the source states, which
+``elf-alignment`` names as well. Bits skipped where the next bitfield would have fit are
+``elf-bitfield-gap`` instead, and the structure is not warned a second time. A structure the
+target lays out by its own alignment is never warned. A target whose alignment rules the tool
+does not hold is not checked, and the run says so once (``elf-layout-unchecked``).
+
+A layout that a wire format or a non-volatile memory image depends on changes when the generated
+C replaces the source: read the offsets a warning names before relying on one.
 
 What the tool cannot describe
 -----------------------------
@@ -247,6 +262,10 @@ under DDD's identifiers.
    * - ``elf-alignment``
      - warning
      - an alignment the source states
+   * - ``elf-layout``
+     - warning
+     - a member at another offset, or a structure of another size, than the structure DDD
+       generates has: packing, an alignment, an unnamed or a zero width bitfield
    * - ``elf-qualifier-dropped``
      - warning
      - ``const`` or ``volatile`` on a structure member
@@ -262,6 +281,10 @@ under DDD's identifiers.
    * - ``elf-boolean-bitfield``
      - info
      - a ``_Bool`` bitfield described as a ``uint8`` one
+   * - ``elf-layout-unchecked``
+     - info
+     - an image of a machine whose alignment rules the tool does not hold, so no structure of it
+       is checked for ``elf-layout``
    * - ``elf-not-inferred``
      - info
      - once per run: what an image never states

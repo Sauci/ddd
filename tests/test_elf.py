@@ -18,6 +18,7 @@ import pytest
 from build_elf_fixtures import UNITS
 from elftools.elf.elffile import ELFFile
 
+from ddd.diagnostics import DiagnosticBag
 from ddd.elf import (
     DECLARED_ONLY,
     DISCARDED,
@@ -50,6 +51,8 @@ from ddd.elf import (
     read_variables,
     size_of,
 )
+from ddd.toolbox.from_elf import describe
+from ddd.toolbox.mapping import ALIGNMENT_CAPS
 
 _OFFSETS = itertools.count(1)
 
@@ -951,8 +954,84 @@ def row(request: pytest.FixtureRequest) -> tuple[Image, dict[str, Any]]:
     return open_image(FIXTURES / f"{request.param}.elf"), MANIFEST["rows"][request.param]
 
 
+MACHINES = {
+    "Intel 80386": 3,
+    "PowerPC": 20,
+    "IBM S/390": 22,
+    "ARM": 40,
+    "Advanced Micro Devices X86-64": 62,
+    "AArch64": 183,
+    "RISC-V": 243,
+}
+"""readelf's name for each machine the matrix builds for, and its ``e_machine``."""
+
+
 class TestTheMatrix:
     """Every row read against what its own toolchain said about it (the manifest)."""
+
+    def test_the_machine_is_the_headers(self, row: tuple[Image, dict[str, Any]]) -> None:
+        image, entry = row
+        assert image.machine == MACHINES[entry["image"]["machine"]]
+
+    def test_a_machine_the_reader_has_no_name_for_is_its_number(self, tmp_path: Path) -> None:
+        patched = bytearray((FIXTURES / "x86_64.elf").read_bytes())
+        patched[18:20] = (0x1234).to_bytes(2, "little")
+        path = tmp_path / "odd.elf"
+        path.write_bytes(patched)
+        assert open_image(path).machine == 0x1234
+
+    def test_the_alignment_cap_of_the_machine_is_what_its_toolchain_measured(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """A 64 bit integer is aligned to its size, held to the machine's cap: i386 is the row
+        where the two differ, and the measurement is the manifest's, not the table's."""
+        image, entry = row
+        assert image.machine in ALIGNMENT_CAPS
+        assert min(8, ALIGNMENT_CAPS[image.machine]) == entry["traits"]["uint64_alignment"]
+
+    def test_a_layout_the_generated_c_would_not_reproduce_is_warned_and_a_natural_one_is_not(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """Packing, ``#pragma pack(2)``, a packed member, an unnamed bitfield and a zero width
+        one are each warned ``elf-layout``, named at the structure; the structures the target
+        lays out by its own alignment, among them one holding bitfields and a 64 bit member, are
+        not."""
+        image, _ = row
+        natural = (
+            "Laid_Natural",
+            "Layout_Padded",
+            "Layout_Gapped",
+            "Struct_Inlet",
+            "Nested_Frame",
+        )
+        departing = {
+            "Laid_Packed": "Packed_s",
+            "Laid_Pack2": "Pack2_s",
+            "Laid_Packed_Member": "Packed_Member_s",
+            "Laid_Unnamed": "Unnamed_s",
+            "Laid_Zero_Width": "Zero_Width_s",
+        }
+        said: dict[str, list[str]] = {}
+        for name in (*natural, *departing):
+            bag = DiagnosticBag()
+            describe(image, [name], scope="output", component=None, bag=bag)
+            said[name] = [d.message for d in bag.sorted if d.check == "elf-layout"]
+        assert {name: said[name] for name in natural} == {name: [] for name in natural}
+        for name, structure in departing.items():
+            assert len(said[name]) == 1, name
+            assert said[name][0].startswith(f"'{structure}"), name
+
+    def test_one_name_packed_by_one_unit_and_not_by_the_other_is_a_conflict(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, _ = row
+        bag = DiagnosticBag()
+        described = describe(image, ["Pair_A", "Pair_B"], scope="output", component=None, bag=bag)
+        assert described.interface == ()
+        assert [d.check for d in bag.sorted if d.check == "elf-type-conflict"] == [
+            "elf-type-conflict",
+            "elf-type-conflict",
+        ]
 
     def test_the_byte_order_is_the_toolchain_s(self, row: tuple[Image, dict[str, Any]]) -> None:
         image, entry = row

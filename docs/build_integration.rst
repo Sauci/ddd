@@ -800,11 +800,6 @@ of this image:
        note: the image's debug information holds no variable named 'ValueG'
    1 warning
 
-A variable of a unit the linker discarded under ``--gc-sections`` is reported the same way:
-its debug information survives, and the symbol table holds no object of its name at the address
-that information gives. The linkers the reader is tested with are GNU ld 2.44, gold 2.44
-and lld 19.
-
 Under ``STRICT`` that is an error, and the build stops rather than ship an a2l with an address
 of 0. ``BYTE_ORDER`` is held to the byte order the image states: one that contradicts it stops
 the build as well. So does an image the reader cannot read, in the reader's own words - one

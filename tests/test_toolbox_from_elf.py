@@ -60,6 +60,7 @@ def image(
     contents: bytes = bytes(0x100),
     symbols: frozenset[str] = frozenset(),
     objects: frozenset[tuple[str, int]] | None = None,
+    local_objects: frozenset[tuple[str, int]] = frozenset(),
     byte_order: Literal["little", "big"] = "little",
 ) -> Image:
     """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
@@ -70,7 +71,9 @@ def image(
             for variable in variables
             if variable.external and variable.address is not None
         )
-    return Image(Path("hand.elf"), byte_order, variables, sections, symbols, contents, objects)
+    return Image(
+        Path("hand.elf"), byte_order, variables, sections, symbols, contents, objects, local_objects
+    )
 
 
 def stored(
@@ -1087,6 +1090,48 @@ class TestDescribe:
         )
         assert [entry["definition"]["name"] for entry in description.interface] == ["Local"]
         assert [check for check, severity, _ in found(bag) if severity is Severity.ERROR] == []
+
+    def test_a_static_at_an_address_no_section_holds_is_refused(self) -> None:
+        """The exemption from the symbol table is not one from the sections."""
+        description, bag = run(image(stored("Local", U16, address=0x900, external=False)), "Local")
+        assert description.interface == ()
+        assert found(bag) == [
+            (
+                "elf-no-storage",
+                Severity.ERROR,
+                "'Local' has an address, 0x900, that no section of the image holds",
+            )
+        ]
+
+    def test_a_static_the_local_symbols_of_the_image_do_not_hold_is_refused(self) -> None:
+        """A link made without -Wl,-x keeps its local symbols, and gold leaves the statics of a
+        unit it discarded at offsets, where none sits."""
+        description, bag = run(
+            image(
+                stored("Local", U16, address=0x110, external=False),
+                local_objects=frozenset({("Local", 0x120), ("Other", 0x110)}),
+            ),
+            "Local",
+        )
+        assert description.interface == ()
+        assert found(bag) == [
+            (
+                "elf-no-storage",
+                Severity.ERROR,
+                "the symbol table holds no object named 'Local' at 0x110, where its debug "
+                "information puts it, as a linker leaves a variable of a unit it discarded",
+            )
+        ]
+
+    def test_a_static_the_local_symbols_hold_is_read(self) -> None:
+        description, _ = run(
+            image(
+                stored("Local", U16, address=0x110, external=False),
+                local_objects=frozenset({("Local", 0x110)}),
+            ),
+            "Local",
+        )
+        assert [entry["definition"]["name"] for entry in description.interface] == ["Local"]
 
     def test_a_variable_running_past_its_section_is_refused(self) -> None:
         img = image(stored("Wide", Base("unsigned int", DW_ATE_UNSIGNED, 4), address=0x1FE))

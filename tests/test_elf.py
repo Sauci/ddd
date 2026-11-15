@@ -1319,6 +1319,15 @@ class TestGoldDiscarded:
             assert image.has_object(name, address)
             assert not image.has_object(name, address + 4)
 
+    def test_the_local_symbols_of_the_image_hold_its_static_and_none_of_the_dropped_unit(
+        self,
+    ) -> None:
+        image = open_image(FIXTURES / "gold-gc-sections.elf")
+        static = by_name(image, "Gold_Static").address
+        assert static is not None
+        assert ("Gold_Static", static) in image.local_objects
+        assert not any(name in {"Gold_Kept", "First_Unused"} for name, _ in image.local_objects)
+
     def test_gnu_ld_leaves_no_variable_of_the_unit_it_dropped(self) -> None:
         image = open_image(FIXTURES / "bfd-gc-sections.elf")
         assert [variable.name for variable in image.variables if "_Unused" in variable.name] == []

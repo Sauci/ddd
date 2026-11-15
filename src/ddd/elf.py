@@ -232,9 +232,21 @@ class Image:
     """The name and address of every object symbol of the symbol table, which is where a linker
     says a variable is: the one it discarded has debug information and no symbol."""
 
+    local_objects: frozenset[tuple[str, int]] = frozenset()
+    """The name and address of the object symbols of local binding: empty where the link dropped
+    them (``-Wl,-x``), and then the symbol table says nothing of a ``static``."""
+
     def has_object(self, name: str, address: int) -> bool:
         """Whether the symbol table holds an object symbol ``name`` at ``address``."""
         return (name, address) in self.objects
+
+    def keeps(self, name: str, address: int, *, external: bool) -> bool:
+        """Whether the symbol table leaves a variable where its debug information puts it: an
+        external needs an object symbol of its name there, and a ``static`` needs one of local
+        binding wherever the image holds any, since a link made with ``-Wl,-x`` holds none."""
+        if external:
+            return self.has_object(name, address)
+        return not self.local_objects or (name, address) in self.local_objects
 
     def section_of(self, address: int) -> Section | None:
         """The section holding ``address``, or None where none does."""
@@ -520,6 +532,7 @@ def _image(path: Path, contents: bytes) -> Image:
         symbols=frozenset(name for name, _ in objects),
         contents=contents,
         objects=objects,
+        local_objects=_symbols(elf, "STT_OBJECT", local=True),
     )
 
 
@@ -539,9 +552,9 @@ def _sections(elf: ELFFile) -> tuple[Section, ...]:
     return tuple(sections)
 
 
-def _symbols(elf: ELFFile, kind: str) -> frozenset[tuple[str, int]]:
+def _symbols(elf: ELFFile, kind: str, *, local: bool = False) -> frozenset[tuple[str, int]]:
     """The name and address of every symbol of type ``kind`` (``STT_OBJECT``, ``STT_TLS``), in
-    any table, global and local alike."""
+    any table, global and local alike; of local binding alone where ``local`` says so."""
     found: set[tuple[str, int]] = set()
     for section in elf.iter_sections():
         if isinstance(section, SymbolTableSection):
@@ -549,6 +562,7 @@ def _symbols(elf: ELFFile, kind: str) -> frozenset[tuple[str, int]]:
                 (symbol.name, symbol["st_value"])
                 for symbol in section.iter_symbols()
                 if symbol["st_info"]["type"] == kind
+                and (not local or symbol["st_info"]["bind"] == "STB_LOCAL")
             )
     return frozenset(found)
 

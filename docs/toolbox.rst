@@ -223,9 +223,10 @@ under DDD's identifiers.
        compiler, thread-local, at a location that is not a fixed address, discarded by the
        linker - which leaves its address at 0, at all ones or, with gold, at an offset into
        the section it dropped, so that an external variable with no object symbol of its name
-       at its address counts as discarded, a ``static`` being read by its address alone, since
-       ``-Wl,-x`` drops the local symbols of a link - or at an address no section of the image
-       holds
+       at its address counts as discarded, and so does a ``static`` with no local object symbol of its name
+       there where the image holds any, a link made with ``-Wl,-x`` dropping them all and
+       leaving the ``static`` to be read by its address alone - or at an address no section
+       of the image holds
    * - ``elf-type-unsupported``
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,

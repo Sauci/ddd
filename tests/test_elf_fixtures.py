@@ -141,3 +141,13 @@ def test_spec_names_the_linkers_the_fixtures_are_linked_by() -> None:
     assert match is not None
     stated = re.split(r", | and ", " ".join(match[1].split()))
     assert sorted(stated) == sorted({named(said) for said in linked})
+
+
+def test_spec_says_what_each_linker_leaves_of_a_discarded_unit() -> None:
+    """Gold keeps the unit's debug information at offsets, and GNU ld drops it, as the two
+    fixtures of the same sources show."""
+    spec = " ".join((OUTPUT.parents[2] / "SPEC.md").read_text(encoding="utf-8").split())
+    assert (
+        "gold keeps the debug information of the unit and leaves each variable at its offset in "
+        "the section it dropped; GNU ld drops it, and the reader holds no variable of that name"
+    ) in spec

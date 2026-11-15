@@ -2043,9 +2043,11 @@ of what the index steps over, so that an array of several dimensions is indexed 
 as C lays it out. The type a path ends at is not compared with the declaration. An object
 is placed where the image's symbol table holds an object symbol of its name at the address
 its debug information gives it, and where a section of the image holds that address: a
-linker that discards a unit keeps the debug information of its variables, and gold leaves
-each of them at its offset in the section it dropped, where no symbol of the name sits and
-no section need lie. The linkers this is tested with are GNU ld 2.44, gold 2.44 and lld 19,
+linker that discards a unit under `--gc-sections` leaves one of two things: gold keeps the
+debug information of the unit and leaves each variable at its offset in the section it
+dropped; GNU ld drops it, and the reader holds no variable of that name. Where the symbol
+table holds no symbol of the name at that address and no section need lie there, the object
+is not placed. The linkers this is tested with are GNU ld 2.44, gold 2.44 and lld 19,
 the ones the fixtures of the suite are linked by; an image another linker wrote is read as
 these are, and no further. The A2L
 takes the byte order the image states: a `--byte-order` that agrees is accepted, and one
@@ -2643,10 +2645,11 @@ function are not candidates. One name at one address is one variable, however ma
 describe it, as a tentative definition `-fcommon` merges is. A variable without an address -
 only declared, folded or removed by the compiler, thread-local, at no fixed address, or
 discarded by the linker, which leaves its DWARF address at 0, at all ones, or, under gold, at
-an offset into the section it dropped, so that an external variable with no object symbol of
-its name at its address is one the linker discarded whatever the address, a `static` being read
-by its address alone since `-Wl,-x` drops the local symbols of a link - or at an address no
-section of the image holds - is `elf-no-storage`.
+an offset into the section it dropped, so that an external variable with no object symbol of its name at its address is one the
+linker discarded whatever the address, and so is a `static` with no local object symbol of its
+name there where the image holds any, a link made with `-Wl,-x` dropping them all and leaving
+the `static` to be read by its address alone - or at an address no section of the image
+holds - is `elf-no-storage`.
 
 What the image states, the declaration states:
 

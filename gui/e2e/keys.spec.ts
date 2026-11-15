@@ -1,17 +1,86 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Locator, Page } from "@playwright/test";
 import {
   CONTROLLER,
+  chooseUnit,
   driftDatatypeIn,
   driftFactor,
+  driftIn,
   driftMax,
   driftMaxUnseen,
   openPanel,
   PUMP,
   readAsText,
   SENSOR_HUB,
+  USER_INTERFACE,
 } from "./demo";
 import { expect, test } from "./fixtures";
+
+/** What the panel says while a chooser's text is not the value settled on. */
+const UNSETTLED = "Press Enter to take what you typed, or pick it from the list.";
+
+/** BlockA made a uint64 stating limits up to the most a uint64 holds, written as text: as a
+ * number here the maximum would already be the double nearest it. */
+function wideBlockA(directory: string): void {
+  const path = join(directory, USER_INTERFACE);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /("name": "BlockA",[\s\S]*?"datatype": )"uint8"/,
+    '$1"uint64",\n          "limits": { "min": 0, "max": 18446744073709551615 }',
+  );
+  if (changed === text) throw new Error(`${USER_INTERFACE} declares no BlockA of uint8`);
+  writeFileSync(path, changed, "utf8");
+}
+
+test("a limit past 2^53 is shown as its file writes it, and no range holding one is applied", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("demo", wideBlockA);
+  const path = join(gui.directory, USER_INTERFACE);
+  const before = readFileSync(path);
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "UserInterface", exact: true }).click();
+  await page.getByRole("rowheader", { name: "BlockA" }).click();
+  const panel = page.getByRole("complementary", { name: "BlockA" });
+  await panel.getByRole("row", { name: /^limits/ }).click();
+
+  // The file's own digits in the field and in the key's row, not 18446744073709552000, the
+  // double they read as - which an edit of Min alone used to send back, a file that would not load.
+  await expect(panel.getByLabel("Max")).toHaveValue("18446744073709551615");
+  // And all of them: the field is as wide as its text, where a field of a fixed width showed
+  // 1844674 and hid the rest, with no sign of it.
+  await expect
+    .poll(() =>
+      panel
+        .getByLabel("Max")
+        .evaluate((field: HTMLInputElement) => field.scrollWidth - field.clientWidth),
+    )
+    .toBeLessThanOrEqual(0);
+  await expect(panel.getByRole("row", { name: /^limits/ })).toContainText(
+    "0 … 18446744073709551615",
+  );
+  const note = panel.getByText(
+    "Max: '18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
+    { exact: true },
+  );
+  await expect(note).toBeVisible();
+  const apply = panel.getByRole("button", { name: /^Apply to/ });
+  await expect(apply).toHaveCount(0);
+  await panel.getByLabel("Min").fill("1");
+  await expect(note).toBeVisible();
+  await expect(apply).toHaveCount(0);
+  expect(readFileSync(path).equals(before)).toBe(true);
+
+  // A maximum the page holds is the range written, as it was typed.
+  await panel.getByLabel("Max").fill("9007199254740991");
+  await expect(panel.getByText("Changes 1 file: user_interface.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => readFileSync(path, "utf8"))
+    .toContain('"limits": { "min": 1, "max": 9007199254740991 }');
+});
 
 /** ValueA's definition in one file of the copy, read back from disk. */
 function valueA(directory: string, file: string): Record<string, never> {
@@ -178,6 +247,24 @@ test("a change refused as stale can be applied again once the analysis has caugh
   expect(valueA(gui.directory, CONTROLLER).limits).toEqual({ min: 0, max: 60 });
 });
 
+test("a float variable's range takes any number a double holds, and is written as floats", async ({
+  page,
+  gui,
+}) => {
+  // ValueC is a float32, which holds 1e19 as it is: its digits past 2^53 were refused, and a
+  // bound past 2^53 the page sent was written as a whole number (task 1's n3 and n2).
+  const panel = await openPanel(page, gui.address, "ValueC", "SensorHub");
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await expect(panel.getByLabel("Max")).toHaveValue("90");
+  await panel.getByLabel("Max").fill("10000000000000000000");
+  const settling = panel.getByRole("region", { name: "Settle the key" });
+  await settling.getByRole("button", { name: "Show changes" }).click();
+  const added = settling.locator(".hunk .added");
+  await expect(added.filter({ hasText: '"max": 10000000000000000000.0' }).first()).toBeVisible();
+  await expect(added.filter({ hasText: '"min": -50.0' }).first()).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeVisible();
+});
+
 test("a range the two fields do not make offers no Apply, and changes nothing", async ({
   page,
   gui,
@@ -197,8 +284,9 @@ test("a range the two fields do not make offers no Apply, and changes nothing", 
   await expect(field).toHaveValue("");
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 
+  // The sentence names the one field it is about (15:M9).
   await panel.getByLabel("Max").fill("");
-  await expect(panel.getByText("A range needs a minimum and a maximum")).toBeVisible();
+  await expect(panel.getByText("Max is empty", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 
   // Taking the key out is a choice the list still offers, and it empties the two fields.
@@ -249,6 +337,11 @@ test("a key a declared type fixes is refused, and nothing is written", async ({
   await expect(panel.getByText("which fixes its unit")).toBeVisible();
   await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
   expect(readFileSync(join(vocabularyGui.directory, PUMP)).equals(before)).toBe(true);
+  // Text typed past the unit refused is no longer about it: the refusal goes, the way out is said.
+  await field.clear();
+  await field.pressSequentially("Hz");
+  await expect(panel.getByText(UNSETTLED)).toBeVisible();
+  await expect(panel.getByText("which fixes its unit")).toHaveCount(0);
 });
 
 test("a value that would leave a file unable to load is previewed with why, and applied all the same", async ({
@@ -290,4 +383,260 @@ test("a key that may be left unstated goes from every declaration", async ({ pag
   await expect(panel.getByRole("row", { name: /^unit/ })).toContainText("none");
   expect(valueA(gui.directory, SENSOR_HUB).unit).toBeUndefined();
   expect(valueA(gui.directory, CONTROLLER).unit).toBeUndefined();
+});
+
+const datatypeOf = (directory: string, file: string): unknown => valueA(directory, file).datatype;
+
+/** Controller's ValueA drifted to a wider datatype and another unit, so that two keys disagree
+ * and the datatype is the first: the panel opens by itself on it. */
+async function openOnDatatype(page: Page, gui: { address: string; directory: string }) {
+  driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint16");
+  driftIn(gui.directory, CONTROLLER, "ValueA", "rpm");
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("rowheader", { name: "ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await expect(
+    panel.getByRole("listitem").filter({ hasText: "definition-mismatch" }).first(),
+  ).toBeVisible();
+  return panel;
+}
+
+test("a datatype picked on one row is not carried to the unit row the panel moves to", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint16");
+  await datatype.press("Enter");
+  // The datatype's own diff is open when it is applied.
+  const settle = panel.getByRole("region", { name: "Settle the key" });
+  await settle.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk .added")).toContainText('"datatype": "uint16"');
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  // The datatype settled, the panel moves by itself to the unit, the one row still disagreeing:
+  // it starts on the producer's unit, not on the datatype that was picked for the last row, and
+  // what it would write is the producer's unit over Controller's.
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
+  await expect(panel.getByText("Changes 1 file: controller.ddd.json")).toBeVisible();
+  // ... with its diff closed, not left open from the row before.
+  await expect(panel.locator(".hunk")).toHaveCount(0);
+  await settle.getByRole("button", { name: "Show changes" }).click();
+  await expect(panel.locator(".hunk .removed")).toContainText('"unit": "rpm"');
+  await expect(panel.locator(".hunk .added")).toContainText('"unit": "%"');
+});
+
+test("a datatype undone comes back on the producer's value, not on the pick that was undone", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint16");
+  await datatype.press("Enter");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
+  await expect.poll(() => datatypeOf(gui.directory, SENSOR_HUB)).toBe("uint16");
+  await page.getByRole("button", { name: "Undo the datatype of ValueA" }).click();
+  await page
+    .getByRole("region", { name: "Undo" })
+    .getByRole("button", { name: "Put back 1 file" })
+    .click();
+  await expect.poll(() => datatypeOf(gui.directory, SENSOR_HUB)).toBe("uint8");
+  // The datatype disagrees again and is the first row that does: the panel goes back to it, on
+  // SensorHub's value, which is not what was picked before the undo.
+  await expect(panel.getByRole("combobox", { name: "Datatype of ValueA" })).toHaveValue("uint8");
+});
+
+test("a datatype settled, then widened from outside, comes back on the producer's value", async ({
+  page,
+  gui,
+}) => {
+  driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint16");
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("rowheader", { name: "ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await expect(datatype).toBeVisible();
+  await datatype.clear();
+  await datatype.pressSequentially("uint16");
+  await datatype.press("Enter");
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => datatypeOf(gui.directory, SENSOR_HUB)).toBe("uint16");
+  // Nothing disagrees any more: the chooser closes.
+  await expect(panel.getByText("Select a key to settle it on every declaration.")).toBeVisible();
+  driftDatatypeIn(gui.directory, SENSOR_HUB, "ValueA", "uint32");
+  // The panel reopens by itself on the datatype, on the producer's uint32, not on the uint16
+  // that was settled before the chooser closed.
+  await expect(panel.getByRole("combobox", { name: "Datatype of ValueA" })).toHaveValue("uint32");
+});
+
+test("text typed on one row is not carried to the row the panel moves to", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint");
+  await expect(datatype).toHaveValue("uint");
+  // The datatype is settled from outside: the panel moves by itself to the unit.
+  driftDatatypeIn(gui.directory, CONTROLLER, "ValueA", "uint8");
+  await expect(panel.getByRole("combobox", { name: "Unit of ValueA" })).toHaveValue("%");
+});
+
+/** What Controller's file states for ValueA's unit. */
+function unitOfValueA(directory: string): string {
+  return JSON.parse(readFileSync(join(directory, CONTROLLER), "utf8")).component.interface.find(
+    (declaration: { definition: { name: string } }) => declaration.definition.name === "ValueA",
+  ).definition.unit;
+}
+
+test("text typed past the chosen unit offers no Apply for the earlier unit, and says what to do", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
+  const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await field.clear();
+  // Blank text is taken by nothing: the sentence does not say Enter takes it.
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
+  await field.pressSequentially("km/h");
+  await expect(field).toHaveValue("km/h");
+  // The open list hides the rest of the page from the accessibility tree: looked for there too.
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  // Nor does a sentence plan the earlier unit as if it were the one now written.
+  await expect(panel.getByText("Changes 2 files")).toHaveCount(0);
+  await expect(panel.getByText(UNSETTLED)).toBeVisible();
+  // Taken with Enter, the text is the unit, and what is planned is for it.
+  await field.press("Enter");
+  await expect(field).toHaveValue("km/h");
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
+});
+
+test("what Apply writes is not a unit the reader typed past", async ({ page, gui }) => {
+  const before = unitOfValueA(gui.directory);
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  // The diff is open, which keeps the open list off the button.
+  await panel
+    .getByRole("region", { name: "Settle the key" })
+    .getByRole("button", { name: "Show changes" })
+    .click();
+  const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await field.clear();
+  await field.pressSequentially("km/h");
+  await expect(field).toHaveValue("km/h");
+  // Nothing to press while the text is not the unit settled on, so nothing can be written.
+  await expect(panel.getByRole("button", { name: /^Apply to/, includeHidden: true })).toHaveCount(
+    0,
+  );
+  expect(unitOfValueA(gui.directory)).toBe(before);
+  // Left, the field goes back to the unit chosen, and Apply writes exactly what it reads.
+  await field.press("Tab");
+  await expect(field).toHaveValue("rpm");
+  await panel.getByRole("button", { name: "Apply to 2 files" }).click();
+  await expect.poll(() => unitOfValueA(gui.directory)).toBe("rpm");
+});
+
+test("a value chooser says Enter takes the text only once it spells an entry", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint");
+  // Part of an entry's spelling, so Enter would take nothing: the list is the way out.
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
+  await datatype.pressSequentially("16");
+  await expect(panel.getByText(UNSETTLED)).toBeVisible();
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toHaveCount(0);
+  await datatype.press("Enter");
+  await expect(panel.getByText(UNSETTLED)).toHaveCount(0);
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toHaveCount(0);
+});
+
+/** Whether the note under a field is what a reader would hit at its centre, rather than the open
+ * list or anything else drawn over it. */
+async function notCovered(field: Locator): Promise<boolean> {
+  return field.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return hit !== null && element.contains(hit);
+  });
+}
+
+test("the arrow closing the list keeps the text typed, withholds Apply and says what to do", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openPanel(page, gui.address, "ValueA");
+  await chooseUnit(page, "rpm");
+  const field = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await field.clear();
+  await field.pressSequentially("km");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  // By its label: an open list hides the page's roles from the accessibility tree.
+  await panel.locator('button[aria-label="Show the choices for Unit of ValueA"]').click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(field).toHaveValue("km");
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  // The sentence is the field's description, and on screen with the list closed.
+  await expect(field).toHaveAccessibleDescription(UNSETTLED);
+  const note = panel.getByText(UNSETTLED);
+  await expect(note).toBeVisible();
+  expect(await notCovered(note)).toBe(true);
+  // Escape ends the text, the earlier unit is back and so is Apply; so does leaving the field.
+  await field.press("Escape");
+  await expect(field).toHaveValue("rpm");
+  await expect(panel.getByRole("button", { name: "Apply to 2 files" })).toBeEnabled();
+  await field.pressSequentially("k");
+  await expect(field).toHaveValue("rpmk");
+  await field.press("Tab");
+  await expect(field).toHaveValue("rpm");
+});
+
+test("an Enter that takes nothing keeps the text, and so does text that spells no entry", async ({
+  page,
+  gui,
+}) => {
+  const panel = await openOnDatatype(page, gui);
+  const datatype = panel.getByRole("combobox", { name: "Datatype of ValueA" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint");
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await datatype.press("Enter");
+  await expect(datatype).toHaveValue("uint");
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  const note = panel.getByText(/^Pick one from the list, or press Escape/);
+  await expect(note).toBeVisible();
+  expect(await notCovered(note)).toBe(true);
+
+  // Text no entry spells empties the list; it stays, and the sentence names the way out.
+  await datatype.clear();
+  await datatype.pressSequentially("zzz");
+  await expect(datatype).toHaveValue("zzz");
+  const nothing = panel.getByText(/^Nothing in the list matches what you typed/);
+  await expect(nothing).toBeVisible();
+  await expect(nothing).toContainText("Escape");
+  await datatype.press("Escape");
+  await expect(datatype).toHaveValue("uint8");
+  await expect(nothing).toHaveCount(0);
 });

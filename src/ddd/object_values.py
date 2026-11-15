@@ -35,6 +35,21 @@ _ELEMENT: Final = re.compile(r"(?:\[[0-9]+\])+")
 
 _INDEX: Final = re.compile(r"\[([0-9]+)\]")
 
+EXACT: Final = 2**53
+"""Where a double, the number the page holds, stops holding every whole number.
+
+``2**53 + 1`` reaches the page as ``2**53``, a 64 bit mask loses its low bits, and ``2**64 - 1``,
+the most a uint64 holds, arrives as ``2**64``, which none holds. Typed or pasted into an integer
+cell, a number past it either side is refused by the page in any spelling, and the page draws no
+grid holding one, nor one holding a value at it in a 64 bit integer (:attr:`Grid.unshown`); a
+number the page sends at or past it may be another it rounded, which :func:`_acceptable`
+refuses a 64 bit integer. Carrying every cell across as exact text instead was weighed and not
+taken: from 2^53 on, a 64 bit value is edited in the file."""
+
+WIDE: Final = frozenset({Datatype.UINT64, Datatype.SINT64})
+"""The integers whose range runs past :data:`EXACT`: the ones a number the page sends at or past
+it may be another the page rounded - narrower ones hold no number that large at all."""
+
 AXIS_REFERENCES: Final = ("axis", "x_axis", "y_axis")
 """The references that name an axis, in the order a grid lays them out.
 
@@ -95,15 +110,34 @@ class Grid:
     cannot edit."""
 
     maximum: float
+    minimum_text: str | None
+    """:attr:`minimum` in its own digits where the double it reaches the page as would show
+    another number (:func:`_limit_text`), and ``None`` where the double shows it as it is."""
+
+    maximum_text: str | None
+    """:attr:`maximum` the same way: the default maximum of a uint64, ``18446744073709551615``,
+    reaches the page as 2^64 and printed as ``18446744073709552000``, which no uint64 holds."""
+
     shape: tuple[int, ...]
     rows: tuple[tuple[float, ...], ...]
-    """Always rows: a one dimensional object is one row, so one shape serves both."""
+    """Always rows: a one dimensional object is one row, so one shape serves both. A scalar - a
+    number or nothing written for an object of no shape - is one row of one cell, the value its
+    own ``init`` states, or the zero the startup code makes of none. Only text, and a list written
+    for an object of no shape, leave it empty: neither has a value to show."""
 
     stated: Literal["array", "scalar", "text", "none"]
     """What the producer writes: the values themselves, one value standing for every element,
     text - which is no grid - or nothing, which the startup code zeroes."""
 
     axes: tuple[Axis, ...]
+    unshown: str | None
+    """The object whose numbers this grid cannot draw as they are, or ``None``: this one where its
+    rows hold such a number, else the first of :attr:`axes` whose breakpoints hold one. A whole
+    number past :data:`EXACT` reaches the page as the double nearest it, and one at it in a 64 bit
+    integer is a value its cell cannot be set back to, so drawn, either would be a number nobody
+    can keep: the page draws no grid of them and says why. A float in the file is a double
+    already and is never one."""
+
     owner: str | None
     """The component the analysis reads the values from, and ``None`` where nothing produces
     this object at all - which is what tells a read-only grid nothing produces from one that
@@ -184,14 +218,86 @@ def grid_of(dictionary: DataDictionary, built: Index, name: str) -> Grid:
         conversion=resolved.conversion,
         minimum=resolved.limits.min,
         maximum=resolved.limits.max,
+        minimum_text=_limit_text(resolved.limits.min),
+        maximum_text=_limit_text(resolved.limits.max),
         shape=shape,
         rows=rows,
         stated=stated,
         axes=axes,
+        unshown=_unshown(name, resolved.datatype, rows, axes, dictionary),
         owner=resolved.owner,
         file=file,
         pointer=pointer,
     )
+
+
+def _unshown(
+    name: str,
+    datatype: Datatype,
+    rows: tuple[tuple[float, ...], ...],
+    axes: tuple[Axis, ...],
+    dictionary: DataDictionary,
+) -> str | None:
+    """:attr:`Grid.unshown`: the first of the object and its axes whose numbers the grid draws -
+    its rows, their breakpoints - hold one it cannot draw (:func:`_unshowable`), each weighed by
+    its own datatype."""
+    drawn = [(name, datatype, [value for row in rows for value in row])]
+    drawn += [
+        (axis.name, dictionary.by_name[axis.name].datatype, list(axis.breakpoints)) for axis in axes
+    ]
+    for named, stored, values in drawn:
+        if any(_unshowable(value, stored) for value in values):
+            return named
+    return None
+
+
+def _limit_text(limit: float) -> str | None:
+    """A limit in its own digits where the page could not print it from its double, a whole
+    number past :data:`EXACT`, else ``None``. A float is a double already, and a whole number up
+    to 2^53 prints as itself; past it the double is another number, or prints as one -
+    ``2**63`` as ``9223372036854776000``."""
+    if isinstance(limit, int) and abs(limit) > EXACT:
+        return str(limit)
+    return None
+
+
+def _unshowable(value: float, datatype: Datatype) -> bool:
+    """Whether the page cannot draw ``value`` as the number it is and have its cell set back to it:
+    a whole number past :data:`EXACT`, which reaches the page as the double nearest it, or one at
+    it in a 64 bit integer, which :func:`_acceptable` refuses a value at it. A float is a double
+    already, and is never one."""
+    if not isinstance(value, int):
+        return False
+    if datatype in WIDE:
+        return abs(value) >= EXACT
+    return abs(value) > EXACT
+
+
+def limits_refusal(raw: str, datatypes: Iterable[object]) -> str | None:
+    """The sentence ``limits`` stated as ``raw`` are refused with where they would give a 64 bit
+    integer among ``datatypes`` a bound at or past :data:`EXACT`, written as a whole number or as a
+    float - which the page may have rounded, as it may a value :func:`_acceptable` refuses - or
+    ``None``.
+
+    The route refuses what the page sends; a range written in the file holds its bounds exactly,
+    and the panel shows them as written. ``raw`` is json text the route's query has read already,
+    and ``datatypes`` are the declarations' own, as their files state them: what is no datatype
+    is no 64 bit integer either.
+    """
+    wide = next((d for d in datatypes if isinstance(d, str) and d in WIDE), None)
+    limits = json.loads(raw)
+    if wide is None or not isinstance(limits, dict):
+        return None
+    for bound in (limits.get("min"), limits.get("max")):
+        # However it is written: a float's spelling, ``1e+21``, is a whole number at or past 2^53
+        # as much as its digits are, and was let through where they were refused.
+        if isinstance(bound, int | float) and abs(bound) >= EXACT:
+            side = "-" if bound < 0 else ""
+            return (
+                f"{bound} is at or past {side}2^53, where the page cannot hold every whole number "
+                f"exactly, so no limit of a {wide} is set to it here"
+            )
+    return None
 
 
 def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
@@ -202,8 +308,8 @@ def _fits(name: str, init: InitValue | None, shape: tuple[int, ...]) -> None:
     ``init-invalid`` and still resolves the project. Laid out regardless, an element of either
     kind reached :class:`Grid` where the other belongs, and the answer failed to be built: a
     ``500``. Nothing else is judged. A short or a ragged init is drawn as written: the finding
-    says what is wrong with it, and setting a cell or pasting a table - the two plans this grid
-    is read for - is how the page repairs it, which a refusal here would close; the variable
+    says what is wrong with it, and setting cells or pasting a table - the plans this grid is
+    read for - is how the page repairs it, which a refusal here would close; the variable
     panel's own settle of ``dimensions`` can leave an init short. A whole scalar fills every
     cell, text is no grid at all, and an object of no shape has no cell to lay any of its init
     out in."""
@@ -260,15 +366,20 @@ def _laid_out(
 ) -> tuple[Literal["array", "scalar", "text", "none"], tuple[tuple[float, ...], ...]]:
     """What the producer states, and the rows it comes to.
 
-    A shapeless object - a plain measurement or parameter, most of a project - has no cell
-    for a value to sit in: ``stated`` still says whether the producer wrote one or nothing,
-    but ``rows`` is always empty for it, never reaching :func:`_filled`, which assumes at
-    least one dimension to index.
+    A shapeless object - a plain measurement or parameter, most of a project - is one cell: its
+    value, or the zero the startup code makes of none, as one row of one, which never reaches
+    :func:`_filled`, which assumes at least one dimension to index. A boolean's ``true`` is the
+    count 1 it is stored as. A list written for an object of no shape, which ``init-invalid``
+    reports, has no value to show, and no row is drawn for it.
     """
     if isinstance(init, str):
         return "text", ()
     if not shape:
-        return ("none" if init is None else "scalar"), ()
+        if init is None:
+            return "none", ((0,),)
+        if isinstance(init, tuple):
+            return "scalar", ()
+        return "scalar", ((int(init) if isinstance(init, bool) else init,),)
     if init is None:
         return "none", _filled(0, shape)
     if isinstance(init, list | tuple):
@@ -312,15 +423,17 @@ def set_cell(
     is one the array of which is too short to hold the cell: the cell past its end is set, the
     elements before it that the array lacks being zeros, as the startup code makes them.
 
-    A shapeless object - a plain measurement or a parameter, most of a project - has no cell
-    for a value to sit in, the same as :func:`grid_of` finds when it lays one out; refused
-    here before ``at`` is checked against the empty shape, rather than left to crash on one.
+    A shapeless object - a plain measurement or a parameter, most of a project - is a grid of
+    one cell, taken at no element (``at`` is empty): one ``set`` at the declaration's own
+    ``init``, added where it states none, the preview showing the object gaining it. What has no
+    value to show - text, and a list written for an object of no shape - has no cell for a value
+    to sit in, refused here before ``at`` is checked against the empty shape.
 
     Refused while the producing declaration's file no longer holds it where the index found it
     (:func:`_in_place`): the cell set there would be another declaration's.
     """
     grid = grid_of(dictionary, built, name)
-    if not grid.shape:
+    if not grid.shape and not grid.rows:
         raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
     if grid.stated == "text":
         raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
@@ -337,16 +450,22 @@ def set_cell(
             f"'{name}' is produced in more than one place, so there is no one file to set it in",
         )
     found = _element(at, grid.shape)
-    _acceptable(raw, Datatype(grid.datatype), name)
+    datatype = Datatype(grid.datatype)
+    _acceptable(raw, datatype, name)
+    raw = _written(raw, datatype)
     site = sites[0]
     _in_place(site, name, cache)
+    if not grid.shape:
+        # The scalar's own pointer: its value is its ``init``, whether it is stated or not.
+        operation = Operation("set", f"{site.pointer}.init", json.dumps(raw))
+        return ValuePlan((PlannedEdit(site.path, (operation,)),))
     written = read(site.path, cache).value_at(f"{site.pointer}.init")
     if _has_cell(written, found):
         operation = Operation("set", f"{site.pointer}.init{at}", json.dumps(raw))
     else:
         # The array is not written yet, or is shorter than the shape: written whole, a short
         # one filled out with zeros - what the startup code makes of the elements it lacks.
-        rows = _filled_out(grid.rows, grid.shape)
+        rows = _filled_out(grid.rows, grid.shape, datatype)
         whole: list[float] | list[list[float]]
         if len(grid.shape) == 1:
             # A one dimensional object is one row, so its only index is the column.
@@ -357,6 +476,76 @@ def set_cell(
             whole = rows
         rows[row][column] = raw
         operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
+    return ValuePlan((PlannedEdit(site.path, (operation,)),))
+
+
+def set_cells(
+    dictionary: DataDictionary,
+    built: Index,
+    name: str,
+    cells: Sequence[tuple[str, float]],
+    cache: dict[Path, Document],
+) -> ValuePlan:
+    """What setting several elements at once takes: the cells typed into the page's grid, each
+    given as :func:`set_cell` takes one, its element and its raw count, in the grid's order.
+
+    One edit, a ``set`` at each element's own pointer: what nobody typed stays as the file writes
+    it - its spellings, ``3.0`` as ``3.0``, its layout, and a value its datatype cannot hold,
+    which the analysis reports and this leaves alone - and a block too long for its table to be
+    sent in one request takes its cells all the same. Where the array is not written yet, or is
+    too short to hold one of the cells, the whole ``init`` is written instead, as :func:`set_cell`
+    writes it for one cell, every cell given set over the values the file states. A cell given
+    twice is set to the value given last, as the edit engine makes two sets of one pointer.
+
+    Refused as :func:`set_cell` refuses one cell, and in the same order: no shape, text, no
+    producer or more than one; then an element of another number of indices than the shape's,
+    which names no element of the object at all (:func:`_indices`); then every cell past the end
+    of the shape and every value its datatype cannot hold, each named with its own reason as
+    :func:`set_values` names a table's (:func:`_all_of_them`); then a producing declaration no
+    longer where the index found it (:func:`_in_place`).
+    """
+    grid = grid_of(dictionary, built, name)
+    if not grid.shape:
+        raise ValueRefusalError("invalid", f"'{name}' has no cell for a value to sit in")
+    if grid.stated == "text":
+        raise ValueRefusalError("invalid", f"'{name}' is initialised with text, not with a grid")
+    sites = built.producers.get(name) or []
+    if len(sites) != 1:
+        raise ValueRefusalError("invalid", _no_single_producer(name, sites))
+    found = [(_indices(at, grid.shape), at, raw) for at, raw in cells]
+    datatype = Datatype(grid.datatype)
+    offenders: list[tuple[str, str]] = []
+    for element, at, raw in found:
+        row, column = (0, element[0]) if len(grid.shape) == 1 else element
+        label = _element_label(row, column, grid.shape)
+        if _past(element, grid.shape):
+            offenders.append((label, f"'{at}' is past the end of this object"))
+            continue
+        try:
+            _acceptable(raw, datatype, name)
+        except ValueRefusalError as refused:
+            offenders.append((label, refused.message))
+    if offenders:
+        raise ValueRefusalError("invalid", _all_of_them(offenders, name))
+    site = sites[0]
+    _in_place(site, name, cache)
+    written = read(site.path, cache).value_at(f"{site.pointer}.init")
+    if all(_has_cell(written, element) for element, _, _ in found):
+        operations = tuple(
+            Operation(
+                "set",
+                f"{site.pointer}.init" + "".join(f"[{index}]" for index in element),
+                json.dumps(_written(raw, datatype)),
+            )
+            for element, _, raw in found
+        )
+        return ValuePlan((PlannedEdit(site.path, operations),))
+    rows = _filled_out(grid.rows, grid.shape, datatype)
+    for element, _, raw in found:
+        row, column = (0, element[0]) if len(grid.shape) == 1 else element
+        rows[row][column] = _written(raw, datatype)
+    whole: list[float] | list[list[float]] = rows[0] if len(grid.shape) == 1 else rows
+    operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
     return ValuePlan((PlannedEdit(site.path, (operation,)),))
 
 
@@ -429,9 +618,8 @@ def set_values(
         raise ValueRefusalError("invalid", _all_of_them(offenders, name))
     site = sites[0]
     _in_place(site, name, cache)
-    whole: list[float] | list[list[float]] = (
-        list(rows[0]) if len(grid.shape) == 1 else [list(row) for row in rows]
-    )
+    written = [[_written(value, datatype) for value in row] for row in rows]
+    whole: list[float] | list[list[float]] = written[0] if len(grid.shape) == 1 else written
     operation = Operation("set", f"{site.pointer}.init", json.dumps(whole))
     return ValuePlan((PlannedEdit(site.path, (operation,)),))
 
@@ -496,27 +684,53 @@ def _has_cell(written: object, found: tuple[int, ...]) -> bool:
     return isinstance(row, list) and found[1] < len(row)
 
 
-def _filled_out(rows: tuple[tuple[float, ...], ...], shape: tuple[int, ...]) -> list[list[float]]:
-    """``rows`` as lists, each row and the rows themselves taken to the shape with zeros; one
+def _filled_out(
+    rows: tuple[tuple[float, ...], ...], shape: tuple[int, ...], datatype: Datatype
+) -> list[list[float]]:
+    """``rows`` as lists, each row and the rows themselves taken to the shape with zeros, written
+    as the datatype writes them (:func:`_written`) - a float's as one, a boolean's as ``false``; one
     longer than the shape is left as it is, for its own finding to say so."""
     filled = [list(row) for row in rows]
     width = shape[-1]
+    zero = _written(0, datatype)
     for row in filled:
-        row.extend([0] * (width - len(row)))
+        row.extend([zero] * (width - len(row)))
     while len(filled) < shape[0] and len(shape) > 1:
-        filled.append([0] * width)
+        filled.append([zero] * width)
     return filled
 
 
-def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
-    """The indices ``at`` names - ``[2]``, or ``[1][3]`` - checked against the shape. Each is in
-    brackets, as the pointer the edit is made at writes them: ``1`` is no element, where read as
-    one it planned a key of its own, ``init1``."""
+def _written(raw: float, datatype: Datatype) -> float:
+    """``raw`` as its datatype's value is written: a float's as a float, ``3.0`` for the ``3`` the
+    page sends - and ``1e+19`` for ``10000000000000000000``, a whole number past :data:`EXACT` that
+    :func:`_unshowable` would otherwise mark as one the grid cannot show, though a float holds it
+    as it is - and a boolean's as ``true`` or ``false`` for the count 1 or 0 the page sends, so that
+    a file's ``false`` set to 1 and back reads ``true`` and then ``false``, where it was written
+    ``1`` and then ``0``. Any other datatype's as it was given."""
+    if datatype is Datatype.BOOLEAN:
+        return bool(raw)
+    return float(raw) if datatype.is_float else raw
+
+
+def _indices(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """The indices ``at`` names - ``[2]``, or ``[1][3]`` - one for each of the shape's dimensions,
+    whether or not they fall inside it. Each is in brackets, as the pointer the edit is made at
+    writes them: ``1`` is no element, where read as one it planned a key of its own, ``init1``."""
     parts = _INDEX.findall(at) if _ELEMENT.fullmatch(at) else []
     if len(parts) != len(shape):
         raise ValueRefusalError("invalid", f"'{at}' is not an element of this object")
-    found = tuple(int(piece) for piece in parts)
-    if any(index >= size for index, size in zip(found, shape, strict=True)):
+    return tuple(int(piece) for piece in parts)
+
+
+def _past(found: tuple[int, ...], shape: tuple[int, ...]) -> bool:
+    """Whether the element at ``found`` lies past the end of the shape in any dimension."""
+    return any(index >= size for index, size in zip(found, shape, strict=True))
+
+
+def _element(at: str, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """The indices ``at`` names (:func:`_indices`), checked against the shape."""
+    found = _indices(at, shape)
+    if _past(found, shape):
         raise ValueRefusalError("invalid", f"'{at}' is past the end of this object")
     return found
 
@@ -543,6 +757,13 @@ def _acceptable(raw: float, datatype: Datatype, name: str) -> None:
     it is read back by cannot then drift apart. The object's limits are deliberately not
     weighed - nothing in the analysis weighs an init against them, and a grid stricter than
     ``ddd check`` would leave cells a person wrote by hand that it could not edit.
+
+    One refusal is stricter than the check, and on purpose: a 64 bit integer is refused a whole
+    number at or past :data:`EXACT`, which ``ddd check`` takes. The number the page sends there
+    may be another it rounded - ``2**53`` stands for ``2**53 + 1`` too - and nothing here can tell
+    which was meant. What it costs is the cells it leaves: a value past 2^53 is set in the
+    file, and the grid holding one says it cannot show it. Asked after the range, so that a
+    number the datatype cannot hold at all is still refused as not fitting.
     """
     if datatype is Datatype.BOOLEAN:
         if not isinstance(raw, bool) and raw not in (0, 1):
@@ -559,6 +780,14 @@ def _acceptable(raw: float, datatype: Datatype, name: str) -> None:
         raise ValueRefusalError(
             "invalid",
             f"{raw} does not fit into {datatype.value} ({info.raw_min} .. {info.raw_max})",
+        )
+    if datatype.is_integer and abs(raw) >= EXACT:
+        # Only a 64 bit integer reaches this: a narrower one holds no number this large, and
+        # is refused it above as not fitting.
+        raise ValueRefusalError(
+            "invalid",
+            f"{raw} is at or past {'-' if raw < 0 else ''}2^53, where the page cannot hold every "
+            f"whole number exactly, so no {datatype.value} is set to it here",
         )
     if datatype.rounds_to_zero(raw):
         raise ValueRefusalError("invalid", f"{raw} rounds to zero in {datatype.value}")

@@ -14,6 +14,7 @@ import {
   textOf,
   unitLabel,
   unitOfDeclaration,
+  unitRefusal,
   unloadableOf,
 } from "./units";
 
@@ -331,5 +332,33 @@ group("what a preview says and sends", () => {
         "the unit of ValueA",
       ),
     ).toBeNull();
+  });
+});
+
+group("a unit with spaces around it (15:M10)", () => {
+  test("is refused in the words the Units tab refuses the spelling with", () => {
+    expect(unitRefusal("V ")).toBe("'V ' has spaces around it");
+    expect(unitRefusal(" V")).toBe("' V' has spaces around it");
+  });
+
+  test.each(
+    // White space as python's `str.strip` takes it off, which the server judges by: the four
+    // separators and the next-line among it, which JavaScript's `trim` keeps.
+    [0x09, 0x0a, 0x0d, 0x1c, 0x1f, 0x85, 0xa0, 0x2000, 0x3000].map((code) => ({
+      code,
+      hex: code.toString(16).toUpperCase().padStart(4, "0"),
+    })),
+  )("U+$hex around a unit is space around it", ({ code }) => {
+    const space = String.fromCodePoint(code);
+    expect(unitRefusal(`V${space}`)).toBe(`'V${space}' has spaces around it`);
+    expect(unitRefusal(`${space}V`)).not.toBeNull();
+  });
+
+  test("a byte order mark, which python keeps, is no space around it, nor is one inside", () => {
+    expect(unitRefusal(`V${String.fromCodePoint(0xfeff)}`)).toBeNull();
+    expect(unitRefusal("m s")).toBeNull();
+    expect(unitRefusal("V")).toBeNull();
+    expect(unitRefusal("")).toBeNull();
+    expect(unitRefusal(null)).toBeNull();
   });
 });

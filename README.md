@@ -906,7 +906,7 @@ image without its extension, so `firmware.elf` gives `firmware_ddd_headers`.  Op
 only one of the two leaves the same ambiguity in place, because the automatic set still
 reaches every registered component rather than only the ones that image links.
 
-The declared outputs are derived from the template names, and the a2l; the files of a
+The declared outputs are derived from the template names, the a2l and the dictionary; the files of a
 `{component}` template are declared as byproducts, one for each component of the image - each
 one it links, or with `PROJECT` each one the project names - under the names the module reads
 out of the descriptions when the build is configured.  A link made behind `$<CONFIG:...>`

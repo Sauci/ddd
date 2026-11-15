@@ -1,4 +1,4 @@
-import type { ValuesReply } from "../api/types";
+import type { GridAxis, ValuesReply } from "../api/types";
 import {
   columnAxis,
   columnHeader,
@@ -7,6 +7,7 @@ import {
   rawOf,
   rounded,
   rowHeader,
+  wanted,
 } from "./objectValues";
 
 /** The drawn box, in the `viewBox`'s own units - one fixed frame scaled to whatever width the
@@ -45,20 +46,49 @@ export interface Plot {
 
 const PAD = 20;
 
-/** How many values a row holds - the shape's last dimension, and 0 for a shape of none. */
-function widthOf(reply: ValuesReply): number {
-  const [first = 0, second] = reply.shape;
-  return second === undefined ? first : second;
+/** The axis whose readings place the values along the bottom, or `undefined` where they sit at
+ * their indices: an object laid against no axis, or against one stating fewer breakpoints than
+ * the shape has columns, which places none of them - no breakpoint of it could place the columns
+ * past its last in order (15:M7). */
+function placing(reply: ValuesReply): GridAxis | undefined {
+  const axis = columnAxis(reply);
+  return axis === undefined || axis.breakpoints.length < wanted(reply)[1] ? undefined : axis;
 }
 
-/** Where the values sit along the bottom: the axis's own readings where there is one, and the
- * indices otherwise - which are evenly spaced because they are, while breakpoints are not. */
+/** Where the values sit along the bottom, one place for each column the object's shape has: the
+ * axis's own readings where it states one for every column (`placing`), and otherwise the
+ * indices, evenly spaced because they are, while breakpoints are not. An axis stating more
+ * breakpoints than the shape places the shape's columns alone. */
 function alongTheBottom(reply: ValuesReply, physical: boolean): number[] {
-  const axis = columnAxis(reply);
-  if (axis === undefined || axis.breakpoints.length === 0) {
-    return Array.from({ length: widthOf(reply) }, (_, index) => index);
+  const width = wanted(reply)[1];
+  const axis = placing(reply);
+  if (axis === undefined) {
+    return Array.from({ length: width }, (_, index) => index);
   }
-  return axis.breakpoints.map((raw) => (physical ? physicalOf(raw, axis.conversion) : raw));
+  return axis.breakpoints
+    .slice(0, width)
+    .map((raw) => (physical ? physicalOf(raw, axis.conversion) : raw));
+}
+
+/** The rows the picture draws, each cut at the shape's last column, and no row past its last: the
+ * values the grid draws, and none it does not. */
+function drawnRows(reply: ValuesReply): number[][] {
+  const [height, width] = wanted(reply);
+  return reply.rows.slice(0, height).map((row) => row.slice(0, width));
+}
+
+/** The least and the greatest of `values`, found in one pass - never by spreading them as the
+ * arguments of `Math.min` and `Math.max`, which a place asked for each point of a large grid made
+ * quadratic, and which throws past the number of arguments the engine takes (15:M8). `[Infinity,
+ * -Infinity]` of none. */
+function extremes(values: readonly number[]): [number, number] {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const value of values) {
+    if (value < low) low = value;
+    if (value > high) high = value;
+  }
+  return [low, high];
 }
 
 /** The range the values are drawn in: their own span with a twentieth of it to spare above and
@@ -70,15 +100,14 @@ function alongTheBottom(reply: ValuesReply, physical: boolean): number[] {
  * all. Such a range is the value with a twentieth of *itself* either side, or one either side
  * where the value is zero and there is no proportion to take.
  *
- * A row can hold no values at all - `Math.min()` and `Math.max()` of nothing are `Infinity` and
- * `-Infinity`, which is not a range and prints as those two words. An `init` of `[]` against a
+ * A row can hold no values at all - the `extremes` of nothing are `Infinity` and `-Infinity`,
+ * which is not a range and prints as those two words. An `init` of `[]` against a
  * stated shape reaches this: `_check_init_shape` files a finding but does not drop the
  * declaration, so the reply still has to draw *something*. It gets the same span the zero case
  * gets, -1 to 1, there being no values to take a proportion of either. */
 function rangeOf(values: number[]): [number, number] {
   if (values.length === 0) return [-1, 1];
-  const low = Math.min(...values);
-  const high = Math.max(...values);
+  const [low, high] = extremes(values);
   if (low !== high) {
     const pad = (high - low) / PAD;
     return [low - pad, high + pad];
@@ -92,28 +121,60 @@ function placed(value: number, from: number, to: number, start: number, length: 
   return from === to ? start + length / 2 : start + ((value - from) / (to - from)) * length;
 }
 
+/** What `plotted` drew, by the reply and the reading it drew: a grid is drawn again on every
+ * keystroke typed into it, and what it draws changes with neither (15:M8). Held by the reply
+ * itself, so that a reply let go takes its plots with it. */
+const DRAWN = new WeakMap<ValuesReply, { raw?: Plot; physical?: Plot }>();
+
+/** The plot of `reply` in the reading asked for, worked out once for as long as the page holds the
+ * reply: the same plot, not an equal one, so that what draws it can see nothing changed. */
 export function plotted(reply: ValuesReply, physical: boolean): Plot {
+  const kept = DRAWN.get(reply) ?? {};
+  DRAWN.set(reply, kept);
+  const key = physical ? "physical" : "raw";
+  const known = kept[key];
+  if (known !== undefined) return known;
+  const plot = drawn(reply, physical);
+  kept[key] = plot;
+  return plot;
+}
+
+function drawn(reply: ValuesReply, physical: boolean): Plot {
   const xs = alongTheBottom(reply, physical);
-  const values = reply.rows.flatMap((row) =>
+  const rows = drawnRows(reply);
+  const values = rows.flatMap((row) =>
     row.map((raw) => (physical ? physicalOf(raw, reply.conversion) : raw)),
   );
   const [low, high] = rangeOf(values);
   const across = BOX.width - BOX.left - BOX.right;
   const down = BOX.height - BOX.top - BOX.bottom;
-  const xAt = (index: number) =>
-    placed(xs[index] ?? 0, Math.min(...xs), Math.max(...xs), BOX.left, across);
+  // A place for every column the shape has (`alongTheBottom`), and no row or tick drawn past the
+  // shape's last column (`drawnRows`, `columnHeader`): each index read here has its place.
+  const [first, last] = extremes(xs);
+  const xAt = (index: number) => placed(xs[index] as number, first, last, BOX.left, across);
   const yAt = (value: number) => BOX.top + down - placed(value, low, high, 0, down);
-  const labels = reply.shape.length === 1 ? reply.rows.map(() => "") : rowHeader(reply, physical);
-  const axis = columnAxis(reply);
+  const labels = reply.shape.length === 1 ? rows.map(() => "") : rowHeader(reply, physical);
+  // The axis placing the values along the bottom (`placing`), or none where they sit at their
+  // indices - an axis stating fewer breakpoints than the shape included, which is not named under
+  // ticks reading the indices: its name and unit there made readings of them, `AxisA (Hz)` under
+  // 0 to 5, where the grid's header above reads its breakpoints.
+  const axis = placing(reply);
   return {
-    lines: reply.rows.map((row, index) => ({
-      label: labels[index] ?? "",
+    // A label for every row the shape has (`rowHeader`), and no row drawn past its last.
+    lines: rows.map((row, index) => ({
+      label: labels[index] as string,
       points: row.map((raw, at) => ({
         x: xAt(at),
         y: yAt(physical ? physicalOf(raw, reply.conversion) : raw),
       })),
     })),
-    ticks: columnHeader(reply, physical).map((label, index) => ({ x: xAt(index), label })),
+    // Where the values sit at their indices, the ticks read them, as over an axis stating no
+    // breakpoints: a breakpoint read at an index's place said what the place is not - 100, of
+    // breakpoints 0, 100 and 5000, drawn halfway between 0 and 5000 (fix round 1, M10).
+    ticks: (axis === undefined
+      ? Array.from({ length: wanted(reply)[1] }, (_, index) => String(index))
+      : columnHeader(reply, physical)
+    ).map((label, index) => ({ x: xAt(index), label })),
     rules: [reply.minimum, reply.maximum]
       .map((limit) => (physical ? limit : rawOf(limit, reply.conversion, reply.datatype)))
       .filter((value) => value >= low && value <= high)

@@ -97,6 +97,59 @@ test("a new measurement is declared and stamped", async ({ page, gui }) => {
   expect(text).toMatch(/"name": "Pressure",\s*"id": "[0-9a-z]{12}"/);
 });
 
+test("text left in a key's field of the form offers no Add, until it is taken", async ({
+  page,
+  gui,
+}) => {
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Add a declaration" }).click();
+  const adding = page.getByRole("complementary", { name: "Add a declaration" });
+  const name = adding.getByRole("combobox", { name: "Name" });
+  await name.fill("Pressure");
+  await name.press("Enter");
+  const scope = adding.getByRole("combobox", { name: "Scope" });
+  await scope.fill("produces");
+  await scope.press("Enter");
+  const kind = adding.getByRole("combobox", { name: "Kind" });
+  await kind.fill("measurement");
+  await kind.press("Enter");
+  const volatile = adding.getByRole("combobox", { name: "Volatile of Pressure" });
+  await volatile.fill("false");
+  await volatile.press("Enter");
+  const datatype = adding.getByRole("combobox", { name: "Datatype of Pressure" });
+  await datatype.clear();
+  await datatype.pressSequentially("uint8");
+  await datatype.press("Enter");
+  await expect(adding.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+
+  // Another datatype typed past it, and left in the field: no Add for the one before.
+  await datatype.clear();
+  await datatype.pressSequentially("uint1");
+  await expect(datatype).toHaveValue("uint1");
+  await expect(
+    adding.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  // Enter would take nothing yet: only an entry spelt exactly, so the sentence says to pick.
+  await expect(adding.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await datatype.pressSequentially("6");
+  await expect(
+    adding.getByText("Press Enter to take what you typed, or pick it from the list."),
+  ).toBeVisible();
+  await expect(
+    adding.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+
+  // Taken with Enter, Add writes what the field reads.
+  await datatype.press("Enter");
+  await expect(datatype).toHaveValue("uint16");
+  await adding.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect(page.getByRole("complementary", { name: "Pressure" })).toBeVisible();
+  expect(readFileSync(join(gui.directory, CONTROLLER), "utf8")).toMatch(
+    /"name": "Pressure",[\s\S]*?"datatype": "uint16"/,
+  );
+});
+
 test("a value block is declared with the shape it is given", async ({ page, gui }) => {
   await page.goto(gui.address);
   await page.getByRole("button", { name: "Controller", exact: true }).click();
@@ -215,6 +268,15 @@ test("a name the project already has is refused in its own words", async ({ page
   await expect(adding.getByText("'ValueA' is already declared by this project")).toBeVisible();
   await expect(adding.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
   expect(readFileSync(join(gui.directory, CONTROLLER)).equals(before)).toBe(true);
+
+  // Text typed into a key's field is past the value the refusal was about: the sentence goes, and
+  // comes back with the text put back. Looked for by its text: the open list hides the roles.
+  await volatile.clear();
+  await volatile.pressSequentially("fal");
+  await expect(adding.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await expect(adding.getByText("'ValueA' is already declared by this project")).toHaveCount(0);
+  await volatile.press("Escape");
+  await expect(adding.getByText("'ValueA' is already declared by this project")).toBeVisible();
 });
 
 test("a declaration is removed and put back", async ({ page, gui }) => {

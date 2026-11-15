@@ -1,0 +1,99 @@
+import { pointerOf, valueAt } from "./pointer";
+import { asList, asText } from "./values";
+
+/** The line a variable's panel says what it does not do in, and where that is done: a variable is
+ * renamed - the language server rewrites every place that names it - and moved to another scope
+ * in its file, in the editor. */
+export const EDITED_ELSEWHERE =
+  "Renaming the variable and changing its scope are done in its file, in the editor.";
+
+/** The description the declaration of `name` states in a component file's parsed content (`GET
+ * /api/file`): the empty text where it states none, which is the model's own default, and `null`
+ * where the file declares no such variable - or has no interface, or did not parse. */
+export function descriptionIn(data: unknown, name: string): string | null {
+  const entries = asList(valueAt(data, "component.interface"));
+  for (let index = 0; index < entries.length; index += 1) {
+    const at = pointerOf(["component", "interface", index, "definition"]);
+    if (valueAt(data, `${at}.name`) === name)
+      return asText(valueAt(data, `${at}.description`)) ?? "";
+  }
+  return null;
+}
+
+/** What an Apply wrote, held while the file read since still holds what it was before. */
+export interface Applied {
+  text: string;
+  /** What the declaration stated when the Apply was made. */
+  before: string;
+}
+
+/** The hold an Apply left, or `undefined` once the file read since states something else: let go for
+ * good, so that an undo returning the file to what it stated before the Apply is not taken for the
+ * file not yet being read. */
+export function appliedHeld(applied: Applied | undefined, stored: string): Applied | undefined {
+  return applied !== undefined && stored === applied.before ? applied : undefined;
+}
+
+/** What the description field shows: the text typed into it, the empty text of a field cleared
+ * included; else what the last Apply wrote while the file read since still states what it did
+ * before - an edit shows at once, and the field never reverts to the old text for the round trip
+ * that reads the file again (spec 2026-09-30 §6); else the declaration's own. Once the file read
+ * states anything else - the new text, or an undo's - the hold has ended. */
+export function descriptionShown(
+  typed: string | undefined,
+  stored: string,
+  applied: Applied | undefined,
+): string {
+  if (typed !== undefined) return typed;
+  if (applied !== undefined && stored === applied.before) return applied.text;
+  return stored;
+}
+
+/** Which declaration a description is for: the variable's, in the component file the panel is
+ * open from. */
+export interface Described {
+  file: string;
+  name: string;
+}
+
+/** What describing is asked of the server: the declaration and the text it is to state, `""`
+ * taking the key away. `null` where there is nothing to ask - no component in view (`where`
+ * `undefined`: the project screen's own panel), nothing typed, or text typed back to the
+ * declaration's own. */
+export function describeRequest(
+  where: Described | undefined,
+  typed: string | undefined,
+  stored: string,
+): (Described & { description: string }) | null {
+  if (where === undefined || typed === undefined || typed === stored) return null;
+  return { ...where, description: typed };
+}
+
+/** What a description changed is, in a sentence above the preview. */
+export function describeSentence(name: string, from: string, description: string): string {
+  if (description === "") return `Takes the description of ${name} out of ${from}`;
+  return `Sets the description of ${name} in ${from}`;
+}
+
+/** Where a description is written, and what the declaration states now. */
+export interface DescriptionField {
+  where: Described;
+  /** The component whose declaration it is. */
+  from: string;
+  stored: string;
+}
+
+/** Whether the panel holds a description field, and for what: only on a component's page - `file`
+ * is `undefined` on the project screen's own panel, where no component is in view - for a
+ * component that declares the variable (`from`), once its file is read (`stored`, `null` until it
+ * is, and where it declares none). The one decision; the screen asks and the view draws what it
+ * is given. */
+export function descriptionField(
+  file: string | undefined,
+  name: string,
+  from: string | undefined,
+  stored: string | null,
+): DescriptionField | null {
+  if (file === undefined || from === undefined || stored === null) return null;
+  return { where: { file, name }, from, stored };
+}

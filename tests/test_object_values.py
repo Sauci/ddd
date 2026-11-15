@@ -18,7 +18,9 @@ from ddd.object_values import (
     ValuePlan,
     ValueRefusalError,
     grid_of,
+    limits_refusal,
     set_cell,
+    set_cells,
     set_values,
 )
 
@@ -151,23 +153,58 @@ class TestWhatTheGridShows:
         grid = grid_of(dictionary, built, "CurveA")
         assert (grid.minimum, grid.maximum) == (0.0, 655.35)
 
-    def test_a_shapeless_object_has_an_empty_shape_and_no_rows(self, demo) -> None:
-        # ValueA is a plain scalar measurement: shape () is normal for most of a project -
-        # sensor_hub states its init as 0 - and a shapeless object has no cell for a value
-        # to sit in, so the empty grid is the answer, not a crash and not a refusal.
+    def test_a_scalar_is_one_cell(self, demo) -> None:
+        # ParameterA, a plain calibration parameter: no dimensions, uint16, init 3200 and a
+        # conversion of 0.25. Its one value sits in a grid of one cell, in raw counts as every
+        # grid holds them: 3200 raw reads 800 physical.
         dictionary, built = demo
-        grid = grid_of(dictionary, built, "ValueA")
+        grid = grid_of(dictionary, built, "ParameterA")
+        assert (grid.kind, grid.datatype, grid.unit) == ("parameter", "uint16", "Hz")
         assert grid.shape == ()
-        assert grid.rows == ()
+        assert grid.rows == ((3200,),)
         assert grid.stated == "scalar"
+        assert grid.conversion.factor == 0.25  # type: ignore[attr-defined]
+        assert grid.rows[0][0] * grid.conversion.factor == 800  # type: ignore[attr-defined]
+        assert grid.file is not None and grid.file.endswith("controller.ddd.json")
+        assert grid.pointer is not None
 
-    def test_a_shapeless_object_with_no_init_says_none_too(self, demo) -> None:
-        # The same shapeless case, the other way its producer can leave init: ValueC states
-        # none at all, so it draws the same "none" a shaped object with no init draws -
-        # shape alone does not collapse that distinction, only rows.
+    def test_a_scalar_stating_nothing_is_one_cell_of_zero(self, demo) -> None:
+        # The other way its producer can leave init: ValueC states none, so the startup code
+        # zeroes it - the one cell reads 0, and `stated` still says nothing is written.
         dictionary, built = demo
         grid = grid_of(dictionary, built, "ValueC")
-        assert (grid.shape, grid.rows, grid.stated) == ((), (), "none")
+        assert (grid.shape, grid.rows, grid.stated) == ((), ((0,),), "none")
+
+    def test_a_scalar_that_is_a_boolean_reads_as_a_count(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Flag", datatype="boolean", init=True)
+                ),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        grid = grid_of(revision.dictionary, revision.index, "Flag")
+        assert grid.rows == ((1,),)
+        assert type(grid.rows[0][0]) is int
+
+    def test_a_scalar_initialised_with_a_list_has_no_cell(self, tmp_path) -> None:
+        # A list on an object of no shape is a finding of its own (`init-invalid`) and no value to
+        # show: the grid holds no cell for it.
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Odd", init=[1, 2])),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        grid = grid_of(revision.dictionary, revision.index, "Odd")
+        assert (grid.shape, grid.rows) == ((), ())
 
     def test_an_axis_with_no_init_gives_no_breakpoints(self, tmp_path) -> None:
         # An axis's own producer may state no init at all, legal like any other object's -
@@ -652,18 +689,30 @@ class TestChangingOne:
             session.stop()
         assert refused.value.message == "'Cube' has 3 dimensions, and a grid draws at most two"
 
-    def test_a_shapeless_object_has_no_cell_to_change(self, demo) -> None:
-        # ValueA is a plain scalar measurement with no dimensions at all - legal and common,
-        # the same object TestWhatTheGridShows reads against. Unlike a curve, a map or a
-        # value block it has no cell for a value to sit in, so set_cell refuses it outright,
+    def test_an_object_with_no_cell_has_none_to_change(self, tmp_path) -> None:
+        # A list written for an object of no shape, and text written for one, have no cell for a
+        # value to sit in; set_cell refuses either outright, in the words it always has,
         # checked before `at` is ever weighed against the empty shape.
-        dictionary, built = demo
-        with pytest.raises(ValueRefusalError) as refused:
-            set_cell(dictionary, built, "ValueA", "", 1, {})
-        assert (refused.value.code, refused.value.message) == (
-            "invalid",
-            "'ValueA' has no cell for a value to sit in",
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Odd", init=[1, 2]),
+                    declare("output", "Label", init="OFF"),
+                ),
+            },
         )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        for name in ("Odd", "Label"):
+            with pytest.raises(ValueRefusalError) as refused:
+                set_cell(revision.dictionary, revision.index, name, "", 1, {})
+            assert (refused.value.code, refused.value.message) == (
+                "invalid",
+                f"'{name}' has no cell for a value to sit in",
+            )
 
     def test_a_boolean_cell_takes_0_or_1_and_nothing_else(self, tmp_path) -> None:
         # analysis._check_init's own boolean arm, mirrored: a bool or a literal 0/1 passes,
@@ -698,7 +747,7 @@ class TestChangingOne:
         finally:
             session.stop()
         assert isinstance(plan, ValuePlan)
-        assert plan.edits[0].operations[0].raw == "1"
+        assert plan.edits[0].operations[0].raw == "true"
         assert refused.value.message == "2 is not a valid bool"
 
     def test_a_float_past_its_precision_rounds_to_zero_and_is_refused(self, tmp_path) -> None:
@@ -732,6 +781,108 @@ class TestChangingOne:
         finally:
             session.stop()
         assert refused.value.message == "1e-50 rounds to zero in float32"
+
+
+class TestAScalarIsSetAsOneCell:
+    """A scalar's value is the one cell of a grid of one: ``set_cell`` takes it at no element, as
+    one ``set`` at the declaration's own ``init``."""
+
+    def test_a_value_set_is_one_set_at_the_init(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_cell(dictionary, built, "ParameterA", "", 4000, {})
+        (edit,) = plan.edits
+        assert edit.path.name == "controller.ddd.json"
+        (operation,) = edit.operations
+        assert (operation.op, operation.raw) == ("set", "4000")
+        assert operation.pointer.endswith(".definition.init")
+        text = edit.path.read_text(encoding="utf-8")
+        after = edit_text(text, edit.operations)
+        assert _definition_of(after, "ParameterA")["init"] == 4000
+        # The rest of the declaration is as it was.
+        before = _definition_of(text, "ParameterA")
+        assert {k: v for k, v in _definition_of(after, "ParameterA").items() if k != "init"} == {
+            k: v for k, v in before.items() if k != "init"
+        }
+
+    def test_a_scalar_stating_no_init_gains_one(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_cell(dictionary, built, "ValueC", "", 21.5, {})
+        (edit,) = plan.edits
+        (operation,) = edit.operations
+        assert operation.pointer.endswith(".definition.init")
+        text = edit.path.read_text(encoding="utf-8")
+        assert "init" not in _definition_of(text, "ValueC")
+        after = edit_text(text, edit.operations)
+        assert _definition_of(after, "ValueC")["init"] == 21.5
+
+    def test_the_value_is_weighed_by_its_datatype(self, demo) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(dictionary, built, "ParameterA", "", 70000, {})
+        assert refused.value.message == "70000 does not fit into uint16 (0 .. 65535)"
+
+    def test_an_element_of_a_scalar_is_no_element(self, demo) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(dictionary, built, "ParameterA", "[0]", 1, {})
+        assert refused.value.message == "'[0]' is not an element of this object"
+
+    def test_a_scalar_is_no_table_to_paste_into_nor_cells_to_pick(self, demo) -> None:
+        # One value needs no table and no list of elements: the plans of those keep refusing it
+        # in the words they always have.
+        dictionary, built = demo
+        scalar = "ParameterA"
+        with pytest.raises(ValueRefusalError) as by_table:
+            set_values(dictionary, built, scalar, [[1]], {})
+        with pytest.raises(ValueRefusalError) as by_cells:
+            set_cells(dictionary, built, scalar, [("[0]", 1)], {})
+        refused = "has no cell for a value to sit in"
+        assert by_table.value.message == f"'{scalar}' {refused}"
+        assert by_cells.value.message == by_table.value.message
+
+    def test_a_scalar_nothing_produces_has_no_value_to_set(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("input", "Lonely")),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(revision.dictionary, revision.index, "Lonely", "", 1, {})
+        assert refused.value.message == "nothing produces 'Lonely', so it has no values to set"
+
+    def test_a_scalar_produced_twice_has_no_one_file_to_set_it_in(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Twice", init=1)),
+                "b.ddd.json": component("B", declare("output", "Twice", init=2)),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(revision.dictionary, revision.index, "Twice", "", 3, {})
+        assert refused.value.message == (
+            "'Twice' is produced in more than one place, so there is no one file to set it in"
+        )
+
+    def test_a_scalar_whose_declaration_moved_is_refused_stale(self, tmp_path) -> None:
+        one = declare("output", "One", init=1)
+        other = declare("output", "Other", init=7)
+        write_tree(
+            tmp_path, {"p.ddd.json": project("P", "a.ddd.json"), "a.ddd.json": component("A", one)}
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        write_tree(tmp_path, {"a.ddd.json": component("A", other, one)})
+        assert revision.dictionary is not None and revision.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cell(revision.dictionary, revision.index, "One", "", 5, {})
+        assert refused.value.code == "stale"
 
 
 class TestSetValues:
@@ -1054,6 +1205,197 @@ class TestSetValues:
         assert by_table.value.message == by_cell.value.message
 
 
+class TestSettingSeveral:
+    """Several cells typed into the page's grid, planned as one change: a ``set`` at each one's own
+    element, so that what nobody typed is written as it was."""
+
+    @staticmethod
+    def _producing(tmp_path: Path, datatype: str, **definition: object) -> tuple[Revision, Path]:
+        """A project of one component stating ``Grid``, a ``value_block`` of ``datatype`` given
+        ``definition``: its first revision, and the file stating it."""
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Grid", kind="value_block", datatype=datatype, **definition),
+                ),
+            },
+        )
+        return first_revision(tmp_path, tmp_path / "p.ddd.json"), tmp_path / "a.ddd.json"
+
+    @staticmethod
+    def _plan(revision: Revision, name: str, cells: list[tuple[str, float]]) -> ValuePlan:
+        assert revision.dictionary is not None and revision.index is not None
+        return set_cells(revision.dictionary, revision.index, name, cells, {})
+
+    @staticmethod
+    def _changed(plan: ValuePlan) -> list[tuple[str, str]]:
+        """The lines the plan's one edit changes, each as it was and as it would be, stripped."""
+        (edit,) = plan.edits
+        text = edit.path.read_text(encoding="utf-8")
+        before, after = text.splitlines(), edit_text(text, edit.operations).splitlines()
+        assert len(after) == len(before)
+        return [
+            (old.strip(), new.strip()) for old, new in zip(before, after, strict=True) if old != new
+        ]
+
+    def test_two_cells_of_a_curve_are_two_sets_at_their_own_elements(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_cells(dictionary, built, "CurveA", [("[0]", 1300), ("[2]", 750)], {})
+        (edit,) = plan.edits
+        assert [(o.op, o.pointer.rsplit(".", 1)[1], o.raw) for o in edit.operations] == [
+            ("set", "init[0]", "1300"),
+            ("set", "init[2]", "750"),
+        ]
+        # The init's line alone changes, and in it the two numbers given alone.
+        assert self._changed(plan) == [
+            ('"init": [1200, 900, 800, 750, 700, 650],', '"init": [1300, 900, 750, 750, 700, 650],')
+        ]
+
+    def test_two_cells_on_one_line_of_a_map_change_that_line_alone(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_cells(dictionary, built, "MapA", [("[1][1]", 99), ("[1][3]", 77)], {})
+        (edit,) = plan.edits
+        assert [o.pointer.rsplit(".", 1)[1] for o in edit.operations] == [
+            "init[1][1]",
+            "init[1][3]",
+        ]
+        assert self._changed(plan) == [("[18, 22, 26, 28, 30, 28],", "[18, 99, 26, 77, 30, 28],")]
+
+    def test_a_number_nobody_typed_keeps_its_spelling(self, tmp_path) -> None:
+        # The table the page held came back as 3 for the file's 3.0, and a whole init written a
+        # number to a line went back as one line. The cells typed are a float's, written as one.
+        revision, _ = self._producing(tmp_path, "float64", dimensions=[3], init=[1.0, 2.5, 3.0])
+        plan = self._plan(revision, "Grid", [("[0]", 9), ("[1]", 8)])
+        assert self._changed(plan) == [("1.0,", "9.0,"), ("2.5,", "8.0,")]
+
+    def test_a_value_nobody_typed_is_left_as_it_is_whatever_it_holds(self, tmp_path) -> None:
+        # 9999 is no uint8, and the analysis says so of the init; it refused the whole table the
+        # page sent, naming an element nobody had typed into.
+        revision, file = self._producing(tmp_path, "uint8", dimensions=[3], init=[1, 2, 9999])
+        plan = self._plan(revision, "Grid", [("[0]", 5), ("[1]", 6)])
+        (edit,) = plan.edits
+        after = edit_text(file.read_text(encoding="utf-8"), edit.operations)
+        assert _definition_of(after, "Grid")["init"] == [5, 6, 9999]
+
+    @pytest.mark.parametrize(
+        ("cells", "says"),
+        [
+            (
+                [("[0]", 1300), ("[9]", 5)],
+                "element 10 of 'CurveA' is refused: '[9]' is past the end of this object",
+            ),
+            (
+                [("[0]", 7.5)],
+                "element 1 of 'CurveA' is refused: 7.5 is written as a fractional number, but "
+                "'CurveA' has the integer datatype uint16",
+            ),
+            (
+                [("[1]", 70000), ("[3]", 750), ("[9]", 5)],
+                "2 elements of 'CurveA' are refused: element 2 because 70000 does not fit into "
+                "uint16 (0 .. 65535); element 10 because '[9]' is past the end of this object",
+            ),
+        ],
+    )
+    def test_every_cell_past_the_shape_or_holding_what_the_datatype_cannot_is_named(
+        self, demo, cells: list[tuple[str, float]], says: str
+    ) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cells(dictionary, built, "CurveA", cells, {})
+        assert (refused.value.code, refused.value.message) == ("invalid", says)
+
+    def test_an_element_of_another_shape_is_no_element_whatever_else_is_refused(self, demo) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cells(dictionary, built, "CurveA", [("[0]", 70000), ("[1][2]", 5)], {})
+        assert refused.value.message == "'[1][2]' is not an element of this object"
+
+    def test_an_init_stated_once_or_not_at_all_is_written_whole_with_the_cells_given(
+        self, demo, tmp_path
+    ) -> None:
+        dictionary, built = demo
+        once = set_cells(dictionary, built, "CurveB", [("[1]", 111), ("[4]", 112)], {})
+        (operation,) = once.edits[0].operations
+        assert operation.pointer.endswith(".definition.init")
+        assert json.loads(operation.raw or "") == [200, 111, 200, 200, 112, 200]
+        revision, _ = self._producing(tmp_path, "uint8", dimensions=[2, 3])
+        none = self._plan(revision, "Grid", [("[0][1]", 5), ("[1][2]", 7)])
+        (operation,) = none.edits[0].operations
+        assert json.loads(operation.raw or "") == [[0, 5, 0], [0, 0, 7]]
+
+    def test_an_array_too_short_for_one_of_the_cells_is_written_whole(self, tmp_path) -> None:
+        # [1] is held, [3] is past the array's end: the whole init, filled with the zeros the
+        # startup code makes, as set_cell writes one cell past the end.
+        revision, file = self._producing(tmp_path, "uint8", dimensions=[4], init=[1, 2])
+        plan = self._plan(revision, "Grid", [("[1]", 9), ("[3]", 7)])
+        (edit,) = plan.edits
+        (operation,) = edit.operations
+        assert operation.pointer.endswith(".definition.init")
+        after = edit_text(file.read_text(encoding="utf-8"), edit.operations)
+        assert _definition_of(after, "Grid")["init"] == [1, 9, 0, 7]
+
+    def test_a_cell_given_twice_is_set_to_the_value_given_last(self, demo) -> None:
+        dictionary, built = demo
+        plan = set_cells(dictionary, built, "CurveA", [("[2]", 750), ("[2]", 760)], {})
+        (edit,) = plan.edits
+        after = edit_text(edit.path.read_text(encoding="utf-8"), edit.operations)
+        assert _definition_of(after, "CurveA")["init"] == [1200, 900, 760, 750, 700, 650]
+
+    @pytest.mark.parametrize(
+        ("name", "cells", "code", "says"),
+        [
+            ("Nope", [("[0]", 70000)], "not-found", "the project declares no 'Nope'"),
+            ("ValueA", [("[0]", 70000)], "invalid", "'ValueA' has no cell for a value to sit in"),
+            (
+                "SoftwareLabel",
+                [("[99]", 70000)],
+                "invalid",
+                "'SoftwareLabel' is initialised with text, not with a grid",
+            ),
+        ],
+    )
+    def test_what_has_no_cells_is_refused_before_any_cell_is_weighed(
+        self, demo, name: str, cells: list[tuple[str, float]], code: str, says: str
+    ) -> None:
+        dictionary, built = demo
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cells(dictionary, built, name, cells, {})
+        assert (refused.value.code, refused.value.message) == (code, says)
+
+    def test_a_value_nothing_produces_or_two_declarations_produce_is_refused_first(
+        self, tmp_path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "b.ddd.json", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("input", "Orphan", kind="value_block", dimensions=[2]),
+                    declare("output", "Twin", kind="value_block", dimensions=[3], init=[1, 2, 3]),
+                ),
+                "b.ddd.json": component(
+                    "B",
+                    declare("output", "Twin", kind="value_block", dimensions=[3], init=[7, 8, 9]),
+                ),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        for name, says in (
+            ("Orphan", "nothing produces 'Orphan', so it has no values to set"),
+            (
+                "Twin",
+                "'Twin' is produced in more than one place, so there is no one file to set it in",
+            ),
+        ):
+            with pytest.raises(ValueRefusalError) as refused:
+                self._plan(revision, name, [("[0]", 300), ("[9]", 5)])
+            assert (refused.value.code, refused.value.message) == ("invalid", says)
+
+
 class TestAProducerMovedSinceTheAnalysis:
     """A cell set, or a table pasted, after a declaration was put in above the one producing the
     object and before an analysis reads the file again: the place the index recorded holds the
@@ -1093,6 +1435,201 @@ class TestAProducerMovedSinceTheAnalysis:
         with pytest.raises(ValueRefusalError) as refused:
             set_values(moved.dictionary, moved.index, "Table", [[4, 5, 6]], {})
         assert (refused.value.code, refused.value.message) == self.REFUSED
+
+    def test_several_cells_are_refused(self, moved: Revision) -> None:
+        assert moved.dictionary is not None and moved.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cells(moved.dictionary, moved.index, "Table", [("[0]", 4), ("[2]", 6)], {})
+        assert (refused.value.code, refused.value.message) == self.REFUSED
+
+    def test_a_cell_its_datatype_cannot_hold_is_named_before_the_declaration_is_looked_for(
+        self, moved: Revision
+    ) -> None:
+        """The order :func:`set_cell` asks in: the cells, then the declaration's place."""
+        assert moved.dictionary is not None and moved.index is not None
+        with pytest.raises(ValueRefusalError) as refused:
+            set_cells(moved.dictionary, moved.index, "Table", [("[0]", 4), ("[2]", 300)], {})
+        assert (refused.value.code, refused.value.message) == (
+            "invalid",
+            "element 3 of 'Table' is refused: 300 does not fit into uint8 (0 .. 255)",
+        )
+
+
+class TestAFloatIsWrittenAsAFloat:
+    """Task 1's n2: a float's value given as a whole number was written as one - 1e19 as
+    ``10000000000000000000``, a whole number past 2^53, which the grid then marked as one it cannot
+    show (:func:`~ddd.object_values._unshowable`), though a float holds 1e19 as it is."""
+
+    @staticmethod
+    def _revision(
+        tmp_path: Path, datatype: str, kind: str = "value_block", **definition: object
+    ) -> Revision:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Grid", kind=kind, datatype=datatype, **definition)
+                ),
+            },
+        )
+        return first_revision(tmp_path, tmp_path / "p.ddd.json")
+
+    @staticmethod
+    def _raws(plan: ValuePlan) -> list[str]:
+        (edit,) = plan.edits
+        return [operation.raw or "" for operation in edit.operations]
+
+    def test_one_cell(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[2], init=[0.5, 1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        made = [
+            set_cell(revision.dictionary, revision.index, "Grid", "[0]", raw, {})
+            for raw in (10**19, 3, 2.5)
+        ]
+        assert [self._raws(plan) for plan in made] == [["1e+19"], ["3.0"], ["2.5"]]
+
+    def test_several_cells(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float32", dimensions=[2], init=[0.5, 1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cells(revision.dictionary, revision.index, "Grid", [("[0]", 3), ("[1]", 7)], {})
+        assert self._raws(plan) == ["3.0", "7.0"]
+
+    def test_several_cells_written_whole_into_a_short_array(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[3], init=[1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cells(revision.dictionary, revision.index, "Grid", [("[2]", 4), ("[0]", 2)], {})
+        assert self._raws(plan) == ["[2.0, 0.0, 4.0]"]
+
+    def test_a_table(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[2], init=[0.5, 1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_values(revision.dictionary, revision.index, "Grid", [[1, 2.5]], {})
+        assert self._raws(plan) == ["[1.0, 2.5]"]
+
+    def test_the_zeros_a_whole_init_is_filled_out_with_are_a_floats_too(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float64", dimensions=[3], init=[1.5])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cell(revision.dictionary, revision.index, "Grid", "[2]", 4, {})
+        assert self._raws(plan) == ["[1.5, 0.0, 4.0]"]
+
+    def test_a_scalar(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "float32", kind="parameter", init=1.5)
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cell(revision.dictionary, revision.index, "Grid", "", 21, {})
+        assert self._raws(plan) == ["21.0"]
+
+    def test_any_other_datatypes_whole_number_stays_one(self, tmp_path) -> None:
+        revision = self._revision(tmp_path, "uint8", dimensions=[2], init=[1, 2])
+        assert revision.dictionary is not None and revision.index is not None
+        plan = set_cell(revision.dictionary, revision.index, "Grid", "[0]", 3, {})
+        assert self._raws(plan) == ["3"]
+
+
+class TestABooleanIsWrittenAsABoolean:
+    """A boolean's value is written as ``true`` or ``false``, as a float's is written as a float:
+    the page sends the count, 0 or 1, and writing it as sent turned a file's ``false`` into ``0``
+    and its ``true`` into ``1``, which ``ddd check`` takes but no file of booleans spells."""
+
+    @staticmethod
+    def _raws(plan: ValuePlan) -> list[str]:
+        (edit,) = plan.edits
+        return [operation.raw or "" for operation in edit.operations]
+
+    def test_a_scalar_keeps_its_spelling(self, demo) -> None:
+        # The demo's FlagA states `"init": false`: set to 1 it reads `true`, and set back to 0 it
+        # reads `false` again, where it was written `1` and then `0`.
+        dictionary, built = demo
+        made = [set_cell(dictionary, built, "FlagA", "", raw, {}) for raw in (1, 0)]
+        assert [self._raws(plan) for plan in made] == [["true"], ["false"]]
+        (edit,) = made[0].edits
+        after = edit_text(edit.path.read_text(encoding="utf-8"), edit.operations)
+        assert _definition_of(after, "FlagA")["init"] is True
+
+    def test_cells_a_table_and_the_zeros_a_whole_init_is_filled_out_with(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Flags",
+                        kind="value_block",
+                        datatype="boolean",
+                        dimensions=[3],
+                        init=[True],
+                    ),
+                ),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        dictionary, built = revision.dictionary, revision.index
+        assert self._raws(set_cell(dictionary, built, "Flags", "[0]", 0, {})) == ["false"]
+        assert self._raws(set_cell(dictionary, built, "Flags", "[2]", 1, {})) == [
+            "[true, false, true]"
+        ]
+        assert self._raws(set_cells(dictionary, built, "Flags", [("[0]", 0)], {})) == ["false"]
+        assert self._raws(set_cells(dictionary, built, "Flags", [("[1]", 1)], {})) == [
+            "[true, true, false]"
+        ]
+        assert self._raws(set_values(dictionary, built, "Flags", [[1, 0, 1]], {})) == [
+            "[true, false, true]"
+        ]
+
+
+class TestLimitsRefusal:
+    """What a range the page sends is refused for: a bound at or past 2^53 where a 64 bit integer is
+    among the declarations' datatypes, however the bound is written (task 1's n4) - a float's
+    spelling among them, which 1e21 sent from the page is, where only a whole number's was
+    weighed."""
+
+    SAID = (
+        "{bound} is at or past {side}2^53, where the page cannot hold every whole number exactly, "
+        "so no limit of a {datatype} is set to it here"
+    )
+
+    @pytest.mark.parametrize(
+        ("raw", "datatype", "bound", "side"),
+        [
+            pytest.param('{ "min": 0, "max": 1e+21 }', "uint64", "1e+21", "", id="an-exponent"),
+            pytest.param(
+                '{ "min": -9007199254740992.0, "max": 0 }',
+                "sint64",
+                "-9007199254740992.0",
+                "-",
+                id="a-point",
+            ),
+            pytest.param(
+                '{ "min": 0, "max": 9007199254740992 }',
+                "uint64",
+                "9007199254740992",
+                "",
+                id="digits",
+            ),
+        ],
+    )
+    def test_a_bound_at_or_past_2_53_is_refused_a_64_bit_integer_however_it_is_written(
+        self, raw: str, datatype: str, bound: str, side: str
+    ) -> None:
+        assert limits_refusal(raw, [None, datatype]) == self.SAID.format(
+            bound=bound, side=side, datatype=datatype
+        )
+
+    @pytest.mark.parametrize(
+        ("raw", "datatypes"),
+        [
+            pytest.param('{ "min": 0, "max": 1.5e15 }', ["uint64"], id="short-of-it"),
+            pytest.param('{ "min": 0, "max": 1e+21 }', ["float64"], id="a-float"),
+            pytest.param('{ "min": 0, "max": 1e+21 }', ["uint32"], id="a-narrower-integer"),
+            pytest.param('{ "min": false, "max": true }', ["uint64"], id="no-number-at-all"),
+            pytest.param("[1e+21]", ["uint64"], id="no-range-at-all"),
+        ],
+    )
+    def test_nothing_else_is(self, raw: str, datatypes: list[object]) -> None:
+        assert limits_refusal(raw, datatypes) is None
 
 
 def _definition_of(text: str, name: str) -> dict[str, object]:

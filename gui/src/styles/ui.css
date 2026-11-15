@@ -572,6 +572,11 @@ tr.changing td {
 .panel-field input:disabled {
   background: var(--ground);
 }
+/* The line a variable's panel closes on, saying what is edited elsewhere: one rhythm step off the
+   offers above it. */
+.panel-elsewhere {
+  margin: var(--space-3) 0 0;
+}
 .rename-note {
   margin: var(--space-1) 0 0;
   color: var(--ink-quiet);
@@ -680,7 +685,7 @@ tr.changing td {
 /* VariableKeysTable / KeyChooser (spec 5.1, 5.2): the key column reads as a name; a row that
    disagrees already keeps the has-error tint above, since both tables share react-aria-Row and
    react-aria-Cell. The chooser stacks its field over the range a `limits` key takes, and the
-   range's two fields sit side by side, each a short width. */
+   range's two fields sit side by side, each as wide as its own text. */
 .react-aria-Cell.key {
   font-family: var(--mono);
 }
@@ -709,8 +714,11 @@ tr.changing td {
   color: var(--ink-quiet);
   font-size: var(--text-small);
 }
+/* A field is as wide as its text, which `--chars` counts (`rangeChars`, variableKeys.ts): one `ch`
+   a character - the width of a digit in the page's font - and the 22px of its padding and border,
+   and never narrower than the 6em each field was, so a short bound keeps the look it had. */
 .key-range input {
-  width: 6em;
+  width: max(6em, calc(var(--chars, 0) * 1ch + 22px));
   padding: var(--cell);
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -761,8 +769,17 @@ tr.changing td {
 .values-table {
   margin-bottom: var(--space-2);
 }
+/* A grid of one cell - a scalar's value - keeps the width of its own row and column, not the page's. */
+.values-one .react-aria-Table {
+  width: fit-content;
+}
+/* A field is as wide as its column's longest text, which `--chars` counts (gridTexts.ts'
+   `chars`): one `ch` a character in this monospace, and the 22px of its padding and border
+   (`--cell`'s 10px a side, a 1px border) - and never narrower than the 5em every field once was,
+   so a grid of short numbers keeps its look, and a number of a few digits typed into a field
+   does not move the columns beside it with every key. */
 .values-table input {
-  width: 5em;
+  width: max(5em, calc(var(--chars, 0) * 1ch + 22px));
   padding: var(--cell);
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -776,8 +793,40 @@ tr.changing td {
   background: var(--ground);
   color: var(--ink-quiet);
 }
-.values-table input.unstated {
-  color: var(--ink-quiet);
+/* While the offer is held at the window's foot, a cell keeps its height clear below it
+   (`--offer-clear`, `marginBelow` in heldOffer.ts): the table scrolls a cell the keys moved the
+   focus to into view - Ctrl+End to the last cell of a grid taller than the window - and stops with
+   it above the offer, not under it. */
+.values-table [role="gridcell"] {
+  scroll-margin-bottom: var(--offer-clear, 0px);
+}
+/* A cell the file does not state (15:M7): hollow - empty, its border dashed - where it read 0 as
+   though the file held that zero. Its name says so to a reader who cannot see it (`cellName`). */
+.values-table input.hollow {
+  border-style: dashed;
+}
+/* The values page's offer - the sentence, Show changes and Apply - held at the window's foot while
+   it is drawn, however tall the grid: under a map it stood below the plot, past the window's
+   edge, with nothing to say it was there, and a typed cell looked done. Sticky, so that where the
+   page ends inside the window it stays in its place under the findings; the page's own ground
+   behind it, and a rule above it, keep the grid it passes over from showing through. The lines
+   it would change scroll within two fifths of the window: an offer held at the foot of a window
+   shorter than itself has its first lines above the window's top, where no scroll reaches them. */
+.values-offer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-bottom: var(--space-3);
+  background: var(--ground);
+  border-top: 1px solid var(--rule);
+}
+.values-offer .changes {
+  max-height: 40vh;
+  overflow: auto;
+}
+/* The two answers to a comma that could be either, side by side under the sentence asking. */
+.values-comma {
+  justify-content: flex-start;
 }
 /* The paste hint (part 9): set small like the meta and axis lines above the grid, since it is
    the same kind of annotation, and pulled in close under the table rather than left at the

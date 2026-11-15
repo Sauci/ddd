@@ -1,4 +1,7 @@
 import type { DeclarableName, DeclarableReply, VariableKeyOffer } from "../api/types";
+import { decimalText, readNumber } from "./numbers";
+import { unsettled } from "./typing";
+import { shortValue } from "./variableKeys";
 
 /** Which of the two verbs the name field has landed on. */
 export type Mode = "unchosen" | "read" | "declare";
@@ -76,14 +79,41 @@ export function definitionOf(
   return JSON.stringify(definition);
 }
 
-/** The json a row of dimension fields makes: a whole number stays a number, anything else is
- * the name of a constant. `null` while any row is blank - a value block is never a scalar, so
- * a half-filled row states nothing rather than a shape nobody asked for. */
+/** A name a constant may have: what a dimension's field reads as a name rather than as a number. */
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** One dimension's field read: the json text it travels as - a name as a string, anything else
+ * as the number it spells, read as every field reads one (`numbers.ts`) and in its digits, never
+ * the double nearest them - or the sentence a spelling in another notation, a comma that could be
+ * either or text that is no number is refused with. */
+function dimensionOf(row: string): { json: string } | { refusal: string } {
+  const text = row.trim();
+  if (IDENTIFIER.test(text)) return { json: JSON.stringify(text) };
+  const read = readNumber(text);
+  return "decimal" in read ? { json: decimalText(read.decimal) } : { refusal: read.refusal };
+}
+
+/** Why one dimension's field is refused, or `undefined` while it holds a name, a number or
+ * nothing yet: the note under the field. */
+export function dimensionNote(row: string): string | undefined {
+  if (row.trim() === "") return undefined;
+  const dimension = dimensionOf(row);
+  return "refusal" in dimension ? dimension.refusal : undefined;
+}
+
+/** The json a row of dimension fields makes: a name is the name of a constant, and anything else
+ * the number it spells. `null` while any row is blank - a value block is never a scalar, so a
+ * half-filled row states nothing rather than a shape nobody asked for - or refused
+ * (`dimensionNote`), which asks for no plan. */
 export function dimensionsRaw(rows: string[]): string | null {
   if (rows.length === 0 || rows.some((row) => row.trim() === "")) return null;
-  return JSON.stringify(
-    rows.map((row) => (/^[1-9][0-9]*$/.test(row.trim()) ? Number(row.trim()) : row.trim())),
-  );
+  const parts: string[] = [];
+  for (const row of rows) {
+    const dimension = dimensionOf(row);
+    if ("refusal" in dimension) return null;
+    parts.push(dimension.json);
+  }
+  return `[${parts.join(",")}]`;
 }
 
 /** The sentence above the preview, which is what tells reading from declaring apart before
@@ -131,4 +161,34 @@ export function removalSentence(
 function listed(names: string[]): string {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** The label a key's field shows for its committed value, `shortValue`'s own wording - the same
+ * idea `labelOfRaw` reads for an existing variable's chooser, adapted for `values`' "absent
+ * means unstated" instead of a `VariableReply` to read `null` from: a declaration being drafted
+ * has none yet. */
+export function labelOf(key: string, raw: string | undefined): string {
+  return raw === undefined || raw === "" ? "state nothing" : shortValue(key, raw);
+}
+
+/** Whether the text typed into a key's field is not the value the form states for it
+ * (`unsettled`, lib/typing.ts, decision 15.3). */
+export function keyUnsettled(
+  key: string,
+  typed: Record<string, string | undefined>,
+  values: Record<string, string>,
+): boolean {
+  return unsettled(typed[key], labelOf(key, values[key]));
+}
+
+/** Whether any key's field of this kind's form holds text not yet taken: the form then offers no
+ * Add, since it would write what the fields stated before it. A key the kind does not ask for is
+ * not in the form, whatever was typed into it earlier. */
+export function formUnsettled(
+  kind: string,
+  reply: DeclarableReply,
+  typed: Record<string, string | undefined>,
+  values: Record<string, string>,
+): boolean {
+  return keysOf(kind, reply).some((key) => keyUnsettled(key.key, typed, values));
 }

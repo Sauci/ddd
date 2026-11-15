@@ -454,6 +454,206 @@ class TestTheCommandPage:
         assert listed is not None
         assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(schema_models())
 
+    def test_the_values_grid_is_said_to_refuse_a_whole_number_past_2_53(self) -> None:
+        """What ``objectValues.ts`` and ``object_values.py`` do with a number the page's double
+        cannot hold, said where the grid is described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "a cell of an integer datatype refuses a number past 2^53 either side of zero, however "
+            "it is spelled, where it is typed or pasted in raw, and a fraction the double would "
+            "drop with it; in physical it refuses a value whose raw count lies past 2^53"
+        ) in text
+        assert (
+            "A float's cell takes every number as the double it is, but none past what its float "
+            "holds, nor one rounding to zero in it"
+        ) in text
+        assert "or one at 2^53 in a ``uint64`` or ``sint64``, says it cannot show it" in text
+        assert (
+            "from the page neither takes a whole number at 2^53 or past it, as a value or as a "
+            "limit, however it is written - the server refuses a bound at or past 2^53 for either, "
+            "written in digits or as a float"
+        ) in text
+        assert (
+            "show a bound past 2^53 in its file's own digits, and read a bound as a cell of the "
+            "datatype the declarations state reads a number: a float's as the double it is, "
+            "written as a float, and any other's refused past 2^53 however it is spelled, and "
+            "wherever the double would send another number than the one typed"
+        ) in text
+
+    def test_the_values_grid_is_said_to_write_numbers_as_they_are(self) -> None:
+        """What ``numbers.ts`` and ``object_values.py`` write of a number typed, and what Physical
+        shows, said where the grid is described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "A physical value comes to its raw count exactly, worked out on the decimals typed "
+            "and the conversion's own: a whole datatype's count is the nearest one, an exact half "
+            "going to the even count, either side of zero, as ``round_physical`` rounds"
+        ) in text
+        assert (
+            "a float's is the float its datatype stores nearest, spelled as briefly as it reads "
+            "back, so 0.3 at a factor of 0.1 is 3"
+        ) in text
+        # The final wave: FLT_MAX's briefest spelling is a double past it, and a boolean is
+        # written as one.
+        assert (
+            "FLT_MAX, either side of zero, is its own double, 3.4028234663852886e+38, planned so "
+            "and shown so in raw: its briefest spelling, 3.4028235e+38, is a double past it, which "
+            "the server and ``ddd check`` refuse a ``float32``"
+        ) in text
+        assert (
+            "A float's value is written as a float, its whole numbers too, and a boolean's as "
+            "``true`` or ``false``"
+        ) in text
+        # Fix round 1, M7 and M4: the shortest decimal is a float's; a whole datatype shows the
+        # exact product, and a float32 reads as the float32 its file's number rounds to.
+        old = "Physical shows the shortest decimal that reads back as the raw count it shows"
+        assert old not in text
+        assert (
+            "Physical shows a whole datatype's raw count as the exact product, the count times the "
+            "factor plus the offset, and a float's as the shortest decimal whose plan comes to "
+            "that same float"
+        ) in text
+        assert (
+            "a ``float32``'s being the float32 its file's number rounds to, which raw shows the "
+            "same way, so a ``float32`` its file spells ``0.10000000149011612`` reads 0.1"
+        ) in text
+        assert (
+            "never cut at twelve significant digits and never with the tail of the double "
+            "arithmetic: 255 counts of 0.03 read 7.65"
+        ) in text
+
+    def test_the_values_grid_is_said_to_read_numbers_by_one_grammar(self) -> None:
+        """What ``numbers.ts`` reads a number by, in every field, said where the grid is
+        described: decimal notation, the spellings refused, and the one rule for a comma."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "Every field of the page reads a number the same way, in decimal notation: an "
+            "optional sign, digits with an optional fraction or a fraction alone, and an optional "
+            "exponent, the white space around it ignored"
+        ) in text
+        assert (
+            "A number written in hexadecimal, binary or octal, ``Infinity``, ``NaN`` and digits "
+            "parted by underscores are refused in one sentence, the same in every field, and "
+            "nothing is asked of the server for them - but a size and a dimension, which may name "
+            "a constant, read ``Infinity`` and ``NaN`` as names, as they read any name"
+        ) in text
+        # Fix round 1, M7: a first group of more than three digits named; M1: values read
+        # together decided by commas grouping thousands as by a decimal comma, a block showing both
+        # refused, the choice asked only where nothing else decides, and an answer standing; M7:
+        # every field offering no choice named, not a range's alone.
+        assert "after a first group of 0, or before anything but exactly three digits" not in text
+        assert (
+            "A comma is a decimal point where it cannot group thousands - after a first group of 0 "
+            "or of more than three digits, or before anything but exactly three digits - and "
+            "groups thousands where it cannot be a decimal point, two of them or a point after it; "
+            "text holding both has its decimal point last, so ``1.234,5`` and ``1,234.5`` both "
+            "read 1234.5"
+        ) in text
+        assert (
+            "A block pasted where one value's comma can only be a decimal point reads every comma "
+            "of it as one"
+        ) not in text
+        assert (
+            "Values read together - a block pasted, the cells typed into a grid, a range's two "
+            "fields - read a comma that could be either as the others show theirs, where they all "
+            "show one reading: ``0,5`` makes ``1,250`` beside it one and a quarter, and "
+            "``1,234,567`` makes ``1,500`` beside it fifteen hundred"
+        ) in text
+        assert (
+            "A block pasted whose values show both readings is refused, in a sentence saying what "
+            "it mixes"
+        ) in text
+        assert (
+            "A comma that could be either, ``1,200``, is refused with the choice of what it means "
+            "one press away where nothing else decides it, the same for a cell typed into and for "
+            "a block pasted, and an answer given stands"
+        ) in text
+        assert "a range's two fields offer no such choice" not in text
+        assert (
+            "Only the grid offers that choice: a range's two fields, a size, a dimension, a "
+            "constant's value, a section's alignment and a raster's event refuse such a comma in "
+            "the same sentence"
+        ) in text
+        assert "A boolean takes 0 and 1 alone, in physical as in raw" in text
+
+    def test_the_values_grid_is_said_to_draw_its_shape_and_its_hollow_cells(self) -> None:
+        """What ``objectValues.ts`` draws of a grid's columns and of a cell the file does not
+        state, and what the plan routes answer for a change of nothing, said where the grid is
+        described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "The grid has a column for each its shape has, and a row for each: a breakpoint only "
+            "labels its column"
+        ) in text
+        assert (
+            "A cell the file does not state - past the end of a short ``init``, or any cell of a "
+            "declaration stating none - is drawn hollow, empty under a dashed border, its name "
+            "saying it is not stated"
+        ) in text
+        assert (
+            "A plan whose edit would leave its file as it was, every byte the same - a table "
+            "pasted over the values the file spells, a description typed as it stands - is no "
+            "change, and is offered as none"
+        ) in text
+
+    def test_the_values_picture_is_said_to_draw_what_the_file_states(self) -> None:
+        """What ``ValuesGridView.tsx`` draws under the grid (``plotDrawn``, ``valuePlot.ts``), said
+        where the grid is described: the values the file states, placed by index where the axis
+        states fewer breakpoints than the shape, and no picture of a grid stating nothing."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "left undrawn only where there is no grid to begin with" not in text
+        assert (
+            "or over plain indices where it has no axis, or one stating fewer breakpoints than "
+            "the shape has columns, its ticks then reading the indices too, and no axis named "
+            "under them"
+        ) in text
+        assert (
+            "It draws what the file states, as the cells do: a scalar's one value draws none, "
+            "and nor does a grid whose file states nothing, every cell of it hollow"
+        ) in text
+
+    def test_the_values_grid_is_said_to_hold_the_cells_typed_as_one_change(self) -> None:
+        """What ``ValuesPage.tsx`` and ``typedCells.ts`` do with cells typed one after another,
+        said where the grid is described: held together, one change, one Apply and one undo."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "One cell is changed at a time" not in text
+        assert (
+            "Cells typed into are held together, each showing what was typed into it, and "
+            "previewed as one change"
+        ) in text
+        assert "that one Apply writes, like every other change here, and one undo puts back" in text
+        # The final wave: the sentence names five elements, then how many more, and the whole init
+        # is written where the file does not write the array out far enough for the cells typed.
+        assert "in a sentence naming what each sets" not in text
+        assert (
+            "in a sentence naming how many elements it sets, the first five of them and what each "
+            "is set to, then how many more, and the producing file it lands in"
+        ) in text
+        assert "Only the cells typed are written" not in text
+        assert (
+            "Each cell typed is written where it stands, the rest of the file staying as it was, "
+            "its spellings and its layout too, where the file writes its ``init`` out far enough "
+            "to hold them"
+        ) in text
+        assert (
+            "where it states one value for every cell, states none, or writes too short an array, "
+            "the whole ``init`` is written instead - the cells typed set in it, every other "
+            "holding the value the file states for it, or zero - and the preview shows it"
+        ) in text
+        assert "A cell keeps the reading it was typed in" in text
+        assert (
+            "A cell typed back to its file's value - a ``float32``'s to the same float32 - drops "
+            "out of the change"
+        ) in text
+        assert (
+            "a cell the page refuses holds Apply back for them all, named in the sentence"
+        ) in text
+        assert "The sentence and Apply stay at the foot of the window" in text
+        assert (
+            "in place of any cells typed before it, as a cell typed after it takes the table's "
+            "place"
+        ) in text
+
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None
@@ -1856,8 +2056,9 @@ class TestTheBuildIntegrationPage:
             "component in one build"
         ) in page
         assert (
-            "An edit of the plugin's own code leaves the dictionary as it was, and reaches the "
-            "component a build late all the same. Under a Makefile generator the build after "
+            "An edit of the plugin's own code that changes only what it writes, and not its model, "
+            "leaves the dictionary as it was, and reaches the component a build late all the "
+            "same. Under a Makefile generator the build after "
             "either is right. A clean leaves a plugin's files"
         ) in page
         assert "A ``{component}`` header has no such rule, nor has a plugin's file" in page
@@ -1870,7 +2071,8 @@ class TestTheBuildIntegrationPage:
         assert (
             "a component whose object depends on the dictionary - `OBJECT_DEPENDS` on the path of "
             "`DDD_DICTIONARY` - is compiled again in that build, while an edit of the plugin's own "
-            "code leaves the dictionary as it was and still reaches it a build late"
+            "code that changes only what it writes, and not its model, leaves the dictionary as "
+            "it was and still reaches it a build late"
         ) in spec
 
     def test_the_pages_say_a_renamed_component_reaches_its_readers_a_build_late(self) -> None:
@@ -3293,7 +3495,8 @@ class TestTheCiRun:
         browser, and would have held the run, and any re-run of its failed jobs, for the rest.
         Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
         gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
-        1); the test legs 40, the windows ones taking about 18 to 22 since the Makefile cell."""
+        1); the test legs 40, the windows ones taking 15.9 to 20.9 minutes in CI runs 43664431438
+        and 43667157867."""
         limits = {}
         for name in job_names(CI_WORKFLOW):
             limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)

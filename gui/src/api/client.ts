@@ -1,6 +1,7 @@
 import { type OwnEdits, ownEdits } from "../state/edits";
 import { type Keeper, type SignedOut, signedOut, token } from "./token";
 import type {
+  CellsPlanQuery,
   Changes,
   CompareQuery,
   CompareReply,
@@ -10,6 +11,7 @@ import type {
   DeclarableQuery,
   DeclarableReply,
   DeclarationPlanQuery,
+  DescriptionPlanQuery,
   EditReply,
   FileContent,
   FileQuery,
@@ -321,6 +323,14 @@ export type DeclarationPlanRequest = DeclarationPlanQuery;
 export const getDeclarationPlan = (plan: DeclarationPlanRequest, fetchImpl: Fetch = fetch) =>
   request<PlanReply>(`/api/declaration-plan${queryOf<DeclarationPlanQuery>(plan)}`, {}, fetchImpl);
 
+/** What describing one component's declaration of a variable takes, as `GET /api/description-plan`
+ * takes it: `DescriptionPlanQuery`, the server's own model of the query - the description is the
+ * declaration's own, in the file given, and the empty text takes it away. */
+export type DescriptionPlanRequest = DescriptionPlanQuery;
+
+export const getDescriptionPlan = (plan: DescriptionPlanRequest, fetchImpl: Fetch = fetch) =>
+  request<PlanReply>(`/api/description-plan${queryOf<DescriptionPlanQuery>(plan)}`, {}, fetchImpl);
+
 /** An edit, answered once written: its number is noted into `edits`, the page's own by default, as
  * soon as the answer arrives - a refused edit notes nothing. */
 export const postEdit = async (
@@ -367,6 +377,26 @@ export const getValuePlan = (plan: ValuePlanRequest, fetchImpl: Fetch = fetch) =
   return request<PlanReply>(`/api/value-plan${query}`, {}, fetchImpl);
 };
 
+/** Several cells' change, as `GET /api/cells-plan` takes it: each element, as `[2]` or `[1][3]`,
+ * and the raw count to store there. */
+export interface CellsPlanRequest {
+  name: string;
+  cells: readonly { at: string; raw: number }[];
+}
+
+/** The cells' change as its query takes it - `CellsPlanQuery`, the server's own model of it - the
+ * elements and the counts each joined by commas, in the same order. It costs the cells' own
+ * digits alone, whatever the size of their object, where a whole table's counts can outgrow an
+ * address (`getValuesPlan`). */
+export const getCellsPlan = (plan: CellsPlanRequest, fetchImpl: Fetch = fetch) => {
+  const query = queryOf<CellsPlanQuery>({
+    name: plan.name,
+    at: plan.cells.map((cell) => cell.at).join(","),
+    raw: plan.cells.map((cell) => String(cell.raw)).join(","),
+  });
+  return request<PlanReply>(`/api/cells-plan${query}`, {}, fetchImpl);
+};
+
 /** A whole table's change, as `GET /api/values-plan` takes it: the counts row-major, in one list. */
 export interface ValuesPlanRequest {
   name: string;
@@ -386,8 +416,9 @@ export const getValuesPlan = async (plan: ValuesPlanRequest, fetchImpl: Fetch = 
   const query = queryOf<ValuesPlanQuery>({ name: plan.name, raw: plan.raw.join(",") });
   const address = `/api/values-plan${query}`;
   // Refused before it is asked for, rather than sent and answered 414: a count costs its own
-  // digits plus the three of the `%2C` before it, which is about 8 000 whole counts and about
-  // 2 500 that carry decimals, `rawOf` answering an unrounded double for a float datatype. The
+  // digits plus the three of the `%2C` before it, which is about 8 000 whole counts and fewer of
+  // a float datatype's, each the shortest spelling of its float (`rawCount`) - up to seventeen
+  // digits for a float64 count no short decimal reads back as. The
   // shape of the block cannot bound this - the object's own shape is what makes it large - and
   // the alternative is a reader meeting `Request-URI Too Long` under the grid, which is true
   // and tells them nothing about their table.

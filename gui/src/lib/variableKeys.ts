@@ -4,8 +4,11 @@ import type {
   VariableKeyOffer,
   VariableReply,
 } from "../api/types";
+import { type CommaMeaning, decimalText, readNumber, typedComma } from "./numbers";
+import { boundRead, wholePast } from "./objectValues";
 import { hrefOf } from "./route";
-import { textOf } from "./units";
+import { unsettledNote } from "./typing";
+import { textOf, unitRefusal } from "./units";
 
 /** One entry of a `dimensions` value: the text it reads as, and - for a name - the constant it
  * opens. `constant` and `href` are `null` together, exactly as `KeyCell`'s own `from`/`href` are:
@@ -243,7 +246,10 @@ export function shortValue(key: string, raw: string): string {
   if (Array.isArray(value)) return value.map((entry) => String(entry)).join(" × ");
   if (value === null || typeof value !== "object") return raw;
   const fields = value as Record<string, unknown>;
-  if (key === "limits") return `${format(fields.min)} … ${format(fields.max)}`;
+  if (key === "limits") {
+    const texts = boundTexts(raw);
+    return `${boundOf(fields.min, texts.get("min"))} … ${boundOf(fields.max, texts.get("max"))}`;
+  }
   if (key === "conversion") return conversion(fields);
   return raw.replace(/\s+/g, " ");
 }
@@ -258,7 +264,7 @@ function conversion(fields: Record<string, unknown>): string {
         ? "enum"
         : "identity");
   if (kind === "linear") {
-    const factor = `×${format(fields.factor ?? 1)}`;
+    const factor = `×${String(fields.factor ?? 1)}`;
     const offset =
       fields.offset === undefined || fields.offset === 0 ? "" : ` ${signed(fields.offset)}`;
     return `linear ${factor}${offset}`;
@@ -272,11 +278,13 @@ function conversion(fields: Record<string, unknown>): string {
 }
 
 function signed(value: unknown): string {
-  return typeof value === "number" && value > 0 ? `+${value}` : format(value);
+  return typeof value === "number" && value > 0 ? `+${value}` : String(value);
 }
 
-function format(value: unknown): string {
-  return value === undefined ? "?" : String(value);
+/** A range's bound in the key's row and its chooser, shown as its field shows it
+ * (`shownBound`). */
+function boundOf(value: unknown, text: string | undefined): string {
+  return value === undefined ? "?" : shownBound(value, text);
 }
 
 /** The panel's line under the variable's name. */
@@ -335,6 +343,57 @@ export function settledRaw(
   starting: string | null,
 ): string | null {
   return chosen === undefined ? starting : chosen;
+}
+
+/** What a panel holds of the reader's own work on one key: the value they picked, the text they
+ * typed into its field, the two fields of a range (and whether they were typed into, rather than
+ * a range picked from the list), and whether the diff is open. */
+export interface Choice {
+  chosen: string | null | undefined;
+  typed: string | undefined;
+  range: { min: string; max: string; typed: boolean } | undefined;
+  changesShown: boolean;
+}
+
+/** Nothing chosen, typed or opened: where every row starts. */
+export const FRESH: Choice = {
+  chosen: undefined,
+  typed: undefined,
+  range: undefined,
+  changesShown: false,
+};
+
+/** A `Choice` with the key it was made for. A panel moves by itself from one key to the next - the
+ * first that disagrees, once the last is settled - and a row opened by itself starts on the
+ * producer's value, so what was held for another key is never read, and is let go by
+ * `staleHold` the moment the key on screen is not its own: a later return to that key, by an
+ * undo or an outside edit, starts afresh too. */
+export interface Held {
+  key: string;
+  value: Choice;
+}
+
+/** What is held for `selected`: the choice made for it, else `FRESH`. */
+export function heldFor(held: Held | undefined, selected: string | undefined): Choice {
+  return held !== undefined && held.key === selected ? held.value : FRESH;
+}
+
+/** Whether what is held was made for a key other than the one on screen (none included), and so
+ * is to be let go. */
+export function staleHold(held: Held | undefined, selected: string | undefined): boolean {
+  return held !== undefined && held.key !== selected;
+}
+
+/** What is held after `patch` is made on `selected`: the choice held for it with `patch`
+ * laid over, or over `FRESH` when nothing - or another key's - is held. Nothing is held for no
+ * key. */
+export function holdOn(
+  held: Held | undefined,
+  selected: string | undefined,
+  patch: Partial<Choice>,
+): Held | undefined {
+  if (selected === undefined) return undefined;
+  return { key: selected, value: { ...heldFor(held, selected), ...patch } };
 }
 
 /** What the field reads for a value while nothing is being typed.
@@ -413,14 +472,32 @@ function who(components: readonly string[], producer: boolean): string {
   return producer ? `${listed} · the producer` : listed;
 }
 
+/** A name a constant, a type or a measurement may have: what the field reads as a name rather
+ * than as a number. */
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** A size typed, read as a number (`numbers.ts`): the whole number of at least 1 it spells, or the
+ * sentence a spelling in another notation, or a comma that could be either, is refused with - or
+ * `null` for a name, which the list offers, and for a number that is no size. */
+function sizeOf(typed: string): { raw: string } | { refusal: string } | null {
+  if (IDENTIFIER.test(typed.trim())) return null;
+  const read = readNumber(typed);
+  if (!("decimal" in read)) return { refusal: read.refusal };
+  const { negative, digits, exponent } = read.decimal;
+  return !negative && digits !== "" && exponent >= 0 ? { raw: decimalText(read.decimal) } : null;
+}
+
 /** The json text a text typed into the field travels as, or `null` when the key takes none.
  *
- * A size may be any whole number, so one typed is taken as it stands. Everything else names
- * something the project declares, and a name it does not declare is not offered: the list is
- * the answer to "what may this be", and a typed one would be a reference to nothing.
+ * A size may be any whole number, so one typed is taken as it stands, read as every field reads a
+ * number (`sizeOf`). Everything else names something the project declares, and a name it does not
+ * declare is not offered: the list is the answer to "what may this be", and a typed one would be
+ * a reference to nothing.
  */
 function typedRaw(key: string, typed: string): string | null {
-  return key === "size" && /^[1-9][0-9]*$/.test(typed) ? typed : null;
+  if (key !== "size") return null;
+  const size = sizeOf(typed);
+  return size !== null && "raw" in size ? size.raw : null;
 }
 
 /**
@@ -442,7 +519,24 @@ export function enteredValue(
   return typedRaw(key, text) ?? undefined;
 }
 
-/** The two fields of a range, read from what is stated. */
+/** The chooser's note while its text is not the value settled on, `undefined` while it is: why a
+ * size typed in another notation is no number - in the sentence every field refuses one with - and
+ * otherwise the way out of the text (`unsettledNote`). */
+export function chooserNote(
+  isUnsettled: boolean,
+  key: string,
+  typed: string,
+  sections: readonly ValueSection[],
+): string | undefined {
+  const size = isUnsettled && key === "size" ? sizeOf(typed) : null;
+  if (size !== null && "refusal" in size) return size.refusal;
+  return unsettledNote(isUnsettled, typed, sections, (listed, text) =>
+    enteredValue(listed, key, text),
+  );
+}
+
+/** The two fields of a range, read from what is stated: each bound as the double `JSON.parse`
+ * reads, but a whole number past 2^53 in its own digits (`shownBound`). */
 export function limitsOf(raw: string | null): { min: string; max: string } {
   if (raw === null) return { min: "", max: "" };
   let value: unknown;
@@ -452,43 +546,166 @@ export function limitsOf(raw: string | null): { min: string; max: string } {
     return { min: "", max: "" };
   }
   const fields = (value ?? {}) as Record<string, unknown>;
-  return { min: numberText(fields.min), max: numberText(fields.max) };
+  const texts = boundTexts(raw);
+  return {
+    min: numberText(fields.min, texts.get("min")),
+    max: numberText(fields.max, texts.get("max")),
+  };
 }
 
-function numberText(value: unknown): string {
-  return typeof value === "number" ? String(value) : "";
+/** How many characters wide each of a range's two fields is drawn: as many as its own text holds,
+ * as a cell of the values grid is as wide as its column's text (`gridTexts`). A field of a fixed
+ * width cut a bound short with no sign of it - Max's 18446744073709551615 read 1844674 - and a
+ * long one widens its own field and leaves the other as narrow as its own. ui.css keeps the
+ * width each had as the least. */
+export function rangeChars(range: { min: string; max: string }): { min: number; max: number } {
+  return { min: range.min.length, max: range.max.length };
+}
+
+function numberText(value: unknown, text: string | undefined): string {
+  return typeof value === "number" ? shownBound(value, text) : "";
+}
+
+/** Each bound of a stated range as its file spells it, before `JSON.parse` reads it as a double:
+ * the last one written of each, as `JSON.parse` takes the last. */
+const BOUND = /"(min|max)"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+
+function boundTexts(raw: string): Map<string, string> {
+  const texts = new Map<string, string>();
+  for (const [, bound = "", text = ""] of raw.matchAll(BOUND)) texts.set(bound, text);
+  return texts;
+}
+
+/** A stated bound as the page shows it: the double `JSON.parse` read it as - which is the
+ * number, for a fraction or anything short of 2^53 - but a whole number past 2^53 in its own
+ * digits, where the double reads as another: `18446744073709551615`, the most a uint64 holds, as
+ * `18446744073709552000`, which none holds. Its field then holds those digits, and a range made
+ * of them is refused (`limitsNote`) rather than sent back as the double. */
+function shownBound(value: unknown, text: string | undefined): string {
+  return text !== undefined && wholePast(text) !== null ? text : String(value);
+}
+
+/** The datatype a range is read by, of the datatypes the declarations it is written into state: a
+ * whole one where any states one, whose rule is the stricter, else a float - and a whole one's
+ * rule, `""`, where none states any. */
+export function rangeDatatype(datatypes: readonly (string | null)[]): string {
+  const stated = datatypes.filter((datatype) => datatype !== null);
+  return stated.find((datatype) => !datatype.startsWith("float")) ?? stated[0] ?? "";
+}
+
+/** The datatype a variable's range is read by: its declarations' (`rangeDatatype`), each the one it
+ * states or its type fixes. */
+export function variableDatatype(variable: VariableReply): string {
+  return rangeDatatype(
+    variable.declarations.map((declaration) =>
+      textOf(declaration.stated.datatype ?? declaration.fixed.datatype),
+    ),
+  );
+}
+
+/** The datatype a type's range is read by: the one it fixes. */
+export function typeDatatype(keys: readonly VariableKeyOffer[]): string {
+  return rangeDatatype([textOf(keys.find((key) => key.key === "datatype")?.values[0]?.raw)]);
+}
+
+/** A bound as a range's json writes it: a float's as a float (task 1's n2) - `1e19` was written
+ * `10000000000000000000`, a whole number past 2^53 that a float holds as no other - and any
+ * other's as the shortest spelling of its double, which is the number typed. */
+function boundText(value: number, datatype: string): string {
+  const text = String(value);
+  return datatype.startsWith("float") && !/[.e]/.test(text) ? `${text}.0` : text;
+}
+
+/** What a key's chooser field reads while nothing is being typed into it (decision 15.3), by one
+ * rule for the variable's panel and the type's, where each spelled it out for itself in the screen
+ * (fix round 1, M8): nothing while no key is selected, or while the two fields make no range
+ * (`broken`) - they show what was typed themselves; a range they make, as the range it comes to
+ * (`target`); any other key as the value the chooser settled on (`chosen`), a unit refused for its
+ * spaces among them, the note under the field saying why. `label` is the panel's own spelling of
+ * a key's value. */
+export function settledLabel(
+  selected: string | undefined,
+  broken: string | null,
+  target: string | null,
+  chosen: string | null,
+  label: (key: string, raw: string | null) => string,
+): string {
+  if (selected === undefined || (broken !== null && selected === "limits")) return "";
+  return label(selected, selected === "limits" ? target : chosen);
+}
+
+/** What is wrong with the value a key's chooser would settle on, said under the field in place of
+ * a plan, or `null` where nothing is: a range the two fields do not make (`limitsNote`), read by
+ * `datatype`; and a unit with spaces around it (`unitRefusal`), `raw` the json text chosen. */
+export function settleNote(
+  key: string | undefined,
+  range: { min: string; max: string },
+  datatype: string,
+  raw: string | null,
+): string | null {
+  if (key === "limits") return limitsNote(range.min, range.max, datatype);
+  if (key === "unit") return unitRefusal(textOf(raw ?? undefined));
+  return null;
 }
 
 /** The json text a range typed into the two fields travels as; `null` while it is not one.
  *
  * A range is two numbers with the maximum at least the minimum (spec 5.2), which is what
  * `Limits` itself allows: a pair the models refuse would be written into every declaration
- * and stop each of those files loading, so it never becomes a value to settle on.
+ * and stop each of those files loading, so it never becomes a value to settle on. `datatype` is
+ * what it is read by (`rangeDatatype`).
  */
-export function limitsRaw(min: string, max: string): string | null {
-  const low = numberOf(min);
-  const high = numberOf(max);
-  if (low === null || high === null || high < low) return null;
-  return `{ "min": ${low}, "max": ${high} }`;
+export function limitsRaw(min: string, max: string, datatype = ""): string | null {
+  const range = rangeOf(min, max, datatype);
+  if (range === null || "note" in range) return null;
+  return `{ "min": ${boundText(range.low, datatype)}, "max": ${boundText(range.high, datatype)} }`;
 }
 
 /** What the chooser says is wrong with the two fields, or `null` while they say something the
- * panel can settle on.
+ * panel can settle on (`rangeOf`). */
+export function limitsNote(min: string, max: string, datatype = ""): string | null {
+  const range = rangeOf(min, max, datatype);
+  return range !== null && "note" in range ? range.note : null;
+}
+
+/**
+ * The range the two fields say, the sentence saying what is wrong with them, or `null` for two
+ * empty fields.
  *
  * Two empty fields are not wrong: they are "state nothing", which the list offers as well and
  * which removes the key. Anything else that is not a range is nothing to apply, and saying so
- * is the whole of what the panel does about it - no Apply, and no preview behind it.
+ * is the whole of what the panel does about it - no Apply, and no preview behind it. Each sentence
+ * but the last names the one field it is about (`fieldBound`); the two are read together, so that
+ * a comma one shows to be a decimal point is one in the other too.
  */
-export function limitsNote(min: string, max: string): string | null {
+function rangeOf(
+  min: string,
+  max: string,
+  datatype: string,
+): { note: string } | { low: number; high: number } | null {
   if (min.trim() === "" && max.trim() === "") return null;
-  const low = numberOf(min);
-  const high = numberOf(max);
-  if (low === null || high === null) return "A range needs a minimum and a maximum";
-  return high < low ? "The maximum is below the minimum" : null;
+  const meaning = typedComma([min, max]);
+  const low = fieldBound("Min", min, meaning, datatype);
+  if ("note" in low) return low;
+  const high = fieldBound("Max", max, meaning, datatype);
+  if ("note" in high) return high;
+  if (high.value < low.value) return { note: "The maximum is below the minimum" };
+  return { low: low.value, high: high.value };
 }
 
-/** The number a field holds, or `null` where it holds none: empty, or not a number at all. */
-function numberOf(text: string): number | null {
-  const value = Number(text);
-  return text.trim() === "" || Number.isNaN(value) ? null : value;
+/** The number one of the two fields holds, read as every field reads one (`numbers.ts`) and
+ * weighed as a cell of `datatype` weighs one (`boundRead`), or what is wrong with it, in a sentence
+ * naming the field: empty, a number in another notation, a comma that could be either, no number
+ * at all, or a number the page cannot send as typed. */
+function fieldBound(
+  field: "Min" | "Max",
+  text: string,
+  meaning: CommaMeaning | undefined,
+  datatype: string,
+): { note: string } | { value: number } {
+  if (text.trim() === "") return { note: `${field} is empty` };
+  const read = readNumber(text, meaning);
+  if (!("decimal" in read)) return { note: `${field}: ${read.refusal}` };
+  const bound = boundRead(read.decimal, text, datatype);
+  return "refusal" in bound ? { note: `${field}: ${bound.refusal}` } : bound;
 }

@@ -224,11 +224,16 @@ export async function withinBox(page: Page, label: string, target: Locator): Pro
  * clipboard. Dispatched on the grid's own `<section>` - the one `ValuesGridView` binds `onPaste`
  * to - found by filtering for the `section` that holds a `grid`, `.first()` only as a guard
  * against a second one elsewhere on the page: this project's own `Table` sits in a `<section>`
- * on every grid screen, not only this one. */
-export async function paste(page: Page, text: string): Promise<void> {
+ * on every grid screen, not only this one. A page that draws no grid is found by what it does
+ * hold instead, `within` - its heading, say. */
+export async function paste(
+  page: Page,
+  text: string,
+  within: Locator = page.getByRole("grid"),
+): Promise<void> {
   await page
     .locator("section")
-    .filter({ has: page.getByRole("grid") })
+    .filter({ has: within })
     .first()
     .evaluate((node, block) => {
       const data = new DataTransfer();

@@ -12,7 +12,7 @@ import { useDebounced } from "../app/useDebounced";
 import { type Offer, type SectionAction, SectionPanelView } from "../components/SectionPanelView";
 import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { planEdit, sectionSet } from "../lib/shared";
+import { planEdit, requestOf, sectionSet } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { sectionLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -115,11 +115,18 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
   // the `key` literal each of them is pinned to here. Each goes through `sectionSet`, which is
   // what carries that one literal to the request and to the quoting alike: a key spelled twice
   // here could be spelled differently twice, and an alignment quoted like a string is a refusal
-  // the reader did nothing to earn (fix round 1).
+  // the reader did nothing to earn (fix round 1). The alignment is read as every field reads a
+  // number (`sectionSet`): text it refuses asks for nothing, and its sentence stands in the plan's
+  // place (task 7's fix round 1, I1).
+  const alignmentSet =
+    draftAlignment === null ? null : sectionSet(name, "alignment", draftAlignment);
   const requests: Record<SectionAction, SectionPlanRequest | null> = {
-    access: draftAccess === null ? null : sectionSet(name, "access", draftAccess),
-    alignment: draftAlignment === null ? null : sectionSet(name, "alignment", draftAlignment),
-    describe: draftDescription === null ? null : sectionSet(name, "description", draftDescription),
+    access: draftAccess === null ? null : requestOf(sectionSet(name, "access", draftAccess)),
+    alignment: alignmentSet === null ? null : requestOf(alignmentSet),
+    describe:
+      draftDescription === null
+        ? null
+        : requestOf(sectionSet(name, "description", draftDescription)),
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing places its data in the section: a definition still naming it
     // always refuses (design §4.5), and a control that would refuse the instant it was pressed is
@@ -260,7 +267,13 @@ export function SectionPanel({ name, revision, stopped, onClose, onGone, onMoved
         setFailed(null);
       }}
       accessOffer={draftAccess === null ? null : offer("access")}
-      alignmentOffer={draftAlignment === null ? null : offer("alignment")}
+      alignmentOffer={
+        alignmentSet === null
+          ? null
+          : "refusal" in alignmentSet
+            ? { plan: null, refusal: alignmentSet.refusal, pending: false }
+            : offer("alignment")
+      }
       describeOffer={draftDescription === null ? null : offer("describe")}
       renameOffer={to === null ? null : offer("rename")}
       removeOffer={requests.remove === null ? null : offer("remove")}

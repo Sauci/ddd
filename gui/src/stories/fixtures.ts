@@ -232,6 +232,49 @@ export const AGREEING: VariableReply = {
   findings: [],
 };
 
+/** ParameterA, the controller's own calibration parameter: declared by Controller alone, `local`,
+ * so nothing disagrees - the panel a description is written from (DescriptionOfTheDeclaration). */
+export const PARAMETER_A: VariableReply = {
+  revision: 7,
+  name: "ParameterA",
+  declarations: [
+    {
+      path: CONTROLLER,
+      pointer: "component.interface[8].definition",
+      component: "Controller",
+      role: "local",
+      stated: {
+        kind: '"parameter"',
+        datatype: '"uint16"',
+        unit: '"Hz"',
+        conversion: '{"factor": 0.25}',
+        limits: '{"min": 500, "max": 1500}',
+      },
+      type: null,
+      fixed: {},
+    },
+  ],
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true)],
+      values: [inPlay('"uint16"', ["Controller"], true)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false)],
+      values: [inPlay('"Hz"', ["Controller"], true)],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+  ],
+  findings: [],
+};
+
 /** ValueA declared by a type that fixes its unit: SensorHub names Speed_t and states no unit. */
 export const FIXED_BY_TYPE: VariableReply = {
   revision: 7,
@@ -329,6 +372,29 @@ export const SHAPED: VariableReply = {
     },
   ],
   findings: [],
+};
+
+/** A range up to the most a uint64 holds, as a file writes it: `JSON.parse` reads the maximum as
+ * 18446744073709551616, which no uint64 holds. */
+const WIDE_RANGE = '{"min": 0, "max": 18446744073709551615}';
+
+/** Rpm_Axis made a uint64 whose two declarations state WIDE_RANGE: ARangeThePageCannotHold's
+ * own fields, the file's digits in Max and the grid's sentence under them. */
+export const WIDE_LIMITS: VariableReply = {
+  ...SHAPED,
+  declarations: SHAPED.declarations.map((declaration) => ({
+    ...declaration,
+    stated: { ...declaration.stated, datatype: '"uint64"', limits: WIDE_RANGE },
+  })),
+  keys: SHAPED.keys.map((key) =>
+    key.key === "limits"
+      ? {
+          ...key,
+          values: [inPlay(WIDE_RANGE, ["SensorHub", "Controller"], true)],
+          disagrees: false,
+        }
+      : key,
+  ),
 };
 
 /** SharedName as a measurement SensorHub produces, with dimensions, and as a parameter Pump
@@ -1546,6 +1612,65 @@ export const SCALAR_TYPE: TypeReply = {
   findings: [],
 };
 
+/** Mask_t, a uint64 bit mask stating WIDE_RANGE, the whole range a uint64 holds, read as it is
+ * stored and in no unit, and named by one variable: ALimitThePageCannotHold's own fields and
+ * sentence, which this panel's chooser shows as the variable panel's does. */
+export const MASK_TYPE: TypeReply = {
+  revision: 7,
+  name: "Mask_t",
+  kind: "scalar",
+  file: TYPES,
+  pointer: "types[6]",
+  description: "A fault mask, one bit for each fault a sensor reports",
+  header: null,
+  keys: [
+    {
+      key: "datatype",
+      carried: [carried(true)],
+      values: [inPlay('"uint64"', [], false)],
+      disagrees: false,
+      editor: "datatype",
+      choices: DATATYPES,
+    },
+    {
+      key: "unit",
+      carried: [carried(false)],
+      values: [],
+      disagrees: false,
+      editor: "unit",
+      choices: [],
+    },
+    {
+      key: "conversion",
+      carried: [carried(true)],
+      values: [inPlay('{"kind": "identity"}', [], false)],
+      disagrees: false,
+      editor: "none",
+      choices: [],
+    },
+    {
+      key: "limits",
+      carried: [carried(false)],
+      values: [inPlay(WIDE_RANGE, [], false)],
+      disagrees: false,
+      editor: "limits",
+      choices: [],
+    },
+  ],
+  uses: [
+    {
+      path: SENSING,
+      pointer: "component.interface[3].definition.typename",
+      kind: "variable",
+      name: "FaultMask",
+      component: "Sensing",
+      role: "produces",
+    },
+  ],
+  members: [],
+  findings: [],
+};
+
 /** Sensor_t filed as the second of two types sharing its name - Sensing's own inline types list,
  * left over from before types.ddd.json existed, still declares one too. The panel's Findings
  * section (part 4) needs a type carrying a real finding to be drawn at all; the table's own
@@ -1844,6 +1969,9 @@ export const VALUES_CURVE: ValuesReply = {
   rows: [[1200, 900, 800, 750, 700, 650]],
   stated: "array",
   axes: [axisA("axis")],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],
@@ -1869,6 +1997,9 @@ export const VALUES_MAP: ValuesReply = {
   ],
   stated: "array",
   axes: [axisA("x_axis"), axisB("y_axis")],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],
@@ -1889,9 +2020,37 @@ export const VALUES_BLOCK: ValuesReply = {
   rows: [[0, 12, 28, 52, 84, 124, 180, 255]],
   stated: "array",
   axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "UserInterface",
   file: USER_INTERFACE,
   findings: [],
+};
+
+/** BlockA made a uint64 block of two whose file holds 9007199254740993 and 18446744073709551615.
+ * The route answers each as the double nearest it, 2^53 and 2^64, and marks the block, so that
+ * ABlockTheGridCannotShow draws its sentence and no grid. Built from BlockA's own answer, as
+ * AReadOnlyGrid's is: no example holds a number past 2^53. */
+export const VALUES_BLOCK_PAST_2_53: ValuesReply = {
+  ...VALUES_BLOCK,
+  datatype: "uint64",
+  maximum: 2 ** 64,
+  shape: [2],
+  rows: [[2 ** 53, 2 ** 64]],
+  unshown: "BlockA",
+  maximum_text: "18446744073709551615",
+};
+
+/** BlockA made a uint32 block of four holding numbers of nine, ten, two and seven digits, each in
+ * a field as wide as it (ABlockOfWideNumbers): fields of one width cut the first, second and
+ * fourth short. Built from BlockA's own answer, as VALUES_BLOCK_PAST_2_53 is. */
+export const VALUES_BLOCK_WIDE: ValuesReply = {
+  ...VALUES_BLOCK,
+  datatype: "uint32",
+  maximum: 4294967295,
+  shape: [4],
+  rows: [[123456789, 4000000000, 42, 1000000]],
 };
 
 /** AxisA drawn as an object in its own right, rather than as CurveA's or MapA's own axis: it
@@ -1910,6 +2069,9 @@ export const VALUES_AXIS: ValuesReply = {
   rows: [[0, 3200, 6400, 12800, 19200, 32000]],
   stated: "array",
   axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],
@@ -1930,15 +2092,18 @@ export const VALUES_CURVE_B: ValuesReply = {
   rows: [[200, 200, 200, 200, 200, 200]],
   stated: "scalar",
   axes: [axisA("axis")],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "UserInterface",
   file: USER_INTERFACE,
   findings: [],
 };
 
 /** ValueD: SensorHub's own real absent init - a measurement declared with `dimensions: [8]` and
- * no `init` at all (sensor_hub.ddd.json), so the startup code zeroes it - AnAbsentInitGreyed's
- * own "nothing is stated" note. No unit, the identity conversion, and no axis: a plain shaped
- * measurement, not a curve or a map. */
+ * no `init` at all (sensor_hub.ddd.json), so the startup code zeroes it - AnAbsentInitHollow's
+ * own "nothing is stated" note, over cells drawn hollow and no picture. No unit, the identity
+ * conversion, and no axis: a plain shaped measurement, not a curve or a map. */
 export const VALUES_VALUE_D: ValuesReply = {
   revision: 1,
   name: "ValueD",
@@ -1952,6 +2117,9 @@ export const VALUES_VALUE_D: ValuesReply = {
   rows: [[0, 0, 0, 0, 0, 0, 0, 0]],
   stated: "none",
   axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "SensorHub",
   file: SENSOR_HUB,
   findings: [],
@@ -1972,6 +2140,9 @@ export const VALUES_SOFTWARE_LABEL: ValuesReply = {
   rows: [],
   stated: "text",
   axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: CONTROLLER,
   findings: [],
@@ -1994,6 +2165,165 @@ export const CURVE_CELL_PLAN: PlanReply = {
           line: 205,
           before: ['          "init": [1200, 900, 800, 750, 700, 650],'],
           after: ['          "init": [1200, 900, 750, 750, 700, 650],'],
+        },
+      ],
+    },
+  ],
+};
+
+/** CurveA's first three elements, 1200, 900 and 800, set to 1300, 1400 and 1500 - 13, 14 and 15
+ * ms typed into three cells - each where it stands (ThreeCellsTypedAsOneChange): three `set`s, one
+ * line of the file, which a served copy of examples/demo answers with this one hunk. */
+export const CURVE_CELLS_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        { op: "set", pointer: "component.interface[12].definition.init[0]", raw: "1300" },
+        { op: "set", pointer: "component.interface[12].definition.init[1]", raw: "1400" },
+        { op: "set", pointer: "component.interface[12].definition.init[2]", raw: "1500" },
+      ],
+      hunks: [
+        {
+          line: 205,
+          before: ['          "init": [1200, 900, 800, 750, 700, 650],'],
+          after: ['          "init": [1300, 1400, 1500, 750, 700, 650],'],
+        },
+      ],
+    },
+  ],
+};
+
+/** ParameterA: the controller's own calibration parameter, no dimensions, `init: 3200` and a
+ * factor of 0.25 - 3200 raw counts, 800 Hz. A scalar is a grid of one cell, and a served copy of
+ * examples/demo answers this reply for it (AScalarAsOneCell's own). */
+export const VALUES_PARAMETER_A: ValuesReply = {
+  revision: 1,
+  name: "ParameterA",
+  kind: "parameter",
+  datatype: "uint16",
+  unit: "Hz",
+  conversion: { kind: "linear", factor: 0.25, offset: 0 },
+  minimum: 500,
+  maximum: 1500,
+  shape: [],
+  rows: [[3200]],
+  stated: "scalar",
+  axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
+  owner: "Controller",
+  file: CONTROLLER,
+  findings: [],
+};
+
+/** ValueC: SensorHub's float32 measurement stating no `init`, so its one cell reads the zero the
+ * startup code makes of it. */
+export const VALUES_VALUE_C: ValuesReply = {
+  revision: 1,
+  name: "ValueC",
+  kind: "measurement",
+  datatype: "float32",
+  unit: "degC",
+  conversion: { kind: "identity" },
+  minimum: -3.4028234663852886e38,
+  maximum: 3.4028234663852886e38,
+  shape: [],
+  rows: [[0]],
+  stated: "none",
+  axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
+  owner: "SensorHub",
+  file: SENSOR_HUB,
+  findings: [],
+};
+
+/** ParameterA's one cell set to 4000 raw, 1000 Hz: one `set` at its own `init`, one line - what a
+ * served copy of examples/demo answers `GET /api/value-plan?name=ParameterA&at=&raw=4000`. */
+export const PARAMETER_CELL_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [{ op: "set", pointer: "component.interface[8].definition.init", raw: "4000" }],
+      hunks: [
+        {
+          line: 142,
+          before: ['          "init": 3200,'],
+          after: ['          "init": 4000,'],
+        },
+      ],
+    },
+  ],
+};
+
+/** ValueC's one cell set to 21.5, which its file did not state: the preview shows the `init` the
+ * declaration gains. */
+export const VALUE_C_INIT_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: SENSOR_HUB,
+      fingerprint: "bfb9ade8086f084a007f05b91d160a6c327df0f43f05745ab0ea5a90f291b80f",
+      operations: [{ op: "set", pointer: "component.interface[2].definition.init", raw: "21.5" }],
+      hunks: [
+        {
+          line: 93,
+          before: ['          "volatile": false'],
+          after: ['          "volatile": false,', '          "init": 21.5'],
+        },
+      ],
+    },
+  ],
+};
+
+/** ParameterA's description set to "Engine speed gain": one `set` at the declaration's own
+ * `description`, in the controller's file alone. */
+export const DESCRIPTION_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        {
+          op: "set",
+          pointer: "component.interface[8].definition.description",
+          raw: '"Engine speed gain"',
+        },
+      ],
+      hunks: [
+        {
+          line: 137,
+          before: ['          "description": "Single calibratable constant",'],
+          after: ['          "description": "Engine speed gain",'],
+        },
+      ],
+    },
+  ],
+};
+
+/** The same description emptied: the key goes, the default of the model being the empty text. */
+export const DESCRIPTION_REMOVED_PLAN: PlanReply = {
+  revision: 1,
+  changes: [
+    {
+      file: CONTROLLER,
+      fingerprint: "8878185dd8feae77366338050e33c9ec28f63d97ce6e722b242366993d7ddfe5",
+      operations: [
+        { op: "remove", pointer: "component.interface[8].definition.description", raw: null },
+      ],
+      hunks: [
+        {
+          line: 137,
+          before: ['          "description": "Single calibratable constant",'],
+          after: [],
         },
       ],
     },

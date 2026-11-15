@@ -14,10 +14,18 @@ import { TypePanelView } from "../components/TypePanelView";
 import { planEdit } from "../lib/projectUnits";
 import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { planShown } from "../lib/typing";
+import { planShown, unsettled } from "../lib/typing";
 import { typeLabel } from "../lib/undo";
 import { textOf, unitLabel } from "../lib/units";
-import { limitsNote, limitsOf, limitsRaw, settledRaw, shortValue } from "../lib/variableKeys";
+import {
+  limitsOf,
+  limitsRaw,
+  settledLabel,
+  settledRaw,
+  settleNote,
+  shortValue,
+  typeDatatype,
+} from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
 import { UpdatingNote } from "../ui/UpdatingNote";
@@ -137,15 +145,21 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
   const starting = offer?.values[0]?.raw ?? null;
   // Two empty fields are "state nothing", which removes the key; anything else that is not a
   // range is nothing to plan for, and no request is asked for while it is broken - the same
-  // gate `VariablePanel` gives its own settle query, though this panel's chooser has no field of
-  // its own to show the sentence in.
-  const broken = selected === "limits" ? limitsNote(edited?.min ?? "", edited?.max ?? "") : null;
+  // gate `VariablePanel` gives its own settle query, and the same sentence under the chooser.
+  // Judged on what the fields show, the type's own range among it: one whose bound the page
+  // cannot hold is no range to send either, rather than a removal of the key.
   const range = edited ?? (selected === undefined ? { min: "", max: "" } : limitsOf(starting));
+  // The range is read by the datatype the type fixes (`typeDatatype`), as a variable's by its own.
+  const datatype = typeDatatype(type?.keys ?? []);
+  // What the chooser would settle on, read before anything is asked for it (`settleNote`), as
+  // a variable's panel reads its own: a range the fields do not make, or a unit with spaces
+  // around it.
+  const broken = settleNote(selected, range, datatype, settledRaw(chosen, starting));
   const target =
     selected === undefined || broken !== null
       ? null
       : selected === "limits"
-        ? limitsRaw(range.min, range.max)
+        ? limitsRaw(range.min, range.max, datatype)
         : settledRaw(chosen, starting);
   // What the reader has changed the description away from, `null` while it reads the type's own -
   // the third write path, with no marker of its own the way `selected`/`renameTo` are.
@@ -211,6 +225,18 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
     active === null
       ? { plan: null, refusal: null, pending: false }
       : planShown(asked[active], requests[active], plans[active]);
+  // What the chooser's field reads while nothing is being typed (`settledLabel`, the rule a
+  // variable's panel reads its own by), and whether what is typed is not that: text typed and left
+  // is no choice yet (decision 15.3), so while it stands no plan is drawn for the value before it
+  // and Apply is withheld.
+  const shownLabel = settledLabel(
+    selected,
+    broken,
+    target,
+    settledRaw(chosen, starting),
+    (key, raw) => fieldLabel(offer?.editor, key, raw),
+  );
+  const unsettledText = unsettled(typed, shownLabel);
 
   const apply = useMutation({
     mutationFn: (kind: Kind) => {
@@ -291,12 +317,8 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setDescription(undefined);
         }
       }}
-      typed={
-        typed ??
-        (selected === undefined || broken !== null
-          ? ""
-          : fieldLabel(offer?.editor, selected, target))
-      }
+      typed={typed ?? shownLabel}
+      unsettled={unsettledText}
       // Never the target: opening the list on the value already chosen must still list
       // everything, not just the entries that happen to contain it (spec 5.3, as `VariablePanel`
       // narrows too).
@@ -324,6 +346,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
         setTyped(undefined);
         setRefused(null);
       }}
+      note={broken ?? undefined}
       description={description ?? type.description}
       onDescription={(text) => {
         setDescription(text);
@@ -358,14 +381,16 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setChangesShown(false);
         }
       }}
-      preview={shown.plan}
+      preview={unsettledText ? null : shown.plan}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {
         if (active !== null) apply.mutate(active);
       }}
       onOpen={onOpen}
-      refusal={active === null ? null : refusalShown(refused, shown.refusal, active)}
+      refusal={
+        active === null || unsettledText ? null : refusalShown(refused, shown.refusal, active)
+      }
       busy={stopped || apply.isPending}
       onClose={onClose}
     />

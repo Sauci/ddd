@@ -30,6 +30,13 @@ export function isStale(error: Error): boolean {
   return error instanceof ApiError && error.code === "stale";
 }
 
+/** What a panel says of an Apply refused: `stale`, its own sentence for a file changed on disk -
+ * that nothing was written, and what the panel now shows - else the server's own reason. One
+ * choice, which the panels writing a value made each for itself. */
+export function refusalSentence(error: Error, stale: string): string {
+  return isStale(error) ? stale : `The change was refused: ${error.message}`;
+}
+
 /**
  * The one refusal a panel of several writes shows beside its write `about`: the refusal it holds
  * of that write's Apply (`Refused`), else why the write's plan was refused when asked for, in the

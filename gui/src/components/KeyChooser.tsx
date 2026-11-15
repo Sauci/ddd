@@ -1,6 +1,7 @@
+import type { CSSProperties } from "react";
 import type { UnitsReply, VariableKeyOffer } from "../api/types";
 import { pickerSections, rawOf } from "../lib/units";
-import { chooserSections, enteredValue } from "../lib/variableKeys";
+import { chooserNote, chooserSections, enteredValue, rangeChars } from "../lib/variableKeys";
 import { ComboBox } from "../ui/ComboBox";
 import { UnitPicker } from "./UnitPicker";
 
@@ -24,6 +25,9 @@ export interface KeyChooserProps {
   onChosen: (raw: string | null) => void;
   /** The list closed or the field was left: what was typed there is dropped. */
   onPickerClosed: () => void;
+  /** Whether the text is not the value settled on (`unsettled`, lib/typing.ts): the chooser then
+   * says how to settle it, under the field. */
+  unsettled: boolean;
   /** The two fields of a range, while the key is `limits`. */
   range: { min: string; max: string };
   onRange: (range: { min: string; max: string }) => void;
@@ -53,10 +57,12 @@ export function KeyChooser(props: KeyChooserProps) {
         isDisabled={props.busy}
         autoFocus={props.focus}
         menuTrigger={props.pickerTrigger}
+        unsettled={props.unsettled}
       />
     );
   }
   const sections = chooserSections(offer, props.owner, keyName, props.narrow);
+  const chars = rangeChars(props.range);
   return (
     <div className="key-chooser">
       <ComboBox
@@ -73,7 +79,7 @@ export function KeyChooser(props: KeyChooserProps) {
           if (raw !== undefined) props.onChosen(raw);
         }}
         onClose={props.onPickerClosed}
-        note={props.note}
+        note={chooserNote(props.unsettled, keyName, props.typed, sections) ?? props.note}
         isDisabled={props.busy}
         autoFocus={props.focus}
         menuTrigger={props.pickerTrigger}
@@ -85,6 +91,8 @@ export function KeyChooser(props: KeyChooserProps) {
             <input
               type="text"
               inputMode="decimal"
+              // How many characters each field holds (`rangeChars`), for ui.css to widen it by.
+              style={{ "--chars": chars.min } as CSSProperties}
               value={props.range.min}
               disabled={props.busy}
               onChange={(event) => props.onRange({ ...props.range, min: event.target.value })}
@@ -95,6 +103,7 @@ export function KeyChooser(props: KeyChooserProps) {
             <input
               type="text"
               inputMode="decimal"
+              style={{ "--chars": chars.max } as CSSProperties}
               value={props.range.max}
               disabled={props.busy}
               onChange={(event) => props.onRange({ ...props.range, max: event.target.value })}

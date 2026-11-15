@@ -33,7 +33,7 @@ import {
   spanOf,
   windowRows,
 } from "../lib/findingsWindow";
-import { isStale } from "../lib/refusals";
+import { refusalSentence } from "../lib/refusals";
 import type { Route } from "../lib/route";
 import { fixLabel } from "../lib/undo";
 import { baseName } from "../lib/units";
@@ -180,8 +180,7 @@ export function FindingsPage({ state, stopped, onOpen }: Props) {
       setChangesShown(false);
       setSelected(undefined);
     },
-    onError: (error) =>
-      setRefused(isStale(error) ? STALE : `The change was refused: ${error.message}`),
+    onError: (error) => setRefused(refusalSentence(error, STALE)),
     // Applying a fix changes the file it wrote to, the findings the next revision reports, and
     // any panel reading what it edited: asked for again, as `UnitsPage` does for its own edits.
     onSettled: () =>

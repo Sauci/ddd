@@ -24,6 +24,7 @@ function Field({ open = false }: { open?: boolean }) {
       onTyped={setTyped}
       onPick={() => undefined}
       onClose={() => setTyped(undefined)}
+      unsettled={false}
       note={undefined}
       isDisabled={false}
       autoFocus={open ? 1 : null}

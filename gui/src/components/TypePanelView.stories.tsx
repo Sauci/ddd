@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { PlanReply, TypeReply } from "../api/types";
+import { unsettled } from "../lib/typing";
 import { textOf, unitLabel } from "../lib/units";
-import { settledRaw } from "../lib/variableKeys";
+import { limitsNote, limitsOf, settledRaw } from "../lib/variableKeys";
 import {
   EXTERNAL_TYPE,
+  MASK_TYPE,
   PROJECT_UNITS,
   SCALAR_TYPE,
   SET_UNIT,
@@ -27,6 +29,9 @@ interface Props {
   /** What the Rename field starts on: the type's own name, unless a scenario means to show it
    * already typed - a refusal only ever appears with the offending name still in the field. */
   renameTo?: string | null;
+  /** When the chooser's list opens (`TypePanelView`'s own prop): as the panel opens it, unless a
+   * scenario means to show what the list would cover. */
+  pickerTrigger?: "input" | "focus" | undefined;
 }
 
 /** The panel over one scenario's fixtures, with its own selection, typing, description and
@@ -42,11 +47,12 @@ function PanelStory({
   shown = false,
   refusal,
   renameTo: renameSeed = null,
+  pickerTrigger,
 }: Props) {
   const [selected, setSelected] = useState<string | undefined>(on);
   const [typed, setTyped] = useState<string | undefined>(undefined);
   const [chosen, setChosen] = useState<string | null | undefined>(chosenSeed);
-  const [range, setRange] = useState({ min: "", max: "" });
+  const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
   const [description, setDescription] = useState(reply.description);
   const [renameTo, setRenameTo] = useState<string | null>(renameSeed);
   const [changesShown, setChangesShown] = useState(shown);
@@ -54,9 +60,17 @@ function PanelStory({
     setSelected(key);
     setTyped(undefined);
     setChosen(undefined);
-    setRange({ min: "", max: "" });
+    setEdited(undefined);
     setChangesShown(false);
   };
+  // As in TypePanel.tsx: the two fields read the type's own range until they are edited, and
+  // what they say is judged, the sentence under the chooser saying why it is no range to send.
+  const range =
+    edited ??
+    (selected === undefined
+      ? { min: "", max: "" }
+      : limitsOf(reply.keys.find((entry) => entry.key === selected)?.values[0]?.raw ?? null));
+  const note = selected === "limits" ? (limitsNote(range.min, range.max) ?? undefined) : undefined;
   return (
     <TypePanelView
       type={reply}
@@ -64,6 +78,7 @@ function PanelStory({
       selected={selected}
       onSelect={select}
       typed={typed ?? startingLabel(reply, selected, chosen)}
+      unsettled={unsettled(typed, startingLabel(reply, selected, chosen))}
       narrow={typed ?? ""}
       onTyped={setTyped}
       onChosen={(raw) => {
@@ -72,7 +87,8 @@ function PanelStory({
       }}
       onPickerClosed={() => setTyped(undefined)}
       range={range}
-      onRange={setRange}
+      onRange={setEdited}
+      note={note}
       description={description}
       onDescription={setDescription}
       renameTo={renameTo}
@@ -85,6 +101,7 @@ function PanelStory({
       refusal={refusal ?? null}
       busy={false}
       onClose={() => undefined}
+      pickerTrigger={pickerTrigger}
     />
   );
 }
@@ -120,6 +137,13 @@ export const ChangesShown = () => (
  * `gui/src/lib/variableKeys.ts`). */
 export const NoUnitChosen = () => (
   <PanelStory reply={SCALAR_TYPE} on="unit" chosen={null} preview={UNIT_TAKEN_OFF} shown />
+);
+
+/** A uint64 type's range up to the most it holds: Max holds the file's own digits, all twenty of
+ * them, and the grid's sentence says why no range holding them is planned - the list left closed,
+ * which open covers both. */
+export const ALimitThePageCannotHold = () => (
+  <PanelStory reply={MASK_TYPE} on="limits" pickerTrigger="input" />
 );
 
 /** Sensor_t: no "What it fixes" table, its four members, one with dimensions, its two uses. */

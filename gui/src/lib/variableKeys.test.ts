@@ -1,9 +1,13 @@
 import { describe, expect, test } from "vitest";
 import type { SettleReply, VariableKeyOffer, VariableReply } from "../api/types";
 import {
+  chooserNote,
   chooserSections,
   describeVariable,
   enteredValue,
+  FRESH,
+  heldFor,
+  holdOn,
   keyColumns,
   keyRows,
   labelOfRaw,
@@ -11,9 +15,16 @@ import {
   limitsOf,
   limitsRaw,
   offerOf,
+  rangeChars,
+  rangeDatatype,
+  settledLabel,
   settledRaw,
+  settleNote,
   shortValue,
+  staleHold,
   startingRaw,
+  typeDatatype,
+  variableDatatype,
   willChangeKey,
 } from "./variableKeys";
 
@@ -618,6 +629,68 @@ describe("what a field's text chooses", () => {
       enteredValue(chooserSections(of, "ValueA", "axis", "Wheel"), "axis", "Wheel"),
     ).toBeUndefined();
   });
+  test.each([
+    // A size typed is read as every field reads a number: in any decimal spelling of a whole
+    // number of at least 1, and travelling in its own digits.
+    { text: "12", raw: "12" },
+    { text: " 12 ", raw: "12" },
+    { text: "012", raw: "12" },
+    { text: "+12", raw: "12" },
+    { text: "1e1", raw: "10" },
+    { text: "12.0", raw: "12" },
+    { text: "1,234,567", raw: "1234567" },
+    // Nothing else is one.
+    { text: "0", raw: undefined },
+    { text: "-3", raw: undefined },
+    { text: "2.5", raw: undefined },
+    { text: "0x10", raw: undefined },
+    { text: "1,500", raw: undefined },
+  ])("a size typed '$text' chooses $raw", ({ text, raw }) => {
+    const of = offer("size", { editor: "size", choices: [] });
+    expect(enteredValue(chooserSections(of, "ValueA", "size", text), "size", text)).toBe(raw);
+  });
+});
+
+describe("chooserNote", () => {
+  const SIZE = offer("size", { editor: "size", choices: ["CELLS"] });
+
+  test("a size in another notation is refused in the sentence every field refuses it with", () => {
+    // 15:M13: `Number` read `0x10` as 16, and the panel offered it as the size typed.
+    const sections = chooserSections(SIZE, "ValueA", "size", "0x10");
+    expect(sections.some((section) => section.id === "typed")).toBe(false);
+    expect(chooserNote(true, "size", "0x10", sections)).toBe(
+      "'0x10' is not a number in decimal notation",
+    );
+    expect(
+      chooserNote(true, "size", "1,500", chooserSections(SIZE, "ValueA", "size", "1,500")),
+    ).toBe("the comma in '1,500' could be a decimal point or a thousands separator");
+  });
+
+  test("a name, or a number that reads, gets the way out of the text", () => {
+    expect(chooserNote(true, "size", "ROWS", chooserSections(SIZE, "ValueA", "size", "ROWS"))).toBe(
+      "Nothing in the list matches what you typed: change it, or press Escape to put the value back.",
+    );
+    expect(chooserNote(true, "size", "12", chooserSections(SIZE, "ValueA", "size", "12"))).toBe(
+      "Press Enter to take what you typed, or pick it from the list.",
+    );
+    // `Infinity` may name a constant, so it is a name here and not a number in another notation.
+    expect(
+      chooserNote(true, "size", "Infinity", chooserSections(SIZE, "ValueA", "size", "Infinity")),
+    ).toBe(
+      "Nothing in the list matches what you typed: change it, or press Escape to put the value back.",
+    );
+  });
+
+  test("another key's text gets the way out of it, whatever it spells", () => {
+    const of = offer("axis", { editor: "name", choices: ["AxisA"] });
+    expect(chooserNote(true, "axis", "0x10", chooserSections(of, "ValueA", "axis", "0x10"))).toBe(
+      "Nothing in the list matches what you typed: change it, or press Escape to put the value back.",
+    );
+  });
+
+  test("nothing while the text is the value settled on", () => {
+    expect(chooserNote(false, "size", "0x10", [])).toBeUndefined();
+  });
 });
 
 describe("the value a chooser starts on", () => {
@@ -642,6 +715,46 @@ describe("the value a chooser starts on", () => {
     expect(startingRaw(variable([offer("unit")]), "nonsense")).toBeNull();
     // chooserSections no longer looks a key up itself (Task 6): it now takes the offer
     // directly, and a caller that finds none from offerOf - covered above - does not call it.
+  });
+});
+
+describe("what a panel holds for one key", () => {
+  test("a choice is read back only while its key is the one on screen", () => {
+    const held = holdOn(undefined, "datatype", { chosen: "uint16" });
+    expect(heldFor(held, "datatype").chosen).toBe("uint16");
+    expect(heldFor(held, "unit")).toBe(FRESH);
+    expect(heldFor(held, undefined)).toBe(FRESH);
+    expect(heldFor(undefined, "unit")).toBe(FRESH);
+  });
+
+  test("a pick of nothing is held, and is not nothing held", () => {
+    expect(heldFor(holdOn(undefined, "unit", { chosen: null }), "unit").chosen).toBeNull();
+  });
+
+  test("a patch is laid over what is held for the key, and over nothing for another's", () => {
+    const first = holdOn(undefined, "limits", { range: { min: "0", max: "5", typed: true } });
+    const second = holdOn(first, "limits", { changesShown: true });
+    expect(heldFor(second, "limits")).toEqual({
+      ...FRESH,
+      range: { min: "0", max: "5", typed: true },
+      changesShown: true,
+    });
+    expect(heldFor(holdOn(first, "unit", { typed: "rp" }), "unit")).toEqual({
+      ...FRESH,
+      typed: "rp",
+    });
+  });
+
+  test("nothing is held for no key", () => {
+    expect(holdOn(undefined, undefined, { chosen: "rpm" })).toBeUndefined();
+  });
+
+  test("what was made for another key, or for none, is stale; nothing held is not", () => {
+    const held = holdOn(undefined, "datatype", { chosen: "uint16" });
+    expect(staleHold(held, "datatype")).toBe(false);
+    expect(staleHold(held, "unit")).toBe(true);
+    expect(staleHold(held, undefined)).toBe(true);
+    expect(staleHold(undefined, "unit")).toBe(false);
   });
 });
 
@@ -692,10 +805,235 @@ describe("a range typed into two fields", () => {
   test("two empty fields state nothing, and anything half typed is nothing to apply", () => {
     expect(limitsNote("", "")).toBeNull();
     expect(limitsNote(" ", " ")).toBeNull();
-    expect(limitsNote("0", "")).toBe("A range needs a minimum and a maximum");
-    expect(limitsNote("", "100")).toBe("A range needs a minimum and a maximum");
-    expect(limitsNote("low", "100")).toBe("A range needs a minimum and a maximum");
-    expect(limitsNote("0", "high")).toBe("A range needs a minimum and a maximum");
     expect(limitsNote("0", "100")).toBeNull();
+  });
+
+  test.each([
+    // 15:M9: each sentence names the one field it is about, where one sentence spoke of both
+    // fields whichever of them was wrong, even of one holding a comma locale's decimal.
+    { min: "0", max: "", says: "Max is empty" },
+    { min: "", max: "100", says: "Min is empty" },
+    { min: " ", max: "100", says: "Min is empty" },
+    { min: "low", max: "100", says: "Min: 'low' is not a number" },
+    { min: "0", max: "high", says: "Max: 'high' is not a number" },
+    { min: "0x10", max: "100", says: "Min: '0x10' is not a number in decimal notation" },
+    { min: "0", max: "Infinity", says: "Max: 'Infinity' is not a number in decimal notation" },
+    {
+      min: "0",
+      max: "1,500",
+      says: "Max: the comma in '1,500' could be a decimal point or a thousands separator",
+    },
+  ])("'$min' and '$max' say: $says", ({ min, max, says }) => {
+    expect(limitsNote(min, max)).toBe(says);
+    expect(limitsRaw(min, max)).toBeNull();
+  });
+
+  test("a range is read by the one rule for a comma, the two fields together", () => {
+    expect(limitsNote("1,5", "2")).toBeNull();
+    expect(limitsRaw("1,5", "2,5")).toBe('{ "min": 1.5, "max": 2.5 }');
+    // `0,5` says what the comma is, so `1,500` beside it is one and a half.
+    expect(limitsRaw("0,5", "1,500")).toBe('{ "min": 0.5, "max": 1.5 }');
+    expect(limitsRaw("1,234.5", "1.234.567,5")).toBe('{ "min": 1234.5, "max": 1234567.5 }');
+    // Fix round 1, M1: and `1,234,567` says its commas group thousands, so `1,500` is fifteen
+    // hundred, where the field was refused for a comma that could be either.
+    expect(limitsRaw("1,500", "1,234,567")).toBe('{ "min": 1500, "max": 1234567 }');
+  });
+
+  test("a range is spelled as the numbers it holds, whatever their spelling", () => {
+    expect(limitsRaw("+1", "1e3")).toBe('{ "min": 1, "max": 1000 }');
+    expect(limitsRaw(".5", "5.")).toBe('{ "min": 0.5, "max": 5 }');
+  });
+});
+
+describe("a range read by its datatype, as a cell of it reads a number (task 1's n3)", () => {
+  const INEXACT = "where the page cannot hold every whole number exactly";
+
+  test("a whole datatype's bound past 2^53 is refused in any spelling, an exponent's too", () => {
+    expect(limitsNote("0", "1e19", "uint64")).toBe(`Max: '1e19' is past 2^53, ${INEXACT}`);
+    expect(limitsNote("-9.1e15", "0", "sint64")).toBe(`Min: '-9.1e15' is past -2^53, ${INEXACT}`);
+    // No datatype stated reads as a whole one's, the stricter.
+    expect(limitsNote("0", "1e19")).toBe(`Max: '1e19' is past 2^53, ${INEXACT}`);
+  });
+
+  test("and so is a bound the double would send as another number, a fraction from 2^51 on", () => {
+    expect(limitsNote("2251799813685248.25", "2251799813685249", "uint64")).toBe(
+      "Min: '2251799813685248.25' has a fraction the page cannot hold exactly",
+    );
+    expect(limitsNote("0", "2251799813685248.3", "uint64")).toBe(
+      "Max: '2251799813685248.3' has a fraction the page cannot hold exactly",
+    );
+    expect(limitsNote("0", "0.1", "uint8")).toBeNull();
+  });
+
+  test("a float's bound is the double it is, digits past 2^53 among them", () => {
+    expect(limitsNote("0", "10000000000000000000", "float64")).toBeNull();
+    expect(limitsNote("0", "1e400", "float64")).toBe("Max: '1e400' is past what a float64 holds");
+    expect(limitsNote("1e-400", "1", "float32")).toBe("Min: '1e-400' rounds to zero in float32");
+    // Fix round 1, M2: an exponent past 1e21 in size made the double NaN, said to be past it.
+    expect(limitsNote("1e-1000000000000000000000", "1", "float32")).toBe(
+      "Min: '1e-1000000000000000000000' rounds to zero in float32",
+    );
+    expect(limitsNote("0", "1e-1000000000000000000000", "uint8")).toBe(
+      "Max: '1e-1000000000000000000000' has a fraction the page cannot hold exactly",
+    );
+  });
+
+  test("a float's bound is written as a float (task 1's n2), any other's as typed", () => {
+    // 1e19 was written 10000000000000000000, a whole number past 2^53.
+    expect(limitsRaw("0", "1e19", "float64")).toBe('{ "min": 0.0, "max": 10000000000000000000.0 }');
+    expect(limitsRaw("-50", "90", "float32")).toBe('{ "min": -50.0, "max": 90.0 }');
+    expect(limitsRaw("0.5", "1e21", "float64")).toBe('{ "min": 0.5, "max": 1e+21 }');
+    expect(limitsRaw("-50", "90", "sint16")).toBe('{ "min": -50, "max": 90 }');
+  });
+});
+
+describe("the datatype a range is read by", () => {
+  test("a whole one where any declaration states one, else a float, else a whole one's rule", () => {
+    expect(rangeDatatype(["float32", "uint8"])).toBe("uint8");
+    expect(rangeDatatype(["float32", "float64"])).toBe("float32");
+    expect(rangeDatatype([null, "float64"])).toBe("float64");
+    expect(rangeDatatype([null, null])).toBe("");
+    expect(rangeDatatype([])).toBe("");
+  });
+
+  test("a variable's, from what each declaration states or its type fixes", () => {
+    const floats = variable([], [{ datatype: '"float32"' }, {}]);
+    expect(variableDatatype(floats)).toBe("float32");
+    const fixed = variable([]);
+    const declarations = fixed.declarations.map((declaration) => ({
+      ...declaration,
+      fixed: { datatype: '"uint16"' },
+    }));
+    expect(variableDatatype({ ...fixed, declarations })).toBe("uint16");
+  });
+
+  test("a type's, the one it fixes", () => {
+    expect(
+      typeDatatype([offer("unit"), offer("datatype", { values: [value('"float64"', [], false)] })]),
+    ).toBe("float64");
+    expect(typeDatatype([offer("unit")])).toBe("");
+  });
+});
+
+describe("a limit a double cannot hold", () => {
+  // A uint64's limits as its file states them, read off `GET /api/variable` for a declaration
+  // whose maximum is the most a uint64 holds. `JSON.parse` reads 18446744073709551615 as
+  // 18446744073709551616: the Max field was filled with 18446744073709552000, a number no uint64
+  // holds, and an edit of Min alone sent it back - a file that would not load, over a bound
+  // nobody typed.
+  const STATED = '{\n            "min": 0,\n            "max": 18446744073709551615\n          }';
+  const INEXACT = "where the page cannot hold every whole number exactly";
+
+  test("the field shows the file's own digits, not the double they read as", () => {
+    expect(limitsOf(STATED)).toEqual({ min: "0", max: "18446744073709551615" });
+  });
+
+  test("and so do the key's row and its chooser", () => {
+    expect(shortValue("limits", STATED)).toBe("0 … 18446744073709551615");
+  });
+
+  test("each field is as wide as its own text, so the twenty digits read whole", () => {
+    // Both fields were 6em wide, whatever they held: Max read 1844674 of its twenty digits.
+    expect(rangeChars(limitsOf(STATED))).toEqual({ min: 1, max: 20 });
+    expect(rangeChars({ min: "-9223372036854775808", max: "" })).toEqual({ min: 20, max: 0 });
+  });
+
+  test("on either side", () => {
+    const signed = '{ "min": -9223372036854775808, "max": 0 }';
+    expect(limitsOf(signed)).toEqual({ min: "-9223372036854775808", max: "0" });
+  });
+
+  test("a bound whose own text is not found is the double read", () => {
+    // `JSON.parse` reads a key spelled with an escape, which no file of the page's writes; its
+    // bound is then shown as the double it reads, as every bound was.
+    expect(limitsOf('{ "min": 0, "m\\u0061x": 100 }')).toEqual({ min: "0", max: "100" });
+  });
+
+  test("a range holding one says why it cannot be applied, in the grid's words", () => {
+    expect(limitsNote("1", "18446744073709551615")).toBe(
+      `Max: '18446744073709551615' is past 2^53, ${INEXACT}`,
+    );
+    expect(limitsRaw("1", "18446744073709551615")).toBeNull();
+  });
+
+  test("so does one typed past 2^53, either side", () => {
+    expect(limitsNote("-9007199254740993", "0")).toBe(
+      `Min: '-9007199254740993' is past -2^53, ${INEXACT}`,
+    );
+    expect(limitsRaw("0", "9007199254740993")).toBeNull();
+  });
+
+  test("the 64 bit mask in hexadecimal stays refused, as a number in another notation", () => {
+    // Ruling B3-1: refused past 2^53 once; refused now before it is weighed, as every field
+    // refuses a spelling `Number` read and decimal notation does not.
+    expect(limitsNote("0", "0x8000000000000001")).toBe(
+      "Max: '0x8000000000000001' is not a number in decimal notation",
+    );
+    expect(limitsRaw("0", "0x8000000000000001")).toBeNull();
+  });
+
+  test("up to 2^53 a bound is written as it is typed", () => {
+    expect(limitsRaw("-9007199254740992", "9007199254740991")).toBe(
+      '{ "min": -9007199254740992, "max": 9007199254740991 }',
+    );
+    expect(limitsNote("-9007199254740992", "9007199254740991")).toBeNull();
+  });
+
+  test("a float's bound past 2^53, spelled as a float, is the double it is", () => {
+    // FLT_MAX is a whole number past 2^53 too; a limit spelled with an exponent is read, and
+    // written, as the double it spells, which a float holds as it is.
+    const range = '{ "min": -3.4028234663852886e+38, "max": 3.4028234663852886e+38 }';
+    expect(limitsOf(range)).toEqual({
+      min: "-3.4028234663852886e+38",
+      max: "3.4028234663852886e+38",
+    });
+    expect(limitsNote("-3.4028234663852886e38", "3.4028234663852886e38", "float32")).toBeNull();
+  });
+});
+
+describe("settledLabel (fix round 1, M8)", () => {
+  // What a chooser's field reads while nothing is typed: one rule for the variable's panel and the
+  // type's, where each spelled it out for itself, outside the Vitest gate.
+  const label = (key: string, raw: string | null) => `${key}=${raw ?? "nothing"}`;
+
+  test("a range the fields do not make reads as nothing, the fields showing it themselves", () => {
+    expect(settledLabel("limits", "Max is empty", null, null, label)).toBe("");
+  });
+
+  test("a range they make reads as it, from what it comes to", () => {
+    expect(settledLabel("limits", null, '{ "min": 0, "max": 5 }', null, label)).toBe(
+      'limits={ "min": 0, "max": 5 }',
+    );
+  });
+
+  test("a unit refused reads as the spelling chosen, the note under it saying why", () => {
+    expect(settledLabel("unit", "'V ' has spaces around it", null, '"V "', label)).toBe(
+      'unit="V "',
+    );
+    expect(settledLabel("unit", null, '"V"', '"V"', label)).toBe('unit="V"');
+  });
+
+  test("no key selected reads as nothing", () => {
+    expect(settledLabel(undefined, null, null, null, label)).toBe("");
+  });
+});
+
+describe("settleNote", () => {
+  const EMPTY = { min: "", max: "" };
+
+  test("a range the two fields do not make, read by the datatype", () => {
+    expect(settleNote("limits", { min: "0", max: "" }, "", null)).toBe("Max is empty");
+    expect(settleNote("limits", { min: "0", max: "1e19" }, "float64", null)).toBeNull();
+  });
+
+  test("a unit with spaces around it, in the Units tab's words (15:M10)", () => {
+    expect(settleNote("unit", EMPTY, "", '"V "')).toBe("'V ' has spaces around it");
+    expect(settleNote("unit", EMPTY, "", '"V"')).toBeNull();
+    expect(settleNote("unit", EMPTY, "", null)).toBeNull();
+  });
+
+  test("nothing for any other key, nor for none", () => {
+    expect(settleNote("datatype", EMPTY, "", '" uint8"')).toBeNull();
+    expect(settleNote(undefined, EMPTY, "", null)).toBeNull();
   });
 });

@@ -23,13 +23,16 @@ const BEFORE: ValuesReply = {
   rows: [[1200, 900, 800, 750, 700, 650]],
   stated: "array",
   axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: "C:/work/demo/components/controller.ddd.json",
   findings: [],
 };
 
 /** Element 3 set to 750 raw, answered as edit 7. */
-const HOLD: ValuesHold = holdOf(7, BEFORE, { cell: { row: 0, column: 2 }, raw: 750 });
+const HOLD: ValuesHold = holdOf(7, BEFORE, { cells: [{ row: 0, column: 2, raw: 750 }] });
 
 /** The grid as the server answers it at `revision`: the values it read at that revision. */
 function served(revision: number, rows: number[][] = BEFORE.rows): ValuesReply {
@@ -44,21 +47,32 @@ function state(revision: number, edits: number) {
 const NONE: ReadonlyMap<number, number> = new Map();
 
 describe("what an Apply would write", () => {
+  const ONE = { cell: { row: 1, column: 3, at: "[1][3]", raw: 50 } };
+
   test("a pasted table: its rows, whatever cell was typed into before", () => {
     const rows = [[1, 2, 3, 4, 5, 6]];
-    expect(writtenBy(rows, { row: 0, column: 2 }, 750)).toEqual({ rows });
+    expect(writtenBy(rows, ONE)).toEqual({ rows });
   });
 
-  test("else the cell being typed into, and the raw count its text comes to", () => {
-    expect(writtenBy(null, { row: 1, column: 3 }, 50)).toEqual({
-      cell: { row: 1, column: 3 },
-      raw: 50,
+  test("else the one element the typed cells set, and the raw count it is set to", () => {
+    expect(writtenBy(null, ONE)).toEqual({ cells: [{ row: 1, column: 3, raw: 50 }] });
+  });
+
+  test("or each element several of them set", () => {
+    const cells = [
+      { row: 0, column: 0, at: "[0]", raw: 1300 },
+      { row: 0, column: 2, at: "[2]", raw: 1500 },
+    ];
+    expect(writtenBy(null, { cells })).toEqual({
+      cells: [
+        { row: 0, column: 0, raw: 1300 },
+        { row: 0, column: 2, raw: 1500 },
+      ],
     });
   });
 
-  test("nothing, while no cell is typed into or its text is no number", () => {
-    expect(writtenBy(null, null, null)).toBeNull();
-    expect(writtenBy(null, { row: 0, column: 2 }, null)).toBeNull();
+  test("nothing, while the typed cells set nothing", () => {
+    expect(writtenBy(null, null)).toBeNull();
   });
 });
 
@@ -81,10 +95,20 @@ describe("what an Apply in the grid holds", () => {
         [4, 5, 6],
       ],
     };
-    expect(holdOf(3, map, { cell: { row: 1, column: 2 }, raw: 60 }).after.rows).toEqual([
+    expect(holdOf(3, map, { cells: [{ row: 1, column: 2, raw: 60 }] }).after.rows).toEqual([
       [1, 2, 3],
       [4, 5, 60],
     ]);
+  });
+
+  test("several cells: each set where it stands, the rest as the grid showed them", () => {
+    const written = {
+      cells: [
+        { row: 0, column: 0, raw: 1300 },
+        { row: 0, column: 2, raw: 1500 },
+      ],
+    };
+    expect(holdOf(9, BEFORE, written).after.rows).toEqual([[1300, 900, 1500, 750, 700, 650]]);
   });
 
   test("a pasted table: every value, as pasted", () => {
@@ -97,10 +121,35 @@ describe("what an Apply in the grid holds", () => {
     (stated) => {
       // `set_cell` writes the whole init where the file held one value or none.
       const flat = { ...BEFORE, stated, rows: [[200, 200, 200, 200, 200, 200]] };
-      const held = holdOf(5, flat, { cell: { row: 0, column: 0 }, raw: 100 }).after;
+      const held = holdOf(5, flat, { cells: [{ row: 0, column: 0, raw: 100 }] }).after;
       expect([held.stated, held.rows]).toEqual(["array", [[100, 200, 200, 200, 200, 200]]]);
     },
   );
+});
+
+describe("what an Apply into cells the file does not state holds (15:M7)", () => {
+  const SHORT: ValuesReply = { ...BEFORE, rows: [[1200, 900]] };
+
+  test("a cell past the row the file writes: the whole init, the rest of the shape zeros", () => {
+    // What `set_cell` writes there, and what the grid shows at once.
+    expect(holdOf(7, SHORT, { cells: [{ row: 0, column: 4, raw: 750 }] }).after.rows).toEqual([
+      [1200, 900, 0, 0, 750, 0],
+    ]);
+  });
+
+  test("a cell the file writes: set where it stands, the row as short as the file writes it", () => {
+    expect(holdOf(7, SHORT, { cells: [{ row: 0, column: 1, raw: 750 }] }).after.rows).toEqual([
+      [1200, 750],
+    ]);
+  });
+
+  test("a map's row the file does not write, filled out", () => {
+    const map: ValuesReply = { ...BEFORE, shape: [2, 2], rows: [[1, 2]] };
+    expect(holdOf(7, map, { cells: [{ row: 1, column: 0, raw: 5 }] }).after.rows).toEqual([
+      [1, 2],
+      [5, 0],
+    ]);
+  });
 });
 
 describe("which values the grid shows", () => {

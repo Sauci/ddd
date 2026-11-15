@@ -7,7 +7,7 @@ import itertools
 import json
 import re
 import struct
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +18,7 @@ import pytest
 from build_elf_fixtures import UNITS
 from elftools.elf.elffile import ELFFile
 
+import ddd.elf as ddd_elf
 from ddd.diagnostics import DiagnosticBag
 from ddd.elf import (
     DECLARED_ONLY,
@@ -46,12 +47,20 @@ from ddd.elf import (
     Typedef,
     Unsupported,
     Variable,
+    _guarded,
+    _Node,
+    _PyelftoolsUnit,
+    _require_line_entries_fit,
+    _Types,
     core_of,
     file_path,
     file_table,
     open_image,
     read_variables,
     size_of,
+)
+from ddd.elf import (
+    _children as walk_children,
 )
 from ddd.toolbox.from_elf import describe
 from ddd.toolbox.mapping import ALIGNMENT_CAPS
@@ -93,6 +102,9 @@ class FakeUnit:
     name: str = "unit.c"
     files: dict[int, str] = field(default_factory=lambda: {1: "unit.c"})
     addresses: dict[int, int] = field(default_factory=dict)
+
+    def children(self, entry: Die) -> Iterator[Die]:
+        return entry.iter_children()
 
     def operations(self, expression: Any) -> list[tuple[str, list[Any]]]:
         return list(expression)
@@ -906,6 +918,193 @@ class TestImage:
         assert found is not None
         assert found.name == ".data"
         assert IMAGE.section_of(0x104) is None
+
+
+def node(
+    offset: int,
+    size: int = 4,
+    *,
+    is_null: bool = False,
+    children: bool = False,
+    sibling: int | None = None,
+) -> _Node:
+    """A stand-in entry for the forward-only cursor: it navigates by these fields alone, so a
+    test drives it without any image, damaged or not. ``entry`` is the offset itself, so a
+    walk's result reads as the offsets it visited."""
+    return _Node(offset, size, is_null, children, sibling, offset)
+
+
+def reader(*nodes: _Node) -> Callable[[int], _Node]:
+    """A cursor's ``fetch``: the entry at a byte offset, out of ``nodes`` keyed by offset."""
+    by_offset = {entry.offset: entry for entry in nodes}
+    return lambda offset: by_offset[offset]
+
+
+class TestTheForwardCursor:
+    """Children are walked by a cursor of the reader's own, which only moves forward, so a
+    sibling pointer cannot send it in a circle (finding 11:I6). The cursor navigates plain
+    stand-ins here; the committed fixtures exercise it over real DWARF in every other test that
+    opens one."""
+
+    def test_the_children_are_yielded_in_order(self) -> None:
+        parent = node(0, children=True)
+        a, b = node(4), node(8)
+        fetch = reader(parent, a, b, node(12, 1, is_null=True))
+        assert [entry.entry for entry in walk_children(parent, fetch, "img.elf")] == [4, 8]
+
+    def test_an_entry_without_children_yields_nothing(self) -> None:
+        assert list(walk_children(node(0, children=False), reader(), "img.elf")) == []
+
+    def test_a_sibling_pointer_skips_the_subtree_between_it_and_the_next(self) -> None:
+        parent = node(0, children=True)
+        first = node(4, children=True, sibling=20)  # its subtree, 8..19, is never fetched
+        second = node(20)
+        fetch = reader(parent, first, second, node(24, 1, is_null=True))
+        assert [entry.entry for entry in walk_children(parent, fetch, "img.elf")] == [4, 20]
+
+    def test_an_entry_with_children_and_no_sibling_is_walked_to_its_terminator(self) -> None:
+        parent = node(0, children=True)
+        first = node(4, children=True)  # no sibling: its subtree is walked to find the next
+        grandchild = node(8)
+        first_end = node(12, 1, is_null=True)
+        second = node(13)
+        fetch = reader(parent, first, grandchild, first_end, second, node(17, 1, is_null=True))
+        assert [entry.entry for entry in walk_children(parent, fetch, "img.elf")] == [4, 13]
+
+    def test_a_sibling_that_points_at_its_own_entry_is_a_damaged_image(self) -> None:
+        parent = node(0, children=True)
+        loop = node(4, children=True, sibling=4)
+        with pytest.raises(ElfReadError) as refused:
+            list(walk_children(parent, reader(parent, loop), "img.elf"))
+        assert str(refused.value) == (
+            "'img.elf' is not an ELF image this tool can read: the entry at 0x4 points to a "
+            "next sibling at 0x4, which does not lie past it, so its debug information cannot "
+            "be walked"
+        )
+
+    def test_a_sibling_that_points_back_before_the_entry_is_refused_too(self) -> None:
+        parent = node(0, children=True)
+        first = node(4)
+        back = node(8, children=True, sibling=4)
+        with pytest.raises(ElfReadError) as refused:
+            list(walk_children(parent, reader(parent, first, back), "img.elf"))
+        assert "the entry at 0x8 points to a next sibling at 0x4" in str(refused.value)
+
+
+class TestTheLineHeaderBound:
+    """A line program's header names how many directory and file entries follow it; a count
+    past the bytes left for them is a damaged header, refused before the array is allocated
+    (finding 11:I6's line header). The committed fixtures drive the surrounding extraction;
+    this pins the rule on the two numbers it comes down to."""
+
+    def test_more_entries_than_bytes_is_refused_naming_both(self) -> None:
+        with pytest.raises(ElfReadError) as refused:
+            _require_line_entries_fit(5, 4, "img.elf")
+        assert str(refused.value) == (
+            "'img.elf' is not an ELF image this tool can read: a line program's header names 5 "
+            "directory or file entries, more than the 4 bytes after it can hold"
+        )
+
+    def test_as_many_entries_as_bytes_is_allowed(self) -> None:
+        assert _require_line_entries_fit(4, 4, "img.elf") is None
+
+    def test_fewer_entries_than_bytes_is_allowed(self) -> None:
+        assert _require_line_entries_fit(0, 0, "img.elf") is None
+
+
+class TestTheReadersNet:
+    """Any exception a build runs into becomes the usage error a damaged image is, wherever
+    the reader meets it: in open_image, or in a type or declaration built later."""
+
+    def test_a_build_that_returns_is_handed_back(self) -> None:
+        assert _guarded("img.elf", lambda: 7) == 7
+
+    def test_an_exception_becomes_a_refusal_naming_the_image(self) -> None:
+        def boom() -> int:
+            raise KeyError(3)
+
+        with pytest.raises(ElfReadError) as refused:
+            _guarded("img.elf", boom)
+        assert str(refused.value) == (
+            "'img.elf' is not an ELF image this tool can read: KeyError: 3"
+        )
+
+    def test_a_refusal_already_named_is_passed_through_unchanged(self) -> None:
+        def already() -> int:
+            raise ElfReadError("stated once")
+
+        with pytest.raises(ElfReadError, match=r"^stated once$"):
+            _guarded("img.elf", already)
+
+    def test_a_deferred_type_that_fails_to_build_refuses_the_image(self) -> None:
+        """The net wraps each deferred build, so a value pyelftools hands back that the reader
+        cannot turn into a type is the usage error open_image would have raised, not a traceback
+        escaping from a caller that touched the variable's type."""
+        unbuildable = die(
+            "DW_TAG_base_type",
+            DW_AT_name=b"x",
+            DW_AT_encoding=Attr(object(), "DW_FORM_data1"),
+            DW_AT_byte_size=1,
+        )
+        units = [FakeUnit(die("DW_TAG_compile_unit", variable(b"v", of=unbuildable)))]
+        (found,) = read_variables(units, big_endian=False, shown="img.elf")
+        with pytest.raises(ElfReadError) as refused:
+            _ = found.type
+        assert str(refused.value).startswith(
+            "'img.elf' is not an ELF image this tool can read: TypeError"
+        )
+
+
+class TestLaziness:
+    """A variable's type is built, and the line table read for its declaration, only where a
+    caller asks (findings 11:M5 and 11:I6): a run over an image of many variables pays for the
+    few it is asked about."""
+
+    def test_opening_an_image_builds_no_type_and_asking_builds_only_what_is_reached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        built: list[str | int | None] = []
+        original = _Types._build
+
+        def counting(self: _Types, entry: Any, unit: Any) -> CType:
+            built.append(entry.tag)
+            return original(self, entry, unit)
+
+        monkeypatch.setattr(_Types, "_build", counting)
+        image = open_image(FIXTURES / "x86_64.elf")
+        assert built == []
+        assert by_name(image, "Type_Char").type == Base("char", DW_ATE_SIGNED_CHAR, 1)
+        assert built == ["DW_TAG_base_type"]
+        assert "DW_TAG_structure_type" not in built
+
+    def test_the_line_table_is_read_only_when_a_declaration_is_asked_for(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reads: list[str] = []
+        original = ddd_elf.file_table
+
+        def counting(program: Any, directory: str) -> FileTable | None:
+            reads.append(directory)
+            return original(program, directory)
+
+        monkeypatch.setattr(ddd_elf, "file_table", counting)
+        image = open_image(FIXTURES / "x86_64.elf")
+        assert reads == []
+        assert isinstance(by_name(image, "Type_Char").type, Base)
+        assert reads == []
+        assert by_name(image, "Cal_Gain").declared_at is not None
+        assert len(reads) == 1
+
+    def test_a_unit_without_a_line_program_reads_no_file_table(self) -> None:
+        unit = _PyelftoolsUnit.__new__(_PyelftoolsUnit)
+        unit.top = SimpleNamespace(attributes={})
+        unit._dwarf = SimpleNamespace(line_program_for_CU=lambda cu: None)
+        unit._cu = None
+        unit._compilation_directory = "."
+        unit._shown = "img.elf"
+        unit._files = None
+        unit._files_read = False
+        assert unit.file(3) is None
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "elf"

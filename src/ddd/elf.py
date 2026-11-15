@@ -22,14 +22,16 @@ from __future__ import annotations
 
 import io
 import re
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol, cast, overload
 
 import elftools
 from elftools.common.exceptions import DWARFError, ELFError
+from elftools.common.utils import struct_parse
 from elftools.dwarf.dwarf_expr import DWARFExprParser
+from elftools.dwarf.enums import DW_FORM_raw2name
 from elftools.elf.constants import SH_FLAGS
 from elftools.elf.elffile import ELFFile
 from elftools.elf.enums import ENUM_E_MACHINE
@@ -92,6 +94,56 @@ _UNSUPPORTED: Final = {
 
 class ElfReadError(ValueError):
     """An image this module cannot read at all; the message names the file and says why."""
+
+
+class Deferred[T]:
+    """A value built on demand: a field of :class:`Variable` holds one until it is read, so the
+    reader hands back a variable without paying for what no caller asks of it."""
+
+    __slots__ = ("_build",)
+
+    def __init__(self, build: Callable[[], T]) -> None:
+        self._build = build
+
+    def __call__(self) -> T:
+        return self._build()
+
+
+class _Lazy[T]:
+    """A field of a frozen dataclass that holds either a value or a :class:`Deferred` of one,
+    and resolves and caches a deferred on first read. A plain value passed by hand is kept as
+    it is, so a variable built without the reader - a test's, or a project's own - costs the
+    same as before, and two variables compare and hash by their resolved values."""
+
+    _default: tuple[T, ...]
+    _name: str
+
+    def __init__(self, *default: T) -> None:
+        self._default = default
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self._name = f"__lazy_{name}"
+
+    @overload
+    def __get__(self, instance: None, owner: type) -> T: ...
+    @overload
+    def __get__(self, instance: object, owner: type | None = None) -> T: ...
+    def __get__(self, instance: object, owner: type | None = None) -> T:
+        if instance is None:
+            # Class access: the dataclass machinery reads it to learn the field's default. A
+            # field given none raises, which marks it required, as an ordinary field does.
+            if self._default:
+                return self._default[0]
+            raise AttributeError(self._name)
+        stored = instance.__dict__[self._name]
+        if isinstance(stored, Deferred):
+            value: T = stored()
+            instance.__dict__[self._name] = value
+            return value
+        return cast("T", stored)
+
+    def __set__(self, instance: object, value: T | Deferred[T]) -> None:
+        instance.__dict__[self._name] = value
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,14 +238,19 @@ class Unsupported:
 type CType = Base | Enum | Struct | Array | Qualified | Typedef | Unsupported
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Variable:
-    """A variable of static storage a unit's DWARF describes at its top level."""
+    """A variable of static storage a unit's DWARF describes at its top level.
+
+    ``type`` and ``declared_at`` are lazy (:class:`_Lazy`): the reader defers them, so a run
+    builds a variable's type, and reads the line table for its declaration, only for the
+    variables a caller asks about. A variable built by hand with plain values is unaffected.
+    """
 
     name: str
     unit: str
-    type: CType
-    declared_at: Declared | None = None
+    type: _Lazy[CType] = _Lazy()
+    declared_at: _Lazy[Declared | None] = _Lazy(None)
     address: int | None = None
     missing: str = ""
     """Why ``address`` is None, as one of the constants of this module says it."""
@@ -300,7 +357,9 @@ class Image:
 
 
 class Entry(Protocol):
-    """What the readers ask of a DWARF entry. pyelftools' ``DIE`` is one."""
+    """What the readers ask of a DWARF entry. pyelftools' ``DIE`` is one. Its children are
+    reached through :meth:`Unit.children`, not the library's own walk, so a damaged sibling
+    pointer cannot send the reader in a circle."""
 
     @property
     def tag(self) -> str | int | None: ...
@@ -310,8 +369,6 @@ class Entry(Protocol):
 
     @property
     def attributes(self) -> Mapping[str, Any]: ...
-
-    def iter_children(self) -> Iterator[Entry]: ...
 
     def get_DIE_from_attribute(self, name: str) -> Entry: ...  # noqa: N802 - pyelftools' name
 
@@ -324,6 +381,11 @@ class Unit(Protocol):
 
     @property
     def top(self) -> Entry: ...
+
+    def children(self, entry: Entry) -> Iterator[Entry]:
+        """The children of ``entry``, walked with a forward-only cursor that refuses a sibling
+        pointer leading to an entry that does not lie past the one it leaves."""
+        ...
 
     def operations(self, expression: Sequence[int]) -> list[tuple[str, list[Any]]]:
         """A location expression, as ``(operation name, arguments)`` pairs."""
@@ -402,6 +464,7 @@ def read_variables(
     thread_local: frozenset[str] = frozenset(),
     objects: frozenset[tuple[str, int]] = frozenset(),
     address_size: int = 4,
+    shown: str = "",
 ) -> tuple[Variable, ...]:
     """The variables at the top of every unit, each with its type, address and declaration.
 
@@ -416,16 +479,20 @@ def read_variables(
     it discarded and resolves its address to a tombstone: GNU ld and lld 19 write 0, and lld
     all ones when told to (``-z dead-reloc-in-nonalloc``). A variable at 0, or at all ones at
     the image's width, is one the linker discarded, unless a symbol of its name sits there.
+
+    Each variable's type and declaration are deferred (:class:`Deferred`), so this builds no
+    type and reads no line table of its own; ``shown`` names the image in the refusal a
+    deferred build raises, since that build happens after :func:`open_image` has returned.
     """
     types = _Types(big_endian=big_endian)
     symbols = _Symbols(thread_local, objects, frozenset({0, (1 << (8 * address_size)) - 1}))
     defined: list[Variable] = []
     declared: dict[str, Variable] = {}
     for unit in units:
-        for entry in unit.top.iter_children():
+        for entry in unit.children(unit.top):
             if entry.tag != "DW_TAG_variable":
                 continue
-            variable = _variable(entry, unit, types, symbols)
+            variable = _variable(entry, unit, types, symbols, shown)
             if variable is None:
                 continue
             if variable.missing == DECLARED_ONLY:
@@ -442,8 +509,10 @@ def open_image(path: Path) -> Image:
 
     An image is untrusted input, and pyelftools answers a damaged one with whatever its parse
     runs into - a KeyError, a zlib.error, a failed assertion - as often as with an error of its
-    own. Any exception while reading refuses the image, naming the exception, so that a damaged
-    file is a usage error rather than a traceback.
+    own. :func:`_guarded` turns any such exception into a refusal that names it, so that a
+    damaged file is a usage error rather than a traceback. The same net wraps each deferred
+    type and declaration a caller asks of a variable later, since those are built outside this
+    call.
     """
     installed = elftools.__version__
     if tuple(int(part) for part in re.findall(r"\d+", installed)[:2]) < _PYELFTOOLS_FLOOR:
@@ -459,8 +528,15 @@ def open_image(path: Path) -> Image:
     except OSError as error:
         msg = f"cannot read '{shown}': {error.strerror}"
         raise ElfReadError(msg) from None
+    return _guarded(shown, lambda: _image(path, contents))
+
+
+def _guarded[T](shown: str, build: Callable[[], T]) -> T:
+    """``build()``, with any exception it runs into turned into an :class:`ElfReadError` that
+    names the image: the one net both :func:`open_image` and a deferred build pass through, so
+    that a damaged image is a usage error wherever the reader meets it, not a traceback."""
     try:
-        return _image(path, contents)
+        return build()
     except ElfReadError:
         raise
     except (ELFError, DWARFError) as error:
@@ -544,7 +620,7 @@ def _image(path: Path, contents: bytes) -> Image:
             f"-fdebug-types-section"
         )
         raise ElfReadError(msg)
-    units = [_PyelftoolsUnit(cu, dwarf) for cu in compile_units]
+    units = [_PyelftoolsUnit(cu, dwarf, shown) for cu in compile_units]
     # gcc -flto names a variable in the unit of its source, without a location, and locates it
     # in a unit of GNU GIMPLE's, without a name: read as it is, every variable was removed.
     if any(unit.producer.startswith(_LTO_PRODUCER) for unit in units):
@@ -560,6 +636,7 @@ def _image(path: Path, contents: bytes) -> Image:
         thread_local=frozenset(name for name, _ in _symbols(elf, "STT_TLS")),
         objects=objects,
         address_size=elf.elfclass // 8,
+        shown=shown,
     )
     return Image(
         path=path,
@@ -615,16 +692,32 @@ def _symbols(elf: ELFFile, kind: str, *, local: bool = False) -> frozenset[tuple
 class _PyelftoolsUnit:
     """A pyelftools compilation unit, as :class:`Unit` asks for one."""
 
-    def __init__(self, cu: Any, dwarf: Any) -> None:
+    def __init__(self, cu: Any, dwarf: Any, shown: str) -> None:
         self._cu = cu
         self._dwarf = dwarf
+        self._shown = shown
         self._parser = DWARFExprParser(cu.structs)
         self.top: Entry = cu.get_top_DIE()
         self.name = _text(self.top.attributes.get("DW_AT_name")) or ""
         self.producer = _text(self.top.attributes.get("DW_AT_producer")) or ""
-        self._files = file_table(
-            dwarf.line_program_for_CU(cu), _text(self.top.attributes.get("DW_AT_comp_dir")) or ""
-        )
+        self._compilation_directory = _text(self.top.attributes.get("DW_AT_comp_dir")) or ""
+        # The line table is read only when a declaration a caller asks about needs a path, and
+        # once per unit: pyelftools' own eager read of every unit's at open time is what let a
+        # crafted line header allocate before anyone looked.
+        self._files: FileTable | None = None
+        self._files_read = False
+
+    def children(self, entry: Entry) -> Iterator[Entry]:
+        parent = self._node_at(entry.offset)
+        for node in _children(parent, self._node_at, self._shown):
+            yield node.entry
+
+    def _node_at(self, offset: int) -> _Node:
+        die = self._cu.get_DIE_from_refaddr(offset)
+        sibling = None
+        if die.has_children and "DW_AT_sibling" in die.attributes:
+            sibling = die.get_DIE_from_attribute("DW_AT_sibling").offset
+        return _Node(die.offset, die.size, die.is_null(), bool(die.has_children), sibling, die)
 
     def operations(self, expression: Sequence[int]) -> list[tuple[str, list[Any]]]:
         return [(op.op_name, list(op.args)) for op in self._parser.parse_expr(expression)]
@@ -633,7 +726,137 @@ class _PyelftoolsUnit:
         return int(self._dwarf.get_addr(self._cu, index))
 
     def file(self, index: int) -> str | None:
+        if not self._files_read:
+            self._files = self._read_file_table()
+            self._files_read = True
         return file_path(self._files, index)
+
+    def _read_file_table(self) -> FileTable | None:
+        stmt_list = self.top.attributes.get("DW_AT_stmt_list")
+        if stmt_list is not None:
+            _bound_line_counts(
+                self._dwarf.debug_line_sec.stream, stmt_list.value, self._cu.structs, self._shown
+            )
+        program = self._dwarf.line_program_for_CU(self._cu)
+        return file_table(program, self._compilation_directory)
+
+
+@dataclass(frozen=True, slots=True)
+class _Node:
+    """One entry of a unit, as the forward-only cursor sees it: where it lies, how far it runs,
+    whether it is the null entry that ends a child list, whether it has children, and the
+    offset its ``DW_AT_sibling`` points to, if any."""
+
+    offset: int
+    size: int
+    is_null: bool
+    has_children: bool
+    sibling: int | None
+    entry: Any = None
+    """The entry itself, which :meth:`_PyelftoolsUnit.children` yields; the cursor navigates by
+    the fields above alone, so a test drives it with plain stand-ins."""
+
+
+def _children(parent: _Node, fetch: Callable[[int], _Node], shown: str) -> Iterator[_Node]:
+    """The children of ``parent``, read one after the next by a cursor of the reader's own.
+
+    ``fetch`` reads the entry at a byte offset. The cursor starts just past ``parent`` and
+    moves to each next sibling only where it lies past the entry it leaves; a sibling pointer
+    that does not advance is a damaged image, refused at once. pyelftools' own walk follows the
+    pointer unchecked, which a file that points an entry back at itself sends round forever.
+    """
+    if not parent.has_children:
+        return
+    cursor = parent.offset + parent.size
+    while True:
+        node = fetch(cursor)
+        if node.is_null:
+            return
+        yield node
+        cursor = _after(node, fetch, shown)
+
+
+def _after(node: _Node, fetch: Callable[[int], _Node], shown: str) -> int:
+    """Where the entry after ``node`` begins: the next byte for a leaf, the stated sibling where
+    the producer wrote one, else the far side of ``node``'s own subtree. Any of these that does
+    not lie past ``node`` is refused, naming the offset of the entry whose walk cannot go on."""
+    end = node.offset + node.size
+    if not node.has_children:
+        nxt = end
+    elif node.sibling is not None:
+        nxt = node.sibling
+    else:
+        nxt = _past(node, fetch, shown)
+    if nxt < end:
+        msg = (
+            f"'{shown}' is not an ELF image this tool can read: the entry at {node.offset:#x} "
+            f"points to a next sibling at {nxt:#x}, which does not lie past it, so its debug "
+            f"information cannot be walked"
+        )
+        raise ElfReadError(msg)
+    return nxt
+
+
+def _past(parent: _Node, fetch: Callable[[int], _Node], shown: str) -> int:
+    """The offset just past ``parent``'s whole subtree, for an entry with children that states
+    no sibling: walk its children to their null terminator, the same forward rule throughout."""
+    cursor = parent.offset + parent.size
+    while True:
+        node = fetch(cursor)
+        if node.is_null:
+            return node.offset + node.size
+        cursor = _after(node, fetch, shown)
+
+
+def _bound_line_counts(stream: Any, offset: int, structs: Any, shown: str) -> None:
+    """Refuse a DWARF 5 line program whose directory or file table names more entries than the
+    bytes after it could hold, before pyelftools allocates for them (finding 11:I6's line
+    header). Earlier line tables count neither table and so cannot overpromise this way.
+    """
+    stream.seek(offset)
+    program_end = struct_parse(structs.Dwarf_initial_length("length"), stream) + stream.tell()
+    if struct_parse(structs.the_Dwarf_uint16, stream) < 5:  # the line program's own version
+        return
+    for _ in range(2):  # address_size, segment_selector_size
+        struct_parse(structs.the_Dwarf_uint8, stream)
+    struct_parse(structs.the_Dwarf_offset, stream)  # header_length
+    for _ in range(5):  # minimum_instruction_length .. line_range
+        struct_parse(structs.the_Dwarf_uint8, stream)
+    for _ in range(struct_parse(structs.the_Dwarf_uint8, stream) - 1):  # standard opcode lengths
+        struct_parse(structs.the_Dwarf_uint8, stream)
+    directory_forms = _line_entry_format(stream, structs)
+    directories = struct_parse(structs.the_Dwarf_uleb128, stream)
+    _require_line_entries_fit(directories, program_end - stream.tell(), shown)
+    for _ in range(directories):  # bounded now, so reaching the file count is bounded work
+        for form in directory_forms:
+            struct_parse(structs.Dwarf_dw_form[form], stream)
+    _line_entry_format(stream, structs)
+    files = struct_parse(structs.the_Dwarf_uleb128, stream)
+    _require_line_entries_fit(files, program_end - stream.tell(), shown)
+
+
+def _line_entry_format(stream: Any, structs: Any) -> list[str]:
+    """One ``directory_entry_format`` or ``file_name_entry_format``: its ``(content, form)``
+    pairs, as the form names a later entry is parsed by. The count is a single byte, so this
+    reads at most 255 pairs whatever the image."""
+    forms = []
+    for _ in range(struct_parse(structs.the_Dwarf_uint8, stream)):
+        struct_parse(structs.the_Dwarf_uleb128, stream)  # content type code
+        forms.append(DW_FORM_raw2name[struct_parse(structs.the_Dwarf_uleb128, stream)])
+    return forms
+
+
+def _require_line_entries_fit(count: int, bytes_left: int, shown: str) -> None:
+    """Refuse a line header that promises ``count`` entries where only ``bytes_left`` bytes
+    follow it: an entry is at least one byte, so a count past that cannot be met and the header
+    is damaged. Checked before the array is allocated, so the count alone is the whole cost."""
+    if count > bytes_left:
+        msg = (
+            f"'{shown}' is not an ELF image this tool can read: a line program's header names "
+            f"{count} directory or file entries, more than the {bytes_left} bytes after it can "
+            f"hold"
+        )
+        raise ElfReadError(msg)
 
 
 def file_table(program: Any, compilation_directory: str) -> FileTable | None:
@@ -660,17 +883,23 @@ class _Symbols:
     """The addresses a linker gives a variable it discarded."""
 
 
-def _variable(entry: Entry, unit: Unit, types: _Types, symbols: _Symbols) -> Variable | None:
+def _variable(
+    entry: Entry, unit: Unit, types: _Types, symbols: _Symbols, shown: str
+) -> Variable | None:
     named = entry
     if "DW_AT_specification" in entry.attributes:
         named = entry.get_DIE_from_attribute("DW_AT_specification")
     name = _text(named.attributes.get("DW_AT_name"))
     if name is None:
         return None
-    # A definition states a type of its own where it completes the declaration's - the size of
-    # an array a header declared without one - and takes the declaration's otherwise.
-    ctype = types.inner(entry if "DW_AT_type" in entry.attributes else named, unit)
-    declared_at = _declared(entry, named, unit)
+    # The type and the declaration are deferred, each behind the reader's net, so a run pays
+    # for them only where a caller reads them, and a build that trips on a damaged image is
+    # still the usage error open_image would have raised. A definition states a type of its own
+    # where it completes the declaration's - the size of an array a header declared without one
+    # - and takes the declaration's otherwise.
+    type_entry = entry if "DW_AT_type" in entry.attributes else named
+    ctype = Deferred(lambda: _guarded(shown, lambda: types.inner(type_entry, unit)))
+    declared_at = Deferred(lambda: _guarded(shown, lambda: _declared(entry, named, unit)))
     attributes = entry.attributes
     address: int | None = None
     missing = ""
@@ -779,7 +1008,7 @@ class _Types:
 
     def _array(self, entry: Entry, unit: Unit) -> CType:
         dimensions: list[int] = []
-        for child in entry.iter_children():
+        for child in unit.children(entry):
             if child.tag != "DW_TAG_subrange_type":
                 continue
             extent = _extent(child)
@@ -797,7 +1026,7 @@ class _Types:
     def _enum(self, entry: Entry, unit: Unit) -> CType:
         if "DW_AT_declaration" in entry.attributes:
             return Unsupported("an enum declared but never defined")
-        children = [child for child in entry.iter_children() if child.tag == "DW_TAG_enumerator"]
+        children = [child for child in unit.children(entry) if child.tag == "DW_TAG_enumerator"]
         signed = self._signed(entry, children, unit)
         size = int(_value(entry, "DW_AT_byte_size"))
         return Enum(
@@ -829,7 +1058,7 @@ class _Types:
             return Unsupported("a structure declared but never defined")
         members = tuple(
             self._member(child, unit)
-            for child in entry.iter_children()
+            for child in unit.children(entry)
             if child.tag == "DW_TAG_member"
         )
         return Struct(

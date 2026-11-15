@@ -922,6 +922,33 @@ class TestWhereTheSourceLaidAStructureOutDifferently:
             == 1
         )
 
+    def test_a_bitfield_gives_the_structure_the_alignment_of_its_type(self) -> None:
+        assert self.layout(Member("a", U32, 0, 3), size=4) == []
+
+    def test_the_warning_is_shown_at_the_member_and_a_size_alone_at_the_structure(self) -> None:
+        bag = DiagnosticBag()
+        located = structure(
+            "L_s",
+            Member("a", U8, 0),
+            Member("b", U32, 8, declared_at=Declared("main.c", 7)),
+            size=5,
+            declared_at=Declared("main.c", 5),
+        )
+        mapped(located, bag=bag, mapper=Mapper(image(machine=X86_64), bag))
+        (member,) = [d for d in bag.sorted if d.check == "elf-layout"]
+        assert member.location == Location(Path("main.c"), line=7)
+        bag = DiagnosticBag()
+        sized = structure(
+            "L_s",
+            Member("a", U32, 0, declared_at=Declared("main.c", 7)),
+            Member("b", U8, 32, declared_at=Declared("main.c", 8)),
+            size=5,
+            declared_at=Declared("main.c", 5),
+        )
+        mapped(sized, bag=bag, mapper=Mapper(image(machine=X86_64), bag))
+        (whole,) = [d for d in bag.sorted if d.check == "elf-layout"]
+        assert whole.location == Location(Path("main.c"), line=5)
+
     def test_a_natural_structure_is_not_warned(self) -> None:
         members = (
             Member("a", U8, 0),
@@ -1004,6 +1031,14 @@ class TestWhereTheSourceLaidAStructureOutDifferently:
         mapped(packed, "A", mapper=mapper)
         mapped(natural, "B", mapper=mapper)
         assert mapper.conflicts() == {"Pair_s": [Declared("unit_a.c", 3), Declared("unit_b.c", 3)]}
+
+    def test_two_structures_that_differ_in_offsets_alone_conflict(self) -> None:
+        mapper = Mapper(image(machine=X86_64), DiagnosticBag())
+        mapped(structure("T_s", Member("a", U8, 0), Member("b", U8, 8), size=4), "A", mapper=mapper)
+        mapped(
+            structure("T_s", Member("a", U8, 0), Member("b", U8, 16), size=4), "B", mapper=mapper
+        )
+        assert set(mapper.conflicts()) == {"T_s"}
 
     def test_two_structures_that_differ_in_size_alone_conflict(self) -> None:
         mapper = Mapper(image(machine=X86_64), DiagnosticBag())

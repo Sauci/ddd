@@ -773,8 +773,8 @@ tr.changing td {
 .values-one .react-aria-Table {
   width: fit-content;
 }
-/* A field is as wide as its column's longest text, which `--chars` counts (objectValues.ts'
-   `columnChars`): one `ch` a character in this monospace, and the 22px of its padding and border
+/* A field is as wide as its column's longest text, which `--chars` counts (gridTexts.ts'
+   `chars`): one `ch` a character in this monospace, and the 22px of its padding and border
    (`--cell`'s 10px a side, a 1px border) - and never narrower than the 5em every field once was,
    so a grid of short numbers keeps its look, and a number of a few digits typed into a field
    does not move the columns beside it with every key. */

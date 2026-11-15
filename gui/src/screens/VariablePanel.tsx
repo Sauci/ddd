@@ -23,7 +23,7 @@ import {
   descriptionShown,
 } from "../lib/description";
 import { planEdit } from "../lib/projectUnits";
-import { isStale, panelShows, type Refused, refusalShown } from "../lib/refusals";
+import { panelShows, type Refused, refusalSentence, refusalShown } from "../lib/refusals";
 import { planShown, unsettled } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
@@ -327,7 +327,7 @@ export function VariablePanel({
     onError: (error) =>
       setRefused({
         about: selected,
-        text: isStale(error) ? STALE : `The change was refused: ${error.message}`,
+        text: refusalSentence(error, STALE),
       }),
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
@@ -371,8 +371,7 @@ export function VariablePanel({
       setDescriptionRefused(null);
       setDescriptionShownDiff(false);
     },
-    onError: (error) =>
-      setDescriptionRefused(isStale(error) ? STALE : `The change was refused: ${error.message}`),
+    onError: (error) => setDescriptionRefused(refusalSentence(error, STALE)),
     onSettled: () =>
       Promise.all([
         queries.invalidateQueries({ queryKey: ["variable"] }),
@@ -405,8 +404,7 @@ export function VariablePanel({
       setRemovalRefused(null);
       setRemovalShown(false);
     },
-    onError: (error) =>
-      setRemovalRefused(isStale(error) ? STALE : `The change was refused: ${error.message}`),
+    onError: (error) => setRemovalRefused(refusalSentence(error, STALE)),
     // Removing changes the same four queries a settle does, the variable's declarations chief
     // among them: with none of this file's left, `GET /api/variable` answers no declarations,
     // `undeclared` above turns true, and the effect near the top closes the panel through

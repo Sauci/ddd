@@ -39,8 +39,6 @@ function definitionOf(directory: string, name: string): Record<string, unknown> 
   return found.definition;
 }
 
-/** Opens an entry's panel the way a reader reaches it: the project, its Shared files tab, then
- * the entry's own row. */
 /** Every request the page asks of `route` from now on, by its whole url decoded: what a check that
  * nothing was asked for a field the page refuses reads back. */
 function askedOf(page: Page, route: string): string[] {
@@ -51,6 +49,8 @@ function askedOf(page: Page, route: string): string[] {
   return urls;
 }
 
+/** Opens an entry's panel the way a reader reaches it: the project, its Shared files tab, then
+ * the entry's own row. */
 async function openEntry(page: Page, gui: Gui, name: string): Promise<Locator> {
   await page.goto(gui.address);
   await page.getByRole("link", { name: "Shared files", exact: true }).click();

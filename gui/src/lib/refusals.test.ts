@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { ApiError, ServerUnreachable } from "../api/client";
-import { isStale, panelShows, type Refused, refusalOfOffer, refusalShown } from "./refusals";
+import {
+  isStale,
+  panelShows,
+  type Refused,
+  refusalOfOffer,
+  refusalSentence,
+  refusalShown,
+} from "./refusals";
 
 /** What a panel says when its Apply is refused because a file changed under its preview. */
 const STALE =
@@ -11,6 +18,19 @@ test("an Apply refused for a file changed on disk is stale, and no other refusal
   expect(isStale(new ApiError(409, "invalid", "refused"))).toBe(false);
   expect(isStale(new ServerUnreachable(new Error("refused")))).toBe(false);
   expect(isStale(new Error("stale"))).toBe(false);
+});
+
+test("an Apply refused is said in the panel's own sentence where a file changed on disk", () => {
+  // The panel's sentence says what it now shows; any other refusal is said in the server's words.
+  expect(refusalSentence(new ApiError(409, "stale", "a.ddd.json changed on disk"), STALE)).toBe(
+    STALE,
+  );
+  expect(refusalSentence(new ApiError(409, "invalid", "'rpm' is no unit"), STALE)).toBe(
+    "The change was refused: 'rpm' is no unit",
+  );
+  expect(refusalSentence(new Error("there is nothing to change"), STALE)).toBe(
+    "The change was refused: there is nothing to change",
+  );
 });
 
 test("a refusal held of a write is shown beside it, over why its plan was refused", () => {

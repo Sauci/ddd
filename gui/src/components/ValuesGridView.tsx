@@ -124,9 +124,11 @@ interface CellFieldProps {
   onFocused: (field: HTMLInputElement) => void;
 }
 
-/** A grid cell's field, drawn again only when its own text or its own column's width changes
- * (`GridStore`): a keystroke typed into one cell draws that cell, not the thousands beside it
- * (15:M8). On a grid's first entry the table holds no focused cell and moves the focus of a field
+/** A grid cell's field. A keystroke draws it again only where it changes the field's own text or
+ * its own column's width (`GridStore`): a keystroke typed into one cell draws that cell, not the
+ * thousands beside it (15:M8). A move of the focus draws every field, each reading the table's
+ * state for the cell it focuses (`TableStateContext`), and so does a draw of the table. On a grid's
+ * first entry the table holds no focused cell and moves the focus of a field
  * to its first row, where the keys that follow go; so a field taking the focus tells the table
  * that its own cell is the focused one, where the table holds none (`gridCells`'
  * `takesFocusedCell`). Where it holds one, its own handling stands: a click sets the clicked cell,
@@ -180,8 +182,8 @@ interface GridTableProps {
 
 /** The table of fields. Drawn again only when what it is made of changes - the reply, the reading,
  * `busy` - and never for a keystroke, which the fields it holds take from their `store` instead
- * (15:M8): React Aria builds its collection of every row and cell on each draw, which a grid of
- * thousands of cells makes the whole of a keystroke's cost. */
+ * (15:M8): React Aria builds its collection of every row and cell on each draw, a cost that grows
+ * with the cells of the grid. */
 const GridTable = memo(function GridTable(props: GridTableProps) {
   const { reply, physical, busy, columnLabels, rowLabels, store, onTyped, onFocused } = props;
   // Ids of their own, distinct from either's own label text and from each other's: a map's row
@@ -253,8 +255,10 @@ const GridTable = memo(function GridTable(props: GridTableProps) {
 });
 
 /** One object's values (spec 5.2), drawn from what the api answered: a picture of its props. It
- * holds no state - the raw/physical toggle, the cells typed into, Show changes and busy all live
- * in the screen behind it. */
+ * holds none of the reader's choices - the raw/physical toggle, the cells typed into, Show changes
+ * and busy all live in the screen behind it - only what drawing them takes: the store its fields
+ * read their text from (`GridStore`), the screen's latest handler of a cell typed into, and the
+ * elements it measures to keep a field clear of the offer. */
 export function ValuesGridView(props: ValuesGridViewProps) {
   const { reply, backTo, undoStrip, banner, physical, typed, plan, refusal, changesShown, busy } =
     props;

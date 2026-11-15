@@ -100,8 +100,8 @@ function extremes(values: readonly number[]): [number, number] {
  * all. Such a range is the value with a twentieth of *itself* either side, or one either side
  * where the value is zero and there is no proportion to take.
  *
- * A row can hold no values at all - `Math.min()` and `Math.max()` of nothing are `Infinity` and
- * `-Infinity`, which is not a range and prints as those two words. An `init` of `[]` against a
+ * A row can hold no values at all - the `extremes` of nothing are `Infinity` and `-Infinity`,
+ * which is not a range and prints as those two words. An `init` of `[]` against a
  * stated shape reaches this: `_check_init_shape` files a finding but does not drop the
  * declaration, so the reply still has to draw *something*. It gets the same span the zero case
  * gets, -1 to 1, there being no values to take a proportion of either. */

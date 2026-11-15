@@ -1247,7 +1247,7 @@ test("a refused cell among those typed holds Apply back and is named, and one ty
   await expect(offer.getByRole("status")).toHaveCount(0);
 
   // In raw, element 1 shows the 1300 counts its 13 ms sets, and 70000 typed into element 3 is
-  // refused by the server, which names it among the elements of the table it is sent.
+  // refused by the server, which names it among the cells it is sent.
   await page.getByRole("button", { name: "Raw" }).click();
   await expectRow(grid, ["1300", "900", "800", "750", "700", "650"]);
   await typed(grid.getByRole("textbox", { name: "element 3" }), "70000");

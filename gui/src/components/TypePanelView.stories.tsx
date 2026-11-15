@@ -139,7 +139,6 @@ export const NoUnitChosen = () => (
   <PanelStory reply={SCALAR_TYPE} on="unit" chosen={null} preview={UNIT_TAKEN_OFF} shown />
 );
 
-/** Sensor_t: no "What it fixes" table, its four members, one with dimensions, its two uses. */
 /** A uint64 type's range up to the most it holds: Max holds the file's own digits, all twenty of
  * them, and the grid's sentence says why no range holding them is planned - the list left closed,
  * which open covers both. */
@@ -147,6 +146,7 @@ export const ALimitThePageCannotHold = () => (
   <PanelStory reply={MASK_TYPE} on="limits" pickerTrigger="input" />
 );
 
+/** Sensor_t: no "What it fixes" table, its four members, one with dimensions, its two uses. */
 export const AStructure = () => <PanelStory reply={STRUCT_TYPE} />;
 
 /** DriverStatus_t: an external's own header line, and its one use inside Sensor_t. */

@@ -264,9 +264,9 @@ test.afterAll(async () => {
  * --no-browser`, `cwd` the project's own directory, the address read off the "serving ..." line
  * it prints, killed to stop it - written out again here rather than imported: that helper is a
  * Playwright *fixture*, torn down after each test, where this benchmark starts one server for
- * the whole file, in `beforeAll`/`afterAll`. Never named, unlike that helper's own `named`
- * option: this benchmark always starts on the start page, exactly where a reader who has not yet
- * chosen a project does.
+ * the whole file, in `beforeAll`/`afterAll`, on the start page, exactly where a reader who has not
+ * yet chosen a project starts, and the typing case one of its own for each grid, inside the test,
+ * on the project its copy holds (`project`, the arguments naming it).
  */
 function startGui(
   directory: string,

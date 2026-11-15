@@ -114,7 +114,6 @@ export function ComboBox({
         // already, and the value it puts in the field is no reason to open the list again.
         if (isOpen) return;
         setPuttingBack(true);
-        if (endsTyped("close")) onClose();
       }}
       allowsCustomValue
       menuTrigger={puttingBack ? "manual" : menuTrigger}

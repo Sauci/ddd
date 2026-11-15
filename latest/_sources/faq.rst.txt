@@ -109,7 +109,7 @@ calibration tool still using yesterday's a2l:
 .. code-block:: text
 
    $ ddd check device.ddd.json
-   ok: 1 variable in 2 components are consistent
+   ok: 1 variable in 2 components is consistent
 
    $ ddd compare baseline.json device.ddd.json
    device.ddd.json: error[changed-interface]: 'InletPressure' is not the same object any more (conversion: linear(factor=0.2, offset=0) != linear(factor=0.1, offset=0)), read by Controller
@@ -247,7 +247,7 @@ Stating limits that differ from the producer's *is* a disagreement, and it is re
 .. code-block:: text
 
    $ ddd check device.ddd.json
-   ok: 1 variable in 2 components are consistent
+   ok: 1 variable in 2 components is consistent
 
    $ ddd check device.ddd.json    # after the consumer changed its limits to [0, 150]
    controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'InletTemperature' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 150] != [-40, 150])

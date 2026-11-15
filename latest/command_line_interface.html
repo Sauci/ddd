@@ -114,9 +114,12 @@ makes it usable from wherever the build already lives - a makefile, a cmake proj
 <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>), a batch file on an engineer’s machine, or a ci job that never sees
 a terminal. Two commands do not exit: <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code>, the language server an editor keeps running
 (see <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a>), and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>, the preview of a browser interface, which
-serves until it is interrupted. The one file the tool leaves behind for its own use is the
-<code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span></code> writes for the language server and for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>,
-which both apply the severities of the build that names a project.</p>
+serves until it is interrupted. Two files are left behind for the tool’s own use: the
+<code class="docutils literal notranslate"><span class="pre">.ddd-manifest.json</span></code> that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> keeps in its output directory, the record of the
+files it wrote there, by which the next run takes back those it no longer writes (see
+<a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>), and the <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span></code> writes for the
+language server and for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>, which both apply the severities of the build that names a
+project.</p>
 <p>The same discipline governs the output. The findings - everything the tool has to say about
 a project - are written to standard error, one line per finding followed by a summary, while
 what a command actually produces (a listing, the dumped dictionary, a json schema, the list
@@ -349,8 +352,9 @@ the c neither wants nor accepts <code class="docutils literal notranslate"><span
 generates in spite of errors. Every artefact also takes <code class="docutils literal notranslate"><span class="pre">--dictionary</span> <span class="pre">FILE</span></code>, which
 writes the resolved data dictionary - the text <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span></code> prints - in the same write as
 the artefacts, so that all of them are written or none is; a path an artefact of the
-run is written to is refused. That is how a build keeps the dictionary beside what it
-generated, in one analysis and one report of its findings.</p></td>
+run is written to is refused, and so is <code class="docutils literal notranslate"><span class="pre">.ddd-manifest.json</span></code> in the output directory,
+the name the run’s manifest is kept under. That is how a build keeps the dictionary
+beside what it generated, in one analysis and one report of its findings.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">FILE</span></code></p></td>
 <td><p>print the table of variables with their kind, datatype, unit, shape, initial value
@@ -451,27 +455,126 @@ already declared, carrying the producer’s keys where there is one and the
 project’s own where there is not, or a new object of one of six kinds - and
 takes one away. A variable another component declares <code class="docutils literal notranslate"><span class="pre">local</span></code> is not offered: no
 other component may declare it in any scope, and writing the declaration would be a
-<code class="docutils literal notranslate"><span class="pre">local-conflict</span></code>. Its table’s Shape column opens the page of a curve, a map, an
+<code class="docutils literal notranslate"><span class="pre">local-conflict</span></code>. A component’s page also holds the description of that
+component’s own declaration of the variable, in the variable’s panel, as a text
+field: a description is the declaration’s and not a key the declarations share,
+two components describing one variable in their own words. It is planned,
+previewed, applied and undone as any key the panel writes is - one <code class="docutils literal notranslate"><span class="pre">set</span></code> at the
+declaration’s <code class="docutils literal notranslate"><span class="pre">description</span></code>, in its file alone - and emptying the field takes
+the key away, the default being the empty text. The panel of the project screen,
+where no component is in view, offers none. The panel says what it does not do:
+renaming the variable and changing its scope are done in its file, in the editor.
+Its table’s Shape column opens the page of a curve, a map, an
 axis or any other declaration shaped in one or two dimensions: its values as a
 grid, laid against its axes’ breakpoints or plain indices and named with the axis
-on each edge, in physical or in raw by a toggle. A curve, a map and an axis are
-offered whatever type they name; anything else states its own dimensions and its
-own datatype, so a dimensioned declaration naming a structured type is shown
-there and not offered, and so is a deeper shape. One cell
-is changed at a time, previewed - in a sentence naming what it sets and the
-producing file it lands in - and applied like every other change here, and put
-back by the same undo. A table copied from a spreadsheet is pasted anywhere in
-the grid to replace every value of the object at once - the object’s own shape,
-or exactly one row and one column larger for the header pasted along with it -
-previewed and undone the same way. Its header is discarded unread, so one naming
-a different axis is caught only by that preview, not by the paste itself. Under
+on each edge, in physical or in raw by a toggle. The grid has a column for each its
+shape has, and a row for each: a breakpoint only labels its column, so the columns
+past an axis’s last breakpoint are drawn unlabelled and a breakpoint past the shape
+labels none. A cell the file does not state - past the end of a short <code class="docutils literal notranslate"><span class="pre">init</span></code>, or
+any cell of a declaration stating none - is drawn hollow, empty under a dashed
+border, its name saying it is not stated; typed into, it is planned as any cell is,
+the whole <code class="docutils literal notranslate"><span class="pre">init</span></code> written where the array lacks it, and the preview shows what is
+written. A scalar, a declaration stating
+its own datatype and no dimensions, reads <code class="docutils literal notranslate"><span class="pre">scalar</span></code> there and opens the same page
+as a grid of one cell, its <code class="docutils literal notranslate"><span class="pre">init</span></code>: the cell reads 3200 in raw and 800 in
+physical for <code class="docutils literal notranslate"><span class="pre">ParameterA</span></code> of <code class="docutils literal notranslate"><span class="pre">examples/demo</span></code>, a value typed into it is one
+<code class="docutils literal notranslate"><span class="pre">set</span></code> at the declaration’s own <code class="docutils literal notranslate"><span class="pre">init</span></code> - added, and shown as a line of the
+preview, where the file states none - and nothing is drawn of one point, nor
+pasted into it. A scalar a file initialises with text, or one produced in more
+than one place, is refused as ever. A declaration naming a type is offered the grid
+where the project says the type is a scalar one - a scalar naming it reads <code class="docutils literal notranslate"><span class="pre">scalar</span></code>, a
+value block naming it keeps its dimensions - and none where the type is a structure, an
+external type or unknown, or while the types are not yet read. A curve, a map and an
+axis are offered whatever type they name; anything else needs numeric storage - a
+datatype of its own or a scalar type - so a dimensioned declaration naming a structured
+type is shown there and not offered, and so is a deeper shape, and a scalar a file
+initialises with a list. Cells typed into are held together, each showing what was typed
+into it, and previewed as one change - in a sentence naming how many elements it sets,
+the first five of them and what each is set to, then how many more, and the producing
+file it lands in - that one Apply writes, like every other change here, and one undo
+puts back. Each cell typed is written where it stands, the rest of the file staying as
+it was, its spellings and its layout too, where the file writes its <code class="docutils literal notranslate"><span class="pre">init</span></code> out far
+enough to hold them; where it states one value for every cell, states none, or writes
+too short an array, the whole <code class="docutils literal notranslate"><span class="pre">init</span></code> is written instead - the cells typed set in it,
+every other holding the value the file states for it, or zero - and the preview shows
+it. A cell keeps the reading it was typed in: turned from physical to raw, the grid
+shows the count it sets. A cell typed back to its file’s value - a <code class="docutils literal notranslate"><span class="pre">float32</span></code>’s to the
+same float32 - drops out of the change, and a cell the page refuses holds Apply back for
+them all, named in the sentence. A plan whose edit would leave its file as it was, every
+byte the same - a table pasted over the values the file spells, a description typed as
+it stands - is no change, and is offered as none. The sentence and Apply stay at the
+foot of the window while they are offered, however tall the grid. A table copied from a
+spreadsheet is pasted anywhere in the grid to replace every value of the object at
+once - the object’s own shape, or exactly one row and one column larger for the header
+pasted along with it - previewed and undone the same way, in place of any cells typed
+before it, as a cell typed after it takes the table’s place. Its header is discarded
+unread, so one naming a different axis is caught only by that preview, not by the paste
+itself. Every field
+of the page reads a number the same way, in decimal notation: an optional sign, digits
+with an optional fraction or a fraction alone, and an optional exponent, the white
+space around it ignored. A number written in hexadecimal, binary or octal, <code class="docutils literal notranslate"><span class="pre">Infinity</span></code>,
+<code class="docutils literal notranslate"><span class="pre">NaN</span></code> and digits parted by underscores are refused in one sentence, the same in every
+field, and nothing is asked of the server for them - but a size and a dimension, which
+may name a constant, read <code class="docutils literal notranslate"><span class="pre">Infinity</span></code> and <code class="docutils literal notranslate"><span class="pre">NaN</span></code> as names, as they read any name. A
+comma is a decimal point where it cannot group thousands - after a first group of 0 or
+of more than three digits, or before anything but exactly three digits - and groups
+thousands where it cannot be a decimal point, two of them or a point after it; text
+holding both has its decimal point last, so <code class="docutils literal notranslate"><span class="pre">1.234,5</span></code> and <code class="docutils literal notranslate"><span class="pre">1,234.5</span></code> both read
+1234.5. Values read
+together - a block pasted, the cells typed into a grid, a range’s two fields - read a
+comma that could be either as the others show theirs, where they all show one reading:
+<code class="docutils literal notranslate"><span class="pre">0,5</span></code> makes <code class="docutils literal notranslate"><span class="pre">1,250</span></code> beside it one and a quarter, and <code class="docutils literal notranslate"><span class="pre">1,234,567</span></code> makes <code class="docutils literal notranslate"><span class="pre">1,500</span></code>
+beside it fifteen hundred. A block pasted whose values show both readings is refused,
+in a sentence saying what it mixes, and so is one whose decimal comma stands beside a
+point that is the decimal point; cells typed are each read as they are written. A comma
+that could be either, <code class="docutils literal notranslate"><span class="pre">1,200</span></code>, is refused with the choice of what it means one press
+away where nothing else decides it, the same for a cell typed into and for a block
+pasted, and an answer given stands, whatever is typed after it. Only the grid offers
+that choice: a range’s two fields, a size, a dimension, a constant’s value, a section’s
+alignment and a raster’s event refuse such a comma in the same sentence, and a range’s
+sentence names the field it is about. A boolean takes 0 and 1 alone, in physical as in
+raw. The page
+holds a number as a double, which past 2^53 no longer holds every whole number, so a
+cell of an integer datatype refuses a number past 2^53 either side of zero, however it
+is spelled, where it is typed or pasted in raw, and a fraction the double would drop
+with it; in physical it refuses a value whose raw count lies past 2^53. A float’s cell
+takes every number as the double it is, but none past what its float holds, nor one
+rounding to zero in it. A physical value comes to its raw count exactly, worked out on
+the decimals typed and the conversion’s own: a whole datatype’s count is the nearest
+one, an exact half going to the even count, either side of zero, as <code class="docutils literal notranslate"><span class="pre">round_physical</span></code>
+rounds; a float’s is the float its datatype stores nearest, spelled as briefly as it
+reads back, so 0.3 at a factor of 0.1 is 3. FLT_MAX, either side of zero, is its own
+double, 3.4028234663852886e+38, planned so and shown so in raw: its briefest spelling,
+3.4028235e+38, is a double past it, which the server and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> refuse a
+<code class="docutils literal notranslate"><span class="pre">float32</span></code>. A float’s value is written as a float, its whole numbers too, and a
+boolean’s as <code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>. Physical shows a whole datatype’s raw count as the
+exact product, the count times the factor plus the offset, and a float’s as the shortest
+decimal whose plan comes to that same float - a <code class="docutils literal notranslate"><span class="pre">float32</span></code>’s being the float32 its
+file’s number rounds to, which raw shows the same way, so a <code class="docutils literal notranslate"><span class="pre">float32</span></code> its file spells
+<code class="docutils literal notranslate"><span class="pre">0.10000000149011612</span></code> reads 0.1 - never cut at twelve significant digits and never
+with the tail of the double arithmetic: 255 counts of 0.03 read 7.65, and a float64 of
+1234567890123 reads so. A grid
+holding a whole number
+past 2^53, among its values or its axis’s breakpoints, or one at 2^53 in a <code class="docutils literal notranslate"><span class="pre">uint64</span></code>
+or <code class="docutils literal notranslate"><span class="pre">sint64</span></code>, says it cannot show it rather than draw another number. A <code class="docutils literal notranslate"><span class="pre">uint64</span></code> or
+<code class="docutils literal notranslate"><span class="pre">sint64</span></code> value that large is set in the file; from the page neither takes a whole
+number at 2^53 or past it, as a value or as a limit, however it is written - the server
+refuses a bound at or past 2^53 for either, written in digits or as a float. The two
+fields a variable’s or a type’s range is typed into show a bound past 2^53 in its file’s
+own digits, and read a bound as a cell of the datatype the declarations state reads a
+number: a float’s as the double it is, written as a float, and any other’s refused past
+2^53 however it is spelled, and wherever the double would send another number than the
+one typed. Under
 the grid, the object’s values are drawn as a picture too: a marker at each point
 and a line joining them where a row holds more than one, laid against its axis’s
 own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
-plain indices where it has none, with its declared limits ruled across it
-wherever they fall inside the drawn range. It follows the same toggle, offers no
-control of its own, changes nothing, and is drawn under a read-only grid exactly
-as under a writable one, left undrawn only where there is no grid to begin with.
+plain indices where it has no axis, or one stating fewer breakpoints than the shape
+has columns, its ticks then reading the indices too, and no axis named under them,
+with its declared limits ruled across it wherever they fall inside the drawn range. It
+follows the same toggle, offers no control of its own, changes nothing, and is drawn
+under a read-only grid exactly as under a writable one. It
+draws what the file states, as the cells do: a scalar’s one value draws none, and
+nor does a grid whose file states nothing, every cell of it hollow.
 The toggle always rescales to its own range: for a positive conversion the same
 numbers in a different unit draw the very same picture, only the readings along
 its edges changing; a negative one - legal here - mirrors the curve instead of
@@ -697,10 +800,12 @@ the first description the build collects from it that <code class="docutils lite
 <span class="pre">&lt;target&gt;</span> <span class="pre">with</span> <span class="pre">your</span> <span class="pre">component's</span> <span class="pre">target</span></code>. The record beside the description is what says
 so, read for the project it names whatever its format and its severities, and whether or
 not <code class="docutils literal notranslate"><span class="pre">-b</span></code> names the build directory. A project given to <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> with
-<code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> is edited as any other while its record lies in the build tree, and taken for
-a generated one, every change of its files refused in that sentence, which then says
-something untrue, where <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span></code> is the description’s own directory and
-leaves the record beside it: nothing yet tells the two apart.
+<code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> is edited as any other where its record says so, <code class="docutils literal notranslate"><span class="pre">&quot;origin&quot;:</span> <span class="pre">&quot;given&quot;</span></code>, whether
+the record lies in the build tree or, where <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span></code> is the description’s own
+directory, beside it. Any other record beside a description makes it a generated one,
+one without the key included, as every record is that a module wrote before the key
+existed: a project given with such a record beside it stays refused until the build is
+configured again, and the module writes the key.
 Large projects stay responsive. An edit is answered once its files are written, before
 it is analysed, and the change shows where it was made; its findings follow once the
 project has been analysed again, the heading saying <code class="docutils literal notranslate"><span class="pre">Updating</span> <span class="pre">the</span> <span class="pre">findings…</span></code> until
@@ -739,15 +844,16 @@ not - <code class="docutils literal notranslate"><span class="pre">b.ddd.json</s
 <span class="pre">that</span> <span class="pre">names</span> <span class="pre">it</span></code> - rather than made over the files that did, which would leave the
 old name in the one that did not, or take out what it still names. So is a plan that
 declares an object, or reads a variable, as an output or a local, which a file that
-did not load may produce or declare already, and one that writes into the file that
-did not load, whatever its scope; one that declares or reads an input into a file
-that loaded is answered. A plan for a name only such a file declares says what its
-panel says, that no file that loaded declares it and which did not load, and not
-that no file declares it. Opening a project answers at once with its
-name, read from its description as it stands and kept in the heading from then on;
-<code class="docutils literal notranslate"><span class="pre">Analysing</span> <span class="pre">the</span> <span class="pre">project…</span></code> stands where the tab’s own content goes, until the first
-analysis lands, and every answer needing a revision is refused until then, in the
-same words - <code class="docutils literal notranslate"><span class="pre">the</span> <span class="pre">open</span> <span class="pre">project</span> <span class="pre">has</span> <span class="pre">not</span> <span class="pre">been</span> <span class="pre">analysed</span> <span class="pre">yet</span></code>. A panel’s own plan
+did not load may produce or declare already; and one that writes into the file that
+did not load, whatever its scope, is refused naming that file alone - <code class="docutils literal notranslate"><span class="pre">b.ddd.json</span> <span class="pre">did</span>
+<span class="pre">not</span> <span class="pre">load,</span> <span class="pre">so</span> <span class="pre">what</span> <span class="pre">it</span> <span class="pre">declares</span> <span class="pre">is</span> <span class="pre">unknown</span> <span class="pre">and</span> <span class="pre">nothing</span> <span class="pre">can</span> <span class="pre">be</span> <span class="pre">declared</span> <span class="pre">in</span> <span class="pre">it</span></code>. One that
+declares or reads an input into a file that loaded is answered. A plan for a name only
+such a file declares says what its panel says, that no file that loaded declares it
+and which did not load, and not that no file declares it. Opening a project answers at
+once with its name, read from its description as it stands and kept in the heading
+from then on; <code class="docutils literal notranslate"><span class="pre">Analysing</span> <span class="pre">the</span> <span class="pre">project…</span></code> stands where the tab’s own content goes,
+until the first analysis lands, and every answer needing a revision is refused until
+then, in the same words - <code class="docutils literal notranslate"><span class="pre">the</span> <span class="pre">open</span> <span class="pre">project</span> <span class="pre">has</span> <span class="pre">not</span> <span class="pre">been</span> <span class="pre">analysed</span> <span class="pre">yet</span></code>. A panel’s own plan
 request goes out at once the first time a field asks for one; typed text asks
 again only after a pause in the reader’s typing; a pick from a list, or Enter,
 always goes out at once, first time or later. The
@@ -762,10 +868,12 @@ listens beyond this computer for a container, <code class="docutils literal notr
 options are not yet part of the stable interface.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">FILE</span></code></p></td>
-<td><p>record which project description a build runs DDD on and under which severity policy,
-the <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> the language server and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> read; <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code>
-calls it at configure time, so a hand-rolled build is the only caller that needs it
-directly.</p></td>
+<td><p>record which project description a build runs DDD on, whether it was given to the build
+(<code class="docutils literal notranslate"><span class="pre">--origin</span> <span class="pre">given</span></code>, written into the record, which is then format 2) or collected by it
+(<code class="docutils literal notranslate"><span class="pre">collected</span></code>, the default, with no such key), and under which
+severity policy, the <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> the language server and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> read;
+<code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> calls it at configure time, so a hand-rolled build is the only caller
+that needs it directly.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">checks</span></code></p></td>
 <td><p>list every check with its identifier, its default severity, whether it can be relaxed
@@ -817,7 +925,8 @@ actually running where they are instead of hard-coding a guess:</p>
 /home/you/ddd/examples/templates
 </pre></div>
 </div>
-<p>How both directories are used from a <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> is in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
+<p>How a <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> finds the module with <code class="docutils literal notranslate"><span class="pre">cmake-dir</span></code>, and what it does with a template
+directory, is in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
 </section>
 <section id="severity-options">
 <h2>Severity options<a class="headerlink" href="#severity-options" title="Link to this heading"></a></h2>
@@ -887,7 +996,10 @@ the image would happily link yesterday’s globals and ship yesterday’s a2l.</
 <p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> closes that gap. It prints one absolute path per line: the project file
 itself, every description it includes however deeply, and the module of every
 <a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> those files name, since a plugin decides what the generation writes
-as much as a description does. The demo names none, so its listing is descriptions alone:</p>
+as much as a description does. A plugin that is a package is listed by every <code class="docutils literal notranslate"><span class="pre">.py</span></code> file of
+it, and one named by a <code class="docutils literal notranslate"><span class="pre">.py</span></code> path is listed whether or not it imports, as a missing include
+is; one named as a module, by the file the finder locates for it. The demo names none, so its
+listing is descriptions alone:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd sources examples/demo/demo.ddd.json
 /home/you/ddd/examples/demo/components/controller.ddd.json
 /home/you/ddd/examples/demo/components/sensor_hub.ddd.json
@@ -903,11 +1015,16 @@ translated first, and a file reached over two different include paths appears on
 <p>The command is deliberately more tolerant than the others: a project whose interfaces disagree
 still has a well defined set of source files, and a build system asking what to watch deserves
 an answer even while the project does not check out. Only a file that cannot be read at all is
-fatal. Tolerant is not silent: a finding the load turned up - a missing include, say - is
-reported on stderr after the listing, so a configure step hears about it from the run that
-found it rather than from whichever DDD command the build runs next. This is what
-<code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> uses to make a hand written project description watch its own components,
-described in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>.</p>
+fatal. Tolerant is not silent: a finding the load turned up - a missing include, a plugin that
+does not import, a plugin whose model raises (<code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code>, where the other commands
+stop with exit <code class="docutils literal notranslate"><span class="pre">2</span></code>) - is reported on stderr after the listing, so a configure step hears
+about it from the run that found it rather than from whichever DDD command the build runs
+next. <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">CHECK=SEVERITY</span></code> and <code class="docutils literal notranslate"><span class="pre">--strict</span></code> mean here what they mean on <code class="docutils literal notranslate"><span class="pre">check</span></code>: they grade
+what is reported, so a check the build relaxed is not reported, and they change neither the
+listing nor the exit code. This is what <code class="docutils literal notranslate"><span class="pre">cmake/Ddd.cmake</span></code> uses to make a hand written
+project description watch its own components, described in <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a>, which
+passes it the <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> of the call and prints that stderr as a warning of
+the configure.</p>
 <p>With <code class="docutils literal notranslate"><span class="pre">--format</span> <span class="pre">json</span></code> the same list arrives as the <code class="docutils literal notranslate"><span class="pre">sources</span></code> array of a json document, next
 to the diagnostics and their summary, exactly as the other commands report them.</p>
 </section>
@@ -969,7 +1086,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-build-info">
 <h4>ddd build-info<a class="headerlink" href="#ddd-build-info" title="Link to this heading"></a></h4>
 <p>Writes the project description a build runs DDD on, and the severity policy it applies, into a small json file. A build system calls this at configure time so that the language server and ddd gui can report what the build reports. The project description is recorded rather than read: with CMake it is often generated later in the same configure run, out of the link graph.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd build-info [-h] -o OUTPUT [--image IMAGE] [-W CHECK=SEVERITY]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd build-info [-h] -o OUTPUT [--image IMAGE]</span>
+<span class="go">                      [--origin {collected,given}] [-W CHECK=SEVERITY]</span>
 <span class="go">                      [--strict]</span>
 <span class="go">                      project</span>
 </pre></div>
@@ -996,6 +1114,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-build-info-image">
 <span class="sig-name descname"><span class="pre">--image</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;image&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-build-info-image" title="Link to this definition"></a></dt>
 <dd><p>name of the build target this belongs to</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-build-info-origin">
+<span class="sig-name descname"><span class="pre">--origin</span></span><span class="sig-prename descclassname"> <span class="pre">{collected,given}</span></span><a class="headerlink" href="#cmdoption-ddd-build-info-origin" title="Link to this definition"></a></dt>
+<dd><p>where the project description came from: ‘given’ to the build as a file somebody wrote, which stamps the record format 2 and which ddd gui then edits, or ‘collected’ by the build out of the link closure of the image, written again at every configure (the default), which ddd gui refuses to write into</p>
 </dd></dl>
 
 <dl class="std option">
@@ -1644,7 +1768,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <section id="ddd-sources">
 <h4>ddd sources<a class="headerlink" href="#ddd-sources" title="Link to this heading"></a></h4>
 <p>Prints one absolute path per line: the project file, every file it includes however deeply, and the module of every plugin those files name. A build system needs exactly this to know when the generated files are out of date, because a project pulls its components in through ‘includes’ and names its plugins under ‘plugins’, and none of them is named on the command line.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd sources [-h] [--format {text,json}] project</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd sources [-h] [--format {text,json}] [-W CHECK=SEVERITY] [--strict]</span>
+<span class="go">                   project</span>
 </pre></div>
 </div>
 <dl class="std option">
@@ -1663,6 +1788,18 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-sources-format">
 <span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">{text,json}</span></span><a class="headerlink" href="#cmdoption-ddd-sources-format" title="Link to this definition"></a></dt>
 <dd><p>output format</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-sources-W">
+<span id="cmdoption-ddd-sources-severity"></span><span class="sig-name descname"><span class="pre">-W</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--severity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;check=severity&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-sources-W" title="Link to this definition"></a></dt>
+<dd><p>change the severity of a check the findings are reported with; repeatable</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-sources-strict">
+<span class="sig-name descname"><span class="pre">--strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-sources-strict" title="Link to this definition"></a></dt>
+<dd><p>report warnings as errors, as the build does</p>
 </dd></dl>
 
 </section>

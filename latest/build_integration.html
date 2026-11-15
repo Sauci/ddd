@@ -139,10 +139,16 @@ the tool itself rather than guessed:</p>
 /home/you/ddd/cmake
 </pre></div>
 </div>
-<div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">list</span><span class="p">(</span><span class="s">APPEND</span><span class="w"> </span><span class="s">CMAKE_MODULE_PATH</span><span class="w"> </span><span class="s2">"/path/to/ddd/cmake"</span><span class="p">)</span><span class="w">   </span><span class="c"># what `ddd cmake-dir` printed</span>
+<div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">find_program</span><span class="p">(</span><span class="s">DDD_EXECUTABLE</span><span class="w"> </span><span class="s">NAMES</span><span class="w"> </span><span class="s">ddd</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+<span class="nb">execute_process</span><span class="p">(</span><span class="s">COMMAND</span><span class="w"> </span><span class="s2">"${DDD_EXECUTABLE}"</span><span class="w"> </span><span class="s">cmake-dir</span>
+<span class="w">                </span><span class="s">OUTPUT_VARIABLE</span><span class="w"> </span><span class="s">ddd_cmake_dir</span><span class="w"> </span><span class="s">OUTPUT_STRIP_TRAILING_WHITESPACE</span>
+<span class="w">                </span><span class="s">COMMAND_ERROR_IS_FATAL</span><span class="w"> </span><span class="s">ANY</span><span class="p">)</span>
+<span class="nb">list</span><span class="p">(</span><span class="s">APPEND</span><span class="w"> </span><span class="s">CMAKE_MODULE_PATH</span><span class="w"> </span><span class="s2">"${ddd_cmake_dir}"</span><span class="p">)</span>
 <span class="nb">include</span><span class="p">(</span><span class="s">Ddd</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>A project that has copied the module into its tree adds that directory instead, and the
+module then refuses a tool of another release than the copy (below).</p>
 <p>Including the module looks for the <code class="docutils literal notranslate"><span class="pre">ddd</span></code> executable and remembers it in the cache variable
 <code class="docutils literal notranslate"><span class="pre">DDD_EXECUTABLE</span></code>. Configure with <code class="docutils literal notranslate"><span class="pre">-DDDD_EXECUTABLE=&lt;path&gt;</span></code> to pin a particular
 installation - the one of a virtual environment, or a small wrapper script running
@@ -150,7 +156,11 @@ installation - the one of a virtual environment, or a small wrapper script runni
 of another release than the module’s own: the two are one release, and a project that copied
 <code class="docutils literal notranslate"><span class="pre">Ddd.cmake</span></code> into its tree - which the line above invites - otherwise finds out at build
 time, in an <code class="docutils literal notranslate"><span class="pre">unrecognized</span> <span class="pre">arguments</span></code> from the tool’s argument parser, or does not find out
-at all and builds under the option set of a release nobody is running. The module needs CMake
+at all and builds under the option set of a release nobody is running. It asks once in every
+configure, however many directories include it, and keeps the answer for that configure
+alone: a tool upgraded where it stands - <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-U</span></code> into the environment the path
+names - is another release at the same path, and the next configure refuses it the same way.
+The module needs CMake
 3.20 and says so at include time; collecting the
 components through the link graph (below) needs CMake 3.30. A cross-compile toolchain file
 that sets <code class="docutils literal notranslate"><span class="pre">CMAKE_FIND_ROOT_PATH_MODE_PROGRAM</span> <span class="pre">ONLY</span></code> keeps <code class="docutils literal notranslate"><span class="pre">find_program</span></code> from seeing host
@@ -162,6 +172,13 @@ tools, so such a project either allows host programs (<code class="docutils lite
 target of a component. The files must be named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> and, unless they live in the
 build tree and are generated later, must exist at configure time; a violation of either is a
 fatal error, because the alternative is an image whose data dictionary is quietly incomplete.</p>
+<p>A project description is not a component, and a file whose top-level key is <code class="docutils literal notranslate"><span class="pre">project</span></code> is refused
+at configure time, where it exists then - one the build writes later passes, saying nothing of
+its kind: only the file itself would be a dependency of the build, so an edit to what it
+includes, or to a plugin it names, would build to <code class="docutils literal notranslate"><span class="pre">no</span> <span class="pre">work</span> <span class="pre">to</span> <span class="pre">do</span></code> over generated sources that
+no longer match the project. The error reads <code class="docutils literal notranslate"><span class="pre">ddd_add_component:</span> <span class="pre">&quot;&lt;file&gt;&quot;</span> <span class="pre">registered</span> <span class="pre">on</span> <span class="pre">target</span>
+<span class="pre">&quot;&lt;target&gt;&quot;</span> <span class="pre">describes</span> <span class="pre">a</span> <span class="pre">project,</span> <span class="pre">and</span> <span class="pre">a</span> <span class="pre">component</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">one.</span> <span class="pre">Name</span> <span class="pre">a</span> <span class="pre">project</span> <span class="pre">file</span> <span class="pre">with</span> <span class="pre">PROJECT</span> <span class="pre">of</span>
+<span class="pre">ddd_generate(),</span> <span class="pre">which</span> <span class="pre">follows</span> <span class="pre">what</span> <span class="pre">it</span> <span class="pre">includes.</span></code></p>
 <p>A <a class="reference internal" href="file_formats/units.html"><span class="doc">vocabulary file</span></a> registers the same way - a units, sections,
 constants, rasters or types file is a <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> like any other, and the call takes it
 without asking what is inside. Which target it belongs on is the question a project meets on
@@ -190,6 +207,12 @@ declared in the registry - <code class="docutils literal notranslate"><span clas
 <a class="reference internal" href="editor_integration.html"><span class="doc">Editor integration</span></a> names the nine the editor holds back for the same reason - and
 everything else, from datatypes and conversions to initial values and bitfields, is verified
 as usual.</p>
+<p>That check runs under the default severity policy, whatever the image asks for. One component
+may be linked into several images, and <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code> has no <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> nor
+<code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> keyword, so the target has no image whose policy it could take. A supplier’s check is
+therefore not the build’s: a warning that the image’s <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> turns into an error passes
+it, and an error the image’s <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> relaxes still fails it. The build decides; the
+target tells a supplier what the component itself holds.</p>
 <p>A registered vocabulary file is left out of that target: it declares no interface, so handing
 one to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> is a <code class="docutils literal notranslate"><span class="pre">file-kind</span></code> error the target could never pass. Such a file is
 checked in context instead, through the project of every image that collects it, and a target
@@ -197,23 +220,34 @@ that registers nothing else keeps a <code class="docutils literal notranslate"><
 <p>Which kind a file is is read at configure time, so a file whose json does not parse at all
 says nothing about itself. It is checked like a component, because what is wrong with it is
 exactly what that check reports: <code class="docutils literal notranslate"><span class="pre">ninja</span> <span class="pre">&lt;target&gt;.ddd</span></code> names the line and the column, and
-the same target run after the repair checks the repaired file, without configuring again.</p>
+the same target run after the repair checks the repaired file, without configuring again.
+Neither does a file the build has yet to write into the build tree; the first build to find
+it there configures again by itself and reads its kind (see <em>The targets it creates</em> below),
+so a vocabulary the build writes is checked in context from then on.</p>
 </section>
 <section id="generating-an-image">
 <h3>Generating an image<a class="headerlink" href="#generating-an-image" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">ddd_generate(&lt;image&gt;</span> <span class="pre">...)</span></code> collects the descriptions of every component in the link closure
 of the image, writes the project description tying them together, runs the generator - <code class="docutils literal notranslate"><span class="pre">ddd</span>
 <span class="pre">generate</span> <span class="pre">all</span></code>, so the artefact of every plugin named with <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> arrives beside the
-built-in files - and links the result back into the image. A plugin’s file names are its own
-and are not declared as outputs, so a target that consumes one depends on
-<code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_generation</span></code> - the helper targets are named after the image without its
-extension, so <code class="docutils literal notranslate"><span class="pre">firmware.elf</span></code> gives <code class="docutils literal notranslate"><span class="pre">firmware_ddd_generation</span></code>. It has to be called in the
-<code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> that defines the image, and after the components have been added, because
-it hands <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> to the components registered up to that point - which settles
-both which components get the generated headers and whose compile usage travels with them.
+built-in files - and links the result back into the image. The helper targets it creates are
+named after the image without its extension, so <code class="docutils literal notranslate"><span class="pre">firmware.elf</span></code> gives
+<code class="docutils literal notranslate"><span class="pre">firmware_ddd_generation</span></code>. A plugin’s file names are its own, known once the plugin has run,
+so the generation does not declare them: a target reading one has to come after the
+generation, as a component linking <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> does, and under Ninja that is not
+enough, a change of the file reaching a component compiling it a build late (see <em>The targets
+it creates</em> below). It has to be called in the <code class="docutils literal notranslate"><span class="pre">CMakeLists.txt</span></code> that defines the image, and
+after the components have been added, because it hands <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> to the
+components registered up to that point - which settles both which components get the
+generated headers and whose compile usage travels with them.
+In the collected mode the image also has to be linked to its components by the time that
+directory is done: a component it reaches only through a link made, or a library defined,
+later is a configure error naming the component, and so is one registered with
+<code class="docutils literal notranslate"><span class="pre">ddd_add_component()</span></code> later (see <em>The targets it creates</em> below).
 The a2l is the one artefact that cannot be complete before the link, which decides every
-address it carries: with <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> the module writes it after the link instead,
-out of the linked image, and one build gives it whole (see <em>The a2l’s addresses</em> below).</p>
+address it carries: with <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> or <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> the module writes it after
+the link instead, out of the linked image or out of a map extracted from it, and one build gives
+it whole (see <em>The a2l’s addresses</em> below).</p>
 <p>Besides the image it needs one thing: <code class="docutils literal notranslate"><span class="pre">TEMPLATE_DIRECTORY</span></code>, the directory of jinja2 templates
 the generated c code is rendered from. It is required and has no default, because the
 alternative would be a build whose generated sources change the day the tool is upgraded. What
@@ -302,23 +336,37 @@ the structure of an a2l is dictated by ASAM rather than by a house style, so tha
 stays internal.</p>
 <p>The templates are collected with <code class="docutils literal notranslate"><span class="pre">file(GLOB</span> <span class="pre">...</span> <span class="pre">CONFIGURE_DEPENDS</span> <span class="pre">&quot;&lt;dir&gt;/*.jinja2&quot;)</span></code>, so a
 template added or removed is noticed by the build itself instead of by whoever remembers to
-re-run cmake. The same files are dependencies of the generation step, which makes a template
-behave like any other source: change the banner of <code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> and the next build
-regenerates the file and recompiles it.</p>
-<p>The names of the templates are then turned into the declared outputs, minus the two kinds that
-cannot be named at configure time. A helper - a name starting with an underscore, such as
-<code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code> - renders nothing of its own, and a <code class="docutils literal notranslate"><span class="pre">{component}</span></code> template renders once
-per component, under names that only exist once the description files have been read. That
-second case is exactly why the per-component headers reach their consumers through the
-interface library rather than as declared outputs. Everything else contributes one output
-named like its template without the <code class="docutils literal notranslate"><span class="pre">.jinja2</span></code> extension, and every output ending in <code class="docutils literal notranslate"><span class="pre">.c</span></code>
-is compiled into the object library that ends up in the image - so a project splitting its
-definitions over two source templates gets both of them compiled, without saying so anywhere.</p>
+re-run cmake; the directory is read as a directory, whatever characters it has, so a checkout
+in <code class="docutils literal notranslate"><span class="pre">pr[1]</span></code> is no character class. The same files are dependencies of the generation step,
+which makes a template behave like any other source: change the banner of
+<code class="docutils literal notranslate"><span class="pre">ddd_globals.c.jinja2</span></code> and the next build regenerates the file and recompiles it. So is every
+<code class="docutils literal notranslate"><span class="pre">*.jinja2</span></code> below the directory, which is never rendered and may be imported or included by
+a template that is (see <a class="reference internal" href="templates.html"><span class="doc">Templates</span></a>), and so is the list of them, kept in the binary
+directory of the call as <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_templates.txt</span></code> and rewritten only when it differs: a
+template removed leaves every other input of the generation as it was, and only a run of it
+takes back the file that template rendered (see <a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>).</p>
+<p>The names of the templates are then turned into the declared outputs. A helper - a name
+starting with an underscore, such as <code class="docutils literal notranslate"><span class="pre">_macros.jinja2</span></code> - renders nothing of its own, and a
+<code class="docutils literal notranslate"><span class="pre">{component}</span></code> template renders once per component, under the names the descriptions give
+their components: its files are declared as byproducts of the generation, one for each
+component of the image - each one it links, or with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> each one the project names -
+under the names read when the build is configured (see <em>The targets it creates</em> below).
+Everything else contributes one output named like its template without the <code class="docutils literal notranslate"><span class="pre">.jinja2</span></code>
+extension, and every output ending in <code class="docutils literal notranslate"><span class="pre">.c</span></code> is compiled into the object library that ends up
+in the image - so a project splitting its definitions over two source templates gets both of
+them compiled, without saying so anywhere.</p>
 <p>Three arrangements are refused with a message rather than with a confusing failure later on: a
 directory holding no <code class="docutils literal notranslate"><span class="pre">*.jinja2</span></code> file at all, a directory holding nothing but helpers and
 <code class="docutils literal notranslate"><span class="pre">{component}</span></code> templates, from which no output could be declared, and a directory in which no
 template produces a <code class="docutils literal notranslate"><span class="pre">.c</span></code> file - the definitions of the global variables have to be compiled
-into the image, so one template must produce a source file.</p>
+into the image, so one template must produce a source file. For the same reason the directory
+calling <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> has to have C enabled by the time it is done - by
+<code class="docutils literal notranslate"><span class="pre">project(&lt;name&gt;</span> <span class="pre">LANGUAGES</span> <span class="pre">C</span> <span class="pre">CXX)</span></code>, by an <code class="docutils literal notranslate"><span class="pre">enable_language(C)</span></code> in a directory above it
+before it is added, or by one in it, before or after the call - since the object library
+compiling those files is built there. One that has not is refused, naming the <code class="docutils literal notranslate"><span class="pre">.c</span></code> files, the
+directory and the two ways to enable it: <code class="docutils literal notranslate"><span class="pre">project(&lt;name&gt;</span> <span class="pre">LANGUAGES</span> <span class="pre">CXX)</span></code> was left to CMake,
+which cannot tell the linker language of that library and names it alone, and C enabled in a
+sibling directory alone stopped CMake on a variable of its own that the directory lacks.</p>
 </section>
 <section id="collection-follows-the-link-graph">
 <h3>Collection follows the link graph<a class="headerlink" href="#collection-follows-the-link-graph" title="Link to this heading"></a></h3>
@@ -346,17 +394,40 @@ carries project-level <code class="docutils literal notranslate"><span class="pr
 it with <code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code>. That mode needs neither cmake 3.30 (3.20, the module’s own floor,
 is enough) nor <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code>, and the
 a2l and the dictionary are then named after the project name inside the description, so a
-<code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well is ignored with a status message.</p>
+<code class="docutils literal notranslate"><span class="pre">NAME</span></code> given as well is ignored with a status message. Without <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code> nothing
+hands a component <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> either - that is done for the components registered -
+so a component that includes a generated header links it itself, <code class="docutils literal notranslate"><span class="pre">target_link_libraries(</span>
+<span class="pre">sensor_hub</span> <span class="pre">PRIVATE</span> <span class="pre">firmware_ddd_headers)</span></code> for the image <code class="docutils literal notranslate"><span class="pre">firmware.elf</span></code>, or fails to compile
+for want of the header.</p>
 <p>A hand written project pulls its components in through <code class="docutils literal notranslate"><span class="pre">includes</span></code>, possibly with wildcards,
 so the project file alone would be a wholly insufficient dependency. The module therefore asks
 the tool which files the project is really built out of, with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> (see
-<a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a>), and uses the answer twice: as the dependencies of the
+<a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a>), and uses the answer four times: as the dependencies of the
 generation step, so that editing a component - or a plugin the project names, whose module
-the answer lists too - regenerates the globals and the a2l, and as
-<code class="docutils literal notranslate"><span class="pre">CMAKE_CONFIGURE_DEPENDS</span></code>, so that adding a file matching an <code class="docutils literal notranslate"><span class="pre">includes</span></code> wildcard re-runs
-configure and picks the new component up. If the tool cannot resolve the project yet, the
-module says so and falls back to depending on the project file alone rather than refusing to
-configure at all.</p>
+the answer lists too - regenerates the globals and the a2l; as <code class="docutils literal notranslate"><span class="pre">CMAKE_CONFIGURE_DEPENDS</span></code>, so
+that editing any of the files runs configure again; as the files the names of the project’s
+components are read from, for the headers the generation declares (see <em>The targets it
+creates</em> below); and as a list kept in the build tree, <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_sources.txt</span></code> in the
+binary directory of the call, rewritten only when it differs, which the generation and the step
+writing the a2l after the link depend on. Each <code class="docutils literal notranslate"><span class="pre">includes</span></code> entry, those of the projects it
+includes among them, is also globbed with <code class="docutils literal notranslate"><span class="pre">CONFIGURE_DEPENDS</span></code>, as the templates are, so that
+adding a file matching an <code class="docutils literal notranslate"><span class="pre">includes</span></code> wildcard re-runs configure and picks the new component
+up, and removing one makes the next build regenerate, its inputs being fewer and its command
+the same: the list is what tells it. A wildcard with <code class="docutils literal notranslate"><span class="pre">**</span></code> is scanned below the directory
+before its first wildcard at every build. A relative entry is read from the directory of the
+file naming it, whatever characters that directory has. The list holds what the
+project names whether or not it loaded: a <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin that no longer imports, or whose
+model raises, is still listed, and so is a module named plugin, by the file the finder
+locates for it, and every <code class="docutils literal notranslate"><span class="pre">.py</span></code> file of a package plugin, so the edit that repairs it
+re-runs configure and the generation. What the tool says about the project on its standard
+error - that plugin’s defect, a missing include - is printed by the configure as a warning,
+graded by the <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> of the call, so a check the call relaxed is not
+warned of. The project file itself is read when the build is configured - for the files it is
+made of, its plugins and its name - so it has to exist, parse as json and name its project by
+then: one that does not, a file the build has yet to write among them, is a configure error
+naming it. If the tool cannot resolve a project that does all three - a root failing its
+schema otherwise - the module warns and falls back to depending on the project file alone,
+which stays a dependency of the configure, rather than refusing to configure at all.</p>
 </section>
 <section id="what-the-build-tells-an-editor">
 <h3>What the build tells an editor<a class="headerlink" href="#what-the-build-tells-an-editor" title="Link to this heading"></a></h3>
@@ -383,8 +454,19 @@ key is what tells the two records apart.</p>
 <p>The second is <strong>the severity policy</strong>, from <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> and <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code>. A tool that ignores it
 reports a different set of findings than the build does, which is worse than reporting none:
 the same working tree would be clean in one place and failing in the other. The options handed
-to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span></code> are the very list handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code>, so the
-three cannot drift apart.</p>
+to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span></code> are the very list handed to <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code>, so those
+three apply one policy. The <code class="docutils literal notranslate"><span class="pre">&lt;target&gt;.ddd</span></code> check of a component is not among them: it applies
+the default policy, as described under “Registering a component”.</p>
+<p>A description handed to <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> as <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> is said to be so: its record has
+<code class="docutils literal notranslate"><span class="pre">&quot;origin&quot;:</span> <span class="pre">&quot;given&quot;</span></code> and is stamped <code class="docutils literal notranslate"><span class="pre">&quot;format&quot;:</span> <span class="pre">2</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> edits the project of such a
+record, even where <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span></code> is the description’s own directory and the record lies
+beside it, and refuses to write into any other, a collected description being written again at
+every configure. The record of a collected description, as the example above, has no such key and
+keeps the shape of format 1: a record without the key is read as collected, so a project given
+with a record of an older module beside it stays refused until the build is configured again. The
+key is the one change to the record, and falls on <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> builds alone: a DDD from 0.11.0 on
+declines a record of format 2 as written by a newer DDD and says so, and an older one skips it in
+silence, as it skips any record it cannot validate.</p>
 <p>The project description is named rather than read, because in the collected mode it does not
 exist yet at that point - <code class="docutils literal notranslate"><span class="pre">file(GENERATE)</span></code> produces it at the end of the configure run, after
 this file is written. A severity that names no known check is refused here, which is a
@@ -392,6 +474,11 @@ deliberate choice to fail the configure step where the typo is rather than the b
 where it would land.</p>
 <p>The file is not named <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code>: that extension means “a DDD description file”, the
 <code class="docutils literal notranslate"><span class="pre">file-extension</span></code> check enforces it, and this is a document <em>about</em> a project rather than one.</p>
+<p>The build watches whether it is there, all the same. It and the collected project description
+are what the configure writes into the output directory, and no step of the build writes
+them again, so a deleted output directory stopped a Ninja build on the description, missing
+and with no rule to make it, until somebody configured by hand. A build that finds the record
+gone now configures again first, which writes both back, and then generates the rest.</p>
 </section>
 <section id="the-targets-it-creates">
 <h3>The targets it creates<a class="headerlink" href="#the-targets-it-creates" title="Link to this heading"></a></h3>
@@ -453,10 +540,11 @@ including the ones this image happens not to link.</p>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_generation</span></code></p></td>
 <td><p>custom target running the generator. It depends on the project description and the
-files collected into it, on the templates, on a <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin the call names, on the
-address map, on whatever <code class="docutils literal notranslate"><span class="pre">DEPENDS</span></code> adds and on the tool itself, so any of those
-changing regenerates - and the c code the image is otherwise built from does not enter
-into it.</p></td>
+files collected into it, on the templates - every <code class="docutils literal notranslate"><span class="pre">*.jinja2</span></code> below the directory, and
+the list of them - on a <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin the call names, on whatever <code class="docutils literal notranslate"><span class="pre">DEPENDS</span></code> adds and
+on the tool’s executable file, so any of those changing regenerates - a wrapper script
+running <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ddd</span></code> being the file depended on, an upgrade behind it does not - and
+the c code the image is otherwise built from does not enter into it.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code></p></td>
 <td><p>interface library carrying the include directory of the generated headers, and
@@ -494,35 +582,121 @@ belong to and knows every producer and consumer, which a component listed on its
 with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span> <span class="pre">--standalone</span></code> cannot.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code></p></td>
-<td><p>with <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code>, built by default: writes the a2l once the image is
-linked, every address it carries read out of the image (see below). It depends on the
-image, on the project description and the files collected into it, on a <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin
-the call names and on the tool, and on nothing the c alone is rendered from.</p></td>
+<td><p>with <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> or <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code>, built by default: writes the a2l once
+the image is linked, every address it carries read out of the image or out of the map
+(see below). It depends on the image, on the map with <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code>, on the project
+description and the files collected into it, on a <code class="docutils literal notranslate"><span class="pre">.py</span></code> plugin the call names and on the
+tool, and on nothing the c alone is rendered from. A build that names its targets -
+<code class="docutils literal notranslate"><span class="pre">cmake</span> <span class="pre">--build</span> <span class="pre">--target</span> <span class="pre">firmware.elf</span></code>, say, or <code class="docutils literal notranslate"><span class="pre">firmware_ddd_generation</span></code> - does not
+build it, so it leaves the a2l of the last build that did, or none on a first build.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&lt;component&gt;.ddd</span></code></p></td>
 <td><p>one per registered component, checking that component alone (see above).</p></td>
 </tr>
 </tbody>
 </table>
-<p>The outputs declared for the generator are the files the template names already give away, plus
+<p>The outputs declared for the generator - under a Makefile generator the outputs of rules of
+their own, beside a stamp (below) - are the files the template names already give away, plus
 the a2l and the dictionary - the a2l being the output of <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>’s step instead
-where <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> gives it one. The per-component headers are written next to
-them, but their names come from inside the description files and are therefore unknown at
-configure time - which is precisely why a consumer depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_headers</span></code> rather
-than on an individual header path.</p>
-<p>That leaves the build system unable to clean a header whose component has left the image, which
-is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> cleans it itself: it owns its output directory, records what it wrote
-there and removes, on the next run, the files it no longer writes (see
-<a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>). Dropping a component from <code class="docutils literal notranslate"><span class="pre">target_link_libraries</span></code> therefore takes
-its header out of the include path of every other component at the next build, and
-<code class="docutils literal notranslate"><span class="pre">ninja</span> <span class="pre">-t</span> <span class="pre">clean</span></code> followed by a build leaves what a build from nothing leaves - the record
-survives the clean, being no more a declared output than the headers it names.</p>
+where <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> or <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> gives it one - and its byproducts are the
+files of the <code class="docutils literal notranslate"><span class="pre">{component}</span></code> templates, one for each component of the image: in the collected
+mode each component it links, with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> each component the project names, whatever the
+image links. Their names come from inside the description files, so the module reads them
+when the build is configured: <code class="docutils literal notranslate"><span class="pre">ddd_add_component</span></code> reads the component name of each file it
+registers, <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code> follows the image’s link graph to the components it links once
+the directory calling it is done, and with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> the names are read off the files
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> lists. A link the image makes behind <code class="docutils literal notranslate"><span class="pre">$&lt;CONFIG:...&gt;</span></code> alone -
+<code class="docutils literal notranslate"><span class="pre">$&lt;$&lt;CONFIG:Debug&gt;:trace&gt;</span></code>, say - is read for the <code class="docutils literal notranslate"><span class="pre">CMAKE_BUILD_TYPE</span></code> the build is
+configured with, as CMake reads it, a single-config generator having that one configuration:
+a Release image does not link <code class="docutils literal notranslate"><span class="pre">trace</span></code>, and declares no header of it. A link behind any other
+generator expression - one inside that <code class="docutils literal notranslate"><span class="pre">$&lt;CONFIG:...&gt;</span></code> among them - cannot be evaluated
+when the names are read, so every component it names
+is declared, whatever the expression comes to; under Ninja one whose header the generation
+then never writes makes the generation run at every build. The image may be linked after the
+call, in that directory or in one it adds, and not later: a component it reaches only through
+a link made, or a library defined, once that directory is done would have a header the
+generation does not declare, so the configure stops at it, once the top directory is done,
+naming the component - and so it does at a component registered with <code class="docutils literal notranslate"><span class="pre">ddd_add_component()</span></code>
+once that directory is done, on a target the image linked in time, naming it as registered
+late.</p>
+<p>Declaring the headers is what makes the build after a change right under Ninja, which looks at
+the files a build reads before it runs anything: a header no step declares was looked at
+before the generation rewrote it, so the build after a datatype change compiled the components
+reading it against the old header and linked them with the new globals, and only the build
+after that one compiled them again. A declared header is looked at again once the generation
+has run, and since an unchanged file is left untouched, the components whose header changed
+are recompiled and no others.</p>
+<p>A plugin’s files are the exception. Their names are the plugin’s own, known once it has run, so
+nothing declares them, and under Ninja a change of one reaches a component compiling it a build
+late: ninja looked at the file before the generation rewrote it, however the component is
+ordered after the generation. A description change that reaches a plugin’s file reaches the
+dictionary as well, which the generation declares, so a project making the component’s object
+depend on the dictionary - <code class="docutils literal notranslate"><span class="pre">set_source_files_properties(&lt;file&gt;</span> <span class="pre">PROPERTIES</span> <span class="pre">OBJECT_DEPENDS</span>
+<span class="pre">&lt;dictionary&gt;)</span></code>, the path being the image’s <code class="docutils literal notranslate"><span class="pre">DDD_DICTIONARY</span></code> property - has such a change
+reach the component in one build, as does an edit of the plugin’s model, which the dictionary
+carries. An edit of the plugin’s own code that changes only what it writes, and not its model,
+leaves the dictionary as it was, and reaches the component a build late all the same. Under a
+Makefile generator the build after either is right. A clean leaves a plugin’s files,
+<code class="docutils literal notranslate"><span class="pre">ninja</span> <span class="pre">-t</span> <span class="pre">clean</span></code> and <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">clean</span></code> alike.</p>
+<p>A Makefile generator is supported as well, and looks at no file again once a step has run. A
+run that changed nothing left the first file of the generation older than the description
+that ran it, so every build after ran the whole analysis again, and CMake touched every other
+file of the step after each run - <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code> among them, which every component header
+includes, so every component compiled again. Under a Makefile generator each of the module’s
+two steps - the generation, and the a2l’s after the link - has a stamp in the output directory
+for its one output, <code class="docutils literal notranslate"><span class="pre">ddd-generation.stamp</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd-a2l.stamp</span></code>, touched by every run that
+succeeds: a run that changed nothing leaves the build after it nothing to do, and the
+components whose header changed are recompiled and no others, as under Ninja.</p>
+<p>Make knows a file only as the output of a rule, so each file a step of the project may read by
+its path - the a2l, the dictionary and the files the template names give away - is the output of
+a rule of its own there, which does nothing and depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_generation</span></code>, or for the
+a2l written after the link on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>. A step depending on such a file by its path,
+in the directory calling <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code>, therefore runs once the generation has, under
+<code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">-j</span></code> too, and reads what it wrote, as under Ninja. A <code class="docutils literal notranslate"><span class="pre">{component}</span></code> header has no such
+rule, nor has a plugin’s file, and a file read from another directory is known to make by no
+rule there either: a step reading one depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_generation</span></code>
+(<code class="docutils literal notranslate"><span class="pre">add_dependencies</span></code>), as it would have to under make in any case.</p>
+<p>A file deleted from the output directory by hand is not written again under make until the
+step runs for another reason - an edit, a clean - and every build reading the file stops on it
+until then: <code class="docutils literal notranslate"><span class="pre">ddd_types.h</span></code>, <code class="docutils literal notranslate"><span class="pre">ddd_globals.h</span></code>, the definitions, the dictionary and the a2l
+here, as a <code class="docutils literal notranslate"><span class="pre">{component}</span></code> header did before. Delete <code class="docutils literal notranslate"><span class="pre">ddd-generation.stamp</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">ddd-a2l.stamp</span></code>, beside it, or run <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">clean</span></code>, and the next build writes it again. A
+deleted output directory is noticed without either (see <em>What the build tells an editor</em>
+above).</p>
+<p>The names are read at configure time, so a component renamed in its description needs a
+reconfigure: until then its header is not declared under the new name, so under Ninja the
+generation runs at every build for the header of the old one, which it no longer writes, and a
+change of the new one reaches the components reading it a build late, as an undeclared header
+did (above). With <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> the configure runs again by itself, every file of the project
+being one of its dependencies. A registered description whose json does not parse when the
+build is configured names no component, and is a dependency of the configure until it does, so
+the build after its repair configures again. One generated into the build tree later names its
+component only from the first configure that finds it, and CMake takes no configure dependency
+on a file the build writes, so it is watched instead, as a wildcard of <code class="docutils literal notranslate"><span class="pre">includes</span></code> is: the
+first build to find it there configures again before it does anything else, and that configure
+reads the component it describes, or that it is a vocabulary. Its header is therefore declared
+before a change of it can reach a reader. The configure that does not find it says so, naming
+the file.</p>
+<p>A header whose component has left the image is another matter: once the image no longer links
+the component, nothing declares the header and the build leaves it where it is, which is why
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> cleans it itself. It owns its output directory, records what it wrote there
+and removes, on the next run, the files it no longer writes (see <a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>).
+Dropping a component from <code class="docutils literal notranslate"><span class="pre">target_link_libraries</span></code> therefore takes its header out of the
+include path of every other component at the next build, and <code class="docutils literal notranslate"><span class="pre">ninja</span> <span class="pre">-t</span> <span class="pre">clean</span></code> followed by a
+build leaves what a build from nothing leaves - the record survives the clean, being declared
+by nothing.</p>
 <p>The path of the generated a2l is published as the <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> property of the image, so that a
 post-build step can pick it up without rebuilding the path by hand:</p>
 <div class="highlight-cmake notranslate"><div class="highlight"><pre><span></span><span class="nb">get_target_property</span><span class="p">(</span><span class="s">a2l</span><span class="w"> </span><span class="s">firmware.elf</span><span class="w"> </span><span class="s">DDD_A2L</span><span class="p">)</span>
 <span class="nb">install</span><span class="p">(</span><span class="s">FILES</span><span class="w"> </span><span class="s2">"${a2l}"</span><span class="w"> </span><span class="s">DESTINATION</span><span class="w"> </span><span class="s">delivery</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>Where <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> or <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> has the a2l written after the link, a step
+that reads it in the course of the build depends on <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>, or on the a2l by its
+path in the directory calling <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code>, which comes to the same under either
+generator (see the Makefile generators above): a <code class="docutils literal notranslate"><span class="pre">POST_BUILD</span></code> command of the image runs
+before that target’s step, and would read the a2l of the build before, which a first build
+on a clean tree has none of.</p>
 <p>Beside the artefacts the generation step writes <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">name&gt;.dictionary.json</span></code> - the
 name the a2l takes, which beside <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> is the one written inside that file rather than
 <code class="docutils literal notranslate"><span class="pre">NAME</span></code> - the resolved
@@ -533,12 +707,14 @@ reads to see what the templates receive, and what a delivery archives for a late
 of the findings, and a run that fails its checks writes none of them, so the last dictionary
 keeps describing the artefacts still beside it; a regeneration that changes nothing in it
 leaves the file untouched. Its path is the <code class="docutils literal notranslate"><span class="pre">DDD_DICTIONARY</span></code> property of the image, read the
-same way, and <code class="docutils literal notranslate"><span class="pre">NO_DICTIONARY</span></code> leaves the file and the property out.</p>
+same way - a step copying it, depending on that path in the directory calling
+<code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code>, runs once the generation has under a Makefile generator too, the file having
+a rule of its own there (above) - and <code class="docutils literal notranslate"><span class="pre">NO_DICTIONARY</span></code> leaves the file and the property out.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Multi-config generators are refused with a fatal error: the project description and the
 generated sources are written to configuration-agnostic paths, which the configurations
-would fight over. Use a single-config generator such as Ninja.</p>
+would fight over. Use a single-config generator: Ninja, or a Makefile generator.</p>
 </div>
 </section>
 <section id="options">
@@ -555,7 +731,8 @@ would fight over. Use a single-config generator such as Ninja.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PROJECT</span> <span class="pre">&lt;file&gt;</span></code></p></td>
-<td><p>use this project description instead of collecting the link closure.</p></td>
+<td><p>use this project description instead of collecting the link closure. It is read when
+the build is configured, so it has to exist, parse and name its project by then.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PLUGINS</span> <span class="pre">&lt;spec&gt;...</span></code></p></td>
 <td><p>the plugins of the collected project: a <code class="docutils literal notranslate"><span class="pre">.py</span></code> path relative to the current source
@@ -591,21 +768,23 @@ validates a plugin’s block as it is typed. Writing them imports each plugin, a
 configure time, as the <code class="docutils literal notranslate"><span class="pre">PLUGINS</span></code> row above says.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&lt;file&gt;</span></code></p></td>
-<td><p>the symbol to address map filling the addresses into the a2l, written by a step of the
-project’s own (below). A map inside the build tree that does not exist at configure
-time is seeded with an empty map (<code class="docutils literal notranslate"><span class="pre">{}</span></code>), so the first build of the two-run flow
-succeeds with every address 0 and the second, once that step has written the real map,
-fills the addresses in; a missing map in the source tree stays an error. An empty map
-is a first run rather than a map with holes, so it raises no <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> and
-<code class="docutils literal notranslate"><span class="pre">STRICT</span></code> does not fail it; a map that names some objects and not others does, once.</p></td>
+<td><p>write the a2l once the image is linked, every address it carries read out of this
+symbol to address map, which a step of the project’s own extracts from the image after
+the link (below): the run before the link leaves the a2l out, as <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code> does, and
+<code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>, built by default, writes it with the map the link has just
+extracted - again whenever the image relinks, the map changes or a description does.
+A map inside the build tree that does not exist at configure time is seeded with an
+empty map (<code class="docutils literal notranslate"><span class="pre">{}</span></code>), since ninja refuses to start a build for want of an input nothing
+produces; a missing map in the source tree stays an error. An empty map gives no
+address and raises no <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, so <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> does not fail it, and the a2l
+says so itself; a map that names some objects and not others raises it, once.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code></p></td>
 <td><p>write the a2l once the image is linked, every address it carries read out of the
 image’s debug information, so that one build gives the complete a2l: the run before the
 link leaves the a2l out, as <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code> does, and <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>, built by default,
 writes it after the link - again whenever the image relinks or a description changes,
-and under Ninja never otherwise; under Make also at every build that follows a run
-leaving the a2l unchanged. <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> names it as before, and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code>,
+and never otherwise. <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> names it as before, and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code>,
 <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> and <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> apply to it. The image has to be ELF with DWARF, built
 with <code class="docutils literal notranslate"><span class="pre">-g</span></code>. Refused together with <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> or <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code>.</p></td>
 </tr>
@@ -655,9 +834,16 @@ registered components.</p></td>
 <span class="pre">${DDD_MAP}</span></code> with <code class="docutils literal notranslate"><span class="pre">DDD_MAP</span></code> unset or empty - the ordinary CMake mistake - reads to
 <code class="docutils literal notranslate"><span class="pre">cmake_parse_arguments()</span></code> exactly like a keyword nobody gave, so it used to be dropped in
 silence: the a2l came out with every address <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code>, no map was seeded and none was a
-dependency, and the two-run flow below never happened.  <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> without a value fell into
+dependency, and the map below was never read.  <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> without a value fell into
 the collected mode and generated out of the link graph instead of out of the file the caller
-meant.</p>
+meant.
+The quoted form, <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span> <span class="pre">&quot;${DDD_MAP}&quot;</span></code>, which every recipe on this page writes, is
+refused the same way: a keyword followed by an empty argument has no value either, from CMake
+3.20 on. So is an empty argument among a keyword’s values, wherever it is, in either call and
+for every keyword taking several: <code class="docutils literal notranslate"><span class="pre">SEVERITY</span> <span class="pre">&quot;unused-output=info&quot;</span> <span class="pre">&quot;${RAISE}&quot;</span></code> with <code class="docutils literal notranslate"><span class="pre">RAISE</span></code>
+mistyped would otherwise drop out of the list without a word and leave the policy weaker than
+the call says. The error names the keyword, saying that it was given an empty value among its
+values.</p>
 <p><code class="docutils literal notranslate"><span class="pre">NO_PROPAGATE_HEADERS</span></code> is the option a project building <strong>several</strong> images from the same
 components cannot avoid. A component’s interface header is generated for one link closure, so
 two images produce two different sets of headers for the same component, and whichever include
@@ -687,9 +873,8 @@ gives the complete a2l, with no map to extract and no member offset to work out 
 (<a class="reference internal" href="command_line_interface.html"><span class="doc">Command line interface</span></a>), which a build with debug information writes: <code class="docutils literal notranslate"><span class="pre">-g</span></code>, which
 CMake’s <code class="docutils literal notranslate"><span class="pre">Debug</span></code> and <code class="docutils literal notranslate"><span class="pre">RelWithDebInfo</span></code> build types add. The step depends on the image and on
 what the project is read from, so it runs again when the image relinks or a description
-changes - a conversion’s factor, which reaches the a2l and none of the c, included - and under
-Ninja a build with nothing changed runs nothing at all; under Make, every build that follows a
-run of the step leaving the a2l unchanged runs the step again. It writes the a2l into the
+changes - a conversion’s factor, which reaches the a2l and none of the c, included - and a
+build with nothing changed runs nothing at all. It writes the a2l into the
 directory the generation before the link wrote the c sources, the headers and the dictionary
 into, and takes none of them back (<a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>), so nothing is compiled again
 because the a2l was written.</p>
@@ -706,7 +891,8 @@ of this image:</p>
 of 0. <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> is held to the byte order the image states: one that contradicts it stops
 the build as well. So does an image the reader cannot read, in the reader’s own words - one
 built without <code class="docutils literal notranslate"><span class="pre">-g</span></code> is told to be, and one that is not ELF at all, as a host build on Windows
-links, is refused as such. A build like that keeps the address map below.</p>
+links, is refused as such. A build like that reads an address map instead, in the same step
+(below).</p>
 </section>
 <section id="where-the-address-map-comes-from">
 <h3>Where the address map comes from<a class="headerlink" href="#where-the-address-map-comes-from" title="Link to this heading"></a></h3>
@@ -753,11 +939,19 @@ symbol lister prints something else needs its own reader of that output.</p>
 <span class="nb">file</span><span class="p">(</span><span class="s">WRITE</span><span class="w"> </span><span class="s2">"${OUTPUT}"</span><span class="w"> </span><span class="s2">"{\n${body}\n}\n"</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>The first build then links with every address 0, this step writes the map, and the next build
-regenerates - the map is one of the generation’s dependencies - and re-renders the a2l with
-the addresses in it. The c sources of that second run are byte identical, so nothing is
-recompiled, nothing is relinked, and the flow settles after one extra round rather than
-chasing its own tail.</p>
+<p>The map is read after the link, as <code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code> reads the image: the generation
+before the link leaves the a2l out, and <code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;_ddd_a2l</span></code>, built by default, runs <code class="docutils literal notranslate"><span class="pre">ddd</span>
+<span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--address-map</span></code> once the image is linked. A <code class="docutils literal notranslate"><span class="pre">POST_BUILD</span></code> command runs as part of
+the link, before anything that depends on the image, so the step reads the map this very link
+extracted, and the first build of a clean tree gives the a2l of the image it linked. Read
+before the link, the map was the one the link before had extracted: the a2l held the addresses
+of the image before this one, every one of them 0 on a first build, and under <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> an
+object new to a description, which that map could not name, stopped every build before the
+link that would have named it. The step runs again whenever the image relinks, the map changes
+or a description does - a map written by hand, or by a step that does not run as part of the
+link, has to be written before it runs - and it writes the a2l into the directory the
+generation before the link wrote, taking none of its files back (<a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>). The
+build after it has nothing to do: nothing is extracted, read, compiled or linked again.</p>
 <p><code class="docutils literal notranslate"><span class="pre">--extern-only</span></code> keeps the file-local statics out: every object a dictionary describes is a
 global, and two translation units each defining a <code class="docutils literal notranslate"><span class="pre">static</span></code> of one name would otherwise hand
 the map one symbol at two addresses, which <code class="docutils literal notranslate"><span class="pre">load_address_map</span></code> refuses.</p>
@@ -828,9 +1022,10 @@ so it answers beyond its own loopback. The project it opens is still the checkou
 in the browser is written into the developer’s own checkout there, the file keeping its owner and
 permissions although this service runs as root, as every service does. <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">up</span>
 <span class="pre">gui</span></code> builds the image first - the code it runs is the image’s, so an image built before a
-change would serve what it was built from - and starts it, publishing the same port number on the host’s loopback
-alone, <code class="docutils literal notranslate"><span class="pre">-p</span> <span class="pre">127.0.0.1:8123:8123</span></code> - a different number outside would have the Host header
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> sees name a port it is not listening on, answered <code class="docutils literal notranslate"><span class="pre">421</span> <span class="pre">misdirected</span> <span class="pre">request</span></code>, and
+change would serve what it was built from - and starts it, publishing the same port number on
+the host’s loopback alone, <code class="docutils literal notranslate"><span class="pre">-p</span> <span class="pre">127.0.0.1:8123:8123</span></code> - a different number outside would have
+the Host header <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> sees name a port it is not listening on, answered
+<code class="docutils literal notranslate"><span class="pre">421</span> <span class="pre">misdirected</span> <span class="pre">request</span></code>, and
 beyond the container’s loopback the token in the address it prints is the only guard, which is
 why nothing wider is published. Opening that address in a browser on the host is the image’s own
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> serving the checkout’s demo project.</p>

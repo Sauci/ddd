@@ -138,8 +138,10 @@ project file, for a plugin the project keeps in its own repository; anything els
 dotted module name imported from the environment, for one installed as a distribution. A
 plugin acts on a project because the project names it, never because it happens to be
 installed. A sub-project may name plugins too, and the set in play is the union.
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> lists each plugin’s file beside the description files, so that a build re-runs
-the generation when a plugin changes exactly as it does when a component does.</p>
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> lists each plugin’s file beside the description files - every <code class="docutils literal notranslate"><span class="pre">.py</span></code> file of
+one that is a package, and a <code class="docutils literal notranslate"><span class="pre">.py</span></code> path whether or not it imports - so that a build re-runs
+the generation when a plugin changes exactly as it does when a component does, and when its
+repair follows a defect.</p>
 <p><code class="docutils literal notranslate"><span class="pre">extensions</span></code> on the project holds each plugin’s settings, keyed by the plugin’s name and
 validated against its project model with defaults filled in. The key is spelled the way a
 plugin’s <code class="docutils literal notranslate"><span class="pre">name</span></code> is - <code class="docutils literal notranslate"><span class="pre">[a-z][a-z0-9_]*</span></code> - so a block keyed <code class="docutils literal notranslate"><span class="pre">my-plugin</span></code> or <code class="docutils literal notranslate"><span class="pre">Layout</span></code>,
@@ -316,7 +318,8 @@ its own writes one; a plugin that wants to be quiet prints nothing.</p>
 <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> or <code class="docutils literal notranslate"><span class="pre">AssertionError</span></code> pydantic turns into a <code class="docutils literal notranslate"><span class="pre">ValidationError</span></code> is how a model
 refuses a block: that verdict is a <code class="docutils literal notranslate"><span class="pre">schema</span></code> finding on the reader’s file, located at the
 failing key. Anything else the model raises is the plugin’s own defect and is reported the way
-a hook’s is - one line naming the plugin, exit 2, <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> in the language server.</p>
+a hook’s is - one line naming the plugin, exit 2, <code class="docutils literal notranslate"><span class="pre">plugin-invalid</span></code> in the language server and
+beside the listing of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">sources</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">artefacts</span></code>, which exit 0.</p>
 </section>
 <section id="writing-a-well-behaved-plugin">
 <h3>Writing a well-behaved plugin<a class="headerlink" href="#writing-a-well-behaved-plugin" title="Link to this heading"></a></h3>

@@ -609,9 +609,10 @@ What a run owns
 A run writes what it renders, and what it renders follows from the descriptions - so a
 component that leaves a project simply stops being rendered. Its header used to stay where
 the last run had put it, on the include path of every component, and a translation unit went
-on compiling against the interface of a component the project no longer contains. No build
-system can clean that up either: a per-component file is named from inside a description
-file, which is why it is not among the outputs a build declares (see
+on compiling against the interface of a component the project no longer contains. The build
+did not clean that up either: the cmake module declares the per-component files of the
+components an image links, under the names it reads when the build is configured, and the
+file of a component that has left is one nothing declares any more (see
 :doc:`build_integration`).
 
 So ``ddd generate`` owns its output directory. It records the files it wrote there in
@@ -670,6 +671,7 @@ running target. DDD writes **ASAP2 1.6.1** and says so on the second line of the
 
    /* DemoDevice.a2l - generated from 'DemoDevice' by ddd 0.11.0. DO NOT EDIT. */
    ASAP2_VERSION 1 61
+   /* written with no address source: every address below is 0x00000000 */
 
    /begin PROJECT DemoDevice "Demonstration project showing every kind of data object"
 
@@ -1208,7 +1210,10 @@ The address of an object is not known until the linker has run, and DDD generate
 Where that zero appears depends on the record, which is a wrinkle of the format rather than
 of DDD: a ``MEASUREMENT`` carries its address in a keyed ``ECU_ADDRESS`` line, while an
 ``AXIS_PTS`` and a ``CHARACTERISTIC`` carry it as the first positional field of the record,
-right after the long identifier. Both are shown in the excerpts below.
+right after the long identifier. Both are shown in the excerpts below. A file written with no
+address source - no ``--image`` and no ``--address-map`` with an entry, the two described
+below - says so on the line under its ``ASAP2_VERSION``, as the head of the file above does,
+since no ``address-missing`` can: there is nothing to miss.
 
 Three mechanisms exist to fix that up, and DDD offers all three because projects are split
 between them. The first is ``SYMBOL_LINK``, which names the c symbol the record describes and is
@@ -1275,9 +1280,9 @@ filled in:
 This is why DDD is normally run twice per build: ``ddd generate all`` before compiling, to
 produce the c code and an a2l with zero addresses, and ``ddd generate a2l`` after linking,
 with the image or the map extracted from the linker output, to produce the a2l that ships.
-:doc:`build_integration` makes the image's run one step of a single build. The artefact
-name says what the second run is there for: it renders no c - it takes no template directory
-either - so it cannot invalidate the build it was produced from.
+:doc:`build_integration` makes that second run one step of a single build, reading either. The
+artefact name says what the second run is there for: it renders no c - it takes no template
+directory either - so it cannot invalidate the build it was produced from.
 
 A symbol the map does not mention keeps address 0, and the run says so: the
 ``address-missing`` warning names the objects the map left out, once, and the a2l is written

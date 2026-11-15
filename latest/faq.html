@@ -216,7 +216,7 @@ case: every component is changed consistently, so the interfaces agree perfectly
 result is a software image that reports every value wrong by a constant factor to a
 calibration tool still using yesterday’s a2l:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check device.ddd.json
-ok: 1 variable in 2 components are consistent
+ok: 1 variable in 2 components is consistent
 
 $ ddd compare baseline.json device.ddd.json
 device.ddd.json: error[changed-interface]: 'InletPressure' is not the same object any more (conversion: linear(factor=0.2, offset=0) != linear(factor=0.1, offset=0)), read by Controller
@@ -334,7 +334,7 @@ would push every project into copying the same two lines into every consumer, an
 lines are the ones that drift.</p>
 <p>Stating limits that differ from the producer’s <em>is</em> a disagreement, and it is reported:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check device.ddd.json
-ok: 1 variable in 2 components are consistent
+ok: 1 variable in 2 components is consistent
 
 $ ddd check device.ddd.json    # after the consumer changed its limits to [0, 150]
 controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'InletTemperature' is declared differently by component 'Controller' than by 'SensorHub' (limits: [0, 150] != [-40, 150])

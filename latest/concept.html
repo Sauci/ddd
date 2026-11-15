@@ -545,7 +545,9 @@ reproducible.</p>
 <p>Before the address map is applied every address in the a2l is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code>; afterwards the
 objects named in the map carry their real address, and the ones that are not named keep zero
 and are reported once, as the <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> warning above - which <code class="docutils literal notranslate"><span class="pre">--strict</span></code> turns
-into an error, so that a post-link build cannot ship an a2l with a hole in it.
+into an error, so that a build whose map names some of the objects cannot ship an a2l with a
+hole in it. A map that names none of them is not reported, <code class="docutils literal notranslate"><span class="pre">--strict</span></code> or not, and the a2l
+says so itself.
 <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code> is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
 have the symbol names in the file:</p>

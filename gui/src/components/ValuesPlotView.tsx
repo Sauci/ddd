@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ValuesReply } from "../api/types";
 import { BOX, plotted } from "../lib/valuePlot";
 
@@ -11,8 +12,15 @@ export interface ValuesPlotViewProps {
  * the drawn range - which is the one thing the table deliberately does not show (spec 4).
  *
  * `role="img"` with a name of its own: every number in here is in the table above, so a reader
- * who cannot see the drawing loses nothing by being told what it is rather than what it holds. */
-export function ValuesPlotView({ reply, physical }: ValuesPlotViewProps) {
+ * who cannot see the drawing loses nothing by being told what it is rather than what it holds.
+ *
+ * Drawn again only for another reply or another reading: a keystroke typed into the grid beside it
+ * changes neither, and a plot of thousands of points is not worked out and laid out again for it
+ * (15:M8). */
+export const ValuesPlotView = memo(function ValuesPlotView({
+  reply,
+  physical,
+}: ValuesPlotViewProps) {
   const plot = plotted(reply, physical);
   const inside = BOX.height - BOX.top - BOX.bottom;
   return (
@@ -110,4 +118,4 @@ export function ValuesPlotView({ reply, physical }: ValuesPlotViewProps) {
       </text>
     </svg>
   );
-}
+});

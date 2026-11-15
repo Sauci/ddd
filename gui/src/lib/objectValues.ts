@@ -641,24 +641,6 @@ export function cellText(
   return raw === null ? held.typed : reading(raw, reply.conversion, physical, reply.datatype);
 }
 
-/** How many characters wide each of the grid's `columns` is drawn: the longest text its fields
- * show, down every row the object's shape has, the numbers held and what is typed alike. A field
- * cut short hides the end of its number with no sign of it, and under right aligned digits a cut
- * number reads as a smaller one - 4000000000 as 400000. Column by column, so that one long number
- * widens its own column and leaves the others as narrow as theirs; counted in characters, which
- * the grid's monospace sets one `ch` apiece. */
-export function columnChars(
-  reply: ValuesReply,
-  typed: readonly TypedCell[],
-  physical: boolean,
-  columns: number,
-): number[] {
-  const rows = Array.from({ length: wanted(reply)[0] }, (_, row) => row);
-  return Array.from({ length: columns }, (_, column) =>
-    Math.max(0, ...rows.map((row) => cellText(reply, typed, row, column, physical).length)),
-  );
-}
-
 /** `[2]` for a single row, `[1][3]` for a map, and none at all for a scalar, whose one cell is the
  * object itself: the pointer ends at its `init`. */
 export function cellAt(row: number, column: number, shape: number[]): string {

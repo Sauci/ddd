@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { ValuesReply } from "../api/types";
+import { gridTexts } from "./gridTexts";
 import { readNumber } from "./numbers";
 import {
   boundRead,
@@ -9,7 +10,6 @@ import {
   cellSentence,
   cellText,
   columnAxisLabel,
-  columnChars,
   columnHeader,
   commaOf,
   cornerLabel,
@@ -1348,7 +1348,17 @@ describe("the grid's columns and rows come from the shape (15:M7)", () => {
   });
 });
 
-describe("columnChars", () => {
+/** How many characters wide each of `columns` columns is drawn (`gridTexts`). */
+function columnChars(
+  reply: ValuesReply,
+  typed: readonly TypedCell[],
+  physical: boolean,
+  columns: number,
+): readonly number[] {
+  return gridTexts(reply, typed, physical, columns).chars;
+}
+
+describe("the width of a column (`gridTexts`)", () => {
   test("each column of a uint32 block holds its own number whole", () => {
     expect(columnChars(WIDE_WHOLE, [], false, 4)).toEqual([9, 10, 2, 7]);
     expect(columnChars(WIDE_WHOLE, [], true, 4)).toEqual([9, 10, 2, 7]);

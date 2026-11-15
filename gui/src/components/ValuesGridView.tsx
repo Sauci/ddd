@@ -1,23 +1,26 @@
 import {
   type CSSProperties,
-  type InputHTMLAttributes,
+  memo,
   type ReactNode,
+  useCallback,
   useContext,
   useLayoutEffect,
+  useMemo,
   useRef,
+  useState,
+  useSyncExternalStore,
 } from "react";
 import { TableStateContext } from "react-aria-components";
 import type { PlanReply, ValuesReply } from "../api/types";
 import { keptByCell } from "../lib/cellKeys";
 import { distinctFindings, keyedFindings } from "../lib/findings";
 import { cellId, takesFocusedCell } from "../lib/gridCells";
+import { GridStore, gridTexts } from "../lib/gridTexts";
 import { scrollFromUnder } from "../lib/heldOffer";
 import { type CommaMeaning, commaChoices } from "../lib/numbers";
 import {
   cellName,
-  cellText,
   columnAxisLabel,
-  columnChars,
   columnHeader,
   cornerLabel,
   limitsLine,
@@ -108,32 +111,146 @@ interface GridRow {
   row: number;
 }
 
-/** What a grid cell's field takes: an input's own props but `onFocus`, which is the field's, and
- * `onFocused`, called with the field once it has the focus. */
-type CellFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onFocus"> & {
-  cellId: string;
+interface CellFieldProps {
+  reply: ValuesReply;
+  row: number;
+  column: number;
+  physical: boolean;
+  disabled: boolean;
+  /** Where the field reads its text and its column's width from (`GridStore`). */
+  store: GridStore;
+  onTyped: (cell: TypedCell) => void;
+  /** Called with the field once it has the focus. */
   onFocused: (field: HTMLInputElement) => void;
-};
+}
 
-/** A grid cell's field. On a grid's first entry the table holds no focused cell and moves the
- * focus of a field to its first row, where the keys that follow go; so a field taking the focus
- * tells the table that its own cell is the focused one, where the table holds none (`gridCells`'
+/** A grid cell's field, drawn again only when its own text or its own column's width changes
+ * (`GridStore`): a keystroke typed into one cell draws that cell, not the thousands beside it
+ * (15:M8). On a grid's first entry the table holds no focused cell and moves the focus of a field
+ * to its first row, where the keys that follow go; so a field taking the focus tells the table
+ * that its own cell is the focused one, where the table holds none (`gridCells`'
  * `takesFocusedCell`). Where it holds one, its own handling stands: a click sets the clicked cell,
  * and Tab and Shift+Tab give the focus back to the cell it remembers. */
 function CellField(props: CellFieldProps) {
-  const { cellId: key, onFocused, ...field } = props;
+  const { reply, row, column, physical, store } = props;
+  const key = cellId(row, column);
   const state = useContext(TableStateContext);
+  const text = useSyncExternalStore(store.subscribe, () => store.textAt(row, column));
+  const chars = useSyncExternalStore(store.subscribe, () => store.charsAt(column));
   return (
     <input
-      {...field}
+      type="text"
+      inputMode="decimal"
+      aria-label={cellName(reply, row, column)}
+      className={statedValue(reply, row, column) === undefined ? "hollow" : undefined}
+      // How many characters this column's fields hold (`gridTexts`), for ui.css to widen them by.
+      style={{ "--chars": chars } as CSSProperties}
+      value={text}
+      disabled={props.disabled}
       onFocus={(event) => {
         const manager = state?.selectionManager;
         if (manager && takesFocusedCell(manager.focusedKey)) manager.setFocusedKey(key);
-        onFocused(event.currentTarget);
+        props.onFocused(event.currentTarget);
+      }}
+      onChange={(event) => props.onTyped({ row, column, typed: event.target.value, physical })}
+      // Enter settles what was typed and nothing more: the preview is already below the grid,
+      // and spec 5.3 is explicit that no cell writes on its own - only Apply writes. Taken here
+      // all the same, so a habit of finishing a number with Enter reaches neither the table's own
+      // keyboard navigation nor anything around it. A key naming one character is the field's
+      // own, kept from the table's type-to-find: it would move the focus to a row labelled with
+      // that digit and swallow the key (`keptByCell` says which).
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.preventDefault();
+        if (keptByCell(event)) event.stopPropagation();
       }}
     />
   );
 }
+
+interface GridTableProps {
+  reply: ValuesReply;
+  physical: boolean;
+  busy: boolean;
+  columnLabels: readonly string[];
+  rowLabels: readonly string[];
+  store: GridStore;
+  onTyped: (cell: TypedCell) => void;
+  onFocused: (field: HTMLInputElement) => void;
+}
+
+/** The table of fields. Drawn again only when what it is made of changes - the reply, the reading,
+ * `busy` - and never for a keystroke, which the fields it holds take from their `store` instead
+ * (15:M8): React Aria builds its collection of every row and cell on each draw, which a grid of
+ * thousands of cells makes the whole of a keystroke's cost. */
+const GridTable = memo(function GridTable(props: GridTableProps) {
+  const { reply, physical, busy, columnLabels, rowLabels, store, onTyped, onFocused } = props;
+  // Ids of their own, distinct from either's own label text and from each other's: a map's row
+  // and column can both legitimately read "0" (AxisB's first breakpoint, AxisA's), and React
+  // Aria's Table keeps rows and columns in one collection keyed by id - a row and a column
+  // sharing one made the header lose its own columns entirely, which is what a multi-row grid
+  // (AMapWithBothHeaders, the one story more than one row) found and no single-row story could.
+  const headerColumns = useMemo<HeaderColumn[]>(
+    () => [
+      // The corner names an edge of the grid (spec 5.2): the axis the rows are laid against for
+      // a map, the axis the columns are laid against for a single row - `AxisA (Hz)` over
+      // `CurveA (ms)`. Blank only where that edge is the plain indices.
+      { id: "corner", label: cornerLabel(reply, physical), isRowHeader: true, index: -1 },
+      ...columnLabels.map((label, index) => ({
+        id: `col:${index}`,
+        label,
+        isRowHeader: false,
+        index,
+      })),
+    ],
+    [reply, physical, columnLabels],
+  );
+  // One row for each the object's shape has, and one column for each (`columnHeader`): what the
+  // file does not state is drawn as a hollow cell (`cellName`), where the rows the file wrote and
+  // the breakpoints its axis stated drew the grid, values past them unreachable (15:M7).
+  const gridRows = useMemo<GridRow[]>(
+    () =>
+      Array.from({ length: wanted(reply)[0] }, (_, row) => ({
+        id: `row:${row}`,
+        label: rowLabels[row] ?? "",
+        row,
+      })),
+    [reply, rowLabels],
+  );
+  return (
+    <Table aria-label={`Values of ${reply.name}`}>
+      <TableHeader columns={headerColumns}>
+        {(column) => <Column isRowHeader={column.isRowHeader}>{column.label}</Column>}
+      </TableHeader>
+      <TableBody
+        items={gridRows}
+        dependencies={[reply, physical, busy, store, onTyped, onFocused, headerColumns]}
+      >
+        {(item) => (
+          <Row id={item.id} columns={headerColumns}>
+            {(column) => {
+              if (column.isRowHeader) return <Cell>{item.label}</Cell>;
+              const id = cellId(item.row, column.index);
+              return (
+                <Cell id={id}>
+                  <CellField
+                    reply={reply}
+                    row={item.row}
+                    column={column.index}
+                    physical={physical}
+                    disabled={reply.file === null || busy}
+                    store={store}
+                    onTyped={onTyped}
+                    onFocused={onFocused}
+                  />
+                </Cell>
+              );
+            }}
+          </Row>
+        )}
+      </TableBody>
+    </Table>
+  );
+});
 
 /** One object's values (spec 5.2), drawn from what the api answered: a picture of its props. It
  * holds no state - the raw/physical toggle, the cells typed into, Show changes and busy all live
@@ -141,35 +258,23 @@ function CellField(props: CellFieldProps) {
 export function ValuesGridView(props: ValuesGridViewProps) {
   const { reply, backTo, undoStrip, banner, physical, typed, plan, refusal, changesShown, busy } =
     props;
-  const columnLabels = columnHeader(reply, physical);
-  const rowLabels = rowHeader(reply, physical);
-  // Ids of their own, distinct from either's own label text and from each other's: a map's row
-  // and column can both legitimately read "0" (AxisB's first breakpoint, AxisA's), and React
-  // Aria's Table keeps rows and columns in one collection keyed by id - a row and a column
-  // sharing one made the header lose its own columns entirely, which is what a multi-row grid
-  // (AMapWithBothHeaders, the one story more than one row) found and no single-row story could.
-  const headerColumns: HeaderColumn[] = [
-    // The corner names an edge of the grid (spec 5.2): the axis the rows are laid against for
-    // a map, the axis the columns are laid against for a single row - `AxisA (Hz)` over
-    // `CurveA (ms)`. Blank only where that edge is the plain indices.
-    { id: "corner", label: cornerLabel(reply, physical), isRowHeader: true, index: -1 },
-    ...columnLabels.map((label, index) => ({
-      id: `col:${index}`,
-      label,
-      isRowHeader: false,
-      index,
-    })),
-  ];
-  // One row for each the object's shape has, and one column for each (`columnHeader`): what the
-  // file does not state is drawn as a hollow cell (`cellName`), where the rows the file wrote and
-  // the breakpoints its axis stated drew the grid, values past them unreachable (15:M7).
-  const gridRows: GridRow[] = Array.from({ length: wanted(reply)[0] }, (_, row) => ({
-    id: `row:${row}`,
-    label: rowLabels[row] ?? "",
-    row,
-  }));
-  // How many characters each column's fields hold (`columnChars`), for ui.css to widen them by.
-  const chars = columnChars(reply, typed, physical, columnLabels.length);
+  const columnLabels = useMemo(() => columnHeader(reply, physical), [reply, physical]);
+  const rowLabels = useMemo(() => rowHeader(reply, physical), [reply, physical]);
+  // What each field shows, and how wide each column is (`gridTexts`): handed to the fields by a
+  // store that tells only the ones whose text or width changed, so that a keystroke does not draw
+  // the grid again (15:M8).
+  const shown = useMemo(
+    () => gridTexts(reply, typed, physical, columnLabels.length),
+    [reply, typed, physical, columnLabels],
+  );
+  const [store] = useState(() => new GridStore(shown));
+  useLayoutEffect(() => store.update(shown), [store, shown]);
+  // The screen's handlers change with every drawing of it; the table is handed ones that do not.
+  const typedInto = useRef(props.onTyped);
+  useLayoutEffect(() => {
+    typedInto.current = props.onTyped;
+  });
+  const onTyped = useCallback((cell: TypedCell) => typedInto.current(cell), []);
   const meta = [
     reply.kind,
     reply.datatype,
@@ -199,11 +304,11 @@ export function ValuesGridView(props: ValuesGridViewProps) {
   // stands above it (`scrollFromUnder`): on the field's focus, and after every render, since the
   // offer comes and grows as its plan does.
   const offer = useRef<HTMLElement>(null);
-  const reveal = (field: Element) => {
+  const reveal = useCallback((field: Element) => {
     if (offer.current === null) return;
     const placed = (node: Element) => node.getBoundingClientRect();
     window.scrollBy(0, scrollFromUnder(placed(field), placed(offer.current)));
-  };
+  }, []);
   useLayoutEffect(() => {
     const field = document.activeElement;
     if (field instanceof HTMLInputElement && field.closest(".values-table") !== null) {
@@ -266,60 +371,16 @@ export function ValuesGridView(props: ValuesGridViewProps) {
           </fieldset>
           {columnAxis !== "" && <p className="values-axis">{columnAxis} →</p>}
           <div className={oneCell(reply) ? "values-table values-one" : "values-table"}>
-            <Table aria-label={`Values of ${reply.name}`}>
-              <TableHeader columns={headerColumns}>
-                {(column) => <Column isRowHeader={column.isRowHeader}>{column.label}</Column>}
-              </TableHeader>
-              <TableBody items={gridRows}>
-                {(item) => (
-                  <Row id={item.id} columns={headerColumns}>
-                    {(column) => {
-                      if (column.isRowHeader) return <Cell>{item.label}</Cell>;
-                      const { row } = item;
-                      const at = column.index;
-                      const id = cellId(row, at);
-                      return (
-                        <Cell id={id}>
-                          <CellField
-                            cellId={id}
-                            onFocused={reveal}
-                            type="text"
-                            inputMode="decimal"
-                            aria-label={cellName(reply, row, at)}
-                            className={
-                              statedValue(reply, row, at) === undefined ? "hollow" : undefined
-                            }
-                            style={{ "--chars": chars[at] } as CSSProperties}
-                            value={cellText(reply, typed, row, at, physical)}
-                            disabled={reply.file === null || busy}
-                            onChange={(event) =>
-                              props.onTyped({
-                                row,
-                                column: at,
-                                typed: event.target.value,
-                                physical,
-                              })
-                            }
-                            // Enter settles what was typed and nothing more: the preview is
-                            // already below the grid, and spec 5.3 is explicit that no cell
-                            // writes on its own - only Apply writes. Taken here all the same,
-                            // so a habit of finishing a number with Enter reaches neither the
-                            // table's own keyboard navigation nor anything around it. A key
-                            // naming one character is the field's own, kept from the table's
-                            // type-to-find: it would move the focus to a row labelled with
-                            // that digit and swallow the key (`keptByCell` says which).
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") event.preventDefault();
-                              if (keptByCell(event)) event.stopPropagation();
-                            }}
-                          />
-                        </Cell>
-                      );
-                    }}
-                  </Row>
-                )}
-              </TableBody>
-            </Table>
+            <GridTable
+              reply={reply}
+              physical={physical}
+              busy={busy}
+              columnLabels={columnLabels}
+              rowLabels={rowLabels}
+              store={store}
+              onTyped={onTyped}
+              onFocused={reveal}
+            />
           </div>
           {stated !== null && <p className="quiet">{stated}</p>}
           {readOnly !== null && <p className="quiet">{readOnly}</p>}

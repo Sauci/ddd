@@ -77,6 +77,20 @@ function drawnRows(reply: ValuesReply): number[][] {
   return reply.rows.slice(0, height).map((row) => row.slice(0, width));
 }
 
+/** The least and the greatest of `values`, found in one pass - never by spreading them as the
+ * arguments of `Math.min` and `Math.max`, which a place asked for each point of a large grid made
+ * quadratic, and which throws past the number of arguments the engine takes (15:M8). `[Infinity,
+ * -Infinity]` of none. */
+function extremes(values: readonly number[]): [number, number] {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const value of values) {
+    if (value < low) low = value;
+    if (value > high) high = value;
+  }
+  return [low, high];
+}
+
 /** The range the values are drawn in: their own span with a twentieth of it to spare above and
  * below, so a limit that falls on an extreme - which is where both of `BlockA`'s fall - is drawn
  * inside the frame rather than clipped to its edge.
@@ -93,8 +107,7 @@ function drawnRows(reply: ValuesReply): number[][] {
  * gets, -1 to 1, there being no values to take a proportion of either. */
 function rangeOf(values: number[]): [number, number] {
   if (values.length === 0) return [-1, 1];
-  const low = Math.min(...values);
-  const high = Math.max(...values);
+  const [low, high] = extremes(values);
   if (low !== high) {
     const pad = (high - low) / PAD;
     return [low - pad, high + pad];
@@ -108,7 +121,25 @@ function placed(value: number, from: number, to: number, start: number, length: 
   return from === to ? start + length / 2 : start + ((value - from) / (to - from)) * length;
 }
 
+/** What `plotted` drew, by the reply and the reading it drew: a grid is drawn again on every
+ * keystroke typed into it, and what it draws changes with neither (15:M8). Held by the reply
+ * itself, so that a reply let go takes its plots with it. */
+const DRAWN = new WeakMap<ValuesReply, { raw?: Plot; physical?: Plot }>();
+
+/** The plot of `reply` in the reading asked for, worked out once for as long as the page holds the
+ * reply: the same plot, not an equal one, so that what draws it can see nothing changed. */
 export function plotted(reply: ValuesReply, physical: boolean): Plot {
+  const kept = DRAWN.get(reply) ?? {};
+  DRAWN.set(reply, kept);
+  const key = physical ? "physical" : "raw";
+  const known = kept[key];
+  if (known !== undefined) return known;
+  const plot = drawn(reply, physical);
+  kept[key] = plot;
+  return plot;
+}
+
+function drawn(reply: ValuesReply, physical: boolean): Plot {
   const xs = alongTheBottom(reply, physical);
   const rows = drawnRows(reply);
   const values = rows.flatMap((row) =>
@@ -119,8 +150,8 @@ export function plotted(reply: ValuesReply, physical: boolean): Plot {
   const down = BOX.height - BOX.top - BOX.bottom;
   // A place for every column the shape has (`alongTheBottom`), and no row or tick drawn past the
   // shape's last column (`drawnRows`, `columnHeader`): each index read here has its place.
-  const xAt = (index: number) =>
-    placed(xs[index] as number, Math.min(...xs), Math.max(...xs), BOX.left, across);
+  const [first, last] = extremes(xs);
+  const xAt = (index: number) => placed(xs[index] as number, first, last, BOX.left, across);
   const yAt = (value: number) => BOX.top + down - placed(value, low, high, 0, down);
   const labels = reply.shape.length === 1 ? rows.map(() => "") : rowHeader(reply, physical);
   const axis = columnAxis(reply);

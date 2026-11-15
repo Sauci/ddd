@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { GridAxis, ValuesReply } from "../api/types";
 import { BOX, plotted } from "./valuePlot";
 
@@ -322,5 +322,101 @@ describe("plotted", () => {
   test("values past the shape are not drawn, as the grid draws none of them", () => {
     const long: ValuesReply = { ...CURVE_A, rows: [[1, 2, 3, 4, 5, 6, 7, 8], [9]] };
     expect(plotted(long, false).lines.map((line) => line.points.length)).toEqual([6]);
+  });
+});
+
+/** A grid of `rows` by `columns` of uint8 counts, laid against an axis stating a breakpoint for
+ * every column, or against none. */
+function grid(rows: number, columns: number, axis: boolean): ValuesReply {
+  return {
+    ...BLOCK_A,
+    shape: rows === 1 ? [columns] : [rows, columns],
+    rows: Array.from({ length: rows }, (_, row) =>
+      Array.from({ length: columns }, (_, column) => (row * 7 + column) % 256),
+    ),
+    axes: axis
+      ? [
+          {
+            ...AXIS_A,
+            position: "x_axis",
+            conversion: { kind: "identity" },
+            breakpoints: Array.from({ length: columns }, (_, column) => column * 3),
+          },
+        ]
+      : [],
+  };
+}
+
+/** How many numbers the plot's two extremes were asked of, in all, while `work` ran: every
+ * argument of every `Math.min` and `Math.max` call - which is what a spread of the values for each
+ * point costs, and a pass over them once does not. */
+function extremesAskedOf(work: () => void): number {
+  let asked = 0;
+  const counting = (original: (...values: number[]) => number) =>
+    function counted(...values: number[]) {
+      asked += values.length;
+      return original(...values);
+    };
+  const [lowest, highest] = [counting(Math.min), counting(Math.max)];
+  const min = vi.spyOn(Math, "min").mockImplementation(lowest);
+  const max = vi.spyOn(Math, "max").mockImplementation(highest);
+  try {
+    work();
+  } finally {
+    min.mockRestore();
+    max.mockRestore();
+  }
+  return asked;
+}
+
+describe("plotted over a large grid (15:M8)", () => {
+  test.each([
+    ["a row of 4,096 over an axis", grid(1, 4096, true)],
+    ["a row of 4,096 at its indices", grid(1, 4096, false)],
+    ["a map of 64 by 64", grid(64, 64, false)],
+  ])("%s finds each axis's extremes once, in work linear in its cells", (_, reply) => {
+    const cells = reply.rows.flat().length;
+    expect(cells).toBe(4096);
+    const asked = extremesAskedOf(() => plotted(reply, true));
+    // Two figures asked of every cell at most - the values' extremes - and as many of every
+    // column's place; where each point spreads the places, it is 4,096 times as many.
+    expect(asked).toBeLessThanOrEqual(4 * cells);
+  });
+
+  test("a grid past the engine's argument limit is drawn, not thrown at", () => {
+    const plot = plotted(grid(1, 300_000, true), false);
+    expect(plot.lines[0]?.points).toHaveLength(300_000);
+    expect(plot.low).toBeLessThan(0);
+    expect(plot.high).toBeGreaterThan(255);
+  });
+
+  test("its points are where the same values put them in a small grid", () => {
+    const plot = plotted(grid(1, 4096, true), false);
+    const points = plot.lines[0]?.points ?? [];
+    expect(points[0]?.x).toBe(BOX.left);
+    expect(points[4095]?.x).toBe(BOX.left + inside);
+    expect(points[2048]?.x).toBeCloseTo(BOX.left + (inside * 2048) / 4095);
+  });
+});
+
+describe("a plot is worked out again only when what it draws changes", () => {
+  test("the same reply read the same way is the one plot, drawn again", () => {
+    const reply = grid(1, 64, true);
+    expect(plotted(reply, true)).toBe(plotted(reply, true));
+    expect(plotted(reply, false)).toBe(plotted(reply, false));
+  });
+
+  test("a reading changes it, and so does another reply", () => {
+    const reply = grid(1, 64, true);
+    expect(plotted(reply, false)).not.toBe(plotted(reply, true));
+    expect(plotted({ ...reply }, true)).not.toBe(plotted(reply, true));
+  });
+
+  test("and it is the plot the reading draws, whichever was asked for first", () => {
+    const reply = grid(1, 8, false);
+    const raw = plotted(reply, false);
+    const physical = plotted(reply, true);
+    expect(plotted(reply, false)).toBe(raw);
+    expect(plotted(reply, true)).toBe(physical);
   });
 });

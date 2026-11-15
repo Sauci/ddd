@@ -39,9 +39,20 @@
  * script's fault, not the page's).
  */
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, statSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import {
+  appendFileSync,
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { test as base, chromium, expect, type Locator, type Page } from "@playwright/test";
 import { LAYOUT_MEASURE } from "../src/lib/layoutAnswers";
 
@@ -257,11 +268,18 @@ test.afterAll(async () => {
  * option: this benchmark always starts on the start page, exactly where a reader who has not yet
  * chosen a project does.
  */
-function startGui(directory: string): { address: Promise<string>; stop: () => Promise<void> } {
-  const child = spawn(process.env.DDD_PYTHON ?? "python", ["-m", "ddd", "gui", "--no-browser"], {
-    cwd: directory,
-    stdio: ["ignore", "pipe", "inherit"],
-  });
+function startGui(
+  directory: string,
+  project: readonly string[] = [],
+): { address: Promise<string>; stop: () => Promise<void> } {
+  const child = spawn(
+    process.env.DDD_PYTHON ?? "python",
+    ["-m", "ddd", "gui", ...project, "--no-browser"],
+    {
+      cwd: directory,
+      stdio: ["ignore", "pipe", "inherit"],
+    },
+  );
   const address = new Promise<string>((resolve, reject) => {
     if (child.stdout === null) {
       reject(new Error("ddd gui has no stdout"));
@@ -599,6 +617,127 @@ test("typing", async ({ page }) => {
     return longestLongTask(page);
   });
   record("typing", formatMs(result));
+});
+
+/** The grids `typing in a grid` types into, each a copy of `examples/demo` with one object made
+ * large: `uint8` and `float32` single rows of 1,024 and 4,096 elements (BlockA, the demo's
+ * `value_block`, which a float32 and a factor make the costly kind to read - `physicalText`), and MapA over
+ * two axes of 64 breakpoints each. */
+const GRIDS = [
+  { label: "uint8 1024", datatype: "uint8", columns: 1024, rows: 1 },
+  { label: "uint8 4096", datatype: "uint8", columns: 4096, rows: 1 },
+  { label: "float32 4096", datatype: "float32", columns: 4096, rows: 1 },
+  { label: "map 64x64", datatype: "sint8", columns: 64, rows: 64 },
+] as const;
+
+type Declaration = { definition: Record<string, unknown> };
+
+/** A copy of the demo, in a fresh directory, with the object `grid` names made as large as it
+ * says; the directory it is in, to be removed by the caller. */
+function gridProject(grid: (typeof GRIDS)[number]): string {
+  const directory = mkdtempSync(join(tmpdir(), "ddd-bench-grid-"));
+  cpSync(fileURLToPath(new URL("../../examples/demo/", import.meta.url)), directory, {
+    recursive: true,
+  });
+  const edit = (file: string, change: (declarations: Declaration[]) => void) => {
+    const path = join(directory, "components", file);
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    change(data.component.interface);
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  };
+  const named = (declarations: Declaration[], name: string) => {
+    const found = declarations.find((declaration) => declaration.definition.name === name);
+    if (found === undefined) throw new Error(`the demo declares no ${name}`);
+    return found.definition;
+  };
+  const count = (size: number) => Array.from({ length: size }, (_, at) => at);
+  if (grid.rows === 1) {
+    edit("user_interface.ddd.json", (declarations) => {
+      const block = named(declarations, "BlockA");
+      block.datatype = grid.datatype;
+      block.dimensions = [grid.columns];
+      if (grid.datatype === "float32") block.conversion = { factor: 0.1 };
+      block.init = count(grid.columns).map((at) => at % 100);
+    });
+  } else {
+    edit("controller.ddd.json", (declarations) => {
+      for (const axis of ["AxisA", "AxisB"]) {
+        const definition = named(declarations, axis);
+        definition.size = grid.columns;
+        definition.init = count(grid.columns).map((at) => at * 10);
+      }
+      named(declarations, "MapA").init = count(grid.rows).map(() =>
+        count(grid.columns).map((at) => at % 100),
+      );
+    });
+    edit("user_interface.ddd.json", (declarations) => {
+      named(declarations, "AxisA").size = grid.columns;
+    });
+  }
+  return directory;
+}
+
+declare global {
+  interface Window {
+    /** The time from each key press to the second frame after it, from the listener
+     * `typing in a grid` installs. */
+    __frames?: number[];
+  }
+}
+
+/** Typing into a grid: the time from a key press in one cell to the second frame after it, the
+ * median of five presses after one warming one - what the large projects design (§3) holds under
+ * 100 ms. Over every object of `GRIDS`, each on a server of its own over a copy of the demo. */
+test("typing in a grid", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__frames = [];
+    window.addEventListener(
+      "keydown",
+      () => {
+        const start = performance.now();
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => window.__frames?.push(performance.now() - start)),
+        );
+      },
+      true,
+    );
+  });
+  for (const grid of GRIDS) {
+    const directory = gridProject(grid);
+    const gui = startGui(directory, ["demo.ddd.json"]);
+    try {
+      const url = await gui.address;
+      const opened = await capped(async () => {
+        await page.goto(url);
+        const [file, object] =
+          grid.rows === 1 ? ["user_interface.ddd.json", "BlockA"] : ["controller.ddd.json", "MapA"];
+        const route = `component?file=${encodeURIComponent(`${directory}/components/${file}`)}`;
+        await page.goto(new URL(`${route}&variable=${object}&view=values`, url).href);
+        await expect(page.getByRole("textbox").first()).toBeVisible({ timeout: LONG_TIMEOUT });
+      });
+      if (didNotFinish(opened)) {
+        record(`typing in a grid, ${grid.label}`, formatMs(opened));
+        continue;
+      }
+      const field = page.getByRole("textbox").first();
+      await field.click();
+      const frames: number[] = [];
+      for (let press = 0; press < 6; press += 1) {
+        await page.evaluate(() => {
+          window.__frames = [];
+        });
+        await field.press("1");
+        await page.waitForFunction(() => (window.__frames?.length ?? 0) > 0);
+        const taken = await page.evaluate(() => window.__frames?.[0] ?? 0);
+        if (press > 0) frames.push(taken);
+      }
+      frames.sort((a, b) => a - b);
+      record(`typing in a grid, ${grid.label}`, String(Math.round(frames[2] as number)));
+    } finally {
+      await gui.stop();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
 });
 
 test("scrolling", async ({ page }) => {

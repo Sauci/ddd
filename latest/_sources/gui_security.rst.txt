@@ -64,14 +64,15 @@ What it defends against
   is written. A path through a loop of links, which python 3.12 cannot resolve, is answered
   as one naming no file ``ddd gui`` can read, on every python. A file an edit would create
   is refused ``409`` before anything looks its name up, let alone writes the file, and so
-  is ``GET /api/files-plan``'s plan of one, where the name is longer than 243 bytes, holds
+  is ``GET /api/files-plan``'s plan of one, where the name is longer than 234 bytes, holds
   a character Windows keeps out of a file's name - a control character, or one of
   ``< > : " / \ | ? *`` - ends in a dot or a space, which Windows drops from a file's name,
   or is one Windows keeps for a device (below), on every system - on Windows, an edit
   naming a device's file is refused ``400`` before that, as any path naming a device is:
-  the file is staged under its name and ``.ddd-staging`` first, ext4 takes a name of at
-  most 255 bytes and NTFS one of at most 255 UTF-16 units, which a name of 255 bytes never
-  exceeds, and Windows opens the device in the place of a file named like it. An answer
+  the file is staged under its name, a dot, eight hexadecimal digits of its own and
+  ``.ddd-staging`` first, ext4 takes a name of at most 255 bytes and NTFS one of at most 255
+  UTF-16 units, which a name of 255 bytes never exceeds, and Windows opens the device in the
+  place of a file named like it. An answer
   carrying json nested more than 99 levels deep - a file's contents, or a part of the
   project's dictionary, each array, object and value in it counted - is refused ``409``
   instead of sent, by whatever route would send it: 99 levels are the most its serializer

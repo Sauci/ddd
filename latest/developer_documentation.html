@@ -218,8 +218,9 @@ project and a pre-commit hook once per file - are answered without building a si
 contract. <code class="docutils literal notranslate"><span class="pre">names.py</span></code> is what makes that possible: the handful of spellings argparse reads
 while it is still deciding what was asked for, in a module that imports nothing, each of them
 the one definition of its name. <code class="docutils literal notranslate"><span class="pre">identity.py</span></code> makes an object
-identity and writes one into a description file textually, so that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code>
-produces a diff of one line per object rather than a reformatted document. <code class="docutils literal notranslate"><span class="pre">build_info.py</span></code>
+identity and hands the edit engine the operation that writes one into a description file
+textually, so that <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span> <span class="pre">--assign</span></code> produces a diff of one line per object rather than a
+reformatted document, and writes a file as <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> does. <code class="docutils literal notranslate"><span class="pre">build_info.py</span></code>
 is the hand-off from a build to an editor: which project description was configured, and
 under which severity policy, neither of which any <code class="docutils literal notranslate"><span class="pre">*.ddd.json</span></code> file records.</p>
 <p><code class="docutils literal notranslate"><span class="pre">src/ddd/lsp/</span></code> is a layer of its own rather than a smaller module: nine modules that speak
@@ -1056,8 +1057,8 @@ left to match nothing. <code class="docutils literal notranslate"><span class="p
 its bytes. The session’s watcher compares a file’s modification time and size alone
 (<code class="docutils literal notranslate"><span class="pre">stamped</span></code>, in <code class="docutils literal notranslate"><span class="pre">src/ddd/gui/session.py</span></code>), so its next poll reads a new revision, and the long
 poll the page has open, which would otherwise wait out its <code class="docutils literal notranslate"><span class="pre">WAIT_SECONDS</span></code>, answers at once: a
-journey needs it to let go a refusal held until the next revision, or to make the page’s next
-read of the state the one <code class="docutils literal notranslate"><span class="pre">failing</span></code> fails.</p>
+journey needs it to make the page’s next read of the state the one <code class="docutils literal notranslate"><span class="pre">failing</span></code> fails, to read a
+revision whose answers <code class="docutils literal notranslate"><span class="pre">failing</span></code> fails, or to have a pattern expanded again.</p>
 <p><code class="docutils literal notranslate"><span class="pre">openedGui</span></code>, a fixture beside <code class="docutils literal notranslate"><span class="pre">copiedGui</span></code>, serves a copy of the demo as a reader’s own <code class="docutils literal notranslate"><span class="pre">ddd</span>
 <span class="pre">gui</span></code> serves it: started without <code class="docutils literal notranslate"><span class="pre">--no-browser</span></code>, so that it opens a browser, with the
 <code class="docutils literal notranslate"><span class="pre">BROWSER</span></code> variable naming a program of the fixture’s own. Python’s <code class="docutils literal notranslate"><span class="pre">webbrowser</span></code> runs that
@@ -1143,6 +1144,30 @@ renders a plan as the text edits of <code class="docutils literal notranslate"><
 the two can never disagree about it - as <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> already does for a
 variable’s keys, one rule the language server’s reconcile quick fix and <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code>’s
 variable panel both read.</p>
+<p>That rule includes what the project would say of the declaration once a key is written, as far as
+the declaration and the type it names can say it. A rule between keys - an enumeration wants an
+integer datatype, a string a byte, one dimension and no unit - is held by the models and by no
+list of keys, and the analysis files three more <code class="docutils literal notranslate"><span class="pre">schema</span></code> findings from the declaration and its
+type: limits derived from a datatype and a conversion that are not finite, a shape of numbers past
+the caps, and, for a declaration naming a string type, anything but one dimension and no display
+format. <code class="docutils literal notranslate"><span class="pre">settled_at</span></code> asks all of them, of the definition as the key would leave it
+(<code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.loading_problem</span></code>, over <code class="docutils literal notranslate"><span class="pre">ddd.models.definition_problem</span></code>, which
+<code class="docutils literal notranslate"><span class="pre">ddd.declaration_plans</span></code> asks of a declared object too), told what the project’s types fix by
+<code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.type_conversions</span></code>; the analysis takes each rule from the models, so that the
+sentence is one. What needs more of the project - the leaves of a structure, a map’s axes, the
+constant a dimension names, a plugin’s <code class="docutils literal notranslate"><span class="pre">extensions</span></code> - is not asked, and stays a finding of the
+next analysis. A declaration whose answer is a problem is <code class="docutils literal notranslate"><span class="pre">Unsettled</span></code> with the reason <code class="docutils literal notranslate"><span class="pre">load</span></code>. A
+text <code class="docutils literal notranslate"><span class="pre">json.loads</span></code> takes and the loader refuses - a key written twice, which an editor’s buffer
+may hold - is such an answer as well, in the loader’s words, and never an exception. Every button
+- a quick fix, and the page’s fix of a <code class="docutils literal notranslate"><span class="pre">definition-mismatch</span></code> - is built from
+<code class="docutils literal notranslate"><span class="pre">reconciliations</span></code>, so none of them leaves a file unable to load by what is asked: the editor
+leaves such a declaration out of an action that reaches several, as it leaves out one a type
+fixes, and the page drops a fix that cannot reach every declaration. The variable’s panel is the
+one client that chooses otherwise: <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> settles with <code class="docutils literal notranslate"><span class="pre">withholding=False</span></code>, its
+reader chose the value, and <code class="docutils literal notranslate"><span class="pre">unloadable</span></code> in its reply says which declarations would not load and
+why, in the sentence <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> files as <code class="docutils literal notranslate"><span class="pre">schema</span></code> once the change is written. The page draws
+each sentence as it comes, above Apply, which stays available: <code class="docutils literal notranslate"><span class="pre">unloadableOf</span></code>, in
+<code class="docutils literal notranslate"><span class="pre">gui/src/lib/units.ts</span></code> and under the page’s own tests, says which.</p>
 <p>What a key of a variable offers the panel is worked out in <code class="docutils literal notranslate"><span class="pre">ddd.variable_keys</span></code>: per key,
 and per declaration, whether that declaration’s kind has the key at all and whether it
 must state it - <code class="docutils literal notranslate"><span class="pre">ddd.models.definition_keys</span></code>, plus the storage keys a declaration cannot
@@ -1167,7 +1192,8 @@ among them. <code class="docutils literal notranslate"><span class="pre">GET</sp
 <span class="pre">/api/type</span></code> all carry that answer on every finding they list. <code class="docutils literal notranslate"><span class="pre">ddd.finding_fixes</span></code> plans
 the one fix a finding has nowhere else to offer: a <code class="docutils literal notranslate"><span class="pre">missing-id</span></code> finding’s identity, from
 the same walk <code class="docutils literal notranslate"><span class="pre">ddd.identity.unstamped</span></code> gives <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> and the language server’s own
-quick fix, written as the operations <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> takes rather than as a text edit;
+quick fix, written as the operations <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/edit</span></code> takes rather than as a text edit - the
+operation <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">id</span></code> hands the engine too (<code class="docutils literal notranslate"><span class="pre">ddd.identity.stamp</span></code>);
 <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/fix</span></code> previews it, as <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/settle</span></code> previews a settlement.
 <code class="docutils literal notranslate"><span class="pre">ddd.lsp.edits.settle</span></code> itself now compares what a value means rather than its own text,
 the same <code class="docutils literal notranslate"><span class="pre">ddd.value_identity.same_value</span></code> the panel’s values in play already read - which
@@ -1188,7 +1214,11 @@ uses and its members, and <code class="docutils literal notranslate"><span class
 component may add a declaration of a variable the project already declares or of a new
 object of one of the six kinds, and its three verbs take a file, a name and a scope to
 read one; a file, a scope and a definition to declare one; and a file and a name to
-remove one.</p>
+remove one. A variable another component declares <code class="docutils literal notranslate"><span class="pre">local</span></code> is not one it may read:
+<code class="docutils literal notranslate"><span class="pre">Index.producers</span></code> counts a local among the producers of a name, so <code class="docutils literal notranslate"><span class="pre">scopes_for</span></code> asks the
+scope each declaration states instead and answers none, <code class="docutils literal notranslate"><span class="pre">declarable</span></code> leaves the name out,
+and <code class="docutils literal notranslate"><span class="pre">read_object</span></code> refuses it in any scope, since a declaration beside a local is the
+<code class="docutils literal notranslate"><span class="pre">local-conflict</span></code> the analysis reports whatever its scope.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ddd.object_values</span></code> sits beside <code class="docutils literal notranslate"><span class="pre">ddd.declaration_plans</span></code> and <code class="docutils literal notranslate"><span class="pre">ddd.type_plans</span></code>: what
 one object’s grid shows - its kind, datatype, unit, conversion, resolved limits, shape,
 values and the breakpoints of the axes it is laid against - and what changing one cell of
@@ -1213,16 +1243,66 @@ creates its file, one <code class="docutils literal notranslate"><span class="pr
 place like any other write, and taken away again if a later file of the same edit fails. The
 session of <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> accepts such a change only beside the open project’s description, and
 only when the same edit’s change to that description leaves the new file among its
-<code class="docutils literal notranslate"><span class="pre">includes</span></code>; any other is refused as <code class="docutils literal notranslate"><span class="pre">invalid</span></code> before anything is written. The file it
-creates takes the mode, and where the process may set them the owner and group, of the
-project description beside it, so <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> running in a container leaves the developer a
-file of their own rather than root’s.</p>
+<code class="docutils literal notranslate"><span class="pre">includes</span></code>; any other is refused as <code class="docutils literal notranslate"><span class="pre">invalid</span></code> before anything is written. Where a build
+generates that description - the <code class="docutils literal notranslate"><span class="pre">ddd-build.json</span></code> beside it naming it, as <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code>
+leaves one without <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> - it accepts none, nor any change of the description or of
+another file under the build tree it is generated in, each refused as <code class="docutils literal notranslate"><span class="pre">generated</span></code>: the build
+writes the description again at every configure, and which files belong to the project is
+<code class="docutils literal notranslate"><span class="pre">ddd_add_component()</span></code>’s to say. That tree is the nearest directory at or above the record
+holding a <code class="docutils literal notranslate"><span class="pre">CMakeCache.txt</span></code>, unless the source tree that cache names lies under it, as an
+in-source build’s does, and the description’s own directory otherwise. The record is all that
+says a description is generated, so one given to <code class="docutils literal notranslate"><span class="pre">ddd_generate()</span></code> with <code class="docutils literal notranslate"><span class="pre">PROJECT</span></code> and an
+<code class="docutils literal notranslate"><span class="pre">OUTPUT_DIRECTORY</span></code> of its own directory, the record written beside it and naming it, is taken
+for one the build generates: every change of its files is refused, in a sentence saying the
+build writes it, which it does not. Nothing in the record or the description tells the two
+apart yet. The file it creates takes the mode, and where the process may set them the owner
+and group, of the project description beside it, so <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> running in a container leaves
+the developer a file of their own rather than root’s.</p>
+<p>Every write of the engine, an edit’s and an undo’s alike, looks at its file once more after
+the stage is written and right before the rename - or the removal, for a file an edit
+created. A file that no longer holds the bytes the write was made from, or that exists
+where the write creates it, was changed by somebody else since the edit read it, and is
+refused as <code class="docutils literal notranslate"><span class="pre">stale</span></code> rather than overwritten, taken away or brought back; the files
+already written are put back, each one that still holds what the write left. A save landing
+in the instant between that last look and the rename is still written over, and a file another
+writer creates there in that instant is replaced: no lock the file systems offer closes that
+moment. <code class="docutils literal notranslate"><span class="pre">stale</span></code> says that every one went back - the page tells a person that nothing was
+written - and where one could not, the refusal is <code class="docutils literal notranslate"><span class="pre">unwritable</span></code> and its sentence names the
+files it could not put back.</p>
+<p>A file this process may not write is refused <code class="docutils literal notranslate"><span class="pre">unwritable</span></code> before the first file of an edit,
+or of an undo, is staged, on every system: one with no permission to write it at all - a
+mode of <code class="docutils literal notranslate"><span class="pre">0444</span></code>, which is what Windows’ read-only flag reads as - for root as for anyone, or
+one the system says this process may not write, as it does for a file of another user’s or on
+a read-only mount. On Windows that question reads the read-only flag and nothing else,
+<code class="docutils literal notranslate"><span class="pre">os.access</span></code> leaving a file’s permissions unasked: a file they forbid this process, or one on a
+share that keeps no such flag, passes it, and the edit is refused when that file’s stage cannot
+replace it, once its retries are spent, with every file renamed before it put back. Windows
+refused the rename of a stage that had taken a read-only file’s access, after its second of
+retries, and left that stage beside the file; Linux, where a rename asks the permission of the
+folder and not of the file, wrote the file through and kept it read-only. A stage that is to
+take a file’s access is created <code class="docutils literal notranslate"><span class="pre">0600</span></code>, for its owner alone, and a stage a write refused is
+made writable before it is taken away, Windows not deleting a read-only file.</p>
+<p>An edit stages every one of its files before it renames any. The stages are written and
+closed, then synced together - on up to <code class="docutils literal notranslate"><span class="pre">SYNC_WORKERS</span></code> threads, a sync waiting for the disk
+and a disk taking many at once, where one after the other cost milliseconds a file - and only
+then renamed, one file after the other, each given its file’s access and its file looked at
+once more right before. A sync the file system has none to offer, <code class="docutils literal notranslate"><span class="pre">EINVAL</span></code> or <code class="docutils literal notranslate"><span class="pre">ENOTSUP</span></code>,
+is let by, and any other error refuses the write; one that fails refuses the edit before any
+file is renamed. An undo is written the same way, the file an edit created taken away in its
+turn; only the put-back of a write that is refused - the files already renamed, or the ones an
+undo had put back - writes one file at a time, each stage synced as it is made, as it is rare.
+What an edit is made all at once against is a refusal and not a stop: a server killed while it
+writes - a closed terminal, a <code class="docutils literal notranslate"><span class="pre">kill</span></code> - can leave some of the files it had renamed as the edit
+made them, the others as they were, the stages it was writing beside them, and nothing to undo
+once it is started again, and <code class="docutils literal notranslate"><span class="pre">Changes</span></code> in <code class="docutils literal notranslate"><span class="pre">ddd.gui.contract</span></code> says so. On a journaling
+file system that has a sync to offer, a power cut leaves each file as it was or as the edit
+made it, and not empty.</p>
 <p>Undo is the same engine read backwards. <code class="docutils literal notranslate"><span class="pre">ddd.editing.apply_changes</span></code> answers a
 <code class="xref py py-class docutils literal notranslate"><span class="pre">Written</span></code> per file - the bytes it held before, <code class="docutils literal notranslate"><span class="pre">None</span></code> for a file the
 edit created, and the fingerprint of the bytes it left - and <code class="docutils literal notranslate"><span class="pre">ddd.editing.restore</span></code> writes
-those back through the same staging, taking away again a file the edit created and, when one
-file of several cannot be written, writing the ones already put back forward to what the
-edit had left them. <code class="docutils literal notranslate"><span class="pre">ddd.editing.unchanged</span></code> is what says an edit may still be put back: a
+those back through the same staging and sync, taking away again a file the edit created and,
+when one file of several cannot be written, writing the ones already put back forward to what
+the edit had left them. <code class="docutils literal notranslate"><span class="pre">ddd.editing.unchanged</span></code> is what says an edit may still be put back: a
 file whose bytes are no longer the ones it left is somebody else’s now, and the whole undo
 is refused as <code class="docutils literal notranslate"><span class="pre">stale</span></code> rather than half of it applied. The session keeps one stack of
 <code class="docutils literal notranslate"><span class="pre">Undoable</span></code> entries per open project, numbered as it pushes and capped at <code class="docutils literal notranslate"><span class="pre">MAX_UNDO</span></code> -

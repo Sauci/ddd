@@ -17,7 +17,7 @@ link dictionary to c_backend--><path d="M314.11,582.25 C292.27,601.14 266.12,623
 link dictionary to a2l_backend--><path d="M362.5,582.42 C362.5,613.45 362.5,655.73 362.5,688.15 " fill="none" id="dictionary-&gt;a2l_backend" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="362.5,692.98,366.5,683.98,362.5,687.98,358.5,683.98,362.5,692.98" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[87d475498898a09ba4a8fb528ed24a0c]
 link c_templates to c_backend--><path d="M113.79,575.4 C117.64,606.84 123.31,653.26 127.59,688.2 " fill="none" id="c_templates-&gt;c_backend" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="128.19,693.09,131.0561,683.6674,127.5768,688.1277,123.1165,684.6485,128.19,693.09" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="111" x="122.5" y="624.9869">name and render</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="61" x="147.5" y="640.1197">the c files</text><!--MD5=[fa4835ae610a0ee5d1b1d272f06726cd]
 link c_backend to c_files--><path d="M133.5,780.38 C133.5,798.11 133.5,818.72 133.5,836.43 " fill="none" id="c_backend-&gt;c_files" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="133.5,841.3,137.5,832.3,133.5,836.3,129.5,832.3,133.5,841.3" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[73a7b50b36f6a95d35b9ae11bac124b8]
-link a2l_backend to a2l_file--><path d="M362.5,780.38 C362.5,803.89 362.5,832.47 362.5,852.62 " fill="none" id="a2l_backend-&gt;a2l_file" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="362.5,857.6,366.5,848.6,362.5,852.6,358.5,848.6,362.5,857.6" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[b80b9124c9ad56f6301833be9b187a98]
+link a2l_backend to a2l_file--><path d="M362.5,780.38 C362.5,803.89 362.5,832.47 362.5,852.62 " fill="none" id="a2l_backend-&gt;a2l_file" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="362.5,857.6,366.5,848.6,362.5,852.6,358.5,848.6,362.5,857.6" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[ae3a27f4bf525d5ff77515c555405caf]
 @startuml
 package "front end - knows no output format" as front_end {
     component "ddd.models\nthe json file formats,\nstorage sizes, value ranges" as models
@@ -51,7 +51,7 @@ PlantUML version 1.2020.02(Sun Mar 01 10:22:07 UTC 2020)
 (GPL source distribution)
 Java Runtime: OpenJDK Runtime Environment
 JVM: OpenJDK 64-Bit Server VM
-Java Version: 25.0.4.1+1-LTS
+Java Version: 25.0.5+8-LTS
 Operating System: Linux
 Default Encoding: UTF-8
 Language: en

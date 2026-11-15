@@ -99,7 +99,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Container</span><span class="p">,</span> <span class="n">Iterable</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Container</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Mapping</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">cast</span><span class="p">,</span> <span class="n">get_args</span>
 
@@ -109,6 +110,8 @@
     <span class="n">ConfigDict</span><span class="p">,</span>
     <span class="n">Field</span><span class="p">,</span>
     <span class="n">StringConstraints</span><span class="p">,</span>
+    <span class="n">TypeAdapter</span><span class="p">,</span>
+    <span class="n">ValidationError</span><span class="p">,</span>
     <span class="n">model_validator</span><span class="p">,</span>
 <span class="p">)</span>
 
@@ -127,7 +130,14 @@
     <span class="n">hash_excluding_mappings</span><span class="p">,</span>
     <span class="n">within_64_bits</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">EnumConversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">,</span> <span class="n">conversion_range</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddd.models.conversion</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Conversion</span><span class="p">,</span>
+    <span class="n">EnumConversion</span><span class="p">,</span>
+    <span class="n">StringConversion</span><span class="p">,</span>
+    <span class="n">conversion_range</span><span class="p">,</span>
+    <span class="n">derived_range_is_finite</span><span class="p">,</span>
+    <span class="n">infinite_limits_message</span><span class="p">,</span>
+<span class="p">)</span>
 
 <span class="nb">type</span> <span class="n">InitScalar</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Annotated</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ge</span><span class="o">=-</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">63</span><span class="p">),</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="o">**</span><span class="mi">64</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
@@ -194,6 +204,60 @@
 
 <span class="nb">type</span> <span class="n">WrittenShape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
 <span class="sd">"""An array shape as it is written: each dimension a number or the name of a constant."""</span>
+
+<span class="nb">type</span> <span class="n">TypeConversions</span> <span class="o">=</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span>
+<span class="sd">"""What a project says of the types a declaration may name: the conversion the scalar type of</span>
+<span class="sd">that name fixes, or ``None`` for a name that is no scalar type the project declares.</span>
+
+<span class="sd">A definition does not hold it - the type is somebody else's entry - so whatever asks a question</span>
+<span class="sd">of a definition that names one (:func:`definition_problem`) is handed this, by whoever has the</span>
+<span class="sd">project in front of it."""</span>
+
+<span class="n">MAX_ELEMENTS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="mi">10_000_000</span>
+<span class="sd">"""How many elements one array holds.</span>
+
+<span class="sd">The dictionary, the a2l and the generated code carry every element, so a shape is not a</span>
+<span class="sd">number DDD can hold at arm's length: the c backend broadcasts a scalar ``init`` into one</span>
+<span class="sd">literal per element, and every element of an array of structures is spread out into leaves of</span>
+<span class="sd">its own. An array of a billion is a run that writes no file and reports no finding for as</span>
+<span class="sd">long as anybody cares to wait, so the shape is refused where it is written instead. The limit</span>
+<span class="sd">sits well past any array a description means to state, and already past what a build would</span>
+<span class="sd">enjoy - ten million literals is a generated file no compiler is happy with - because a shape</span>
+<span class="sd">larger than this is a constant that resolved to the wrong number rather than storage anybody</span>
+<span class="sd">planned.</span>
+<span class="sd">"""</span>
+
+<span class="n">MAX_DIMENSIONS</span><span class="p">:</span> <span class="n">Final</span> <span class="o">=</span> <span class="mi">64</span>
+<span class="sd">"""How many dimensions one shape states.</span>
+
+<span class="sd">Nothing about the storage: sixty-four dimensions of one element each are one element, so</span>
+<span class="sd">:data:`MAX_ELEMENTS` never sees them. What the number bounds is the descent - the walks that</span>
+<span class="sd">expand a shape take one call per dimension, so a scalar ``init`` over a few hundred of them</span>
+<span class="sd">ended ``ddd generate c`` in python's ``RecursionError``, a traceback where the conventions</span>
+<span class="sd">ask for a finding. The same limit the analysis puts on a chain of structures, for the same</span>
+<span class="sd">reason, and as far past any array a description means to state: the a2l already says out loud</span>
+<span class="sd">that it carries three.</span>
+<span class="sd">"""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">dimensions_problem</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="n">WrittenShape</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Why a shape states more dimensions than DDD carries, or ``None`` where it does not.</span>
+
+<span class="sd">    Said of the shape as it is written - a name counts as one dimension, whatever it comes to -</span>
+<span class="sd">    so that it is the definition's to say, before anything is known of the project.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">MAX_DIMENSIONS</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s2"> dimensions; DDD carries at most </span><span class="si">{</span><span class="n">MAX_DIMENSIONS</span><span class="si">}</span><span class="s2">"</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">elements_problem</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">elements</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Why an array of that many elements is more than DDD carries, or ``None`` where it is</span>
+<span class="sd">    not: one spelling for a shape the definition spells in numbers and one the analysis has</span>
+<span class="sd">    resolved."""</span>
+    <span class="k">if</span> <span class="n">elements</span> <span class="o">&lt;=</span> <span class="n">MAX_ELEMENTS</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' has </span><span class="si">{</span><span class="n">elements</span><span class="si">}</span><span class="s2"> elements; DDD carries at most </span><span class="si">{</span><span class="n">MAX_ELEMENTS</span><span class="si">}</span><span class="s2">"</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">ObjectKind</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
@@ -1075,8 +1139,10 @@
 <span class="sd">    between models cannot be left behind in a copy of the answer.</span>
 
 <span class="sd">    The caller is an editor offering to change one key of one definition. Both halves are what</span>
-<span class="sd">    stops it offering an edit that produces a file the loader then refuses - removing a key the</span>
-<span class="sd">    kind requires, or writing one the kind does not have.</span>
+<span class="sd">    stops it offering an edit that removes a key the kind requires, or writes one the kind does</span>
+<span class="sd">    not have: the keys one at a time, which is the cheap half of what keeps it from offering an</span>
+<span class="sd">    edit that produces a file the loader then refuses. The other half is the rules between keys,</span>
+<span class="sd">    which no list of keys can express and :func:`definition_problem` asks the models.</span>
 <span class="sd">    """</span>
     <span class="n">variant</span> <span class="o">=</span> <span class="n">_VARIANTS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">kind</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">variant</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1089,6 +1155,116 @@
         <span class="nb">frozenset</span><span class="p">(</span><span class="n">fields</span><span class="p">),</span>
         <span class="nb">frozenset</span><span class="p">(</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">is_required</span><span class="p">()),</span>
     <span class="p">)</span>
+
+
+<span class="n">_DEFINITION</span><span class="p">:</span> <span class="n">Final</span><span class="p">[</span><span class="n">TypeAdapter</span><span class="p">[</span><span class="n">AnyDataObject</span><span class="p">]]</span> <span class="o">=</span> <span class="n">TypeAdapter</span><span class="p">(</span><span class="n">AnyDataObject</span><span class="p">)</span>
+<span class="sd">"""The union :class:`~ddd.models.component.Declaration` validates a ``definition`` against, built</span>
+<span class="sd">once: compiling a discriminated union's schema is not free, and every plan asks it."""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">definition_problem</span><span class="p">(</span>
+    <span class="n">definition</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">],</span> <span class="n">types</span><span class="p">:</span> <span class="n">TypeConversions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""The first thing the project would refuse of a definition written like this, in one</span>
+<span class="sd">    sentence, or ``None`` where it takes it: the model of its ``kind`` first, and then the rules</span>
+<span class="sd">    of the analysis that ask nothing of the project beyond the declaration and its type.</span>
+
+<span class="sd">    The question an edit has to ask of the definition *as it would leave it*, before it is</span>
+<span class="sd">    offered or made: a key written against another - an enumeration beside a float, a string</span>
+<span class="sd">    beside a unit - is a ``schema`` error, which no severity setting turns down and which stops</span>
+<span class="sd">    the project being analysed at all. So is what the analysis files as ``schema`` from the</span>
+<span class="sd">    definition alone: a datatype and conversion whose derived limits run past the largest float,</span>
+<span class="sd">    and a shape of numbers past the caps (:func:`dimensions_problem`, :func:`elements_problem`)</span>
+<span class="sd">    - which the models take, because they derive no limit and count no element. And so is what</span>
+<span class="sd">    the type a declaration names asks of it, when that type is a string: exactly one dimension,</span>
+<span class="sd">    no display format (:func:`string_type_problem`) - which no definition holds, the type being</span>
+<span class="sd">    another entry. ``types`` is how it is told (:data:`TypeConversions`); a caller that does not</span>
+<span class="sd">    have the project in front of it passes none, and nothing is asked of a type. And ``ddd gui``</span>
+<span class="sd">    counts a file with one of them as a file that did not load, and settles nothing further</span>
+<span class="sd">    until it is mended. What these do not hold, because they need more of the project than the</span>
+<span class="sd">    declaration and the type it names - a ``typename`` naming a type nobody declares, an axis</span>
+<span class="sd">    that is not there, a shape naming a constant, the leaves of a structure - is no answer of</span>
+<span class="sd">    theirs, and stays a finding the analysis reports.</span>
+
+<span class="sd">    A rule crossing keys raises one english sentence, which pydantic wraps as ``"Value error,</span>
+<span class="sd">    &lt;that sentence&gt;"``: unwrapped here, rather than shown wrapped, since it is what a person can</span>
+<span class="sd">    act on. A key of the wrong shape has no such sentence to unwrap, and is said as pydantic</span>
+<span class="sd">    says it - the first of what ``ddd check`` files, in the order it files them. A rule of the</span>
+<span class="sd">    analysis is said in the sentence ``ddd check`` files it in. The caller's mapping is read and</span>
+<span class="sd">    not changed.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">accepted</span> <span class="o">=</span> <span class="n">_DEFINITION</span><span class="o">.</span><span class="n">validate_python</span><span class="p">(</span><span class="n">definition</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+        <span class="n">first</span> <span class="o">=</span> <span class="n">error</span><span class="o">.</span><span class="n">errors</span><span class="p">(</span><span class="n">include_url</span><span class="o">=</span><span class="kc">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">cause</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ctx"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"error"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">cause</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cause</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">)</span> <span class="k">else</span> <span class="n">first</span><span class="p">[</span><span class="s2">"msg"</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">_refused_by_the_analysis</span><span class="p">(</span><span class="n">accepted</span><span class="p">,</span> <span class="n">types</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">string_type_problem</span><span class="p">(</span>
+    <span class="n">definition</span><span class="p">:</span> <span class="n">DataObject</span><span class="p">,</span> <span class="n">named</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Why a declaration naming the string type ``named`` is refused, or ``None``.</span>
+
+<span class="sd">    A string is a one dimensional array of bytes, which a ``parameter``, an axis, a curve and a</span>
+<span class="sd">    map are not, and it has no display format - what the contract answers of a definition that</span>
+<span class="sd">    states the conversion itself (:func:`check_string_shape`, :func:`refuse_string_misuse`),</span>
+<span class="sd">    answered here of one that names a scalar type carrying it, which is only known once the type</span>
+<span class="sd">    is. ``conversion`` is the type's: anything but a string is no business of this rule, and</span>
+<span class="sd">    nothing is said of it. The unit and the limits the type fixes are the type's own and are</span>
+<span class="sd">    refused where it is written, so none is asked here.</span>
+
+<span class="sd">    The analysis files the sentence as ``schema`` at the declaration, and whatever writes a</span>
+<span class="sd">    definition says it first, in the same words.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">StringConversion</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">check_string_shape</span><span class="p">(</span><span class="n">definition</span><span class="o">.</span><span class="n">kind</span><span class="p">,</span> <span class="n">definition</span><span class="o">.</span><span class="n">declared_shape</span><span class="p">)</span>
+        <span class="n">refuse_string_misuse</span><span class="p">(</span>
+            <span class="kc">None</span><span class="p">,</span> <span class="n">conversion</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">limits</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">display_format</span><span class="o">=</span><span class="n">definition</span><span class="o">.</span><span class="n">a2l</span><span class="o">.</span><span class="n">format</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">definition</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' is declared as '</span><span class="si">{</span><span class="n">named</span><span class="si">}</span><span class="s2">', which is a string: </span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_refused_by_the_analysis</span><span class="p">(</span><span class="n">definition</span><span class="p">:</span> <span class="n">DataObject</span><span class="p">,</span> <span class="n">types</span><span class="p">:</span> <span class="n">TypeConversions</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""The first ``schema`` the analysis files of a definition the models took, from the</span>
+<span class="sd">    definition and the type it names, or ``None``.</span>
+
+<span class="sd">    In the order the analysis files them: the limits of a declaration that states its own</span>
+<span class="sd">    datatype and conversion, or what the type a declaration names asks of it when that type is</span>
+<span class="sd">    a string - either resolves the declaration, and one that is refused is dropped and its shape</span>
+<span class="sd">    never weighed - and then the dimensions its shape states and, where it states every one as a</span>
+<span class="sd">    number, the elements they come to.</span>
+
+<span class="sd">    What the analysis weighs with more of the project beside it is left out, because neither the</span>
+<span class="sd">    definition nor its type holds it: a shape naming a constant, the leaves of a structure, the</span>
+<span class="sd">    elements a map's two axes come to. ``ddd check`` reports those, and nothing that writes a</span>
+<span class="sd">    definition can say them first.</span>
+<span class="sd">    """</span>
+    <span class="n">datatype</span><span class="p">,</span> <span class="n">conversion</span> <span class="o">=</span> <span class="n">definition</span><span class="o">.</span><span class="n">datatype</span><span class="p">,</span> <span class="n">definition</span><span class="o">.</span><span class="n">conversion</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="n">datatype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="ow">and</span> <span class="n">conversion</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="ow">and</span> <span class="ow">not</span> <span class="n">derived_range_is_finite</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_min</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_max</span><span class="p">)</span>
+    <span class="p">):</span>
+        <span class="k">return</span> <span class="n">infinite_limits_message</span><span class="p">(</span><span class="n">datatype</span><span class="p">)</span>
+    <span class="n">named</span> <span class="o">=</span> <span class="n">definition</span><span class="o">.</span><span class="n">declared_type</span>
+    <span class="k">if</span> <span class="n">named</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">types</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">string_type_problem</span><span class="p">(</span><span class="n">definition</span><span class="p">,</span> <span class="n">named</span><span class="p">,</span> <span class="n">types</span><span class="p">(</span><span class="n">named</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">problem</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">problem</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="n">definition</span><span class="o">.</span><span class="n">declared_shape</span>
+    <span class="k">if</span> <span class="n">shape</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">problem</span> <span class="o">=</span> <span class="n">dimensions_problem</span><span class="p">(</span><span class="n">definition</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">shape</span><span class="p">)</span>
+    <span class="n">numbers</span> <span class="o">=</span> <span class="p">[</span><span class="n">dimension</span> <span class="k">for</span> <span class="n">dimension</span> <span class="ow">in</span> <span class="n">shape</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dimension</span><span class="p">,</span> <span class="nb">int</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="n">problem</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">numbers</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">):</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">elements_problem</span><span class="p">(</span><span class="n">definition</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">math</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">numbers</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">problem</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">discriminator_tags</span><span class="p">(</span><span class="o">*</span><span class="n">unions</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>

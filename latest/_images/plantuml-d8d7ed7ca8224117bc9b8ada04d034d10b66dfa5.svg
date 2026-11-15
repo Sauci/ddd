@@ -26,7 +26,7 @@ link image to address_map--><path d="M219.77,705.27 C193.56,711.77 166.01,723.94
 link project_file to ddd_second--><path d="M96.92,256.18 C66.88,280.8 29,320.97 29,366.99 C29,366.99 29,366.99 29,835.92 C29,879.52 66.68,912.95 101.78,934.63 " fill="none" id="project_file-&gt;ddd_second" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="105.63,936.97,99.9903,928.8957,101.3488,934.387,95.8575,935.7456,105.63,936.97" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[99cd34b684c698775ab68e8347345ab8]
 link address_map to ddd_second--><path d="M161,861.44 C161,881.6 161,909.87 161,931.55 " fill="none" id="address_map-&gt;ddd_second" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="161,936.53,165,927.53,161,931.53,157,927.53,161,936.53" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="95" x="162" y="904.2869">--address-map</text><!--MD5=[2058ceb755e6d97b736cfbc0c0864dac]
 link ddd_second to final_a2l--><path d="M161,991.28 C161,1015.01 161,1050.36 161,1076.24 " fill="none" id="ddd_second-&gt;final_a2l" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="161,1081.09,165,1072.09,161,1076.09,157,1072.09,161,1081.09" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="161" x="177.5" y="1033.8769">the a2l alone is rewritten;</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="192" x="162" y="1049.0097">the c sources are not touched</text><!--MD5=[80b50ce8d6f37850cef9f5d4b91eb778]
-link final_a2l to mc_tool--><path d="M161,1138.71 C161,1162.91 161,1198.38 161,1223.91 " fill="none" id="final_a2l-&gt;mc_tool" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="161,1228.66,165,1219.66,161,1223.66,157,1219.66,161,1228.66" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="144" x="162" y="1181.4769">measure and calibrate</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="110" x="179" y="1196.6097">the built software</text><!--MD5=[1c0f2697554acf9c617e48c8549b3e89]
+link final_a2l to mc_tool--><path d="M161,1138.71 C161,1162.91 161,1198.38 161,1223.91 " fill="none" id="final_a2l-&gt;mc_tool" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="161,1228.66,165,1219.66,161,1223.66,157,1219.66,161,1228.66" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="144" x="162" y="1181.4769">measure and calibrate</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="110" x="179" y="1196.6097">the built software</text><!--MD5=[d2fa6c99e48db1e3239a733c9dbef112]
 @startuml
 folder "software repository" as repository {
     collections "component descriptions\n(*.ddd.json)" as component_files
@@ -70,7 +70,7 @@ PlantUML version 1.2020.02(Sun Mar 01 10:22:07 UTC 2020)
 (GPL source distribution)
 Java Runtime: OpenJDK Runtime Environment
 JVM: OpenJDK 64-Bit Server VM
-Java Version: 25.0.4.1+1-LTS
+Java Version: 25.0.5+8-LTS
 Operating System: Linux
 Default Encoding: UTF-8
 Language: en

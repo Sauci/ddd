@@ -106,7 +106,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">isclose</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">isclose</span><span class="p">,</span> <span class="n">isfinite</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">runtime_checkable</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">BeforeValidator</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">model_validator</span>
@@ -532,6 +532,24 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">conversion_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""The physical range covered by the full raw range of ``datatype``."""</span>
     <span class="k">return</span> <span class="n">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_min</span><span class="p">,</span> <span class="n">datatype</span><span class="o">.</span><span class="n">raw_max</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">derived_range_is_finite</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw_min</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">raw_max</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether the physical range of that raw range under that conversion stays finite.</span>
+
+<span class="sd">    ``float64`` under a factor of 1.8 runs past the largest float there is. Limits of infinity</span>
+<span class="sd">    are not a range the dictionary, the a2l or a calibration tool can carry, so the analysis</span>
+<span class="sd">    refuses the pair where it is written - ``schema``, which no severity turns down - and so does</span>
+<span class="sd">    whatever writes one (:func:`ddd.models.definition_problem`).</span>
+<span class="sd">    """</span>
+    <span class="n">low</span><span class="p">,</span> <span class="n">high</span> <span class="o">=</span> <span class="n">physical_range</span><span class="p">(</span><span class="n">conversion</span><span class="p">,</span> <span class="n">raw_min</span><span class="p">,</span> <span class="n">raw_max</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">isfinite</span><span class="p">(</span><span class="n">low</span><span class="p">)</span> <span class="ow">and</span> <span class="n">isfinite</span><span class="p">(</span><span class="n">high</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">infinite_limits_message</span><span class="p">(</span><span class="n">datatype</span><span class="p">:</span> <span class="n">Datatype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""One spelling for the three places a datatype and conversion pair can be written - a</span>
+<span class="sd">    declaration, a scalar type, a member of a structure - and for whatever says it beforehand."""</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"the limits derived from '</span><span class="si">{</span><span class="n">datatype</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">' and this conversion are not finite"</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">raw_reading</span><span class="p">(</span><span class="n">conversion</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>

@@ -141,7 +141,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">StrEnum</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Literal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Literal</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">AfterValidator</span><span class="p">,</span>
@@ -150,6 +150,8 @@
     <span class="n">Field</span><span class="p">,</span>
     <span class="n">PositiveInt</span><span class="p">,</span>
     <span class="n">StringConstraints</span><span class="p">,</span>
+    <span class="n">TypeAdapter</span><span class="p">,</span>
+    <span class="n">ValidationError</span><span class="p">,</span>
     <span class="n">model_validator</span><span class="p">,</span>
 <span class="p">)</span>
 
@@ -611,6 +613,26 @@
 <span class="sd">reason the member shapes already give: a file that omits a key by mistake should be told which</span>
 <span class="sd">shape it failed to describe, not silently become another one.</span>
 <span class="sd">"""</span>
+
+<span class="n">_TYPE</span><span class="p">:</span> <span class="n">Final</span><span class="p">[</span><span class="n">TypeAdapter</span><span class="p">[</span><span class="n">AnyType</span><span class="p">]]</span> <span class="o">=</span> <span class="n">TypeAdapter</span><span class="p">(</span><span class="n">AnyType</span><span class="p">)</span>
+<span class="sd">"""The union an entry validates against, built once: compiling a discriminated union's schema is</span>
+<span class="sd">not free, and every question about a type asks it."""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">scalar_conversion</span><span class="p">(</span><span class="n">entry</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Conversion</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""The conversion the type written as ``entry`` fixes for what names it, or ``None``.</span>
+
+<span class="sd">    ``None`` for a structure, which fixes none, for an external type, which fixes nothing DDD</span>
+<span class="sd">    can see, and for an entry the loader would not take: whether a type loads is its own file's</span>
+<span class="sd">    finding, and what a declaration names is not told anything by it. Read through the model of</span>
+<span class="sd">    the entry rather than by the key it is written under, so that what a question about a</span>
+<span class="sd">    declaration is told of its type is what the analysis is told of it.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">parsed</span> <span class="o">=</span> <span class="n">_TYPE</span><span class="o">.</span><span class="n">validate_python</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">parsed</span><span class="o">.</span><span class="n">conversion</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="n">ScalarType</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">check_distinct_type_names</span><span class="p">(</span><span class="n">entries</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">StructType</span> <span class="o">|</span> <span class="n">ScalarType</span> <span class="o">|</span> <span class="n">ExternalType</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>

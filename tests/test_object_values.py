@@ -747,7 +747,7 @@ class TestChangingOne:
         finally:
             session.stop()
         assert isinstance(plan, ValuePlan)
-        assert plan.edits[0].operations[0].raw == "1"
+        assert plan.edits[0].operations[0].raw == "true"
         assert refused.value.message == "2 is not a valid bool"
 
     def test_a_float_past_its_precision_rounds_to_zero_and_is_refused(self, tmp_path) -> None:
@@ -1524,6 +1524,60 @@ class TestAFloatIsWrittenAsAFloat:
         assert revision.dictionary is not None and revision.index is not None
         plan = set_cell(revision.dictionary, revision.index, "Grid", "[0]", 3, {})
         assert self._raws(plan) == ["3"]
+
+
+class TestABooleanIsWrittenAsABoolean:
+    """A boolean's value is written as ``true`` or ``false``, as a float's is written as a float:
+    the page sends the count, 0 or 1, and writing it as sent turned a file's ``false`` into ``0``
+    and its ``true`` into ``1``, which ``ddd check`` takes but no file of booleans spells."""
+
+    @staticmethod
+    def _raws(plan: ValuePlan) -> list[str]:
+        (edit,) = plan.edits
+        return [operation.raw or "" for operation in edit.operations]
+
+    def test_a_scalar_keeps_its_spelling(self, demo) -> None:
+        # The demo's FlagA states `"init": false`: set to 1 it reads `true`, and set back to 0 it
+        # reads `false` again, where it was written `1` and then `0`.
+        dictionary, built = demo
+        made = [set_cell(dictionary, built, "FlagA", "", raw, {}) for raw in (1, 0)]
+        assert [self._raws(plan) for plan in made] == [["true"], ["false"]]
+        (edit,) = made[0].edits
+        after = edit_text(edit.path.read_text(encoding="utf-8"), edit.operations)
+        assert _definition_of(after, "FlagA")["init"] is True
+
+    def test_cells_a_table_and_the_zeros_a_whole_init_is_filled_out_with(self, tmp_path) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Flags",
+                        kind="value_block",
+                        datatype="boolean",
+                        dimensions=[3],
+                        init=[True],
+                    ),
+                ),
+            },
+        )
+        revision = first_revision(tmp_path, tmp_path / "p.ddd.json")
+        assert revision.dictionary is not None and revision.index is not None
+        dictionary, built = revision.dictionary, revision.index
+        assert self._raws(set_cell(dictionary, built, "Flags", "[0]", 0, {})) == ["false"]
+        assert self._raws(set_cell(dictionary, built, "Flags", "[2]", 1, {})) == [
+            "[true, false, true]"
+        ]
+        assert self._raws(set_cells(dictionary, built, "Flags", [("[0]", 0)], {})) == ["false"]
+        assert self._raws(set_cells(dictionary, built, "Flags", [("[1]", 1)], {})) == [
+            "[true, true, false]"
+        ]
+        assert self._raws(set_values(dictionary, built, "Flags", [[1, 0, 1]], {})) == [
+            "[true, false, true]"
+        ]
 
 
 class TestLimitsRefusal:

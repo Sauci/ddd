@@ -414,7 +414,17 @@ describe("rawCount", () => {
     { physical: "0.1", factor: 1, datatype: "float32", raw: 0.1 },
     { physical: "16777217", factor: 1, datatype: "float32", raw: 16777216 },
     { physical: "1.000000059604644775390625", factor: 1, datatype: "float32", raw: 1 },
-    { physical: "3.4028235e38", factor: 1, datatype: "float32", raw: 3.4028235e38 },
+    // FLT_MAX either side of zero, whatever it is typed as, is the float32's own double: its
+    // briefest spelling, 3.4028235e38, is a double past it, which the server refuses as not
+    // fitting into float32.
+    { physical: "3.4028235e38", factor: 1, datatype: "float32", raw: 3.4028234663852886e38 },
+    { physical: "-3.4028235e38", factor: 1, datatype: "float32", raw: -3.4028234663852886e38 },
+    {
+      physical: "3.4028234663852886e38",
+      factor: 1,
+      datatype: "float32",
+      raw: 3.4028234663852886e38,
+    },
     { physical: "1e-45", factor: 1, datatype: "float32", raw: 1e-45 },
     { physical: "5e-324", factor: 1, datatype: "float64", raw: 5e-324 },
     {
@@ -438,7 +448,10 @@ describe("rawCount", () => {
     // Past FLT_MAX by more than half its last unit: the significand rounds up to 2^24, and the
     // power of two it is carried into is past the most a float32 has.
     expect(rawCount(decimal("3.4028236e38"), null, "float32")).toEqual({ beyond: true });
-    expect(rawCount(decimal("3.4028235e38"), null, "float32")).toEqual({ raw: 3.4028235e38 });
+    expect(rawCount(decimal("3.4028235e38"), null, "float32")).toEqual({
+      raw: 3.4028234663852886e38,
+    });
+    expect(rawCount(decimal("-3.4028236e38"), null, "float32")).toEqual({ beyond: true });
   });
 
   test("a float the datatype cannot hold is said to be beyond it, or to round to zero", () => {
@@ -530,6 +543,11 @@ describe("singleOf", () => {
     { raw: 3, single: 3 },
     { raw: 16777217, single: 16777216 },
     { raw: 1e-46, single: 0 },
+    // FLT_MAX either side of zero is its own double: its briefest spelling, 3.4028235e38, is a
+    // double past it, which typed back would be refused as not fitting into float32.
+    { raw: 3.4028235e38, single: 3.4028234663852886e38 },
+    { raw: -3.4028235e38, single: -3.4028234663852886e38 },
+    { raw: 3.4028234663852886e38, single: 3.4028234663852886e38 },
     // Past what a float32 holds, the file's number as it stands.
     { raw: 1e39, single: 1e39 },
   ])("$raw is $single", ({ raw, single }) => {

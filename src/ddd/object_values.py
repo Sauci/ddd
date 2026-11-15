@@ -687,9 +687,9 @@ def _has_cell(written: object, found: tuple[int, ...]) -> bool:
 def _filled_out(
     rows: tuple[tuple[float, ...], ...], shape: tuple[int, ...], datatype: Datatype
 ) -> list[list[float]]:
-    """``rows`` as lists, each row and the rows themselves taken to the shape with zeros - a
-    float's written as one (:func:`_written`); one longer than the shape is left as it is, for its
-    own finding to say so."""
+    """``rows`` as lists, each row and the rows themselves taken to the shape with zeros, written
+    as the datatype writes them (:func:`_written`) - a float's as one, a boolean's as ``false``; one
+    longer than the shape is left as it is, for its own finding to say so."""
     filled = [list(row) for row in rows]
     width = shape[-1]
     zero = _written(0, datatype)
@@ -704,7 +704,11 @@ def _written(raw: float, datatype: Datatype) -> float:
     """``raw`` as its datatype's value is written: a float's as a float, ``3.0`` for the ``3`` the
     page sends - and ``1e+19`` for ``10000000000000000000``, a whole number past :data:`EXACT` that
     :func:`_unshowable` would otherwise mark as one the grid cannot show, though a float holds it
-    as it is. Any other datatype's as it was given."""
+    as it is - and a boolean's as ``true`` or ``false`` for the count 1 or 0 the page sends, so that
+    a file's ``false`` set to 1 and back reads ``true`` and then ``false``, where it was written
+    ``1`` and then ``0``. Any other datatype's as it was given."""
+    if datatype is Datatype.BOOLEAN:
+        return bool(raw)
     return float(raw) if datatype.is_float else raw
 
 

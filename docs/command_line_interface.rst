@@ -423,11 +423,14 @@ The commands
        the decimals typed and the conversion's own: a whole datatype's count is the nearest
        one, an exact half going to the even count, either side of zero, as ``round_physical``
        rounds; a float's is the float its datatype stores nearest, spelled as briefly as it
-       reads back, so 0.3 at a factor of 0.1 is 3. A float's value is written as a float, its
-       whole numbers too. Physical shows a whole datatype's raw count as the exact product, the
-       count times the factor plus the offset, and a float's as the shortest decimal whose plan
-       comes to that same float - a ``float32``'s being the float32 its file's number rounds
-       to, which raw shows the same way, so a ``float32`` its file spells
+       reads back, so 0.3 at a factor of 0.1 is 3. FLT_MAX, either side of zero, is its own
+       double, 3.4028234663852886e+38, planned so and shown so in raw: its briefest spelling,
+       3.4028235e+38, is a double past it, which the server and ``ddd check`` refuse a
+       ``float32``. A float's value is written as a float, its whole numbers too, and a
+       boolean's as ``true`` or ``false``. Physical shows a whole datatype's raw count as the
+       exact product, the count times the factor plus the offset, and a float's as the shortest
+       decimal whose plan comes to that same float - a ``float32``'s being the float32 its
+       file's number rounds to, which raw shows the same way, so a ``float32`` its file spells
        ``0.10000000149011612`` reads 0.1 - never cut at twelve significant digits and never
        with the tail of the double arithmetic: 255 counts of 0.03 read 7.65, and a float64 of
        1234567890123 reads so. A grid

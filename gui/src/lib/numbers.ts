@@ -379,13 +379,19 @@ function nearestIn(ratio: Ratio, format: Format): number {
   return negative ? -value : value;
 }
 
+/** FLT_MAX, the most a float holds, as the double it is: the widest significand at the most power
+ * of two, which `String` spells 3.4028234663852886e+38. */
+const SINGLE_MOST = (2 ** SINGLE.digits - 1) * 2 ** SINGLE.most;
+
 /** The shortest spelling of a float - a `float32`'s, as a double - that a compiler reads back as
  * it: the double the digits are, so that `String` spells them - 0.1 for the float nearest 0.1,
- * rather than the 0.10000000149011612 of its exact value. */
+ * rather than the 0.10000000149011612 of its exact value. But never a double past FLT_MAX's own:
+ * FLT_MAX's shortest spelling, 3.4028235e38, is one, which the server's range for a `float32`
+ * refuses, and `ddd check` with it, so ±FLT_MAX is spelled as its own double. */
 function shortestSingle(value: number): number {
   for (let digits = 1; digits < 9; digits += 1) {
     const spelled = Number(value.toPrecision(digits));
-    if (Math.fround(spelled) === value) return spelled;
+    if (Math.fround(spelled) === value) return Math.abs(spelled) > SINGLE_MOST ? value : spelled;
   }
   return Number(value.toPrecision(9));
 }

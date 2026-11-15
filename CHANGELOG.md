@@ -265,16 +265,21 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   decimals typed and the conversion's own, an exact half going to the even count as the server
   rounds it; a physical value typed into a float is planned as the shortest float that comes back,
   so 0.3 at a factor of 0.1 writes 3; and a `float32` reads as the float32 its file's number
-  rounds to, so a file's 0.10000000149011612 reads 0.1.  Physical shows the exact product of the
-  count and the factor for a whole datatype, 255 counts of 0.03 as 7.65, and the shortest decimal
-  for a float, never cut at twelve significant digits.  A number past what a double holds, or
-  that rounds to zero in a float, is refused on the page.  No file format changes.
+  rounds to, so a file's 0.10000000149011612 reads 0.1.  FLT_MAX is planned, and read in Raw, as
+  its own double, 3.4028234663852886e+38: its shortest spelling, 3.4028235e+38, is a double past
+  it, which the server and `ddd check` refuse a `float32`.  Physical shows the exact product of
+  the count and the factor for a whole datatype, 255 counts of 0.03 as 7.65, and the shortest
+  decimal for a float, never cut at twelve significant digits.  A number past what a double
+  holds, or that rounds to zero in a float, is refused on the page.  No file format changes.
 
-* **A float's values are written as floats.**  The grid wrote a float's whole value as `3`, which
-  spells an integer.  It now writes `3.0`, the zeros it fills out an array
-  with `0.0`, and a float variable's or type's limits `-50.0` and `90.0`.  Migrating costs a
-  diff: a table pasted over a float array whose file spells whole numbers, or spells a `float32`
-  at double precision, rewrites that spelling, and the diff shows it.  The values mean the same.
+* **A float's values are written as floats, and a boolean's as booleans.**  The grid wrote a
+  float's whole value as `3`, which spells an integer, and a boolean's as the count the page
+  sends, so a `false` set to 1 and back was written `1` and then `0`.  It now writes `3.0`, the
+  zeros it fills out an array with `0.0`, a float variable's or type's limits `-50.0` and
+  `90.0`, and a boolean's value `true` or `false`, the zeros of a boolean array `false`.
+  Migrating costs a diff: a table pasted over a float array whose file spells whole numbers, or
+  spells a `float32` at double precision, rewrites that spelling, and the diff shows it.  The
+  values mean the same.
 
 * **The values grid takes several cells at once, and draws what the file states.**  The 0.11.0
   notes say "One cell is changed at a time", and that no longer holds: the cells typed into are

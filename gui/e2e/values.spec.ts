@@ -983,6 +983,32 @@ test("a physical value typed into a float block is planned as the shortest float
   expect(readFileSync(join(gui.directory, SENSOR_HUB), "utf8")).toMatch(/\n\s+7\.0,\n/);
 });
 
+test("FLT_MAX typed into a float32 cell is planned as its own double, which the server takes", async ({
+  page,
+  copiedGui,
+}) => {
+  // The briefest spelling of FLT_MAX, 3.4028235e38, is a double past FLT_MAX's own: planned as
+  // that, it was refused as not fitting into float32, however FLT_MAX was typed. The float32's
+  // own double, 3.4028234663852886e+38, is the most the server's range for it takes.
+  const gui = await copiedGui("demo", valueDOf("float32", { kind: "identity" }, [1, 2]));
+  await openValues(page, gui.address, "ValueD", "SensorHub");
+  const grid = page.getByRole("grid", { name: "Values of ValueD" });
+  await typed(grid.getByRole("textbox", { name: "element 1" }), "3.4028235e38");
+  const offer = page.getByRole("region", { name: "Set the cell" });
+  await expect(offer.getByText("Sets element 1 of ValueD to 3.4028234663852886e+38")).toBeVisible();
+  await expect(offer.getByRole("status")).toHaveCount(0);
+  await offer.getByRole("button", { name: "Show changes" }).click();
+  await expect(offer.locator(".added")).toHaveText([/^\+\s+3\.4028234663852886e\+38,$/]);
+  await page.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => definitionOf(gui.directory, SENSOR_HUB, "ValueD").init)
+    .toEqual([3.4028234663852886e38, 2]);
+  // And the cell reads it so: what it shows, typed or pasted, is what the server takes.
+  await expect(grid.getByRole("textbox", { name: "element 1" })).toHaveValue(
+    "3.4028234663852886e+38",
+  );
+});
+
 test("a value of more than twelve significant digits reads whole in physical", async ({
   page,
   copiedGui,

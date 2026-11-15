@@ -493,7 +493,17 @@ class TestTheCommandPage:
             "a float's is the float its datatype stores nearest, spelled as briefly as it reads "
             "back, so 0.3 at a factor of 0.1 is 3"
         ) in text
-        assert "A float's value is written as a float, its whole numbers too" in text
+        # The final wave: FLT_MAX's briefest spelling is a double past it, and a boolean is
+        # written as one.
+        assert (
+            "FLT_MAX, either side of zero, is its own double, 3.4028234663852886e+38, planned so "
+            "and shown so in raw: its briefest spelling, 3.4028235e+38, is a double past it, which "
+            "the server and ``ddd check`` refuse a ``float32``"
+        ) in text
+        assert (
+            "A float's value is written as a float, its whole numbers too, and a boolean's as "
+            "``true`` or ``false``"
+        ) in text
         # Fix round 1, M7 and M4: the shortest decimal is a float's; a whole datatype shows the
         # exact product, and a float32 reads as the float32 its file's number rounds to.
         old = "Physical shows the shortest decimal that reads back as the raw count it shows"

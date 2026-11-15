@@ -16,20 +16,6 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
-* **`ddd gui` edits the value of a scalar and the description of a variable.**  A plain
-  calibration parameter or measurement, the commonest value in a project, had no control on the
-  page and no sentence saying so: its row had no Shape button, its panel listed neither its
-  `init` nor its description, and its values page answered that it had no cell for a value to sit
-  in.  A scalar's Shape column now reads `scalar` and opens its values page as a grid of one
-  cell - physical or raw by the toggle, its value one `set` at the declaration's own `init`,
-  added where the file states none - with no table to paste and no picture of one point.  A
-  variable's panel, opened from a component's page, holds that component's own description of it
-  as a text field, planned, previewed, applied and undone like the panel's other keys; emptying
-  the field takes the key away.  Renaming a variable and changing its scope stay in the file, in
-  the editor, and the panel says so.  `GET /api/description-plan` is the plan of the description,
-  and `GET /api/value-plan` takes a blank `at` for a scalar; the api is a preview's and changes
-  with the package.  No file format changes.
-
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
   Linux a file kept `0600` came out with the mode a new file gets, a file kept read-only was
@@ -221,6 +207,119 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   DDD, and says so, and an older one skips it in silence, so a team on mixed versions upgrades its
   editors with the module.  A `PROJECT` with an older module's record beside it stays refused
   until the build is configured again.
+
+* **`ddd gui` edits the value of a scalar and the description of a variable.**  A plain
+  calibration parameter or measurement, the commonest value in a project, had no control on the
+  page and no sentence saying so: its row had no Shape button, its panel listed neither its
+  `init` nor its description, and its values page answered that it had no cell for a value to sit
+  in.  A scalar's Shape column now reads `scalar` and opens its values page as a grid of one
+  cell - physical or raw by the toggle, its value one `set` at the declaration's own `init`,
+  added where the file states none - with no table to paste and no picture of one point.  A
+  variable's panel, opened from a component's page, holds that component's own description of it
+  as a text field, planned, previewed, applied and undone like the panel's other keys; emptying
+  the field takes the key away.  Renaming a variable and changing its scope stay in the file, in
+  the editor, and the panel says so.  `GET /api/description-plan` is the plan of the description,
+  and `GET /api/value-plan` takes a blank `at` for a scalar; the api is a preview's and changes
+  with the package.  No file format changes.
+
+* **A whole number a double cannot hold is never shown, or written, as another.**  The page holds
+  a number as a double, which past 2^53 no longer holds every whole number, so a `uint64` block of
+  9007199254740993 and 18446744073709551615 was drawn as ...992 and 18446744073709552000, and a
+  mask such as 0x8000000000000001, typed or pasted, was written into the file as
+  9223372036854776000 - another number than the one asked for.  Such a number is now refused where
+  it is typed or pasted, in one sentence, whatever its spelling; the values reply marks a block
+  whose values or axis hold one (`unshown`), and the grid says it cannot show it where it drew a
+  rounded number; a limit stated past 2^53 shows in its file's own digits, and the page refuses a
+  limit typed past it; and the server refuses a whole value at or past 2^53 for a `uint64` or a
+  `sint64`, and a limit at or past it however it is written, in digits or as a float.  A value or a
+  limit that large is set in the file, in the editor.  No file format changes.
+
+* **Every number the page takes is read in decimal notation, and in no other.**  The grid's cells
+  and a paste took what the browser's parser takes, so `0x10` set 16 and `Infinity` was sent on,
+  while a range's two fields, a size, a dimension, a constant's Value, a section's alignment and a
+  raster's event each read a number their own way, and left a number written otherwise to the
+  server or to json to refuse in their words.  All of them now read an optional sign, digits with
+  an optional fraction or a fraction alone, and an optional exponent, the white space around it
+  ignored; hexadecimal, binary, octal, `Infinity`, `NaN` and digits parted by underscores are
+  refused in one sentence, the same in every field, and nothing is sent for them.  A boolean takes
+  0 and 1 alone, in Raw and in Physical, where Physical rounded 0.6 to 1.  A person who typed
+  `0x1F` types 31.  No file format changes.
+
+* **A decimal comma is read as one where it cannot group thousands.**  A block pasted from a
+  spreadsheet of a comma locale, `0,125 0,250 0,500`, was refused, and the page's advice was to
+  paste the column unformatted; that advice is gone.  A comma is now a decimal point where it
+  cannot group thousands, after a first group of 0 or of more than three digits or before anything
+  but exactly three, and groups thousands where it cannot be a decimal point; text holding both
+  has its decimal point last.  Values read together, a pasted block or the cells typed into a
+  grid, read a comma that could be either as the others show theirs, and a pasted block that shows
+  both readings is refused, in a sentence saying what it mixes.  In the grid a comma that could be
+  either, `1,500` alone, is asked about with a choice of one press, "A decimal point: 1.5" or "A
+  thousands separator: 1500", and the answer given stands whatever is typed after it; the other
+  fields refuse such a comma in the same sentence, naming the field.  Nothing to migrate.
+
+* **A number typed in the grid is written as the nearest the datatype holds, and shown with the
+  digits it needs.**  A physical value was worked out in double arithmetic, so 0.7 at a factor of
+  0.1 was written into a float as 6.999999999999999, a value of more than twelve digits was shown
+  cut (1234567890123 as 1234567890120), and a `float32` the file spells at double precision showed
+  the digits of the double.  A physical value now comes to the nearest count, worked out on the
+  decimals typed and the conversion's own, an exact half going to the even count as the server
+  rounds it; a physical value typed into a float is planned as the shortest float that comes back,
+  so 0.3 at a factor of 0.1 writes 3; and a `float32` reads as the float32 its file's number
+  rounds to, so a file's 0.10000000149011612 reads 0.1.  Physical shows the exact product of the
+  count and the factor for a whole datatype, 255 counts of 0.03 as 7.65, and the shortest decimal
+  for a float, never cut at twelve significant digits.  A number past what a double holds, or
+  that rounds to zero in a float, is refused on the page.  No file format changes.
+
+* **A float's values are written as floats.**  The grid wrote a float's whole value as `3`, which
+  spells an integer.  It now writes `3.0`, the zeros it fills out an array
+  with `0.0`, and a float variable's or type's limits `-50.0` and `90.0`.  Migrating costs a
+  diff: a table pasted over a float array whose file spells whole numbers, or spells a `float32`
+  at double precision, rewrites that spelling, and the diff shows it.  The values mean the same.
+
+* **The values grid takes several cells at once, and draws what the file states.**  The 0.11.0
+  notes say "One cell is changed at a time", and that no longer holds: the cells typed into are
+  held together, each showing what was typed, and planned as one change with one sentence, one
+  Apply and one undo, each written at its own element where the array is long enough, so cells
+  nobody typed keep their spelling (a short array, or none, is written whole); the page asks
+  `GET /api/cells-plan` for them.  A cell typed back to its file's value offers nothing, and a
+  plan whose edit would change no byte, a table pasted over the values the file spells, offers no
+  Apply and answers `changes: []`.  A cell is sized to its text, and the offer stays at the
+  window's foot while a cell is open, instead of below the grid.  Columns and rows
+  come from the object's shape, a breakpoint labelling its own column.  A cell the file does not
+  state, past a short `init` or any cell of a declaration with no `init`, is drawn hollow and
+  named so, where the second read as greyed zeros.  A grid that states nothing draws no picture,
+  and where an axis states fewer breakpoints than the shape the picture lies over indices, its
+  ticks reading them.  A cell keeps the reading it was typed in when the toggle is turned.  No
+  file format changes.
+
+* **A value chosen for one key of a variable's panel is never applied to another.**  The panel
+  carried what was chosen, typed or edited for one key to the key it moved to by itself, so Apply
+  could write one key's value under another's name.  It now holds each value for its own key and
+  drops it when another is on screen.  A chooser whose text is not the value settled, its Apply
+  and the declare form's Add are withheld, with a sentence saying whether Enter takes the text or
+  the list must; a scroll that closes the list keeps what was typed, and only Escape and leaving
+  the field end the text.  Nothing to migrate.
+
+* **A number typed into a grid cell reaches the cell.**  The table's type-to-find took the
+  digits of a number typed key by key, so typing 20 over 12 could leave 2 or 2012, and the focused
+  cell did not follow the field that had the focus.  A key naming one character stays with the
+  cell, and the grid's focused cell follows its field.  Nothing to migrate.
+
+* **A unit with spaces around it is refused on a variable's panel and a type's.**  It was planned
+  and written with the spaces kept.  It is now refused in the words of the Units tab, and the route
+  that settles a key and the type route answer 409.  A unit typed that way has to be typed without
+  them.
+
+* **An undo label is cut on a whole character.**  A label long enough to be cut was cut through
+  the pair of a character outside the basic plane, an emoji, and the edit was refused as invalid
+  json.  The page now counts and cuts in whole characters, so the edit is applied.  Nothing to
+  migrate.
+
+* **Typing in a grid of thousands of cells no longer stalls.**  A key pressed in a grid of 4,096
+  cells took 728 ms, measured on the development PC, because the picture's extremes were found
+  for every point and every cell was drawn again.  The picture is now worked out in time linear in
+  its cells and a key press draws only the cell typed into: 27 ms a key at 4,096 cells, under the
+  100 ms the design for large projects allows.  Nothing to migrate.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

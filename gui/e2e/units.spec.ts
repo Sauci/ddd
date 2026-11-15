@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, chooseUnit, drift, renameValueA, scrolledIntoView } from "./demo";
+import { CONTROLLER, chooseUnit, drift, renameValueA, SENSOR_HUB, scrolledIntoView } from "./demo";
 import { expect, test } from "./fixtures";
 
 test("a disagreement written from outside is resolved from the component page", async ({
@@ -78,6 +78,33 @@ test("a unit typed and confirmed with Enter is the unit chosen, listed or not", 
   await expect(panel.getByText("Changes 1 file: sensor_hub.ddd.json")).toBeVisible();
 });
 
+test("a unit with spaces around it is refused, as the Units tab refuses it, and nothing is planned", async ({
+  page,
+  gui,
+}) => {
+  // 15:M10: `V ` and Enter wrote "unit": "V ", while the Units tab refuses that spelling.
+  const files = [SENSOR_HUB, CONTROLLER].map((file) => join(gui.directory, file));
+  const before = files.map((file) => readFileSync(file));
+  await page.goto(gui.address);
+  await page.getByRole("button", { name: "Controller", exact: true }).click();
+  await page.getByRole("button", { name: "Set the unit of ValueA" }).click();
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  const picker = panel.getByRole("combobox", { name: "Unit of ValueA" });
+  await picker.click();
+  await picker.clear();
+  await picker.pressSequentially("V ");
+  await picker.press("Enter");
+  await expect(picker).toHaveAccessibleDescription("'V ' has spaces around it");
+  // The field reads what was chosen, and the note under it why it is refused.
+  await expect(picker).toHaveValue("V ");
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  await expect(panel.getByText(/^Changes \d+ file/)).toHaveCount(0);
+  expect(files.map((file, at) => readFileSync(file).equals(before[at] as Buffer))).toEqual([
+    true,
+    true,
+  ]);
+});
+
 test("text left without Enter chooses nothing, and the field reads the chosen unit again", async ({
   page,
   gui,
@@ -99,10 +126,13 @@ test("text left without Enter chooses nothing, and the field reads the chosen un
   await expect(picker).toHaveValue("%");
   await expect(picker).toHaveAttribute("aria-expanded", "false");
 
+  // An Enter that takes nothing - a blank field - keeps the text; Escape puts the unit back.
   await picker.fill("");
   await picker.press("Enter");
-  await expect(picker).toHaveValue("%");
+  await expect(picker).toHaveValue("");
   await expect(picker).toHaveAttribute("aria-expanded", "false");
+  await picker.press("Escape");
+  await expect(picker).toHaveValue("%");
 
   await picker.fill("r");
   await picker.press("Tab");

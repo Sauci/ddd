@@ -38,11 +38,12 @@ from ddd.models import (
 )
 from ddd.plugins import (
     Plugin,
+    PluginError,
     PluginInvalidError,
     PluginNotFoundError,
     guarding_plugin_model,
     load_plugin,
-    plugin_source,
+    plugin_files,
 )
 
 DDD_SUFFIX = ".ddd.json"
@@ -427,8 +428,6 @@ class LoadedPlugin:
     plugin: Plugin
     spelling: str
     origin: Location
-    source: Path | None = None
-    """The file the module came from, or ``None`` for a module that has none."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -523,11 +522,15 @@ class Workspace:
     """
 
     plugin_paths: tuple[Path, ...] = ()
-    """The files of the plugins the project loaded, in project order, each once.
+    """The files of the plugins the project names, in project order, each once.
 
     A plugin decides what the generated artefacts say as much as a component does, so a
-    build has to run DDD again when one changes; ``sources()`` lists them for that reason. A
-    module with no file - one planted into ``sys.modules`` - is not here.
+    build has to run DDD again when one changes; ``sources()`` lists them for that reason.
+    Those a project names and could not load are here too, a ``.py`` spelling being a file
+    whether or not it imports, as a missing include is a source: the edit that repairs one is
+    what the build has to notice. A package is every ``.py`` file of it, and a module spelling
+    that failed to import is the file the finder locates for it. A module with no file - one
+    planted into ``sys.modules`` - or one the finder cannot locate either, is not here.
     """
 
     plugins: tuple[Plugin, ...] = ()
@@ -550,7 +553,9 @@ class Workspace:
     naming it, since a consumer's declaration is still where a reader looks for the object."""
 
     def sources(self) -> tuple[Path, ...]:
-        """Every file that was read to build this workspace, sorted and without duplicates.
+        """Every file this workspace is built out of, sorted and without duplicates: those that
+        were read, and the files of the plugins the project names, read or not
+        (:attr:`plugin_paths`).
 
         What a build system needs in order to know when to run DDD again: the root file
         alone is not enough, because a project pulls its components in through ``includes``.
@@ -671,6 +676,7 @@ def load_workspace(
     *,
     includes: Sequence[str] | None = None,
     files_read: dict[Path, FileRead] | None = None,
+    plugin_defects_are_findings: bool = False,
 ) -> Workspace | None:
     """Load ``path`` (a project or a single component file) and everything it includes.
 
@@ -686,8 +692,19 @@ def load_workspace(
     (:class:`FileRead`), whatever came of it - the root's too, where no workspace comes back. What
     ``ddd gui`` describes the files of a revision by; a caller that does not ask fingerprints
     nothing.
+
+    A plugin's own model that raises while a block is validated against it is a usage error
+    (:class:`~ddd.plugins.PluginError`) ending the load, which is what ``ddd check`` and the
+    commands over the analysis answer to. ``plugin_defects_are_findings`` has the load go on
+    instead and report each as ``plugin-invalid`` at the block: for a caller that wants what
+    the project names - ``ddd sources`` and ``ddd artefacts`` - whatever a plugin's defect.
     """
-    return _Loader(bag, includes=includes, files_read=files_read).load(path)
+    return _Loader(
+        bag,
+        includes=includes,
+        files_read=files_read,
+        plugin_defects_are_findings=plugin_defects_are_findings,
+    ).load(path)
 
 
 class _Loader:
@@ -697,8 +714,10 @@ class _Loader:
         *,
         includes: Sequence[str] | None = None,
         files_read: dict[Path, FileRead] | None = None,
+        plugin_defects_are_findings: bool = False,
     ) -> None:
         self._bag = bag
+        self._plugin_defects_are_findings = plugin_defects_are_findings
         self._root_includes = includes
         self._files_read = files_read
         self._components: list[LoadedComponent] = []
@@ -715,6 +734,7 @@ class _Loader:
         self._read_paths: set[Path] = set()
         self._deep_includes: list[tuple[Path, Location, int]] = []
         self._plugins_by_name: dict[str, LoadedPlugin] = {}
+        self._plugin_files: dict[Path, None] = {}
         self._project_blocks: dict[str, tuple[dict[str, Any], Location]] = {}
         self._point_counts: tuple[PointCounts, Location] | None = None
 
@@ -1140,12 +1160,21 @@ class _Loader:
 
     @property
     def _plugin_paths(self) -> tuple[Path, ...]:
-        """The files of the loaded plugins, in the same order, without the ones that have none."""
-        return tuple(
-            loaded.source for loaded in self._plugins_by_name.values() if loaded.source is not None
-        )
+        """The files of the plugins the project names, in the order it named them, each once -
+        the ones that failed to load among them, and every file of a package."""
+        return tuple(self._plugin_files)
 
     def _load_plugin(self, spelling: str, origin: Location, base: Path) -> None:
+        """Import one plugin the project names and note its files, whether or not it loaded.
+
+        A plugin that stopped importing is the file a build has to go on watching: its repair
+        is what runs the generation again.
+        """
+        self._import_plugin(spelling, origin, base)
+        for path in plugin_files(spelling, base):
+            self._plugin_files.setdefault(path)
+
+    def _import_plugin(self, spelling: str, origin: Location, base: Path) -> None:
         """Import one plugin the project names, or report why it could not be.
 
         Both failures have a fixed severity, like ``file-not-found`` and ``schema``: a project
@@ -1171,9 +1200,7 @@ class _Loader:
                     notes=[("first named here", previous.origin)],
                 )
             return
-        self._plugins_by_name[plugin.name] = LoadedPlugin(
-            plugin, spelling, origin, plugin_source(spelling, base)
-        )
+        self._plugins_by_name[plugin.name] = LoadedPlugin(plugin, spelling, origin)
         self._bag.register(plugin.checks)
 
     def _register_settings(self, name: str, block: dict[str, Any], location: Location) -> None:
@@ -1258,6 +1285,10 @@ class _Loader:
             _report_validation_error(
                 location.path, error, self._bag, prefix=location.pointer, document=block
             )
+        except PluginError as error:
+            if not self._plugin_defects_are_findings:
+                raise
+            self._bag.add("plugin-invalid", str(error), location)
 
     def _expand(
         self, source: Path, pattern: str, origin: Location, excluded: set[Path]

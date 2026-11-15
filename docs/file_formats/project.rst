@@ -200,7 +200,7 @@ two spellings are recognised as the same file and it is loaded once:
 .. code-block:: text
 
    $ ddd check top.ddd.json
-   ok: 1 variable in 1 component are consistent
+   ok: 1 variable in 1 component is consistent
 
 Without that rule the component would be loaded twice under the same name and the run would
 fail with ``duplicate-component`` - a finding about the shape of the include graph rather than

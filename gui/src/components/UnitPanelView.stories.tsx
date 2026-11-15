@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PlanReply, ProjectUnit, UnitReply } from "../api/types";
+import { unsettled } from "../lib/typing";
 import {
   ADDITION,
   DESCRIPTION,
@@ -64,6 +65,7 @@ function View({
         setTyped(undefined);
       }}
       onPickerClosed={() => setTyped(undefined)}
+      unsettled={unsettled(typed, to ?? unit.unit)}
       to={to}
       describing={
         draft !== undefined && description === draft.description

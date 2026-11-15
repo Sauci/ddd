@@ -6,12 +6,22 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from conftest import component, declare, project, scalar_type, types, write_tree
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_workspace
 from ddd.lsp.edits import PROPAGATED_KEYS
 from ddd.lsp.navigation import Index, index
-from ddd.variable_keys import DATATYPES, EDITORS, KEY_ORDER, Carried, InPlay, offers
+from ddd.variable_keys import (
+    DATATYPES,
+    EDITORS,
+    KEY_ORDER,
+    Carried,
+    InPlay,
+    offers,
+    unit_refusal,
+)
 from ddd.variables import declarations_of
 
 
@@ -543,3 +553,24 @@ class TestWhatAnEditorOffers:
             ("none", ()),
             ("none", ()),
         ]
+
+
+class TestAUnitWithSpacesAroundIt:
+    """15:M10: a unit settled with a space around it was written, while the Units tab refuses that
+    spelling - and without a units file no finding said the project now held two spellings of one
+    unit."""
+
+    @pytest.mark.parametrize(
+        ("raw", "unit"),
+        [
+            pytest.param('"V "', "V ", id="after"),
+            pytest.param('" V"', " V", id="before"),
+            pytest.param('"\\tV"', "\tV", id="a-tab"),
+        ],
+    )
+    def test_is_refused_in_the_units_tabs_words(self, raw: str, unit: str) -> None:
+        assert unit_refusal(raw) == f"'{unit}' has spaces around it"
+
+    @pytest.mark.parametrize("raw", ['"V"', '"m s"', '""', "5", "null"])
+    def test_anything_else_is_no_spaces_refusal(self, raw: str) -> None:
+        assert unit_refusal(raw) is None

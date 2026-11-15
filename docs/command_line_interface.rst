@@ -7,9 +7,12 @@ makes it usable from wherever the build already lives - a makefile, a cmake proj
 :doc:`build_integration`), a batch file on an engineer's machine, or a ci job that never sees
 a terminal. Two commands do not exit: ``ddd lsp``, the language server an editor keeps running
 (see :doc:`editor_integration`), and ``ddd gui``, the preview of a browser interface, which
-serves until it is interrupted. The one file the tool leaves behind for its own use is the
-``ddd-build.json`` that ``ddd build-info`` writes for the language server and for ``ddd gui``,
-which both apply the severities of the build that names a project.
+serves until it is interrupted. Two files are left behind for the tool's own use: the
+``.ddd-manifest.json`` that ``ddd generate`` keeps in its output directory, the record of the
+files it wrote there, by which the next run takes back those it no longer writes (see
+:ref:`what-a-run-owns`), and the ``ddd-build.json`` that ``ddd build-info`` writes for the
+language server and for ``ddd gui``, which both apply the severities of the build that names a
+project.
 
 The same discipline governs the output. The findings - everything the tool has to say about
 a project - are written to standard error, one line per finding followed by a summary, while
@@ -241,8 +244,9 @@ The commands
        generates in spite of errors. Every artefact also takes ``--dictionary FILE``, which
        writes the resolved data dictionary - the text ``ddd dump`` prints - in the same write as
        the artefacts, so that all of them are written or none is; a path an artefact of the
-       run is written to is refused. That is how a build keeps the dictionary beside what it
-       generated, in one analysis and one report of its findings.
+       run is written to is refused, and so is ``.ddd-manifest.json`` in the output directory,
+       the name the run's manifest is kept under. That is how a build keeps the dictionary
+       beside what it generated, in one analysis and one report of its findings.
    * - ``ddd list FILE``
      - print the table of variables with their kind, datatype, unit, shape, initial value
        with its physical reading, producer and consumers - the quickest answer to "who
@@ -335,27 +339,126 @@ The commands
        project's own where there is not, or a new object of one of six kinds - and
        takes one away. A variable another component declares ``local`` is not offered: no
        other component may declare it in any scope, and writing the declaration would be a
-       ``local-conflict``. Its table's Shape column opens the page of a curve, a map, an
+       ``local-conflict``. A component's page also holds the description of that
+       component's own declaration of the variable, in the variable's panel, as a text
+       field: a description is the declaration's and not a key the declarations share,
+       two components describing one variable in their own words. It is planned,
+       previewed, applied and undone as any key the panel writes is - one ``set`` at the
+       declaration's ``description``, in its file alone - and emptying the field takes
+       the key away, the default being the empty text. The panel of the project screen,
+       where no component is in view, offers none. The panel says what it does not do:
+       renaming the variable and changing its scope are done in its file, in the editor.
+       Its table's Shape column opens the page of a curve, a map, an
        axis or any other declaration shaped in one or two dimensions: its values as a
        grid, laid against its axes' breakpoints or plain indices and named with the axis
-       on each edge, in physical or in raw by a toggle. A curve, a map and an axis are
-       offered whatever type they name; anything else states its own dimensions and its
-       own datatype, so a dimensioned declaration naming a structured type is shown
-       there and not offered, and so is a deeper shape. One cell
-       is changed at a time, previewed - in a sentence naming what it sets and the
-       producing file it lands in - and applied like every other change here, and put
-       back by the same undo. A table copied from a spreadsheet is pasted anywhere in
-       the grid to replace every value of the object at once - the object's own shape,
-       or exactly one row and one column larger for the header pasted along with it -
-       previewed and undone the same way. Its header is discarded unread, so one naming
-       a different axis is caught only by that preview, not by the paste itself. Under
+       on each edge, in physical or in raw by a toggle. The grid has a column for each its
+       shape has, and a row for each: a breakpoint only labels its column, so the columns
+       past an axis's last breakpoint are drawn unlabelled and a breakpoint past the shape
+       labels none. A cell the file does not state - past the end of a short ``init``, or
+       any cell of a declaration stating none - is drawn hollow, empty under a dashed
+       border, its name saying it is not stated; typed into, it is planned as any cell is,
+       the whole ``init`` written where the array lacks it, and the preview shows what is
+       written. A scalar, a declaration stating
+       its own datatype and no dimensions, reads ``scalar`` there and opens the same page
+       as a grid of one cell, its ``init``: the cell reads 3200 in raw and 800 in
+       physical for ``ParameterA`` of ``examples/demo``, a value typed into it is one
+       ``set`` at the declaration's own ``init`` - added, and shown as a line of the
+       preview, where the file states none - and nothing is drawn of one point, nor
+       pasted into it. A scalar a file initialises with text, or one produced in more
+       than one place, is refused as ever. A declaration naming a type is offered the grid
+       where the project says the type is a scalar one - a scalar naming it reads ``scalar``, a
+       value block naming it keeps its dimensions - and none where the type is a structure, an
+       external type or unknown, or while the types are not yet read. A curve, a map and an
+       axis are offered whatever type they name; anything else needs numeric storage - a
+       datatype of its own or a scalar type - so a dimensioned declaration naming a structured
+       type is shown there and not offered, and so is a deeper shape, and a scalar a file
+       initialises with a list. Cells typed into are held together, each showing what was typed
+       into it, and previewed as one change - in a sentence naming how many elements it sets,
+       the first five of them and what each is set to, then how many more, and the producing
+       file it lands in - that one Apply writes, like every other change here, and one undo
+       puts back. Each cell typed is written where it stands, the rest of the file staying as
+       it was, its spellings and its layout too, where the file writes its ``init`` out far
+       enough to hold them; where it states one value for every cell, states none, or writes
+       too short an array, the whole ``init`` is written instead - the cells typed set in it,
+       every other holding the value the file states for it, or zero - and the preview shows
+       it. A cell keeps the reading it was typed in: turned from physical to raw, the grid
+       shows the count it sets. A cell typed back to its file's value - a ``float32``'s to the
+       same float32 - drops out of the change, and a cell the page refuses holds Apply back for
+       them all, named in the sentence. A plan whose edit would leave its file as it was, every
+       byte the same - a table pasted over the values the file spells, a description typed as
+       it stands - is no change, and is offered as none. The sentence and Apply stay at the
+       foot of the window while they are offered, however tall the grid. A table copied from a
+       spreadsheet is pasted anywhere in the grid to replace every value of the object at
+       once - the object's own shape, or exactly one row and one column larger for the header
+       pasted along with it - previewed and undone the same way, in place of any cells typed
+       before it, as a cell typed after it takes the table's place. Its header is discarded
+       unread, so one naming a different axis is caught only by that preview, not by the paste
+       itself. Every field
+       of the page reads a number the same way, in decimal notation: an optional sign, digits
+       with an optional fraction or a fraction alone, and an optional exponent, the white
+       space around it ignored. A number written in hexadecimal, binary or octal, ``Infinity``,
+       ``NaN`` and digits parted by underscores are refused in one sentence, the same in every
+       field, and nothing is asked of the server for them - but a size and a dimension, which
+       may name a constant, read ``Infinity`` and ``NaN`` as names, as they read any name. A
+       comma is a decimal point where it cannot group thousands - after a first group of 0 or
+       of more than three digits, or before anything but exactly three digits - and groups
+       thousands where it cannot be a decimal point, two of them or a point after it; text
+       holding both has its decimal point last, so ``1.234,5`` and ``1,234.5`` both read
+       1234.5. Values read
+       together - a block pasted, the cells typed into a grid, a range's two fields - read a
+       comma that could be either as the others show theirs, where they all show one reading:
+       ``0,5`` makes ``1,250`` beside it one and a quarter, and ``1,234,567`` makes ``1,500``
+       beside it fifteen hundred. A block pasted whose values show both readings is refused,
+       in a sentence saying what it mixes, and so is one whose decimal comma stands beside a
+       point that is the decimal point; cells typed are each read as they are written. A comma
+       that could be either, ``1,200``, is refused with the choice of what it means one press
+       away where nothing else decides it, the same for a cell typed into and for a block
+       pasted, and an answer given stands, whatever is typed after it. Only the grid offers
+       that choice: a range's two fields, a size, a dimension, a constant's value, a section's
+       alignment and a raster's event refuse such a comma in the same sentence, and a range's
+       sentence names the field it is about. A boolean takes 0 and 1 alone, in physical as in
+       raw. The page
+       holds a number as a double, which past 2^53 no longer holds every whole number, so a
+       cell of an integer datatype refuses a number past 2^53 either side of zero, however it
+       is spelled, where it is typed or pasted in raw, and a fraction the double would drop
+       with it; in physical it refuses a value whose raw count lies past 2^53. A float's cell
+       takes every number as the double it is, but none past what its float holds, nor one
+       rounding to zero in it. A physical value comes to its raw count exactly, worked out on
+       the decimals typed and the conversion's own: a whole datatype's count is the nearest
+       one, an exact half going to the even count, either side of zero, as ``round_physical``
+       rounds; a float's is the float its datatype stores nearest, spelled as briefly as it
+       reads back, so 0.3 at a factor of 0.1 is 3. FLT_MAX, either side of zero, is its own
+       double, 3.4028234663852886e+38, planned so and shown so in raw: its briefest spelling,
+       3.4028235e+38, is a double past it, which the server and ``ddd check`` refuse a
+       ``float32``. A float's value is written as a float, its whole numbers too, and a
+       boolean's as ``true`` or ``false``. Physical shows a whole datatype's raw count as the
+       exact product, the count times the factor plus the offset, and a float's as the shortest
+       decimal whose plan comes to that same float - a ``float32``'s being the float32 its
+       file's number rounds to, which raw shows the same way, so a ``float32`` its file spells
+       ``0.10000000149011612`` reads 0.1 - never cut at twelve significant digits and never
+       with the tail of the double arithmetic: 255 counts of 0.03 read 7.65, and a float64 of
+       1234567890123 reads so. A grid
+       holding a whole number
+       past 2^53, among its values or its axis's breakpoints, or one at 2^53 in a ``uint64``
+       or ``sint64``, says it cannot show it rather than draw another number. A ``uint64`` or
+       ``sint64`` value that large is set in the file; from the page neither takes a whole
+       number at 2^53 or past it, as a value or as a limit, however it is written - the server
+       refuses a bound at or past 2^53 for either, written in digits or as a float. The two
+       fields a variable's or a type's range is typed into show a bound past 2^53 in its file's
+       own digits, and read a bound as a cell of the datatype the declarations state reads a
+       number: a float's as the double it is, written as a float, and any other's refused past
+       2^53 however it is spelled, and wherever the double would send another number than the
+       one typed. Under
        the grid, the object's values are drawn as a picture too: a marker at each point
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
-       plain indices where it has none, with its declared limits ruled across it
-       wherever they fall inside the drawn range. It follows the same toggle, offers no
-       control of its own, changes nothing, and is drawn under a read-only grid exactly
-       as under a writable one, left undrawn only where there is no grid to begin with.
+       plain indices where it has no axis, or one stating fewer breakpoints than the shape
+       has columns, its ticks then reading the indices too, and no axis named under them,
+       with its declared limits ruled across it wherever they fall inside the drawn range. It
+       follows the same toggle, offers no control of its own, changes nothing, and is drawn
+       under a read-only grid exactly as under a writable one. It
+       draws what the file states, as the cells do: a scalar's one value draws none, and
+       nor does a grid whose file states nothing, every cell of it hollow.
        The toggle always rescales to its own range: for a positive conversion the same
        numbers in a different unit draw the very same picture, only the readings along
        its edges changing; a negative one - legal here - mirrors the curve instead of
@@ -581,10 +684,12 @@ The commands
        <target> with your component's target``. The record beside the description is what says
        so, read for the project it names whatever its format and its severities, and whether or
        not ``-b`` names the build directory. A project given to ``ddd_generate()`` with
-       ``PROJECT`` is edited as any other while its record lies in the build tree, and taken for
-       a generated one, every change of its files refused in that sentence, which then says
-       something untrue, where ``OUTPUT_DIRECTORY`` is the description's own directory and
-       leaves the record beside it: nothing yet tells the two apart.
+       ``PROJECT`` is edited as any other where its record says so, ``"origin": "given"``, whether
+       the record lies in the build tree or, where ``OUTPUT_DIRECTORY`` is the description's own
+       directory, beside it. Any other record beside a description makes it a generated one,
+       one without the key included, as every record is that a module wrote before the key
+       existed: a project given with such a record beside it stays refused until the build is
+       configured again, and the module writes the key.
        Large projects stay responsive. An edit is answered once its files are written, before
        it is analysed, and the change shows where it was made; its findings follow once the
        project has been analysed again, the heading saying ``Updating the findings…`` until
@@ -623,15 +728,16 @@ The commands
        that names it`` - rather than made over the files that did, which would leave the
        old name in the one that did not, or take out what it still names. So is a plan that
        declares an object, or reads a variable, as an output or a local, which a file that
-       did not load may produce or declare already, and one that writes into the file that
-       did not load, whatever its scope; one that declares or reads an input into a file
-       that loaded is answered. A plan for a name only such a file declares says what its
-       panel says, that no file that loaded declares it and which did not load, and not
-       that no file declares it. Opening a project answers at once with its
-       name, read from its description as it stands and kept in the heading from then on;
-       ``Analysing the project…`` stands where the tab's own content goes, until the first
-       analysis lands, and every answer needing a revision is refused until then, in the
-       same words - ``the open project has not been analysed yet``. A panel's own plan
+       did not load may produce or declare already; and one that writes into the file that
+       did not load, whatever its scope, is refused naming that file alone - ``b.ddd.json did
+       not load, so what it declares is unknown and nothing can be declared in it``. One that
+       declares or reads an input into a file that loaded is answered. A plan for a name only
+       such a file declares says what its panel says, that no file that loaded declares it
+       and which did not load, and not that no file declares it. Opening a project answers at
+       once with its name, read from its description as it stands and kept in the heading
+       from then on; ``Analysing the project…`` stands where the tab's own content goes,
+       until the first analysis lands, and every answer needing a revision is refused until
+       then, in the same words - ``the open project has not been analysed yet``. A panel's own plan
        request goes out at once the first time a field asks for one; typed text asks
        again only after a pause in the reader's typing; a pick from a list, or Enter,
        always goes out at once, first time or later. The
@@ -645,10 +751,12 @@ The commands
        ``--no-browser`` only prints the address. It serves until interrupted, and its
        options are not yet part of the stable interface.
    * - ``ddd build-info FILE -o FILE``
-     - record which project description a build runs DDD on and under which severity policy,
-       the ``ddd-build.json`` the language server and ``ddd gui`` read; ``ddd_generate()``
-       calls it at configure time, so a hand-rolled build is the only caller that needs it
-       directly.
+     - record which project description a build runs DDD on, whether it was given to the build
+       (``--origin given``, written into the record, which is then format 2) or collected by it
+       (``collected``, the default, with no such key), and under which
+       severity policy, the ``ddd-build.json`` the language server and ``ddd gui`` read;
+       ``ddd_generate()`` calls it at configure time, so a hand-rolled build is the only caller
+       that needs it directly.
    * - ``ddd checks``
      - list every check with its identifier, its default severity, whether it can be relaxed
        (``(fixed)`` if not), whether it needs every component of a project (``(project)``)
@@ -700,7 +808,8 @@ actually running where they are instead of hard-coding a guess:
    $ ddd templates-dir
    /home/you/ddd/examples/templates
 
-How both directories are used from a ``CMakeLists.txt`` is in :doc:`build_integration`.
+How a ``CMakeLists.txt`` finds the module with ``cmake-dir``, and what it does with a template
+directory, is in :doc:`build_integration`.
 
 Severity options
 ----------------
@@ -780,7 +889,10 @@ the image would happily link yesterday's globals and ship yesterday's a2l.
 ``ddd sources`` closes that gap. It prints one absolute path per line: the project file
 itself, every description it includes however deeply, and the module of every
 :doc:`plugin <plugins>` those files name, since a plugin decides what the generation writes
-as much as a description does. The demo names none, so its listing is descriptions alone:
+as much as a description does. A plugin that is a package is listed by every ``.py`` file of
+it, and one named by a ``.py`` path is listed whether or not it imports, as a missing include
+is; one named as a module, by the file the finder locates for it. The demo names none, so its
+listing is descriptions alone:
 
 .. code-block:: text
 
@@ -799,11 +911,16 @@ translated first, and a file reached over two different include paths appears on
 The command is deliberately more tolerant than the others: a project whose interfaces disagree
 still has a well defined set of source files, and a build system asking what to watch deserves
 an answer even while the project does not check out. Only a file that cannot be read at all is
-fatal. Tolerant is not silent: a finding the load turned up - a missing include, say - is
-reported on stderr after the listing, so a configure step hears about it from the run that
-found it rather than from whichever DDD command the build runs next. This is what
-``cmake/Ddd.cmake`` uses to make a hand written project description watch its own components,
-described in :doc:`build_integration`.
+fatal. Tolerant is not silent: a finding the load turned up - a missing include, a plugin that
+does not import, a plugin whose model raises (``plugin-invalid``, where the other commands
+stop with exit ``2``) - is reported on stderr after the listing, so a configure step hears
+about it from the run that found it rather than from whichever DDD command the build runs
+next. ``-W CHECK=SEVERITY`` and ``--strict`` mean here what they mean on ``check``: they grade
+what is reported, so a check the build relaxed is not reported, and they change neither the
+listing nor the exit code. This is what ``cmake/Ddd.cmake`` uses to make a hand written
+project description watch its own components, described in :doc:`build_integration`, which
+passes it the ``SEVERITY`` and ``STRICT`` of the call and prints that stderr as a warning of
+the configure.
 
 With ``--format json`` the same list arrives as the ``sources`` array of a json document, next
 to the diagnostics and their summary, exactly as the other commands report them.

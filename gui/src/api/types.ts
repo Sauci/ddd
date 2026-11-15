@@ -4,6 +4,7 @@
 // two silently drifting apart.
 export type {
   BroughtError,
+  CellsPlanQuery,
   Change,
   Changes,
   CompareQuery,
@@ -16,6 +17,7 @@ export type {
   DeclarableQuery,
   DeclarableReply,
   DeclarationPlanQuery,
+  DescriptionPlanQuery,
   EditReply,
   FileContent,
   FileQuery,

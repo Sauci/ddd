@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { GridAxis, ValuesReply } from "../api/types";
 import { BOX, plotted } from "./valuePlot";
 
@@ -23,6 +23,9 @@ const CURVE_A: ValuesReply = {
   rows: [[1200, 900, 800, 750, 700, 650]],
   stated: "array",
   axes: [AXIS_A],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: "controller.ddd.json",
   findings: [],
@@ -41,6 +44,9 @@ const BLOCK_A: ValuesReply = {
   rows: [[0, 12, 28, 52, 84, 124, 180, 255]],
   stated: "array",
   axes: [],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "UserInterface",
   file: "user_interface.ddd.json",
   findings: [],
@@ -85,6 +91,9 @@ const MAP_A: ValuesReply = {
       conversion: { kind: "linear", factor: 0.5, offset: 0 },
     },
   ],
+  unshown: null,
+  minimum_text: null,
+  maximum_text: null,
   owner: "Controller",
   file: "controller.ddd.json",
   findings: [],
@@ -157,7 +166,7 @@ describe("plotted", () => {
   });
 
   test("a range of zero at zero gets one either side", () => {
-    // An absent init is zeros, and a twentieth of zero is zero - there is no proportion to take.
+    // A row of zeros, and a twentieth of zero is zero - there is no proportion to take.
     const zeros: ValuesReply = { ...BLOCK_A, rows: [[0, 0, 0, 0, 0, 0, 0, 0]] };
     const plot = plotted(zeros, true);
     expect([plot.low, plot.high]).toEqual([-1, 1]);
@@ -191,10 +200,11 @@ describe("plotted", () => {
   });
 
   test("a flat line at zero is ruled by its own lower limit", () => {
-    // `ValueD` is this object in the demo: an absent init reads zero everywhere, its limits are
-    // `0 … 65535`, and the range of -1 to 1 the line above gives it puts the lower limit *inside*
-    // the frame - so the rule is drawn exactly where the flat line is. That is correct and looks
-    // odd, which is worth knowing before a picture of it is reported as a fault.
+    // A row stating zero everywhere under limits of `0 … 65535` - `ValueD`'s in the demo, were its
+    // file to state its zeros; its absent init draws no picture (`plotDrawn`) - and the range of
+    // -1 to 1 the line above gives it puts the lower limit *inside* the frame, so the rule is
+    // drawn exactly where the flat line is. That is correct and looks odd, which is worth knowing
+    // before a picture of it is reported as a fault.
     const zeros: ValuesReply = { ...BLOCK_A, rows: [[0, 0, 0, 0, 0, 0, 0, 0]] };
     const plot = plotted(zeros, true);
     expect(plot.rules.map((rule) => rule.value)).toEqual([0]);
@@ -269,17 +279,147 @@ describe("plotted", () => {
     const xs = plotted(noInit, true).lines[0]?.points.map((p) => p.x) ?? [];
     expect(xs).toHaveLength(6);
     expect(xs[5]).toBeCloseTo(BOX.left + inside);
+    // Laid against indices, it names no axis below, as over none.
+    expect(plotted(noInit, true).xLabel).toBe("");
   });
 
-  test("a column with no breakpoint of its own sits at the axis's own start", () => {
-    // AxisA normally states one breakpoint per column. State fewer than CurveA has columns, and
-    // the missing ones must still place somewhere rather than throw - at the start of the range
-    // the breakpoints that do exist describe, same as a missing row label reads as "".
+  test("an axis stating fewer breakpoints than the shape places its columns by their indices", () => {
+    // 15:M7: the columns are the shape's, and an axis stating three breakpoints for six columns
+    // places none of the three past it; the six are laid out evenly, as over no axis, where the
+    // three past the last breakpoint were piled up at the axis's start.
     const shortAxis: ValuesReply = {
       ...CURVE_A,
       axes: [{ ...AXIS_A, breakpoints: [0, 3200, 6400] }],
     };
     const xs = plotted(shortAxis, true).lines[0]?.points.map((p) => p.x) ?? [];
-    expect(xs[5]).toBeCloseTo(BOX.left);
+    expect(xs).toHaveLength(6);
+    expect(xs[0]).toBeCloseTo(BOX.left);
+    expect(xs[5]).toBeCloseTo(BOX.left + inside);
+  });
+
+  test("and its ticks read the indices, as over an axis stating no breakpoints (fix round 1, M10)", () => {
+    // Uneven breakpoints show what reading them under index places did: 100 was drawn halfway
+    // between 0 and 5000, at the second of six evenly spaced places.
+    const uneven: ValuesReply = {
+      ...CURVE_A,
+      conversion: { kind: "identity" },
+      axes: [{ ...AXIS_A, conversion: { kind: "identity" }, breakpoints: [0, 100, 5000] }],
+    };
+    const ticks = plotted(uneven, true).ticks;
+    expect(ticks.map((tick) => tick.label)).toEqual(["0", "1", "2", "3", "4", "5"]);
+    expect(ticks.map((tick) => tick.x)).toEqual(
+      plotted(uneven, true).lines[0]?.points.map((point) => point.x),
+    );
+    expect(ticks[1]?.x).toBeCloseTo(BOX.left + inside / 5);
+    // And no axis is named under them: its name and unit over ticks reading 0 to 5 read as hertz,
+    // where the grid's header above reads the breakpoints.
+    expect(plotted(uneven, true).xLabel).toBe("");
+  });
+
+  test("an axis stating more breakpoints than the shape places the shape's columns by theirs", () => {
+    const narrow: ValuesReply = { ...CURVE_A, shape: [2], rows: [[1200, 900]] };
+    const xs = plotted(narrow, true).lines[0]?.points.map((p) => p.x) ?? [];
+    expect(xs).toEqual([BOX.left, BOX.left + inside]);
+  });
+
+  test("values past the shape are not drawn, as the grid draws none of them", () => {
+    const long: ValuesReply = { ...CURVE_A, rows: [[1, 2, 3, 4, 5, 6, 7, 8], [9]] };
+    expect(plotted(long, false).lines.map((line) => line.points.length)).toEqual([6]);
+  });
+});
+
+/** A grid of `rows` by `columns` of uint8 counts, laid against an axis stating a breakpoint for
+ * every column, or against none. */
+function grid(rows: number, columns: number, axis: boolean): ValuesReply {
+  return {
+    ...BLOCK_A,
+    shape: rows === 1 ? [columns] : [rows, columns],
+    rows: Array.from({ length: rows }, (_, row) =>
+      Array.from({ length: columns }, (_, column) => (row * 7 + column) % 256),
+    ),
+    axes: axis
+      ? [
+          {
+            ...AXIS_A,
+            position: "x_axis",
+            conversion: { kind: "identity" },
+            breakpoints: Array.from({ length: columns }, (_, column) => column * 3),
+          },
+        ]
+      : [],
+  };
+}
+
+/** How many numbers the plot's two extremes were asked of, in all, while `work` ran: every
+ * argument of every `Math.min` and `Math.max` call - which is what a spread of the values for each
+ * point costs, and a pass over them once does not. */
+function extremesAskedOf(work: () => void): number {
+  let asked = 0;
+  const counting = (original: (...values: number[]) => number) =>
+    function counted(...values: number[]) {
+      asked += values.length;
+      return original(...values);
+    };
+  const [lowest, highest] = [counting(Math.min), counting(Math.max)];
+  const min = vi.spyOn(Math, "min").mockImplementation(lowest);
+  const max = vi.spyOn(Math, "max").mockImplementation(highest);
+  try {
+    work();
+  } finally {
+    min.mockRestore();
+    max.mockRestore();
+  }
+  return asked;
+}
+
+describe("plotted over a large grid (15:M8)", () => {
+  test.each([
+    ["a row of 4,096 over an axis", grid(1, 4096, true)],
+    ["a row of 4,096 at its indices", grid(1, 4096, false)],
+    ["a map of 64 by 64", grid(64, 64, false)],
+  ])("%s finds each axis's extremes once, in work linear in its cells", (_, reply) => {
+    const cells = reply.rows.flat().length;
+    expect(cells).toBe(4096);
+    const asked = extremesAskedOf(() => plotted(reply, true));
+    // Two figures asked of every cell at most - the values' extremes - and as many of every
+    // column's place; where each point spreads the places, it is 4,096 times as many.
+    expect(asked).toBeLessThanOrEqual(4 * cells);
+  });
+
+  test("a grid past the engine's argument limit is drawn, not thrown at", () => {
+    const plot = plotted(grid(1, 300_000, true), false);
+    expect(plot.lines[0]?.points).toHaveLength(300_000);
+    expect(plot.low).toBeLessThan(0);
+    expect(plot.high).toBeGreaterThan(255);
+  });
+
+  test("its points are where the same values put them in a small grid", () => {
+    const plot = plotted(grid(1, 4096, true), false);
+    const points = plot.lines[0]?.points ?? [];
+    expect(points[0]?.x).toBe(BOX.left);
+    expect(points[4095]?.x).toBe(BOX.left + inside);
+    expect(points[2048]?.x).toBeCloseTo(BOX.left + (inside * 2048) / 4095);
+  });
+});
+
+describe("a plot is worked out again only when what it draws changes", () => {
+  test("the same reply read the same way is the one plot, drawn again", () => {
+    const reply = grid(1, 64, true);
+    expect(plotted(reply, true)).toBe(plotted(reply, true));
+    expect(plotted(reply, false)).toBe(plotted(reply, false));
+  });
+
+  test("a reading changes it, and so does another reply", () => {
+    const reply = grid(1, 64, true);
+    expect(plotted(reply, false)).not.toBe(plotted(reply, true));
+    expect(plotted({ ...reply }, true)).not.toBe(plotted(reply, true));
+  });
+
+  test("and it is the plot the reading draws, whichever was asked for first", () => {
+    const reply = grid(1, 8, false);
+    const raw = plotted(reply, false);
+    const physical = plotted(reply, true);
+    expect(plotted(reply, false)).toBe(raw);
+    expect(plotted(reply, true)).toBe(physical);
   });
 });

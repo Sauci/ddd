@@ -197,6 +197,9 @@ class A2lModel:
     generator: str
     version: str
     byte_order: str
+    has_address_source: bool
+    """Whether the run had a source of addresses (:attr:`A2lOptions.has_address_source`)."""
+
     system_constants: tuple[SystemConstantView, ...]
     """One per declared constant, in name order; the ``MOD_PAR`` is written only when the
     project declares any."""
@@ -318,6 +321,7 @@ class _A2lModelBuilder:
             generator=generator,
             version=self._options.version,
             byte_order=self._options.byte_order.a2l,
+            has_address_source=self._options.has_address_source,
             system_constants=tuple(
                 SystemConstantView(name=entry.name, value=str(entry.value))
                 for entry in dictionary.constants

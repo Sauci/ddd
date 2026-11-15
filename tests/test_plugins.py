@@ -1486,6 +1486,86 @@ class TestThePluginModelBoundary:
         assert "not a tag" in captured
         assert "failed validating" not in captured
 
+    def broken_beside_a_finding(self, tree: Path) -> str:
+        """The model raises on one component's block, and another component has a ``schema``
+        error of its own: the findings of the run are not lost with the plugin's defect."""
+        root = self.broken(tree, 'raise RuntimeError("validator defect")')
+        write_tree(
+            tree,
+            {
+                "project.ddd.json": project(
+                    "P", "a.ddd.json", "b.ddd.json", plugins=["tools/model_plugin.py"]
+                ),
+                "b.ddd.json": component("B", declare("local", "Y", "uint7")),
+            },
+        )
+        return root
+
+    def test_the_findings_of_the_run_are_printed_before_the_defect(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A hook that raises reports the findings gathered before it ran, and the pages say a
+        model is reported the same way; the load stood outside that guard, so the ``schema``
+        finding was lost with the plugin's defect."""
+        assert main(["check", self.broken_beside_a_finding(tree)]) == EXIT_USAGE
+        captured = capsys.readouterr().err
+        defect = "ddd: plugin 'broken' failed validating an 'extensions' block"
+        assert "error[schema]" in captured
+        assert captured.index("error[schema]") < captured.index(defect)
+
+    def test_check_prints_its_document_when_a_model_raises(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--format json`` promises a document on stdout; a model that raised left it empty."""
+        arguments = ["check", self.broken_beside_a_finding(tree), "--format", "json"]
+        assert main(arguments) == EXIT_USAGE
+        document = json.loads(capsys.readouterr().out)
+        assert [entry["check"] for entry in document["diagnostics"]] == ["schema"]
+
+    def test_sources_lists_the_project_and_reports_the_defect_beside_it(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What a build watches is what the project names, whether or not a model of a plugin
+        raises: the listing goes out with the defect as ``plugin-invalid``, rather than an exit
+        of 2 and none, which the module read as a project it could not resolve."""
+        root = self.broken_beside_a_finding(tree)
+        assert main(["sources", root]) == EXIT_OK
+        captured = capsys.readouterr()
+        listed = captured.out.splitlines()
+        assert (tree / "a.ddd.json").resolve().as_posix() in listed
+        assert (tree / "tools" / "model_plugin.py").resolve().as_posix() in listed
+        assert "error[plugin-invalid]" in captured.err
+        assert "failed validating an 'extensions' block: validator defect" in captured.err
+        assert "error[schema]" in captured.err
+
+    def test_sources_in_json_carries_the_defect_among_its_diagnostics(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["sources", self.broken_beside_a_finding(tree), "--format", "json"]) == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert (tree / "tools" / "model_plugin.py").resolve().as_posix() in document["sources"]
+        assert {entry["check"] for entry in document["diagnostics"]} == {
+            "plugin-invalid",
+            "schema",
+        }
+
+    @pytest.mark.parametrize("output_format", ["text", "json"])
+    def test_artefacts_lists_what_the_project_names_and_reports_the_defect(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], output_format: str
+    ) -> None:
+        root = self.broken_beside_a_finding(tree)
+        assert main(["artefacts", root, "--format", output_format]) == EXIT_OK
+        captured = capsys.readouterr()
+        if output_format == "json":
+            document = json.loads(captured.out)
+            assert [entry["name"] for entry in document["artefacts"]] == ["c", "a2l"]
+            # The plugin has a model and no backend: named, not an artefact.
+            assert document["plugins_without_artefact"] == ["broken"]
+            assert "plugin-invalid" in {entry["check"] for entry in document["diagnostics"]}
+        else:
+            assert "built-in" in captured.out
+            assert "error[plugin-invalid]" in captured.err
+
     def test_the_language_server_survives_a_model_that_exits(self, tree: Path) -> None:
         """The server promises findings and never an exception. A model runs while the files
         are read, before any hook, so this reaches the boundary by a different road than the

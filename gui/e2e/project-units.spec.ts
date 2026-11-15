@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTROLLER, driftIn, failing, held, PUMP, SERVER_FAILED, UNITS } from "./demo";
+import { CONTROLLER, driftIn, failing, held, PUMP, restamp, SERVER_FAILED, UNITS } from "./demo";
 import { expect, test } from "./fixtures";
 
 /** The entries of a units file as it stands on disk: objects, in both examples' units files. */
@@ -121,6 +121,42 @@ test("a unit renamed from its panel is renamed everywhere, merging into the voca
   await expect(page.getByText("no longer stated or listed")).toHaveCount(0);
 });
 
+test("a rename's text typed past the spelling chosen offers no Apply for the earlier one", async ({
+  page,
+  vocabularyGui,
+}) => {
+  const pump = join(vocabularyGui.directory, PUMP);
+  driftIn(vocabularyGui.directory, PUMP, "PumpSpeed", "RPM");
+  const drifted = readFileSync(pump);
+  await page.goto(vocabularyGui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "RPM", exact: true }).click();
+  const renaming = page
+    .getByRole("complementary", { name: "RPM" })
+    .getByRole("region", { name: "Rename" });
+  const picker = renaming.getByRole("combobox", { name: "Rename RPM to" });
+  await renaming.getByRole("button", { name: "Show the choices for Rename RPM to" }).click();
+  await page.getByRole("option", { name: "kPa", exact: true }).click();
+  await expect(renaming.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  // Another spelling typed, and left in the field: kPa is no longer what would be written.
+  await picker.clear();
+  await picker.pressSequentially("Kilopascal");
+  await expect(picker).toHaveValue("Kilopascal");
+  await expect(
+    renaming.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(renaming.getByText(/kPa is in the vocabulary already/)).toHaveCount(0);
+  await expect(
+    renaming.getByText("Press Enter to take what you typed, or pick it from the list."),
+  ).toBeVisible();
+  expect(readFileSync(pump).equals(drifted)).toBe(true);
+  // Taken with Enter, it is the spelling, and Apply is for it.
+  await picker.press("Enter");
+  await expect(renaming.getByText("Not one of this project's units")).toBeVisible();
+  await renaming.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect.poll(() => readFileSync(pump, "utf8")).toContain('"unit": "Kilopascal"');
+});
+
 test("the vocabulary is described, added to and pruned from the units' panels", async ({
   page,
   vocabularyGui,
@@ -190,11 +226,16 @@ test("an apply made from a panel that is out of date is refused, and the panel s
   const removing = panel.getByRole("region", { name: "Remove from the vocabulary" });
   await expect(removing.getByText("Changes 1 file: units.ddd.json")).toBeVisible();
 
-  // Described from outside between the preview and Apply.
+  // Described from outside between the preview and Apply, and given a unit more, mbar.
   await page.route("**/api/edit", async (route) => {
     writeFileSync(
       units,
-      readFileSync(units, "utf8").replace('"temperature"', '"temperature, degrees Celsius"'),
+      readFileSync(units, "utf8")
+        .replace('"temperature"', '"temperature, degrees Celsius"')
+        .replace(
+          '{ "unit": "kPa", "description": "pressure" }',
+          '{ "unit": "kPa", "description": "pressure" },\n    { "unit": "mbar", "description": "pressure" }',
+        ),
     );
     await route.continue();
   });
@@ -204,13 +245,15 @@ test("an apply made from a panel that is out of date is refused, and the panel s
   expect(entriesOf(units).map((entry) => entry.unit)).toContain("degC");
 
   // Refusing the Apply as stale, the server asks for the analysis that reads the file as it now
-  // is (`Session._refused`). The panel shows that analysis landed - the description written from
-  // outside - and the sentence is still there: it is held until the reader's next choice, not
-  // until a revision.
+  // is (`Session._refused`). The panel and the tab read the vocabulary's words from the file as it
+  // stands, even of the revision refused, so neither says anything of that analysis; the tab's
+  // rows are the index's, so mbar has a row only once that analysis has landed. The sentence is
+  // still there then: it is held until the reader's next choice, not until a revision.
+  await expect(page.getByRole("row", { name: "mbar", exact: true })).toBeVisible();
+  await expect(refused).toBeVisible();
   await expect(panel.getByRole("textbox", { name: "Description" })).toHaveValue(
     "temperature, degrees Celsius",
   );
-  await expect(refused).toBeVisible();
 
   // Remove pressed again is that choice. Offered once the panel reads that revision, its plan is
   // that revision's own, asked for again at every one, and carries the file's new fingerprint:
@@ -219,7 +262,7 @@ test("an apply made from a panel that is out of date is refused, and the panel s
   await removing.getByRole("button", { name: "Remove from the vocabulary" }).click();
   await expect
     .poll(() => entriesOf(units).map((entry) => entry.unit))
-    .toEqual(["rpm", "Nm", "kPa"]);
+    .toEqual(["rpm", "Nm", "kPa", "mbar"]);
   await expect(refused).toHaveCount(0);
 });
 
@@ -312,6 +355,40 @@ test("an adopt refused because its units file now exists says so in the banner, 
   await expect(banner).toHaveCount(0);
   await expect(preview).toHaveCount(0);
   await expect(page.getByText("5 units · no units file")).toBeVisible();
+});
+
+test("an adopt refused leaves no sentence behind it, and an adoption offered again starts with none", async ({
+  page,
+  gui,
+}) => {
+  const adopted = join(gui.directory, UNITS);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await expect(page.getByText("5 units · no units file")).toBeVisible();
+  const banner = page.getByRole("status").filter({ hasText: "This project has no units file" });
+  await banner.getByRole("button", { name: "Show changes" }).click();
+  const preview = page.getByRole("complementary", { name: "Adopt a vocabulary" });
+  await expect(preview.getByText("Changes 2 files: demo.ddd.json, units.ddd.json")).toBeVisible();
+
+  // Refused because a units file was made by hand meanwhile, as the journey above: every read of
+  // the units held until the sentence is seen, then the banner goes with the offer.
+  writeFileSync(adopted, `${JSON.stringify({ units: [{ unit: "ms", description: "ms" }] })}\n`);
+  const release = await held(page, "/api/units", { every: true });
+  try {
+    await preview.getByRole("button", { name: "Adopt 5 units" }).click();
+    await expect(banner.getByText(STALE, { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(banner).toHaveCount(0);
+
+  // The hand-made file taken away again, and a stamp moved so that a revision reads the units
+  // anew: the adoption is offered once more, an offer of its own, and its banner says nothing of
+  // the refusal of the one before.
+  rmSync(adopted);
+  restamp(gui.directory, CONTROLLER);
+  await expect(banner.getByRole("button", { name: "Adopt 5 units" })).toBeVisible();
+  await expect(banner.getByText(STALE, { exact: true })).toHaveCount(0);
 });
 
 test("the units tab says it is reading the project's units until they are read", async ({
@@ -591,4 +668,54 @@ test("a unit listed twice is flagged by its chip, and its panel says it is alrea
   await expect(panel.getByRole("listitem")).toHaveText([
     "duplicate-unit unit 'rpm' is already declared",
   ]);
+});
+
+test("a wheel notch while the rename's list is open keeps what was typed, and the keys after it", async ({
+  page,
+  gui,
+}) => {
+  // Short enough that the panel scrolls: the field sits below the fold, and a notch moves the
+  // page under it.
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Units" }).click();
+  await page.getByRole("row", { name: "ms", exact: true }).click();
+  const unit = page.getByRole("complementary", { name: "ms" });
+  const rename = unit.getByRole("combobox", { name: "Rename ms to" });
+  await rename.scrollIntoViewIfNeeded();
+  await rename.click();
+  await rename.press("Control+a");
+  await rename.pressSequentially("km");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await page.mouse.move(640, 200);
+  await page.mouse.wheel(0, -100);
+  // The notch closed the list, so that what follows tests the keys after a close.
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await rename.pressSequentially("/h");
+  await expect(rename).toHaveValue("km/h");
+  await rename.press("Enter");
+  await expect(rename).toHaveValue("km/h");
+  // What is planned is for km/h, not for what the field read before the notch.
+  await unit.getByRole("button", { name: "Show changes" }).click();
+  await expect(unit.locator(".hunk .added").first()).toContainText('"unit": "km/h"');
+  // Escape and leaving the field are still the end of what was typed, with the list closed by a
+  // scroll as with it open.
+  const scrolled = async () => {
+    await page.mouse.wheel(0, -100);
+    await page.mouse.wheel(0, 100);
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+  };
+  await rename.press("End");
+  await rename.pressSequentially("zz");
+  await expect(rename).toHaveValue("km/hzz");
+  await scrolled();
+  await expect(rename).toHaveValue("km/hzz");
+  await rename.press("Escape");
+  await expect(rename).toHaveValue("km/h");
+  await rename.press("End");
+  await rename.pressSequentially("yy");
+  await scrolled();
+  await expect(rename).toHaveValue("km/hyy");
+  await rename.press("Tab");
+  await expect(rename).toHaveValue("km/h");
 });

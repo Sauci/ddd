@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { driftIn, driftMaxUnseen, failing, held, PUMP, SERVER_FAILED } from "./demo";
+import { driftIn, failing, held, PUMP, SERVER_FAILED, writeUnseen } from "./demo";
 import { expect, test } from "./fixtures";
 
 const MONITORING = "monitoring.ddd.json";
@@ -107,6 +107,29 @@ test("a type's unit settled from its panel is written, then undone", async ({
   await expect(undo).toBeHidden();
 });
 
+test("a type's unit with spaces around it is refused, as the Units tab refuses it", async ({
+  page,
+  structuresGui,
+}) => {
+  // 15:M10, on a type's own unit picker.
+  const before = readFileSync(join(structuresGui.directory, TYPES));
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Unit", exact: true }).click();
+  const picker = panel.getByRole("combobox", { name: "Unit of Temperature_t" });
+  await picker.click();
+  await picker.clear();
+  await picker.pressSequentially(" K");
+  await picker.press("Enter");
+  await expect(picker).toHaveAccessibleDescription("' K' has spaces around it");
+  // The field reads what was chosen, and the note under it why it is refused.
+  await expect(picker).toHaveValue(" K");
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(readFileSync(join(structuresGui.directory, TYPES)).equals(before)).toBe(true);
+});
+
 test("a type is renamed everywhere, and a rename onto another type's name is refused", async ({
   page,
   structuresGui,
@@ -162,6 +185,34 @@ function entryOf(directory: string, name: string): Record<string, unknown> {
   return entry;
 }
 
+test("text typed past a type's chosen unit offers no Apply for the earlier one, until it is taken", async ({
+  page,
+  structuresGui,
+}) => {
+  await page.goto(structuresGui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Unit", exact: true }).click();
+  const picker = panel.getByRole("combobox", { name: "Unit of Temperature_t" });
+  await picker.clear();
+  await picker.pressSequentially("K");
+  await picker.press("Enter");
+  await expect(panel.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+  await picker.clear();
+  await picker.pressSequentially("Pa");
+  await expect(picker).toHaveValue("Pa");
+  await expect(
+    panel.getByRole("button", { name: /^Apply to/, disabled: false, includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(panel.getByText("Changes 1 file")).toHaveCount(0);
+  await expect(
+    panel.getByText("Press Enter to take what you typed, or pick it from the list."),
+  ).toBeVisible();
+  await picker.press("Enter");
+  await expect(panel.getByRole("button", { name: "Apply to 1 file" })).toBeEnabled();
+});
+
 test("a type's range is settled from its two fields, and written", async ({
   page,
   structuresGui,
@@ -187,6 +238,90 @@ test("a type's range is settled from its two fields, and written", async ({
     .poll(() => entryOf(structuresGui.directory, "Temperature_t"))
     .toEqual({ ...before, limits: { min: -40, max: 120 } });
   await expect(limits).toContainText("-40 … 120");
+});
+
+/** Temperature_t made a uint64 read as it is stored, its limits up to the most a uint64 holds,
+ * written as text: as a number here the maximum would already be the double nearest it. */
+function wideTemperature(directory: string): void {
+  const path = join(directory, TYPES);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /("name": "Temperature_t",[\s\S]*?"datatype": )"uint16"([\s\S]*?"conversion": )\{[^}]*\}([\s\S]*?"limits": )\{[^}]*\}/,
+    '$1"uint64"$2{ "kind": "identity" }$3{ "min": 0, "max": 18446744073709551615 }',
+  );
+  if (changed === text) throw new Error(`${TYPES} declares no Temperature_t of uint16`);
+  writeFileSync(path, changed, "utf8");
+}
+
+test("a type's limit past 2^53 is shown as its file writes it, and no range holding one is planned", async ({
+  page,
+  copiedGui,
+}) => {
+  const gui = await copiedGui("structures", wideTemperature);
+  const path = join(gui.directory, TYPES);
+  const before = readFileSync(path);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  const limits = panel.getByRole("row", { name: "Limits", exact: true });
+  await expect(limits).toContainText("0 … 18446744073709551615");
+  await limits.click();
+  // The list opens as the row is picked, over everything under it: closed, as a reader closes it.
+  await panel.getByRole("combobox", { name: "Limits of Temperature_t" }).press("Escape");
+  await expect(panel.getByLabel("Max", { exact: true })).toHaveValue("18446744073709551615");
+  // The sentence the variable's panel says under the same two fields, and no plan: what the type
+  // states is no range to send, and never a removal of it.
+  await expect(
+    panel.getByText(
+      "Max: '18446744073709551615' is past 2^53, where the page cannot hold every whole number exactly",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(panel.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(readFileSync(path).equals(before)).toBe(true);
+
+  await panel.getByLabel("Max", { exact: true }).fill("9007199254740991");
+  await expect(panel.getByText("Changes 1 file: types.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => entryOf(gui.directory, "Temperature_t").limits)
+    .toEqual({ min: 0, max: 9007199254740991 });
+});
+
+/** Temperature_t made a float64 read as it is stored, its limits -40 to 150. */
+function floatTemperature(directory: string): void {
+  const path = join(directory, TYPES);
+  const text = readFileSync(path, "utf8");
+  const changed = text.replace(
+    /("name": "Temperature_t",[\s\S]*?"datatype": )"uint16"([\s\S]*?"conversion": )\{[^}]*\}/,
+    '$1"float64"$2{ "kind": "identity" }',
+  );
+  if (changed === text) throw new Error(`${TYPES} declares no Temperature_t of uint16`);
+  writeFileSync(path, changed, "utf8");
+}
+
+test("a float type's range takes any number a double holds, and is written as floats", async ({
+  page,
+  copiedGui,
+}) => {
+  // A float64 holds 1e19 as it is: its digits past 2^53 were refused, and a bound past 2^53 the
+  // page sent was written as a whole number (task 1's n3 and n2).
+  const gui = await copiedGui("structures", floatTemperature);
+  await page.goto(gui.address);
+  await page.getByRole("link", { name: "Types" }).click();
+  await page.getByRole("row", { name: "Temperature_t", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Temperature_t" });
+  await panel.getByRole("row", { name: "Limits", exact: true }).click();
+  await panel.getByRole("combobox", { name: "Limits of Temperature_t" }).press("Escape");
+  await panel.getByLabel("Max", { exact: true }).fill("10000000000000000000");
+  await expect(panel.getByText("Changes 1 file: types.ddd.json")).toBeVisible();
+  await panel.getByRole("button", { name: "Apply to 1 file" }).click();
+  await expect
+    .poll(() => readFileSync(join(gui.directory, TYPES), "utf8"))
+    .toMatch(/"max": 10000000000000000000\.0/);
+  expect(entryOf(gui.directory, "Temperature_t").limits).toEqual({ min: -40, max: 1e19 });
 });
 
 test("a type's datatype is picked from the list of datatypes, and written", async ({
@@ -367,25 +502,48 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   await expect(apply).toBeEnabled();
 
   // The file changes under the page, between the preview it is holding and the press that sends
-  // it, so that preview is against the old bytes. The session's own watcher never sees the write
-  // `driftMaxUnseen` makes (it keeps the file's size and modification time), so only a fresh read
-  // of the bytes does, which is the check an Apply itself makes - the same hazard as keys.spec.ts's
-  // "a change refused as stale can be applied again once the analysis has caught up".
-  driftMaxUnseen(structuresGui.directory, TYPES, "Temperature_t", 999);
+  // it, so that preview is against the old bytes: the type's description, one word for another as
+  // long, written where the session's own watcher does not see it (`writeUnseen`), so only a fresh
+  // read of the bytes does, which is the check an Apply itself makes - the same hazard as
+  // keys.spec.ts's "a change refused as stale can be applied again once the analysis has caught
+  // up".
+  const path = join(structuresGui.directory, TYPES);
+  const original = readFileSync(path, "utf8");
+  const changed = original.replace("agrees to see it", "agrees to log it");
+  if (changed === original) throw new Error(`Temperature_t is described otherwise in ${path}`);
+  writeUnseen(structuresGui.directory, TYPES, changed);
   await apply.click();
   const refused = panel.getByRole("status").filter({ hasText: "A file changed on disk" });
   await expect(refused).toHaveText(STALE);
-  // Nothing was written: the type's entry is as the drift left it.
+  // Nothing was written: the type's entry is as the outside change left it.
+  const described = "A temperature as every component of this project agrees to log it";
   expect(entryOf(structuresGui.directory, "Temperature_t")).toEqual({
     ...before,
-    limits: { min: -40, max: 999 },
+    description: described,
   });
 
-  // The watcher never notices the drift, and nothing needs it to: refusing the Apply as stale, the
-  // server asks for the analysis itself (`Session._refused`), which reads the drifted bytes. The
-  // panel shows that analysis landed - the type's limits as the drift left them - and the sentence
-  // is still there: it is held until the reader's next choice, not until a revision.
-  await expect(limits).toContainText("-40 … 999");
+  // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
+  // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
+  // The panel reads the type from the file as it stands, even of the revision refused, so it says
+  // nothing of that analysis; the Types table's rows are made once a revision and kept for it, so
+  // its row shows the new description only once that analysis has landed. The sentence is still
+  // there then: it is held until the reader's next choice, not until a revision.
+  await expect(page.getByRole("row", { name: "Temperature_t", exact: true })).toContainText(
+    described,
+  );
+  await expect(refused).toHaveText(STALE);
+
+  // Text typed into the chooser is no choice, yet it is past the value the refusal was about: the
+  // sentence is not drawn beside the way out the panel says instead.
+  const chooser = panel.getByRole("combobox", { name: "Limits of Temperature_t" });
+  await chooser.clear();
+  await chooser.pressSequentially("-4");
+  // Enter takes only text spelling an entry exactly here, so the sentence offers the list alone.
+  await expect(panel.getByText(/^Pick one from the list, or press Escape/)).toBeVisible();
+  await expect(panel.getByText("Press Enter to take")).toHaveCount(0);
+  // Looked for by its text: the open list hides the page's roles from the accessibility tree.
+  await expect(panel.getByText(STALE)).toHaveCount(0);
+  await chooser.press("Escape");
   await expect(refused).toHaveText(STALE);
 
   // The reader's next choice, a new maximum typed, takes the sentence away, and is planned against
@@ -395,7 +553,7 @@ test("an apply made from a type's panel that is out of date is refused, and goes
   await apply.click();
   await expect
     .poll(() => entryOf(structuresGui.directory, "Temperature_t"))
-    .toEqual({ ...before, limits: { min: -40, max: 130 } });
+    .toEqual({ ...before, description: described, limits: { min: -40, max: 130 } });
   await expect(limits).toContainText("-40 … 130");
 });
 

@@ -498,7 +498,7 @@ Every way a build reports `no work to do` over stale artefacts, and the module's
 - `tests/test_cmake.py`, `test_cli.py` and `test_plugins.py`;
 - `docs/build_integration.rst` and `generated_artefacts.rst`, `SPEC.md` 7.1, and `CHANGELOG.md`.
 
-- [ ] **Task 1 (`9:C1`, Critical; decision 9.1):** the per-component headers are declared as
+- [x] **Task 1 (`9:C1`, Critical; decision 9.1):** the per-component headers are declared as
       `BYPRODUCTS`, with their names read at configure. `ddd_add_component` reads `component.name`,
       and `PROJECT` asks the tool. A renamed component needs a reconfigure, and the page says so.
       A story test, run under Ninja and, after task 7, under Make (Review focus 5):
@@ -506,7 +506,7 @@ Every way a build reports `no work to do` over stale artefacts, and the module's
         and the image reads the new value;
       - a second build has nothing to do;
       - an edit that leaves `Logger.h` alone recompiles `sensor.c` and not `logger.c`.
-- [ ] **Task 2 (`1:C2`, `1:I6`, Critical):** the `ADDRESS_MAP` flow gets the architecture
+- [x] **Task 2 (`1:C2`, `1:I6`, Critical):** the `ADDRESS_MAP` flow gets the architecture
       `ADDRESSES_FROM_IMAGE` already has.
       - The generation before the link leaves the a2l out.
       - `<stem>_ddd_a2l` depends on the image and the map, and runs `generate a2l --address-map`.
@@ -516,7 +516,7 @@ Every way a build reports `no work to do` over stale artefacts, and the module's
       - an array grown and built once gives an a2l holding this link's addresses;
       - an object added still builds;
       - a clean checkout's first build is said for what it is.
-- [ ] **Task 3 (`9:I1`, `19:I2`, `19:M8`; decision 9.4):** `ddd sources` lists every `.py` the
+- [x] **Task 3 (`9:I1`, `19:I2`, `19:M8`; decision 9.4):** `ddd sources` lists every `.py` the
       project names, loaded or not, and every file of a package plugin.
       - `load_workspace` moves inside `_analyze`'s guarded block.
       - `sources` and `artefacts` report `plugin-invalid` beside their listing instead of exiting 2.
@@ -525,19 +525,19 @@ Every way a build reports `no work to do` over stale artefacts, and the module's
 
       Tests: task 1's story for a plugin that stops importing, and for one whose model raises: the
       next build re-runs. `check --format json` still prints its document when a plugin model raises.
-- [ ] **Task 4 (`9:I2`):** each wildcard include is globbed with `CONFIGURE_DEPENDS`. The source list
+- [x] **Task 4 (`9:I2`):** each wildcard include is globbed with `CONFIGURE_DEPENDS`. The source list
       is written into the build tree only when it differs, as a dependency of the generation. Test:
       task 1's story for a file a pattern starts, then stops, matching.
-- [ ] **Task 5 (`9:I3`; decision 9.2):** `ddd_add_component` refuses a file whose top-level key is
+- [x] **Task 5 (`9:I3`; decision 9.2):** `ddd_add_component` refuses a file whose top-level key is
       `project`, naming `PROJECT`. Test: the configure error and its sentence.
-- [ ] **Task 6 (`9:I4`, `9:I5`):**
+- [x] **Task 6 (`9:I4`, `9:I5`):**
       - The empty-keyword guard walks `ARGV<n>`, so `ADDRESS_MAP "${UNSET}"` and
         `PROJECT "${UNSET}"` are refused at configure.
       - `execute_process` reads `ddd sources` with `ENCODING UTF-8`.
 
       Tests: the two configure errors, and (Review focus 2) a `PROJECT` build under a non-ASCII
       directory name on the windows legs.
-- [ ] **Task 7 (`9:M4`, `9:M5`, `9:M6`, `9:M7`; decision 9.3):**
+- [x] **Task 7 (`9:M4`, `9:M5`, `9:M6`, `9:M7`; decision 9.3):**
       - The release handshake is keyed on the tool's version as well as its path.
       - The dead fallback goes: the project file has to exist and parse at configure, and the page
         says so.
@@ -545,10 +545,10 @@ Every way a build reports `no work to do` over stale artefacts, and the module's
       - The module's six edges are handled: a bracket in a path, a deleted output directory, a C++
         project, a helper in a subdirectory, a removed template's output, and a vocabulary generated
         later.
-- [ ] **Task 8 (`24:I1`; decision 24.1):** `<target>.ddd` applies the default policy. The build page
+- [x] **Task 8 (`24:I1`; decision 24.1):** `<target>.ddd` applies the default policy. The build page
       says so: the "cannot drift apart" sentence goes, and a supplier is told that their check is not
       the build's.
-- [ ] **Task 9 (`9:M14`):** the small untrue or missing sentences of the command page and the build
+- [x] **Task 9 (`9:M14`):** the small untrue or missing sentences of the command page and the build
       page.
 
 ### Branch 3: `fix/gui-values` (off branch 2)
@@ -565,7 +565,7 @@ What the page writes when a person types, picks or pastes a value.
   `p23-probes.spec.ts`;
 - `gui/screenshots/references/`, and `CHANGELOG.md`.
 
-- [ ] **Task 1 (`3:C1`, Critical; decision M3):**
+- [x] **Task 1 (`3:C1`, Critical; decision M3):**
       - A whole number whose text a double cannot hold is refused where it is typed or pasted, in one
         sentence. That covers anything past 2^53, and a hexadecimal or binary spelling that would lose
         a bit.
@@ -577,26 +577,26 @@ What the page writes when a person types, picks or pastes a value.
       - a Vitest table over 2^53 - 1, 2^53 + 1, `0x8000000000000001` and `18446744073709551615`;
       - pytest of the route's mark and of the server's refusal;
       - a journey on a `uint64` block holding `[9007199254740993, 18446744073709551615]`.
-- [ ] **Task 2 (`15:C1`, Critical):** `chosen`, `typed` and `edited` are held as `{key, value}`, and
+- [x] **Task 2 (`15:C1`, Critical):** `chosen`, `typed` and `edited` are held as `{key, value}`, and
       ignored while `key !== selected`. Test: the probe `p15-C1`.
-- [ ] **Task 3 (`16:C1`, lowered to Important):** a cell's `onKeyDown` keeps one-character keys from
+- [x] **Task 3 (`16:C1`, lowered to Important):** a cell's `onKeyDown` keeps one-character keys from
       the table's type-to-find. Test: the probe `p16-C1`, typing 20, 5.1 and a 16x16 map's cell key
       by key.
-- [ ] **Task 4 (`15:I1`, `24:M2`; decisions 15.3 and 24.2):** while a chooser's text is not the
+- [x] **Task 4 (`15:I1`, `24:M2`; decisions 15.3 and 24.2):** while a chooser's text is not the
       settled value's label, Apply is withheld. A scroll that closes the list keeps what was typed.
       Tests: the probes `p15-I1` and `p15-I1b`, and a journey with a wheel notch between `km` and
       `/h`.
-- [ ] **Task 5 (`16:I1`, `16:I2`, `16:I3`; decision 16.2):**
+- [x] **Task 5 (`16:I1`, `16:I2`, `16:I3`; decision 16.2):**
       - A value cell is sized to its text.
       - The offer stays in view while a cell is open.
       - Several typed cells are planned as one table plan.
 
       Tests: the probe `p16-I2`, and a journey typing three cells and applying once.
-- [ ] **Task 6 (`16:I4`; decision M8):** a scalar's `init` is edited as a one-cell grid, and the
+- [x] **Task 6 (`16:I4`; decision M8):** a scalar's `init` is edited as a one-cell grid, and the
       variable's panel gets a description field. The panel says that renaming and scope are edited in
       the editor. Tests: demo `ParameterA` shows 3200 and its description, and each is written by a
       plan, in pytest and in a journey.
-- [ ] **Task 7 (`3:M4`, `3:M5`, `15:M4`, `15:M5`, `15:M6`, `15:M7`, `15:M9`, `15:M10`, `15:M13`):**
+- [x] **Task 7 (`3:M4`, `3:M5`, `15:M4`, `15:M5`, `15:M6`, `15:M7`, `15:M9`, `15:M10`, `15:M13`):**
       - **Reading numbers:**
         - one number grammar for every field, with no hexadecimal, binary, octal or `Infinity`;
         - one rule for a decimal comma, typed or pasted, including a comma locale's block holding a
@@ -613,7 +613,7 @@ What the page writes when a person types, picks or pastes a value.
         - a label cut on a code point, never through a surrogate pair.
 
       Test: a Vitest table for each.
-- [ ] **Task 8 (`15:M8`):** the plot becomes linear in the cells. Test: Vitest counting the plot's
+- [x] **Task 8 (`15:M8`):** the plot becomes linear in the cells. Test: Vitest counting the plot's
       work over a 4,096-cell grid.
 
 ### Branch 4: `fix/elf-and-addresses` (off branch 3)
@@ -1403,13 +1403,25 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   saying the build writes it. Nothing is written wrongly, and the CLI and developer pages state the
   limit. Branch 2, which owns `cmake/Ddd.cmake`, can say precisely which description the build
   writes, by a key it adds to the description it collects or to the record: an addition to the
-  format, which its changelog would then state.
+  format, which its changelog would then state. *(Done by branch 2, task 10, R29: the record of a
+  description given as `PROJECT` carries `origin`, `given`, and is stamped `format` 2; the record
+  of a collected one is the format 1 record every DDD reads, with no key. `ddd gui` edits a
+  project whose record says `given`, and refuses every other, a record without the key included,
+  as every record before the key. A DDD from 0.11.0 on declines a record of format 2 as written
+  by a newer DDD and says so, an older one skips it in silence, so the cost falls on `PROJECT`
+  builds' records alone. The CLI and developer pages state the limit no more, and the branch's
+  changelog entry states the key and the format.)*
 - **A removal refused as stale waits for the panel to close, or a key to settle** (R22): the
   variable panel's removal offer withdraws Remove while any refusal stands (P19b-24), so its
   sentence, kept now until the reader's next choice, goes when they settle a key or close the
   panel, and only then is Remove offered again. Drawing Remove under the sentence, as the other
   offers draw their Apply, is the question P19b-24 recorded for the maintainer. Branch 11 lists
   `screens/*` and `components/*`.
+- **A refused undo is tried again only by closing the strip** (R22): the Undo strip draws a
+  refusal in place of its preview and Put back, so an undo refused is asked again only once the
+  reader has closed and opened the strip, where a revision landing let a stale refusal go before
+  this branch. The refusal is of the entry pressed for, and another coming to the top while the
+  strip is open is offered whole (branch 2, D0). Branch 11 lists `screens/*`.
 - **A create racing another writer's create** (task 2, `13:I1`; R23): a file an edit creates is
   renamed into place, replacing one another writer created between the edit's last look and the
   rename, and a save landing in that instant is written over too, as the documents now say.
@@ -1430,9 +1442,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   its error dropped; and a file deleted just before the write, or during an undo's batch, is
   answered `unwritable` where `stale` is true. No branch owns `editing.py`.
 - **A folder a stage cannot be made in, and a umask without the owner's write bit** (task 5): the
-  first is refused only at its stage, after the files before it were written and then put back;
-  under the second every edit and undo is refused, the stage being opened again to write before
-  it is synced. No branch owns `editing.py`.
+  first is not refused before staging starts but at its own stage, which is made before any file
+  is renamed, so nothing is written or put back, though the refusal says otherwise (above); under
+  the second every edit and undo is refused, the stage being opened again to write before it is
+  synced. No branch owns `editing.py`.
 - **A plan an unanalysed edit moved reads as `stale`** (task 3): where an edit of the page's own
   moved the place a plan points at, the plan is refused `stale` before that edit's analysis lands,
   ahead of the `analysing` refusal the CLI page documents for the case. Branch 10 lists
@@ -1446,10 +1459,11 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   only, and rare. Branch 7 and branch 10 list `gui/session.py`.
 - **A generated project left unrecognised** (task 4): a record that does not parse is read as no
   record, and `ddd build-info --output` writes one unstaged, so a write that dies can leave it
-  half written; a build configured at another path, a container's mount, names a project the path
-  opened does not match; and an empty `CMAKE_HOME_DIRECTORY` reads as the working directory. Each
-  can leave a generated description editable. Branch 7 and branch 10 list `gui/session.py`, branch
-  12 `cli.py`.
+  half written; and a build configured at another path, a container's mount, names a project the
+  path opened does not match. Either can leave a generated description editable. An empty
+  `CMAKE_HOME_DIRECTORY` reads as the working directory besides: the description's own directory
+  is refused all the same, and only how much of the build tree around it is refused changes.
+  Branch 7 and branch 10 list `gui/session.py`, branch 12 `cli.py`.
 - **An existing description added to a generated project** (task 4): is refused without the
   `ddd_add_component()` line a new file is offered with. Branch 10 lists `gui/*.py`.
 - **The editor's own id fix** (tasks 6 and 10): the language server places an id with
@@ -1496,6 +1510,78 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **One case the threat model sets aside** stays as `docs/gui_security.rst` draws that model. No
   branch owns it.
 
+**Branch 2:**
+- **A plugin's file reaches a component compiling it a build late under Ninja** (task 1, `9:C1`;
+  R40): the module declares no file of a plugin, whose names are the plugin's own and known once
+  it has run, so ninja looks at such a file before the generation rewrites it, and a change of it
+  reaches a component compiling it a build late, however the component is ordered after the
+  generation; under make the build after it is right. The build page and SPEC 7.1 give that cost,
+  and the remedy a project has: a component whose object depends on the dictionary
+  (`OBJECT_DEPENDS` on the path of `DDD_DICTIONARY`) is compiled again in the very build a
+  description change runs, though not in the one an edit of the plugin's own code runs that
+  changes only what it writes, and not its model; and `ninja -t clean` and `make clean` leave such
+  files. Declaring them is one task in two halves: a
+  plugin naming its files before it writes them, which is the plugin api, `plugins.py` and
+  `backends/base.py`, both on branch 12's list, and the module asking for those names at
+  configure and declaring them, in `cmake/Ddd.cmake`, which branch 5 lists. Branch 5 comes first,
+  and its half would consume branch 12's, so the task is branch 12's, its files then taking the
+  module.
+- **The CMake floors are run nowhere** (tasks 1 and 4): CI and the Linux development PC have the
+  CMake pip installs, 4.4.3, so neither the module's floor of 3.20 nor the collected mode's of
+  3.30 is run. On CMake 3.20 to 3.22 a component file of a `PROJECT` build that starts with a
+  byte order mark may name no component, if the json reader of those releases refuses the mark,
+  which no run has shown either way: its header would then go undeclared, a change of it reaching
+  its readers a build late under Ninja, and a root starting with one would be refused as not
+  json, as 0.11.0 refused it. No branch's task runs a floor; branch 5 lists `cmake/Ddd.cmake`.
+- **A component's file turned into a project after the configure** (task 5, `9:I3`):
+  `ddd_add_component()` refuses a project file when the build is configured, and a registered
+  file is no dependency of the configure, so a component's file rewritten as a project is
+  refused only at the next configure. Until then the generation collects it as any registered
+  file, and an edit of what it includes builds to `no work to do`. Branch 5 lists
+  `cmake/Ddd.cmake`.
+- **A generated file deleted by hand under make** (task 7, `9:M6`): it is not written again until
+  the step runs for another reason - an edit, a clean - or its stamp is deleted, and every build
+  reading it stops on it until then, as the build page and SPEC 7.1 have it; ninja makes a
+  declared file that is missing. Branch 5 lists `cmake/Ddd.cmake`.
+- **The a2l options' flag for an address source** (task 2): `A2lOptions.has_address_source` is
+  false unless given, whatever addresses the options carry, so an a2l written through options
+  that carry addresses and leave the flag out says it has no address source; the one place in the
+  tool building the options sets the flag. Branch 5 lists `backends/a2l/*`.
+- **`STRICT` passes an empty map read after the link** (task 2): a map with no entries raises no
+  `address-missing`, so an a2l whose every address is 0 passes `STRICT`, saying so in its comment.
+  Whether `STRICT` should fail it is a change of a check, the maintainer's to decide, in the pull
+  request.
+- **A refusal's sentence on the variable panel** (D0): a row the panel picks by itself can still
+  hide the sentence when a revision lands, as it could before branch 1. Branch 1's re-review left
+  it, its keying being older than that branch, when D0 took the other residuals. Branch 11 lists
+  `screens/*`.
+
+**Branch 3:**
+- **A field focused without a click** (task 3, `16:C1`): a field a screen reader or voice control
+  focuses, while the grid already holds a focused cell of its own, lands on that cell instead -
+  the table is one stop for Tab and keeps the cell last focused, as it did before the task. The
+  journeys click a cell before they type into it, so none goes that way; the readers who meet it
+  are the ones decision 16.3 is for. Branch 11 lists `components/*`, its task 8 being that
+  decision's.
+- **`1e400` and `1e-400` in the json-text fields** (task 7, R51): a constant's Value, a size, a
+  dimension, a section's alignment and a raster's event send `1e400` as typed, and the server
+  refuses it in DDD's own words; `1e-400` typed into a constant's Value is written in those
+  characters, which the loader reads as 0.0, so a dimension that constant names is refused by
+  `ddd check` as one of 0.0. Branch 13, task 7 makes `1e400` in a block a finding and lists
+  `loading.py`; branch 10 lists `shared_plans.py`, which writes the value.
+- **A press lost while a revision lands** (the Files tab, R58): when a revision reaches the page,
+  the tab asks each of its plans again for it and draws no Apply until the plan comes, so a press
+  made in that moment is lost, with no request and no sentence. The tab's journeys of a stale
+  refusal press again only once a row's kind, read off the revision the page holds, says that
+  revision has come. Branch 11 lists `screens/*`.
+- **FLT_MAX read out of an image** (R55): `ddd tool from-elf` writes a `float32`'s `init` in the
+  fewest digits that read it back, so FLT_MAX is written 3.4028235e+38, a double past FLT_MAX's
+  own, which `ddd check` refuses as `init-invalid` - the spelling the page planned until this
+  branch's final wave. Branch 4 lists `toolbox/*.py`.
+- **The refusal of an Apply chosen in two more screens** (decision 3.5): the Units and Types
+  tabs' `refusalOf` choose a refused Apply's sentence inline, as the four sites that now call
+  `refusalSentence` did, and the Files tab borrows the Units tab's. Branch 11 lists `screens/*`.
+
 ## Rulings taken
 
 Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so on.
@@ -1507,12 +1593,15 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R2.** Task 4 recognises a generated project by the build record naming it, and could have
   marked it from `cmake/Ddd.cmake` where the record did not suffice; it sufficed for the projects
   the task names, so the module is unchanged. It does not suffice for a description given with
-  `PROJECT` whose record sits beside it, which is taken for generated (*Left open*, branch 2).
+  `PROJECT` whose record sits beside it, which was taken for generated until branch 2's task 10
+  (*Left open*, branch 1).
 - **R3.** A stage is created by an exclusive open of `<name>.<8 hexadecimal digits>.ddd-staging`,
   not by `tempfile.mkstemp`, whose `0600` would carry into a file the engine creates, which takes
   the access any new file gets; the name is as much its own either way.
 - **R4.** A branch's changelog entries for its fixes are written once, at the branch's end, not with
-  each task; a migration line stays with the task that makes it.
+  each task: the plan asks a task for an entry only where it changes the public interface, while
+  the Unreleased section names every fix of what `ddd gui` shipped in 0.11.0. A migration line
+  stays with the task that makes it.
 - **R5.** A fix for a dependency's drift joins branch 1 as task D1, after task 2: the depth test
   accepts both wordings pydantic-core gives its refusal, both cores lying in the range the
   requirements allow, so that no commit leaves a gate red.
@@ -1577,10 +1666,199 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R24.** What the whole-branch review set aside stays so; `unwritable`'s 500 is under *Left open*.
 - **R25.** These records keep what a person meets or a later branch needs, the ledger how tasks ran.
 
+**Branch 2:**
+- **R26.** The five residuals branch 1's final re-review left join branch 2 as its first task, D0,
+  ahead of the plan's: branch 1 took no second fix wave, its pull request being open. D0 ties each
+  refusal the page holds to the entry or offer it came from, has five journeys wait on what only
+  a refusal's analysis draws, and corrects the plan's records of branch 1; a sixth residual,
+  whose cause is older than branch 1, is left (*Left open*, branch 2).
+- **R27.** Branch 2 runs D0 first, then the plan's tasks 1 to 9 in order, task 1's story being the
+  harness tasks 3, 4 and 7 tell their triggers in, then a task 10 the plan does not list (R29), the
+  last to change the module, then its changelog, as R4 has it.
+- **R28.** Task 7's "the dead fallback goes" removes only what the verification of `9:M5` found
+  dead, the tolerance of a `PROJECT` not yet written or not json, which is now refused at
+  configure, as is one naming no project. The fallback task 3 keeps live stays: a root that
+  parses and fails its schema is warned of, and the generation and the configure depend on that
+  file alone, since such a root still reaches it.
+- **R29.** Branch 2 takes the mark branch 1 left it as task 10: the build record says where its
+  description came from, `origin: "given"` for one handed to the module as `PROJECT`, and
+  `ddd gui` edits only a project whose record says so, which completes `1:C4`'s fix where the
+  module is this branch's. The key was to be additive, but the record forbids a key it does not
+  know, so a record with it is stamped `format` 2, which 0.11.0 declines saying so and an older
+  DDD skips in silence; it is written for a given description alone, so that cost falls on
+  `PROJECT` builds, a collected record keeping the format 1 every DDD reads. Writing it only
+  where the record lies beside its description would have spared the other `PROJECT` builds as
+  well, at the price of a key that comes and goes with the layout: the maintainer's to weigh.
+- **R30.** The Makefile cell of task 7 is on every leg of CI - GNU make's generator on Linux, and
+  MinGW's on Windows, with the `mingw32-make` beside the runner's `gcc` - picked by the platform
+  and never skipped, as nothing in the suite is; the developer page names the `make` it needs.
+  The final wave keeps the build stories under make, and of the five shapes of a wildcard the
+  plain one, and tells under Ninja alone a case the configure decides alone and the other four
+  shapes, which differ from the plain one only in how the module spells the pattern it watches.
+- **R31.** Task 1 names a collected image's components by walking its link graph at configure,
+  since `BYPRODUCTS` cannot take the generator expression that collects them, and waits for the
+  end of the directory calling `ddd_generate()`, so that an image linked after the call is read
+  whole; a link behind `$<CONFIG:...>` alone is read for `CMAKE_BUILD_TYPE`, and any other
+  expression counts whatever it comes to. A component that walk cannot see - reached through a
+  link made, or a library defined, after that directory is done, or registered after it - would
+  go undeclared, so the configure stops at it once the top directory is done, naming it; it
+  stops too at a component named like a file the templates render, which no build can declare
+  twice; and a description the build writes is watched, so the first build to find it
+  configures again. No task names these configure errors, and the changelog gives the late one
+  its migration.
+- **R32.** Task 2's "a clean checkout's first build is said for what it is" is read both ways, a
+  test holding each: with the map, the first build's a2l carries the addresses of the image that
+  build linked, and an a2l written with no address source says so in a comment.
+- **R33.** Task 3 gives `ddd sources` `-W` and `--strict`, which no task names, and the module
+  passes it the call's `SEVERITY` and `STRICT`: the configure prints what the tool reports as a
+  warning, and a check the build relaxed would otherwise be warned of at every configure, with no
+  way to silence it. Since the final wave a `SEVERITY` the tool refuses, naming no check, stops
+  the configure in the tool's words, where it was warned of as a project the tool could not
+  resolve.
+- **R34.** Task 6's commit message repeated words of the review, found once committed and before
+  any push, and was reworded with `git commit --amend`, the tree unchanged, against "never
+  `--amend`": a quotation must not reach GitHub, and nothing pushed was rewritten.
+- **R35.** Task 7's "keyed on the tool's version as well as its path" is met by asking
+  `ddd --version` at every configure, once, the answer kept for that run alone: a key on the
+  version cannot be had without asking for it, one on the file's size and time misses a wrapper
+  script and an editable install, and the question takes some 0.04 s.
+- **R36.** Task 7 refuses every empty value among a value keyword's values, naming the keyword,
+  where task 6's text names a value given alone: an empty value in quotes is a variable unset or
+  mistyped, and one dropped in silence leaves a `SEVERITY` policy weaker than the call says.
+- **R37.** Task 7 gives each shared file a stamped step may be read by the path of (the a2l, the
+  dictionary and the files the template names give away) a rule of its own under make, depending
+  on the step's target, beyond the stamp its text names; the `{component}` headers and a plugin's
+  files get none, and stay byproducts: make knows a file only as a rule's output, so a step
+  depending on the dictionary's or the a2l's path had nothing to make it with in a fresh tree, and
+  after an edit read what the build before had left. Task 10 has `make clean` take those files,
+  which the rules had put out of its reach.
+- **R38.** Task 7 raises the test job's limit from 25 minutes to 40, the windows legs taking 12.5 to
+  15 minutes with the Makefile cell (8 to 14 before it; CI run 43561237620, after the final
+  wave's M6): the limit guards against a hang rather than timing the suite. The final wave gives
+  some of that time back (R30).
+- **R39.** Task 9 changes two behaviours beside its sentences, both its finding's own: `ddd
+  check`'s count line agrees in number, and `--dictionary` naming the file a run keeps its
+  manifest under is refused for that, where the refusal spoke of the path's length. It rewords
+  the advice of the late-link refusal and the reason of the `PROJECT` one as well, the module's
+  sentences being what a build prints.
+- **R40.** The final wave leaves a plugin's files undeclared, so Review focus 5 goes unmet under
+  Ninja for a component compiling one: declaring them takes a plugin naming its files before it
+  writes them, which no task of this branch can give. The pages say what such a build reaches
+  instead, and what a project can do (*Left open*, branch 2).
+- **R41.** What the whole-branch review set aside stays so, a warning for a component renamed in
+  the collected mode among it: the pages say the cost of such a rename instead.
+
+**Branch 3:**
+- **R42.** Branch 3 runs a D0 first, the residuals branch 2's re-review left and its row of the
+  progress log, then the plan's tasks 1 to 8 in order, then its changelog as D2 (R4), task 6's
+  entry moved among branch 3's, then the whole-branch review and one final wave, as branch 2 did
+  (R27).
+- **R43.** Task 1 refuses a whole number past what a double holds in every spelling the grammar
+  read when it landed, its table keeping `0x8000000000000001`; task 7 then makes one grammar with
+  no hexadecimal, binary, octal or `Infinity`, and that row stays refused by the grammar's own
+  sentence. A spelling that would lose a bit is refused as no decimal notation, where the task's
+  text has it refused for the bit; `3:C1` and `15:M13` both hold once both have landed.
+- **R44.** Task 1 reaches the limits as well as the values, though its text names a plan's values:
+  a range's two fields refuse a bound past 2^53, a stated bound past it shows in its file's own
+  digits rather than filled in rounded, the meta line says a limit it cannot show, and `settle`
+  and `type-plan` refuse a 64-bit limit at or past 2^53 - the same rounding, reached through the
+  panel. The values route marks a 64-bit block holding 2^53 itself, where that refusal starts.
+  What task 1's re-review left of the physical reading - the check on the raw count, a float
+  written as a float, the limits read as the cells read, the server's limits refusal weighing what
+  the page sends - task 7 made, its grammar rewriting those lines anyway.
+- **R45.** One of task 1's fix commits left a line past ruff's length, which the next commit
+  wrapped: that commit alone fails `ruff check`, against "No commit leaves a gate red". Rewriting
+  five unpushed commits to mend one line was more risk than the bisect it costs.
+- **R46.** Task 3 keeps from the grid exactly the keys its type-to-find takes, one character with
+  neither Ctrl nor Meta, judged in `lib`, and settles the grid's first focus too, which its text
+  does not name: a field taking the focus tells the table its own cell is the focused one only
+  where the table holds none, so the keys after a fresh grid's first focus stay in the field and
+  an arrow moves on from its cell, while a click, Tab and Shift+Tab keep React Aria's handling. The
+  journeys' thirteen `.fill()`s of grid cells are typed key by key (decision 23.2), and the loop
+  that retyped around the jump is gone.
+- **R47.** Task 4 covers every chooser with an Apply one press away - the variable panel's, the
+  Units tab's rename and the type panel's - and the declare form's Add, though the branch's Files
+  list names neither `UnitPanel.tsx` nor `TypePanel.tsx`, nor that form: decision 15.3 is general,
+  and each is the same defect. Only Escape and the focus leaving end the text typed; every other
+  close keeps it - the arrow's, an Enter that takes nothing and a list the text empties, as well as
+  the scroll the task names - and a sentence under the field says how to take the text, each of
+  its three wordings true for the chooser it is drawn under.
+- **R48.** Task 5 plans several typed cells cell by cell, not as one table: `set_cells` makes one
+  edit of a `set` at each typed element's own pointer, so cells nobody typed keep their spelling
+  and the file its layout; where the file states one value for every cell, states none or writes
+  too short an array, the whole `init` is written, as `set_cell` writes it for one cell. It has a
+  route of its own, `GET /api/cells-plan`, beside `value-plan` for one cell and `values-plan` for a
+  paste: decision 16.2 asks for one plan, and the whole table written weighed and respelled cells
+  nobody typed and outgrew a request for a large block, at the cost of one more route, query model
+  and schema. A cell keeps the reading it was typed in when the toggle turns. Left out, and said in
+  the pull request: the arrows, Home and End moving the caret, and typed cells dropped without a
+  word on leaving the page, so `16:I3` is closed in part.
+- **R49.** A task may land as several commits, one per finding or part and one per fix round, each
+  pushed for CI as it lands and never amended, rebased or forced, so "One commit per task" does not
+  hold after a task's first push; the pull request says so, and the maintainer may squash at
+  merge.
+- **R50.** Task 6 reaches a scalar's value from its row's Shape column, which reads `scalar`, as a
+  grid of one cell with the toggle and no picture, rather than from the panel, and offers the same
+  grid for a declaration naming a scalar type, one rule for scalars and value blocks; a scalar
+  stating no `init` gains one, and a text `init` and several producers stay refused. The
+  description is the declaration's own, two components describing one variable in their own
+  words: a field on the panel opened from a component, not from the project screen, written as
+  typed, a lone surrogate refused, the empty text taking the key away.
+- **R51.** Task 7 reads every number by one grammar, a section's alignment and a raster's event
+  among the fields as much as a size, a dimension and a constant's Value; a comma that could be
+  either is asked about in the grid with a choice of one press, which no task names; and the five
+  json-text fields send `1e400` as typed, the server refusing it in DDD's words, since they have no
+  datatype to weigh it by (*Left open*, branch 3).
+- **R52.** Every cell the file does not state is drawn hollow, an absent `init`'s included, which
+  supersedes the values spec's 5.2, where an absent one drew as greyed zeros; and the picture
+  follows the cells, so a grid stating nothing draws none, as a scalar draws none, where a plot of
+  zeros lay under hollow cells. The pull request states it as a change of spec 5.2.
+- **R53.** Where an axis states fewer breakpoints than the shape has columns, the picture places
+  the values at their indices, its ticks reading the indices and, since the final wave, no axis
+  named under them, where breakpoints were read at places that were indices.
+- **R54.** `type-plan` refuses a unit with spaces around it as `settle` does, the judgement being
+  the server's; a plan whose edit would change no byte is no change on four routes, `value-plan`,
+  `cells-plan`, `values-plan` and `description-plan`, beyond the cell typed back the task names;
+  and `type-plan` stays out of that rule, P19b-13 being the maintainer's.
+- **R55.** A value is written as its datatype holds it: a float's as a float - `3.0` for the `3`
+  the page sends, `0.0` for the zeros an array is filled out with, `-50.0` for a float's limit -
+  since a float written as a whole number past 2^53 is a literal the grid marks as one it cannot
+  show, an integer no C type holds; and, since the final wave, a boolean's as `true` or `false`,
+  where a `false` set to 1 and back was written `1` and then `0`. A physical value typed into a
+  float is planned as the shortest float that comes back, but FLT_MAX as its own double,
+  3.4028234663852886e+38: its shortest spelling is a double past it, which the server and
+  `ddd check` refuse a `float32`. The cost is a diff respelling a pasted table or an untouched
+  bound, which the changelog states.
+- **R56.** Task 8 makes a keystroke in a grid draw only the field typed into (`GridStore`), as well
+  as the picture linear in its cells, the readings cache task 7's review left joining it, and
+  measures a keystroke to its second frame with a bench case of its own, beside the Vitest count
+  its text names.
+- **R57.** D2 was committed with D0's message, read from a file left from before, which the tool
+  writing the new one would not overwrite unread; that one commit, local and unpushed, had its
+  message amended to its own, the tree unchanged, against "never `--amend`": the history must say
+  what a commit does. Each message has since been written to a new file.
+- **R58.** The final wave has the Files tab's three journeys of a stale refusal - Remove, New file
+  and Add - wait for a row's kind before their second press, the outside change also renaming the
+  rasters entry to a copy of that file: the plan's lines and the finding counted at an entry they
+  waited on are answered from the server's newest analysis, and with the analysis' revision held
+  back from the page each was met before it came, so a press could fall in the update that
+  revision brings; a row's kind is read off the revision the page holds.
+- **R59.** The final wave keeps a cell clear of the held offer by a scroll margin of the offer's
+  height on each cell of the grid, which the table's scroll into view honours: Ctrl+End scrolled
+  the last cell into view after its field had taken the focus, and left it under the offer.
+  Padding the window's scroll instead scrolled the window away from the cell typed into at every
+  Tab to the offer's own buttons, and a scroll listener while a field holds the focus would push
+  back a scroll the reader makes.
+- **R60.** What the whole-branch review set aside stays so, the debounce flag task 2 left read in
+  the component and the pick dropped while the panel says only that it is updating among it, which
+  the pull request states.
+
 ## Progress log
 
 | Branch | Pull request | Merged | Notes |
 | --- | --- | --- | --- |
+| 1, `fix/edit-engine` | #84 | not merged | Its four Criticals and the edit engine's Importants; the re-review's residuals carried into branch 2's D0 |
+| 2, `fix/build-integration` | #85 | not merged | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
 
 ## Self-review
 

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import {
   ApiError,
   getDeclarationPlan,
+  getDescriptionPlan,
+  getFile,
   getSettle,
   getUnits,
   getVariable,
@@ -12,19 +14,34 @@ import { useUpdating } from "../app/updating";
 import { useDebounced } from "../app/useDebounced";
 import type { Offer } from "../components/UnitPanelView";
 import { VariablePanelView } from "../components/VariablePanelView";
+import {
+  type Applied,
+  appliedHeld,
+  describeRequest,
+  descriptionField,
+  descriptionIn,
+  descriptionShown,
+} from "../lib/description";
 import { planEdit } from "../lib/projectUnits";
-import { isStale, panelShows, type Refused, refusalShown } from "../lib/refusals";
-import { planShown } from "../lib/typing";
+import { panelShows, type Refused, refusalSentence, refusalShown } from "../lib/refusals";
+import { planShown, unsettled } from "../lib/typing";
 import { removeLabel, settleLabel } from "../lib/undo";
 import { editOf, outsideVocabulary, textOf } from "../lib/units";
 import {
+  type Choice,
+  type Held,
+  heldFor,
+  holdOn,
   keyRows,
   labelOfRaw,
-  limitsNote,
   limitsOf,
   limitsRaw,
+  settledLabel,
   settledRaw,
+  settleNote,
+  staleHold,
   startingRaw,
+  variableDatatype,
 } from "../lib/variableKeys";
 import { Banner } from "../ui/Banner";
 import { Panel } from "../ui/Panel";
@@ -108,33 +125,35 @@ export function VariablePanel({
     queryFn:
       file === undefined ? skipToken : () => getDeclarationPlan({ action: "remove", file, name }),
   });
+  // This component's own file, as its page reads it - the same query, so the same answer - for the
+  // description the declaration states: `GET /api/variable` carries only the keys the declarations
+  // share, and a description is no such key, two components describing one variable in their own
+  // words. Asked for only on a component's page, as the removal is.
+  const content = useQuery({
+    queryKey: ["file", file, revision],
+    queryFn: file === undefined ? skipToken : () => getFile(file),
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === file ? previous : undefined,
+  });
   // Which component the removal would take the declaration from - this file's own name among
   // the variable's declarations - for the offer's sentence and the label its undo would carry.
   // `undefined` before the variable has loaded, or on the project screen, where `file` matches
   // none of them because there is none to match.
   const from = reply?.declarations.find((entry) => entry.path === file)?.component;
-  // The reader's own choice of key, kept as a tri-state the way `chosen` below is: `undefined`
-  // until they choose, `null` once they let a row go, a string for the key they picked.
+  // The reader's own choice of key, kept as a tri-state: `undefined` until they choose, `null`
+  // once they let a row go, a string for the key they picked.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
-  // `undefined` until the reader chooses: the chooser then settles on the producer's value, the
-  // direction the tool's own rule reads in, and says what that would change.
-  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
-  const [typed, setTyped] = useState<string | undefined>(undefined);
-  // What the reader has put in the two fields of a range, `undefined` until they touch one:
-  // the same tri-state as `picked`, `chosen` and `typed`. What the fields read is derived
-  // below rather than seeded by a handler, so that a `limits` row reached by any path - by
+  // What the reader has chosen, typed, put in the two fields of a range, or opened the diff of,
+  // for the key on screen, with that key (`lib/variableKeys.ts`, `Held`). Every one of them
+  // starts as `undefined`: the chooser then settles on the producer's value, the direction the
+  // tool's own rule reads in, and says what that would change. What the range fields read is
+  // derived below rather than seeded by a handler, so that a `limits` row reached by any path - by
   // hand, or opened for the reader because it is the first row that disagrees - starts on the
-  // value the chooser starts on. Two empty fields are a removal, and a removal is something
-  // the reader asks for, never where a row opens.
-  const [edited, setEdited] = useState<{ min: string; max: string } | undefined>(undefined);
-  // Whether `edited`'s own value came from typing into Min or Max, rather than a pick from the
-  // list: `onChosen` below writes `edited` too, for a range picked outright or "state nothing"
-  // chosen, so `edited !== undefined` alone cannot tell a pick from typing (fix round 2's own
-  // finding - that read every limits pick as typing, and waited `PLAN_DELAY_MS` for one that
-  // should go through at once, the same as every other pick on this screen already does). Reset
-  // wherever `edited` itself is, so it never outlives the row it was made for.
-  const [typedLimits, setTypedLimits] = useState(false);
-  const [changesShown, setChangesShown] = useState(false);
+  // value the chooser starts on; two empty fields are a removal, which a reader asks for, never
+  // where a row opens. The held choice is let go the moment the key on screen is not its own, so
+  // a row the panel opens by itself - the next that disagrees, or this one again after an undo or
+  // an outside edit - starts afresh, as every row opened does.
+  const [held, setHeld] = useState<Held | undefined>(undefined);
   // A settlement refused - a file changed on disk (`STALE`), a type fixing this key, a kind that
   // cannot carry one, the engine's own rule - and the key it was refused for: held until the
   // reader chooses again, exactly as every other choice made here, and never let go by a revision
@@ -150,6 +169,35 @@ export function VariablePanel({
   // panel, the one choice left there - never with a revision.
   const [removalShown, setRemovalShown] = useState(false);
   const [removalRefused, setRemovalRefused] = useState<string | null>(null);
+  // The description's own, the same three: what was typed - `undefined` until then, so the field
+  // shows the declaration's own - the diff of what writing it takes, and why it was refused. Kept
+  // apart from the key chooser's and the removal's for the same reason theirs are kept apart.
+  const [typedDescription, setTypedDescription] = useState<string | undefined>(undefined);
+  // What the last Apply wrote, held by `descriptionShown` until the file read since states
+  // something else.
+  const [appliedDescription, setAppliedDescription] = useState<Applied | undefined>(undefined);
+  const [descriptionShownDiff, setDescriptionShownDiff] = useState(false);
+  const [descriptionRefused, setDescriptionRefused] = useState<string | null>(null);
+  // What this declaration states of its description (`descriptionIn`): `null` where the file is not
+  // read yet or does not declare the variable, and then the field is not drawn. The request - the
+  // text typed, where it is not the declaration's own - is debounced as every field typed into is.
+  const field = descriptionField(
+    file,
+    name,
+    from,
+    content.data === undefined ? null : descriptionIn(content.data.data, name),
+  );
+  // The hold ends for good once the file read states something else (`appliedHeld`).
+  const heldApplied = field === null ? undefined : appliedHeld(appliedDescription, field.stored);
+  if (heldApplied !== appliedDescription) setAppliedDescription(heldApplied);
+  const describeRequested =
+    field === null ? null : describeRequest(field.where, typedDescription, field.stored);
+  const describeAsked = useDebounced(describeRequested);
+  const describing = useQuery({
+    queryKey: ["description-plan", describeAsked, revision],
+    queryFn: describeAsked === null ? skipToken : () => getDescriptionPlan(describeAsked),
+  });
+  const shownDescription = planShown(describeAsked, describeRequested, describing);
   // What the table actually offers to settle (`kind` aside): what a key remembered from a
   // previous variable, or forced by `focusPicker`, has to be checked against before it is shown.
   const rows = reply === undefined ? [] : keyRows(reply, null).filter((row) => row.settleable);
@@ -168,18 +216,34 @@ export function VariablePanel({
   // fields say and what Apply writes cannot drift apart. Two empty fields are "state nothing",
   // which the list offers too; anything else that is not a range is not a value at all, and
   // the chooser says so instead of previewing something the reader did not ask for.
+  if (staleHold(held, selected)) setHeld(undefined);
+  const { chosen, typed, range: edited, changesShown } = heldFor(held, selected);
+  const hold = (patch: Partial<Choice>) => setHeld((before) => holdOn(before, selected, patch));
+  const typedLimits = edited?.typed ?? false;
   const range =
     edited ??
     (selected === undefined || reply === undefined
       ? { min: "", max: "" }
       : limitsOf(startingRaw(reply, selected)));
-  const broken = selected === "limits" ? limitsNote(range.min, range.max) : null;
+  // The range is read by the datatype its declarations state (`variableDatatype`): a float's bound
+  // as the double it is, any other's refused where the page would send another number.
+  const datatype = reply === undefined ? "" : variableDatatype(reply);
+  // What the chooser would settle on, read before anything is asked for it (`settleNote`): a
+  // range the two fields do not make, or a unit with spaces around it (15:M10).
+  const chosenRaw =
+    selected === undefined || reply === undefined
+      ? null
+      : settledRaw(chosen, startingRaw(reply, selected));
+  const broken =
+    selected === undefined || reply === undefined
+      ? null
+      : settleNote(selected, range, datatype, chosenRaw);
   const target =
     selected === undefined || reply === undefined || broken !== null
       ? null
       : selected === "limits"
-        ? limitsRaw(range.min, range.max)
-        : settledRaw(chosen, startingRaw(reply, selected));
+        ? limitsRaw(range.min, range.max, datatype)
+        : chosenRaw;
   // `target` is typed into directly while `selected` is `limits` (the two range fields commit on
   // every keystroke, like every other plain field on this screen) and otherwise set discretely by
   // a chooser's pick or Enter. `typedLimits` says which this one is (fix round 2: `selected` and
@@ -191,6 +255,16 @@ export function VariablePanel({
   const settleRequest: SettleRequest | null =
     reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
   const askedSettle = useDebounced(settleRequest, typedLimits);
+  // What the field reads while nothing is being typed (`settledLabel`), and whether what is typed
+  // is not that: text typed and left is no choice yet (decision 15.3), so while it stands nothing
+  // is previewed - the table above says nothing of the earlier value either - and Apply is withheld.
+  const fieldLabel =
+    reply === undefined
+      ? ""
+      : settledLabel(selected, broken, target, chosenRaw, (key, raw) =>
+          labelOfRaw(reply, key, raw),
+        );
+  const unsettledText = unsettled(typed, fieldLabel);
   const preview = useQuery({
     queryKey: ["settle", name, askedSettle, revision],
     queryFn:
@@ -208,11 +282,7 @@ export function VariablePanel({
   // while a row still disagrees, not hand the reader straight back to it.
   const select = (key: string | undefined) => {
     setPicked(key ?? null);
-    setChosen(undefined);
-    setTyped(undefined);
-    setEdited(undefined);
-    setTypedLimits(false);
-    setChangesShown(false);
+    setHeld(undefined);
     setRefused(null);
   };
   // The unit cell of the component table hands the reader over to the unit's chooser, which is
@@ -225,9 +295,7 @@ export function VariablePanel({
   // so there is nothing to remember here: a half-typed one leaves no whole one behind to be
   // applied in its place.
   const onRange = (next: { min: string; max: string }) => {
-    setEdited(next);
-    setTypedLimits(true);
-    setTyped(undefined);
+    hold({ range: { ...next, typed: true }, typed: undefined });
     setRefused(null);
   };
   const apply = useMutation({
@@ -245,20 +313,21 @@ export function VariablePanel({
     onMutate: () => {
       setRemovalRefused(null);
       setRemovalShown(false);
+      setDescriptionRefused(null);
+      setDescriptionShownDiff(false);
     },
     // The value chosen stays chosen: the panel then says there is nothing left to change. Let
     // go, it fell back on the producer's value in the declarations still on screen, which are
     // the ones the edit has just changed, and previewed undoing it. A success is a definite
     // answer, so it clears any refusal an earlier attempt left.
     onSuccess: () => {
-      setTyped(undefined);
-      setChangesShown(false);
+      hold({ typed: undefined, changesShown: false });
       setRefused(null);
     },
     onError: (error) =>
       setRefused({
         about: selected,
-        text: isStale(error) ? STALE : `The change was refused: ${error.message}`,
+        text: refusalSentence(error, STALE),
       }),
     // An Apply changes this variable's declarations, the units the project uses and the preview
     // it was made from, whose fingerprints the edit spent: those are asked for again, and Apply
@@ -272,6 +341,43 @@ export function VariablePanel({
         queries.invalidateQueries({ queryKey: ["settle", name] }),
         queries.invalidateQueries({ queryKey: ["file"] }),
         queries.invalidateQueries({ queryKey: ["declarable"] }),
+        queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
+        queries.invalidateQueries({ queryKey: ["description-plan"] }),
+      ]),
+  });
+  const describe = useMutation({
+    mutationFn: (_applied: Applied) => {
+      const edit =
+        shownDescription.plan === null
+          ? null
+          : planEdit(shownDescription.plan, settleLabel(name, "description"));
+      if (edit === null) throw new Error("there is nothing to change");
+      return postEdit(edit);
+    },
+    // The write paths must not answer for each other, as above: writing a description changes the
+    // file the other two read, and moves the line the key chooser's open diff was planned against.
+    onMutate: () => {
+      setRemovalRefused(null);
+      setRemovalShown(false);
+      setRefused(null);
+      hold({ changesShown: false });
+    },
+    // What was typed is let go, as the panel's other typed keys let theirs, and what it wrote is
+    // held until the file read since states something else (`descriptionShown`): the field never
+    // shows the old description, and an undo then shows the earlier one, with no offer drawn.
+    onSuccess: (_reply, written) => {
+      setAppliedDescription(written);
+      setTypedDescription(undefined);
+      setDescriptionRefused(null);
+      setDescriptionShownDiff(false);
+    },
+    onError: (error) => setDescriptionRefused(refusalSentence(error, STALE)),
+    onSettled: () =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: ["variable"] }),
+        queries.invalidateQueries({ queryKey: ["settle", name] }),
+        queries.invalidateQueries({ queryKey: ["file"] }),
+        queries.invalidateQueries({ queryKey: ["description-plan"] }),
         queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
       ]),
   });
@@ -287,15 +393,18 @@ export function VariablePanel({
     // Removing takes the whole declaration, so whatever the key chooser was showing is moot:
     // `select` is the very function letting a row go already calls, and closes the chooser the
     // same way, taking its refusal with it - the other half of the same part 6 lesson above.
-    onMutate: () => select(undefined),
+    onMutate: () => {
+      select(undefined);
+      setDescriptionRefused(null);
+      setDescriptionShownDiff(false);
+    },
     // A success is a definite answer, so it clears any refusal of this offer an earlier attempt
     // left, mirroring `apply`'s onSuccess.
     onSuccess: () => {
       setRemovalRefused(null);
       setRemovalShown(false);
     },
-    onError: (error) =>
-      setRemovalRefused(isStale(error) ? STALE : `The change was refused: ${error.message}`),
+    onError: (error) => setRemovalRefused(refusalSentence(error, STALE)),
     // Removing changes the same four queries a settle does, the variable's declarations chief
     // among them: with none of this file's left, `GET /api/variable` answers no declarations,
     // `undeclared` above turns true, and the effect near the top closes the panel through
@@ -307,6 +416,8 @@ export function VariablePanel({
         queries.invalidateQueries({ queryKey: ["file"] }),
         queries.invalidateQueries({ queryKey: ["declarable"] }),
         queries.invalidateQueries({ queryKey: ["declaration-plan"] }),
+        queries.invalidateQueries({ queryKey: ["settle", name] }),
+        queries.invalidateQueries({ queryKey: ["description-plan"] }),
       ]),
   });
   // What the removal offers, drawn the same way `UnitPanel`'s own actions are: the plan asked
@@ -356,17 +467,14 @@ export function VariablePanel({
       onOpenConstant={onOpenConstant}
       // A range the fields do not make is no value, so the field above them reads empty and
       // the note says why, rather than naming a value nothing would be settled on.
-      typed={
-        typed ??
-        (selected === undefined || broken !== null ? "" : labelOfRaw(reply, selected, target))
-      }
+      typed={typed ?? fieldLabel}
+      unsettled={unsettledText}
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).
       narrow={typed ?? ""}
-      onTyped={setTyped}
+      onTyped={(text) => hold({ typed: text })}
       onChosen={(raw) => {
-        setChosen(raw);
-        setTyped(undefined);
+        hold({ chosen: raw, typed: undefined });
         setRefused(null);
         // A range chosen from the list - one in play, or "state nothing", which empties them -
         // is settled on by writing it into the two fields, since they are what is applied. It is
@@ -374,11 +482,10 @@ export function VariablePanel({
         // typed one: `typedLimits` stays `false`, so this takes effect at once, the same as
         // every other pick here.
         if (selected === "limits") {
-          setEdited(limitsOf(raw));
-          setTypedLimits(false);
+          hold({ range: { ...limitsOf(raw), typed: false } });
         }
       }}
-      onPickerClosed={() => setTyped(undefined)}
+      onPickerClosed={() => hold({ typed: undefined })}
       range={range}
       onRange={onRange}
       note={
@@ -391,13 +498,17 @@ export function VariablePanel({
       // previewed on before: the query is not asked, and an answer it kept is not shown. Nor is
       // the debounced request's own answer, while it is not yet what `target` now says
       // (`shownSettle.plan`) - that answer is an earlier target's, same as while any plan loads.
-      preview={broken === null ? shownSettle.plan : null}
+      preview={broken === null && !unsettledText ? shownSettle.plan : null}
       // A settlement refused is about the value that was asked for; while the fields make no
       // value, nothing was asked, and the note is the whole of what the panel has to say - nor
       // once the fields have moved past the target this refusal was about (`shownSettle.refusal`).
-      refusal={refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)}
+      refusal={
+        unsettledText
+          ? null
+          : refusalShown(refused, broken !== null ? null : shownSettle.refusal, selected)
+      }
       changesShown={changesShown}
-      onChangesShown={setChangesShown}
+      onChangesShown={(shown) => hold({ changesShown: shown })}
       onApply={() => apply.mutate()}
       // Left out on the project screen's own panel (`file` is `undefined` there, and so is
       // `from`, since nothing in `variable.declarations` can match a file that names none):
@@ -413,7 +524,31 @@ export function VariablePanel({
               onRemove: () => remove.mutate(),
             }
       }
-      busy={stopped || apply.isPending || remove.isPending}
+      description={
+        field === null
+          ? undefined
+          : {
+              from: field.from,
+              value: descriptionShown(typedDescription, field.stored, appliedDescription),
+              onChange: (text) => {
+                setTypedDescription(text);
+                setDescriptionRefused(null);
+              },
+              offer: {
+                plan: shownDescription.plan,
+                refusal: descriptionRefused ?? shownDescription.refusal,
+                pending: shownDescription.pending,
+              },
+              shown: descriptionShownDiff,
+              onShown: setDescriptionShownDiff,
+              onApply: () => {
+                if (typedDescription !== undefined) {
+                  describe.mutate({ text: typedDescription, before: field.stored });
+                }
+              },
+            }
+      }
+      busy={stopped || apply.isPending || remove.isPending || describe.isPending}
       focus={focusPicker}
       onClose={onClose}
     />

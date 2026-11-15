@@ -1,5 +1,20 @@
 import { describe, expect, test } from "vitest";
-import { atOnce, gated, PLAN_DELAY_MS, planDelay, planShown, sameRequest } from "./typing";
+import {
+  atOnce,
+  endsTyped,
+  gated,
+  PLAN_DELAY_MS,
+  planDelay,
+  planShown,
+  sameRequest,
+  UNSETTLED_ENTER_ONLY,
+  UNSETTLED_NOTHING,
+  UNSETTLED_PICK,
+  UNSETTLED_TEXT,
+  unsettled,
+  unsettledNote,
+  unsettledSentence,
+} from "./typing";
 
 describe("planDelay", () => {
   test("a debounced value's first plan is asked for at once, not only a panel's very first", () => {
@@ -22,6 +37,18 @@ describe("sameRequest", () => {
     // Not the same object - a fresh literal each render - so this is `JSON.stringify` at work,
     // never reference equality.
     expect(asked).not.toBe(typed);
+  });
+
+  test("numbers json cannot hold are each their own request, and none is a null", () => {
+    // 15:M13: `JSON.stringify` wrote all three as `null`, so a plan of `Infinity` was shown for
+    // `-Infinity`, in its words.
+    expect(sameRequest({ raw: Number.POSITIVE_INFINITY }, { raw: Number.NEGATIVE_INFINITY })).toBe(
+      false,
+    );
+    expect(sameRequest({ raw: Number.NaN }, { raw: Number.POSITIVE_INFINITY })).toBe(false);
+    expect(sameRequest({ raw: Number.POSITIVE_INFINITY }, { raw: null })).toBe(false);
+    expect(sameRequest({ raw: Number.NaN }, { raw: Number.NaN })).toBe(true);
+    expect(sameRequest({ raw: 2.5 }, { raw: 2.5 })).toBe(true);
   });
 
   test("text the reader has since typed past is not the same request", () => {
@@ -123,5 +150,85 @@ describe("gated", () => {
   test("nothing typed is nothing asked, open or not", () => {
     expect(gated(null, null, true)).toBeNull();
     expect(gated(null, null, false)).toBeNull();
+  });
+});
+
+describe("unsettled", () => {
+  test("text typed that is not the settled label is not settled", () => {
+    expect(unsettled("km/h", "rpm")).toBe(true);
+    expect(unsettled("", "rpm")).toBe(true);
+    expect(unsettled("rp", "rpm")).toBe(true);
+  });
+
+  test("nothing typed reads the settled value, and typed text equal to it is that value", () => {
+    expect(unsettled(undefined, "rpm")).toBe(false);
+    expect(unsettled("rpm", "rpm")).toBe(false);
+    expect(unsettled("", "")).toBe(false);
+  });
+
+  test("it says what the reader can do, in the words the panels draw", () => {
+    expect(UNSETTLED_TEXT).toBe("Press Enter to take what you typed, or pick it from the list.");
+  });
+});
+
+describe("endsTyped", () => {
+  test("Escape and the focus leaving end what was typed", () => {
+    expect(endsTyped("Escape")).toBe(true);
+    expect(endsTyped("blur")).toBe(true);
+  });
+
+  test("every close keeps it, and so does any other key", () => {
+    expect(endsTyped("close")).toBe(false);
+    for (const key of ["Enter", "Tab", "ArrowDown", "a", " ", "escape", ""]) {
+      expect(endsTyped(key)).toBe(false);
+    }
+  });
+});
+
+describe("unsettledSentence", () => {
+  test("where Enter would take the text it says so, and the list only if it offers one", () => {
+    expect(unsettledSentence(true, 3)).toBe(UNSETTLED_TEXT);
+    expect(unsettledSentence(true, 0)).toBe(UNSETTLED_ENTER_ONLY);
+    expect(UNSETTLED_ENTER_ONLY).not.toContain("list");
+  });
+
+  test("where Enter would take nothing it offers the list, and the way back", () => {
+    expect(unsettledSentence(false, 3)).toBe(UNSETTLED_PICK);
+    expect(UNSETTLED_PICK).not.toContain("Enter");
+    expect(UNSETTLED_PICK).toContain("Escape");
+  });
+
+  test("with nothing listed it does not send the reader to the list, and names the way out", () => {
+    expect(unsettledSentence(false, 0)).toBe(UNSETTLED_NOTHING);
+    expect(UNSETTLED_NOTHING).not.toContain("pick");
+    expect(UNSETTLED_NOTHING).toContain("Escape");
+    expect(UNSETTLED_NOTHING).toContain("change");
+  });
+});
+
+describe("unsettledNote", () => {
+  const sections = [{ choices: [1, 2] }, { choices: [3] }];
+  const none = [{ choices: [] }];
+  const takesAll = () => "x";
+  const takesNothing = () => undefined;
+
+  test("nothing is said while the text is settled", () => {
+    expect(unsettledNote(false, "km", sections, takesAll)).toBeUndefined();
+  });
+
+  test("it counts every entry of every section, and asks what Enter does with the text", () => {
+    expect(unsettledNote(true, "km", sections, takesAll)).toBe(UNSETTLED_TEXT);
+    expect(unsettledNote(true, "km", sections, takesNothing)).toBe(UNSETTLED_PICK);
+    expect(unsettledNote(true, "km", none, takesNothing)).toBe(UNSETTLED_NOTHING);
+    expect(unsettledNote(true, "km", [], takesAll)).toBe(UNSETTLED_ENTER_ONLY);
+  });
+
+  test("Enter is asked about the text and the sections it is given", () => {
+    const seen: unknown[] = [];
+    unsettledNote(true, "uint", sections, (given, text) => {
+      seen.push(given, text);
+      return undefined;
+    });
+    expect(seen).toEqual([sections, "uint"]);
   });
 });

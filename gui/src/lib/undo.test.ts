@@ -18,6 +18,7 @@ import {
   undoConsequence,
   unitLabel,
   valueLabel,
+  valuesLabel,
 } from "./undo";
 
 const MISSING_ID: Finding = {
@@ -206,6 +207,14 @@ test("an undone paste is named by the object whose table it replaced", () => {
   expect(pasteLabel("CurveA")).toBe("the values of CurveA");
 });
 
+test("cells typed and applied together are named by the element one of them set, or by how many", () => {
+  expect(valuesLabel("CurveA", [{ row: 0, column: 2 }], [6])).toBe("element 3 of CurveA");
+  expect(valuesLabel("ParameterA", [{ row: 0, column: 0 }], [])).toBe("the value of ParameterA");
+  const three = [0, 1, 2].map((column) => ({ row: 0, column }));
+  expect(valuesLabel("CurveA", three, [6])).toBe("3 elements of CurveA");
+  expect(valuesLabel("MapA", [{ row: 1, column: 3 }, ...three], [4, 6])).toBe("4 elements of MapA");
+});
+
 const CHANGED: UndoneChange = {
   file: "C:/work/demo/components/controller.ddd.json",
   gone: false,
@@ -310,5 +319,35 @@ describe("what an undo asks again", () => {
     // names, under a key of its own: asked again, the entry just put back answers 404.
     const left = [["undo", 3, 7], ["session"], ["projects"]];
     expect(left.filter((key) => askedAgainAfterUndo(key))).toEqual([]);
+  });
+});
+
+describe("a label cut for its length (3:M5)", () => {
+  // A label naming a unit of emoji, long enough to be cut, was cut through a surrogate pair: the
+  // lone half before the ellipsis was refused, the edit's json no file can hold.
+  const emoji = String.fromCodePoint(0x1f600);
+
+  test("is cut on a code point, never through a pair", () => {
+    const label = unitLabel({ action: "rename", unit: `a${emoji.repeat(150)}`, to: "b" });
+    const points = [...label];
+    expect(points).toHaveLength(120);
+    expect(points.at(-1)).toBe("…");
+    expect(points.slice(0, -1).every((point) => point.length === 1 || point === emoji)).toBe(true);
+    // No half of a pair is left alone: every code point is a whole character.
+    const halves = points.filter((point) => {
+      const code = point.codePointAt(0) ?? 0;
+      return code >= 0xd800 && code <= 0xdfff;
+    });
+    expect(halves).toEqual([]);
+  });
+
+  test("and counted in code points, as the api counts its limit", () => {
+    // Sixty emoji after "the unit of " are 132 UTF-16 units and 72 code points: no cut is due,
+    // where a count in units would make one (fix round 1, M3 - fifty emoji were under 120 either
+    // way, and pinned nothing of the count).
+    const label = settleLabel(emoji.repeat(60), "unit");
+    expect(label.length).toBe(132);
+    expect([...label]).toHaveLength(72);
+    expect(label).toBe(`the unit of ${emoji.repeat(60)}`);
   });
 });

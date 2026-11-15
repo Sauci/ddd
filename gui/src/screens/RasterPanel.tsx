@@ -12,7 +12,7 @@ import { useDebounced } from "../app/useDebounced";
 import { type Offer, type RasterAction, RasterPanelView } from "../components/RasterPanelView";
 import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { planEdit, rasterRemovable, rasterSet } from "../lib/shared";
+import { planEdit, rasterRemovable, rasterSet, requestOf } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { rasterLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -114,11 +114,17 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
   // told apart by `key` alone - which is why it is the `key` literal each of them is pinned to
   // here. Each goes through `rasterSet`, which is what carries that one literal to the request and
   // to the quoting alike: an event quoted like a string is a refusal the reader did nothing to
-  // earn, and a cycle sent bare is another.
+  // earn, and a cycle sent bare is another. The event is read as every field reads a number
+  // (`rasterSet`): text it refuses asks for nothing, and its sentence stands in the plan's place
+  // (task 7's fix round 1, I1).
+  const eventSet = draftEvent === null ? null : rasterSet(name, "event", draftEvent);
   const requests: Record<RasterAction, RasterPlanRequest | null> = {
-    event: draftEvent === null ? null : rasterSet(name, "event", draftEvent),
-    cycle: draftCycle === null ? null : rasterSet(name, "cycle", draftCycle),
-    describe: draftDescription === null ? null : rasterSet(name, "description", draftDescription),
+    event: eventSet === null ? null : requestOf(eventSet),
+    cycle: draftCycle === null ? null : requestOf(rasterSet(name, "cycle", draftCycle)),
+    describe:
+      draftDescription === null
+        ? null
+        : requestOf(rasterSet(name, "description", draftDescription)),
     rename: to === null ? null : { action: "rename", name, to },
     // Asked for only while nothing names the raster, which `rasterRemovable` is the one judge of:
     // a shape still naming it always refuses (`remove_entry`), and a control that would refuse the
@@ -250,7 +256,13 @@ export function RasterPanel({ name, revision, stopped, onClose, onGone, onMoved,
         setTo(next);
         setFailed(null);
       }}
-      eventOffer={draftEvent === null ? null : offer("event")}
+      eventOffer={
+        eventSet === null
+          ? null
+          : "refusal" in eventSet
+            ? { plan: null, refusal: eventSet.refusal, pending: false }
+            : offer("event")
+      }
       cycleOffer={draftCycle === null ? null : offer("cycle")}
       describeOffer={draftDescription === null ? null : offer("describe")}
       renameOffer={to === null ? null : offer("rename")}

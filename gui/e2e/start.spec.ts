@@ -41,11 +41,12 @@ function writeRecord(directory: string, where: string, body: object): void {
 }
 
 /** A build record under the copy's own `build/`, naming its `demo.ddd.json`, in a format one
- * past what this DDD reads (`BUILD_INFO_FORMAT`, src/ddd/build_info.py, `1` at `205d5a6`) - read
+ * past what this DDD reads (`BUILD_INFO_FORMAT`, src/ddd/build_info.py, held to by
+ * tests/test_documentation.py, which fails when the stamp is not one past it) - read
  * far enough by `_Stamp` (`ddd.lsp.discovery`) to be refused by name, rather than skipped in
  * silence for failing to parse at all. */
 function record(directory: string): void {
-  writeRecord(directory, "build", { format: 2, project: join(directory, "demo.ddd.json") });
+  writeRecord(directory, "build", { format: 3, project: join(directory, "demo.ddd.json") });
 }
 
 /** The demo built as two images: a record for each, in the format this DDD reads (`1`). The
@@ -137,7 +138,7 @@ test("a build record in a format too new is listed as not used, and its project 
   const recordPath = `${started.directory.replaceAll("\\", "/")}/build/ddd-build.json`;
   await expect(
     page.getByText(
-      `${recordPath}: written in format 2 by a newer DDD, and this one understands up to format 1`,
+      `${recordPath}: written in format 3 by a newer DDD, and this one understands up to format 2`,
     ),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /DemoDevice/ })).toBeVisible();

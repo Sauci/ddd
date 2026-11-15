@@ -39,6 +39,7 @@ function Field({ variable, keyName, open = false }: Props) {
         setRange(limitsOf(raw));
       }}
       onPickerClosed={() => setTyped(undefined)}
+      unsettled={false}
       range={range}
       onRange={setRange}
       note={undefined}

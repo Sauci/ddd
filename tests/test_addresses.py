@@ -30,11 +30,15 @@ from ddd.elf import (
     Image,
     Member,
     Qualified,
+    Section,
     Struct,
     Typedef,
     Unsupported,
     Variable,
+    open_image,
 )
+
+FIXTURES = Path(__file__).parent / "fixtures" / "elf"
 
 
 def refusal(path: Path) -> str:
@@ -221,8 +225,26 @@ uint8_t level; uint32_t count;`` as gcc 15.2 lays it out for x86_64 (measured wi
 storage unit ``d`` started, and the value members land at bytes 2, 8 and 12."""
 
 
-def image(*variables: Variable, symbols: frozenset[str] = frozenset()) -> Image:
-    return Image(Path("hand.elf"), "little", variables, (), symbols, b"")
+EVERYWHERE = Section(".data", 0, 1 << 64, 0)
+"""A section holding every address a test names, so that the tests of a path or a name leave
+where an address lies to the ones that ask."""
+
+
+def image(
+    *variables: Variable,
+    symbols: frozenset[str] = frozenset(),
+    objects: frozenset[tuple[str, int]] | None = None,
+    sections: tuple[Section, ...] = (EVERYWHERE,),
+) -> Image:
+    """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
+    each global at its address, as a linker that kept the variable leaves it."""
+    if objects is None:
+        objects = frozenset(
+            (variable.name, variable.address)
+            for variable in variables
+            if variable.external and variable.address is not None
+        )
+    return Image(Path("hand.elf"), "little", variables, sections, symbols, b"", objects)
 
 
 def stored(
@@ -334,6 +356,91 @@ class TestTheVariable:
     ) -> None:
         img = image(stored("Gain", address=None, missing=missing))
         assert reason(img, "Gain") == f"'Gain' has no address in the image: {missing}"
+
+
+class TestWhereTheImageKeepsAVariable:
+    """A global is where the symbol table puts it: a linker that discards a unit keeps its debug
+    information, and gold leaves each address in it as an offset into the discarded section."""
+
+    def test_a_global_with_no_symbol_of_its_name_at_its_address_is_not_placed(self) -> None:
+        """The address is held by a section, so that nothing but the symbol table says the
+        variable is gone."""
+        img = image(stored("First_Unused", U32, address=0x4), objects=frozenset())
+        assert reason(img, "First_Unused") == (
+            "the symbol table holds no object named 'First_Unused' at 0x4, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_a_symbol_of_its_name_at_another_address_does_not_place_it(self) -> None:
+        img = image(
+            stored("Gain", address=0x4), objects=frozenset({("Gain", 0x100), ("Other", 0x4)})
+        )
+        assert reason(img, "Gain") == (
+            "the symbol table holds no object named 'Gain' at 0x4, where its debug information "
+            "puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_a_member_of_a_global_the_linker_discarded_is_not_placed_either(self) -> None:
+        img = image(stored("Struct_Unused", PAIR, address=0), objects=frozenset())
+        assert reason(img, "Struct_Unused.hi") == (
+            "the symbol table holds no object named 'Struct_Unused' at 0x0, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_a_global_whose_symbol_sits_at_its_address_is_placed(self) -> None:
+        img = image(stored("Gain", address=0x4), objects=frozenset({("Gain", 0x4)}))
+        assert placed(img, "Gain") == Placed({"Gain": 0x4}, {})
+
+    def test_an_address_no_section_holds_is_not_placed_in_the_words_from_elf_uses(self) -> None:
+        """The symbol is there, and so the symbol table has no complaint."""
+        img = image(
+            stored("Gain", address=0x40),
+            sections=(Section(".data", 0x100, 0x10, 0),),
+        )
+        assert reason(img, "Gain") == (
+            "'Gain' has an address, 0x40, that no section of the image holds"
+        )
+
+    def test_the_first_byte_past_a_section_is_held_by_none(self) -> None:
+        img = image(stored("Gain", address=0x110), sections=(Section(".data", 0x100, 0x10, 0),))
+        assert "no section of the image holds" in reason(img, "Gain")
+
+    def test_the_last_byte_of_a_section_is_held(self) -> None:
+        img = image(stored("Gain", address=0x10F), sections=(Section(".data", 0x100, 0x10, 0),))
+        assert placed(img, "Gain") == Placed({"Gain": 0x10F}, {})
+
+    def test_the_variables_of_a_unit_gold_discarded_are_not_placed(self) -> None:
+        """gold-gc-sections.elf: the unit nothing references has debug information and no
+        symbol, and its three variables sit at the offsets 0, 4 and 8 of the discarded
+        section; the one the entry reads is placed."""
+        found = placed(
+            open_image(FIXTURES / "gold-gc-sections.elf"),
+            "First_Unused",
+            "Second_Unused",
+            "Struct_Unused.a",
+            "Struct_Unused.b",
+            "Gold_Kept",
+        )
+        assert sorted(found.addresses) == ["Gold_Kept"]
+        assert sorted(found.reasons) == [
+            "First_Unused",
+            "Second_Unused",
+            "Struct_Unused.a",
+            "Struct_Unused.b",
+        ]
+        assert found.reasons["First_Unused"] == (
+            "the symbol table holds no object named 'First_Unused' at 0x8, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_the_same_source_linked_by_gnu_ld_places_the_same_one(self) -> None:
+        """GNU ld drops the debug information of the unit it discarded, and the reader finds
+        no variable of the name."""
+        found = placed(open_image(FIXTURES / "bfd-gc-sections.elf"), "First_Unused", "Gold_Kept")
+        assert sorted(found.addresses) == ["Gold_Kept"]
+        assert found.reasons == {
+            "First_Unused": "the image's debug information holds no variable named 'First_Unused'"
+        }
 
 
 class TestThePath:

@@ -2040,14 +2040,23 @@ never stands for it, every object a dictionary describes being a global. A membe
 along its access path, typedefs and qualifiers seen through before each step: `.name` adds
 the member's offset within its structure, and `[i]`, one per dimension, `i` times the size
 of what the index steps over, so that an array of several dimensions is indexed row-major,
-as C lays it out. The type a path ends at is not compared with the declaration. The A2L
+as C lays it out. The type a path ends at is not compared with the declaration. An object
+is placed where the image's symbol table holds an object symbol of its name at the address
+its debug information gives it, and where a section of the image holds that address: a
+linker that discards a unit keeps the debug information of its variables, and gold leaves
+each of them at its offset in the section it dropped, where no symbol of the name sits and
+no section need lie. The linkers this is tested with are GNU ld 2.44, gold 2.44 and lld 19,
+the ones the fixtures of the suite are linked by; an image another linker wrote is read as
+these are, and no further. The A2L
 takes the byte order the image states: a `--byte-order` that agrees is accepted, and one
 that contradicts the image is a usage error. A symbol the image does not place keeps
 address `0x00000000` and is reported by `address-missing`
 ([section 4](#4-consistency-checks)), why it is not placed a note of the finding: the image
 holds no variable of that name, or only a `static` of it; the variable has no storage -
 only declared, folded into a constant, removed by the compiler or discarded by the linker,
-thread-local, or at no fixed address; the image's debug information only declares it while
+thread-local, or at no fixed address; its symbol table holds no object of that name at the
+address the debug information gives, as a linker leaves a variable of a unit it discarded,
+or no section of the image holds that address; the image's debug information only declares it while
 the symbol table holds it, the unit defining it built without `-g`; the name names globals
 at several addresses; its type has no member of that name, the C code and the declaration
 disagreeing; a step indexes what is not an array, or names a member of what is not a
@@ -2633,8 +2642,11 @@ A candidate is a variable at the top of a unit with a static address; the `stati
 function are not candidates. One name at one address is one variable, however many units
 describe it, as a tentative definition `-fcommon` merges is. A variable without an address -
 only declared, folded or removed by the compiler, thread-local, at no fixed address, or
-discarded by the linker, which leaves its DWARF address at 0 or at all ones where no symbol of
-its name sits - is `elf-no-storage`.
+discarded by the linker, which leaves its DWARF address at 0, at all ones, or, under gold, at
+an offset into the section it dropped, so that an external variable with no object symbol of
+its name at its address is one the linker discarded whatever the address, a `static` being read
+by its address alone since `-Wl,-x` drops the local symbols of a link - or at an address no
+section of the image holds - is `elf-no-storage`.
 
 What the image states, the declaration states:
 

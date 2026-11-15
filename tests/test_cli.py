@@ -4831,6 +4831,31 @@ class TestToolFromElf:
             f"image: the linker discarded its storage"
         )
 
+    def test_the_unit_gold_discarded_is_refused_and_the_static_a_kept_unit_holds_is_read(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """gold-gc-sections.elf: gold leaves First_Unused at the offset 8 of the section it
+        discarded, where no section of the image lies and no symbol of its name sits."""
+        code, out, err = from_elf(
+            capsys,
+            str(FIXTURES / "gold-gc-sections.elf"),
+            "First_Unused",
+            "Gold_Static",
+            "--force",
+        )
+        assert code == EXIT_FINDINGS
+        (entry,) = json.loads(out)
+        assert (entry["definition"]["name"], entry["definition"]["init"]) == (
+            "Gold_Static",
+            0x01020304,
+        )
+        line = fixture_line("gold_unused.c", "uint32_t First_Unused")
+        assert err.splitlines()[0] == (
+            f"gold_unused.c:{line}: error[elf-no-storage]: the symbol table holds no object named "
+            f"'First_Unused' at 0x8, where its debug information puts it, as a linker leaves a "
+            f"variable of a unit it discarded"
+        )
+
     def test_a_damaged_image_is_a_usage_error_rather_than_a_traceback(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
@@ -5183,14 +5208,34 @@ class TestGenerateFromAnImage:
     ) -> None:
         """A 64 bit target may place its data above 4 GB, where no ``ECU_ADDRESS`` reaches.
         ``Speed`` is moved there in a copy of the x86_64 image: its DWARF locates it with an
-        expression of nine bytes, ``DW_OP_addr`` (3) and the address, which the copy rewrites."""
+        expression of nine bytes, ``DW_OP_addr`` (3) and the address, which the copy rewrites. An
+        image is placed where its symbol table and its sections agree with the DWARF, so the copy
+        moves Speed's symbol too, and its section grows to hold both addresses."""
+        from elftools.elf.elffile import ELFFile
+        from elftools.elf.sections import SymbolTableSection
+
         address = ADDRESS_ROWS["x86_64"]["addresses"]["Speed"]
         moved = address + 0x1_0000_0000
-        data = X86_ADDRESSES.read_bytes()
+        data = bytearray(X86_ADDRESSES.read_bytes())
         located = bytes([9, 3]) + address.to_bytes(8, "little")
         assert data.count(located) == 1, "the x86_64 image no longer locates Speed this way"
+        data = bytearray(bytes(data).replace(located, bytes([9, 3]) + moved.to_bytes(8, "little")))
+        with X86_ADDRESSES.open("rb") as stream:
+            elf = ELFFile(stream)
+            symbols = elf.get_section_by_name(".symtab")
+            assert isinstance(symbols, SymbolTableSection)
+            (index,) = [i for i, sym in enumerate(symbols.iter_symbols()) if sym.name == "Speed"]
+            value_at = symbols["sh_offset"] + index * symbols["sh_entsize"] + 8
+            (holder,) = [
+                s
+                for s in elf.iter_sections()
+                if s["sh_addr"] <= address < s["sh_addr"] + s["sh_size"] and s["sh_addr"]
+            ]
+            size_at = elf["e_shoff"] + elf.get_section_index(holder.name) * elf["e_shentsize"] + 32
+        data[value_at : value_at + 8] = moved.to_bytes(8, "little")
+        data[size_at : size_at + 8] = (0x1_0000_0000 + holder["sh_size"]).to_bytes(8, "little")
         image = tmp_path / "above.elf"
-        image.write_bytes(data.replace(located, bytes([9, 3]) + moved.to_bytes(8, "little")))
+        image.write_bytes(bytes(data))
         assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_USAGE
         assert capsys.readouterr().err == (
             f"ddd: {image.as_posix()}: address of 'Speed' is {moved}, outside the range "
@@ -5276,6 +5321,80 @@ class TestGenerateFromAnImage:
             f"1 warning\n"
             f"wrote       {a2l.as_posix()} (created)\n"
         )
+
+    @staticmethod
+    def gold_project(tmp_path: Path) -> Path:
+        """A project of one kept variable and two of the unit gold-gc-sections.elf discarded."""
+        project = tmp_path / "gold"
+        project.mkdir()
+        (project / "project.ddd.json").write_text(
+            json.dumps(
+                {"project": {"name": "Gold", "description": "x", "includes": ["gold.ddd.json"]}}
+            ),
+            encoding="utf-8",
+        )
+        interface = [
+            {
+                "scope": "local",
+                "definition": {
+                    "name": name,
+                    "kind": "measurement",
+                    "description": "d",
+                    "datatype": "uint32",
+                    "conversion": {"kind": "identity"},
+                    "volatile": False,
+                },
+            }
+            for name in ("Gold_Kept", "First_Unused", "Second_Unused")
+        ]
+        (project / "gold.ddd.json").write_text(
+            json.dumps({"component": {"name": "Gold", "description": "x", "interface": interface}}),
+            encoding="utf-8",
+        )
+        return project / "project.ddd.json"
+
+    @pytest.mark.parametrize(
+        ("linker", "note"),
+        [
+            (
+                "gold",
+                "the symbol table holds no object named 'First_Unused' at 0x8, where its debug "
+                "information puts it, as a linker leaves a variable of a unit it discarded",
+            ),
+            ("bfd", "the image's debug information holds no variable named 'First_Unused'"),
+        ],
+    )
+    def test_the_variables_of_a_unit_the_linker_discarded_reach_the_a2l_at_0_and_say_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], linker: str, note: str
+    ) -> None:
+        """Gold keeps the discarded unit's debug information, with offsets as addresses, and
+        GNU ld drops it: neither unit's variables are placed, and the one the entry reads is."""
+        image = FIXTURES / f"{linker}-gc-sections.elf"
+        arguments = [*self.arguments(tmp_path, self.gold_project(tmp_path)), "--image", str(image)]
+        assert main([*arguments, "--format", "json"]) == EXIT_OK
+        (finding,) = [
+            item
+            for item in json.loads(capsys.readouterr().out)["diagnostics"]
+            if item["check"] == "address-missing"
+        ]
+        assert finding["message"] == (
+            "the image has no address for 'First_Unused', 'Second_Unused'; they reach the a2l "
+            "at address 0"
+        )
+        assert finding["notes"][0]["message"] == note
+        text = (tmp_path / "gen" / "Gold.a2l").read_text(encoding="utf-8")
+        addresses = a2l_addresses(text)
+        assert (addresses["First_Unused"], addresses["Second_Unused"]) == (0, 0)
+        assert addresses["Gold_Kept"] != 0
+
+    def test_a_strict_run_stops_for_the_unit_gold_discarded(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        image = FIXTURES / "gold-gc-sections.elf"
+        arguments = [*self.arguments(tmp_path, self.gold_project(tmp_path)), "--image", str(image)]
+        assert main([*arguments, "--strict"]) == EXIT_FINDINGS
+        assert "error[address-missing]: the image has no address for" in capsys.readouterr().err
+        assert not (tmp_path / "gen").exists()
 
     def test_the_a2l_run_after_the_link_leaves_what_generate_all_wrote_untouched(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

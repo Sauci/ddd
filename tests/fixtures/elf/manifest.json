@@ -1,6 +1,8 @@
 {
   "hashes": {
     "tests/fixtures/elf/src/gc_sections.c": "b21f09df1a69edf70fca8a540a4575d8f2dac669f586958794711c554e744241",
+    "tests/fixtures/elf/src/gold_kept.c": "0018a4d99dd7556c080585a1f258607521dfec3bd78250c76ed03c5d7f111c92",
+    "tests/fixtures/elf/src/gold_unused.c": "33d28690cef5712c8111cbb817d3e4295ab1dd241031d3351f7b28507925a5c1",
     "tests/fixtures/elf/src/lto.c": "cbb3ae9ca73fe507ccd6903ad2d4402efead45c1513ed6092e697cc4c2844253",
     "tests/fixtures/elf/src/main.c": "e0e11e9903e460df10881c44fbd0d59863e189f8d0a61df283a3900395801179",
     "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
@@ -8,12 +10,13 @@
     "tests/fixtures/elf/src/type_units.c": "93fcd051c5a9047f87cff9b57cf39ac34732adb4f30a6311bd92299f402fe93c",
     "tests/fixtures/elf/src/unit_a.c": "60b8b97082da5fa21d31c0e2a6d11aed61e2e5f3abde74bbb7b6d4d9ed6f68ad",
     "tests/fixtures/elf/src/unit_b.c": "e4a43b175f1f6c5c2e5706a553d827f34dd6255c9599898cec2897ca1904dad2",
-    "docker/elf-fixtures.Dockerfile": "1989ac66585296dc7da9c71a1512daa4e49181591a2996aa3b00fe5b6e337996",
-    "docker/build_elf_fixtures.py": "41c5ca29159862d688f56621d4bdaa3d4987dc1856d7fb2a6332556785e02927"
+    "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
+    "docker/build_elf_fixtures.py": "5a35d1362922d26b6d733437d3dea5aea2e8df3dfb22702fc6e49fd56a4bc056"
   },
   "rows": {
     "x86_64": {
       "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-fPIE",
         "-O2",
@@ -390,6 +393,7 @@
     },
     "i686": {
       "compiler": "i686-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -763,6 +767,7 @@
     },
     "armv7m": {
       "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
       "flags": [
         "-mcpu=cortex-m4",
         "-mthumb",
@@ -1143,6 +1148,7 @@
     },
     "armv7m-dwarf2": {
       "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
       "flags": [
         "-mcpu=cortex-m4",
         "-mthumb",
@@ -1524,6 +1530,7 @@
     },
     "armeb": {
       "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
       "flags": [
         "-mcpu=cortex-r5",
         "-marm",
@@ -1905,6 +1912,7 @@
     },
     "aarch64": {
       "compiler": "aarch64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -2287,6 +2295,7 @@
     },
     "powerpc": {
       "compiler": "powerpc-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -2654,6 +2663,7 @@
     },
     "s390x": {
       "compiler": "s390x-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -3024,6 +3034,7 @@
     },
     "riscv32": {
       "compiler": "Debian clang version 19.1.7 (3+b1)",
+      "linker": "Debian LLD 19.1.7 (compatible with GNU linkers)",
       "flags": [
         "--target=riscv32-unknown-elf",
         "-march=rv32imac",
@@ -3397,6 +3408,7 @@
     },
     "aarch64_be": {
       "compiler": "Debian clang version 19.1.7 (3+b1)",
+      "linker": "Debian LLD 19.1.7 (compatible with GNU linkers)",
       "flags": [
         "--target=aarch64_be-none-elf",
         "-O2",
@@ -3776,6 +3788,7 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
         "dwarf_versions": [
@@ -3826,6 +3839,7 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
         "dwarf_versions": [
@@ -3879,6 +3893,7 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
         "dwarf_versions": [
@@ -3934,6 +3949,7 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
         "dwarf_versions": [
@@ -3957,6 +3973,102 @@
         {
           "name": "Cal_Kept",
           "section": ".rodata",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "gold-gc-sections": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "gold_kept.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-Wl,--gc-sections",
+        "-static",
+        "-no-pie",
+        "-fuse-ld=gold"
+      ],
+      "linker": "GNU gold (GNU Binutils for Debian 2.44) 1.16",
+      "image": {
+        "elf_type": "EXEC",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Gold_Kept",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Gold_Static",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "bfd-gc-sections": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "gold_kept.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-Wl,--gc-sections",
+        "-static",
+        "-no-pie",
+        "-fuse-ld=bfd"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Gold_Kept",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Gold_Static",
+          "section": ".data",
           "contents": true,
           "size": 4
         }

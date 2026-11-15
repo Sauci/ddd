@@ -215,6 +215,13 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
         listed = ", ".join(f"0x{address:X}" for address in sorted(located))
         return f"'{name}' names globals at {len(located)} addresses of the image, {listed}"
     ((address, variable),) = located.items()
+    if not image.has_object(name, address):
+        return (
+            f"the symbol table holds no object named '{name}' at {address:#x}, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+    if image.section_of(address) is None:
+        return image.unheld(name, address)
     return address, variable.type
 
 

@@ -9,6 +9,7 @@ notice that what they were built from has changed since, which is what the hashe
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from build_elf_fixtures import (
@@ -101,3 +102,42 @@ def test_each_negative_input_carries_what_it_is_named_for() -> None:
     assert "DW_UT_type" in negatives["type-units-dwarf5"]["image"]["unit_types"]
     assert "-flto" in negatives["gcc-lto"]["flags"]
     assert [record["name"] for record in negatives["gc-sections"]["variables"]] == ["Cal_Kept"]
+    for linked in ("gold-gc-sections", "bfd-gc-sections"):
+        assert "-Wl,--gc-sections" in negatives[linked]["flags"]
+        assert "-fdata-sections" not in negatives[linked]["flags"]
+        assert [record["name"] for record in negatives[linked]["variables"]] == [
+            "Gold_Kept",
+            "Gold_Static",
+        ]
+    assert negatives["gold-gc-sections"]["linker"].startswith("GNU gold")
+    assert negatives["bfd-gc-sections"]["linker"].startswith("GNU ld")
+
+
+LINKERS = (
+    (re.compile(r"^GNU ld .* (\d+\.\d+)$"), "GNU ld"),
+    (re.compile(r"^GNU gold \(GNU Binutils for Debian (\d+\.\d+)\)"), "gold"),
+    (re.compile(r"LLD (\d+)\."), "lld"),
+)
+"""What a linker says of itself on its first line, and how SPEC names it with its version."""
+
+
+def named(said: str) -> str:
+    for pattern, name in LINKERS:
+        found = pattern.search(said)
+        if found is not None:
+            return f"{name} {found[1]}"
+    raise AssertionError(said)
+
+
+def test_spec_names_the_linkers_the_fixtures_are_linked_by() -> None:
+    """Decision 11.5: the sentence of section 6 naming the linkers holds each one the manifest
+    records, with its version, and no other."""
+    linked = {
+        *(row["linker"] for row in MANIFEST["rows"].values()),
+        *(negative["linker"] for negative in MANIFEST["negatives"].values()),
+    }
+    spec = (OUTPUT.parents[2] / "SPEC.md").read_text(encoding="utf-8")
+    match = re.search(r"The linkers this is tested with are (.+?),\s+the ones", spec, re.S)
+    assert match is not None
+    stated = re.split(r", | and ", " ".join(match[1].split()))
+    assert sorted(stated) == sorted({named(said) for said in linked})

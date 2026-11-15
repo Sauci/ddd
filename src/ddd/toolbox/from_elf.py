@@ -135,13 +135,23 @@ def _storage(
     """Add the storage keys a producer states; False, reported, where they cannot be read."""
     assert variable.address is not None  # selection keeps a variable with an address only
     location = place(image, variable.declared_at)
+    # A static is read by its address alone: -Wl,-x drops the local symbols of a link.
+    if variable.external and not image.has_object(variable.name, variable.address):
+        report(
+            bag,
+            "elf-no-storage",
+            f"the symbol table holds no object named '{variable.name}' at "
+            f"{variable.address:#x}, where its debug information puts it, as a linker leaves a "
+            f"variable of a unit it discarded",
+            location,
+        )
+        return False
     section = image.section_of(variable.address)
     if section is None:
         report(
             bag,
             "elf-no-storage",
-            f"'{variable.name}' has an address, {variable.address:#x}, that no section of the "
-            f"image holds",
+            image.unheld(variable.name, variable.address),
             location,
         )
         return False

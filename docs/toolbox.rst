@@ -221,8 +221,11 @@ under DDD's identifiers.
      - error
      - the variable has no address: only declared, folded into a constant or removed by the
        compiler, thread-local, at a location that is not a fixed address, discarded by the
-       linker - which leaves its address at 0, or at all ones, where no symbol of its name
-       sits - or at an address no section of the image holds
+       linker - which leaves its address at 0, at all ones or, with gold, at an offset into
+       the section it dropped, so that an external variable with no object symbol of its name
+       at its address counts as discarded, a ``static`` being read by its address alone, since
+       ``-Wl,-x`` drops the local symbols of a link - or at an address no section of the image
+       holds
    * - ``elf-type-unsupported``
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,

@@ -228,12 +228,24 @@ class Image:
 
     contents: bytes
 
+    objects: frozenset[tuple[str, int]] = frozenset()
+    """The name and address of every object symbol of the symbol table, which is where a linker
+    says a variable is: the one it discarded has debug information and no symbol."""
+
+    def has_object(self, name: str, address: int) -> bool:
+        """Whether the symbol table holds an object symbol ``name`` at ``address``."""
+        return (name, address) in self.objects
+
     def section_of(self, address: int) -> Section | None:
         """The section holding ``address``, or None where none does."""
         for section in self.sections:
             if section.address <= address < section.address + section.size:
                 return section
         return None
+
+    def unheld(self, name: str, address: int) -> str:
+        """The sentence for a variable ``name`` at an ``address`` that no section holds."""
+        return f"'{name}' has an address, {address:#x}, that no section of the image holds"
 
     def read(self, address: int, size: int) -> bytes | None:
         """The ``size`` bytes at ``address``, or None where the image does not hold them."""
@@ -507,6 +519,7 @@ def _image(path: Path, contents: bytes) -> Image:
         sections=sections,
         symbols=frozenset(name for name, _ in objects),
         contents=contents,
+        objects=objects,
     )
 
 

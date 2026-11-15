@@ -1297,6 +1297,33 @@ class TestDiscarded:
         assert (record["name"], section.name) == ("Cal_Kept", record["section"])
 
 
+class TestGoldDiscarded:
+    """gold-gc-sections.elf: gold keeps the debug information of a unit it discarded and
+    leaves each address in it as an offset into the section it dropped, which no symbol of the
+    name marks; the same sources linked by GNU ld drop that debug information."""
+
+    def test_the_reader_keeps_an_offset_for_each_variable_of_the_unit_gold_dropped(self) -> None:
+        image = open_image(FIXTURES / "gold-gc-sections.elf")
+        assert {
+            name: by_name(image, name).address
+            for name in ("First_Unused", "Second_Unused", "Struct_Unused")
+        } == {"First_Unused": 8, "Second_Unused": 4, "Struct_Unused": None}
+        assert by_name(image, "Struct_Unused").missing == DISCARDED
+        assert [name for name, _ in image.objects if name.endswith("_Unused")] == []
+
+    def test_the_symbol_table_holds_the_variables_it_kept_where_the_reader_puts_them(self) -> None:
+        image = open_image(FIXTURES / "gold-gc-sections.elf")
+        for name in ("Gold_Kept", "Gold_Static"):
+            address = by_name(image, name).address
+            assert address is not None
+            assert image.has_object(name, address)
+            assert not image.has_object(name, address + 4)
+
+    def test_gnu_ld_leaves_no_variable_of_the_unit_it_dropped(self) -> None:
+        image = open_image(FIXTURES / "bfd-gc-sections.elf")
+        assert [variable.name for variable in image.variables if "_Unused" in variable.name] == []
+
+
 class TestRefusals:
     """What open_image refuses, each in a sentence naming the file. Where the end of the
     sentence is pyelftools' own words about a damaged file, the test pins ours and leaves

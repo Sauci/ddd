@@ -7,8 +7,8 @@
     "tests/fixtures/addresses/generated/ddd_types.h": "a714852847c0e9392f88f11ba57882b2ece1345e4fbcd96c7ea8eb5cdcb33b0a",
     "tests/fixtures/addresses/oracle.c": "7e8ae2e1ecf3d2943c596398cb1d3f1afa99ad97028240a70ebb19f336a4f31c",
     "tests/fixtures/addresses/symbols.json": "61f4f8df27ea3edd8ac5788dbe9979c2f7f5f4c87f38900866b61ab80cc97136",
-    "docker/elf-fixtures.Dockerfile": "1989ac66585296dc7da9c71a1512daa4e49181591a2996aa3b00fe5b6e337996",
-    "docker/build_elf_fixtures.py": "41c5ca29159862d688f56621d4bdaa3d4987dc1856d7fb2a6332556785e02927",
+    "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
+    "docker/build_elf_fixtures.py": "5a35d1362922d26b6d733437d3dea5aea2e8df3dfb22702fc6e49fd56a4bc056",
     "docker/build_address_fixtures.py": "083d2734b5f7b90ecf3491b2377d2344a4750d111a37e0efc252243dfca94d6d"
   },
   "rows": {

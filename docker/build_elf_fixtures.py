@@ -69,6 +69,11 @@ class Negative:
     name: str
     source: str
     flags: tuple[str, ...]
+    also: tuple[str, ...] = ()
+    """Further sources linked into the image, each a unit of its own."""
+
+    link: tuple[str, ...] = ()
+    """What names the linker, where the toolchain's default is not the one wanted."""
 
 
 GNU_LINK = ("-static", "-no-pie")
@@ -122,9 +127,25 @@ NEGATIVES = (
             "-Wl,-Ttext=0x0",
         ),
     ),
+    Negative(
+        "gold-gc-sections",
+        "gold_kept",
+        ("-gdwarf-5", "-Wl,--gc-sections"),
+        also=("gold_unused",),
+        link=("-fuse-ld=gold",),
+    ),
+    Negative(
+        "bfd-gc-sections",
+        "gold_kept",
+        ("-gdwarf-5", "-Wl,--gc-sections"),
+        also=("gold_unused",),
+        link=("-fuse-ld=bfd",),
+    ),
 )
-"""DWARF type units at version 4 and at 5, gcc's link-time optimisation, and a variable the
-linker discarded where its address, 0, holds code."""
+"""DWARF type units at version 4 and at 5, gcc's link-time optimisation, a variable the linker
+discarded where its address, 0, holds code, and a unit whose ``.data`` nothing references,
+linked with ``--gc-sections`` by gold, which leaves the DWARF addresses of its variables as
+offsets into the section it discarded, and by GNU ld, which drops the unit's debug information."""
 
 _SYMBOL = re.compile(
     r"^\s*\d+:\s+[0-9a-f]+\s+(?P<size>0x[0-9a-f]+|\d+)\s+(?P<type>\w+)\s+\w+\s+\w+\s+"
@@ -198,6 +219,11 @@ def build(row: Row, work: Path) -> Path:
         ]
     )
     return image
+
+
+def linker(compiler: tuple[str, ...], target: tuple[str, ...], link: tuple[str, ...]) -> str:
+    """The first line of what the linker a compile command reaches says of itself."""
+    return run([*compiler, *target, *link, "-Wl,--version"]).splitlines()[0]
 
 
 def macros(row: Row) -> dict[str, str]:
@@ -280,7 +306,9 @@ def build_negative(negative: Negative, work: Path) -> Path:
             "-nostdlib",
             "-Wl,-e,entry",
             *GNU_LINK,
+            *negative.link,
             f"{negative.source}.c",
+            *(f"{unit}.c" for unit in negative.also),
             "-o",
             str(image),
         ]
@@ -319,6 +347,7 @@ def main() -> None:
             found = variables(image)
             rows[row.name] = {
                 "compiler": run([row.compiler[0], "--version"]).splitlines()[0],
+                "linker": linker(row.compiler, row.target, row.link),
                 "flags": [*row.compiler[1:], *row.target, *COMMON, *row.dwarf, *row.link],
                 "cases": list(row.cases),
                 "traits": traits(row, image, found),
@@ -331,7 +360,8 @@ def main() -> None:
             negatives[negative.name] = {
                 "compiler": run([NEGATIVE_COMPILER, "--version"]).splitlines()[0],
                 "source": f"{negative.source}.c",
-                "flags": [*COMMON, *negative.flags, *GNU_LINK],
+                "flags": [*COMMON, *negative.flags, *GNU_LINK, *negative.link],
+                "linker": linker((NEGATIVE_COMPILER,), (), negative.link),
                 "image": facts(image),
                 "variables": variables(image),
             }

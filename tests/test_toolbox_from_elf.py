@@ -59,9 +59,18 @@ def image(
     sections: tuple[Section, ...] = (DATA,),
     contents: bytes = bytes(0x100),
     symbols: frozenset[str] = frozenset(),
+    objects: frozenset[tuple[str, int]] | None = None,
     byte_order: Literal["little", "big"] = "little",
 ) -> Image:
-    return Image(Path("hand.elf"), byte_order, variables, sections, symbols, contents)
+    """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
+    each global at its address, as a linker that kept the variable leaves it."""
+    if objects is None:
+        objects = frozenset(
+            (variable.name, variable.address)
+            for variable in variables
+            if variable.external and variable.address is not None
+        )
+    return Image(Path("hand.elf"), byte_order, variables, sections, symbols, contents, objects)
 
 
 def stored(
@@ -72,9 +81,10 @@ def stored(
     address: int | None = 0x100,
     line: int | None = None,
     missing: str = "",
+    external: bool = True,
 ) -> Variable:
     declared = Declared(unit, line) if line is not None else None
-    return Variable(name, unit, ctype, declared, address, missing)
+    return Variable(name, unit, ctype, declared, address, missing, external)
 
 
 def found(bag: DiagnosticBag) -> list[tuple[str, Severity, str]]:
@@ -1053,6 +1063,30 @@ class TestDescribe:
                 "'Lost' has an address, 0x900, that no section of the image holds",
             )
         ]
+
+    def test_a_global_the_symbol_table_does_not_hold_at_its_address_is_refused(self) -> None:
+        """A section holds the address, so that what gold leaves of a discarded unit - an offset
+        into the section, where the code of another may sit - is not read as the variable's."""
+        description, bag = run(
+            image(stored("Gone", U16, address=0x110), objects=frozenset()), "Gone"
+        )
+        assert description.interface == ()
+        assert found(bag) == [
+            (
+                "elf-no-storage",
+                Severity.ERROR,
+                "the symbol table holds no object named 'Gone' at 0x110, where its debug "
+                "information puts it, as a linker leaves a variable of a unit it discarded",
+            )
+        ]
+
+    def test_a_static_is_read_without_a_symbol_since_a_link_may_drop_the_locals(self) -> None:
+        description, bag = run(
+            image(stored("Local", U16, address=0x110, external=False), objects=frozenset()),
+            "Local",
+        )
+        assert [entry["definition"]["name"] for entry in description.interface] == ["Local"]
+        assert [check for check, severity, _ in found(bag) if severity is Severity.ERROR] == []
 
     def test_a_variable_running_past_its_section_is_refused(self) -> None:
         img = image(stored("Wide", Base("unsigned int", DW_ATE_UNSIGNED, 4), address=0x1FE))

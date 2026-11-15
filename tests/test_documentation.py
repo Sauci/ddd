@@ -3736,3 +3736,21 @@ class TestToolbox:
     ) -> None:
         """A finding's severity decides the exit status; the guide is where a user reads it."""
         assert f"   * - ``{finding}``\n     - {severity}\n" in self.GUIDE
+
+    def test_both_pages_state_that_only_a_full_width_constant_of_a_signed_enum_is_negative(
+        self,
+    ) -> None:
+        """The reader sign-extends an enumerator only for a signed enum, from a constant as
+        wide as the enum; an unsigned enum's 200, or a signed one's, is the value it holds."""
+        spec = " ".join(SPEC.split())
+        guide = " ".join(self.GUIDE.split())
+        assert (
+            "Only an enumerator of a signed enum, written as a fixed-width constant as wide as "
+            "the enum, with its top bit set, is negative" in spec
+        )
+        assert (
+            "An enumerator of a signed enum is negative only where its fixed-width constant is "
+            "as wide as the enum and its top bit is set" in guide
+        )
+        for text in (spec, guide):
+            assert "whether its form is narrower or wider than the enum" in text

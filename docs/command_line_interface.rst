@@ -379,7 +379,8 @@ The commands
        back. Only the cells typed are written, each where it stands, and the rest of the
        file stays as it was, its spellings and its layout too. A cell keeps the reading
        it was typed in: turned from physical to raw, the grid shows the count it sets. A
-       cell typed back to its file's value drops out of the change, and a cell
+       cell typed back to its file's value - a ``float32``'s to the same float32 - drops out
+       of the change, and a cell
        the page refuses holds Apply back for them all, named in the sentence. A plan
        whose edit would leave its file as it was, every byte the same - a table pasted over
        the values the file spells, a description typed as it stands - is no change, and is
@@ -396,16 +397,23 @@ The commands
        space around it ignored. A number written in hexadecimal, binary or octal,
        ``Infinity``, ``NaN`` and digits parted by underscores are refused in one sentence, the
        same in every field, and nothing is asked of the server for them. A comma is a decimal
-       point where it cannot group thousands - after a first group of 0, or before anything
-       but exactly three digits - and groups thousands where it cannot be a decimal point, two
-       of them or a point after it; text holding both has its decimal point last, so
-       ``1.234,5`` and ``1,234.5`` both read 1234.5. A block pasted where one value's comma
-       can only be a decimal point reads every comma of it as one, ``0,5`` making ``1,250``
-       beside it one and a quarter, and a block writing its decimal point both ways is
-       refused. A comma that could be either, ``1,200``, is refused with the choice of what it
-       means one press away, the same for a cell typed into and for a block pasted; a
-       range's two fields offer no such choice, and their sentence names the field it is
-       about. A boolean takes 0 and 1 alone, in physical as in raw. The page
+       point where it cannot group thousands - after a first group of 0 or of more than three
+       digits, or before anything but exactly three digits - and groups thousands where it
+       cannot be a decimal point, two of them or a point after it; text holding both has its
+       decimal point last, so ``1.234,5`` and ``1,234.5`` both read 1234.5. Values read
+       together - a block pasted, the cells typed into a grid, a range's two fields - read a
+       comma that could be either as the others show theirs, where they all show one reading:
+       ``0,5`` makes ``1,250`` beside it one and a quarter, and ``1,234,567`` makes ``1,500``
+       beside it fifteen hundred. A block pasted whose values show both readings is refused,
+       in a sentence saying what it mixes, and so is one whose decimal comma stands beside a
+       point that is the decimal point; cells typed are each read as they are written. A comma
+       that could be either, ``1,200``, is refused with the choice of what it means one press
+       away where nothing else decides it, the same for a cell typed into and for a block
+       pasted, and an answer given stands, whatever is typed after it. Only the grid offers
+       that choice: a range's two fields, a size, a dimension, a constant's value, a section's
+       alignment and a raster's event refuse such a comma in the same sentence, and a range's
+       sentence names the field it is about. A boolean takes 0 and 1 alone, in physical as in
+       raw. The page
        holds a number as a double, which past 2^53 no longer holds every whole number, so a
        cell of an integer datatype refuses a number past 2^53 either side of zero, however it
        is spelled, where it is typed or pasted in raw, and a fraction the double would drop
@@ -416,9 +424,13 @@ The commands
        one, an exact half going to the even count, either side of zero, as ``round_physical``
        rounds; a float's is the float its datatype stores nearest, spelled as briefly as it
        reads back, so 0.3 at a factor of 0.1 is 3. A float's value is written as a float, its
-       whole numbers too. Physical shows the shortest decimal that reads back as the raw count
-       it shows, never cut at twelve significant digits and never with the tail of the double
-       arithmetic: 255 counts of 0.03 read 7.65, and a float64 of 1234567890123 reads so. A grid
+       whole numbers too. Physical shows a whole datatype's raw count as the exact product, the
+       count times the factor plus the offset, and a float's as the shortest decimal whose plan
+       comes to that same float - a ``float32``'s being the float32 its file's number rounds
+       to, which raw shows the same way, so a ``float32`` its file spells
+       ``0.10000000149011612`` reads 0.1 - never cut at twelve significant digits and never
+       with the tail of the double arithmetic: 255 counts of 0.03 read 7.65, and a float64 of
+       1234567890123 reads so. A grid
        holding a whole number
        past 2^53, among its values or its axis's breakpoints, or one at 2^53 in a ``uint64``
        or ``sint64``, says it cannot show it rather than draw another number. A ``uint64`` or
@@ -434,8 +446,8 @@ The commands
        and a line joining them where a row holds more than one, laid against its axis's
        own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
        plain indices where it has no axis, or one stating fewer breakpoints than the shape
-       has columns, with its declared limits ruled across it wherever they fall inside the
-       drawn range. It follows the same toggle, offers no control of its own, changes
+       has columns, its ticks then reading the indices too, with its declared limits ruled
+       across it wherever they fall inside the drawn range. It follows the same toggle, offers no control of its own, changes
        nothing, and is drawn under a read-only grid exactly as under a writable one. It
        draws what the file states, as the cells do: a scalar's one value draws none, and
        nor does a grid whose file states nothing, every cell of it hollow.

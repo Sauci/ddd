@@ -607,6 +607,24 @@ function boundText(value: number, datatype: string): string {
   return datatype.startsWith("float") && !/[.e]/.test(text) ? `${text}.0` : text;
 }
 
+/** What a key's chooser field reads while nothing is being typed into it (decision 15.3), by one
+ * rule for the variable's panel and the type's, where each spelled it out for itself in the screen
+ * (fix round 1, M8): nothing while no key is selected, or while the two fields make no range
+ * (`broken`) - they show what was typed themselves; a range they make, as the range it comes to
+ * (`target`); any other key as the value the chooser settled on (`chosen`), a unit refused for its
+ * spaces among them, the note under the field saying why. `label` is the panel's own spelling of
+ * a key's value. */
+export function settledLabel(
+  selected: string | undefined,
+  broken: string | null,
+  target: string | null,
+  chosen: string | null,
+  label: (key: string, raw: string | null) => string,
+): string {
+  if (selected === undefined || (broken !== null && selected === "limits")) return "";
+  return label(selected, selected === "limits" ? target : chosen);
+}
+
 /** What is wrong with the value a key's chooser would settle on, said under the field in place of
  * a plan, or `null` where nothing is: a range the two fields do not make (`limitsNote`), read by
  * `datatype`; and a unit with spaces around it (`unitRefusal`), `raw` the json text chosen. */

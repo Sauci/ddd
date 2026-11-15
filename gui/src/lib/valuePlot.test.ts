@@ -293,14 +293,24 @@ describe("plotted", () => {
     expect(xs).toHaveLength(6);
     expect(xs[0]).toBeCloseTo(BOX.left);
     expect(xs[5]).toBeCloseTo(BOX.left + inside);
-    expect(plotted(shortAxis, true).ticks.map((tick) => tick.label)).toEqual([
-      "0",
-      "800",
-      "1600",
-      "",
-      "",
-      "",
-    ]);
+  });
+
+  test("and its ticks read the indices, as over an axis stating no breakpoints (fix round 1, M10)", () => {
+    // Uneven breakpoints show what reading them under index places did: 100 was drawn halfway
+    // between 0 and 5000, at the second of six evenly spaced places.
+    const uneven: ValuesReply = {
+      ...CURVE_A,
+      conversion: { kind: "identity" },
+      axes: [{ ...AXIS_A, conversion: { kind: "identity" }, breakpoints: [0, 100, 5000] }],
+    };
+    const ticks = plotted(uneven, true).ticks;
+    expect(ticks.map((tick) => tick.label)).toEqual(["0", "1", "2", "3", "4", "5"]);
+    expect(ticks.map((tick) => tick.x)).toEqual(
+      plotted(uneven, true).lines[0]?.points.map((point) => point.x),
+    );
+    expect(ticks[1]?.x).toBeCloseTo(BOX.left + inside / 5);
+    // The axis is still the one named beside them.
+    expect(plotted(uneven, true).xLabel).toBe("AxisA (Hz)");
   });
 
   test("an axis stating more breakpoints than the shape places the shape's columns by theirs", () => {

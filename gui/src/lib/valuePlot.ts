@@ -1,4 +1,4 @@
-import type { ValuesReply } from "../api/types";
+import type { GridAxis, ValuesReply } from "../api/types";
 import {
   columnAxis,
   columnHeader,
@@ -46,15 +46,23 @@ export interface Plot {
 
 const PAD = 20;
 
+/** The axis whose readings place the values along the bottom, or `undefined` where they sit at
+ * their indices: an object laid against no axis, or against one stating fewer breakpoints than
+ * the shape has columns, which places none of them - no breakpoint of it could place the columns
+ * past its last in order (15:M7). */
+function placing(reply: ValuesReply): GridAxis | undefined {
+  const axis = columnAxis(reply);
+  return axis === undefined || axis.breakpoints.length < wanted(reply)[1] ? undefined : axis;
+}
+
 /** Where the values sit along the bottom, one place for each column the object's shape has: the
- * axis's own readings where it states one for every column, and the indices otherwise - evenly
- * spaced because they are, while breakpoints are not. An axis stating fewer breakpoints than the
- * shape places none of its columns, which no breakpoint of it could place in order, and one
- * stating more places the shape's columns alone (15:M7). */
+ * axis's own readings where it states one for every column (`placing`), and otherwise the
+ * indices, evenly spaced because they are, while breakpoints are not. An axis stating more
+ * breakpoints than the shape places the shape's columns alone. */
 function alongTheBottom(reply: ValuesReply, physical: boolean): number[] {
   const width = wanted(reply)[1];
-  const axis = columnAxis(reply);
-  if (axis === undefined || axis.breakpoints.length < width) {
+  const axis = placing(reply);
+  if (axis === undefined) {
     return Array.from({ length: width }, (_, index) => index);
   }
   return axis.breakpoints
@@ -125,7 +133,13 @@ export function plotted(reply: ValuesReply, physical: boolean): Plot {
         y: yAt(physical ? physicalOf(raw, reply.conversion) : raw),
       })),
     })),
-    ticks: columnHeader(reply, physical).map((label, index) => ({ x: xAt(index), label })),
+    // Where the values sit at their indices, the ticks read them, as over an axis stating no
+    // breakpoints: a breakpoint read at an index's place said what the place is not - 100, of
+    // breakpoints 0, 100 and 5000, drawn halfway between 0 and 5000 (fix round 1, M10).
+    ticks: (placing(reply) === undefined
+      ? Array.from({ length: wanted(reply)[1] }, (_, index) => String(index))
+      : columnHeader(reply, physical)
+    ).map((label, index) => ({ x: xAt(index), label })),
     rules: [reply.minimum, reply.maximum]
       .map((limit) => (physical ? limit : rawOf(limit, reply.conversion, reply.datatype)))
       .filter((value) => value >= low && value <= high)

@@ -342,8 +342,12 @@ describe("a label cut for its length (3:M5)", () => {
   });
 
   test("and counted in code points, as the api counts its limit", () => {
-    // Sixty emoji are 120 UTF-16 units and 60 code points: no cut is due.
-    const label = settleLabel(emoji.repeat(50), "unit");
-    expect(label).toBe(`the unit of ${emoji.repeat(50)}`);
+    // Sixty emoji after "the unit of " are 132 UTF-16 units and 72 code points: no cut is due,
+    // where a count in units would make one (fix round 1, M3 - fifty emoji were under 120 either
+    // way, and pinned nothing of the count).
+    const label = settleLabel(emoji.repeat(60), "unit");
+    expect(label.length).toBe(132);
+    expect([...label]).toHaveLength(72);
+    expect(label).toBe(`the unit of ${emoji.repeat(60)}`);
   });
 });

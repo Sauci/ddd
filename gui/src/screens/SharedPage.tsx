@@ -9,7 +9,7 @@ import { SharedTableView } from "../components/SharedTableView";
 import { unreadable } from "../lib/findings";
 import type { Route } from "../lib/route";
 import {
-  addedValueRefusal,
+  addFormRefusal,
   constantAdd,
   kindNamed,
   opensPanel,
@@ -382,7 +382,7 @@ function SharedAdd({
         setRefusal(null);
       }}
       plan={shown.plan}
-      refusal={refusal ?? (kind === "constant" ? addedValueRefusal(raw) : null) ?? shown.refusal}
+      refusal={addFormRefusal(kind, { raw, alignment, event }, refusal, shown.refusal)}
       changesShown={changesShown}
       onChangesShown={setChangesShown}
       onApply={() => {

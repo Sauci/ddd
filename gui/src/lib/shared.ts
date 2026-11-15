@@ -201,18 +201,34 @@ export function opensPanel(
  * strings`, the same two words. */
 const SECTION_STRINGS: readonly string[] = ["access", "description"];
 
-/** The json text one of a section's keys travels to the api as.
+/** A number a field of the Shared tab holds - a constant's value, a section's alignment, a
+ * raster's event - in the json text it travels as (`jsonNumber`): read as every field reads a
+ * number, whole where it was written whole and fractional where it was written with a point or an
+ * exponent (design §2) - or the sentence it is refused with, a number in another notation, a comma
+ * that could be either, or no number at all, before anything is asked of the server. What the
+ * number must be beyond that - whole, a power of two, an event no other raster claims - is the
+ * server's to say, as it is a dimension's. */
+function numberRaw(text: string): { raw: string } | { refusal: string } {
+  const read = jsonNumber(text);
+  return "json" in read ? { raw: read.json } : { refusal: read.refusal };
+}
+
+/** The json text one of a section's keys travels to the api as, or the sentence its text is
+ * refused with.
  *
- * `access` and `description` are strings, so they go in their quotes; `alignment` is a whole
- * number and goes without, since `"4"` is a string where the model wants a number and the file
- * would no longer load. The panel shows all three without quotes either way - `SectionReply` is
- * read that way on purpose, "so the panel's chooser is given the value and not its source". */
-export function sectionRaw(key: string, text: string): string {
-  return SECTION_STRINGS.includes(key) ? JSON.stringify(text) : text;
+ * `access` and `description` are strings, so they go in their quotes; `alignment` is a number and
+ * goes without, since `"4"` is a string where the model wants a number and the file would no
+ * longer load - read as every field reads one (`numberRaw`), where it travelled as the text typed,
+ * for the json parser to refuse `0x10` in its own words (fix round 1, I1). The panel shows all
+ * three without quotes either way - `SectionReply` is read that way on purpose, "so the panel's
+ * chooser is given the value and not its source". */
+export function sectionRaw(key: string, text: string): { raw: string } | { refusal: string } {
+  return SECTION_STRINGS.includes(key) ? { raw: JSON.stringify(text) } : numberRaw(text);
 }
 
 /**
- * One of a section's keys set to what its field holds, as `GET /api/section-plan` takes it.
+ * One of a section's keys set to what its field holds, as `GET /api/section-plan` takes it, or the
+ * sentence the page refuses its text with (`sectionRaw`), for which nothing is asked.
  *
  * The key travels to the request and to the quoting from one argument, which is the whole reason
  * this exists. The panel's own `satisfies` clause pins each request to its own `key` literal, and
@@ -229,24 +245,34 @@ export function sectionSet<K extends string>(
   name: string,
   key: K,
   text: string,
-): Extract<SectionPlanRequest, { action: "set" }> & { key: K } {
-  return { action: "set", name, key, raw: sectionRaw(key, text) };
+): (Extract<SectionPlanRequest, { action: "set" }> & { key: K }) | { refusal: string } {
+  const raw = sectionRaw(key, text);
+  return "refusal" in raw ? raw : { action: "set", name, key, raw: raw.raw };
+}
+
+/** The request a set of one key comes to (`sectionSet`, `rasterSet`), or `null` where the page
+ * refused the text its field holds - asked for nothing, its sentence said in the request's place
+ * (fix round 1, I1). */
+export function requestOf<R extends object>(set: R | { refusal: string }): R | null {
+  return "refusal" in set ? null : set;
 }
 
 /** Of a raster's keys, the ones whose value is a json string - `ddd.project_shared.RASTERS.
  * strings`, the same two words as a section's own. */
 const RASTER_STRINGS: readonly string[] = ["cycle", "description"];
 
-/** The json text one of a raster's keys travels to the api as, as `sectionRaw`'s over a raster's
- * own three keys: `cycle` and `description` are strings, so they go in their quotes; `event` is a
- * whole number and goes without, since `"1"` is a string where the model wants a number and the
- * file would no longer load. */
-export function rasterRaw(key: string, text: string): string {
-  return RASTER_STRINGS.includes(key) ? JSON.stringify(text) : text;
+/** The json text one of a raster's keys travels to the api as, or the sentence its text is
+ * refused with, as `sectionRaw`'s over a raster's own three keys: `cycle` and `description` are
+ * strings, so they go in their quotes; `event` is a number and goes without, since `"1"` is a
+ * string where the model wants a number and the file would no longer load - read as every field
+ * reads one (`numberRaw`, fix round 1, I1). */
+export function rasterRaw(key: string, text: string): { raw: string } | { refusal: string } {
+  return RASTER_STRINGS.includes(key) ? { raw: JSON.stringify(text) } : numberRaw(text);
 }
 
 /**
- * One of a raster's keys set to what its field holds, as `GET /api/raster-plan` takes it.
+ * One of a raster's keys set to what its field holds, as `GET /api/raster-plan` takes it, or the
+ * sentence the page refuses its text with (`rasterRaw`), for which nothing is asked.
  *
  * Generic in the key exactly as `sectionSet` is, and for the same reason: `screens/SectionPanel.
  * tsx`'s own `satisfies` clause pins each of its requests to its own `key` literal because
@@ -257,18 +283,15 @@ export function rasterSet<K extends string>(
   name: string,
   key: K,
   text: string,
-): Extract<RasterPlanRequest, { action: "set" }> & { key: K } {
-  return { action: "set", name, key, raw: rasterRaw(key, text) };
+): (Extract<RasterPlanRequest, { action: "set" }> & { key: K }) | { refusal: string } {
+  const raw = rasterRaw(key, text);
+  return "refusal" in raw ? raw : { action: "set", name, key, raw: raw.raw };
 }
 
-/** A constant's value as its field holds it, in the json text it travels as (`jsonNumber`): read
- * as every field reads a number, whole where it was written whole and fractional where it was
- * written with a point or an exponent (design §2) - or the sentence it is refused with, a number
- * in another notation, a comma that could be either, or no number at all, before anything is
- * asked of the server. */
+/** A constant's value as its field holds it, in the json text it travels as, or the sentence it
+ * is refused with: read as every number of the Shared tab is (`numberRaw`). */
 export function constantValue(text: string): { raw: string } | { refusal: string } {
-  const read = jsonNumber(text);
-  return "json" in read ? { raw: read.json } : { refusal: read.refusal };
+  return numberRaw(text);
 }
 
 /** The declaration a constant's add form comes to, or `null` while a parameter `add` requires is
@@ -283,16 +306,39 @@ export function constantAdd(name: string, raw: string): ConstantPlanRequest | nu
   return "raw" in value ? { action: "add", name, raw: value.raw } : null;
 }
 
-/** Why the value typed into a constant's add form is refused, or `null` while it is empty or a
- * number: the form's refusal, said before any plan is asked. */
+/** Why the number typed into an add form's field is refused, or `null` while it is empty or a
+ * number (`numberRaw`): the form's refusal, said before any plan is asked. */
 export function addedValueRefusal(raw: string): string | null {
   if (raw.trim() === "") return null;
-  const value = constantValue(raw);
+  const value = numberRaw(raw);
   return "refusal" in value ? value.refusal : null;
 }
 
+/** What the add form says under its fields, declaring into `kind`: the refusal of its Apply where
+ * there is one (`applied`), else the page's own refusal of the number the vocabulary's field holds
+ * - a constant's value, a section's alignment, a raster's event (`addedValueRefusal`) - said before
+ * any plan is asked, else the refusal of the plan asked for (`planned`). Never another
+ * vocabulary's field, which the form does not show. The choice of the three was the screen's, out
+ * of the Vitest gate's reach (fix round 1, M8). */
+export function addFormRefusal(
+  kind: SharedKind | undefined,
+  fields: { raw: string; alignment: string; event: string },
+  applied: string | null,
+  planned: string | null,
+): string | null {
+  const field =
+    kind === "constant"
+      ? fields.raw
+      : kind === "section"
+        ? fields.alignment
+        : kind === "raster"
+          ? fields.event
+          : "";
+  return applied ?? addedValueRefusal(field) ?? planned;
+}
+
 /** The declaration a section's add form comes to, or `null` while a parameter `add` requires is
- * still empty.
+ * still empty, or its alignment is refused (`sectionRaw`).
  *
  * Two required parameters where a constant has one, because the model gives a default for neither
  * (`SECTIONS.required`) and a section missing either is one whose file would not load. Each
@@ -304,12 +350,10 @@ export function sectionAdd(
   alignment: string,
 ): SectionPlanRequest | null {
   if (name.trim() === "" || access.trim() === "" || alignment.trim() === "") return null;
-  return {
-    action: "add",
-    name,
-    access: sectionRaw("access", access),
-    alignment: sectionRaw("alignment", alignment),
-  };
+  const accessRaw = sectionRaw("access", access);
+  const alignmentRaw = sectionRaw("alignment", alignment);
+  if ("refusal" in accessRaw || "refusal" in alignmentRaw) return null;
+  return { action: "add", name, access: accessRaw.raw, alignment: alignmentRaw.raw };
 }
 
 /** What stands where a section's Remove would be while a definition still places its data there:
@@ -325,7 +369,7 @@ export function sectionRemoveBlocked(name: string, uses: number): string {
 }
 
 /** The declaration a raster's add form comes to, or `null` while a parameter `add` requires is
- * still empty.
+ * still empty, or its event is refused (`rasterRaw`).
  *
  * One required parameter where a section has two and a constant one: `RASTERS.required` holds
  * `event` alone, the model defaulting `cycle` and `description` both - and an event that is not
@@ -338,7 +382,8 @@ export function sectionRemoveBlocked(name: string, uses: number): string {
  * would keep answering correctly if the model ever made the key a string. */
 export function rasterAdd(name: string, event: string): RasterPlanRequest | null {
   if (name.trim() === "" || event.trim() === "") return null;
-  return { action: "add", name, event: rasterRaw("event", event) };
+  const raw = rasterRaw("event", event);
+  return "refusal" in raw ? null : { action: "add", name, event: raw.raw };
 }
 
 /** Whether anything in the project names the raster - which is both whether Remove may be offered

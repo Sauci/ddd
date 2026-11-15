@@ -1,8 +1,8 @@
 /**
  * How the page reads a number, wherever one is typed or pasted: a grid's cells and a pasted block,
- * a range's two fields, a size and a dimension, a constant's value. One grammar, so that no field
- * takes a spelling another refuses, and one rule for a comma, which half the world writes as its
- * decimal point.
+ * a range's two fields, a size and a dimension, a constant's value, a section's alignment and a
+ * raster's event. One grammar, so that no field takes a spelling another refuses, and one rule for
+ * a comma, which half the world writes as its decimal point.
  *
  * The grammar is decimal notation: an optional sign, digits with an optional fraction or a fraction
  * alone, and an optional exponent, the white space around it ignored. Each field once took what
@@ -70,9 +70,17 @@ export function ambiguousComma(text: string): string {
   return `the comma in '${text}' could be a decimal point or a thousands separator`;
 }
 
-/** The sentence a pasted block writing its decimal point both ways is refused with. */
+/** The sentence a pasted block writing its decimal point both ways is refused with: a comma that
+ * can only be the decimal point beside a point that is one. */
 export const MIXES =
   "this mixes '.' and ',' as decimal separators, so it is not clear what it means";
+
+/** The sentence a pasted block writing its comma both ways is refused with: a comma that can only
+ * be the decimal point beside commas that can only group thousands - naming no point, which such a
+ * block need not hold (fix round 1, M1: `1,234,567` beside `0,5` was said to mix '.' and ','). */
+export const COMMA_BOTH_WAYS =
+  "this writes ',' both as a decimal separator and as a thousands separator, so it is not " +
+  "clear what it means";
 
 /** How many times `character` stands in `text`. */
 function count(text: string, character: string): number {
@@ -100,15 +108,22 @@ function settled(text: string): string {
   return text.replace(",", ".");
 }
 
+/** The farthest from 0 an exponent is held, either way: far past every number a double or any
+ * datatype holds, and a whole number the arithmetic on a decimal's exponent keeps exact (fix
+ * round 1, M2). Read as written, `1e1000000000000000000000` had an exponent `String` spells
+ * `1e+21`, which made the digits no number at all once spelled back. */
+const EXPONENT_HELD = 1e15;
+
 /** The number a match of `DECIMAL` spells, exactly: its digits stripped of the zeros that say
- * nothing, and the power of ten they are scaled by. */
+ * nothing, and the power of ten they are scaled by - held within `EXPONENT_HELD`. */
 function decimalOf(match: RegExpExecArray): Decimal {
   const [, sign = "", whole = "", fraction = "", alone = "", power = "0"] = match;
   const after = fraction === "" ? alone : fraction;
   const lead = `${whole}${after}`.replace(/^0+/, "");
   const digits = lead.replace(/0+$/, "");
   if (digits === "") return { negative: false, digits: "", exponent: 0 };
-  const exponent = Number(power) - after.length + (lead.length - digits.length);
+  const held = Math.min(EXPONENT_HELD, Math.max(-EXPONENT_HELD, Number(power)));
+  const exponent = held - after.length + (lead.length - digits.length);
   return { negative: sign === "-", digits, exponent };
 }
 
@@ -163,10 +178,11 @@ export function jsonNumber(
 }
 
 /** What the separators of one number show of themselves: a comma that can only be the decimal
- * point (`decimal`); a point that is the decimal point (`point`), commas grouping thousands before
- * it or not; commas that can only group thousands (`grouping`); one comma that could be either
- * (`ambiguous`); or nothing - no separator, or text that is no number however it is read. */
-type Shown = "decimal" | "point" | "grouping" | "ambiguous" | "nothing";
+ * point (`decimal`: `0,5`, `1234,567`, `1.234,5`); commas that can only group thousands, with no
+ * point (`grouping`: `1,234,567`) or before the point that is the decimal point (`grouped`:
+ * `1,234.5`); a point that is the decimal point, and no comma (`point`); one comma that could be
+ * either (`ambiguous`); or nothing - no separator, or text that is no number however it is read. */
+type Shown = "decimal" | "grouping" | "grouped" | "point" | "ambiguous" | "nothing";
 
 function shown(text: string): Shown {
   const trimmed = text.trim();
@@ -176,30 +192,45 @@ function shown(text: string): Shown {
   if (EITHER.test(trimmed)) return "ambiguous";
   if (!DECIMAL.test(settled(trimmed))) return "nothing";
   if (trimmed.includes(".")) {
-    return trimmed.lastIndexOf(",") > trimmed.lastIndexOf(".") ? "decimal" : "point";
+    return trimmed.lastIndexOf(",") > trimmed.lastIndexOf(".") ? "decimal" : "grouped";
   }
   return count(trimmed, ",") > 1 ? "grouping" : "decimal";
 }
 
-/** What the comma means in a block pasted from a spreadsheet, which writes every number of a block
- * with the same separators: a decimal point wherever one value shows it to be one - a comma that
- * cannot group thousands - and otherwise nothing said, a comma that could be either being refused
- * until it is said. A block in which one value's comma is a decimal point and another's point is,
- * or another's commas group thousands, writes its decimal point both ways, and nothing can tell
- * which value means what: refused. */
+/** Which readings of a comma the values `all` show: a decimal point, where one's comma can only be
+ * one, and thousands separators, where one's commas can only group them. */
+function readings(all: ReadonlySet<Shown>): { decimal: boolean; grouping: boolean } {
+  return { decimal: all.has("decimal"), grouping: all.has("grouping") || all.has("grouped") };
+}
+
+/**
+ * What the comma means in a block pasted from a spreadsheet, which writes every number of a block
+ * with the same separators: the reading the block's values show where they all show one - a
+ * decimal point wherever one value's comma cannot group thousands, thousands separators wherever
+ * one value's commas cannot be a decimal point (fix round 1, M1: `1,500` beside `1,234,567` is
+ * fifteen hundred, and nothing is asked) - and otherwise nothing said, a comma that could be either
+ * being refused until it is said. A block showing both writes its comma both ways
+ * (`COMMA_BOTH_WAYS`), and one whose decimal comma stands beside a point that is the decimal point
+ * writes its decimal point both ways (`MIXES`): nothing can tell which value means what, refused.
+ */
 export function pastedComma(
   texts: readonly string[],
 ): { refusal: string } | { meaning: CommaMeaning | undefined } {
   const all = new Set(texts.map(shown));
-  if (all.has("decimal") && (all.has("point") || all.has("grouping"))) return { refusal: MIXES };
-  return { meaning: all.has("decimal") ? "decimal" : undefined };
+  const { decimal, grouping } = readings(all);
+  if (decimal && (all.has("point") || all.has("grouped"))) return { refusal: MIXES };
+  if (decimal && grouping) return { refusal: COMMA_BOTH_WAYS };
+  return { meaning: decimal ? "decimal" : grouping ? "grouping" : undefined };
 }
 
 /** What the comma means among values typed together - the cells typed into one grid, a range's two
- * fields: a decimal point where one of them shows it to be one. Each typed value is read as it is
- * written beside that, so none of them is refused for another's separators. */
+ * fields: the reading they show where they all show one, as a pasted block's (`pastedComma`), and
+ * nothing where they show both or none. Each typed value is read as it is written beside that, so
+ * none of them is refused for another's separators. */
 export function typedComma(texts: readonly string[]): CommaMeaning | undefined {
-  return texts.some((text) => shown(text) === "decimal") ? "decimal" : undefined;
+  const { decimal, grouping } = readings(new Set(texts.map(shown)));
+  if (decimal === grouping) return undefined;
+  return decimal ? "decimal" : "grouping";
 }
 
 /** A decimal as a sentence spells it: the way `String` spells the double of the same value, so
@@ -219,7 +250,10 @@ export function decimalText(decimal: Decimal): string {
   return `${sign}${digits[0]}${rest}e${power < 0 ? "-" : "+"}${Math.abs(power)}`;
 }
 
-/** The double nearest a decimal, as `Number` reads its digits. */
+/** The double nearest a decimal, as `Number` reads its digits - an infinity, or a zero, on its own
+ * side for one past every double. Its exponent is spelled in digits, which `decimalOf` holds it to
+ * (`EXPONENT_HELD`): spelled `1e+21` from 1e21 on, it made the digits NaN, which a cell then sent
+ * as a count (fix round 1, M2). */
 export function doubleOf(decimal: Decimal): number {
   const { negative, digits, exponent } = decimal;
   return digits === "" ? 0 : Number(`${negative ? "-" : ""}${digits}e${exponent}`);
@@ -356,6 +390,18 @@ function shortestSingle(value: number): number {
   return Number(value.toPrecision(9));
 }
 
+/**
+ * The float32 a file's number `raw` rounds to, spelled as briefly as it reads back
+ * (`shortestSingle`): what a `float32` holds of it, however many digits the file spells - float32
+ * data a script writes out at double precision, `0.10000000149011612`, is 0.1 (fix round 1, M4).
+ * A number past what a float32 holds is left as the file states it.
+ */
+export function singleOf(raw: number): number {
+  const single = Math.fround(raw);
+  if (!Number.isFinite(single)) return raw;
+  return single === 0 ? 0 : shortestSingle(single);
+}
+
 /** The number a float datatype stores nearest the exact value of `ratio`, spelled as briefly as
  * the datatype reads it back: a double for `float64`, and for `float32` the shortest spelling of
  * the float (`shortestSingle`). */
@@ -379,15 +425,16 @@ export type RawCount = { raw: number } | { past: -1 | 1 } | { beyond: true } | {
 /** 2^53, where a double stops holding every whole number. */
 const WHOLE_LIMIT = 2n ** 53n;
 
-/** The decimal `value` is, held by its double where its exponent is so far from 0 that its exact
- * digits would cost more than any datatype can tell apart: a typed `1e-2000` is the zero it reads
- * as, and `1e2000` - an infinity to a double - is 1e1100, as far past every datatype and as few
- * digits to work with. */
+/** The decimal `value` is, or one as far out on its side of zero and as few digits to work with,
+ * where its exponent is so far from 0 that its exact digits would cost more than any datatype can
+ * tell apart: a typed `1e2000` - an infinity to a double - is 1e1100, past every datatype, and
+ * `1e-2000` is 1e-1100, which a float rounds to zero and is refused for, and a whole count rounds
+ * to 0 (fix round 1, M2: it was held by its double, a zero planned for a float, and from an
+ * exponent of 1e21 NaN, said to be past 2^53). */
 function bounded(value: Decimal): Decimal {
-  if (Math.abs(value.digits.length + value.exponent) <= 1100) return value;
-  const double = doubleOf(value);
-  if (Number.isFinite(double)) return decimalOfDouble(double);
-  return { negative: value.negative, digits: "1", exponent: 1100 };
+  const magnitude = value.digits.length + value.exponent;
+  if (Math.abs(magnitude) <= 1100) return value;
+  return { negative: value.negative, digits: "1", exponent: magnitude > 0 ? 1100 : -1100 };
 }
 
 /**
@@ -399,7 +446,9 @@ function bounded(value: Decimal): Decimal {
  *   itself, where a double stops holding every whole number - not the physical value typed, which
  *   past it may come to a count well inside (task 1's n1: 1e16 at a factor of 1000 is 1e13);
  * - a boolean's is not rounded: it holds 0 and 1 alone, and anything else is the server's to
- *   refuse in the words it refuses it in raw;
+ *   refuse in the words it refuses it in raw - but past ±2^53 it is past it, as a whole count is,
+ *   and one the double rounds to zero is said to (fix round 1, M2: 1e400 was sent as Infinity,
+ *   which the server refused as python's `inf`, and 1e-400 as a false nobody typed);
  * - a float's is the float its datatype stores nearest, spelled as briefly as it reads back
  *   (15:M5): 0.3 at a factor of 0.1 is 3, where the double arithmetic made it 2.9999999999999996.
  */
@@ -412,7 +461,12 @@ export function rawCount(physical: Decimal, linear: Linear | null, datatype: str
     if (!Number.isFinite(raw)) return { beyond: true };
     return raw === 0 && exact.num !== 0n ? { zero: true } : { raw };
   }
-  if (datatype === "boolean") return { raw: nearestIn(exact, DOUBLE) };
+  if (datatype === "boolean") {
+    const past = exact.num > WHOLE_LIMIT * exact.den || exact.num < -WHOLE_LIMIT * exact.den;
+    if (past) return { past: exact.num < 0n ? -1 : 1 };
+    const raw = nearestIn(exact, DOUBLE);
+    return raw === 0 && exact.num !== 0n ? { zero: true } : { raw };
+  }
   const whole = halfEven(exact);
   if (whole > WHOLE_LIMIT) return { past: 1 };
   if (whole < -WHOLE_LIMIT) return { past: -1 };
@@ -463,19 +517,27 @@ function around(value: Decimal, digits: number): Decimal[] {
     : [lower, upper];
 }
 
+/** Whether two raw counts of `datatype` are the one value it holds: for a `float32` the one
+ * float32, however many digits each spells (fix round 1, M4), and for any other datatype the one
+ * double. */
+export function sameCount(a: number, b: number, datatype: string): boolean {
+  return datatype === "float32" ? Math.fround(a) === Math.fround(b) : a === b;
+}
+
 /**
  * How the physical value of the raw count `raw` of a float datatype reads: the shortest decimal
- * whose own raw count (`rawCount`) is `raw` again - so that what the grid shows, typed back, sets
- * nothing - never cut short and never with the tail of the double arithmetic; or, where no decimal
- * shorter than the exact physical value reads back - a file stating more digits than its float
- * holds - that exact value.
+ * whose own raw count (`rawCount`) is `raw`'s value again (`sameCount`) - so that what the grid
+ * shows, typed back, sets nothing - never cut short and never with the tail of the double
+ * arithmetic. A `float32` reads as the float32 its file's number rounds to: float32 data spelled
+ * at double precision, `0.10000000149011612`, reads 0.05 at a factor of 0.5, where it read
+ * 0.05000000074505806 (fix round 1, M4). Where no shorter decimal reads back, the exact value.
  */
 export function floatReading(raw: number, linear: Linear, datatype: string): Decimal {
   const exact = physicalValue(raw, linear);
   for (let digits = 1; digits < exact.digits.length; digits += 1) {
     for (const candidate of around(exact, digits)) {
       const back = rawCount(candidate, linear, datatype);
-      if ("raw" in back && back.raw === raw) return candidate;
+      if ("raw" in back && sameCount(back.raw, raw, datatype)) return candidate;
     }
   }
   return exact;

@@ -16,6 +16,7 @@ import {
   limitsRaw,
   offerOf,
   rangeDatatype,
+  settledLabel,
   settledRaw,
   settleNote,
   shortValue,
@@ -832,6 +833,9 @@ describe("a range typed into two fields", () => {
     // `0,5` says what the comma is, so `1,500` beside it is one and a half.
     expect(limitsRaw("0,5", "1,500")).toBe('{ "min": 0.5, "max": 1.5 }');
     expect(limitsRaw("1,234.5", "1.234.567,5")).toBe('{ "min": 1234.5, "max": 1234567.5 }');
+    // Fix round 1, M1: and `1,234,567` says its commas group thousands, so `1,500` is fifteen
+    // hundred, where the field was refused for a comma that could be either.
+    expect(limitsRaw("1,500", "1,234,567")).toBe('{ "min": 1500, "max": 1234567 }');
   });
 
   test("a range is spelled as the numbers it holds, whatever their spelling", () => {
@@ -864,6 +868,13 @@ describe("a range read by its datatype, as a cell of it reads a number (task 1's
     expect(limitsNote("0", "10000000000000000000", "float64")).toBeNull();
     expect(limitsNote("0", "1e400", "float64")).toBe("Max: '1e400' is past what a float64 holds");
     expect(limitsNote("1e-400", "1", "float32")).toBe("Min: '1e-400' rounds to zero in float32");
+    // Fix round 1, M2: an exponent past 1e21 in size made the double NaN, said to be past it.
+    expect(limitsNote("1e-1000000000000000000000", "1", "float32")).toBe(
+      "Min: '1e-1000000000000000000000' rounds to zero in float32",
+    );
+    expect(limitsNote("0", "1e-1000000000000000000000", "uint8")).toBe(
+      "Max: '1e-1000000000000000000000' has a fraction the page cannot hold exactly",
+    );
   });
 
   test("a float's bound is written as a float (task 1's n2), any other's as typed", () => {
@@ -970,6 +981,33 @@ describe("a limit a double cannot hold", () => {
       max: "3.4028234663852886e+38",
     });
     expect(limitsNote("-3.4028234663852886e38", "3.4028234663852886e38", "float32")).toBeNull();
+  });
+});
+
+describe("settledLabel (fix round 1, M8)", () => {
+  // What a chooser's field reads while nothing is typed: one rule for the variable's panel and the
+  // type's, where each spelled it out for itself, outside the Vitest gate.
+  const label = (key: string, raw: string | null) => `${key}=${raw ?? "nothing"}`;
+
+  test("a range the fields do not make reads as nothing, the fields showing it themselves", () => {
+    expect(settledLabel("limits", "Max is empty", null, null, label)).toBe("");
+  });
+
+  test("a range they make reads as it, from what it comes to", () => {
+    expect(settledLabel("limits", null, '{ "min": 0, "max": 5 }', null, label)).toBe(
+      'limits={ "min": 0, "max": 5 }',
+    );
+  });
+
+  test("a unit refused reads as the spelling chosen, the note under it saying why", () => {
+    expect(settledLabel("unit", "'V ' has spaces around it", null, '"V "', label)).toBe(
+      'unit="V "',
+    );
+    expect(settledLabel("unit", null, '"V"', '"V"', label)).toBe('unit="V"');
+  });
+
+  test("no key selected reads as nothing", () => {
+    expect(settledLabel(undefined, null, null, null, label)).toBe("");
   });
 });
 

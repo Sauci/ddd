@@ -494,9 +494,22 @@ class TestTheCommandPage:
             "back, so 0.3 at a factor of 0.1 is 3"
         ) in text
         assert "A float's value is written as a float, its whole numbers too" in text
+        # Fix round 1, M7 and M4: the shortest decimal is a float's; a whole datatype shows the
+        # exact product, and a float32 reads as the float32 its file's number rounds to.
+        old = "Physical shows the shortest decimal that reads back as the raw count it shows"
+        assert old not in text
         assert (
-            "Physical shows the shortest decimal that reads back as the raw count it shows, never "
-            "cut at twelve significant digits and never with the tail of the double arithmetic"
+            "Physical shows a whole datatype's raw count as the exact product, the count times the "
+            "factor plus the offset, and a float's as the shortest decimal whose plan comes to "
+            "that same float"
+        ) in text
+        assert (
+            "a ``float32``'s being the float32 its file's number rounds to, which raw shows the "
+            "same way, so a ``float32`` its file spells ``0.10000000149011612`` reads 0.1"
+        ) in text
+        assert (
+            "never cut at twelve significant digits and never with the tail of the double "
+            "arithmetic: 255 counts of 0.03 read 7.65"
         ) in text
 
     def test_the_values_grid_is_said_to_read_numbers_by_one_grammar(self) -> None:
@@ -513,19 +526,42 @@ class TestTheCommandPage:
             "parted by underscores are refused in one sentence, the same in every field, and "
             "nothing is asked of the server for them"
         ) in text
+        # Fix round 1, M7: a first group of more than three digits named; M1: values read
+        # together decided by commas grouping thousands as by a decimal comma, a block showing both
+        # refused, the choice asked only where nothing else decides, and an answer standing; M7:
+        # every field offering no choice named, not a range's alone.
+        assert "after a first group of 0, or before anything but exactly three digits" not in text
         assert (
-            "A comma is a decimal point where it cannot group thousands - after a first group of "
-            "0, or before anything but exactly three digits - and groups thousands where it cannot "
-            "be a decimal point, two of them or a point after it; text holding both has its "
-            "decimal point last, so ``1.234,5`` and ``1,234.5`` both read 1234.5"
+            "A comma is a decimal point where it cannot group thousands - after a first group of 0 "
+            "or of more than three digits, or before anything but exactly three digits - and "
+            "groups thousands where it cannot be a decimal point, two of them or a point after it; "
+            "text holding both has its decimal point last, so ``1.234,5`` and ``1,234.5`` both "
+            "read 1234.5"
         ) in text
         assert (
             "A block pasted where one value's comma can only be a decimal point reads every comma "
             "of it as one"
+        ) not in text
+        assert (
+            "Values read together - a block pasted, the cells typed into a grid, a range's two "
+            "fields - read a comma that could be either as the others show theirs, where they all "
+            "show one reading: ``0,5`` makes ``1,250`` beside it one and a quarter, and "
+            "``1,234,567`` makes ``1,500`` beside it fifteen hundred"
+        ) in text
+        assert (
+            "A block pasted whose values show both readings is refused, in a sentence saying what "
+            "it mixes"
         ) in text
         assert (
             "A comma that could be either, ``1,200``, is refused with the choice of what it means "
-            "one press away, the same for a cell typed into and for a block pasted"
+            "one press away where nothing else decides it, the same for a cell typed into and for "
+            "a block pasted, and an answer given stands"
+        ) in text
+        assert "a range's two fields offer no such choice" not in text
+        assert (
+            "Only the grid offers that choice: a range's two fields, a size, a dimension, a "
+            "constant's value, a section's alignment and a raster's event refuse such a comma in "
+            "the same sentence"
         ) in text
         assert "A boolean takes 0 and 1 alone, in physical as in raw" in text
 
@@ -557,7 +593,7 @@ class TestTheCommandPage:
         assert "left undrawn only where there is no grid to begin with" not in text
         assert (
             "or over plain indices where it has no axis, or one stating fewer breakpoints than "
-            "the shape has columns"
+            "the shape has columns, its ticks then reading the indices too"
         ) in text
         assert (
             "It draws what the file states, as the cells do: a scalar's one value draws none, "
@@ -579,7 +615,10 @@ class TestTheCommandPage:
             "stays as it was"
         ) in text
         assert "A cell keeps the reading it was typed in" in text
-        assert "A cell typed back to its file's value drops out of the change" in text
+        assert (
+            "A cell typed back to its file's value - a ``float32``'s to the same float32 - drops "
+            "out of the change"
+        ) in text
         assert (
             "a cell the page refuses holds Apply back for them all, named in the sentence"
         ) in text

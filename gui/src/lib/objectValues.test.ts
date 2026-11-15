@@ -371,6 +371,34 @@ const LONG_FLOATS: ValuesReply = {
   rows: [[1234567890123, 1.23456789012345, 1234567890.125]],
 };
 
+/** BlockS: a float32 block whose file spells 0.1f at double precision, as float32 data a script
+ * writes out does, counted at a factor of 0.5 (fix round 1, M4). */
+const DOUBLE_SPELLED: ValuesReply = {
+  ...BLOCK_F,
+  name: "BlockS",
+  conversion: { kind: "linear", factor: 0.5, offset: 0 },
+  shape: [2],
+  rows: [[0.10000000149011612, 3]],
+};
+
+describe("a float32 reads as the float32 its file's number rounds to (fix round 1, M4)", () => {
+  test("in raw and in physical alike, as briefly as that float32 reads back", () => {
+    // It read 0.10000000149011612 in raw and 0.05000000074505806 in physical.
+    expect(cellText(DOUBLE_SPELLED, [], 0, 0, false)).toBe("0.1");
+    expect(cellText(DOUBLE_SPELLED, [], 0, 0, true)).toBe("0.05");
+    expect(physicalText(0.10000000149011612, { kind: "identity" }, "float32")).toBe("0.1");
+    expect(cellSentence(DOUBLE_SPELLED, 0, 0, 0.10000000149011612, false)).toBe(
+      "Sets element 1 of BlockS to 0.1",
+    );
+  });
+
+  test("a float64 holds every digit of its double, and reads them all", () => {
+    const double = { ...DOUBLE_SPELLED, datatype: "float64" };
+    expect(cellText(double, [], 0, 0, false)).toBe("0.10000000149011612");
+    expect(cellText(double, [], 0, 0, true)).toBe("0.05000000074505806");
+  });
+});
+
 describe("physicalText", () => {
   test("a whole datatype's count reads as the count times the factor, exactly", () => {
     expect(physicalText(255, { kind: "linear", factor: 0.03, offset: 0 }, "uint8")).toBe("7.65");
@@ -922,6 +950,65 @@ describe("a number a double cannot hold", () => {
       [2 ** 53, 1e19],
     ]);
   });
+
+  test.each([
+    // Fix round 1, M2: a number past what a double holds reaches no request, an exponent whose
+    // size made the double NaN among them - planned as a count of NaN in raw, and said to be past
+    // 2^53, or past what a float holds, where it rounds to zero.
+    {
+      text: "1e-1000000000000000000000",
+      cell: UINT64,
+      physical: false,
+      refused: `'1e-1000000000000000000000' ${FRACTION}`,
+    },
+    {
+      text: "1e-1000000000000000000000",
+      cell: FLOAT64,
+      physical: false,
+      refused: "'1e-1000000000000000000000' rounds to zero in float64",
+    },
+    {
+      text: "-1e1000000000000000000000",
+      cell: FLOAT32,
+      physical: false,
+      refused: "'-1e1000000000000000000000' is past what a float32 holds",
+    },
+    {
+      text: "1e-1000000000000000000000",
+      cell: FLOAT64,
+      physical: true,
+      refused: "'1e-1000000000000000000000' rounds to zero in float64",
+    },
+    // And one an exponent of a few thousand makes zero, which a float cell planned as 0.
+    {
+      text: "1e-2000",
+      cell: FLOAT64,
+      physical: true,
+      refused: "'1e-2000' rounds to zero in float64",
+    },
+    {
+      text: "1e1000000000000000000000",
+      cell: UINT64,
+      physical: true,
+      refused: `'1e1000000000000000000000' is past 2^53, ${INEXACT}`,
+    },
+  ])(
+    "'$text' in a $cell.datatype cell, in physical $physical, is refused",
+    ({ text, cell, physical, refused }) => {
+      expect(typedRaw(text, cell, physical)).toBeNull();
+      expect(typedRefusal(text, cell, physical)).toBe(refused);
+    },
+  );
+
+  test("a whole count it rounds to is the count, which is no number past a double", () => {
+    expect(typedRaw("1e-1000000000000000000000", CURVE_A, true)).toBe(0);
+  });
+
+  test("a boolean in physical too, which sent 1e400 as Infinity for the server to call inf", () => {
+    expect(typedRefusal("1e400", FLAG_A, true)).toBe(`'1e400' is past 2^53, ${INEXACT}`);
+    expect(typedRefusal("1e-400", FLAG_A, true)).toBe("'1e-400' rounds to zero in boolean");
+    expect(typedRefusal("1e-400", FLAG_A, false)).toBe(`'1e-400' ${FRACTION}`);
+  });
 });
 
 describe("the work a pasted block costs", () => {
@@ -1201,6 +1288,20 @@ describe("commaOf", () => {
     const said = { ...either, comma: "grouping" as const };
     expect(commaOf([said], said)).toBe("grouping");
   });
+
+  test("an answer given stands, whatever a cell typed later shows (fix round 1, M1)", () => {
+    // `1,250`, said to group thousands, read 1.25 once `0,5` was typed beside it.
+    const said = { ...typedCell(0, 1, "1,250"), comma: "grouping" as const };
+    expect(commaOf([typedCell(0, 0, "0,5"), said], said)).toBe("grouping");
+  });
+
+  test("commas one typed cell shows to group thousands group them in every typed cell (M1)", () => {
+    const either = typedCell(0, 1, "1,250");
+    expect(commaOf([typedCell(0, 0, "1,234,567"), either], either)).toBe("grouping");
+    expect(commaOf([typedCell(0, 0, "1,234,567"), typedCell(0, 2, "0,5"), either], either)).toBe(
+      undefined,
+    );
+  });
 });
 
 /** CurveA of six over an axis stating three breakpoints, its file writing two values: the grid of
@@ -1316,6 +1417,9 @@ describe("drawable", () => {
   });
 });
 
+/** CurveA's six cells as a uint32's, which holds counts of seven digits. */
+const BIG_CURVE: ValuesReply = { ...CURVE_A, datatype: "uint32" };
+
 describe("pasted", () => {
   test("a curve's six values, in physical, become the counts the file holds", () => {
     // 12 ms through ×0.01 is 1200 counts - the same arithmetic a typed cell goes through.
@@ -1401,6 +1505,27 @@ describe("pasted", () => {
   test("a block mixing a comma and a point does not know which it means", () => {
     expect(pasted("12\t9\t8\t7.5\t7\t6,5", CURVE_A, true).refusal).toBe(
       "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
+    );
+  });
+
+  test("a block whose commas group thousands reads one that could be either so (M1)", () => {
+    // `1,500` beside `1,234,567` is fifteen hundred, and nothing is asked: the choice of what it
+    // means is offered only where nothing in the block says it.
+    expect(pasted("1,234,567\t1,500\t8\t7\t6\t5", BIG_CURVE, false)).toEqual({
+      rows: [[1234567, 1500, 8, 7, 6, 5]],
+      refusal: null,
+      ambiguous: null,
+    });
+    // Said to be a decimal point, it is not: the block says what it is.
+    expect(pasted("1,234,567\t1,500\t8\t7\t6\t5", BIG_CURVE, false, "decimal").rows).toEqual([
+      [1234567, 1500, 8, 7, 6, 5],
+    ]);
+  });
+
+  test("a block writing its comma both ways is refused, naming no point it does not hold (M1)", () => {
+    expect(pasted("1,234,567\t0,5\t8\t7\t6\t5", BIG_CURVE, false).refusal).toBe(
+      "this writes ',' both as a decimal separator and as a thousands separator, so it is not " +
+        "clear what it means",
     );
   });
 

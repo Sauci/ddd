@@ -13,6 +13,7 @@ import {
   rawCount,
   readNumber,
   significant,
+  singleOf,
   typedComma,
 } from "./numbers";
 
@@ -74,18 +75,24 @@ export function heldReadings(): number {
   return READINGS.size;
 }
 
+/** How a raw count of `datatype` reads in raw: the count, a `float32`'s as the float32 its file's
+ * number rounds to, as briefly as it reads back (`singleOf`, fix round 1, M4) - float32 data a
+ * script spelled at double precision, `0.10000000149011612`, reads 0.1. */
+export function rawText(raw: number, datatype: string): string {
+  return String(datatype === "float32" ? singleOf(raw) : raw);
+}
+
 /**
- * How a raw count of `datatype` reads in physical under `conversion` (15:M6): the shortest decimal
- * that reads back as the raw count, never cut at twelve significant digits - 1234567890123 is
- * 1234567890123, where twelve digits read 1234567890120 - and never with the tail of the double
- * arithmetic - 255 counts of 0.03 are 7.65, not 7.6499999999999995. A whole datatype's count reads
- * as the count times the factor, plus the offset, exactly; a float's as the shortest decimal whose
- * own raw count is the count again (`floatReading`). Anything but a linear conversion reads as the
- * count itself.
+ * How a raw count of `datatype` reads in physical under `conversion` (15:M6), never cut at twelve
+ * significant digits - 1234567890123 is 1234567890123, where twelve digits read 1234567890120 -
+ * and never with the tail of the double arithmetic - 255 counts of 0.03 are 7.65, not
+ * 7.6499999999999995. A whole datatype's count reads as the count times the factor, plus the
+ * offset, exactly; a float's as the shortest decimal whose own raw count is the same float again
+ * (`floatReading`). Anything but a linear conversion reads as the count itself (`rawText`).
  */
 export function physicalText(raw: number, conversion: Conversion, datatype: string): string {
   const linear = linearOf(conversion);
-  if (linear === null) return String(raw);
+  if (linear === null) return rawText(raw, datatype);
   const key = `${datatype}|${String(conversion.factor)}|${String(conversion.offset)}|${raw}`;
   const known = READINGS.get(key);
   if (known !== undefined) return known;
@@ -527,9 +534,9 @@ export function pasteHint(reply: ValuesReply): string {
 
 /** One raw count in physical or in raw, as a cell, a column or a row header shows it - a
  * breakpoint, whose axis's datatype the reply leaves out, read as a whole datatype's count is,
- * exactly (`physicalText`). */
+ * exactly (`physicalText`, `rawText`). */
 function reading(raw: number, conversion: Conversion, physical: boolean, datatype = ""): string {
-  return physical ? physicalText(raw, conversion, datatype) : String(raw);
+  return physical ? physicalText(raw, conversion, datatype) : rawText(raw, datatype);
 }
 
 /** The indices `0`, `1`, `2`, … up to (not including) `count`. */
@@ -603,11 +610,12 @@ export interface TypedCell {
   comma?: CommaMeaning | undefined;
 }
 
-/** What a comma that could be either means in `cell`, one of the cells typed into a grid: a
- * decimal point where one of `typed` shows its comma to be one (`typedComma`), else what the
- * reader said of this cell's, if anything. */
+/** What a comma that could be either means in `cell`, one of the cells typed into a grid: what the
+ * reader said of this cell's, where they said - an answer given stands, whatever a cell typed
+ * later shows (fix round 1, M1: `0,5` typed after made a `1,500` said to group thousands 1.5) -
+ * else the reading `typed` shows, where it shows one (`typedComma`). */
 export function commaOf(typed: readonly TypedCell[], cell: TypedCell): CommaMeaning | undefined {
-  return typedComma(typed.map((held) => held.typed)) ?? cell.comma;
+  return cell.comma ?? typedComma(typed.map((held) => held.typed));
 }
 
 /** What one cell's field shows. A cell typed into shows what was typed, in the reading it was
@@ -674,7 +682,7 @@ export function cellSentence(
   physical: boolean,
 ): string {
   const element = elementLabel(row, column, reply.shape);
-  const value = physical ? physicalReading(raw, reply) : String(raw);
+  const value = physical ? physicalReading(raw, reply) : rawText(raw, reply.datatype);
   return `Sets ${element} of ${reply.name} to ${value}`;
 }
 

@@ -36,6 +36,7 @@ import {
   labelOfRaw,
   limitsOf,
   limitsRaw,
+  settledLabel,
   settledRaw,
   settleNote,
   staleHold,
@@ -254,16 +255,16 @@ export function VariablePanel({
   const settleRequest: SettleRequest | null =
     reply === undefined || selected === undefined || broken !== null ? null : { selected, target };
   const askedSettle = useDebounced(settleRequest, typedLimits);
-  // What the field reads while nothing is being typed, and whether what is typed is not that:
-  // text typed and left is no choice yet (decision 15.3), so while it stands nothing is previewed
-  // - the table above says nothing of the earlier value either - and Apply is withheld.
-  // A range the fields do not make reads as nothing; a unit refused reads as what was chosen, the
-  // note under it saying why.
-  const settledLabel =
-    reply === undefined || selected === undefined || (broken !== null && selected === "limits")
+  // What the field reads while nothing is being typed (`settledLabel`), and whether what is typed
+  // is not that: text typed and left is no choice yet (decision 15.3), so while it stands nothing
+  // is previewed - the table above says nothing of the earlier value either - and Apply is withheld.
+  const fieldLabel =
+    reply === undefined
       ? ""
-      : labelOfRaw(reply, selected, selected === "limits" ? target : chosenRaw);
-  const unsettledText = unsettled(typed, settledLabel);
+      : settledLabel(selected, broken, target, chosenRaw, (key, raw) =>
+          labelOfRaw(reply, key, raw),
+        );
+  const unsettledText = unsettled(typed, fieldLabel);
   const preview = useQuery({
     queryKey: ["settle", name, askedSettle, revision],
     queryFn:
@@ -468,7 +469,7 @@ export function VariablePanel({
       onOpenConstant={onOpenConstant}
       // A range the fields do not make is no value, so the field above them reads empty and
       // the note says why, rather than naming a value nothing would be settled on.
-      typed={typed ?? settledLabel}
+      typed={typed ?? fieldLabel}
       unsettled={unsettledText}
       // Never the target: opening the list on the producer's value must still list everything,
       // not just the entries that happen to contain it (spec 5.3, and part 1's own journey).

@@ -75,6 +75,14 @@ const MAP_A: ValuesReply = {
   ],
 };
 
+/** WideCurve: CurveA's six cells counted one to one in a uint32, which holds seven digits. */
+const WIDE: ValuesReply = {
+  ...CURVE_A,
+  name: "WideCurve",
+  datatype: "uint32",
+  conversion: { kind: "identity" },
+};
+
 /** A cell typed into, in physical unless said. */
 function typed(row: number, column: number, text: string, physical = true): TypedCell {
   return { row, column, typed: text, physical };
@@ -288,12 +296,95 @@ describe("a comma typed into the cells", () => {
     expect(typedOffer(withTyped(said, typed(0, 2, "2,500")), CURVE_A).ambiguous).toBe("2,500");
   });
 
+  test("beside a cell whose commas group thousands it groups them, and nothing is asked (M1)", () => {
+    // Fix round 1, M1: the one-press choice is asked only where no other cell decides.
+    expect(typedOffer([typed(0, 1, "1,234,567"), typed(0, 2, "1,500")], WIDE)).toEqual({
+      refusal: null,
+      changes: [
+        { row: 0, column: 1, raw: 1234567 },
+        { row: 0, column: 2, raw: 1500 },
+      ],
+      ambiguous: null,
+    });
+  });
+
+  test("beside cells showing both readings it is asked about, and none is refused for mixing", () => {
+    const offer = typedOffer(
+      [typed(0, 0, "0,5", false), typed(0, 1, "1,234,567", false), typed(0, 2, "1,500", false)],
+      WIDE,
+    );
+    expect(offer.ambiguous).toBe("1,500");
+    expect(offer.refusal).toBe(
+      "element 3 of 'WideCurve' is refused: the comma in '1,500' could be a decimal point or a " +
+        "thousands separator",
+    );
+  });
+
+  test("an answer given stands: a cell typed later shows a decimal comma, and it still groups", () => {
+    const said = withComma([typed(0, 2, "1,500", false)], WIDE, "grouping");
+    expect(typedOffer([typed(0, 0, "0,5", false), ...said], WIDE).changes).toEqual([
+      { row: 0, column: 0, raw: 0.5 },
+      { row: 0, column: 2, raw: 1500 },
+    ]);
+  });
+
   test("a number in another notation is refused, and asks nothing about a comma", () => {
     expect(typedOffer([typed(0, 2, "0x10")], CURVE_A)).toEqual({
       refusal: "'0x10' is not a number in decimal notation",
       changes: null,
       ambiguous: null,
     });
+  });
+});
+
+describe("a cell typed back to the float32 its file states (fix round 1, M4)", () => {
+  // BlockS: a float32 the file spells at double precision, 0.10000000149011612 - 0.1f, as float32
+  // data written out by a script spells it - counted at a factor of 0.5.
+  const DOUBLE_SPELLED: ValuesReply = {
+    ...CURVE_A,
+    name: "BlockS",
+    kind: "value_block",
+    datatype: "float32",
+    unit: "",
+    conversion: { kind: "linear", factor: 0.5, offset: 0 },
+    shape: [2],
+    rows: [[0.10000000149011612, 3]],
+    axes: [],
+  };
+
+  test("offers nothing, in physical or in raw, whatever digits it is typed in", () => {
+    // 0.05, what the cell reads in physical, planned 0.1: a change of nothing a float32 holds.
+    expect(typedOffer([typed(0, 0, "0.05")], DOUBLE_SPELLED).changes).toEqual([]);
+    expect(typedOffer([typed(0, 0, "0.1", false)], DOUBLE_SPELLED).changes).toEqual([]);
+    expect(typedOffer([typed(0, 0, "0.10000000149011612", false)], DOUBLE_SPELLED).changes).toEqual(
+      [],
+    );
+  });
+
+  test("and another float32 is a change", () => {
+    expect(typedOffer([typed(0, 0, "0.2", false)], DOUBLE_SPELLED).changes).toEqual([
+      { row: 0, column: 0, raw: 0.2 },
+    ]);
+  });
+
+  test("and the sentence of several says each float32 as raw reads it", () => {
+    expect(
+      changesSentence(
+        DOUBLE_SPELLED,
+        [
+          { row: 0, column: 0, raw: 0.10000000149011612 },
+          { row: 0, column: 1, raw: 4 },
+        ],
+        false,
+      ),
+    ).toBe("Sets 2 elements of BlockS: element 1 to 0.1; element 2 to 4");
+  });
+
+  test("a float64 tells the two doubles apart", () => {
+    const double = { ...DOUBLE_SPELLED, datatype: "float64" };
+    expect(typedOffer([typed(0, 0, "0.1", false)], double).changes).toEqual([
+      { row: 0, column: 0, raw: 0.1 },
+    ]);
   });
 });
 

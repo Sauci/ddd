@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   ambiguousComma,
+  COMMA_BOTH_WAYS,
   commaChoices,
   type Decimal,
   decimalOfDouble,
@@ -17,6 +18,7 @@ import {
   rawCount,
   readNumber,
   significant,
+  singleOf,
   typedComma,
 } from "./numbers";
 
@@ -194,10 +196,16 @@ describe("pastedComma", () => {
     expect(pastedComma(["1.234,5", "1,500"])).toEqual({ meaning: "decimal" });
   });
 
+  test("a block in which one value's commas can only group thousands reads every comma so", () => {
+    // Fix round 1, M1: a comma that could be either reads as the others show theirs - `1,500`
+    // beside `1,234,567` is fifteen hundred, where it was asked about.
+    expect(pastedComma(["1,234,567", "1,500"])).toEqual({ meaning: "grouping" });
+    expect(pastedComma(["1,234.5", "1,500", "2"])).toEqual({ meaning: "grouping" });
+  });
+
   test("nothing in the block says it, so a comma that could be either stays undecided", () => {
     expect(pastedComma(["1,200", "2", "3"])).toEqual({ meaning: undefined });
     expect(pastedComma(["7.5", "1,500"])).toEqual({ meaning: undefined });
-    expect(pastedComma(["1,234,567", "1,500"])).toEqual({ meaning: undefined });
     expect(pastedComma(["12", "9"])).toEqual({ meaning: undefined });
   });
 
@@ -205,9 +213,19 @@ describe("pastedComma", () => {
     expect(pastedComma(["7.5", "6,5"])).toEqual({ refusal: MIXES });
     expect(pastedComma(["1,234.5", "0,5"])).toEqual({ refusal: MIXES });
     expect(pastedComma(["1.234,5", "7.5"])).toEqual({ refusal: MIXES });
-    expect(pastedComma(["1,234,567", "0,5"])).toEqual({ refusal: MIXES });
     expect(MIXES).toBe(
       "this mixes '.' and ',' as decimal separators, so it is not clear what it means",
+    );
+  });
+
+  test("a block writing its comma both ways is refused in words naming no point", () => {
+    // M1: `1,234,567` groups thousands with its commas and `0,5` parts a fraction with its own;
+    // the block was refused as mixing '.' and ',', and it holds no '.'.
+    expect(pastedComma(["1,234,567", "0,5"])).toEqual({ refusal: COMMA_BOTH_WAYS });
+    expect(pastedComma(["1.234,5", "1,234,567"])).toEqual({ refusal: COMMA_BOTH_WAYS });
+    expect(COMMA_BOTH_WAYS).toBe(
+      "this writes ',' both as a decimal separator and as a thousands separator, so it is not " +
+        "clear what it means",
     );
   });
 
@@ -223,6 +241,13 @@ describe("typedComma", () => {
     expect(typedComma(["1,250"])).toBeUndefined();
     expect(typedComma(["7.5", "1,250"])).toBeUndefined();
     expect(typedComma([])).toBeUndefined();
+  });
+
+  test("and as thousands separators where one shows them to be, none showing both (M1)", () => {
+    expect(typedComma(["1,234,567", "1,500"])).toBe("grouping");
+    expect(typedComma(["1,234.5", "1,500"])).toBe("grouping");
+    // Shown both ways, nothing decides: a cell that could be either is asked about.
+    expect(typedComma(["0,5", "1,234,567", "1,500"])).toBeUndefined();
   });
 });
 
@@ -247,6 +272,25 @@ describe("doubleOf", () => {
     expect(doubleOf(reading("0"))).toBe(0);
     expect(doubleOf(reading("9007199254740993"))).toBe(2 ** 53);
     expect(doubleOf(reading("1e400"))).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  test("an exponent past every double is an infinity or a zero on its side, never NaN (M2)", () => {
+    // The digits were spelled with their exponent, which from 1e21 on `String` writes `1e+21` -
+    // and `Number` reads `1e1e+21` as NaN, which a cell then sent as a count.
+    expect(doubleOf(decimal("1e1000000000000000000000"))).toBe(Number.POSITIVE_INFINITY);
+    expect(doubleOf(decimal("-1e1000000000000000000000"))).toBe(Number.NEGATIVE_INFINITY);
+    expect(doubleOf(decimal("1e-1000000000000000000000"))).toBe(0);
+    expect(Object.is(doubleOf(decimal("-1e-1000000000000000000000")), -0)).toBe(true);
+  });
+});
+
+describe("an exponent past 10^15", () => {
+  test("is held at it, as far past every datatype and spelled as a number json reads (M2)", () => {
+    // `decimalText` wrote 1e1000000000000000000000 as `1e+1e+21`, no number at all, which a
+    // size sent as its json.
+    expect(read("1e1000000000000000000000")).toBe("1e+1000000000000000");
+    expect(read("-1e-1000000000000000000000")).toBe("-1e-1000000000000000");
+    expect(read("2.5e99")).toBe("2.5e+99");
   });
 });
 
@@ -346,6 +390,19 @@ describe("rawCount", () => {
     expect(rawCount(decimal("1"), linear(0.5), "boolean")).toEqual({ raw: 2 });
   });
 
+  test("a boolean past 2^53 is past it, as a whole count is, and one rounding to zero is so (M2)", () => {
+    // 1e400 was sent as Infinity, which the server refused in python's own word for it, `inf`;
+    // 1e-400 was sent as 0, a false nobody typed.
+    expect(rawCount(decimal("1e400"), null, "boolean")).toEqual({ past: 1 });
+    expect(rawCount(decimal("-1e400"), null, "boolean")).toEqual({ past: -1 });
+    expect(rawCount(decimal("1e20"), linear(2), "boolean")).toEqual({ past: 1 });
+    expect(rawCount(decimal("1e-400"), null, "boolean")).toEqual({ zero: true });
+    expect(rawCount(decimal("0"), null, "boolean")).toEqual({ raw: 0 });
+    expect(rawCount(decimal("9007199254740992"), null, "boolean")).toEqual({
+      raw: 9007199254740992,
+    });
+  });
+
   test.each([
     // 15:M5: the float its datatype stores nearest the exact count, as briefly as it reads back -
     // where the double arithmetic planned 2.9999999999999996 and 6.999999999999999.
@@ -393,11 +450,22 @@ describe("rawCount", () => {
     expect(rawCount(decimal("-40"), linear(0.5, -40), "float32")).toEqual({ raw: 0 });
   });
 
-  test("an exponent too far to work out digit by digit is what its double is", () => {
+  test("an exponent too far to work out digit by digit is held as far out, on its side of zero", () => {
+    // M2: a float rounds a tiny one to zero, which it is refused for - it was planned as 0, and one
+    // whose exponent reached 1e21 in size was said to be past what the float holds.
     expect(rawCount(decimal("1e-2000"), null, "sint16")).toEqual({ raw: 0 });
-    expect(rawCount(decimal("1e-2000"), null, "float64")).toEqual({ raw: 0 });
+    expect(rawCount(decimal("1e-2000"), null, "float64")).toEqual({ zero: true });
+    expect(rawCount(decimal("-1e-1000000000000000000000"), null, "float32")).toEqual({
+      zero: true,
+    });
+    expect(rawCount(decimal("1e-1000000000000000000000"), linear(0.5), "uint8")).toEqual({
+      raw: 0,
+    });
     expect(rawCount(decimal("1e999999"), null, "float64")).toEqual({ beyond: true });
     expect(rawCount(decimal("-1e999999"), null, "sint64")).toEqual({ past: -1 });
+    expect(rawCount(decimal("1e1000000000000000000000"), linear(0.5), "uint8")).toEqual({
+      past: 1,
+    });
   });
 });
 
@@ -436,10 +504,36 @@ describe("floatReading", () => {
     );
   });
 
-  test("a file stating more digits than its float holds reads as it is stated", () => {
-    // No spelling of a float32 reads back as 0.123456789123, so the exact value is what is shown.
-    expect(decimalText(floatReading(0.123456789123, linear(1), "float32"))).toBe("0.123456789123");
+  test("a count no shorter decimal reads back as reads as its exact value", () => {
     expect(decimalText(floatReading(0, linear(1), "float32"))).toBe("0");
+  });
+
+  test("a float32 reads as the float32 its file's number rounds to (fix round 1, M4)", () => {
+    // Float32 data written out by a script spells 0.1f at double precision, 0.10000000149011612:
+    // at a factor of 0.5 it read 0.05000000074505806, which typed back planned that float32 again.
+    expect(decimalText(floatReading(0.10000000149011612, linear(0.5), "float32"))).toBe("0.05");
+    // A file stating more digits than a float32 holds reads as the float32 they round to.
+    expect(decimalText(floatReading(0.123456789123, linear(1), "float32"))).toBe("0.12345679");
+    // A float64 holds every digit of its double, and reads them all.
+    expect(decimalText(floatReading(0.10000000149011612, linear(0.5), "float64"))).toBe(
+      "0.05000000074505806",
+    );
+  });
+});
+
+describe("singleOf", () => {
+  test.each([
+    // The float32 a file's number rounds to, as briefly as it reads back (M4).
+    { raw: 0.10000000149011612, single: 0.1 },
+    { raw: 0.1, single: 0.1 },
+    { raw: 0.123456789123, single: 0.12345679 },
+    { raw: 3, single: 3 },
+    { raw: 16777217, single: 16777216 },
+    { raw: 1e-46, single: 0 },
+    // Past what a float32 holds, the file's number as it stands.
+    { raw: 1e39, single: 1e39 },
+  ])("$raw is $single", ({ raw, single }) => {
+    expect(singleOf(raw)).toBe(single);
   });
 });
 

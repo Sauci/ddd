@@ -1,5 +1,5 @@
 import type { PlanReply, ValuesReply } from "../api/types";
-import type { CommaMeaning } from "./numbers";
+import { type CommaMeaning, sameCount } from "./numbers";
 import {
   cellAt,
   cellRead,
@@ -8,6 +8,7 @@ import {
   elementLabel,
   pasteSentence,
   physicalReading,
+  rawText,
   statedValue,
   type TypedCell,
   typedRaw,
@@ -85,7 +86,10 @@ export type TypedOffer =
  *
  * Otherwise each cell sets the raw count its text comes to, read in the reading it was typed in:
  * none where it is empty, which is a cell nothing has been typed into yet, or where the count is
- * the value its file holds there - a cell typed back sets nothing, and drops out of the plan.
+ * the value its file holds there - a cell typed back sets nothing, and drops out of the plan. A
+ * `float32`'s value is the float32 its file's number rounds to (`sameCount`): typed back in
+ * fewer digits than a file spelling it at double precision, it is the same value (fix round 1,
+ * M4).
  */
 export function typedOffer(cells: readonly TypedCell[], reply: ValuesReply): TypedOffer {
   const refused = cells.flatMap((cell) => {
@@ -113,7 +117,9 @@ export function typedOffer(cells: readonly TypedCell[], reply: ValuesReply): Typ
   }
   const changes = cells.flatMap((cell) => {
     const raw = typedRaw(cell.typed, reply, cell.physical, commaOf(cells, cell));
-    if (raw === null || raw === statedValue(reply, cell.row, cell.column)) return [];
+    if (raw === null) return [];
+    const stated = statedValue(reply, cell.row, cell.column);
+    if (stated !== undefined && sameCount(raw, stated, reply.datatype)) return [];
     return [{ row: cell.row, column: cell.column, raw }];
   });
   return { refusal: null, changes, ambiguous: null };
@@ -148,7 +154,7 @@ export function changesSentence(
     return cellSentence(reply, only.row, only.column, only.raw, physical);
   }
   const clauses = changes.map(({ row, column, raw }) => {
-    const value = physical ? physicalReading(raw, reply) : String(raw);
+    const value = physical ? physicalReading(raw, reply) : rawText(raw, reply.datatype);
     return `${elementLabel(row, column, reply.shape)} to ${value}`;
   });
   return `Sets ${changes.length} elements of ${reply.name}: ${listed(clauses)}`;

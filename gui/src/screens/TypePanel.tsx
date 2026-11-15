@@ -20,6 +20,7 @@ import { textOf, unitLabel } from "../lib/units";
 import {
   limitsOf,
   limitsRaw,
+  settledLabel,
   settledRaw,
   settleNote,
   shortValue,
@@ -224,20 +225,18 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
     active === null
       ? { plan: null, refusal: null, pending: false }
       : planShown(asked[active], requests[active], plans[active]);
-  // What the chooser's field reads while nothing is being typed, and whether what is typed is not
-  // that: text typed and left is no choice yet (decision 15.3), so while it stands no plan is
-  // drawn for the value before it and Apply is withheld.
-  // A range the fields do not make reads as nothing; a unit refused reads as what was chosen, the
-  // note under it saying why.
-  const settledLabel =
-    selected === undefined || (broken !== null && selected === "limits")
-      ? ""
-      : fieldLabel(
-          offer?.editor,
-          selected,
-          selected === "limits" ? target : settledRaw(chosen, starting),
-        );
-  const unsettledText = unsettled(typed, settledLabel);
+  // What the chooser's field reads while nothing is being typed (`settledLabel`, the rule a
+  // variable's panel reads its own by), and whether what is typed is not that: text typed and left
+  // is no choice yet (decision 15.3), so while it stands no plan is drawn for the value before it
+  // and Apply is withheld.
+  const shownLabel = settledLabel(
+    selected,
+    broken,
+    target,
+    settledRaw(chosen, starting),
+    (key, raw) => fieldLabel(offer?.editor, key, raw),
+  );
+  const unsettledText = unsettled(typed, shownLabel);
 
   const apply = useMutation({
     mutationFn: (kind: Kind) => {
@@ -318,7 +317,7 @@ export function TypePanel({ name, revision, stopped, onClose, onGone, onMoved, o
           setDescription(undefined);
         }
       }}
-      typed={typed ?? settledLabel}
+      typed={typed ?? shownLabel}
       unsettled={unsettledText}
       // Never the target: opening the list on the value already chosen must still list
       // everything, not just the entries that happen to contain it (spec 5.3, as `VariablePanel`

@@ -364,17 +364,6 @@ function withEndsSwapped(original: string): string {
   return changed;
 }
 
-/** examples/vocabulary's description with its rasters entry naming a file that is not there, one
- * letter for another, as a typo saved from an editor would: the file keeps its length, so
- * `writeUnseen` can write it where the session's own watcher does not see it, and the analysis
- * files `file-not-found` at that entry, which the tab counts in its row only once that analysis
- * has landed. Throws where the entry is not there, as `withFullStop` does. */
-function withAnEntryMissing(original: string): string {
-  const changed = original.replace('"rasters.ddd.json"', '"rasterz.ddd.json"');
-  if (changed === original) throw new Error(`${PROJECT} no longer reads as this journey expects`);
-  return changed;
-}
-
 /** The copy of examples/vocabulary's rasters.ddd.json that `withRastersRenamed` names. */
 const RASTERZ = "rasterz.ddd.json";
 
@@ -383,23 +372,15 @@ const RASTERZ = "rasterz.ddd.json";
  * meant, and the file keeps its length, so `writeUnseen` can write it where the session's own
  * watcher does not see it. The tab reads a row's kind off the revision the page holds, so the
  * copy's row is drawn with a kind only once an analysis reading the copy has reached the page -
- * where the tab's list of entries, and the finding counted at an entry naming no file with it, is
- * answered from the newest analysis the server holds, the page's revision behind or not. Throws
- * where the entry is not there, as `withFullStop` does. */
+ * where the tab's list of entries, a finding counted at an entry with it, and every plan are
+ * answered from the newest analysis the server holds, the page's revision behind or not: what a
+ * journey of a stale refusal waits on before it presses again. Throws where the entry is not
+ * there, as `withFullStop` does. */
 function withRastersRenamed(original: string): string {
   const changed = original.replace('"rasters.ddd.json"', `"${RASTERZ}"`);
   if (changed === original) throw new Error(`${PROJECT} no longer reads as this journey expects`);
   return changed;
 }
-
-/** The includes of examples/vocabulary's description once `withEndsSwapped` has swapped them. */
-const SWAPPED = [
-  "pump.ddd.json",
-  "sections.ddd.json",
-  "constants.ddd.json",
-  "rasters.ddd.json",
-  "units.ddd.json",
-];
 
 test("a Remove applied while the description changed on disk is refused, and goes through once the analysis has caught up", async ({
   page,
@@ -589,7 +570,13 @@ test("a New file applied while the description changed on disk is refused in its
     creating.getByText("Changes 2 files: project.ddd.json, spare.ddd.json", { exact: true }),
   ).toBeVisible();
 
-  const changed = withAnEntryMissing(readFileSync(project, "utf8"));
+  // The description's rasters entry renamed to a copy of the file, written where the session's own
+  // watcher does not see it (`writeUnseen`).
+  copyFileSync(
+    join(vocabularyGui.directory, "rasters.ddd.json"),
+    join(vocabularyGui.directory, RASTERZ),
+  );
+  const changed = withRastersRenamed(readFileSync(project, "utf8"));
   writeUnseen(vocabularyGui.directory, PROJECT, changed);
   const apply = creating.getByRole("button", { name: "Apply to 2 files" });
   await apply.click();
@@ -604,14 +591,16 @@ test("a New file applied while the description changed on disk is refused in its
 
   // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
   // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
-  // New file's plan, asked again as soon as the Apply is answered, reads the description as it
-  // stands, and so does the tab's list of entries, so neither says anything of that analysis;
-  // the finding the analysis files at the entry naming no file is counted in its row only once
-  // that analysis has landed. The sentence is still there then: it is held until the reader's
-  // next choice, not until a revision.
+  // New file's plan, asked again as soon as the Apply is answered, and the tab's list of entries
+  // are answered from the newest analysis the server holds, so neither says the page holds that
+  // analysis' revision: a press made on them can fall in the update the revision brings when it
+  // reaches the page, which asks the plan again and takes Apply away from under the press. The
+  // copy's kind is read off the revision the page holds, so its row shows it only once that
+  // revision has come. The sentence is still there then: it is held until the reader's next
+  // choice, not until a revision.
   await expect(
-    page.getByRole("row", { name: "rasterz.ddd.json", exact: true }).getByRole("gridcell"),
-  ).toHaveText(["", "names no file", "1"]);
+    page.getByRole("row", { name: RASTERZ, exact: true }).getByRole("gridcell"),
+  ).toHaveText(["rasters", "", ""]);
   await expect(refused).toHaveText(STALE);
 
   // Apply pressed again is that choice: the sentence goes, and the file is created and added, the
@@ -623,7 +612,7 @@ test("a New file applied while the description changed on disk is refused in its
     "units.ddd.json",
     "sections.ddd.json",
     "constants.ddd.json",
-    "rasterz.ddd.json",
+    RASTERZ,
     "pump.ddd.json",
     "spare.ddd.json",
   ]);
@@ -632,9 +621,9 @@ test("a New file applied while the description changed on disk is refused in its
 /**
  * Add's out-of-date refusal, in Add's own panel: the same refusal New file's journey above meets,
  * reached the same way. Asked again after it (`onSettled`), Add's plan is itself refused as out
- * of date until the analysis the refusal asks for lands - it judges the change against the
- * revision (`_judged`, api.py) - and the panel's sentence is the Apply's, which takes precedence
- * over the plan's own, as long as it is held.
+ * of date until the analysis the refusal asks for lands on the server - it judges the change
+ * against the revision (`_judged`, api.py) - and the panel's sentence is the Apply's, which takes
+ * precedence over the plan's own, as long as it is held.
  */
 test("an Add applied while the description changed on disk is refused in its own panel, nothing is written, and it goes through once the analysis has caught up", async ({
   page,
@@ -658,7 +647,13 @@ test("an Add applied while the description changed on disk is refused in its own
   const takenOut = adding.locator(".hunk .removed");
   await expect(takenOut).toHaveText([/"pump\.ddd\.json"$/]);
 
-  const changed = withEndsSwapped(readFileSync(project, "utf8"));
+  // The description's includes reordered, and its rasters entry renamed to a copy of the file,
+  // written where the session's own watcher does not see it (`writeUnseen`).
+  copyFileSync(
+    join(vocabularyGui.directory, "rasters.ddd.json"),
+    join(vocabularyGui.directory, RASTERZ),
+  );
+  const changed = withRastersRenamed(withEndsSwapped(readFileSync(project, "utf8")));
   writeUnseen(vocabularyGui.directory, PROJECT, changed);
   const apply = adding.getByRole("button", { name: "Apply to 1 file" });
   await apply.click();
@@ -670,9 +665,16 @@ test("an Add applied while the description changed on disk is refused in its own
 
   // The watcher never notices the change, and nothing needs it to: refusing the Apply as stale,
   // the server asks for the analysis itself (`Session._refused`), which reads the file as it is.
-  // The panel shows that analysis landed - its changes, asked for again of that revision, add the
-  // entry after units.ddd.json, which the outside change made the last - and the sentence is still
-  // there: it is held until the reader's next choice, not until a revision.
+  // That analysis can land on the server before Add's plan is asked again, and the plan is then
+  // answered from it: its changes, adding the entry after units.ddd.json, which the outside change
+  // made the last, can show before the page holds that analysis' revision, and a press made on
+  // them can fall in the update the revision brings when it reaches the page. The copy's kind is
+  // read off the revision the page holds, so its row shows it only once that revision has come.
+  // The sentence is still there then: it is held until the reader's next choice, not until a
+  // revision.
+  await expect(
+    page.getByRole("row", { name: RASTERZ, exact: true }).getByRole("gridcell"),
+  ).toHaveText(["rasters", "", ""]);
   await expect(takenOut).toHaveText([/"units\.ddd\.json"$/]);
   await expect(refused).toHaveText(STALE);
 
@@ -680,7 +682,14 @@ test("an Add applied while the description changed on disk is refused in its own
   // change kept.
   await apply.click();
   await expect(page.getByRole("row", { name: EXTRA, exact: true })).toBeVisible();
-  expect(JSON.parse(readFileSync(project, "utf8")).project.includes).toEqual([...SWAPPED, EXTRA]);
+  expect(JSON.parse(readFileSync(project, "utf8")).project.includes).toEqual([
+    "pump.ddd.json",
+    "sections.ddd.json",
+    "constants.ddd.json",
+    RASTERZ,
+    "units.ddd.json",
+    EXTRA,
+  ]);
 });
 
 test("the files tab says it is reading the project's files until they are read", async ({

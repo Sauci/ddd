@@ -1571,12 +1571,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   `loading.py`; branch 10 lists `shared_plans.py`, which writes the value.
 - **A press lost while a revision lands** (the Files tab, R58): when a revision reaches the page,
   the tab asks each of its plans again for it and draws no Apply until the plan comes, so a press
-  made in that moment is lost, with no request and no sentence. The Remove journey presses again
-  only once a row's kind, read off the revision the page holds, says that revision has come. The
-  New file and Add journeys wait on what the server answers from its newest analysis, whatever
-  revision the page holds - the finding counted at an entry, a plan's lines - and with the revision
-  held back from the page each wait was met before it came, five times of five, so their second
-  press can still fall in that update. Branch 11 lists `screens/*` and `gui/e2e/*.spec.ts`.
+  made in that moment is lost, with no request and no sentence. The tab's journeys of a stale
+  refusal press again only once a row's kind, read off the revision the page holds, says that
+  revision has come. Branch 11 lists `screens/*`.
 - **FLT_MAX read out of an image** (R55): `ddd tool from-elf` writes a `float32`'s `init` in the
   fewest digits that read it back, so FLT_MAX is written 3.4028235e+38, a double past FLT_MAX's
   own, which `ddd check` refuses as `init-invalid` - the spelling the page planned until this
@@ -1840,13 +1837,12 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   writing the new one would not overwrite unread; that one commit, local and unpushed, had its
   message amended to its own, the tree unchanged, against "never `--amend`": the history must say
   what a commit does. Each message has since been written to a new file.
-- **R58.** The final wave has the Remove journey wait for a row's kind before its second press,
-  the outside change also renaming the rasters entry to a copy of that file: the plan's lines it
-  waited on, and the finding counted at an entry naming no file, are answered from the server's
-  newest analysis, and were met with the analysis' revision held back from the page, so a press
-  could fall in the update that revision brings; a row's kind is read off the revision the page
-  holds. The New file and Add journeys, left as they were, wait on such answers (*Left open*,
-  branch 3).
+- **R58.** The final wave has the Files tab's three journeys of a stale refusal - Remove, New file
+  and Add - wait for a row's kind before their second press, the outside change also renaming the
+  rasters entry to a copy of that file: the plan's lines and the finding counted at an entry they
+  waited on are answered from the server's newest analysis, and with the analysis' revision held
+  back from the page each was met before it came, so a press could fall in the update that
+  revision brings; a row's kind is read off the revision the page holds.
 - **R59.** The final wave keeps a cell clear of the held offer by a scroll margin of the offer's
   height on each cell of the grid, which the table's scroll into view honours: Ctrl+End scrolled
   the last cell into view after its field had taken the focus, and left it under the offer.

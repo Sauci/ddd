@@ -1,8 +1,11 @@
 import { describe, expect, test } from "vitest";
 import type { PlanReply, RasterUse, SharedEntry, SharedReply } from "../api/types";
 import {
+  addedValueRefusal,
+  addFormRefusal,
   addTitle,
   constantAdd,
+  constantValue,
   isDeclared,
   kindNamed,
   opensPanel,
@@ -14,6 +17,7 @@ import {
   rasterSet,
   rasterUseRoute,
   rasterUseWhat,
+  requestOf,
   rowKey,
   SECTION_ACCESSES,
   SHARED_KINDS,
@@ -233,12 +237,41 @@ describe("the key a row is selected by", () => {
 
 describe("the json text a section's key travels as", () => {
   test("a string key goes in its quotes", () => {
-    expect(sectionRaw("access", "read-only")).toBe('"read-only"');
-    expect(sectionRaw("description", "calibration flash")).toBe('"calibration flash"');
+    expect(sectionRaw("access", "read-only")).toEqual({ raw: '"read-only"' });
+    expect(sectionRaw("description", "calibration flash")).toEqual({ raw: '"calibration flash"' });
   });
 
   test("alignment goes without them - quoted, it is a string the file's loader refuses", () => {
-    expect(sectionRaw("alignment", "8")).toBe("8");
+    expect(sectionRaw("alignment", "8")).toEqual({ raw: "8" });
+  });
+
+  test("alignment is read as every field reads a number (fix round 1, I1)", () => {
+    // It travelled as raw json, so `0x10` reached the server to be refused in the json parser's
+    // words. What the number must be beyond the grammar - whole, a power of two - is the
+    // server's to say, as it is a dimension's.
+    expect(sectionRaw("alignment", "0x10")).toEqual({
+      refusal: "'0x10' is not a number in decimal notation",
+    });
+    expect(sectionRaw("alignment", "eight")).toEqual({ refusal: "'eight' is not a number" });
+    expect(sectionRaw("alignment", "1,000")).toEqual({
+      refusal: "the comma in '1,000' could be a decimal point or a thousands separator",
+    });
+    expect(sectionRaw("alignment", "1,5")).toEqual({ raw: "1.5" });
+    expect(sectionRaw("alignment", " 8 ")).toEqual({ raw: "8" });
+    expect(sectionSet(".calib", "alignment", "0x8")).toEqual({
+      refusal: "'0x8' is not a number in decimal notation",
+    });
+  });
+
+  test("a set the page refuses is no request, and one it reads is the request", () => {
+    expect(requestOf(sectionSet(".calib", "alignment", "0x8"))).toBeNull();
+    expect(requestOf(rasterSet("10ms", "event", "x"))).toBeNull();
+    expect(requestOf(sectionSet(".calib", "alignment", "8"))).toEqual({
+      action: "set",
+      name: ".calib",
+      key: "alignment",
+      raw: "8",
+    });
   });
 
   test("a set request quotes by the very key it carries", () => {
@@ -269,12 +302,27 @@ describe("the json text a section's key travels as", () => {
 
 describe("the json text a raster's key travels as", () => {
   test("a string key goes in its quotes", () => {
-    expect(rasterRaw("cycle", "10ms")).toBe('"10ms"');
-    expect(rasterRaw("description", "the 10 ms control task")).toBe('"the 10 ms control task"');
+    expect(rasterRaw("cycle", "10ms")).toEqual({ raw: '"10ms"' });
+    expect(rasterRaw("description", "the 10 ms control task")).toEqual({
+      raw: '"the 10 ms control task"',
+    });
   });
 
   test("event goes without them - quoted, it is a string the file's loader refuses", () => {
-    expect(rasterRaw("event", "1")).toBe("1");
+    expect(rasterRaw("event", "1")).toEqual({ raw: "1" });
+  });
+
+  test("event is read as every field reads a number (fix round 1, I1)", () => {
+    expect(rasterRaw("event", "0b11")).toEqual({
+      refusal: "'0b11' is not a number in decimal notation",
+    });
+    expect(rasterRaw("event", "NaN")).toEqual({
+      refusal: "'NaN' is not a number in decimal notation",
+    });
+    expect(rasterRaw("event", "+3")).toEqual({ raw: "3" });
+    expect(rasterSet("10ms", "event", "0x1")).toEqual({
+      refusal: "'0x1' is not a number in decimal notation",
+    });
   });
 
   test("a set request quotes by the very key it carries", () => {
@@ -317,6 +365,11 @@ describe("declaring a raster", () => {
     // json and is the one key `add` requires, so an event sent in quotes declares a string where
     // the model wants a whole number, and the file it writes would no longer load.
     expect(rasterAdd("20ms", "3")).toEqual({ action: "add", name: "20ms", event: "3" });
+  });
+
+  test("an event the page refuses asks for nothing (fix round 1, I1)", () => {
+    expect(rasterAdd("20ms", "0x3")).toBeNull();
+    expect(rasterAdd("20ms", "three")).toBeNull();
   });
 });
 
@@ -406,6 +459,56 @@ describe("declaring a constant", () => {
       raw: "12",
     });
   });
+
+  test("a value in another notation asks for nothing, and the form says why", () => {
+    // 15:M13: the constant's Value was refused in the json parser's words, where every other
+    // field read hexadecimal as `Number` does.
+    expect(constantAdd("TREND_SLOTS", "0x10")).toBeNull();
+    expect(addedValueRefusal("0x10")).toBe("'0x10' is not a number in decimal notation");
+    expect(addedValueRefusal("12")).toBeNull();
+    expect(addedValueRefusal(" ")).toBeNull();
+  });
+
+  test("a value travels as json spells it, whole or fractional as it was written", () => {
+    expect(constantAdd("TREND_SLOTS", "1,5")).toEqual({
+      action: "add",
+      name: "TREND_SLOTS",
+      raw: "1.5",
+    });
+  });
+});
+
+describe("a constant's value", () => {
+  test.each([
+    // Whole where it was written whole, fractional where it was written with a point or an
+    // exponent (design §2), in the digits typed, as json spells a number.
+    { text: "2", raw: "2" },
+    { text: "2.0", raw: "2.0" },
+    { text: "2.", raw: "2.0" },
+    { text: ".5", raw: "0.5" },
+    { text: "+5", raw: "5" },
+    { text: "007", raw: "7" },
+    { text: "-0", raw: "-0" },
+    { text: "1e3", raw: "1e3" },
+    { text: " 1E-3 ", raw: "1e-3" },
+    { text: "1,5", raw: "1.5" },
+    { text: "1,234,567", raw: "1234567" },
+    { text: "18446744073709551615", raw: "18446744073709551615" },
+  ])("'$text' travels as $raw", ({ text, raw }) => {
+    expect(constantValue(text)).toEqual({ raw });
+  });
+
+  test.each([
+    { text: "0x10", says: "'0x10' is not a number in decimal notation" },
+    { text: "NaN", says: "'NaN' is not a number in decimal notation" },
+    {
+      text: "1,000",
+      says: "the comma in '1,000' could be a decimal point or a thousands separator",
+    },
+    { text: "", says: "'' is not a number" },
+  ])("'$text' is refused: $says", ({ text, says }) => {
+    expect(constantValue(text)).toEqual({ refusal: says });
+  });
 });
 
 describe("declaring a section", () => {
@@ -433,6 +536,49 @@ describe("declaring a section", () => {
       access: '"read-write"',
       alignment: "8",
     });
+  });
+
+  test("an alignment the page refuses asks for nothing (fix round 1, I1)", () => {
+    expect(sectionAdd(".eol_log", "read-write", "0x8")).toBeNull();
+    expect(sectionAdd(".eol_log", "read-write", "1,000")).toBeNull();
+  });
+});
+
+describe("what the add form says under its fields (fix round 1, M8)", () => {
+  // The choice of which refusal stands there, made in the screen and outside the Vitest gate: an
+  // Apply's own first, then the page's reading of the number the chosen vocabulary's field holds,
+  // then the plan's.
+  const fields = { raw: "", alignment: "", event: "" };
+
+  test("the page's refusal of the field the vocabulary has", () => {
+    expect(addFormRefusal("constant", { ...fields, raw: "0x10" }, null, null)).toBe(
+      "'0x10' is not a number in decimal notation",
+    );
+    expect(addFormRefusal("section", { ...fields, alignment: "0x8" }, null, "planned")).toBe(
+      "'0x8' is not a number in decimal notation",
+    );
+    expect(addFormRefusal("raster", { ...fields, event: "three" }, null, null)).toBe(
+      "'three' is not a number",
+    );
+  });
+
+  test("never another vocabulary's field", () => {
+    expect(
+      addFormRefusal("section", { ...fields, raw: "0x10", event: "x" }, null, null),
+    ).toBeNull();
+    expect(
+      addFormRefusal(undefined, { raw: "0x10", alignment: "0x8", event: "x" }, null, null),
+    ).toBe(null);
+  });
+
+  test("an Apply's own refusal first, and the plan's where the field reads", () => {
+    expect(addFormRefusal("constant", { ...fields, raw: "0x10" }, "stale", "planned")).toBe(
+      "stale",
+    );
+    expect(addFormRefusal("raster", { ...fields, event: "3" }, null, "event 3 is claimed")).toBe(
+      "event 3 is claimed",
+    );
+    expect(addFormRefusal(undefined, fields, null, "planned")).toBe("planned");
   });
 });
 

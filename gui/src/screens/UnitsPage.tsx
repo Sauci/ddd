@@ -12,6 +12,7 @@ import {
   planEdit,
   tabTitle,
 } from "../lib/projectUnits";
+import { refusalOfOffer } from "../lib/refusals";
 import { unitLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
 import { refusalOf, UnitPanel, usePlan } from "./UnitPanel";
@@ -44,8 +45,9 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
   const [previewing, setPreviewing] = useState(false);
   // A refused adopt, if any, in the tab's own words (`refusalOf`): held until a new attempt starts,
   // whatever its code, a file changed on disk included, and never let go by a revision landing
-  // (`Refused`, lib/refusals.ts) - though the banner, and the refusal in it, go once the server
-  // offers no adoption any more.
+  // (`Refused`, lib/refusals.ts) - but not past the offer it was made of: once the server offers no
+  // adoption the banner goes and the refusal with it, so an adoption offered again starts with
+  // none (`refusalOfOffer`).
   const [refused, setRefused] = useState<string | null>(null);
   const adoptable = answer?.adoptable ?? null;
   // Asked for as soon as the banner offers it, so that Adopt applies exactly what Show changes
@@ -76,6 +78,11 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
         queries.invalidateQueries({ queryKey: ["unit-plan"] }),
       ]),
   });
+  // Adjusted while rendering, React's own pattern for state that follows what a render is given:
+  // the render in which the offer goes already draws no refusal of it.
+  const offered = answer !== undefined && adoptionOffered(answer);
+  const kept = refusalOfOffer(refused, offered);
+  if (kept !== refused) setRefused(kept);
 
   if (answer === undefined) {
     if (units.isError) return <Banner tone="error">{units.error.message}</Banner>;
@@ -95,7 +102,7 @@ export function UnitsPage({ state, unit, stopped, onUnit }: Props) {
       {gone !== null && (
         <Banner tone="warning">{gone} is no longer stated or listed in the open project.</Banner>
       )}
-      {adoptionOffered(answer) && (
+      {offered && (
         <AdoptBannerView
           adoptable={answer.adoptable}
           hasUnitsFile={hasUnitsFile(answer)}

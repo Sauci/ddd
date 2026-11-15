@@ -16,7 +16,7 @@ import {
 } from "../components/ConstantPanelView";
 import { panelShows, type Refused, refusalShown } from "../lib/refusals";
 import type { Route } from "../lib/route";
-import { planEdit } from "../lib/shared";
+import { constantValue, planEdit } from "../lib/shared";
 import { planShown } from "../lib/typing";
 import { constantLabel } from "../lib/undo";
 import { Banner } from "../ui/Banner";
@@ -106,6 +106,9 @@ export function ConstantPanel({
   const answer = panelShows(reply, (shown) => shown.name, name, updating);
   const entry = answer.shown === "reply" ? answer.reply : undefined;
   const draftValue = value !== undefined && value !== entry?.value ? value : null;
+  // The value typed, read as every field reads a number (`constantValue`): the json it travels
+  // as, or the sentence it is refused with, for which nothing is asked of the server.
+  const valueRead = draftValue === null ? null : constantValue(draftValue);
   const draftDescription =
     description !== undefined && description !== entry?.description ? description : null;
   // Named before the plans that ask for them, so that applying one can say what it was: the
@@ -123,7 +126,10 @@ export function ConstantPanel({
   // request's own `action`: both are `set`, told apart by `key` alone, which is why it is the
   // `key` literal each of them is pinned to here.
   const requests: Record<ConstantAction, ConstantPlanRequest | null> = {
-    value: draftValue === null ? null : { action: "set", name, key: "value", raw: draftValue },
+    value:
+      valueRead === null || "refusal" in valueRead
+        ? null
+        : { action: "set", name, key: "value", raw: valueRead.raw },
     describe:
       draftDescription === null
         ? null
@@ -253,7 +259,13 @@ export function ConstantPanel({
         setTo(next);
         setFailed(null);
       }}
-      valueOffer={draftValue === null ? null : offer("value")}
+      valueOffer={
+        valueRead === null
+          ? null
+          : "refusal" in valueRead
+            ? { plan: null, refusal: valueRead.refusal, pending: false }
+            : offer("value")
+      }
       describeOffer={draftDescription === null ? null : offer("describe")}
       renameOffer={to === null ? null : offer("rename")}
       removeOffer={requests.remove === null ? null : offer("remove")}

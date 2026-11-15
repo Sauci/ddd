@@ -35,7 +35,11 @@ jobs:
   test:
     # Skipped by a hunt, which is the journeys' alone.
     if: ${{ !(inputs.repeat > 1) }}
-    timeout-minutes: 25
+    # The windows legs took 15.9 to 20.9 minutes in CI runs 43664431438 and 43667157867, the
+    # cmake story among what they run, told under the platform's Makefile generator through
+    # mingw32-make as well. The limit is there to stop a hang, not to time the suite, so it
+    # leaves a slow runner room.
+    timeout-minutes: 40
     # The package claims python 3.12, 3.13 and 3.14, and claims to be os independent. This is
     # what turns both into tested claims: a path handling bug that appeared only on linux has
     # already reached a user of this project once, having passed everything on windows.

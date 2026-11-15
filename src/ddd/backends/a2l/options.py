@@ -26,6 +26,12 @@ class A2lOptions:
     addresses: dict[str, int] = field(default_factory=dict)
     """Symbol to address map; a symbol that is missing gets address 0."""
 
+    has_address_source: bool = False
+    """Whether the run had a source of addresses: the linked image, or an address map with an
+    entry. Without one every address is 0 and no ``address-missing`` says so, an empty map
+    naming nothing to miss, and ``--strict`` does not fail it, so the file says it itself,
+    under its version."""
+
     def filename(self, project: str) -> str:
         return f"{project}.a2l"
 

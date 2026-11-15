@@ -1,14 +1,23 @@
 import { type ReactNode, useState } from "react";
 import type { PlanReply, ValuesReply } from "../api/types";
+import type { TypedCell } from "../lib/objectValues";
+import { withTyped } from "../lib/typedCells";
 import { holdOf } from "../lib/valuesHold";
 import {
   CURVE_CELL_PLAN,
+  CURVE_CELLS_PLAN,
+  PARAMETER_CELL_PLAN,
+  VALUE_C_INIT_PLAN,
   VALUES_AXIS,
   VALUES_BLOCK,
+  VALUES_BLOCK_PAST_2_53,
+  VALUES_BLOCK_WIDE,
   VALUES_CURVE,
   VALUES_CURVE_B,
   VALUES_MAP,
+  VALUES_PARAMETER_A,
   VALUES_SOFTWARE_LABEL,
+  VALUES_VALUE_C,
   VALUES_VALUE_D,
 } from "../stories/fixtures";
 import { Banner } from "../ui/Banner";
@@ -22,7 +31,7 @@ interface Props {
   reply: ValuesReply;
   backTo: string;
   physical: boolean;
-  editing?: { row: number; column: number; typed: string };
+  typed?: TypedCell[];
   plan?: PlanReply | null;
   refusal?: string | null;
   changesShown?: boolean;
@@ -30,13 +39,13 @@ interface Props {
   banner?: ReactNode;
 }
 
-/** The grid over one scenario's fixtures, with its own toggle, cell being typed into and Show
- * changes - kept as ValuesPage.tsx keeps them. */
+/** The grid over one scenario's fixtures, with its own toggle, cells typed into and Show changes
+ * - kept as ValuesPage.tsx keeps them. */
 function View({
   reply,
   backTo,
   physical: initialPhysical,
-  editing: initialEditing,
+  typed: initialTyped = [],
   plan = null,
   refusal = null,
   changesShown: initialChangesShown = false,
@@ -44,7 +53,7 @@ function View({
   banner,
 }: Props) {
   const [physical, setPhysical] = useState(initialPhysical);
-  const [editing, setEditing] = useState(initialEditing ?? null);
+  const [typed, setTyped] = useState<readonly TypedCell[]>(initialTyped);
   const [changesShown, setChangesShown] = useState(initialChangesShown);
   return (
     <ValuesGridView
@@ -53,8 +62,8 @@ function View({
       banner={banner}
       physical={physical}
       onPhysical={setPhysical}
-      editing={editing}
-      onEditing={setEditing}
+      typed={typed}
+      onTyped={(cell) => setTyped((held) => withTyped(held, cell))}
       plan={plan}
       refusal={refusal}
       changesShown={changesShown}
@@ -83,8 +92,49 @@ export const AValueBlockOverIndices = () => (
   <View reply={VALUES_BLOCK} backTo="UserInterface" physical />
 );
 
+// Each field as wide as its column's longest number: 123456789 and 4000000000 whole, where fields
+// of one width showed 123456 and 400000, smaller numbers than the ones held.
+export const ABlockOfWideNumbers = () => (
+  <View reply={VALUES_BLOCK_WIDE} backTo="UserInterface" physical />
+);
+
 export const AScalarInitStatedOnce = () => (
   <View reply={VALUES_CURVE_B} backTo="UserInterface" physical />
+);
+
+// A scalar is a grid of one cell (16:I4): ParameterA's 3200 raw reads 800 Hz, with the toggle and
+// the cell and no table to paste into and no picture of one point.
+export const AScalarAsOneCell = () => (
+  <View reply={VALUES_PARAMETER_A} backTo="Controller" physical />
+);
+
+export const AScalarInRawCounts = () => (
+  <View reply={VALUES_PARAMETER_A} backTo="Controller" physical={false} />
+);
+
+// 1000 Hz typed into the one cell: one sentence naming the value, one line in the preview.
+export const AScalarMidChange = () => (
+  <View
+    reply={VALUES_PARAMETER_A}
+    backTo="Controller"
+    physical
+    typed={[{ row: 0, column: 0, typed: "1000", physical: true }]}
+    plan={PARAMETER_CELL_PLAN}
+    changesShown
+  />
+);
+
+// A scalar stating no init states no value, so its one cell is hollow; the preview of a value
+// typed shows the declaration gaining the line.
+export const AScalarGainingAnInit = () => (
+  <View
+    reply={VALUES_VALUE_C}
+    backTo="SensorHub"
+    physical
+    typed={[{ row: 0, column: 0, typed: "21.5", physical: true }]}
+    plan={VALUE_C_INIT_PLAN}
+    changesShown
+  />
 );
 
 export const ACellMidChange = () => (
@@ -92,7 +142,7 @@ export const ACellMidChange = () => (
     reply={VALUES_CURVE}
     backTo="Controller"
     physical
-    editing={{ row: 0, column: 2, typed: "7.5" }}
+    typed={[{ row: 0, column: 2, typed: "7.5", physical: true }]}
     plan={CURVE_CELL_PLAN}
     changesShown
   />
@@ -103,8 +153,37 @@ export const ARefusedCell = () => (
     reply={VALUES_MAP}
     backTo="Controller"
     physical={false}
-    editing={{ row: 0, column: 0, typed: "200" }}
+    typed={[{ row: 0, column: 0, typed: "200", physical: false }]}
     refusal="200 does not fit into sint8 (-128 .. 127)"
+  />
+);
+
+// 1,500 typed into CurveA's second cell: one and a half or fifteen hundred, which nothing in the
+// text says, so the offer asks which, one press away (15:M9) - and holds Apply back until it is.
+export const ACommaThatCouldBeEither = () => (
+  <View
+    reply={VALUES_CURVE}
+    backTo="Controller"
+    physical
+    typed={[{ row: 0, column: 1, typed: "1,500", physical: true }]}
+  />
+);
+
+// Three of CurveA's elements typed 13, 14 and 15 ms and held together: each field shows what was
+// typed into it, and one sentence, one preview and one Apply cover all three (16:I3).
+export const ThreeCellsTypedAsOneChange = () => (
+  <View
+    reply={VALUES_CURVE}
+    backTo="Controller"
+    physical
+    typed={[13, 14, 15].map((value, column) => ({
+      row: 0,
+      column,
+      typed: String(value),
+      physical: true,
+    }))}
+    plan={CURVE_CELLS_PLAN}
+    changesShown
   />
 );
 
@@ -116,7 +195,7 @@ export function AnAppliedValueHeld() {
   const [physical, setPhysical] = useState(true);
   return (
     <ValuesGridView
-      reply={holdOf(2, VALUES_CURVE, { cell: { row: 0, column: 2 }, raw: 750 }).after}
+      reply={holdOf(2, VALUES_CURVE, { cells: [{ row: 0, column: 2, raw: 750 }] }).after}
       updating
       backTo="Controller"
       undoStrip={
@@ -133,13 +212,13 @@ export function AnAppliedValueHeld() {
         />
       }
       physical={physical}
-      editing={null}
+      typed={[]}
       plan={null}
       refusal={null}
       changesShown={false}
       busy={false}
       onPhysical={setPhysical}
-      onEditing={() => {}}
+      onTyped={() => {}}
       onChangesShown={() => {}}
       onApply={() => {}}
       onBack={() => {}}
@@ -148,9 +227,29 @@ export function AnAppliedValueHeld() {
   );
 }
 
-// Spec 6's own list, beyond the brief's: an absent init greyed, and a grid nothing produces.
+// Spec 6's own list, beyond the brief's: an absent init, and a grid nothing produces. An absent
+// init states no cell, so every cell is hollow (15:M7), where each read a greyed 0, and no picture
+// is drawn under them, where a line of those zeros was.
 
-export const AnAbsentInitGreyed = () => <View reply={VALUES_VALUE_D} backTo="SensorHub" physical />;
+export const AnAbsentInitHollow = () => <View reply={VALUES_VALUE_D} backTo="SensorHub" physical />;
+
+// 15:M7: CurveA's six columns over an AxisA stating three breakpoints, its file writing two values:
+// the grid draws the shape's six, the three past the axis's last unlabelled, and the four the file
+// does not write hollow - where it drew three cells and left the values past them unreachable.
+export const AShortInitOverAShortAxis = () => (
+  <View
+    reply={{
+      ...VALUES_CURVE,
+      rows: [[1200, 900]],
+      axes: VALUES_CURVE.axes.map((axis) => ({
+        ...axis,
+        breakpoints: axis.breakpoints.slice(0, 3),
+      })),
+    }}
+    backTo="Controller"
+    physical
+  />
+);
 
 // No object in examples/demo answers with `file: null`, so this is BlockA's own reply with its
 // producing declaration taken away - a story drawing its own props, not a server's real answer.
@@ -163,6 +262,12 @@ export const AReadOnlyGrid = () => (
 // The fourth and last `stated`, with no picture until now: a text init draws no grid at all.
 export const ATextInit = () => <View reply={VALUES_SOFTWARE_LABEL} backTo="Controller" physical />;
 
+// Nor does a block holding a whole number past 2^53: its numbers reach the page as the doubles
+// nearest them, and a grid drawing those would offer them as the ones written.
+export const ABlockTheGridCannotShow = () => (
+  <View reply={VALUES_BLOCK_PAST_2_53} backTo="UserInterface" physical />
+);
+
 // Part 9's own story: the hint line under a writable grid, waiting for Ctrl-V - drawn straight
 // from `ValuesGridView` rather than through `View`, since nothing here is mid-paste yet. CurveA
 // rather than MapA, so its singular "Paste 1 row of 6" is a picture of its own rather than one
@@ -174,13 +279,13 @@ export function ATableWaitingForAPaste() {
       reply={VALUES_CURVE}
       backTo="Controller"
       physical={physical}
-      editing={null}
+      typed={[]}
       plan={null}
       refusal={null}
       changesShown={false}
       busy={false}
       onPhysical={setPhysical}
-      onEditing={() => {}}
+      onTyped={() => {}}
       onChangesShown={() => {}}
       onApply={() => {}}
       onBack={() => {}}
@@ -222,6 +327,9 @@ export const ABlockPlottedWithBothLimits = () => <ValuesPlotView reply={VALUES_B
 
 export const AFlatLineStatedOnce = () => <ValuesPlotView reply={VALUES_CURVE_B} physical />;
 
-// ValueD's absent init reads zero throughout, and its lower limit is zero too - the flat line and
-// the limit line share one y, which is correct rather than a coincidence to hide.
-export const AnAbsentInitAtZero = () => <ValuesPlotView reply={VALUES_VALUE_D} physical />;
+// ValueD's eight cells as though its file stated them zero - its absent init draws no picture -
+// and its lower limit is zero too: the flat line and the limit line share one y, which is correct
+// rather than a coincidence to hide.
+export const AFlatLineAtItsOwnLowerLimit = () => (
+  <ValuesPlotView reply={{ ...VALUES_VALUE_D, stated: "array" }} physical />
+);

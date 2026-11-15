@@ -1,0 +1,161 @@
+import { describe, expect, test } from "vitest";
+import {
+  appliedHeld,
+  describeRequest,
+  describeSentence,
+  descriptionField,
+  descriptionIn,
+  descriptionShown,
+  EDITED_ELSEWHERE,
+} from "./description";
+
+/** A component file as `GET /api/file` parses it: ParameterA states its description, ValueC states
+ * none, and Odd states one that is no text. */
+const COMPONENT = {
+  component: {
+    name: "Controller",
+    interface: [
+      {
+        scope: "local",
+        definition: { name: "ParameterA", description: "Single calibratable constant" },
+      },
+      { scope: "output", definition: { name: "ValueC" } },
+      { scope: "output", definition: { name: "Odd", description: 3 } },
+    ],
+  },
+};
+
+describe("descriptionIn", () => {
+  test("is what the declaration states", () => {
+    expect(descriptionIn(COMPONENT, "ParameterA")).toBe("Single calibratable constant");
+  });
+
+  test("is the empty text where the declaration states none", () => {
+    expect(descriptionIn(COMPONENT, "ValueC")).toBe("");
+  });
+
+  test("is the empty text where what it states is no text", () => {
+    expect(descriptionIn(COMPONENT, "Odd")).toBe("");
+  });
+
+  test("is nothing where the file declares no such variable", () => {
+    expect(descriptionIn(COMPONENT, "Nope")).toBeNull();
+  });
+
+  test("is nothing for a file with no interface, or none that parsed", () => {
+    expect(descriptionIn({ project: { name: "P" } }, "ParameterA")).toBeNull();
+    expect(descriptionIn(null, "ParameterA")).toBeNull();
+  });
+});
+
+describe("descriptionShown", () => {
+  test("is what was typed, the empty text included", () => {
+    expect(descriptionShown("new", "old", undefined)).toBe("new");
+    expect(descriptionShown("", "old", undefined)).toBe("");
+  });
+
+  test("is the file's own while nothing is typed", () => {
+    expect(descriptionShown(undefined, "old", undefined)).toBe("old");
+  });
+
+  test("is what an Apply wrote while the file read since still holds what it was before", () => {
+    // The interim state: the write is done, the file not yet read again.
+    expect(descriptionShown(undefined, "old", { text: "new", before: "old" })).toBe("new");
+    expect(descriptionShown(undefined, "old", { text: "", before: "old" })).toBe("");
+  });
+
+  test("is the file's own once the file read holds another text, an undo's included", () => {
+    expect(descriptionShown(undefined, "new", { text: "new", before: "old" })).toBe("new");
+    expect(descriptionShown(undefined, "older", { text: "new", before: "old" })).toBe("older");
+  });
+
+  test("what is typed after an Apply wins over what the Apply wrote", () => {
+    expect(descriptionShown("again", "old", { text: "new", before: "old" })).toBe("again");
+  });
+});
+
+describe("describeRequest", () => {
+  const asked = { file: "/p/c.ddd.json", name: "ParameterA" };
+
+  test("asks for what was typed, the empty text included, which takes the key away", () => {
+    expect(describeRequest(asked, "new words", "old")).toEqual({
+      ...asked,
+      description: "new words",
+    });
+    expect(describeRequest(asked, "", "old")).toEqual({ ...asked, description: "" });
+  });
+
+  test("asks for nothing while nothing is typed", () => {
+    expect(describeRequest(asked, undefined, "old")).toBeNull();
+  });
+
+  test("asks for nothing of text typed back to the file's own", () => {
+    expect(describeRequest(asked, "old", "old")).toBeNull();
+  });
+
+  test("asks for nothing without a file, which is the project screen's panel", () => {
+    expect(describeRequest(undefined, "new", "old")).toBeNull();
+  });
+});
+
+describe("describeSentence", () => {
+  test("a description set names the declaration and its component", () => {
+    expect(describeSentence("ParameterA", "Controller", "A gain")).toBe(
+      "Sets the description of ParameterA in Controller",
+    );
+  });
+
+  test("the empty text takes it out", () => {
+    expect(describeSentence("ParameterA", "Controller", "")).toBe(
+      "Takes the description of ParameterA out of Controller",
+    );
+  });
+});
+
+describe("EDITED_ELSEWHERE", () => {
+  test("says what the panel does not do, and where it is done", () => {
+    expect(EDITED_ELSEWHERE).toBe(
+      "Renaming the variable and changing its scope are done in its file, in the editor.",
+    );
+  });
+});
+
+describe("descriptionField", () => {
+  test("is offered from a component's page, once the file is read and it declares the variable", () => {
+    expect(descriptionField("/p/c.ddd.json", "ParameterA", "Controller", "old")).toEqual({
+      where: { file: "/p/c.ddd.json", name: "ParameterA" },
+      from: "Controller",
+      stored: "old",
+    });
+  });
+
+  test("is withheld on the project screen's panel, where no component is in view", () => {
+    expect(descriptionField(undefined, "ParameterA", undefined, null)).toBeNull();
+    expect(descriptionField(undefined, "ParameterA", "Controller", "old")).toBeNull();
+  });
+
+  test("is withheld where the panel's component is not one that declares it", () => {
+    expect(descriptionField("/p/c.ddd.json", "ParameterA", undefined, "old")).toBeNull();
+  });
+
+  test("is withheld until the file is read, or where it declares no such variable", () => {
+    expect(descriptionField("/p/c.ddd.json", "ParameterA", "Controller", null)).toBeNull();
+  });
+});
+
+describe("appliedHeld", () => {
+  const applied = { text: "new", before: "old" };
+
+  test("is kept while the file read still states what it did before the Apply", () => {
+    expect(appliedHeld(applied, "old")).toBe(applied);
+  });
+
+  test("is let go once the file states anything else, so an undo is not taken for a file unread", () => {
+    expect(appliedHeld(applied, "new")).toBeUndefined();
+    expect(appliedHeld(applied, "older")).toBeUndefined();
+  });
+
+  test("is nothing without an Apply", () => {
+    expect(appliedHeld(undefined, "old")).toBeUndefined();
+  });
+});

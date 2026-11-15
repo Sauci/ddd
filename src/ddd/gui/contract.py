@@ -1452,6 +1452,14 @@ class ValuesReply(_Frozen):
 
     maximum: float
 
+    minimum_text: str | None
+    """:attr:`minimum` in its own digits where the double cannot carry it - a whole number past
+    2^53, which the page would print as another - and ``None`` where the double is the limit."""
+
+    maximum_text: str | None
+    """:attr:`maximum` the same way: a uint64's own maximum, ``18446744073709551615``, crosses as
+    2^64, printed ``18446744073709552000``, which no uint64 holds."""
+
     shape: tuple[int, ...]
     """Fully numeric, whatever a dimension is spelled with in the file."""
 
@@ -1464,6 +1472,14 @@ class ValuesReply(_Frozen):
 
     axes: tuple[GridAxis, ...]
     """One entry per axis this object references, in the order a grid lays them out."""
+
+    unshown: str | None
+    """The object - this one, or an axis it is laid against - whose numbers hold a whole number
+    past 2^53, or one at 2^53 in a 64 bit integer, or ``None``. Every number here is a double,
+    which past 2^53 no longer holds every whole number, so :attr:`rows` or an axis's breakpoints
+    would carry another number in its place; and a 64 bit integer is set no value at 2^53 from
+    the page, which could not tell it from the next. The page draws no grid of them, and says
+    why."""
 
     owner: str | None
     """Component owning the object; ``None`` only when nothing produces it at all, which is
@@ -1772,8 +1788,10 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
     (queries.FilesPlanQuery, "validation"),
     (queries.DeclarableQuery, "validation"),
     (queries.DeclarationPlanQuery, "validation"),
+    (queries.DescriptionPlanQuery, "validation"),
     (queries.ValuesQuery, "validation"),
     (queries.ValuePlanQuery, "validation"),
+    (queries.CellsPlanQuery, "validation"),
     (queries.ValuesPlanQuery, "validation"),
     (queries.CompareQuery, "validation"),
 )
@@ -1782,8 +1800,8 @@ _ENDPOINTS: tuple[tuple[type[BaseModel], Literal["validation", "serialization"]]
 a response, read for the shape ``model_dump(mode="json")`` produces - the two differ wherever a
 field has a default. A route's query is a request too: the model it reads its query as
 (:mod:`ddd.gui.queries`), each key the page may send and the type its value is read as - for a
-route that takes one of several actions, every plan route but value-plan and values-plan, the
-union of one model per action, which the page's types read as a union too.
+route that takes one of several actions, every plan route but value-plan, cells-plan and
+values-plan, the union of one model per action, which the page's types read as a union too.
 
 Nothing else needs listing: every other model above is reachable from one of these and is
 published under ``$defs`` regardless, :class:`Operation` and :class:`Severity` included, and

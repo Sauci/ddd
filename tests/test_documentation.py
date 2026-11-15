@@ -454,6 +454,206 @@ class TestTheCommandPage:
         assert listed is not None
         assert set(re.findall(r"``([a-z]+)``", listed.group(1))) == set(schema_models())
 
+    def test_the_values_grid_is_said_to_refuse_a_whole_number_past_2_53(self) -> None:
+        """What ``objectValues.ts`` and ``object_values.py`` do with a number the page's double
+        cannot hold, said where the grid is described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "a cell of an integer datatype refuses a number past 2^53 either side of zero, however "
+            "it is spelled, where it is typed or pasted in raw, and a fraction the double would "
+            "drop with it; in physical it refuses a value whose raw count lies past 2^53"
+        ) in text
+        assert (
+            "A float's cell takes every number as the double it is, but none past what its float "
+            "holds, nor one rounding to zero in it"
+        ) in text
+        assert "or one at 2^53 in a ``uint64`` or ``sint64``, says it cannot show it" in text
+        assert (
+            "from the page neither takes a whole number at 2^53 or past it, as a value or as a "
+            "limit, however it is written - the server refuses a bound at or past 2^53 for either, "
+            "written in digits or as a float"
+        ) in text
+        assert (
+            "show a bound past 2^53 in its file's own digits, and read a bound as a cell of the "
+            "datatype the declarations state reads a number: a float's as the double it is, "
+            "written as a float, and any other's refused past 2^53 however it is spelled, and "
+            "wherever the double would send another number than the one typed"
+        ) in text
+
+    def test_the_values_grid_is_said_to_write_numbers_as_they_are(self) -> None:
+        """What ``numbers.ts`` and ``object_values.py`` write of a number typed, and what Physical
+        shows, said where the grid is described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "A physical value comes to its raw count exactly, worked out on the decimals typed "
+            "and the conversion's own: a whole datatype's count is the nearest one, an exact half "
+            "going to the even count, either side of zero, as ``round_physical`` rounds"
+        ) in text
+        assert (
+            "a float's is the float its datatype stores nearest, spelled as briefly as it reads "
+            "back, so 0.3 at a factor of 0.1 is 3"
+        ) in text
+        # The final wave: FLT_MAX's briefest spelling is a double past it, and a boolean is
+        # written as one.
+        assert (
+            "FLT_MAX, either side of zero, is its own double, 3.4028234663852886e+38, planned so "
+            "and shown so in raw: its briefest spelling, 3.4028235e+38, is a double past it, which "
+            "the server and ``ddd check`` refuse a ``float32``"
+        ) in text
+        assert (
+            "A float's value is written as a float, its whole numbers too, and a boolean's as "
+            "``true`` or ``false``"
+        ) in text
+        # Fix round 1, M7 and M4: the shortest decimal is a float's; a whole datatype shows the
+        # exact product, and a float32 reads as the float32 its file's number rounds to.
+        old = "Physical shows the shortest decimal that reads back as the raw count it shows"
+        assert old not in text
+        assert (
+            "Physical shows a whole datatype's raw count as the exact product, the count times the "
+            "factor plus the offset, and a float's as the shortest decimal whose plan comes to "
+            "that same float"
+        ) in text
+        assert (
+            "a ``float32``'s being the float32 its file's number rounds to, which raw shows the "
+            "same way, so a ``float32`` its file spells ``0.10000000149011612`` reads 0.1"
+        ) in text
+        assert (
+            "never cut at twelve significant digits and never with the tail of the double "
+            "arithmetic: 255 counts of 0.03 read 7.65"
+        ) in text
+
+    def test_the_values_grid_is_said_to_read_numbers_by_one_grammar(self) -> None:
+        """What ``numbers.ts`` reads a number by, in every field, said where the grid is
+        described: decimal notation, the spellings refused, and the one rule for a comma."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "Every field of the page reads a number the same way, in decimal notation: an "
+            "optional sign, digits with an optional fraction or a fraction alone, and an optional "
+            "exponent, the white space around it ignored"
+        ) in text
+        assert (
+            "A number written in hexadecimal, binary or octal, ``Infinity``, ``NaN`` and digits "
+            "parted by underscores are refused in one sentence, the same in every field, and "
+            "nothing is asked of the server for them - but a size and a dimension, which may name "
+            "a constant, read ``Infinity`` and ``NaN`` as names, as they read any name"
+        ) in text
+        # Fix round 1, M7: a first group of more than three digits named; M1: values read
+        # together decided by commas grouping thousands as by a decimal comma, a block showing both
+        # refused, the choice asked only where nothing else decides, and an answer standing; M7:
+        # every field offering no choice named, not a range's alone.
+        assert "after a first group of 0, or before anything but exactly three digits" not in text
+        assert (
+            "A comma is a decimal point where it cannot group thousands - after a first group of 0 "
+            "or of more than three digits, or before anything but exactly three digits - and "
+            "groups thousands where it cannot be a decimal point, two of them or a point after it; "
+            "text holding both has its decimal point last, so ``1.234,5`` and ``1,234.5`` both "
+            "read 1234.5"
+        ) in text
+        assert (
+            "A block pasted where one value's comma can only be a decimal point reads every comma "
+            "of it as one"
+        ) not in text
+        assert (
+            "Values read together - a block pasted, the cells typed into a grid, a range's two "
+            "fields - read a comma that could be either as the others show theirs, where they all "
+            "show one reading: ``0,5`` makes ``1,250`` beside it one and a quarter, and "
+            "``1,234,567`` makes ``1,500`` beside it fifteen hundred"
+        ) in text
+        assert (
+            "A block pasted whose values show both readings is refused, in a sentence saying what "
+            "it mixes"
+        ) in text
+        assert (
+            "A comma that could be either, ``1,200``, is refused with the choice of what it means "
+            "one press away where nothing else decides it, the same for a cell typed into and for "
+            "a block pasted, and an answer given stands"
+        ) in text
+        assert "a range's two fields offer no such choice" not in text
+        assert (
+            "Only the grid offers that choice: a range's two fields, a size, a dimension, a "
+            "constant's value, a section's alignment and a raster's event refuse such a comma in "
+            "the same sentence"
+        ) in text
+        assert "A boolean takes 0 and 1 alone, in physical as in raw" in text
+
+    def test_the_values_grid_is_said_to_draw_its_shape_and_its_hollow_cells(self) -> None:
+        """What ``objectValues.ts`` draws of a grid's columns and of a cell the file does not
+        state, and what the plan routes answer for a change of nothing, said where the grid is
+        described."""
+        text = flattened(self.COMMAND_PAGE)
+        assert (
+            "The grid has a column for each its shape has, and a row for each: a breakpoint only "
+            "labels its column"
+        ) in text
+        assert (
+            "A cell the file does not state - past the end of a short ``init``, or any cell of a "
+            "declaration stating none - is drawn hollow, empty under a dashed border, its name "
+            "saying it is not stated"
+        ) in text
+        assert (
+            "A plan whose edit would leave its file as it was, every byte the same - a table "
+            "pasted over the values the file spells, a description typed as it stands - is no "
+            "change, and is offered as none"
+        ) in text
+
+    def test_the_values_picture_is_said_to_draw_what_the_file_states(self) -> None:
+        """What ``ValuesGridView.tsx`` draws under the grid (``plotDrawn``, ``valuePlot.ts``), said
+        where the grid is described: the values the file states, placed by index where the axis
+        states fewer breakpoints than the shape, and no picture of a grid stating nothing."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "left undrawn only where there is no grid to begin with" not in text
+        assert (
+            "or over plain indices where it has no axis, or one stating fewer breakpoints than "
+            "the shape has columns, its ticks then reading the indices too, and no axis named "
+            "under them"
+        ) in text
+        assert (
+            "It draws what the file states, as the cells do: a scalar's one value draws none, "
+            "and nor does a grid whose file states nothing, every cell of it hollow"
+        ) in text
+
+    def test_the_values_grid_is_said_to_hold_the_cells_typed_as_one_change(self) -> None:
+        """What ``ValuesPage.tsx`` and ``typedCells.ts`` do with cells typed one after another,
+        said where the grid is described: held together, one change, one Apply and one undo."""
+        text = flattened(self.COMMAND_PAGE)
+        assert "One cell is changed at a time" not in text
+        assert (
+            "Cells typed into are held together, each showing what was typed into it, and "
+            "previewed as one change"
+        ) in text
+        assert "that one Apply writes, like every other change here, and one undo puts back" in text
+        # The final wave: the sentence names five elements, then how many more, and the whole init
+        # is written where the file does not write the array out far enough for the cells typed.
+        assert "in a sentence naming what each sets" not in text
+        assert (
+            "in a sentence naming how many elements it sets, the first five of them and what each "
+            "is set to, then how many more, and the producing file it lands in"
+        ) in text
+        assert "Only the cells typed are written" not in text
+        assert (
+            "Each cell typed is written where it stands, the rest of the file staying as it was, "
+            "its spellings and its layout too, where the file writes its ``init`` out far enough "
+            "to hold them"
+        ) in text
+        assert (
+            "where it states one value for every cell, states none, or writes too short an array, "
+            "the whole ``init`` is written instead - the cells typed set in it, every other "
+            "holding the value the file states for it, or zero - and the preview shows it"
+        ) in text
+        assert "A cell keeps the reading it was typed in" in text
+        assert (
+            "A cell typed back to its file's value - a ``float32``'s to the same float32 - drops "
+            "out of the change"
+        ) in text
+        assert (
+            "a cell the page refuses holds Apply back for them all, named in the sentence"
+        ) in text
+        assert "The sentence and Apply stay at the foot of the window" in text
+        assert (
+            "in place of any cells typed before it, as a cell typed after it takes the table's "
+            "place"
+        ) in text
+
     def test_the_readme_lists_the_same_schema_kinds(self) -> None:
         listed = re.search(r"\| `ddd schema ([a-z|\\]+)`", README)
         assert listed is not None
@@ -1092,6 +1292,108 @@ class TestCommandLineHelp:
         )
 
 
+def record_section() -> str:
+    """Section 3.6 of the specification, the build record's, and nothing of the others."""
+    start = SPEC.index("### 3.6 Build record")
+    return SPEC[start : SPEC.index("### 3.7 ", start)]
+
+
+class TestTheRecordSaysWhereTheDescriptionCameFrom:
+    """The build record's ``origin`` key, in every page that states what ``ddd gui`` does with a
+    project whose record sits beside it."""
+
+    def test_the_record_table_has_the_key_and_the_formats(self) -> None:
+        rows = {
+            line.split("`")[1]: line for line in record_section().splitlines() if "| `" in line[:3]
+        }
+        assert "description" not in rows
+        assert (
+            "present only for a project description given to the build as `PROJECT`"
+            in (rows["origin"])
+        )
+        assert "`collected` is what `--origin` says for it" in rows["origin"]
+        assert "`2` for a record with an `origin`" in rows["format"]
+        assert "highest this version understands" in rows["format"]
+
+    def test_the_specification_says_what_the_key_costs_and_whom(self) -> None:
+        text = flattened(record_section())
+        assert "The key is named `origin` and not `description`, which is a declaration's" in text
+        assert "A record without the key is read as `collected`" in text
+        assert "stays refused until the build is configured again" in text
+        assert "A DDD from 0.11.0 on declines a record stamped past its format" in text
+        assert "an older one skips it in silence" in text
+        assert "so what this costs is a given description's record alone" in text
+        assert "reads a record of format `1` and of format `2` alike" in text
+        assert "reading it as `given` would open every build made before" in text
+
+    def test_the_build_page_example_is_the_record_the_tool_writes(self, tmp_path: Path) -> None:
+        page = PAGES["docs/build_integration.rst"]
+        start = page.index(".. code-block:: json", page.index("What the build tells an editor"))
+        example = json.loads(page[start:].split("\n\n", 2)[1])
+        target = tmp_path / "ddd-build.json"
+        arguments = ["build-info", str(ROOT / "examples/demo/demo.ddd.json"), "-o", str(target)]
+        assert main([*arguments, "--image", "firmware.elf", "-W", "unused-output=info"]) == EXIT_OK
+        written = json.loads(target.read_text(encoding="utf-8"))
+        assert list(example) == list(written)
+        assert (example["format"], example["image"], example["severity"]) == (
+            written["format"],
+            written["image"],
+            written["severity"],
+        )
+
+    def test_the_build_page_says_what_the_key_costs_and_whom(self) -> None:
+        text = flattened(PAGES["docs/build_integration.rst"])
+        assert '``"origin": "given"`` and is stamped ``"format": 2``' in text
+        assert "has no such key and keeps the shape of format 1" in text
+        assert "a record without the key is read as collected" in text
+        assert "stays refused until the build is configured again" in text
+        assert "falls on ``PROJECT`` builds alone" in text
+        assert (
+            "a DDD from 0.11.0 on declines a record of format 2 as written by a newer DDD" in text
+        )
+        assert "an older one skips it in silence" in text
+
+    def test_the_command_line_page_says_it(self) -> None:
+        text = flattened(PAGES["docs/command_line_interface.rst"])
+        assert "``--origin given``, written into the record, which is then format 2" in text
+        assert 'is edited as any other where its record says so, ``"origin": "given"``' in text
+        assert "Any other record beside a description makes it a generated one" in text
+        assert "stays refused until the build is configured again" in text
+        assert "tells the two apart" not in text
+
+    def test_the_developer_page_says_it(self) -> None:
+        text = flattened(PAGES["docs/developer_documentation.rst"])
+        assert "What says a description is not generated is its record's ``origin`` key" in text
+        assert "Any other record is the build's, a record without the key included" in text
+        assert "stays refused until the build is configured again" in text
+        assert "tells the two apart yet" not in text
+
+    def test_the_help_of_the_command_says_it(self) -> None:
+        said = ""
+        for action in _build_parser()._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for action_of_command in action.choices["build-info"]._actions:
+                    if "--origin" in action_of_command.option_strings:
+                        said = action_of_command.help or ""
+        assert "which stamps the record format 2 and which ddd gui then edits" in said
+        assert "which ddd gui refuses to write into" in said
+
+    def test_the_start_page_journey_stamps_its_record_one_past_the_format_read(self) -> None:
+        """A journey that writes a record in a format too new for the start page to list it, and
+        says what the page then prints: both follow ``BUILD_INFO_FORMAT``, so the next raise
+        cannot leave the journey stamping a format this version reads."""
+        from ddd.build_info import BUILD_INFO_FORMAT
+
+        spec = (ROOT / "gui" / "e2e" / "start.spec.ts").read_text(encoding="utf-8")
+        stamped = re.search(r'"build", \{ format: (\d+), project: join\(directory, "demo', spec)
+        assert stamped is not None
+        assert int(stamped.group(1)) == BUILD_INFO_FORMAT + 1
+        assert (
+            f"written in format {BUILD_INFO_FORMAT + 1} by a newer DDD, and this one understands "
+            f"up to format {BUILD_INFO_FORMAT}"
+        ) in spec
+
+
 def published_kinds() -> list[str]:
     """The file formats ``ddd schema`` publishes, which is what these tests are about."""
     from ddd.cli import schema_models
@@ -1621,6 +1923,19 @@ class TestTheDictionaryPage:
         assert without_descriptions(shown) == without_descriptions(expected)
 
 
+class TestTheArtefactsPage:
+    """The page shows the head of the demo's a2l, which the demo writes with no address source,
+    so the lines it shows under the generator's comment are the ones the file has."""
+
+    def test_the_head_of_the_a2l_is_shown_as_it_is_written(self, tmp_path: Path) -> None:
+        output = tmp_path / "gen"
+        assert main(["generate", "a2l", str(DEMO), "-o", str(output)]) == EXIT_OK
+        written = (output / "DemoDevice.a2l").read_text(encoding="utf-8").splitlines()
+        page = PAGES["docs/generated_artefacts.rst"]
+        shown = page.split("   /* DemoDevice.a2l - generated from 'DemoDevice'", 1)[1].splitlines()
+        assert [line.strip() for line in shown[1:4]] == written[1:4]
+
+
 def view_attributes(cls: type) -> list[str]:
     """What a template can read off a view: its fields, properties and public methods."""
     names = [field.name for field in dataclasses.fields(cls)]
@@ -1715,6 +2030,67 @@ class TestTheBuildIntegrationPage:
     def test_plugins_and_project_exclude_each_other(self) -> None:
         """Two lists of plugins would be two sources of truth; the module refuses the pair."""
         assert re.search(r"FATAL_ERROR \"ddd_generate: PLUGINS[^\"]*PROJECT", self.CMAKE_MODULE)
+
+    def test_the_pages_say_when_a_plugins_file_reaches_a_component_compiling_it(self) -> None:
+        """The module cannot declare a plugin's files, whose names the plugin chooses when it
+        runs, so under Ninja a change of one reaches a component compiling it a build late,
+        however that component is ordered after the generation: the page offered that ordering
+        as what keeps the component right. It says what happens instead, under either generator,
+        and what a project can do - depending on the dictionary, which a description change
+        reaches and an edit of the plugin's code does not - and so does the specification."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert "so a target that consumes one depends on" not in page
+        assert (
+            "under Ninja that is not enough, a change of the file reaching a component compiling "
+            "it a build late"
+        ) in page
+        assert (
+            "under Ninja a change of one reaches a component compiling it a build late: ninja "
+            "looked at the file before the generation rewrote it, however the component is "
+            "ordered after the generation"
+        ) in page
+        assert (
+            "a project making the component's object depend on the dictionary - "
+            "``set_source_files_properties(<file> PROPERTIES OBJECT_DEPENDS <dictionary>)``, the "
+            "path being the image's ``DDD_DICTIONARY`` property - has such a change reach the "
+            "component in one build"
+        ) in page
+        assert (
+            "An edit of the plugin's own code that changes only what it writes, and not its model, "
+            "leaves the dictionary as it was, and reaches the component a build late all the "
+            "same. Under a Makefile generator the build after "
+            "either is right. A clean leaves a plugin's files"
+        ) in page
+        assert "A ``{component}`` header has no such rule, nor has a plugin's file" in page
+        spec = flattened(SPEC)
+        assert (
+            "A plugin's files are declared by nothing, so under Ninja a change of one reaches a "
+            "component compiling it a build late, however that component is ordered after the "
+            "generation"
+        ) in spec
+        assert (
+            "a component whose object depends on the dictionary - `OBJECT_DEPENDS` on the path of "
+            "`DDD_DICTIONARY` - is compiled again in that build, while an edit of the plugin's own "
+            "code that changes only what it writes, and not its model, leaves the dictionary as "
+            "it was and still reaches it a build late"
+        ) in spec
+
+    def test_the_pages_say_a_renamed_component_reaches_its_readers_a_build_late(self) -> None:
+        """A component renamed in its description, in the collected mode, has its header
+        declared under the old name until the build is configured again: under Ninja the build
+        after a change of the new header compiles its readers against the old one, which is
+        what declaring the headers is for, and the pages said only that the generation runs at
+        every build."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert (
+            "so under Ninja the generation runs at every build for the header of the old one, "
+            "which it no longer writes, and a change of the new one reaches the components "
+            "reading it a build late"
+        ) in page
+        assert (
+            "until which, under Ninja, the generation runs at every build and a change of that "
+            "component's header reaches its readers a build late"
+        ) in flattened(SPEC)
 
     def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
         """The page calls its block the shipped file minus comments, so that is what it is."""
@@ -3119,13 +3495,14 @@ class TestTheCiRun:
         browser, and would have held the run, and any re-run of its failed jobs, for the rest.
         Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
         gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
-        1)."""
+        1); the test legs 40, the windows ones taking 15.9 to 20.9 minutes in CI runs 43664431438
+        and 43667157867."""
         limits = {}
         for name in job_names(CI_WORKFLOW):
             limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)
             limits[name] = None if limit is None else limit.group(1)
         assert limits == {
-            "test": "25",
+            "test": "40",
             "lint": "10",
             "container": "20",
             "extension": "15",

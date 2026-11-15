@@ -13,6 +13,7 @@ import {
   Popover,
   Text,
 } from "react-aria-components";
+import { endsTyped } from "../lib/typing";
 
 export interface ComboChoice {
   id: string;
@@ -43,9 +44,11 @@ interface Props {
    */
   onEnter: (text: string) => void;
   /**
-   * The list closed, whether an entry was taken or not - by Enter, Escape, Tab, ▾ or the focus
-   * leaving the field. The caller puts its own value back in the field: text typed and left is
-   * never a choice.
+   * What was typed into the field is over: Escape was pressed in it, or the focus left it - once
+   * each, with the list open or not. The caller puts its own value back in the field, since the
+   * text is no choice until Enter or a pick takes it. No other close tells it: a scroll, Enter,
+   * Tab, the arrow and an empty list keep the text, which the caller then holds as text not yet
+   * taken.
    */
   onClose: () => void;
   /** A line under the field, such as that a typed unit is not one of the project's. */
@@ -106,9 +109,12 @@ export function ComboBox({
         onInputChange(value);
       }}
       onOpenChange={(isOpen) => {
+        // A close, whoever made it - a scroll, Enter, Tab, the arrow, an empty list - keeps the
+        // text typed (`endsTyped`, lib/typing.ts): the caller is told of Escape and of the focus
+        // leaving, below, and of nothing else. Whatever picked an entry has told the caller
+        // already, and the value it puts in the field is no reason to open the list again.
         if (isOpen) return;
         setPuttingBack(true);
-        onClose();
       }}
       allowsCustomValue
       menuTrigger={puttingBack ? "manual" : menuTrigger}
@@ -121,6 +127,12 @@ export function ComboBox({
         <Input
           ref={input}
           onKeyDown={(event) => {
+            // Escape ends what was typed, with the list open or already closed by a scroll: the
+            // caller puts its own value back, and the list is not opened again for that.
+            if (endsTyped(event.key)) {
+              setPuttingBack(true);
+              onClose();
+            }
             // React Aria has handled the key already, closing the list, and with an entry focused
             // it took that entry. Whether one was is read from the field's aria-activedescendant,
             // which still describes the list as the key found it: the page is not drawn again
@@ -134,7 +146,12 @@ export function ComboBox({
           }}
           // Leaving the field ends the putting back - React Aria has closed the list before this
           // runs - so that the field taking the focus again opens the list as `menuTrigger` says.
-          onBlur={() => setPuttingBack(false)}
+          // Also ends what was typed when the list is already closed - a scroll closed it - so that
+          // the focus leaving the field never leaves text in it that nothing took.
+          onBlur={() => {
+            setPuttingBack(false);
+            if (endsTyped("blur")) onClose();
+          }}
         />
         <AriaButton aria-label={`Show the choices for ${label}`}>▾</AriaButton>
       </Group>

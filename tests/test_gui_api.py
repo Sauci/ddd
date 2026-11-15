@@ -650,8 +650,10 @@ class TestTheRouteTable:
             ("GET", "/api/files-plan"),
             ("GET", "/api/declarable"),
             ("GET", "/api/declaration-plan"),
+            ("GET", "/api/description-plan"),
             ("GET", "/api/values"),
             ("GET", "/api/value-plan"),
+            ("GET", "/api/cells-plan"),
             ("GET", "/api/values-plan"),
             ("GET", "/api/compare"),
         ]
@@ -3139,7 +3141,13 @@ class TestBeforeTheFirstAnalysis:
                 {"action": "remove", "file": "a.ddd.json", "name": "Speed"},
             ),
             ("GET", "/api/values", {"name": "Speed"}),
+            (
+                "GET",
+                "/api/description-plan",
+                {"file": "a.ddd.json", "name": "Speed", "description": "d"},
+            ),
             ("GET", "/api/value-plan", {"name": "Speed", "at": "[0]", "raw": "1"}),
+            ("GET", "/api/cells-plan", {"name": "Speed", "at": "[0],[1]", "raw": "1,2"}),
             ("GET", "/api/values-plan", {"name": "Speed", "raw": "1"}),
             ("GET", "/api/compare", {"baseline": "p.ddd.json"}),
         ],
@@ -3394,7 +3402,9 @@ class TestAPlanWhileAnEditWaits:
         ("path", "query"),
         [
             ("/api/declaration-plan", {"action": "remove", "name": "ValueH"}),
+            ("/api/description-plan", {"name": "ParameterA", "description": "Words"}),
             ("/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
+            ("/api/cells-plan", {"name": "CurveA", "at": "[0],[2]", "raw": "1300,750"}),
             ("/api/values-plan", {"name": "CurveA", "raw": "1300,950,850,800,750,700"}),
         ],
     )
@@ -3413,7 +3423,7 @@ class TestAPlanWhileAnEditWaits:
         api = gated(root / "demo.ddd.json")
         left_waiting(api, touching(root / "components" / touched, "component.description"))
         asked = dict(query)
-        if path == "/api/declaration-plan":
+        if path in ("/api/declaration-plan", "/api/description-plan"):
             asked["file"] = posix(root, "components/controller.ddd.json")
         reply = get(api, path, **asked)
         if refused:
@@ -7569,6 +7579,12 @@ class TestAPlanWhosePlaceMovedSinceTheAnalysis:
                 "the values of 'Table' cannot be set",
             ),
             (
+                "/api/cells-plan",
+                {"name": "Table", "at": "[0],[1]", "raw": "4,5"},
+                "a.ddd.json",
+                "the values of 'Table' cannot be set",
+            ),
+            (
                 "/api/values-plan",
                 {"name": "Table", "raw": "4,5,6"},
                 "a.ddd.json",
@@ -7975,6 +7991,14 @@ class TestAPlanWhileAFileDidNotLoad:
                 raw="5",
             ),
             while_half_saved(
+                "/api/cells-plan",
+                "no object's values can be read",
+                "cells are set",
+                name="Table",
+                at="[0],[1]",
+                raw="4,5",
+            ),
+            while_half_saved(
                 "/api/values-plan",
                 "no object's values can be read",
                 "values are set",
@@ -8102,6 +8126,7 @@ class TestAPlanWhileAFileDidNotLoad:
         for reply in (
             get(api, "/api/values", name="Speed"),
             get(api, "/api/value-plan", name="Speed", at="[0]", raw="5"),
+            get(api, "/api/cells-plan", name="Speed", at="[0],[1]", raw="4,5"),
             get(api, "/api/values-plan", name="Speed", raw="4"),
         ):
             assert (reply.status, reply.body) == (
@@ -8840,7 +8865,13 @@ class TestAPlanWritingBesideAProjectTheBuildCollected:
                 {"action": "remove", "file": "b.ddd.json", "name": "Count"},
                 "b.ddd.json",
             ),
+            (
+                "/api/description-plan",
+                {"file": "a.ddd.json", "name": "Speed", "description": "d"},
+                "a.ddd.json",
+            ),
             ("/api/value-plan", {"name": "Table", "at": "[1]", "raw": "5"}, "a.ddd.json"),
+            ("/api/cells-plan", {"name": "Table", "at": "[0],[1]", "raw": "4,5"}, "a.ddd.json"),
             ("/api/values-plan", {"name": "Table", "raw": "4,5,6"}, "a.ddd.json"),
         ],
     )
@@ -9166,6 +9197,445 @@ class TestPlanningAChangeOfAnInterface:
         assert (reply.status, reply.body["error"]) == (409, "unverified")
 
 
+class TestAPlanThatChangesNothing:
+    """15:M4: a plan whose edit leaves its file as it was, every byte the same, is no change -
+    answered as a settled key every declaration already states is, with no file to change - where
+    it answered a file whose diff was empty, which an Apply wrote again and left an undo of."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    @pytest.mark.parametrize(
+        ("route", "query"),
+        [
+            pytest.param(
+                "/api/value-plan", {"name": "CurveA", "at": "[0]", "raw": "1200"}, id="a-cell"
+            ),
+            pytest.param(
+                "/api/cells-plan",
+                {"name": "CurveA", "at": "[0],[1]", "raw": "1200,900"},
+                id="cells",
+            ),
+            pytest.param(
+                "/api/values-plan",
+                {"name": "CurveA", "raw": "1200,900,800,750,700,650"},
+                id="a-table",
+            ),
+            pytest.param(
+                "/api/value-plan", {"name": "ParameterA", "at": "", "raw": "3200"}, id="a-scalar"
+            ),
+        ],
+    )
+    def test_the_values_the_file_holds_written_again_change_nothing(
+        self, demo: tuple[Api, Path], route: str, query: dict[str, str]
+    ) -> None:
+        api, root = demo
+        before = contents(root)
+        reply = get(api, route, **query)
+        assert (reply.status, reply.body["changes"]) == (200, [])
+        assert contents(root) == before
+
+    def test_a_description_written_as_it_stands_changes_nothing(
+        self, demo: tuple[Api, Path]
+    ) -> None:
+        api, root = demo
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(root, "components/controller.ddd.json"),
+            name="ParameterA",
+            description="Single calibratable constant",
+        )
+        assert (reply.status, reply.body["changes"]) == (200, [])
+
+    def test_one_cell_of_two_changing_is_a_change_of_the_file(self, demo: tuple[Api, Path]) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0],[1]", raw="1200,950")
+        assert reply.status == 200
+        assert [Path(change["file"]).name for change in reply.body["changes"]] == [
+            "controller.ddd.json"
+        ]
+
+
+class TestAUnitSettledWithSpacesAroundIt:
+    """15:M10: ``GET /api/settle`` wrote ``"unit": "V "``, while ``GET /api/unit-plan`` refuses that
+    spelling; it is refused now in the same words, and nothing is planned - and ``GET
+    /api/type-plan`` refuses a type's unit alike, as it refuses a type's limits as a variable's."""
+
+    @pytest.mark.parametrize("unit", ["rpm ", " rpm"])
+    def test_is_refused_as_the_units_tab_refuses_it(self, api: Api, root: Path, unit: str) -> None:
+        before = contents(root)
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw=json.dumps(unit))
+        assert reply == Reply(
+            409, {"error": "invalid", "message": f"'{unit}' has spaces around it"}
+        )
+        tab = get(api, "/api/unit-plan", action="rename", unit="rpm", to=unit)
+        assert (tab.status, tab.body["message"]) == (409, reply.body["message"])
+        assert contents(root) == before
+
+    def test_a_unit_without_is_settled(self, api: Api) -> None:
+        reply = get(api, "/api/settle", name="Speed", key="unit", raw='"Hz"')
+        assert reply.status == 200
+        assert len(reply.body["changes"]) == 2
+
+    @pytest.mark.parametrize("unit", ["degC ", " degC", "\tdegC"])
+    def test_a_types_unit_is_refused_alike(self, tmp_path: Path, unit: str) -> None:
+        api, root = copied(tmp_path, "structures", "project.ddd.json")
+        before = contents(root)
+        reply = get(
+            api,
+            "/api/type-plan",
+            action="set",
+            name="Temperature_t",
+            key="unit",
+            raw=json.dumps(unit),
+        )
+        assert reply == Reply(
+            409, {"error": "invalid", "message": f"'{unit}' has spaces around it"}
+        )
+        assert contents(root) == before
+
+    def test_a_types_unit_without_is_planned(self, tmp_path: Path) -> None:
+        api, _ = copied(tmp_path, "structures", "project.ddd.json")
+        reply = get(
+            api, "/api/type-plan", action="set", name="Temperature_t", key="unit", raw='"K"'
+        )
+        assert reply.status == 200
+        assert [Path(change["file"]).name for change in reply.body["changes"]] == ["types.ddd.json"]
+
+
+class TestDescribingADeclarationOverHttp:
+    """``GET /api/description-plan``: a declaration's own description, planned for the one file."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def controller(self, root: Path) -> str:
+        return posix(root, "components/controller.ddd.json")
+
+    def test_a_description_is_previewed_then_written(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="A calibratable gain",
+        ).body
+        assert contents(root) == before
+        (change,) = preview["changes"]
+        assert Path(change["file"]).name == "controller.ddd.json"
+        (operation,) = change["operations"]
+        assert (operation["op"], operation["raw"]) == ("set", '"A calibratable gain"')
+        assert operation["pointer"].endswith(".definition.description")
+        assert applied(api, preview, "the description of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"description": "A calibratable gain"' in written
+        assert "Single calibratable constant" not in written
+
+    def test_the_empty_text_takes_the_description_away(self, demo) -> None:
+        api, root = demo
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="",
+        ).body
+        (change,) = preview["changes"]
+        assert [op["op"] for op in change["operations"]] == ["remove"]
+        assert applied(api, preview, "the description of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert "Single calibratable constant" not in written
+
+    def test_it_is_this_files_declaration_alone(self, demo) -> None:
+        # ValueA is declared by the controller and by the sensor hub: describing it in the
+        # controller's file writes the controller's file alone.
+        api, root = demo
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ValueA",
+            description="Read as a percentage",
+        ).body
+        assert [Path(c["file"]).name for c in preview["changes"]] == ["controller.ddd.json"]
+
+    def test_without_a_part_it_says_which_it_takes(self, demo) -> None:
+        api, root = demo
+        reply = get(api, "/api/description-plan", file=self.controller(root), name="ParameterA")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == (
+            "description-plan takes ?file= and ?name= and ?description="
+        )
+
+    def test_a_declaration_this_file_does_not_hold_is_not_found(self, demo) -> None:
+        api, root = demo
+        reply = get(
+            api, "/api/description-plan", file=self.controller(root), name="Nope", description="x"
+        )
+        assert reply == Reply(
+            404, {"error": "not-found", "message": "controller.ddd.json declares no 'Nope'"}
+        )
+
+    def test_a_variable_another_component_declares_is_not_this_files_to_describe(
+        self, demo
+    ) -> None:
+        # ValueC is the sensor hub's: the project declares it, this file does not, and the refusal
+        # is about the file - its own sentence - not the "declared no longer" of a name nothing
+        # declares.
+        api, root = demo
+        reply = get(
+            api, "/api/description-plan", file=self.controller(root), name="ValueC", description="x"
+        )
+        assert reply == Reply(
+            404, {"error": "not-found", "message": "controller.ddd.json declares no 'ValueC'"}
+        )
+
+    def test_a_name_the_index_holds_is_not_said_undeclared_while_another_file_did_not_load(
+        self, tmp_path: Path
+    ) -> None:
+        # b.ddd.json did not load, which a name only it declares is refused with; One is
+        # a.ddd.json's, so a refusal of c.ddd.json is about c.ddd.json.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json", "c.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "One", init=1)),
+                "b.ddd.json": {"component": 3},
+                "c.ddd.json": component("C", declare("output", "Two", init=2)),
+            },
+        )
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "c.ddd.json"),
+            name="One",
+            description="x",
+        )
+        assert reply == Reply(
+            404, {"error": "not-found", "message": "c.ddd.json declares no 'One'"}
+        )
+        unknown = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "c.ddd.json"),
+            name="Nobody",
+            description="x",
+        )
+        assert (unknown.status, unknown.body["error"]) == (409, "unreadable")
+        assert "b.ddd.json did not load" in unknown.body["message"]
+
+    def test_a_declaration_the_file_holds_no_more_where_the_index_found_it_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "One", init=1)),
+            },
+        )
+        write_tree(
+            tmp_path,
+            {
+                "a.ddd.json": component(
+                    "A", declare("output", "Other"), declare("output", "One", init=1)
+                )
+            },
+        )
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "a.ddd.json"),
+            name="One",
+            description="x",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "stale")
+
+    def test_a_file_that_did_not_load_is_named(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "One", init=1)),
+                "b.ddd.json": {"component": 3},
+            },
+        )
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=posix(tmp_path, "b.ddd.json"),
+            name="One",
+            description="x",
+        )
+        assert reply == Reply(
+            409,
+            {
+                "error": "unreadable",
+                "message": "b.ddd.json did not load, so what it declares is unknown and nothing "
+                "can be described in it",
+            },
+        )
+
+    def test_a_project_that_did_not_load_has_nothing_to_describe(self, tmp_path: Path) -> None:
+        reply = get(
+            unloaded(tmp_path),
+            "/api/description-plan",
+            file=posix(tmp_path, "p.ddd.json"),
+            name="Anything",
+            description="x",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_file_outside_the_project_is_not_found(self, demo, tmp_path: Path) -> None:
+        api, _ = demo
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=(tmp_path / "elsewhere.ddd.json").as_posix(),
+            name="ParameterA",
+            description="x",
+        )
+        # The whole reply: a route the server lacks answers 404 too, and its message is not this.
+        elsewhere = (tmp_path / "elsewhere.ddd.json").as_posix()
+        assert reply == Reply(
+            404,
+            {
+                "error": "not-found",
+                "message": f"{elsewhere} is not a description file of the open project",
+            },
+        )
+
+    def test_a_lone_surrogate_is_refused_not_planned(self, demo) -> None:
+        api, root = demo
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="\ud800",
+        )
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "a description holds a character that no file can hold, "
+                "a lone surrogate",
+            },
+        )
+
+    def test_a_description_in_non_ascii_is_previewed_and_written_as_typed(self, demo) -> None:
+        api, root = demo
+        preview = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="Kühlung in °C",
+        ).body
+        (change,) = preview["changes"]
+        assert change["operations"][0]["raw"] == '"Kühlung in °C"'
+        assert any(
+            '"description": "Kühlung in °C",' in line
+            for hunk in change["hunks"]
+            for line in hunk["after"]
+        )
+        assert applied(api, preview, "the description of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"description": "Kühlung in °C",' in written
+
+    def test_a_structure_is_refused_on_the_scalar_path(self, demo) -> None:
+        # Diagnosis is a structure: it has no cell, and the project declares no object by that name.
+        api, _ = demo
+        assert get(api, "/api/value-plan", name="Diagnosis", at="", raw="1") == Reply(
+            404, {"error": "not-found", "message": "the project declares no 'Diagnosis'"}
+        )
+
+    def test_a_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        api, root = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(
+            api,
+            "/api/description-plan",
+            file=self.controller(root),
+            name="ParameterA",
+            description="x",
+        )
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+
+class TestAScalarIsOneCell:
+    """A scalar's value is planned, applied and read back as the one cell of its grid."""
+
+    @pytest.fixture
+    def demo(self, tmp_path: Path) -> tuple[Api, Path]:
+        return copied(tmp_path, "demo", "demo.ddd.json")
+
+    def test_a_value_is_previewed_then_written_at_the_init(self, demo) -> None:
+        api, root = demo
+        before = contents(root)
+        preview = get(api, "/api/value-plan", name="ParameterA", at="", raw="4000").body
+        assert contents(root) == before
+        (change,) = preview["changes"]
+        assert Path(change["file"]).name == "controller.ddd.json"
+        (operation,) = change["operations"]
+        assert (operation["op"], operation["raw"]) == ("set", "4000")
+        assert operation["pointer"].endswith(".definition.init")
+        assert applied(api, preview, "the value of ParameterA").status == 200
+        written = (root / "components" / "controller.ddd.json").read_text(encoding="utf-8")
+        assert '"init": 4000' in written
+        assert '"init": 3200' not in written
+
+    def test_a_scalar_stating_no_init_gains_one_in_the_preview(self, demo) -> None:
+        api, root = demo
+        preview = get(api, "/api/value-plan", name="ValueC", at="", raw="21.5").body
+        (change,) = preview["changes"]
+        (operation,) = change["operations"]
+        assert operation["pointer"].endswith(".definition.init")
+        # One line gained, the init, which the file did not state: the preview shows it.
+        assert any('"init": 21.5' in line for hunk in change["hunks"] for line in hunk["after"])
+        assert not any('"init"' in line for hunk in change["hunks"] for line in hunk["before"])
+        assert applied(api, preview, "the value of ValueC").status == 200
+        written = (root / "components" / "sensor_hub.ddd.json").read_text(encoding="utf-8")
+        assert '"init": 21.5' in written
+
+    def test_a_blank_element_of_a_shaped_object_is_no_element(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="CurveA", at="", raw="750")
+        assert reply == Reply(
+            409, {"error": "invalid", "message": "'' is not an element of this object"}
+        )
+
+    def test_text_is_no_value_to_set(self, tmp_path: Path) -> None:
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Label", init="OFF")),
+            },
+        )
+        assert get(api, "/api/value-plan", name="Label", at="", raw="1") == Reply(
+            409, {"error": "invalid", "message": "'Label' has no cell for a value to sit in"}
+        )
+
+    def test_a_value_beyond_its_datatype_is_refused(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/value-plan", name="ParameterA", at="", raw="70000")
+        assert reply == Reply(
+            409, {"error": "invalid", "message": "70000 does not fit into uint16 (0 .. 65535)"}
+        )
+
+
 class TestTheValuesGrid:
     @pytest.fixture
     def demo(self, tmp_path: Path) -> tuple[Api, Path]:
@@ -9184,6 +9654,8 @@ class TestTheValuesGrid:
         assert body["axes"][0]["breakpoints"] == [0, 3200, 6400, 12800, 19200, 32000]
         assert body["owner"] == "Controller"
         assert body["file"].endswith("controller.ddd.json")
+        assert body["unshown"] is None
+        assert (body["minimum_text"], body["maximum_text"]) == (None, None)
 
     def test_a_map_answers_four_rows_of_six(self, demo) -> None:
         api, _ = demo
@@ -9192,14 +9664,16 @@ class TestTheValuesGrid:
         assert body["rows"][1] == [18, 22, 26, 28, 30, 28]
         assert [a["position"] for a in body["axes"]] == ["x_axis", "y_axis"]
 
-    def test_an_object_with_no_shape_answers_an_empty_grid(self, demo) -> None:
-        # The name is what the brief called this before Task 1's own fix (see task-1's report):
-        # a shapeless object was once refused, and now answers the empty grid below instead -
-        # grid_of's one refusal is "not-found" alone, so there is nothing left to refuse here.
+    def test_an_object_with_no_shape_answers_a_grid_of_one_cell(self, demo) -> None:
+        # ParameterA: a scalar, which the page lays out as one cell holding its raw count.
         api, _ = demo
-        reply = get(api, "/api/values", name="ValueA")
+        reply = get(api, "/api/values", name="ParameterA")
         assert reply.status == 200
-        assert reply.body["shape"] == []
+        body = reply.body
+        assert (body["shape"], body["rows"], body["stated"]) == ([], [[3200]], "scalar")
+        assert (body["kind"], body["datatype"], body["unit"]) == ("parameter", "uint16", "Hz")
+        assert body["conversion"]["factor"] == 0.25
+        assert body["file"].endswith("controller.ddd.json")
 
     def test_without_a_name_it_says_so(self, demo) -> None:
         api, _ = demo
@@ -9238,6 +9712,8 @@ class TestTheValuesGrid:
         assert (plan.status, plan.body["error"]) == (409, "invalid")
         plans = get(api, "/api/values-plan", name="Cube", raw="7")
         assert (plans.status, plans.body["error"]) == (409, "invalid")
+        cells = get(api, "/api/cells-plan", name="Cube", at="[1][2][3],[0][0][0]", raw="7,8")
+        assert (cells.status, cells.body["error"]) == (409, "invalid")
 
     def test_an_init_that_does_not_fit_its_shape_is_refused_rather_than_drawn(
         self, tmp_path: Path, capsys
@@ -9734,6 +10210,559 @@ class TestTheValuesGrid:
         reply = get(api, "/api/values-plan", name="ValueA", raw="1")
         assert (reply.status, reply.body["error"]) == (409, "invalid")
         assert reply.body["message"] == "'ValueA' has no cell for a value to sit in"
+
+    def test_several_cells_are_previewed_written_and_put_back_and_nothing_else(self, demo) -> None:
+        api, root = demo
+        controller = root / "components" / "controller.ddd.json"
+        before = controller.read_bytes()
+        preview = get(api, "/api/cells-plan", name="CurveA", at="[0],[2]", raw="1300,750").body
+        assert controller.read_bytes() == before
+        (change,) = preview["changes"]
+        assert [(o["pointer"].rsplit(".", 1)[1], o["raw"]) for o in change["operations"]] == [
+            ("init[0]", "1300"),
+            ("init[2]", "750"),
+        ]
+        assert [(h["before"], h["after"]) for h in change["hunks"]] == [
+            (
+                ['          "init": [1200, 900, 800, 750, 700, 650],'],
+                ['          "init": [1300, 900, 750, 750, 700, 650],'],
+            )
+        ]
+        reply = applied(api, preview, "2 elements of CurveA")
+        assert reply.status == 200
+        lines = zip(
+            before.decode("utf-8").splitlines(),
+            controller.read_text(encoding="utf-8").splitlines(),
+            strict=True,
+        )
+        assert [(old, new) for old, new in lines if old != new] == [
+            (
+                '          "init": [1200, 900, 800, 750, 700, 650],',
+                '          "init": [1300, 900, 750, 750, 700, 650],',
+            )
+        ]
+        assert post(api, "/api/undo", {"at": reply.body["edit"]}).status == 200
+        assert controller.read_bytes() == before
+
+    def test_two_cells_on_one_line_of_a_map_are_one_line_previewed_written_and_put_back(
+        self, demo
+    ) -> None:
+        api, root = demo
+        controller = root / "components" / "controller.ddd.json"
+        before = controller.read_bytes()
+        preview = get(api, "/api/cells-plan", name="MapA", at="[1][1],[1][3]", raw="99,77").body
+        (change,) = preview["changes"]
+        assert len(change["operations"]) == 2
+        assert [(h["before"], h["after"]) for h in change["hunks"]] == [
+            (["            [18, 22, 26, 28, 30, 28],"], ["            [18, 99, 26, 77, 30, 28],"])
+        ]
+        reply = applied(api, preview, "2 elements of MapA")
+        assert reply.status == 200
+        assert "            [18, 99, 26, 77, 30, 28],\n" in controller.read_text(encoding="utf-8")
+        assert post(api, "/api/undo", {"at": reply.body["edit"]}).status == 200
+        assert controller.read_bytes() == before
+
+    def test_two_cells_of_a_block_past_one_address_are_planned_alone(self, tmp_path) -> None:
+        # Its table cannot be asked for in one request: 10240 counts of four digits need more
+        # than the 65521 characters an address holds. Two of its cells are two short pairs.
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Long",
+                        "uint16",
+                        kind="value_block",
+                        dimensions=[10240],
+                        init=[1000] * 10240,
+                    ),
+                ),
+            },
+        )
+        assert len(",".join(["1000"] * 10240).replace(",", "%2C")) > 65521
+        reply = get(api, "/api/cells-plan", name="Long", at="[3],[9000]", raw="7,8")
+        assert reply.status == 200, reply.body
+        (change,) = reply.body["changes"]
+        assert [(o["pointer"].rsplit(".", 1)[1], o["raw"]) for o in change["operations"]] == [
+            ("init[3]", "7"),
+            ("init[9000]", "8"),
+        ]
+
+    def test_a_cells_plan_missing_a_parameter_says_which_it_takes(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0]")
+        assert (reply.status, reply.body["error"]) == (400, "bad-request")
+        assert reply.body["message"] == "cells-plan takes ?name= and ?at= and ?raw="
+
+    def test_a_count_of_a_cell_that_is_not_a_number_is_refused(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0],[2]", raw="1300,lots")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == "'lots' is not a number"
+
+    def test_every_cell_refused_is_named(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[1],[3],[9]", raw="70000,750,5")
+        assert (reply.status, reply.body["error"]) == (409, "invalid")
+        assert reply.body["message"] == (
+            "2 elements of 'CurveA' are refused: element 2 because 70000 does not fit into uint16 "
+            "(0 .. 65535); element 10 because '[9]' is past the end of this object"
+        )
+
+    def test_a_name_the_project_has_not_is_not_found_for_a_cells_plan(self, demo) -> None:
+        api, _ = demo
+        reply = get(api, "/api/cells-plan", name="Nope", at="[0],[1]", raw="1,2")
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+        assert reply.body["message"] == "the project declares no 'Nope'"
+
+    def test_a_project_that_did_not_load_has_no_cells_to_plan(self, tmp_path) -> None:
+        reply = get(unloaded(tmp_path), "/api/cells-plan", name="Anything", at="[0]", raw="1")
+        assert (reply.status, reply.body["error"]) == (409, "unreadable")
+
+    def test_a_cells_plan_the_engine_refuses_is_a_refusal_the_page_can_act_on(
+        self, demo, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # /api/cells-plan's own call to `previewed`, as the two tests above do for theirs.
+        api, _ = demo
+
+        def refuse(*_: object) -> None:
+            raise EditError(UNVERIFIED, "does not read back")
+
+        monkeypatch.setattr("ddd.gui.api.previewed", refuse)
+        reply = get(api, "/api/cells-plan", name="CurveA", at="[0],[2]", raw="1300,750")
+        assert (reply.status, reply.body["error"]) == (409, "unverified")
+
+
+def big_block(tmp_path: Path, init: object, datatype: str = "uint64") -> Api:
+    """A project of one block of two, ``Big``, of ``datatype`` and holding ``init`` as written:
+    ``write_tree`` writes a python ``int`` as its own digits, so a number past 2^53 reaches the
+    file exactly."""
+    return opened(
+        tmp_path,
+        {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Big", datatype, kind="value_block", dimensions=[2], init=init),
+            ),
+        },
+    )
+
+
+AT_OR_PAST: Final = (
+    "is at or past {side}2^53, where the page cannot hold every whole number exactly, so no "
+    "{datatype} is set to it here"
+)
+"""The server's refusal of a 64 bit integer's value, the number, its side and the datatype left
+out."""
+
+
+class TestAWholeNumberPastWhatADoubleHolds:
+    """Past 2^53 a double, the number the page holds, no longer holds every whole number:
+    ``9007199254740993`` reaches it as ``9007199254740992``, and ``18446744073709551615``, the
+    most a uint64 holds, as ``18446744073709551616``, which none holds. The grid drew those and
+    planned from them, so a value it showed or was given was not the file's. Rather than carry
+    every cell across as exact text, the page refuses such a number, the values route marks a
+    block holding one so that the grid says it cannot show it, and the server refuses a 64 bit
+    integer any whole number at or past 2^53: a number it is sent there may be another the page
+    rounded."""
+
+    def test_a_block_holding_one_is_marked_as_one_the_grid_cannot_show(
+        self, tmp_path: Path
+    ) -> None:
+        api = big_block(tmp_path, [9007199254740993, 18446744073709551615])
+        body = get(api, "/api/values", name="Big").body
+        # What the wire answers for it, each the double nearest it: the mark is what says so.
+        assert body["rows"] == [[9007199254740992.0, 1.8446744073709552e19]]
+        assert body["unshown"] == "Big"
+
+    @pytest.mark.parametrize(
+        ("datatype", "extra", "texts"),
+        [
+            pytest.param("uint64", {}, (None, "18446744073709551615"), id="a-uint64-s-own-range"),
+            pytest.param(
+                "sint64",
+                {},
+                ("-9223372036854775808", "9223372036854775807"),
+                id="a-sint64-s-own-range",
+            ),
+            pytest.param(
+                "uint64",
+                {"limits": {"min": 0, "max": 2**53}},
+                (None, None),
+                id="limits-up-to-2^53-which-the-double-shows-as-they-are",
+            ),
+            pytest.param(
+                "uint64",
+                {"limits": {"min": 0, "max": 2**53 + 1}},
+                (None, "9007199254740993"),
+                id="a-limit-past-2^53-stated",
+            ),
+            pytest.param(
+                "uint64",
+                {"conversion": {"kind": "linear", "factor": 0.5}},
+                (None, None),
+                id="a-limit-a-conversion-makes-is-a-float-already",
+            ),
+            pytest.param("float32", {}, (None, None), id="a-float-s-range-is-doubles"),
+        ],
+    )
+    def test_a_limit_the_double_cannot_carry_comes_as_its_own_digits(
+        self, tmp_path: Path, datatype: str, extra: dict[str, Any], texts: tuple[str | None, ...]
+    ) -> None:
+        """``minimum`` and ``maximum`` cross as doubles, so the default maximum of a uint64,
+        ``18446744073709551615``, printed as ``18446744073709552000``, which no uint64 holds -
+        above every 64 bit values page. A whole number past 2^53 travels as its digits too."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare(
+                        "output",
+                        "Big",
+                        datatype,
+                        kind="value_block",
+                        dimensions=[2],
+                        init=[1, 2],
+                        **extra,
+                    ),
+                ),
+            },
+        )
+        body = get(api, "/api/values", name="Big").body
+        assert (body["minimum_text"], body["maximum_text"]) == texts
+
+    @pytest.mark.parametrize(
+        ("datatype", "init", "unshown"),
+        [
+            pytest.param("uint64", [2**53 - 1, 1], None, id="2^53-less-one"),
+            pytest.param("uint64", [2**53, 1], "Big", id="2^53-which-a-uint64-cannot-be-set-back"),
+            pytest.param("uint64", [1, 2**53 + 1], "Big", id="2^53-and-one"),
+            pytest.param("sint64", [-(2**53) + 1, 1], None, id="minus-2^53-less-one"),
+            pytest.param("sint64", [-(2**53), 1], "Big", id="minus-2^53"),
+            pytest.param("sint64", [-(2**53) - 1, 1], "Big", id="minus-2^53-and-one"),
+            pytest.param("uint64", 2**64 - 1, "Big", id="one-value-stated-for-every-cell"),
+            pytest.param("uint32", [2**53, 1], None, id="2^53-on-a-narrower-integer"),
+            pytest.param("uint32", [2**53 + 1, 1], "Big", id="2^53-and-one-on-a-narrower-integer"),
+            pytest.param("float64", [2**53, 0.5], None, id="2^53-on-a-float"),
+            pytest.param("float64", [1e300, 0.5], None, id="a-float-is-the-double-it-is"),
+            pytest.param("float64", [2**53 + 1, 0.5], "Big", id="a-whole-number-on-a-float"),
+        ],
+    )
+    def test_the_mark_falls_where_the_page_cannot_hold_or_set_back_a_whole_number(
+        self, tmp_path: Path, datatype: str, init: object, unshown: str | None
+    ) -> None:
+        """Past 2^53 for any datatype, and at it for a 64 bit integer, which the server refuses a
+        value at 2^53: drawn, it would be a value its own cell cannot be set back to. A float in
+        the file is a double already, so the page holds it as it is; a whole number is exact in
+        the file and in the server, and is the page's to lose. A narrower integer holding 2^53 -
+        which it cannot store, and the analysis says so - is drawn as written."""
+        api = big_block(tmp_path, init, datatype)
+        assert get(api, "/api/values", name="Big").body["unshown"] == unshown
+
+    @pytest.mark.parametrize(
+        ("axis_datatype", "axis", "curve_datatype", "curve", "unshown"),
+        [
+            pytest.param("uint64", [0, 2**53 + 1], "uint64", [1, 2], "AxisX", id="the-axis-alone"),
+            pytest.param(
+                "uint64", [0, 2**53], "uint64", [1, 2], "AxisX", id="2^53-on-a-uint64-axis"
+            ),
+            pytest.param(
+                "uint32",
+                [0, 2**53],
+                "uint64",
+                [1, 2],
+                None,
+                id="2^53-on-a-narrower-axis-under-a-uint64-curve",
+            ),
+            pytest.param(
+                "uint64",
+                [0, 2**53],
+                "float64",
+                [1, 2],
+                "AxisX",
+                id="2^53-on-a-uint64-axis-under-a-float-curve",
+            ),
+            pytest.param(
+                "uint64",
+                [0, 2**53 + 1],
+                "uint64",
+                [1, 2**53 + 1],
+                "CurveX",
+                id="the-object-before-its-axis",
+            ),
+        ],
+    )
+    def test_an_axis_holding_one_is_named_by_the_grid_lying_against_it(
+        self,
+        tmp_path: Path,
+        axis_datatype: str,
+        axis: list[int],
+        curve_datatype: str,
+        curve: list[int],
+        unshown: str | None,
+    ) -> None:
+        """Its breakpoints are drawn as the grid's own header, so they would be the rounded
+        numbers drawn there; weighed by the axis's own datatype, which is its cells', and not by
+        the curve's."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "AxisX", axis_datatype, kind="axis", size=2, init=axis),
+                    declare(
+                        "local", "CurveX", curve_datatype, kind="curve", axis="AxisX", init=curve
+                    ),
+                ),
+            },
+        )
+        assert get(api, "/api/values", name="CurveX").body["unshown"] == unshown
+
+    @pytest.mark.parametrize(
+        ("datatype", "raw", "side"),
+        [
+            pytest.param("uint64", "9007199254740992", "", id="2^53"),
+            pytest.param("uint64", "18446744073709551615", "", id="the-most-a-uint64-holds"),
+            pytest.param("sint64", "-9007199254740992", "-", id="minus-2^53"),
+            pytest.param("sint64", "-9223372036854775808", "-", id="the-least-a-sint64-holds"),
+            pytest.param("sint64", "9223372036854775807", "", id="the-most-a-sint64-holds"),
+        ],
+    )
+    def test_a_64_bit_integer_is_refused_a_whole_number_at_or_past_2_53(
+        self, tmp_path: Path, datatype: str, raw: str, side: str
+    ) -> None:
+        api = big_block(tmp_path, [1, 2], datatype)
+        before = contents(tmp_path)
+        said = AT_OR_PAST.format(side=side, datatype=datatype)
+        assert get(api, "/api/value-plan", name="Big", at="[0]", raw=raw) == Reply(
+            409, {"error": "invalid", "message": f"{raw} {said}"}
+        )
+        assert contents(tmp_path) == before
+
+    @pytest.mark.parametrize(
+        ("datatype", "raw"),
+        [
+            pytest.param("uint64", "9007199254740991", id="2^53-less-one"),
+            pytest.param("sint64", "-9007199254740991", id="minus-2^53-less-one"),
+        ],
+    )
+    def test_a_64_bit_integer_takes_a_whole_number_short_of_2_53_as_it_is_written(
+        self, tmp_path: Path, datatype: str, raw: str
+    ) -> None:
+        api = big_block(tmp_path, [1, 2], datatype)
+        body = get(api, "/api/value-plan", name="Big", at="[0]", raw=raw).body
+        assert [change["operations"] for change in body["changes"]] == [
+            [{"op": "set", "pointer": "component.interface[0].definition.init[0]", "raw": raw}]
+        ]
+
+    def test_a_pasted_table_names_each_element_at_or_past_2_53(self, tmp_path: Path) -> None:
+        api = big_block(tmp_path, [1, 2])
+        reply = get(api, "/api/values-plan", name="Big", raw="9007199254740991,9007199254740992")
+        assert reply == Reply(
+            409,
+            {
+                "error": "invalid",
+                "message": "element 2 of 'Big' is refused: "
+                f"9007199254740992 {AT_OR_PAST.format(side='', datatype='uint64')}",
+            },
+        )
+
+    @pytest.mark.parametrize(
+        ("datatype", "raw", "says"),
+        [
+            pytest.param(
+                "uint32",
+                "9007199254740992",
+                "9007199254740992 does not fit into uint32 (0 .. 4294967295)",
+                id="a-narrower-integer-for-which-it-is-out-of-range",
+            ),
+            pytest.param(
+                "uint64",
+                "18446744073709551616",
+                "18446744073709551616 does not fit into uint64 (0 .. 18446744073709551615)",
+                id="a-number-past-the-datatype-is-refused-as-not-fitting",
+            ),
+        ],
+    )
+    def test_a_number_the_datatype_cannot_hold_is_refused_as_not_fitting_first(
+        self, tmp_path: Path, datatype: str, raw: str, says: str
+    ) -> None:
+        api = big_block(tmp_path, [1, 2], datatype)
+        assert get(api, "/api/value-plan", name="Big", at="[0]", raw=raw) == Reply(
+            409, {"error": "invalid", "message": says}
+        )
+
+    @pytest.mark.parametrize(
+        ("sent", "written"),
+        [
+            pytest.param("9007199254740992", "9007199254740992.0", id="2^53"),
+            pytest.param("10000000000000000000", "1e+19", id="1e19"),
+        ],
+    )
+    def test_a_float_is_set_to_a_whole_number_past_2_53_as_the_double_it_is(
+        self, tmp_path: Path, sent: str, written: str
+    ) -> None:
+        """A float64 is no 64 bit integer: it holds the double the page sends, and nothing else -
+        written as a float (task 1's n2), where a whole number's spelling past 2^53 was then a
+        number the grid could not show."""
+        api = big_block(tmp_path, [0.5, 1.5], "float64")
+        body = get(api, "/api/value-plan", name="Big", at="[0]", raw=sent).body
+        assert [change["operations"] for change in body["changes"]] == [
+            [
+                {
+                    "op": "set",
+                    "pointer": "component.interface[0].definition.init[0]",
+                    "raw": written,
+                }
+            ]
+        ]
+
+
+def wide_limits(
+    tmp_path: Path, datatype: str = "uint64", low: int = 0, high: int = 2**64 - 1
+) -> Api:
+    """A project of one variable, ``Speed``, of ``datatype``, stating the limits ``low`` and
+    ``high`` - written as their own digits, so a bound past 2^53 reaches the file exactly - and of
+    one scalar type, ``Wide_t``, of the same datatype and limits."""
+    limits = {"min": low, "max": high}
+    return opened(
+        tmp_path,
+        {
+            "p.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("output", "Speed", datatype, limits=limits),
+                types=[scalar_type("Wide_t", datatype=datatype, limits=limits)],
+            ),
+        },
+    )
+
+
+LIMIT_AT_OR_PAST: Final = (
+    "{value} is at or past {side}2^53, where the page cannot hold every whole number exactly, so "
+    "no limit of a {datatype} is set to it here"
+)
+"""The server's refusal of a 64 bit integer's limit."""
+
+
+class TestALimitPastWhatADoubleHolds:
+    """The limits fields send what the page holds, a double: a range typed past 2^53 reached
+    ``/api/settle`` as another, and the variable's own ``18446744073709551615``, pre-filled as
+    ``18446744073709552000``, came back with whatever bound was edited beside it - a file that would
+    not load, over a number nobody typed. A 64 bit integer takes no limit at or past 2^53 from the
+    page, as it takes no value there (``_acceptable``), and a type's limits are refused alike."""
+
+    @pytest.mark.parametrize(
+        ("datatype", "sent", "value", "side"),
+        [
+            pytest.param(
+                "uint64", '{ "min": 0, "max": 9007199254740992 }', 9007199254740992, "", id="2^53"
+            ),
+            pytest.param(
+                "uint64",
+                '{ "min": 1, "max": 18446744073709552000 }',
+                18446744073709552000,
+                "",
+                id="the-most-a-uint64-holds-pre-filled-as-a-double",
+            ),
+            pytest.param(
+                "sint64",
+                '{ "min": -9007199254740992, "max": 0 }',
+                -9007199254740992,
+                "-",
+                id="minus-2^53",
+            ),
+        ],
+    )
+    def test_a_variable_is_refused_a_limit_at_or_past_2_53(
+        self, tmp_path: Path, datatype: str, sent: str, value: int, side: str
+    ) -> None:
+        api = wide_limits(tmp_path, datatype, low=-1 if datatype == "sint64" else 0)
+        before = contents(tmp_path)
+        said = LIMIT_AT_OR_PAST.format(value=value, side=side, datatype=datatype)
+        assert get(api, "/api/settle", name="Speed", key="limits", raw=sent) == Reply(
+            409, {"error": "invalid", "message": said}
+        )
+        assert contents(tmp_path) == before
+
+    @pytest.mark.parametrize(
+        ("route", "query"),
+        [
+            pytest.param("/api/settle", {"name": "Speed", "key": "limits"}, id="a-variable"),
+            pytest.param(
+                "/api/type-plan",
+                {"action": "set", "name": "Wide_t", "key": "limits"},
+                id="a-type",
+            ),
+        ],
+    )
+    def test_a_bound_written_as_a_float_is_weighed_as_any_other(
+        self, tmp_path: Path, route: str, query: dict[str, str]
+    ) -> None:
+        """Task 1's n4: a 1e21 sent as the page spells it, an exponent, was not weighed, and the
+        range was planned - 200 - where its whole number's digits were refused."""
+        api = wide_limits(tmp_path)
+        before = contents(tmp_path)
+        said = LIMIT_AT_OR_PAST.format(value="1e+21", side="", datatype="uint64")
+        assert get(api, route, **query, raw='{ "min": 0, "max": 1e+21 }') == Reply(
+            409, {"error": "invalid", "message": said}
+        )
+        assert contents(tmp_path) == before
+
+    def test_a_variable_takes_a_limit_short_of_2_53_as_it_is_written(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740991 }'
+        body = get(api, "/api/settle", name="Speed", key="limits", raw=sent).body
+        assert body["unloadable"] == []
+        assert [hunk["after"] for change in body["changes"] for hunk in change["hunks"]] == [
+            [f'          "limits": {sent}']
+        ]
+
+    def test_a_float_takes_a_whole_limit_past_2_53(self, tmp_path: Path) -> None:
+        """A float holds the double the page sends, so its limit is no 64 bit integer's."""
+        api = wide_limits(tmp_path, "float64", high=1)
+        sent = '{ "min": 0, "max": 10000000000000000000 }'
+        reply = get(api, "/api/settle", name="Speed", key="limits", raw=sent)
+        assert (reply.status, reply.body["unloadable"]) == (200, [])
+
+    def test_a_type_is_refused_a_limit_at_or_past_2_53(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        before = contents(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740992 }'
+        said = LIMIT_AT_OR_PAST.format(value=9007199254740992, side="", datatype="uint64")
+        assert get(
+            api, "/api/type-plan", action="set", name="Wide_t", key="limits", raw=sent
+        ) == Reply(409, {"error": "invalid", "message": said})
+        assert contents(tmp_path) == before
+
+    def test_a_name_no_type_has_is_refused_as_the_plan_refuses_it(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740992 }'
+        reply = get(api, "/api/type-plan", action="set", name="Nope", key="limits", raw=sent)
+        assert (reply.status, reply.body["error"]) == (404, "not-found")
+
+    def test_a_range_that_is_no_object_is_left_to_the_models(self, tmp_path: Path) -> None:
+        """No bound to weigh: the settlement plans it, and says which declaration it leaves
+        unable to load, as for any value the reader chose."""
+        api = wide_limits(tmp_path)
+        body = get(api, "/api/settle", name="Speed", key="limits", raw="5").body
+        assert len(body["unloadable"]) == 1
+
+    def test_a_type_takes_a_limit_short_of_2_53(self, tmp_path: Path) -> None:
+        api = wide_limits(tmp_path)
+        sent = '{ "min": 0, "max": 9007199254740991 }'
+        reply = get(api, "/api/type-plan", action="set", name="Wide_t", key="limits", raw=sent)
+        assert reply.status == 200
+        assert [op["raw"] for change in reply.body["changes"] for op in change["operations"]] == [
+            sent
+        ]
 
 
 # The four shapes an entry of the root's includes takes, in one list: a literal naming a file, a
@@ -11821,6 +12850,12 @@ PLANS: Final = (
         "demo.ddd.json",
         "/api/declaration-plan",
         {"action": "remove", "name": "ValueH", "file": "components/controller.ddd.json"},
+    ),
+    (
+        "demo",
+        "demo.ddd.json",
+        "/api/description-plan",
+        {"name": "ParameterA", "description": "words", "file": "components/controller.ddd.json"},
     ),
     ("demo", "demo.ddd.json", "/api/value-plan", {"name": "CurveA", "at": "[2]", "raw": "750"}),
     (

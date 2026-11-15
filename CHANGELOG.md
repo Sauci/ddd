@@ -54,7 +54,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the wrong one.  The analysis now records a fingerprint of the bytes it read, and a plan
   whose file reads differently, or whose recorded place no longer names what was asked about -
   an entry of a type put in above it or taken out since - is refused as `stale`, and a settled
-  value whose declaration moved so as `unreadable`.  No file format changes.
+  value is refused as `unreadable` when its declaration moved.  No file format changes.
 
 * **A refused `stale` edit or undo asks for the analysis that clears it.**  A file saved with
   the size and the modification time it had before is a change the project's poll cannot see,
@@ -78,6 +78,258 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `CMakeLists.txt` beside it, with the `ddd_add_component()` line to add to it.  The
   components themselves are edited as before.  A build record written by a newer DDD no longer
   hides that the description is generated.  No file format changes.
+
+* **Under Ninja, a build after a description change compiles the components whose header it
+  changed.**  The per-component headers a description change rewrites were not declared as
+  outputs of the generation, so a component reading one was compiled against the old header and
+  linked with the new globals: the build exited 0, and only a second build compiled it again.
+  `ddd_generate()` now declares the header of every component the image links, named at
+  configure from `ddd_add_component()`, or from `ddd sources` with `PROJECT`, so the build
+  recompiles exactly the components whose header changed, and `ninja -t clean` removes those
+  headers too.  A plugin's files are still declared by nothing, their names being the plugin's,
+  so a component compiling one meets a change of it a build late; the build page says how a
+  project has a description change reach such a component in one build.  Migrating costs
+  three things.  A component the image reaches only through a link made, or a library defined, after
+  the directory calling `ddd_generate()` is done, or registered after it, now fails the configure,
+  naming each such component and what to do; link it, define it or register it before the end of
+  that directory.  In the collected mode a renamed component needs a reconfigure: until then every
+  build runs the generation, and a change of that component's header reaches the components
+  reading it a build late.  And the generation's command is now added at the end of the
+  calling directory, so nothing there can `APPEND` to it earlier.  A generator expression in a link
+  list counts whatever it comes to, except `$<CONFIG:...>` around plain names, which is read for
+  `CMAKE_BUILD_TYPE`.  Under Makefile generators the generation is built as the entry on them below
+  says.  No file format changes.
+
+* **With `ADDRESS_MAP`, the a2l carries the addresses of the image just linked.**  The generation
+  before the link read the map the previous link had extracted, so the a2l of a build held the
+  addresses of the image linked before it - every one 0 on the first build of a clean tree, the old
+  address of a variable an edit moved - with no finding, `STRICT` or not, and under `STRICT` an
+  object added to a description stopped every build.  The generation before the link now leaves the
+  a2l out, and `<stem>_ddd_a2l`, built by default, writes it once the image is linked, from the
+  image and the map, as `ADDRESSES_FROM_IMAGE` has always done; `BYTE_ORDER` goes to that step.  A
+  project following the build page's recipe, whose extractor is a `POST_BUILD` command of the image,
+  migrates nothing.  A map written by any other step has to be written before `<stem>_ddd_a2l` runs;
+  `--target <image>` and `<stem>_ddd_generation` no longer write the a2l, so a build naming its
+  targets builds `<stem>_ddd_a2l` too, and a target that depended on the generation for the a2l
+  depends on `<stem>_ddd_a2l`; a project that defined a target of that name renames it; a
+  `POST_BUILD` command of the image reading `DDD_A2L` reads the a2l of the build before.  Under
+  `STRICT`, a map that leaves out a member of a structure now stops the first build, where it
+  stopped the second.  An a2l written with no address source now says so in a comment under
+  `ASAP2_VERSION`, so a step comparing a2l files byte for byte sees that line where it applies.  A
+  file named by `DEPENDS` still reruns the generation before the link, and no longer the a2l written
+  after it.
+
+* **`ddd sources` lists every file a build depends on, and a plugin's defect no longer hides
+  them.**  It listed a plugin only when the plugin imported, and a package plugin only by the
+  files it had imported, so a file that stopped importing, or that nothing had yet imported, was
+  no dependency of the configure; and a plugin whose model raised ended the command with exit 2
+  and no listing at all.  It now lists every `.py` file of each plugin a project names, a module
+  plugin by the files the finder locates, in the json `sources` too, and reports a plugin's
+  defect as the finding `plugin-invalid`, printed next to the listing by `sources` and by
+  `artefacts`, with exit 0.
+  `ddd check`, `list`, `dump` and `generate` print the findings gathered before such a defect,
+  and `check --format json` prints its document, still with exit 2.  `ddd sources` takes `-W` and
+  `--strict`, which grade what it reports on stderr and never the listing or the exit code, and
+  the module passes the call's `SEVERITY` and `STRICT`, so the configure's warning is graded as
+  the build is.  The listing grows; a script that took its length for something else has to
+  change.
+
+* **A file that a wildcard include gains or loses re-runs the build.**  A project's `includes`
+  wildcards were read at configure only, so a file one began to match touched nothing the build
+  watched, and a file one stopped matching left the generation's inputs the same or fewer: both
+  ended in `no work to do` over a stale dictionary.  The module now watches every wildcard, those of
+  the projects included as well, so such a file re-runs the configure, and the generation and the
+  a2l step when a file leaves.  The configure writes `<stem>_ddd_sources.txt`, new, in the call's
+  binary directory, rewriting it only when it differs.  A `**` include is scanned at every build.
+  Nothing to migrate.
+
+* **A call the module cannot honour fails the configure, naming why.**  `ddd_add_component()` took a
+  project file for a component's description, and the next configure found no components; it now
+  refuses a description whose top-level key is `project`, naming `PROJECT` of `ddd_generate()`.  A
+  call that gave a value keyword an empty variable in quotes, `ADDRESS_MAP "${DDD_MAP}"`,
+  configured with the keyword dropped - every address 0 for `ADDRESS_MAP`, the collected mode for
+  `PROJECT` - the bare form being refused since 0.10.0, and an empty value among several was
+  dropped, or stopped the configure or the build on words that did not name it; each now fails
+  the configure, naming the keyword, for every empty value of a value keyword of `ddd_generate()`
+  or `ddd_add_component()`.  A `PROJECT` has to exist, parse and name its project when the
+  configure runs, where a missing one in the build tree, or one that did not parse, was warned of
+  and then stopped the configure on CMake's own words, which name neither cause; and C has to be
+  enabled in the directory calling `ddd_generate()` by the time it is done, where a project that
+  had not enabled it failed at CMake's generate step, which could not determine the linker
+  language of a target of the module's.  Migrating costs a line each.  Pass a project file to
+  `ddd_generate(... PROJECT <file>)`, not to `ddd_add_component()`.  Give a value keyword a value,
+  or wrap the keyword and its value in `if()`.  Write the project file before configuring.
+  Declare `project(<name> LANGUAGES C CXX)`, or call `enable_language(C)` there or above.  The
+  advice of the refusal of a late link and the reason of the one for `PROJECT` are reworded.
+  `ddd sources` is read as UTF-8, so a Windows checkout under a non-ASCII path builds.
+
+* **Makefile generators leave a build that changed nothing with nothing to do, and `make clean`
+  cleans it.**  Under a Makefile generator a generation that changed nothing ran again at every
+  build, and an edit that left a component's header as it was recompiled the component all the same,
+  since every file of the step after the first was touched by each run, `ddd_types.h` among them;
+  and the a2l step after the link, which `ADDRESSES_FROM_IMAGE` alone had, read the image again at
+  every build.  Each step now has a stamp of its own as its one output - `ddd-generation.stamp`
+  and `ddd-a2l.stamp` - touched by each run that succeeds, and a rule per shared file depending on
+  the step, so a step that depends on the dictionary's or the pre-link a2l's path in the calling
+  directory still runs after the generation; `make clean` removes the step's files, a plugin's
+  apart, which nothing declares.  Migrating costs a line for a step in another directory, or one
+  reading a `{component}` header: it depends on `<stem>_ddd_generation`, or on `<stem>_ddd_a2l`
+  for the linked a2l, and not on a generated file's path.  A file of the step deleted by hand is
+  not written again until the step's stamp is deleted or the tree cleaned.
+
+* **The configure follows the tool and the templates it renders with.**  The module asked
+  `ddd --version` once and cached the answer as `DDD_VERSION_HANDSHAKE`, so a tool upgraded in
+  place was met only by a fresh build tree; it now asks at every configure, once, and the
+  variable is no longer cached.  A template directory whose path holds `[`, `*` or `?` is found;
+  every `*.jinja2` below it is a dependency, listed in `<stem>_ddd_templates.txt`, new, in the
+  call's binary directory; and a removed template's file is taken back.  A deleted output
+  directory reconfigures by itself, where a Ninja build stopped on the missing description until
+  somebody configured by hand, so such a step can go.  A description the build itself writes,
+  which does not exist yet at configure, is watched, so the first build to find it there
+  configures again; a status line says so, where the configure said nothing of such a file.
+
+* **`ddd check`'s count line agrees in number, and a dictionary cannot take the manifest's name.**
+  The line read "1 variable in 1 component are consistent" for a single one, and now reads "1
+  variable in 1 component is consistent"; a script matching the old line has to change.
+  `--dictionary` naming the file the run keeps its manifest under, `.ddd-manifest.json`, is refused
+  for that.  The page of `<target>.ddd` now says what the behaviour already was: it checks a
+  component under the default policy, not the image's, so the promise that the image's checks cannot
+  drift apart covers `ddd build-info`, `ddd check` and `ddd generate`.
+
+* **`ddd gui` edits a hand-written project whose build record sits beside it.**  A record in the
+  build tree made the project look generated, so a description written by hand under `PROJECT`
+  was refused as `generated`.  `ddd-build.json` now says where its description came from:
+  `origin: "given"`, written only for a description given as `PROJECT`, and `ddd gui` edits a
+  project only where its record says so.  A record without the key reads as collected, and one of
+  a collected build is unchanged, format 1 with no key; `ddd build-info` gains `--origin
+  {collected,given}`, default `collected`.  Migrating concerns records of `PROJECT` builds alone,
+  which are stamped `format` 2: a DDD from 0.11.0 on declines such a record as written by a newer
+  DDD, and says so, and an older one skips it in silence, so a team on mixed versions upgrades its
+  editors with the module.  A `PROJECT` with an older module's record beside it stays refused
+  until the build is configured again.
+
+* **`ddd gui` edits the value of a scalar and the description of a variable.**  A plain
+  calibration parameter or measurement, the commonest value in a project, had no control on the
+  page and no sentence saying so: its row had no Shape button, its panel listed neither its
+  `init` nor its description, and its values page answered that it had no cell for a value to sit
+  in.  A scalar's Shape column now reads `scalar` and opens its values page as a grid of one
+  cell - physical or raw by the toggle, its value one `set` at the declaration's own `init`,
+  added where the file states none - with no table to paste and no picture of one point.  A
+  variable's panel, opened from a component's page, holds that component's own description of it
+  as a text field, planned, previewed, applied and undone like the panel's other keys; emptying
+  the field takes the key away.  Renaming a variable and changing its scope stay in the file, in
+  the editor, and the panel says so.  `GET /api/description-plan` is the plan of the description,
+  and `GET /api/value-plan` takes a blank `at` for a scalar; the api is a preview's and changes
+  with the package.  No file format changes.
+
+* **A whole number a double cannot hold is never shown, or written, as another.**  The page holds
+  a number as a double, which past 2^53 no longer holds every whole number, so a `uint64` block of
+  9007199254740993 and 18446744073709551615 was drawn as ...992 and 18446744073709552000, and a
+  mask such as 0x8000000000000001, typed or pasted, was written into the file as
+  9223372036854776000 - another number than the one asked for.  Such a number is now refused where
+  it is typed or pasted, in one sentence, whatever its spelling; the values reply marks a block
+  whose values or axis hold one (`unshown`), and the grid says it cannot show it where it drew a
+  rounded number; a limit stated past 2^53 shows in its file's own digits, and the page refuses a
+  limit typed past it; and the server refuses a whole value at or past 2^53 for a `uint64` or a
+  `sint64`, and a limit at or past it however it is written, in digits or as a float.  A value or a
+  limit that large is set in the file, in the editor.  No file format changes.
+
+* **Every number the page takes is read in decimal notation, and in no other.**  The grid's cells
+  and a paste took what the browser's parser takes, so `0x10` set 16 and `Infinity` was sent on,
+  while a range's two fields, a size, a dimension, a constant's Value, a section's alignment and a
+  raster's event each read a number their own way, and left a number written otherwise to the
+  server or to json to refuse in their words.  All of them now read an optional sign, digits with
+  an optional fraction or a fraction alone, and an optional exponent, the white space around it
+  ignored; hexadecimal, binary, octal, `Infinity`, `NaN` and digits parted by underscores are
+  refused in one sentence, the same in every field, and nothing is sent for them, but a size and a
+  dimension, which may name a constant, read `Infinity` and `NaN` as names, as they read any name.
+  A boolean takes 0 and 1 alone, in Raw and in Physical, where Physical rounded 0.6 to 1.  A
+  person who typed `0x1F` types 31.  No file format changes.
+
+* **A decimal comma is read as one where it cannot group thousands.**  A block pasted from a
+  spreadsheet of a comma locale, `0,125 0,250 0,500`, was refused, and the page's advice was to
+  paste the column unformatted; that advice is gone.  A comma is now a decimal point where it
+  cannot group thousands, after a first group of 0 or of more than three digits or before anything
+  but exactly three, and groups thousands where it cannot be a decimal point; text holding both
+  has its decimal point last.  Values read together, a pasted block or the cells typed into a
+  grid, read a comma that could be either as the others show theirs, and a pasted block that shows
+  both readings is refused, in a sentence saying what it mixes.  In the grid a comma that could be
+  either, `1,500` alone, is asked about with a choice of one press, "A decimal point: 1.5" or "A
+  thousands separator: 1500", and the answer given stands whatever is typed after it; the other
+  fields refuse such a comma in the same sentence, a range's naming the field it is about.
+  Nothing to migrate.
+
+* **A number typed in the grid is written as the nearest the datatype holds, and shown with the
+  digits it needs.**  A physical value was worked out in double arithmetic, so 0.7 at a factor of
+  0.1 was written into a float as 6.999999999999999, a value of more than twelve digits was shown
+  cut (1234567890123 as 1234567890120), and a `float32` the file spells at double precision showed
+  the digits of the double.  A physical value now comes to the nearest count, worked out on the
+  decimals typed and the conversion's own, an exact half going to the even count as the server
+  rounds it; a physical value typed into a float is planned as the shortest float that comes back,
+  so 0.3 at a factor of 0.1 writes `3.0`; and a `float32` reads as the float32 its file's number
+  rounds to, so a file's 0.10000000149011612 reads 0.1.  FLT_MAX is planned, and read in Raw, as
+  its own double, 3.4028234663852886e+38: its shortest spelling, 3.4028235e+38, is a double past
+  it, which the server and `ddd check` refuse a `float32`.  Physical shows the exact product of
+  the count and the factor for a whole datatype, 255 counts of 0.03 as 7.65, and the shortest
+  decimal for a float, never cut at twelve significant digits.  A number past what a double
+  holds is refused on the page, and so is one that rounds to zero in its float, typed in Physical;
+  in Raw the page refuses one only where its double is zero, so a `float32` cell's `1e-50` is sent
+  and the server refuses it.  No file format changes.
+
+* **A float's values are written as floats, and a boolean's as booleans.**  The grid wrote a
+  float's whole value as `3`, which spells an integer, and a boolean's as the count the page
+  sends, so a `false` set to 1 and back was written `1` and then `0`.  It now writes `3.0`, the
+  zeros it fills out an array with `0.0`, a float variable's or type's limits `-50.0` and
+  `90.0`, and a boolean's value `true` or `false`, the zeros of a boolean array `false`.
+  Migrating costs a diff: a table pasted over a float array whose file spells whole numbers, or
+  spells a `float32` at double precision, rewrites that spelling, and the diff shows it.  The
+  values mean the same.
+
+* **The values grid takes several cells at once, and draws what the file states.**  The 0.11.0
+  notes say "One cell is changed at a time", and that no longer holds: the cells typed into are
+  held together, each showing what was typed, and planned as one change with one sentence, one
+  Apply and one undo, each written at its own element where the array is long enough, so cells
+  nobody typed keep their spelling; where the file states one value for every cell, states none
+  or writes too short an array, the whole `init` is written, as the preview shows.  The page asks
+  `GET /api/cells-plan` for them.  A cell typed back to its file's value offers nothing, and a
+  plan whose edit would change no byte, a table pasted over the values the file spells, offers
+  no Apply and answers `changes: []`.  A cell is sized to its text, and the offer stays at the
+  window's foot while a cell is open, instead of below the grid.  Columns and rows come from the
+  object's shape, a breakpoint labelling its own column.  A cell the file does not state, past a
+  short `init` or any cell of a declaration with no `init`, is drawn hollow and named so, where
+  the second read as greyed zeros.  A grid that states nothing draws no picture, and where an
+  axis states fewer breakpoints than the shape the picture lies over indices, its ticks reading
+  them and no axis named under them.  A cell keeps the reading it was typed in when the toggle
+  is turned.  No file format changes.
+
+* **A value chosen for one key of a variable's panel is never applied to another.**  The panel
+  carried what was chosen, typed or edited for one key to the key it moved to by itself, so Apply
+  could write one key's value under another's name.  It now holds each value for its own key and
+  drops it when another is on screen.  A chooser whose text is not the value settled, its Apply
+  and the declare form's Add are withheld, with a sentence saying whether Enter takes the text or
+  the list must; a scroll that closes the list keeps what was typed, and only Escape and leaving
+  the field end the text.  Nothing to migrate.
+
+* **A number typed into a grid cell reaches the cell.**  The table's type-to-find took the
+  digits of a number typed key by key, so typing 20 over 12 could leave 2 or 2012, and the focused
+  cell did not follow the field that had the focus.  A key naming one character stays with the
+  cell, and the grid's focused cell follows its field.  Nothing to migrate.
+
+* **A unit with spaces around it is refused on a variable's panel and a type's.**  It was planned
+  and written with the spaces kept.  It is now refused in the words of the Units tab, and the route
+  that settles a key and the type route answer 409.  A unit typed that way has to be typed without
+  them.
+
+* **An undo label is cut on a whole character.**  A label long enough to be cut was cut through
+  the pair of a character outside the basic plane, an emoji, and the edit was refused as invalid
+  json.  The page now counts and cuts in whole characters, so the edit is applied.  Nothing to
+  migrate.
+
+* **Typing in a grid of thousands of cells no longer stalls.**  A key pressed in a grid of 4,096
+  cells took 728 ms, measured on the development PC, because the picture's extremes were found
+  for every point and every cell was drawn again.  The picture is now worked out in time linear in
+  its cells and a key press draws only the cell typed into: 27 ms a key at 4,096 cells, under the
+  100 ms the design for large projects allows.  Nothing to migrate.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

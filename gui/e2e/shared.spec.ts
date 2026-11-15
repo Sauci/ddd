@@ -39,6 +39,16 @@ function definitionOf(directory: string, name: string): Record<string, unknown> 
   return found.definition;
 }
 
+/** Every request the page asks of `route` from now on, by its whole url decoded: what a check that
+ * nothing was asked for a field the page refuses reads back. */
+function askedOf(page: Page, route: string): string[] {
+  const urls: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === route) urls.push(decodeURIComponent(request.url()));
+  });
+  return urls;
+}
+
 /** Opens an entry's panel the way a reader reaches it: the project, its Shared files tab, then
  * the entry's own row. */
 async function openEntry(page: Page, gui: Gui, name: string): Promise<Locator> {
@@ -75,7 +85,7 @@ test("a raster nothing measures in is removed, row and panel", async ({ page, vo
   await expect.poll(() => entriesOf(vocabularyGui.directory, "rasters")).toEqual(kept);
 });
 
-test("a raster's event, cycle and description are each saved from its panel, and an event another raster claims is refused", async ({
+test("a raster's event, cycle and description are each saved from its panel, and an event in another notation or one another raster claims is refused", async ({
   page,
   vocabularyGui,
 }) => {
@@ -86,6 +96,14 @@ test("a raster's event, cycle and description are each saved from its panel, and
   const event = panel.getByRole("region", { name: "Event" });
   const eventField = event.getByRole("textbox", { name: "Event" });
   await expect(eventField).toHaveValue("2");
+  // An event in another notation is refused by the page, in the words every field refuses it
+  // with, and nothing is asked of the server (fix round 1, I1): it travelled as raw json, to be
+  // refused in the json parser's words.
+  const plans = askedOf(page, "/api/raster-plan");
+  await eventField.fill("0x5");
+  await expect(event.getByRole("status")).toHaveText("'0x5' is not a number in decimal notation");
+  await expect(event.getByRole("button", { name: "Save" })).toHaveCount(0);
+  expect(plans.filter((url) => url.includes("0x5"))).toEqual([]);
   await eventField.fill("5");
   await expect(event.getByText("Changes 1 file: rasters.ddd.json")).toBeVisible();
   await event.getByRole("button", { name: "Save" }).click();
@@ -287,14 +305,24 @@ test("a project declaring nothing offers a blank form, whose vocabulary brings i
   expect(project.project.includes).toContain("constants.ddd.json");
 });
 
-test("the add form refuses a section's name the project already declares, and offers no apply", async ({
+test("the add form refuses a section's alignment in another notation and a name the project already declares, and offers no apply", async ({
   page,
   vocabularyGui,
 }) => {
   const form = await openForm(page, vocabularyGui, "section", ".spare");
   await form.getByRole("combobox", { name: "Access" }).press("ArrowDown");
   await page.getByRole("option", { name: "read-write", exact: true }).click();
-  await form.getByRole("textbox", { name: "Alignment" }).fill("4");
+  const alignment = form.getByRole("textbox", { name: "Alignment" });
+  await alignment.fill("4");
+  await expect(form.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
+
+  // Refused by the page in the grammar's words, and nothing asked (fix round 1, I1).
+  const plans = askedOf(page, "/api/section-plan");
+  await alignment.fill("0x4");
+  await expect(form.getByRole("status")).toHaveText("'0x4' is not a number in decimal notation");
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(plans.filter((url) => url.includes("0x4"))).toEqual([]);
+  await alignment.fill("4");
   await expect(form.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
 
   await form.getByRole("textbox", { name: "Name" }).fill(".fast_ram");
@@ -313,18 +341,26 @@ test("the add form refuses a value no constant may state, in the words of a cons
   await value.fill("4");
   await expect(form.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
 
-  // Json a constant's model takes no value from: a string. Typed bare, `oops` is not json at all,
-  // and the request is refused before any vocabulary is asked about it.
-  await value.fill('"oops"');
+  // A number in decimal notation a constant's model takes no value from: a whole one past what a
+  // 64 bit target holds.
+  await value.fill("18446744073709551616");
   await expect(form.getByRole("status")).toHaveText(
-    "\"oops\" is not a value a constant may state, so 'SPARE' cannot take it in " +
+    "18446744073709551616 is not a value a constant may state, so 'SPARE' cannot take it in " +
       "constants.ddd.json: a whole number a 64 bit target holds, of either sign, or a finite " +
       "fractional one",
   );
   await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+
+  // Text that is no number, a string's json among it, or a number in another notation, is refused
+  // by the page in the words every field refuses it with, and no plan is asked (15:M13).
+  await value.fill('"oops"');
+  await expect(form.getByRole("status")).toHaveText("'\"oops\"' is not a number");
+  await value.fill("0x10");
+  await expect(form.getByRole("status")).toHaveText("'0x10' is not a number in decimal notation");
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
 });
 
-test("the add form refuses an event another raster already claims", async ({
+test("the add form refuses an event in another notation, and one another raster already claims", async ({
   page,
   vocabularyGui,
 }) => {
@@ -332,6 +368,13 @@ test("the add form refuses an event another raster already claims", async ({
   const event = form.getByRole("textbox", { name: "Event" });
   await event.fill("3");
   await expect(form.getByText("Changes 1 file: rasters.ddd.json")).toBeVisible();
+
+  // Refused by the page in the grammar's words, and nothing asked (fix round 1, I1).
+  const plans = askedOf(page, "/api/raster-plan");
+  await event.fill("0b11");
+  await expect(form.getByRole("status")).toHaveText("'0b11' is not a number in decimal notation");
+  await expect(form.getByRole("button", { name: /^Apply to/ })).toHaveCount(0);
+  expect(plans.filter((url) => url.includes("0b11"))).toEqual([]);
 
   await event.fill("0");
   await expect(form.getByRole("status")).toHaveText("event 0 is already claimed by raster '1ms'");
@@ -349,6 +392,11 @@ test("a constant's value and description are each saved from its panel", async (
   const value = panel.getByRole("region", { name: "Value" });
   const valueField = value.getByRole("textbox", { name: "Value" });
   await expect(valueField).toHaveValue("16");
+  // A value in another notation is refused by the page, in the words every field refuses it with,
+  // and nothing is offered to save (15:M13).
+  await valueField.fill("0x20");
+  await expect(value.getByRole("status")).toHaveText("'0x20' is not a number in decimal notation");
+  await expect(value.getByRole("button", { name: "Save" })).toHaveCount(0);
   await valueField.fill("32");
   await expect(value.getByText("Changes 1 file: constants.ddd.json")).toBeVisible();
   await value.getByRole("button", { name: "Save" }).click();
@@ -465,11 +513,16 @@ test("a save made from a constant's panel that is out of date is refused, nothin
   await expect(save).toBeEnabled();
 
   // The file changes under the page, between the preview it holds and the press that sends it:
-  // its description, one word for another as long, written where the session's own watcher does
-  // not see it (`writeUnseen`), so only the Apply's own fresh read of the bytes does.
+  // its description, one word for another as long, and its value, 16 to 17, written where the
+  // session's own watcher does not see it (`writeUnseen`), so only the Apply's own fresh read of
+  // the bytes does.
   const before = readFileSync(path, "utf8");
-  const changed = before.replace("sample slots", "sample cells");
-  if (changed === before) throw new Error(`TREND_SAMPLES describes no sample slots in ${path}`);
+  const changed = before
+    .replace("sample slots", "sample cells")
+    .replace('"value": 16', '"value": 17');
+  if (!changed.includes("sample cells") || !changed.includes('"value": 17')) {
+    throw new Error(`TREND_SAMPLES no longer reads as this journey expects in ${path}`);
+  }
   writeUnseen(vocabularyGui.directory, FILES.constants.file, changed);
   await save.click();
   const refused = value.getByRole("status");
@@ -479,14 +532,13 @@ test("a save made from a constant's panel that is out of date is refused, nothin
 
   // The watcher never notices the change, and nothing needs it to: refusing the save as stale, the
   // server asks for the analysis itself (`Session._refused`), which reads the file as it is. The
-  // panel shows that analysis landed - the description written from outside - and the sentence is
-  // still there: it is held until the reader's next choice, not until a revision.
-  const description = panel
-    .getByRole("region", { name: "Description" })
-    .getByRole("textbox", { name: "Description" });
-  await expect(description).toHaveValue(
-    "sample cells of a pressure trend buffer, a device wide size no single component owns",
-  );
+  // panel reads the entry from the file as it stands, even of the revision refused, so it says
+  // nothing of that analysis; the table's rows are made once a revision and kept for it, so the
+  // entry's row states 17 only once that analysis has landed. The sentence is still there then:
+  // it is held until the reader's next choice, not until a revision.
+  await expect(
+    page.getByRole("row", { name: "TREND_SAMPLES", exact: true }).getByRole("gridcell").nth(1),
+  ).toHaveText("17");
   await expect(refused).toHaveText(STALE);
 
   // Save, offered under the sentence for the file as it now is, pressed again is that choice: the
@@ -533,7 +585,7 @@ test("a constant whose file does not load keeps its panel, naming the file, unti
   await expect(gone).toHaveCount(0);
 });
 
-test("a section's access, alignment and description are each saved from its panel", async ({
+test("a section's access, alignment and description are each saved from its panel, and an alignment in another notation is refused", async ({
   page,
   vocabularyGui,
 }) => {
@@ -557,6 +609,14 @@ test("a section's access, alignment and description are each saved from its pane
   const alignment = panel.getByRole("region", { name: "Alignment" });
   const alignmentField = alignment.getByRole("textbox", { name: "Alignment" });
   await expect(alignmentField).toHaveValue("4");
+  // As a raster's event is (fix round 1, I1).
+  const plans = askedOf(page, "/api/section-plan");
+  await alignmentField.fill("0x8");
+  await expect(alignment.getByRole("status")).toHaveText(
+    "'0x8' is not a number in decimal notation",
+  );
+  await expect(alignment.getByRole("button", { name: "Save" })).toHaveCount(0);
+  expect(plans.filter((url) => url.includes("0x8"))).toEqual([]);
   await alignmentField.fill("8");
   await expect(alignment.getByText("Changes 1 file: sections.ddd.json")).toBeVisible();
   await alignment.getByRole("button", { name: "Save" }).click();

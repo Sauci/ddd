@@ -11,9 +11,17 @@ export function planDelay(asked: boolean): number {
 }
 
 /** Whether a plan asked for is the one the reader's fields now say: only then is its preview
- * shown and applied, never one for text the reader has since typed past. */
+ * shown and applied, never one for text the reader has since typed past. Compared as json, a
+ * number json cannot hold spelled as itself: `JSON.stringify` writes `Infinity`, `-Infinity` and
+ * `NaN` alike as `null`, which made the three one request, the plan of one shown for another. */
 export function sameRequest(asked: unknown, typed: unknown): boolean {
-  return JSON.stringify(asked) === JSON.stringify(typed);
+  return keyOf(asked) === keyOf(typed);
+}
+
+function keyOf(request: unknown): string | undefined {
+  return JSON.stringify(request, (_key, value: unknown) =>
+    typeof value === "number" && !Number.isFinite(value) ? `${value} as a number` : value,
+  );
 }
 
 /** Whether a value moving into `useDebounced` takes effect at once rather than waiting
@@ -72,4 +80,75 @@ export function planShown<T>(
     refusal: trusted ? (query.error?.message ?? null) : null,
     pending: !trusted || query.data === undefined,
   };
+}
+
+/** What a panel says in place of a plan while a chooser's text is not the value settled on and
+ * Enter would take that text: the reader's way out of it. */
+export const UNSETTLED_TEXT = "Press Enter to take what you typed, or pick it from the list.";
+
+/** What the sentence says where nothing in the list matches the text and Enter would take it
+ * (a unit picker always would): no list to pick from. */
+export const UNSETTLED_ENTER_ONLY = "Press Enter to take what you typed.";
+/** Where Enter would take nothing, but the list offers entries. */
+export const UNSETTLED_PICK = "Pick one from the list, or press Escape to put the value back.";
+/** Where Enter would take nothing and the list offers nothing. */
+export const UNSETTLED_NOTHING =
+  "Nothing in the list matches what you typed: change it, or press Escape to put the value back.";
+
+/**
+ * The way out of text the panel has not settled on, said only as far as it is true. `enterTakes`:
+ * whether Enter would take the text as it stands (a unit picker takes any text but a blank one; a
+ * value chooser only text spelling an entry exactly); `listed`: how many entries the list offers
+ * for it. A chooser whose Enter would take nothing must not say it does, and one with nothing
+ * listed must not send the reader to the list.
+ */
+export function unsettledSentence(enterTakes: boolean, listed: number): string {
+  if (enterTakes) return listed > 0 ? UNSETTLED_TEXT : UNSETTLED_ENTER_ONLY;
+  return listed > 0 ? UNSETTLED_PICK : UNSETTLED_NOTHING;
+}
+
+/**
+ * The field's note while its text is not settled on, `undefined` while it is: `text` is what the
+ * field holds, `sections` the list the text was typed over, and `entered` what Enter does with
+ * that text over them (`enteredUnit`, `enteredValue`: `undefined` where it takes nothing). The
+ * whole choice of what to say lives here, so that the pickers draw nothing of it themselves.
+ */
+export function unsettledNote<S extends { choices: readonly unknown[] }>(
+  isUnsettled: boolean,
+  text: string,
+  sections: readonly S[],
+  entered: (sections: readonly S[], text: string) => unknown,
+): string | undefined {
+  if (!isUnsettled) return undefined;
+  return unsettledSentence(
+    entered(sections, text) !== undefined,
+    sections.reduce((count, section) => count + section.choices.length, 0),
+  );
+}
+
+/**
+ * Whether a chooser's text is one the panel has not settled on (decision 15.3): `typed` is what
+ * the reader has typed into its field and left there, `undefined` while the field reads the value
+ * settled on, whose own label is `settled`. Text typed is never a choice until Enter or a pick
+ * makes it one, so the plan on screen is still the earlier value's - `planShown`'s own rule,
+ * "never one for text the reader has since typed past", which cannot see this text: it is no part
+ * of the request. While it holds, the panel draws no plan and offers no Apply, and says
+ * what to do instead (`unsettledNote`). Text equal to the settled label is that value, however it
+ * got there.
+ */
+export function unsettled(typed: string | undefined, settled: string): boolean {
+  return typed !== undefined && typed !== settled;
+}
+
+/**
+ * What ends the text typed into a chooser's field (decisions 15.3 and 24.2): `cause` is the key
+ * pressed in the field, `"blur"` for the focus leaving it, or `"close"` for the list closing. Only
+ * Escape and the focus leaving end it. Every close keeps it, whoever made it: React Aria's on a
+ * scroll (a wheel notch, or the scroll into view after the field takes the focus or a key typed
+ * below the fold), the arrow's, an Enter that takes nothing, and the list closing because nothing
+ * in it matches - none of those is the reader leaving. Text kept is text the panel has not
+ * settled on (`unsettled`), so it withholds Apply and says how to go on.
+ */
+export function endsTyped(cause: string): boolean {
+  return cause === "Escape" || cause === "blur";
 }

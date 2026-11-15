@@ -1083,6 +1083,23 @@ class DeclarationPlanQuery(
     route: ClassVar[str] = "declaration-plan"
 
 
+class DescriptionPlanQuery(QueryModel):
+    """What ``GET /api/description-plan`` takes: the description one component's declaration of a
+    variable is to state."""
+
+    missing: ClassVar[str] = "description-plan takes ?file= and ?name= and ?description="
+
+    file: Annotated[str, file_path("description-plan takes ?file= as a file's path")]
+    """The component whose declaration it is: a description is the declaration's own."""
+
+    name: Annotated[str, named("description-plan takes ?name= as an object's name")]
+    """The object the declaration is of."""
+
+    description: str
+    """The description, any text; blank, the empty text, which takes the key away - the default
+    of the model."""
+
+
 class ValuePlanQuery(QueryModel):
     """What ``GET /api/value-plan`` takes: one element of an object's values set."""
 
@@ -1091,14 +1108,54 @@ class ValuePlanQuery(QueryModel):
     name: Annotated[str, named("value-plan takes ?name= as an object's name")]
     """The object."""
 
-    at: Annotated[str, named("value-plan takes ?at= as an element's indices")]
-    """The element, as a json pointer's suffix: ``[2]``, or ``[1][3]``. Its length bounded here,
-    so that no index of it holds more digits than a number does; whether it names an element of
-    the object is the handler's question."""
+    at: Annotated[str, named("value-plan takes ?at= as an element's indices", blank="")]
+    """The element, as a json pointer's suffix: ``[2]``, or ``[1][3]``; blank for the one value of
+    an object of no shape, which is the whole of it. Its length bounded here, so that no index of
+    it holds more digits than a number does; whether it names an element of the object is the
+    handler's question."""
 
     raw: Annotated[str, any_text("value-plan takes ?raw= as a number")]
     """The raw count to store; whether it is a number is the handler's question, answered as a
     refusal of the count."""
+
+
+_ELEMENT: Final = re.compile(r"(?:\[(?:0|[1-9][0-9]{0,8})\])+")
+"""One element's indices as a pointer writes them: ``[2]``, or ``[1][3]`` - each a whole number of
+at most :data:`MAX_DIGITS` digits, written with no zero before it."""
+
+
+def _elements(value: object) -> str:
+    """Elements' indices joined by commas, ``[0],[2]`` or ``[1][1],[1][3]``; anything else -
+    the empty text, a piece of no element's form, a comma with nothing on either side - is
+    refused. Whether each names an element of the object is the handler's question."""
+    if isinstance(value, str) and all(_ELEMENT.fullmatch(piece) for piece in value.split(",")):
+        return value
+    raise refusal("cells-plan takes ?at= as elements' indices joined by commas")
+
+
+class CellsPlanQuery(QueryModel):
+    """What ``GET /api/cells-plan`` takes: several elements of an object's values set at once, the
+    cells typed into the page's grid - each where it stands, the rest of the file as it was."""
+
+    missing: ClassVar[str] = "cells-plan takes ?name= and ?at= and ?raw="
+
+    name: Annotated[str, named("cells-plan takes ?name= as an object's name")]
+    """The object."""
+
+    at: Annotated[str, BeforeValidator(_elements)]
+    """The elements, each as a json pointer's suffix, joined by commas: ``[0],[2]``, or
+    ``[1][1],[1][3]``."""
+
+    raw: Annotated[str, any_text("cells-plan takes ?raw= as numbers joined by commas")]
+    """The raw count to store at each element, in the same order, joined by commas; whether each
+    is a number is the handler's question, answered as a refusal of the count."""
+
+    @model_validator(mode="after")
+    def _paired(self) -> CellsPlanQuery:
+        """The query, where it gives one count for each element; else its refusal."""
+        if self.at.count(",") != self.raw.count(","):
+            raise refusal("cells-plan takes as many numbers in ?raw= as elements in ?at=")
+        return self
 
 
 class ValuesPlanQuery(QueryModel):

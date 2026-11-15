@@ -35,6 +35,7 @@ from ddd.declaration_plans import (
     DeclarationRefusalError,
     declarable,
     declare_object,
+    describe_declaration,
     form_for,
     read_object,
     remove_declaration,
@@ -77,6 +78,7 @@ from ddd.gui.queries import (
     AddSection,
     AddUnit,
     AdoptUnits,
+    CellsPlanQuery,
     CompareQuery,
     ConstantPlanQuery,
     ConstantQuery,
@@ -85,6 +87,7 @@ from ddd.gui.queries import (
     DeclarationPlanQuery,
     DeclareObject,
     DescribeUnit,
+    DescriptionPlanQuery,
     FileQuery,
     FilesPlanQuery,
     FindingsQuery,
@@ -165,7 +168,15 @@ from ddd.lsp.units import (
     rename_unit,
     unit_project,
 )
-from ddd.object_values import Grid, ValueRefusalError, grid_of, set_cell, set_values
+from ddd.object_values import (
+    Grid,
+    ValueRefusalError,
+    grid_of,
+    limits_refusal,
+    set_cell,
+    set_cells,
+    set_values,
+)
 from ddd.project_shared import (
     CONSTANTS,
     RASTERS,
@@ -207,7 +218,7 @@ from ddd.shared_plans import (
     set_entry,
 )
 from ddd.type_plans import REQUIRED, TypePlan, TypeRefusalError, rename_type, set_key
-from ddd.variable_keys import offer_for, offers
+from ddd.variable_keys import offer_for, offers, unit_refusal
 from ddd.variables import (
     Planned,
     declarations_of,
@@ -979,6 +990,23 @@ class Api:
         if unseen is not None:
             return unseen
         cache: dict[Path, Document] = {}
+        # A type's limits refused as a variable's are (`_settle`), by the datatype it states.
+        if isinstance(asked, SetTypeKey) and asked.key == "limits" and asked.raw is not None:
+            site = built.types.get(asked.name)
+            stated: list[object] = []
+            # A statement, not a ternary, so the coverage gate sees a name no type has: the plan
+            # refuses that one in its own words below.
+            if site is not None:
+                stated.append(read(site.path, cache).value_at(f"{site.pointer}.datatype"))
+            inexact = limits_refusal(asked.raw, stated)
+            if inexact is not None:
+                return _refusal(revision, "invalid", inexact, asked.name)
+        # A type's unit with spaces around it refused as a variable's is (`unit_refusal`), in the
+        # words the Units tab refuses that spelling with.
+        if isinstance(asked, SetTypeKey) and asked.key == "unit" and asked.raw is not None:
+            spaced = unit_refusal(asked.raw)
+            if spaced is not None:
+                return _refusal(revision, "invalid", spaced, asked.name)
         try:
             plan = _type_plan_of(asked, built, cache)
         except TypeRefusalError as refused:
@@ -1305,6 +1333,22 @@ class Api:
         # One cache for both reads below, so a declaration `settle` already read for this
         # request is not read from disk a second time to narrow what it comes to.
         cache: dict[Path, Document] = {}
+        # A bound the page sends at or past 2^53 may be another it rounded, which a 64 bit integer
+        # is refused, as a value is (`limits_refusal`). Read from each declaration's own datatype:
+        # one naming a type takes no limits of its own, the type fixing them.
+        if key == "limits" and raw is not None:
+            stated = [
+                read(site.path, cache).value_at(f"{site.pointer}.datatype")
+                for site in built.declarations[name]
+            ]
+            inexact = limits_refusal(raw, stated)
+            if inexact is not None:
+                return _error(409, "invalid", inexact)
+        # A unit with spaces around it is refused, as the Units tab refuses that spelling.
+        if key == "unit" and raw is not None:
+            spaced = unit_refusal(raw)
+            if spaced is not None:
+                return _error(409, "invalid", spaced)
         # The reader chose this value, so a declaration it would leave unable to load is not
         # left out: it is planned, and told (`unloadable`) - where a button offering it is withheld.
         settlement = settle(built, name, key, raw, cache, withholding=False)
@@ -1455,6 +1499,51 @@ class Api:
             ),
         )
 
+    def _description_plan(self, query: DescriptionPlanQuery, body: None) -> Reply:
+        revision = self._opened()
+        try:
+            file = _source(revision, Path(query.file))
+        except NotInProjectError as outside:
+            return _error(404, "not-found", str(outside))
+        built = revision.index
+        if built is None:
+            return _error(409, UNREADABLE, _NOTHING_LOADED)
+        # Written into one file, as a declaration is: refused, naming that file alone, where it is
+        # the one that did not load, what it declares being unknown.
+        if not _file_of(revision, file).loaded:
+            return _error(
+                409,
+                UNREADABLE,
+                f"{file.name} did not load, so what it declares is unknown and nothing can be "
+                "described in it",
+            )
+        cache: dict[Path, Document] = {}
+        try:
+            plan = describe_declaration(built, file, query.name, query.description, cache)
+        except DeclarationRefusalError as refused:
+            # A refusal that nothing is found is about the name only where the index lacks it,
+            # as `_declaration_plan` asks: where it holds the name, the refusal is about this
+            # file, and its own sentence stands.
+            named = None
+            if query.name not in built.declarations:
+                named = query.name
+            return _refusal(revision, refused.code, refused.message, named)
+        derived = self._derive(revision)
+        try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = _changing(previewed(plan.edits, derived.stamps))
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
+        )
+
     def _values(self, query: ValuesQuery, body: None) -> Reply:
         name = query.name
         revision = self._opened()
@@ -1485,6 +1574,8 @@ class Api:
                     conversion=written(grid.conversion),
                     minimum=grid.minimum,
                     maximum=grid.maximum,
+                    minimum_text=grid.minimum_text,
+                    maximum_text=grid.maximum_text,
                     shape=grid.shape,
                     rows=grid.rows,
                     stated=grid.stated,
@@ -1498,6 +1589,7 @@ class Api:
                         }
                         for axis in grid.axes
                     ],
+                    unshown=grid.unshown,
                     owner=grid.owner,
                     file=grid.file,
                     findings=_listed(derived, _grid_findings(derived, grid), cache),
@@ -1525,7 +1617,39 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = _changing(previewed(plan.edits, derived.stamps))
+        except EditError as refused:
+            return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
+        return Reply(
+            200,
+            written(
+                contract.PlanReply(
+                    revision=revision.number, changes=_planned_changes(revision, derived, planned)
+                )
+            ),
+        )
+
+    def _cells_plan(self, query: CellsPlanQuery, body: None) -> Reply:
+        revision = self._opened()
+        built, dictionary = revision.index, revision.dictionary
+        if built is None or dictionary is None:
+            return _unresolved(revision)
+        try:
+            # As many counts as elements: the query refuses any other pairing.
+            pairs = zip(query.at.split(","), query.raw.split(","), strict=True)
+            cells = [(at, _number(raw)) for at, raw in pairs]
+            plan = set_cells(dictionary, built, query.name, cells, {})
+        except ValueRefusalError as refused:
+            # Both codes, as `_value_plan` above: a name the project has not, and every other
+            # refusal. A statement rather than a ternary, so the gate can see both arms.
+            if refused.code == "not-found":
+                return _error(404, refused.code, refused.message)
+            return _error(409, refused.code, refused.message)
+        derived = self._derive(revision)
+        try:
+            self._refuse_generated(revision, (edit.path for edit in plan.edits))
+            self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
+            planned = _changing(previewed(plan.edits, derived.stamps))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1556,7 +1680,7 @@ class Api:
         try:
             self._refuse_generated(revision, (edit.path for edit in plan.edits))
             self._refuse_unanalysed(revision, (edit.path for edit in plan.edits))
-            planned = previewed(plan.edits, derived.stamps)
+            planned = _changing(previewed(plan.edits, derived.stamps))
         except EditError as refused:
             return _error(409 if refused.code in REFUSALS else 500, refused.code, str(refused))
         return Reply(
@@ -1812,8 +1936,10 @@ ROUTES: Final[tuple[Route, ...]] = (
     ),
     Route("/api/declarable", "GET", DeclarableQuery, None, Api._declarable),
     Route("/api/declaration-plan", "GET", DeclarationPlanQuery, None, Api._declaration_plan),
+    Route("/api/description-plan", "GET", DescriptionPlanQuery, None, Api._description_plan),
     Route("/api/values", "GET", ValuesQuery, None, Api._values),
     Route("/api/value-plan", "GET", ValuePlanQuery, None, Api._value_plan),
+    Route("/api/cells-plan", "GET", CellsPlanQuery, None, Api._cells_plan),
     Route("/api/values-plan", "GET", ValuesPlanQuery, None, Api._values_plan),
     Route("/api/compare", "GET", CompareQuery, None, Api._compare, Policy(runs_plugins=True)),
 )
@@ -2538,6 +2664,16 @@ def _declaration_plan_of(
     if not isinstance(definition, dict):
         raise DeclarationRefusalError("invalid", "the definition is not json")
     return declare_object(built, file, asked.scope, definition, cache)
+
+
+def _changing(planned: Sequence[Planned]) -> tuple[Planned, ...]:
+    """The files of a plan its edit changes: one the edit leaves as it was, every byte the same, is
+    no change, and a plan changing none is answered as one with nothing to change - as a settled
+    key every declaration already states is - for which the page offers nothing (15:M4). An Apply
+    of it wrote the file as it was, analysed it again and left an undo putting back nothing anybody
+    changed. A file's bytes change where its lines do: the edit engine writes every line break as
+    the file spells it, so an edit changing no line changes no byte."""
+    return tuple(entry for entry in planned if entry.hunks)
 
 
 def _planned_changes(

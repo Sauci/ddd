@@ -178,6 +178,31 @@ test("an undo the server fails on is refused in the strip in its words, is still
   expect(failed()).toBe(1);
 });
 
+test("an undo refused keeps its sentence for its own entry, and an edit made with the strip open is offered to undo", async ({
+  page,
+  gui,
+}) => {
+  await settledAndAnalysed(page, gui);
+  await page.getByRole("button", { name: "Undo the unit of ValueA" }).click();
+  await expect(strip(page).getByText("Puts back 1 file: controller.ddd.json")).toBeVisible();
+  // The press's `POST` alone fails: the preview the next entry asks for goes through.
+  await failing(page, "/api/undo", "http", 1);
+  await strip(page).getByRole("button", { name: "Put back 1 file" }).click();
+  const refused = strip(page).getByRole("status");
+  await expect(refused).toHaveText(`The undo was refused: ${SERVER_FAILED}`);
+
+  // Another edit, from the panel still open, while the strip stays open: the top of the stack is
+  // that edit now, and the refusal was of the one before it. The strip offers the new entry - its
+  // preview and its Put back - and no longer says what was refused of the old one.
+  const panel = page.getByRole("complementary", { name: "ValueA" });
+  await panel.getByRole("row", { name: /^limits/ }).click();
+  await panel.getByLabel("Max").fill("50");
+  await panel.getByRole("button", { name: /^Apply to/ }).click();
+  await expect(page.getByRole("button", { name: "Undo the limits of ValueA" })).toBeVisible();
+  await expect(strip(page).getByRole("button", { name: /^Put back/ })).toBeVisible();
+  await expect(refused).toHaveCount(0);
+});
+
 test("a preview the server fails on is refused in the strip, before any undo was asked", async ({
   page,
   gui,

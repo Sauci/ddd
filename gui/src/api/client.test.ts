@@ -2,11 +2,13 @@ import { describe, expect, test, vi } from "vitest";
 import { OwnEdits, ownEdits } from "../state/edits";
 import {
   ApiError,
+  getCellsPlan,
   getCompare,
   getConstant,
   getConstantPlan,
   getDeclarable,
   getDeclarationPlan,
+  getDescriptionPlan,
   getFile,
   getFiles,
   getFilesPlan,
@@ -257,6 +259,14 @@ describe("requests to the server", () => {
       { action: "declare", file: "/tmp/c.ddd.json", scope: "output", definition: '{"name":"P"}' },
       fetchImpl,
     );
+    await getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description: "a gain" },
+      fetchImpl,
+    );
+    await getDescriptionPlan(
+      { file: "/tmp/c.ddd.json", name: "ParameterA", description: "" },
+      fetchImpl,
+    );
     // Noted into an instance of their own: this fetch answers `{}`, which carries no number.
     await postEdit(
       {
@@ -270,6 +280,7 @@ describe("requests to the server", () => {
     await postUndo(3, fetchImpl, new OwnEdits());
     await getValues("CurveA", fetchImpl);
     await getValuePlan({ name: "CurveA", at: "[2]", raw: 750 }, fetchImpl);
+    await getValuePlan({ name: "ParameterA", at: "", raw: 4000 }, fetchImpl);
     expect(fetchImpl.mock.calls).toEqual([
       ["/api/session", { credentials: "omit" }],
       ["/api/projects", { credentials: "omit" }],
@@ -368,6 +379,14 @@ describe("requests to the server", () => {
         { credentials: "omit" },
       ],
       [
+        "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=a%20gain",
+        { credentials: "omit" },
+      ],
+      [
+        "/api/description-plan?file=%2Ftmp%2Fc.ddd.json&name=ParameterA&description=",
+        { credentials: "omit" },
+      ],
+      [
         "/api/edit",
         {
           credentials: "omit",
@@ -390,6 +409,7 @@ describe("requests to the server", () => {
       ],
       ["/api/values?name=CurveA", { credentials: "omit" }],
       ["/api/value-plan?name=CurveA&at=%5B2%5D&raw=750", { credentials: "omit" }],
+      ["/api/value-plan?name=ParameterA&at=&raw=4000", { credentials: "omit" }],
     ]);
   });
 
@@ -414,6 +434,25 @@ describe("requests to the server", () => {
         "/api/findings?offset=100&limit=100&severity=error&file=%2Fp%2Fa%26b.ddd.json&check=a%2Fb",
         { credentials: "omit" },
       ],
+    ]);
+  });
+
+  test("getCellsPlan asks for the cells alone, whatever the size of their object", async () => {
+    // Two cells of a block of 10240 counts: two elements and two counts, where the block's whole
+    // table needs more characters than one address holds.
+    const calls = recorded();
+    await getCellsPlan(
+      {
+        name: "Long",
+        cells: [
+          { at: "[3]", raw: 7 },
+          { at: "[9000]", raw: 8 },
+        ],
+      },
+      calls.fetch,
+    );
+    expect(calls.urls).toEqual([
+      ["/api/cells-plan?name=Long&at=%5B3%5D%2C%5B9000%5D&raw=7%2C8", { credentials: "omit" }],
     ]);
   });
 

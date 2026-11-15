@@ -51,6 +51,9 @@ export interface UnitPanelViewProps {
   onChosen: (unit: string) => void;
   /** The picker's list closed or its field was left: what was typed there is dropped. */
   onPickerClosed: () => void;
+  /** Whether the picker's text is not the spelling settled on (`unsettled`, lib/typing.ts): the
+   * rename then says how to settle it, in place of its plan and Apply. */
+  unsettled: boolean;
   /** The spelling chosen to rename the unit to, or `null` while none is. */
   to: string | null;
   /** Each change asked for, or `null` while it is not: the description left as it is, no
@@ -191,6 +194,7 @@ export function UnitPanelView(props: UnitPanelViewProps) {
             if (chosen !== null) props.onChosen(chosen);
           }}
           onClose={props.onPickerClosed}
+          unsettled={props.unsettled}
           note={undefined}
           isDisabled={props.busy}
           autoFocus={null}
@@ -198,7 +202,8 @@ export function UnitPanelView(props: UnitPanelViewProps) {
         <p className="rename-note">
           Only the spelling changes; values, limits and conversions stay as they are.
         </p>
-        {to !== null &&
+        {!props.unsettled &&
+          to !== null &&
           outcome(
             "rename",
             props.renaming,

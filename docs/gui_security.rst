@@ -470,6 +470,12 @@ pages need none either; every route below needs the token as a header.
      - 
      - 
    * - ``GET``
+     - ``/api/description-plan``
+     - 
+     - 
+     - 
+     - 
+   * - ``GET``
      - ``/api/values``
      - 
      - 
@@ -477,6 +483,12 @@ pages need none either; every route below needs the token as a header.
      - 
    * - ``GET``
      - ``/api/value-plan``
+     - 
+     - 
+     - 
+     - 
+   * - ``GET``
+     - ``/api/cells-plan``
      - 
      - 
      - 

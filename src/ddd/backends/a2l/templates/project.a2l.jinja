@@ -1,5 +1,8 @@
 /* {{ filename }} - generated from '{{ model.project }}' by {{ model.generator }}. DO NOT EDIT. */
 ASAP2_VERSION {{ model.version }}
+{% if not model.has_address_source %}
+/* written with no address source: every address below is 0x00000000 */
+{% endif %}
 
 /begin PROJECT {{ model.project }} "{{ model.description | a2l }}"
 

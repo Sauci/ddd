@@ -4,7 +4,7 @@
     "tests/fixtures/elf/src/gold_kept.c": "0018a4d99dd7556c080585a1f258607521dfec3bd78250c76ed03c5d7f111c92",
     "tests/fixtures/elf/src/gold_unused.c": "33d28690cef5712c8111cbb817d3e4295ab1dd241031d3351f7b28507925a5c1",
     "tests/fixtures/elf/src/lto.c": "cbb3ae9ca73fe507ccd6903ad2d4402efead45c1513ed6092e697cc4c2844253",
-    "tests/fixtures/elf/src/main.c": "936f3d4d646a82955177e374769d908bdc0558fe4654910cfa1431dbd2da9b65",
+    "tests/fixtures/elf/src/main.c": "94d8ea18636832193b966a68432e2c17d7c2662f79935567af0bda40c9cc5c1e",
     "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
     "tests/fixtures/elf/src/shared.h": "9cdfa71b5de8dd20c26451a0102a1de36c6f0f07d9c71941e9cc6cf6f761f214",
     "tests/fixtures/elf/src/type_units.c": "93fcd051c5a9047f87cff9b57cf39ac34732adb4f30a6311bd92299f402fe93c",
@@ -60,6 +60,18 @@
         "compressed": false
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".rodata",
@@ -433,6 +445,18 @@
           "size": 2
         },
         {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
           "name": "_DYNAMIC",
           "section": ".dynamic",
           "contents": true,
@@ -483,6 +507,18 @@
         "compressed": false
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".rodata",
@@ -854,6 +890,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         },
         {
           "name": "_GLOBAL_OFFSET_TABLE_",
@@ -914,6 +962,18 @@
           "size": 0
         },
         {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".rodata",
           "contents": true,
@@ -1284,6 +1344,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         },
         {
           "name": "_TLS_MODULE_BASE_",
@@ -1345,6 +1417,18 @@
           "size": 0
         },
         {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".rodata",
           "contents": true,
@@ -1715,6 +1799,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         },
         {
           "name": "_TLS_MODULE_BASE_",
@@ -1776,6 +1872,18 @@
           "size": 0
         },
         {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".rodata",
           "contents": true,
@@ -2146,6 +2254,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         },
         {
           "name": "_TLS_MODULE_BASE_",
@@ -2208,6 +2328,18 @@
           "size": 0
         },
         {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".rodata",
           "contents": true,
@@ -2578,6 +2710,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         },
         {
           "name": "_TLS_MODULE_BASE_",
@@ -2631,6 +2775,18 @@
       },
       "variables": [
         {
+          "name": "Aligned_Natural",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".sdata",
           "contents": true,
@@ -3001,6 +3157,18 @@
           "section": ".sbss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     },
@@ -3051,6 +3219,18 @@
       },
       "variables": [
         {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".rodata",
           "contents": true,
@@ -3421,6 +3601,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     },
@@ -3474,6 +3666,18 @@
       },
       "variables": [
         {
+          "name": "Aligned_Natural",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".rodata",
           "contents": true,
@@ -3844,6 +4048,18 @@
           "section": ".sbss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     },
@@ -3890,6 +4106,18 @@
       },
       "variables": [
         {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
           "name": "Cal_Curve",
           "section": ".rodata",
           "contents": true,
@@ -4260,6 +4488,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     }

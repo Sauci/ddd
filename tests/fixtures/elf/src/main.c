@@ -215,3 +215,18 @@ struct Natural_s {
     uint8_t f[3];
 };
 struct Natural_s Laid_Natural;
+
+/* Appended after Laid_Natural, so that no line above it moves: an alignment the source states
+   on a variable, a GNU vector as a variable and as a member, and a variable of natural
+   alignment as the control. */
+_Alignas(64) uint32_t Aligned_Var = 7;
+uint32_t Aligned_Natural = 9;
+
+typedef float Vec4_t __attribute__((vector_size(16)));
+Vec4_t Vector_Var;
+
+struct Vector_Holder_s {
+    uint8_t tag;
+    Vec4_t lanes;
+};
+struct Vector_Holder_s Vector_Holder;

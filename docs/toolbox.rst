@@ -268,7 +268,9 @@ under DDD's identifiers.
      - bits skipped where the next bitfield would have fit
    * - ``elf-alignment``
      - warning
-     - an alignment the source states
+     - an alignment the source states, on a variable or a member, and a GNU vector, which the
+       target aligns as a whole, as a variable or a member; none where the producer writes
+       no alignment (``-gstrict-dwarf`` at DWARF 4 and before)
    * - ``elf-layout``
      - warning
      - a member at another offset, or a structure of another size, than the structure DDD

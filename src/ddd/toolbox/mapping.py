@@ -207,6 +207,12 @@ class Mapper:
 
     def typed(self, variable: Variable) -> Typed | None:
         """What DDD states of ``variable``'s type; None, reported, where it cannot be stated."""
+        typed = self._typed(variable)
+        if typed is not None:
+            self._aligned(variable)
+        return typed
+
+    def _typed(self, variable: Variable) -> Typed | None:
         shape = shape_of(variable.type)
         location = place(self._image, variable.declared_at)
         core = shape.core
@@ -230,6 +236,77 @@ class Mapper:
             reaches=reaches,
             element_size=core.size,
         )
+
+    def _aligned(self, variable: Variable) -> None:
+        """Say where ``variable`` is aligned as the source or the target asks, which DDD cannot
+        state: an alignment the source states on it, else a GNU vector, which the target aligns
+        as a whole."""
+        location = place(self._image, variable.declared_at)
+        generated = self._generated(variable.type)
+        if variable.alignment is not None:
+            if variable.alignment == generated:
+                return
+            message = f"'{variable.name}' is aligned to {variable.alignment} bytes in C, "
+            if generated is None:
+                message += (
+                    "which DDD cannot state: the variable DDD generates is aligned as its type is"
+                )
+            else:
+                message += (
+                    f"where the variable DDD generates is aligned to {generated}: DDD cannot "
+                    f"state an alignment on a variable"
+                )
+            report(self._bag, "elf-alignment", message, location)
+            return
+        vector = self._vector(variable.type)
+        if vector is not None:
+            report(
+                self._bag,
+                "elf-alignment",
+                f"'{variable.name}' {self._lost(vector)} on a variable",
+                location,
+            )
+
+    def _vector(self, ctype: CType) -> Array | None:
+        """The GNU vector ``ctype`` is, or is an array or typedef of, where one is aligned by
+        more than its elements are."""
+        node = ctype
+        while True:
+            if isinstance(node, Qualified | Typedef):
+                node = node.inner
+            elif isinstance(node, Array):
+                if node.vector and (size_of(node) or 0) > (size_of(node.element) or 0):
+                    return node
+                node = node.element
+            else:
+                return None
+
+    def _lost(self, vector: Array) -> str:
+        """What a GNU vector's alignment is and what the generated array's is, ended by what
+        DDD cannot state."""
+        element = size_of(vector.element) or 0
+        generated = self._generated(vector.element)
+        alignment = f"aligned to {generated}" if generated else "aligned as its elements are"
+        return (
+            f"is a GNU vector of {size_of(vector)} bytes, which the target aligns as a whole, "
+            f"where the array of {element} byte elements DDD generates is {alignment}: DDD "
+            f"cannot state an alignment"
+        )
+
+    def _generated(self, ctype: CType) -> int | None:
+        """The alignment in bytes DDD's generated C gives ``ctype``; None where the target's
+        rules are not held, or the type is laid out in a way this tool does not model."""
+        machine = self._image.machine
+        cap = None if machine is None else alignment_cap(machine, self._image.flags)
+        if cap is None:
+            return None
+        core = shape_of(ctype).core
+        if isinstance(core, Struct):
+            natural = _natural(core, cap)
+            return None if natural is None else natural.alignment
+        # A refused type never gets here: typed() reports an alignment of what it mapped.
+        assert isinstance(core, Base | Enum)
+        return min(core.size, cap)
 
     def conflicts(self) -> dict[str, list[Declared | None]]:
         """Every name the image defines more than one way, with where each way is declared."""
@@ -427,6 +504,11 @@ class Mapper:
                     f"state",
                     member.declared_at,
                 )
+            # After the stated alignment, which _once keeps where a member has both.
+            vector = self._vector(member.type)
+            if vector is not None:
+                lost = f"'{label}' {self._lost(vector)}"
+                self._once("elf-alignment", label, lost, member.declared_at)
             gap = _gap(end, member)
             if gap:
                 gapped = True

@@ -154,6 +154,9 @@ class Array:
 
     element: CType
     dimensions: tuple[int, ...]
+    vector: bool = False
+    """Whether DWARF marks it a GNU vector (``DW_AT_GNU_vector``, as ``vector_size`` writes it):
+    described as the array it holds, and aligned by the target as a whole."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +202,10 @@ class Variable:
     """Whether the variable has external linkage, as ``DW_AT_external`` states: False for a
     ``static``. True by default, so that a variable built by hand stands for a global, as an
     object of a project is; the reader always states it."""
+
+    alignment: int | None = None
+    """The alignment in bytes the source states on the variable (``_Alignas``, as
+    ``DW_AT_alignment`` writes it); None where DWARF states none."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -666,7 +673,17 @@ def _variable(entry: Entry, unit: Unit, types: _Types, symbols: _Symbols) -> Var
     # completes and not on the definition, clang on the one entry it writes (measured over the
     # fixture matrix). DWARF 2 and 3 spell it as a flag byte, whose 0 says it is absent.
     external = bool(_either(entry, named, "DW_AT_external"))
-    return Variable(name, unit.name, ctype, declared_at, address, missing, external)
+    alignment = _either(entry, named, "DW_AT_alignment")
+    return Variable(
+        name,
+        unit.name,
+        ctype,
+        declared_at,
+        address,
+        missing,
+        external,
+        alignment if isinstance(alignment, int) else None,
+    )
 
 
 def _address(value: Any, unit: Unit) -> tuple[int | None, str]:
@@ -752,7 +769,11 @@ class _Types:
             dimensions.append(extent)
         if not dimensions:
             return Unsupported("an array without a fixed size of at least one element")
-        return Array(self.inner(entry, unit), tuple(dimensions))
+        return Array(
+            self.inner(entry, unit),
+            tuple(dimensions),
+            vector=bool(_value(entry, "DW_AT_GNU_vector")),
+        )
 
     def _enum(self, entry: Entry, unit: Unit) -> CType:
         if "DW_AT_declaration" in entry.attributes:

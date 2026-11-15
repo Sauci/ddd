@@ -96,9 +96,10 @@ def stored(
     line: int | None = None,
     missing: str = "",
     external: bool = True,
+    alignment: int | None = None,
 ) -> Variable:
     declared = Declared(unit, line) if line is not None else None
-    return Variable(name, unit, ctype, declared, address, missing, external)
+    return Variable(name, unit, ctype, declared, address, missing, external, alignment)
 
 
 def found(bag: DiagnosticBag) -> list[tuple[str, Severity, str]]:
@@ -848,6 +849,110 @@ I386 = 3
 ARM = 40
 RISCV = 243
 AAPCS = 0x5000200
+
+
+class TestAnAlignmentTheSourceStates:
+    """``elf-alignment`` on a variable, and on a GNU vector wherever one is a variable or a
+    member: what DDD's generated C would align differently, and cannot be told to."""
+
+    VECTOR = Array(F32, (4,), vector=True)
+
+    def said(
+        self, variable: Variable, *, machine: int | None = X86_64, flags: int = 0
+    ) -> list[tuple[str, Severity, str]]:
+        bag = DiagnosticBag()
+        Mapper(image(machine=machine, flags=flags), bag).typed(variable)
+        return [item for item in found(bag) if item[0] == "elf-alignment"]
+
+    def test_an_alignment_stated_on_a_variable_is_reported_against_the_one_generated(self) -> None:
+        assert self.said(stored("Buf", U32, line=5, alignment=64)) == [
+            (
+                "elf-alignment",
+                Severity.WARNING,
+                "'Buf' is aligned to 64 bytes in C, where the variable DDD generates is aligned "
+                "to 4: DDD cannot state an alignment on a variable",
+            )
+        ]
+
+    def test_the_alignment_generated_follows_the_target_s_cap(self) -> None:
+        (item,) = self.said(stored("Wide", U64, line=5, alignment=64), machine=I386)
+        assert "aligned to 4: DDD" in item[2]
+
+    def test_a_structure_variable_is_generated_as_aligned_as_its_members_are(self) -> None:
+        pair = structure("Pair_s", Member("a", U8, 0), Member("b", U32, 32), size=8)
+        (item,) = self.said(stored("Pair", pair, line=5, alignment=32))
+        assert (
+            "aligned to 32 bytes in C, where the variable DDD generates is aligned to 4:"
+            in (item[2])
+        )
+
+    def test_the_alignment_generated_is_left_out_where_it_cannot_be_known(self) -> None:
+        (item,) = self.said(stored("Buf", U32, line=5, alignment=64), machine=None)
+        assert item[2] == (
+            "'Buf' is aligned to 64 bytes in C, which DDD cannot state: the variable DDD "
+            "generates is aligned as its type is"
+        )
+
+    def test_an_alignment_the_generated_one_already_has_is_not_reported(self) -> None:
+        assert self.said(stored("Same", U32, line=5, alignment=4)) == []
+
+    def test_a_variable_of_its_natural_alignment_is_not_reported(self) -> None:
+        assert self.said(stored("Plain", U32, line=5)) == []
+
+    def test_a_variable_refused_is_not_also_reported_aligned(self) -> None:
+        assert self.said(stored("Gone", Unsupported("a pointer"), line=5, alignment=64)) == []
+
+    def test_a_gnu_vector_is_reported_where_it_is_a_variable(self) -> None:
+        assert self.said(stored("Lanes", self.VECTOR, line=5)) == [
+            (
+                "elf-alignment",
+                Severity.WARNING,
+                "'Lanes' is a GNU vector of 16 bytes, which the target aligns as a whole, where "
+                "the array of 4 byte elements DDD generates is aligned to 4: DDD cannot state "
+                "an alignment on a variable",
+            )
+        ]
+
+    def test_a_vector_is_reported_without_the_generated_alignment_where_it_is_unknown(self) -> None:
+        (item,) = self.said(stored("Lanes", self.VECTOR, line=5), machine=None)
+        assert item[2] == (
+            "'Lanes' is a GNU vector of 16 bytes, which the target aligns as a whole, where the "
+            "array of 4 byte elements DDD generates is aligned as its elements are: DDD cannot "
+            "state an alignment on a variable"
+        )
+
+    def test_a_vector_is_found_under_a_typedef_a_qualifier_and_an_array(self) -> None:
+        named = Qualified(Typedef("Vec4_t", self.VECTOR), const=True)
+        assert len(self.said(stored("Named", named, line=5))) == 1
+        assert len(self.said(stored("Several", Array(self.VECTOR, (2,)), line=5))) == 1
+
+    def test_a_vector_of_one_element_is_aligned_as_its_element_is(self) -> None:
+        assert self.said(stored("One", Array(U32, (1,), vector=True), line=5)) == []
+
+    def test_an_array_that_is_no_vector_is_not_reported(self) -> None:
+        assert self.said(stored("Plain", Array(F32, (4,)), line=5)) == []
+
+    def test_a_stated_alignment_on_a_vector_is_reported_once_as_stated(self) -> None:
+        (item,) = self.said(stored("Lanes", self.VECTOR, line=5, alignment=32))
+        assert item[2].startswith("'Lanes' is aligned to 32 bytes in C, where")
+
+    def test_a_vector_member_is_reported_with_the_structure_it_is_in(self) -> None:
+        holder = structure("Holder_s", Member("tag", U8, 0), Member("lanes", self.VECTOR, 128))
+        bag = DiagnosticBag()
+        mapped(holder, bag=bag, mapper=Mapper(image(machine=X86_64), bag))
+        assert [m for c, _, m in found(bag) if c == "elf-alignment"] == [
+            "'Holder_s.lanes' is a GNU vector of 16 bytes, which the target aligns as a whole, "
+            "where the array of 4 byte elements DDD generates is aligned to 4: DDD cannot "
+            "state an alignment"
+        ]
+
+    def test_a_member_stating_an_alignment_and_a_vector_is_reported_once(self) -> None:
+        holder = structure("Holder_s", Member("lanes", self.VECTOR, 0, alignment=32), size=32)
+        bag = DiagnosticBag()
+        mapped(holder, bag=bag, mapper=Mapper(image(machine=X86_64), bag))
+        assert [m for c, _, m in found(bag) if c == "elf-alignment" and "lanes" in m] == [
+            "'Holder_s.lanes' is aligned to 32 bytes in C, which DDD cannot state"
+        ]
 
 
 class TestWhereTheSourceLaidAStructureOutDifferently:

@@ -22,6 +22,7 @@ from ddd.diagnostics import DiagnosticBag
 from ddd.elf import (
     DECLARED_ONLY,
     DISCARDED,
+    DW_ATE_FLOAT,
     DW_ATE_SIGNED,
     DW_ATE_SIGNED_CHAR,
     DW_ATE_UNSIGNED,
@@ -45,6 +46,7 @@ from ddd.elf import (
     Typedef,
     Unsupported,
     Variable,
+    core_of,
     file_path,
     file_table,
     open_image,
@@ -776,6 +778,26 @@ class TestLinkage:
         (found,) = read(declaration, definition)
         assert (found.name, found.address, found.external) == ("Spec", 0x100, True)
 
+    def test_a_definition_takes_its_alignment_from_the_declaration_unless_it_states_one(
+        self,
+    ) -> None:
+        declaration = variable(
+            b"Spec", located=False, DW_AT_declaration=DECLARATION, DW_AT_alignment=32
+        )
+        completes = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        states = die(
+            "DW_TAG_variable",
+            specification=variable(b"Own", located=False, DW_AT_declaration=DECLARATION),
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+            DW_AT_alignment=64,
+        )
+        found = read(declaration, completes, states)
+        assert {v.name: v.alignment for v in found} == {"Spec": 32, "Own": 64}
+
     def test_a_variable_built_by_hand_stands_for_a_global(self) -> None:
         """Ruling 2: every hand-built variable of the toolbox's tests stands for a global."""
         assert Variable("v", "unit.c", U8_TYPE).external is True
@@ -1214,6 +1236,63 @@ class TestTheMatrix:
         expected = 8 if entry["traits"]["alignment_attribute"] else None
         assert aligned.members[0].alignment == expected
         assert aligned.alignment in (expected, None)
+
+    def test_an_alignment_stated_on_a_variable_is_read_where_the_dwarf_states_it(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """``_Alignas(64)`` on a variable is ``DW_AT_alignment`` on its entry at DWARF 5, and
+        in the trial build at every row but the strict DWARF 2 one: the trait says which. A
+        variable of natural alignment states none."""
+        image, entry = row
+        expected = 64 if entry["traits"]["alignment_attribute"] else None
+        assert by_name(image, "Aligned_Var").alignment == expected
+        assert by_name(image, "Aligned_Natural").alignment is None
+
+    def test_a_gnu_vector_is_read_as_the_array_it_holds_and_marked(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """``vector_size`` is ``DW_AT_GNU_vector`` on the array type, on every row, the strict
+        DWARF 2 one too; an ordinary array is not marked."""
+        image, _ = row
+        lanes = core_of(by_name(image, "Vector_Var").type)
+        assert isinstance(lanes, Array)
+        assert (core(lanes.element), lanes.dimensions, lanes.vector) == (
+            Base("float", DW_ATE_FLOAT, 4),
+            (4,),
+            True,
+        )
+        plain = core_of(by_name(image, "Meas_Array").type)
+        assert isinstance(plain, Array)
+        assert not plain.vector
+        holder = core_of(by_name(image, "Vector_Holder").type)
+        assert isinstance(holder, Struct)
+        member = core_of(holder.members[1].type)
+        assert isinstance(member, Array)
+        assert member.vector
+
+    def test_an_alignment_the_source_states_on_a_variable_or_a_vector_is_warned_per_row(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """The variable and the vector are warned where their DWARF states them, the member
+        wherever the vector is stated; the variable the row's DWARF cannot state, and those
+        of natural alignment, are not."""
+        image, entry = row
+        said: dict[str, list[str]] = {}
+        for name in ("Aligned_Var", "Aligned_Natural", "Vector_Var", "Vector_Holder", "Meas_Array"):
+            bag = DiagnosticBag()
+            describe(image, [name], scope="output", component=None, bag=bag)
+            said[name] = [d.message for d in bag.sorted if d.check == "elf-alignment"]
+        stated = entry["traits"]["alignment_attribute"]
+        assert len(said["Aligned_Var"]) == (1 if stated else 0)
+        assert all(
+            m.startswith("'Aligned_Var' is aligned to 64 bytes") for m in said["Aligned_Var"]
+        )
+        assert said["Aligned_Natural"] == []
+        assert len(said["Vector_Var"]) == 1
+        assert said["Vector_Var"][0].startswith("'Vector_Var' is a GNU vector of 16 bytes")
+        assert len(said["Vector_Holder"]) == 1
+        assert said["Vector_Holder"][0].startswith("'Vector_Holder_s.lanes' is a GNU vector")
+        assert said["Meas_Array"] == []
 
     def test_thread_local_storage_has_no_address_and_its_sections_are_left_out(
         self, row: tuple[Image, dict[str, Any]]

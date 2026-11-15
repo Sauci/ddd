@@ -2707,7 +2707,12 @@ machines the tool holds), and states `elf-layout` where a member's offset or the
 size differs, once per structure. Packing, `#pragma pack`, a packed member and an unnamed or
 zero width bitfield are found this way; the gap such a bitfield leaves where the next one would
 have fit is `elf-bitfield-gap` instead, an alignment the source states is `elf-alignment` as
-well, and a structure laid out as the target would is not warned. A layout a build flag gives
+well, and a structure laid out as the target would is not warned. `elf-alignment` is also
+stated on a variable, where its debug entry states an alignment (`DW_AT_alignment`, as `_Alignas`
+writes it) other than the one the generated C gives its type, and for a GNU vector
+(`DW_AT_GNU_vector`), described as the array it holds, that is a variable or a member: the
+target aligns it as a whole, the generated array by its elements. An alignment a producer
+writes no attribute for (`-gstrict-dwarf` at DWARF 4 and before) is not read. A layout a build flag gives
 every structure (`-fpack-struct`, `-malign-double`) is warned too, although the generated C,
 built the same way, repeats it. The machines the tool holds are x86-64, i386, 32-bit PowerPC,
 S/390, ARM under an EABI, AArch64 and RISC-V other than RV32E; an image of another machine or

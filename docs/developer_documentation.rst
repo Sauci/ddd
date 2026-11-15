@@ -1200,8 +1200,9 @@ typed into the grid where more than one of them sets an element: a ``set`` at ea
 own pointer, in one edit, so that what nobody typed stays as the file writes it, its
 spellings and its layout too - or, where the array is not written yet or is too short for
 one of them, the whole ``init`` with each of them set in it, as for one cell. It refuses
-what ``set_cell`` refuses, in the same order, and names every cell past the shape or
-holding a value its datatype cannot hold, as ``set_values`` names a table's.
+what ``set_cell`` refuses, in the same order, and a scalar besides, saying it has no cell
+for a value to sit in, where ``set_cell`` sets its one cell; and it names every cell past
+the shape or holding a value its datatype cannot hold, as ``set_values`` names a table's.
 ``set_values`` sits beside ``set_cell`` for a whole table pasted at once. The shape is
 checked here too, because
 the page that already checked it is not this function's only caller, and every element

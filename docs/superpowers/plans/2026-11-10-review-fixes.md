@@ -1518,9 +1518,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   generation; under make the build after it is right. The build page and SPEC 7.1 give that cost,
   and the remedy a project has: a component whose object depends on the dictionary
   (`OBJECT_DEPENDS` on the path of `DDD_DICTIONARY`) is compiled again in the very build a
-  description change runs, though not in the one an edit of the plugin's own code runs that changes only what it writes, and
-  not its model; and
-  `ninja -t clean` and `make clean` leave such files. Declaring them is one task in two halves: a
+  description change runs, though not in the one an edit of the plugin's own code runs that
+  changes only what it writes, and not its model; and `ninja -t clean` and `make clean` leave such
+  files. Declaring them is one task in two halves: a
   plugin naming its files before it writes them, which is the plugin api, `plugins.py` and
   `backends/base.py`, both on branch 12's list, and the module asking for those names at
   configure and declaring them, in `cmake/Ddd.cmake`, which branch 5 lists. Branch 5 comes first,
@@ -1702,12 +1702,14 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R37.** Task 7 gives each shared file a stamped step may be read by the path of (the a2l, the
   dictionary and the files the template names give away) a rule of its own under make, depending
   on the step's target, beyond the stamp its text names; the `{component}` headers and a plugin's
-  files get none, and stay byproducts: make knows a file only as a rule's output, so a step depending on the dictionary's or the a2l's path had nothing to make it with
-  in a fresh tree, and after an edit read what the build before had left. Task 10 has `make
-  clean` take those files, which the rules had put out of its reach.
+  files get none, and stay byproducts: make knows a file only as a rule's output, so a step
+  depending on the dictionary's or the a2l's path had nothing to make it with in a fresh tree, and
+  after an edit read what the build before had left. Task 10 has `make clean` take those files,
+  which the rules had put out of its reach.
 - **R38.** Task 7 raises the test job's limit from 25 minutes to 40, the windows legs taking 12.5 to
   15 minutes with the Makefile cell (8 to 14 before it; CI run 43561237620, after the final
-  wave's M6): the limit guards against a hang rather than timing the suite. The final wave gives some of that time back (R30).
+  wave's M6): the limit guards against a hang rather than timing the suite. The final wave gives
+  some of that time back (R30).
 - **R39.** Task 9 changes two behaviours beside its sentences, both its finding's own: `ddd
   check`'s count line agrees in number, and `--dictionary` naming the file a run keeps its
   manifest under is refused for that, where the refusal spoke of the path's length. It rewords

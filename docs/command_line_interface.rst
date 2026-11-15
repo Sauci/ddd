@@ -366,41 +366,45 @@ The commands
        preview, where the file states none - and nothing is drawn of one point, nor
        pasted into it. A scalar a file initialises with text, or one produced in more
        than one place, is refused as ever. A declaration naming a type is offered the grid
-       where the project says the type is a scalar one - a scalar naming it reads ``scalar``,
-       a value block naming it keeps its dimensions - and none where the type is a structure,
-       an external type or unknown, or while the types are not yet read. A curve, a map and an axis are
-       offered whatever type they name; anything else needs numeric storage - a datatype
-       of its own or a scalar type - so a dimensioned declaration naming a structured type is
-       shown there and not offered, and so is a deeper shape, and a scalar a file initialises
-       with a list. Cells
-       typed into are held together, each showing what was typed into it, and previewed
-       as one change - in a sentence naming what each sets and the producing file it
-       lands in - that one Apply writes, like every other change here, and one undo puts
-       back. Only the cells typed are written, each where it stands, and the rest of the
-       file stays as it was, its spellings and its layout too. A cell keeps the reading
-       it was typed in: turned from physical to raw, the grid shows the count it sets. A
-       cell typed back to its file's value - a ``float32``'s to the same float32 - drops out
-       of the change, and a cell
-       the page refuses holds Apply back for them all, named in the sentence. A plan
-       whose edit would leave its file as it was, every byte the same - a table pasted over
-       the values the file spells, a description typed as it stands - is no change, and is
-       offered as none. The
-       sentence and Apply stay at the foot of the window while they are offered, however
-       tall the grid. A table copied from a spreadsheet is pasted anywhere in
-       the grid to replace every value of the object at once - the object's own shape,
-       or exactly one row and one column larger for the header pasted along with it -
-       previewed and undone the same way, in place of any cells typed before it, as a
-       cell typed after it takes the table's place. Its header is discarded unread, so one naming
-       a different axis is caught only by that preview, not by the paste itself. Every field
+       where the project says the type is a scalar one - a scalar naming it reads ``scalar``, a
+       value block naming it keeps its dimensions - and none where the type is a structure, an
+       external type or unknown, or while the types are not yet read. A curve, a map and an
+       axis are offered whatever type they name; anything else needs numeric storage - a
+       datatype of its own or a scalar type - so a dimensioned declaration naming a structured
+       type is shown there and not offered, and so is a deeper shape, and a scalar a file
+       initialises with a list. Cells typed into are held together, each showing what was typed
+       into it, and previewed as one change - in a sentence naming how many elements it sets,
+       the first five of them and what each is set to, then how many more, and the producing
+       file it lands in - that one Apply writes, like every other change here, and one undo
+       puts back. Each cell typed is written where it stands, the rest of the file staying as
+       it was, its spellings and its layout too, where the file writes its ``init`` out far
+       enough to hold them; where it states one value for every cell, states none, or writes
+       too short an array, the whole ``init`` is written instead - the cells typed set in it,
+       every other holding the value the file states for it, or zero - and the preview shows
+       it. A cell keeps the reading it was typed in: turned from physical to raw, the grid
+       shows the count it sets. A cell typed back to its file's value - a ``float32``'s to the
+       same float32 - drops out of the change, and a cell the page refuses holds Apply back for
+       them all, named in the sentence. A plan whose edit would leave its file as it was, every
+       byte the same - a table pasted over the values the file spells, a description typed as
+       it stands - is no change, and is offered as none. The sentence and Apply stay at the
+       foot of the window while they are offered, however tall the grid. A table copied from a
+       spreadsheet is pasted anywhere in the grid to replace every value of the object at
+       once - the object's own shape, or exactly one row and one column larger for the header
+       pasted along with it - previewed and undone the same way, in place of any cells typed
+       before it, as a cell typed after it takes the table's place. Its header is discarded
+       unread, so one naming a different axis is caught only by that preview, not by the paste
+       itself. Every field
        of the page reads a number the same way, in decimal notation: an optional sign, digits
        with an optional fraction or a fraction alone, and an optional exponent, the white
-       space around it ignored. A number written in hexadecimal, binary or octal,
-       ``Infinity``, ``NaN`` and digits parted by underscores are refused in one sentence, the
-       same in every field, and nothing is asked of the server for them. A comma is a decimal
-       point where it cannot group thousands - after a first group of 0 or of more than three
-       digits, or before anything but exactly three digits - and groups thousands where it
-       cannot be a decimal point, two of them or a point after it; text holding both has its
-       decimal point last, so ``1.234,5`` and ``1,234.5`` both read 1234.5. Values read
+       space around it ignored. A number written in hexadecimal, binary or octal, ``Infinity``,
+       ``NaN`` and digits parted by underscores are refused in one sentence, the same in every
+       field, and nothing is asked of the server for them - but a size and a dimension, which
+       may name a constant, read ``Infinity`` and ``NaN`` as names, as they read any name. A
+       comma is a decimal point where it cannot group thousands - after a first group of 0 or
+       of more than three digits, or before anything but exactly three digits - and groups
+       thousands where it cannot be a decimal point, two of them or a point after it; text
+       holding both has its decimal point last, so ``1.234,5`` and ``1,234.5`` both read
+       1234.5. Values read
        together - a block pasted, the cells typed into a grid, a range's two fields - read a
        comma that could be either as the others show theirs, where they all show one reading:
        ``0,5`` makes ``1,250`` beside it one and a quarter, and ``1,234,567`` makes ``1,500``

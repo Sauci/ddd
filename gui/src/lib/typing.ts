@@ -133,7 +133,8 @@ export function unsettledNote<S extends { choices: readonly unknown[] }>(
  * makes it one, so the plan on screen is still the earlier value's - `planShown`'s own rule,
  * "never one for text the reader has since typed past", which cannot see this text: it is no part
  * of the request. While it holds, the panel draws no plan and offers no Apply, and says
- * what to do instead (`unsettledNote`). Text equal to the settled label is that value, however it got there.
+ * what to do instead (`unsettledNote`). Text equal to the settled label is that value, however it
+ * got there.
  */
 export function unsettled(typed: string | undefined, settled: string): boolean {
   return typed !== undefined && typed !== settled;

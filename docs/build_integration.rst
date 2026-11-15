@@ -556,8 +556,8 @@ depend on the dictionary - ``set_source_files_properties(<file> PROPERTIES OBJEC
 reach the component in one build, as does an edit of the plugin's model, which the dictionary
 carries. An edit of the plugin's own code that changes only what it writes, and not its model,
 leaves the dictionary as it was, and reaches the component a build late all the same. Under a
-Makefile generator the build after either is right. A clean leaves a plugin's files, ``ninja -t clean`` and ``make clean``
-alike.
+Makefile generator the build after either is right. A clean leaves a plugin's files,
+``ninja -t clean`` and ``make clean`` alike.
 
 A Makefile generator is supported as well, and looks at no file again once a step has run. A
 run that changed nothing left the first file of the generation older than the description
@@ -949,8 +949,9 @@ in the browser is written into the developer's own checkout there, the file keep
 permissions although this service runs as root, as every service does. ``docker compose up
 gui`` builds the image first - the code it runs is the image's, so an image built before a
 change would serve what it was built from - and starts it, publishing the same port number on
-the host's loopback alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have the Host header
-``ddd gui`` sees name a port it is not listening on, answered ``421 misdirected request``, and
+the host's loopback alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have
+the Host header ``ddd gui`` sees name a port it is not listening on, answered
+``421 misdirected request``, and
 beyond the container's loopback the token in the address it prints is the only guard, which is
 why nothing wider is published. Opening that address in a browser on the host is the image's own
 ``ddd gui`` serving the checkout's demo project.

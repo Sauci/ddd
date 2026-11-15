@@ -46,8 +46,9 @@ interface Props {
   /**
    * What was typed into the field is over: Escape was pressed in it, or the focus left it - once
    * each, with the list open or not. The caller puts its own value back in the field, since the
-   * text is no choice until Enter or a pick takes it. No other close tells it: a scroll, Enter, Tab, the arrow and an
-   * empty list keep the text, which the caller then holds as text not yet taken.
+   * text is no choice until Enter or a pick takes it. No other close tells it: a scroll, Enter,
+   * Tab, the arrow and an empty list keep the text, which the caller then holds as text not yet
+   * taken.
    */
   onClose: () => void;
   /** A line under the field, such as that a typed unit is not one of the project's. */

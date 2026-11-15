@@ -241,9 +241,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   server or to json to refuse in their words.  All of them now read an optional sign, digits with
   an optional fraction or a fraction alone, and an optional exponent, the white space around it
   ignored; hexadecimal, binary, octal, `Infinity`, `NaN` and digits parted by underscores are
-  refused in one sentence, the same in every field, and nothing is sent for them.  A boolean takes
-  0 and 1 alone, in Raw and in Physical, where Physical rounded 0.6 to 1.  A person who typed
-  `0x1F` types 31.  No file format changes.
+  refused in one sentence, the same in every field, and nothing is sent for them, but a size and a
+  dimension, which may name a constant, read `Infinity` and `NaN` as names, as they read any name.
+  A boolean takes 0 and 1 alone, in Raw and in Physical, where Physical rounded 0.6 to 1.  A
+  person who typed `0x1F` types 31.  No file format changes.
 
 * **A decimal comma is read as one where it cannot group thousands.**  A block pasted from a
   spreadsheet of a comma locale, `0,125 0,250 0,500`, was refused, and the page's advice was to
@@ -255,7 +256,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   both readings is refused, in a sentence saying what it mixes.  In the grid a comma that could be
   either, `1,500` alone, is asked about with a choice of one press, "A decimal point: 1.5" or "A
   thousands separator: 1500", and the answer given stands whatever is typed after it; the other
-  fields refuse such a comma in the same sentence, naming the field.  Nothing to migrate.
+  fields refuse such a comma in the same sentence, a range's naming the field it is about.
+  Nothing to migrate.
 
 * **A number typed in the grid is written as the nearest the datatype holds, and shown with the
   digits it needs.**  A physical value was worked out in double arithmetic, so 0.7 at a factor of
@@ -264,13 +266,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   the digits of the double.  A physical value now comes to the nearest count, worked out on the
   decimals typed and the conversion's own, an exact half going to the even count as the server
   rounds it; a physical value typed into a float is planned as the shortest float that comes back,
-  so 0.3 at a factor of 0.1 writes 3; and a `float32` reads as the float32 its file's number
+  so 0.3 at a factor of 0.1 writes `3.0`; and a `float32` reads as the float32 its file's number
   rounds to, so a file's 0.10000000149011612 reads 0.1.  FLT_MAX is planned, and read in Raw, as
   its own double, 3.4028234663852886e+38: its shortest spelling, 3.4028235e+38, is a double past
   it, which the server and `ddd check` refuse a `float32`.  Physical shows the exact product of
   the count and the factor for a whole datatype, 255 counts of 0.03 as 7.65, and the shortest
   decimal for a float, never cut at twelve significant digits.  A number past what a double
-  holds, or that rounds to zero in a float, is refused on the page.  No file format changes.
+  holds is refused on the page, and so is one that rounds to zero in its float, typed in Physical;
+  in Raw the page refuses one only where its double is zero, so a `float32` cell's `1e-50` is sent
+  and the server refuses it.  No file format changes.
 
 * **A float's values are written as floats, and a boolean's as booleans.**  The grid wrote a
   float's whole value as `3`, which spells an integer, and a boolean's as the count the page
@@ -285,17 +289,18 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   notes say "One cell is changed at a time", and that no longer holds: the cells typed into are
   held together, each showing what was typed, and planned as one change with one sentence, one
   Apply and one undo, each written at its own element where the array is long enough, so cells
-  nobody typed keep their spelling (a short array, or none, is written whole); the page asks
+  nobody typed keep their spelling; where the file states one value for every cell, states none
+  or writes too short an array, the whole `init` is written, as the preview shows.  The page asks
   `GET /api/cells-plan` for them.  A cell typed back to its file's value offers nothing, and a
-  plan whose edit would change no byte, a table pasted over the values the file spells, offers no
-  Apply and answers `changes: []`.  A cell is sized to its text, and the offer stays at the
-  window's foot while a cell is open, instead of below the grid.  Columns and rows
-  come from the object's shape, a breakpoint labelling its own column.  A cell the file does not
-  state, past a short `init` or any cell of a declaration with no `init`, is drawn hollow and
-  named so, where the second read as greyed zeros.  A grid that states nothing draws no picture,
-  and where an axis states fewer breakpoints than the shape the picture lies over indices, its
-  ticks reading them and no axis named under them.  A cell keeps the reading it was typed in when
-  the toggle is turned.  No file format changes.
+  plan whose edit would change no byte, a table pasted over the values the file spells, offers
+  no Apply and answers `changes: []`.  A cell is sized to its text, and the offer stays at the
+  window's foot while a cell is open, instead of below the grid.  Columns and rows come from the
+  object's shape, a breakpoint labelling its own column.  A cell the file does not state, past a
+  short `init` or any cell of a declaration with no `init`, is drawn hollow and named so, where
+  the second read as greyed zeros.  A grid that states nothing draws no picture, and where an
+  axis states fewer breakpoints than the shape the picture lies over indices, its ticks reading
+  them and no axis named under them.  A cell keeps the reading it was typed in when the toggle
+  is turned.  No file format changes.
 
 * **A value chosen for one key of a variable's panel is never applied to another.**  The panel
   carried what was chosen, typed or edited for one key to the key it moved to by itself, so Apply

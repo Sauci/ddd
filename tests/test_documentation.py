@@ -534,7 +534,8 @@ class TestTheCommandPage:
         assert (
             "A number written in hexadecimal, binary or octal, ``Infinity``, ``NaN`` and digits "
             "parted by underscores are refused in one sentence, the same in every field, and "
-            "nothing is asked of the server for them"
+            "nothing is asked of the server for them - but a size and a dimension, which may name "
+            "a constant, read ``Infinity`` and ``NaN`` as names, as they read any name"
         ) in text
         # Fix round 1, M7: a first group of more than three digits named; M1: values read
         # together decided by commas grouping thousands as by a decimal comma, a block showing both
@@ -621,9 +622,23 @@ class TestTheCommandPage:
             "previewed as one change"
         ) in text
         assert "that one Apply writes, like every other change here, and one undo puts back" in text
+        # The final wave: the sentence names five elements, then how many more, and the whole init
+        # is written where the file does not write the array out far enough for the cells typed.
+        assert "in a sentence naming what each sets" not in text
         assert (
-            "Only the cells typed are written, each where it stands, and the rest of the file "
-            "stays as it was"
+            "in a sentence naming how many elements it sets, the first five of them and what each "
+            "is set to, then how many more, and the producing file it lands in"
+        ) in text
+        assert "Only the cells typed are written" not in text
+        assert (
+            "Each cell typed is written where it stands, the rest of the file staying as it was, "
+            "its spellings and its layout too, where the file writes its ``init`` out far enough "
+            "to hold them"
+        ) in text
+        assert (
+            "where it states one value for every cell, states none, or writes too short an array, "
+            "the whole ``init`` is written instead - the cells typed set in it, every other "
+            "holding the value the file states for it, or zero - and the preview shows it"
         ) in text
         assert "A cell keeps the reading it was typed in" in text
         assert (
@@ -3480,7 +3495,8 @@ class TestTheCiRun:
         browser, and would have held the run, and any re-run of its failed jobs, for the rest.
         Each job's own limit, as ci.yml states it; ``None`` would be a job that has none. The
         gui legs take 30 minutes on an ordinary run, and 150 on a hunt (``inputs.repeat`` above
-        1); the test legs 40, the windows ones taking 12 to 15 minutes since the Makefile cell."""
+        1); the test legs 40, the windows ones taking 15.9 to 20.9 minutes in CI runs 43664431438
+        and 43667157867."""
         limits = {}
         for name in job_names(CI_WORKFLOW):
             limit = re.search(r"^    timeout-minutes: (.+)$", job(CI_WORKFLOW, name), re.M)

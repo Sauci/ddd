@@ -1591,19 +1591,21 @@ class TestRefusals:
             f"'{path.as_posix()}' carries no DWARF debug information: build it with -g"
         )
 
-    def test_the_debug_only_companion_of_an_image_is_read_and_holds_no_code_contents(self) -> None:
+    def test_the_debug_only_companion_of_an_image_is_read_and_holds_no_contents(self) -> None:
         """The reader keeps reading it, since its addresses are the image's: what it states is
-        that its executable sections have no contents, which ``from-elf`` refuses it for."""
+        that no section of the program has contents, which ``from-elf`` refuses it for. Its
+        build id is a note with contents, and does not count."""
         companion = open_image(FIXTURES / "x86_64.debug")
         linked = open_image(FIXTURES / "x86_64.elf")
         assert companion.variables
-        assert companion.without_code_contents
-        assert not linked.without_code_contents
-        assert {section.name for section in companion.sections if section.code} == {".text"}
-
-    def test_the_sections_that_hold_code_are_the_executable_ones(self) -> None:
-        linked = open_image(FIXTURES / "armv7m.elf")
-        assert {section.name for section in linked.sections if section.code} == {".text"}
+        assert companion.without_contents
+        assert not linked.without_contents
+        notes = {
+            section.name: section.offset is not None
+            for section in companion.sections
+            if section.note
+        }
+        assert notes == {".note.gnu.build-id": True}
 
     def test_a_relocatable_object_is_refused(self) -> None:
         path = FIXTURES / "main.o"

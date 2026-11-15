@@ -4759,8 +4759,8 @@ class TestToolFromElf:
             EXIT_USAGE,
             "",
             f"ddd: '{companion.as_posix()}' is debug information without the image's contents: "
-            f"its code sections hold none, so no initial value can be read from it; give it the "
-            f"linked image it was split from\n",
+            f"its sections hold none of the program, so no initial value can be read from it; give "
+            f"it the linked image it was split from\n",
         )
         code, out, _ = from_elf(capsys, str(X86), "Cal_Gain")
         assert code == EXIT_OK

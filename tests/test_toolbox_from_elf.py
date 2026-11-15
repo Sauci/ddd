@@ -1396,31 +1396,51 @@ class TestDescribe:
         assert description.interface[0]["scope"] == "local"
         assert description.interface[0]["definition"]["init"] == 300
 
+    def test_an_image_with_nothing_but_a_note_holding_contents_is_refused(self) -> None:
+        build_id = Section(".note.gnu.build-id", 0x0, 0x24, 0, note=True)
+        data = Section(".data", 0x100, 0x100, None)
+        img = image(stored("Gain", U16, address=0x100), sections=(build_id, data))
+        with pytest.raises(ValueError, match="debug information"):
+            describe(img, ["Gain"], scope="local", component=None, bag=DiagnosticBag())
+
+    def test_an_image_without_a_section_of_the_program_is_not_refused(self) -> None:
+        img = image(stored("Gain", U16, address=0x100), sections=())
+        _, bag = run(img, "Gain")
+        assert any(check == "elf-no-storage" for check, _, _ in found(bag))
+
     def test_an_image_whose_code_has_no_contents_is_refused(self) -> None:
         """The shape ``objcopy --only-keep-debug`` leaves: every section is there and none has
         its bytes, so no initial value is."""
-        text = Section(".text", 0x0, 0x40, None, code=True)
+        text = Section(".text", 0x0, 0x40, None)
         data = Section(".data", 0x100, 0x100, None)
         img = image(stored("Gain", U16, address=0x100), sections=(text, data))
         with pytest.raises(ValueError, match="debug information") as refused:
             describe(img, ["Gain"], scope="local", component=None, bag=DiagnosticBag())
         assert str(refused.value) == (
-            "'hand.elf' is debug information without the image's contents: its code sections "
-            "hold none, so no initial value can be read from it; give it the linked image it "
-            "was split from"
+            "'hand.elf' is debug information without the image's contents: its sections "
+            "hold none of the program, so no initial value can be read from it; give it the linked "
+            "image it was split from"
         )
 
     def test_an_image_whose_code_has_contents_is_not_refused(self) -> None:
-        text = Section(".text", 0x0, 0x40, 0, code=True)
+        text = Section(".text", 0x0, 0x40, 0)
         img = image(stored("Gain", U16, address=0x100), sections=(text, DATA))
+        description, _ = run(img, "Gain")
+        assert description.interface[0]["definition"]["init"] == 0
+
+    def test_an_image_whose_code_is_contentless_but_whose_data_is_in_the_file_is_read(self) -> None:
+        """A NOLOAD code region has no bytes in the file by design, and the initial values are
+        in .data and .rodata: every one is readable, so nothing is refused."""
+        noload = Section(".boot", 0x0, 0x40, None)
+        img = image(stored("Gain", U16, address=0x100), sections=(noload, DATA))
         description, _ = run(img, "Gain")
         assert description.interface[0]["definition"]["init"] == 0
 
     def test_an_image_with_one_code_section_holding_contents_is_not_refused(self) -> None:
         """A linker script may leave one executable section without bytes (a ``.bss``-like
         code region) beside the ones that have them: the image is still one to read."""
-        text = Section(".text", 0x0, 0x40, 0, code=True)
-        ramcode = Section(".ramcode", 0x400, 0x40, None, code=True)
+        text = Section(".text", 0x0, 0x40, 0)
+        ramcode = Section(".ramcode", 0x400, 0x40, None)
         img = image(stored("Gain", U16, address=0x100), sections=(text, ramcode, DATA))
         description, _ = run(img, "Gain")
         assert description.interface[0]["definition"]["init"] == 0

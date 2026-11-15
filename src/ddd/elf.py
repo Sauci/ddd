@@ -219,8 +219,9 @@ class Section:
     """None for a section without contents (``SHT_NOBITS``), whose bytes the startup code
     provides rather than the image."""
 
-    code: bool = False
-    """Whether the section holds instructions (``SHF_EXECINSTR``)."""
+    note: bool = False
+    """Whether the section is a note (``SHT_NOTE``), which describes the file rather than holds
+    the program: the build id of a debug-only companion has contents there."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,12 +257,13 @@ class Image:
     machine has more than one (ARM's EABI version, RISC-V's reduced register set)."""
 
     @property
-    def without_code_contents(self) -> bool:
-        """Whether the image has executable sections and none of them has contents: what
-        ``objcopy --only-keep-debug`` leaves. Its addresses are the image's, and none of its
-        initial values is there to read."""
-        code = [section for section in self.sections if section.code]
-        return bool(code) and all(section.offset is None for section in code)
+    def without_contents(self) -> bool:
+        """Whether the image has allocated sections of the program, code and data alike, and
+        none of them has contents in the file: what ``objcopy --only-keep-debug`` leaves. Its
+        addresses are the image's, and none of its initial values is there to read. An image
+        whose code alone is without contents (a ``NOLOAD`` region) keeps its data, and is read."""
+        program = [section for section in self.sections if not section.note]
+        return bool(program) and all(section.offset is None for section in program)
 
     def has_object(self, name: str, address: int) -> bool:
         """Whether the symbol table holds an object symbol ``name`` at ``address``."""
@@ -589,7 +591,7 @@ def _sections(elf: ELFFile) -> tuple[Section, ...]:
                 section["sh_addr"],
                 section["sh_size"],
                 offset,
-                code=bool(flags & SH_FLAGS.SHF_EXECINSTR),
+                note=section["sh_type"] == "SHT_NOTE",
             )
         )
     return tuple(sections)

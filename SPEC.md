@@ -2636,7 +2636,7 @@ it. Its one tool is `from-elf`.
 
 `ddd tool from-elf IMAGE SYMBOL...` reads a linked ELF image, `ET_EXEC` or `ET_DYN`, and its
 DWARF debug information, versions 2 to 5, and prints the declarations of the C variables named
-or matched (a separate debug file is out of scope: one whose executable sections hold no
+or matched (a separate debug file is out of scope: one whose program sections hold no
 contents is refused, and `--image` of `ddd generate` places the addresses it gives all the
 same), as json on standard output: a list of interface entries, or with `--component NAME`
 a component file whose `types` holds the structures the variables name. A `SYMBOL` is
@@ -2725,8 +2725,8 @@ members are.
 The exit code is `0` when every argument was described, and `1` when one was not; nothing is
 written then unless `--force`, which writes what was described. An image that cannot be read,
 is not ELF, carries no DWARF or is not linked, a debug-only companion (`objcopy --only-keep-debug`:
-the DWARF, with every executable section left without contents, so that no initial value can be
-read), an image whose DWARF holds type units
+the DWARF, with no allocated section of code or data holding contents, so that no initial value
+can be read; an image whose code alone has none is read), an image whose DWARF holds type units
 (`-fdebug-types-section`), comes from gcc's link-time optimisation (`-flto`) or is compressed
 with zstd rather than zlib, a malformed `SYMBOL` and an `-o` naming the image - both refused
 before the image is read - and a pyelftools missing or older than 0.32 are usage errors,

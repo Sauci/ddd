@@ -75,11 +75,11 @@ def describe(
     ``bag``; a malformed argument raises ``ValueError`` before anything is read, and so does an
     image of debug information alone, whose initial values are not there to read."""
     wanted_ = [wanted(text) for text in arguments]
-    if image.without_code_contents:
+    if image.without_contents:
         msg = (
             f"'{image.path.as_posix()}' is debug information without the image's contents: its "
-            f"code sections hold none, so no initial value can be read from it; give it the "
-            f"linked image it was split from"
+            f"sections hold none of the program, so no initial value can be read from it; give it "
+            f"the linked image it was split from"
         )
         raise ValueError(msg)
     chosen = select(image, wanted_, bag)

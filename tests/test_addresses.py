@@ -409,6 +409,15 @@ class TestWhereTheImageKeepsAVariable:
         img = image(stored("Gain", address=0x10F), sections=(Section(".data", 0x100, 0x10, 0),))
         assert placed(img, "Gain") == Placed({"Gain": 0x10F}, {})
 
+    def test_the_debug_only_companion_places_what_the_image_it_was_split_from_does(self) -> None:
+        """--image keeps reading it: objcopy --only-keep-debug leaves every address as it was,
+        and its sections have no contents, which placing never needs."""
+        linked = open_image(FIXTURES / "x86_64.elf")
+        companion = open_image(FIXTURES / "x86_64.debug")
+        names = ["Cal_Gain", "Cal_Table", "Meas_U16", "Missing_Name"]
+        assert placed(companion, *names) == placed(linked, *names)
+        assert len(placed(companion, *names).addresses) == 3
+
     def test_the_variables_of_a_unit_gold_discarded_are_not_placed(self) -> None:
         """gold-gc-sections.elf: the unit nothing references has debug information and no
         symbol, and its three variables sit at the offsets 0, 4 and 8 of the discarded

@@ -13,7 +13,10 @@ compiled into an image. ``ddd tool from-elf`` reads a linked ELF image and its D
 information, and prints the DDD declaration of every C variable it is asked for - as far as
 the image states it, and checked by DDD itself before it is printed, the way
 ``ddd check --standalone`` checks a component. It needs an image built with debug information
-(``-g``); pyelftools, which reads it, is installed with DDD.
+(``-g``) and with its contents, the linked image itself: a debug-only companion, the file
+``objcopy --only-keep-debug`` splits off, has the DWARF without the bytes of the image, so no
+initial value can be read from it, and the tool refuses it. A separate debug file is not read
+in place of an image. pyelftools, which reads the image, is installed with DDD.
 
 A variable is named as it is in C, or matched with a glob such as ``'Cal_*'``, and a
 ``static`` that several compilation units define is taken from one of them by naming its unit
@@ -211,7 +214,8 @@ A finding about a variable is shown at its declaration in the C source, as the i
 the path. An image that cannot be used at all - not ELF, without DWARF, a relocatable object
 rather than a linked image, one whose types sit in DWARF type units (``-fdebug-types-section``),
 one built with gcc's link-time optimisation (``-flto``), one whose debug information is
-compressed with zstd rather than zlib (``-gz=zlib``), or a damaged file - is a usage error,
+compressed with zstd rather than zlib (``-gz=zlib``), a debug-only companion whose code sections
+hold no contents, or a damaged file - is a usage error,
 exit ``2``, and the message names the flag to build it with or without where one would do. So
 are a malformed argument and an ``-o`` naming the image, refused before the image is read.
 

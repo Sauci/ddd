@@ -219,6 +219,9 @@ class Section:
     """None for a section without contents (``SHT_NOBITS``), whose bytes the startup code
     provides rather than the image."""
 
+    code: bool = False
+    """Whether the section holds instructions (``SHF_EXECINSTR``)."""
+
 
 @dataclass(frozen=True, slots=True)
 class Image:
@@ -251,6 +254,14 @@ class Image:
     flags: int = 0
     """The header's ``e_flags``: which ABI of the machine the image was built for, where a
     machine has more than one (ARM's EABI version, RISC-V's reduced register set)."""
+
+    @property
+    def without_code_contents(self) -> bool:
+        """Whether the image has executable sections and none of them has contents: what
+        ``objcopy --only-keep-debug`` leaves. Its addresses are the image's, and none of its
+        initial values is there to read."""
+        code = [section for section in self.sections if section.code]
+        return bool(code) and all(section.offset is None for section in code)
 
     def has_object(self, name: str, address: int) -> bool:
         """Whether the symbol table holds an object symbol ``name`` at ``address``."""
@@ -573,7 +584,13 @@ def _sections(elf: ELFFile) -> tuple[Section, ...]:
         # DWARF string does - a refusal, a finding, the output - so it is untrusted the same
         # way: _decoded() writes out its control characters here, as it does for DWARF's.
         sections.append(
-            Section(_decoded(section.name), section["sh_addr"], section["sh_size"], offset)
+            Section(
+                _decoded(section.name),
+                section["sh_addr"],
+                section["sh_size"],
+                offset,
+                code=bool(flags & SH_FLAGS.SHF_EXECINSTR),
+            )
         )
     return tuple(sections)
 

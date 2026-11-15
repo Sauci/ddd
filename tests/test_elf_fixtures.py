@@ -13,6 +13,8 @@ import re
 
 import pytest
 from build_elf_fixtures import (
+    COMPANION,
+    COMPANION_ROW,
     EXAMPLE,
     EXAMPLE_ROW,
     NEGATIVES,
@@ -151,3 +153,18 @@ def test_spec_says_what_each_linker_leaves_of_a_discarded_unit() -> None:
         "gold keeps the debug information of the unit and leaves each variable at its offset in "
         "the section it dropped; GNU ld drops it, and the reader holds no variable of that name"
     ) in spec
+
+
+def test_the_debug_only_companion_is_the_row_it_was_split_from() -> None:
+    assert (OUTPUT / COMPANION).is_file()
+    assert COMPANION_ROW in MANIFEST["rows"]
+    assert MANIFEST["companions"][COMPANION] == {
+        "from": COMPANION_ROW,
+        "command": "objcopy --only-keep-debug",
+        "sections": {
+            ".bss": "NOBITS",
+            ".data": "NOBITS",
+            ".rodata": "NOBITS",
+            ".text": "NOBITS",
+        },
+    }

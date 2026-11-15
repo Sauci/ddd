@@ -5,9 +5,11 @@ Usage, from the repository root: ``docker compose run --rm elf-fixtures``
 
 Each row of :data:`ROWS` compiles ``tests/fixtures/elf/src/`` with one toolchain and links it
 into ``tests/fixtures/elf/<row>.elf``, beside a stripped copy of one row, a relocatable object,
-the images of :data:`NEGATIVES` - each a small source of its own, for a case the reader refuses
-rather than reads - and a copy of the ``armv7m`` row at ``examples/firmware/firmware.elf`` for
-the documentation's re-run transcripts. The images are committed, so that the suite needs
+the debug-only companion of one row (``objcopy --only-keep-debug``: the debug sections kept,
+every section that held code or data left without contents), the images of :data:`NEGATIVES` -
+each a small source of its own, for a case the reader refuses rather than reads - and a copy of
+the ``armv7m`` row at ``examples/firmware/firmware.elf`` for the documentation's re-run
+transcripts. The images are committed, so that the suite needs
 neither Docker nor a compiler.
 
 The manifest records what each toolchain itself says about its target - never what ddd's
@@ -39,6 +41,8 @@ DOCKERFILE = ROOT / "docker" / "elf-fixtures.Dockerfile"
 EXAMPLE = ROOT / "examples" / "firmware" / "firmware.elf"
 EXAMPLE_ROW = "armv7m"
 STRIPPED_ROW = "x86_64"
+COMPANION_ROW = "x86_64"
+COMPANION = "x86_64.debug"
 UNITS = ("main", "unit_a", "unit_b")
 UNDEBUGGED = "nodebug"
 ENTRY = "fixture_entry"
@@ -375,6 +379,15 @@ def main() -> None:
                 str(OUTPUT / f"{STRIPPED_ROW}.elf"),
             ]
         )
+        run(
+            [
+                "x86_64-linux-gnu-objcopy",
+                "--only-keep-debug",
+                str(OUTPUT / f"{COMPANION_ROW}.elf"),
+                str(OUTPUT / COMPANION),
+            ]
+        )
+        (OUTPUT / COMPANION).chmod(0o644)
         # strip gives what it writes an executable's mode; a fixture is read, never run, and the
         # images beside it are copies without that mode.
         (OUTPUT / "stripped.elf").chmod(0o644)
@@ -392,7 +405,18 @@ def main() -> None:
         )
     EXAMPLE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(OUTPUT / f"{EXAMPLE_ROW}.elf", EXAMPLE)
-    manifest = {"hashes": hashed(), "rows": rows, "negatives": negatives}
+    companions = {
+        COMPANION: {
+            "from": COMPANION_ROW,
+            "command": "objcopy --only-keep-debug",
+            "sections": {
+                name: kind
+                for name, kind in sorted(sections(OUTPUT / COMPANION).values())
+                if name in (".text", ".rodata", ".data", ".bss")
+            },
+        }
+    }
+    manifest = {"hashes": hashed(), "rows": rows, "negatives": negatives, "companions": companions}
     (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", "utf-8")
     print(f"wrote {len(ROWS)} rows into {OUTPUT.relative_to(ROOT).as_posix()}")
 

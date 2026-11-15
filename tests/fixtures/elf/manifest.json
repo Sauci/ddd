@@ -11,7 +11,7 @@
     "tests/fixtures/elf/src/unit_a.c": "2c1ad445a0e8436d8cfd4583f3c6ce7372509cdf4f9348c152d4aeb94d7cbd3a",
     "tests/fixtures/elf/src/unit_b.c": "d01310e13f21f7e58ddf908944b4cb003aba9bbbe5b4850f2e08d77251591d1c",
     "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
-    "docker/build_elf_fixtures.py": "3b3868734e174f353cb3f02465304cbefb11f5db900e2035983255ade28e0f0e"
+    "docker/build_elf_fixtures.py": "ac67dd524c1e79fef10f1ef5e55450f2772801a808a9b91e2a6617c5099bba04"
   },
   "rows": {
     "x86_64": {
@@ -4809,6 +4809,18 @@
           "size": 4
         }
       ]
+    }
+  },
+  "companions": {
+    "x86_64.debug": {
+      "from": "x86_64",
+      "command": "objcopy --only-keep-debug",
+      "sections": {
+        ".bss": "NOBITS",
+        ".data": "NOBITS",
+        ".rodata": "NOBITS",
+        ".text": "NOBITS"
+      }
     }
   }
 }

@@ -4750,6 +4750,22 @@ class TestToolFromElf:
         assert code == EXIT_OK
         assert json.loads(err)["generated"] == [{"path": target.as_posix(), "status": "unchanged"}]
 
+    def test_a_debug_only_companion_is_refused_and_the_image_it_came_from_is_read(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        companion = FIXTURES / "x86_64.debug"
+        code, out, err = from_elf(capsys, str(companion), "Cal_Gain")
+        assert (code, out, err) == (
+            EXIT_USAGE,
+            "",
+            f"ddd: '{companion.as_posix()}' is debug information without the image's contents: "
+            f"its code sections hold none, so no initial value can be read from it; give it the "
+            f"linked image it was split from\n",
+        )
+        code, out, _ = from_elf(capsys, str(X86), "Cal_Gain")
+        assert code == EXIT_OK
+        assert "init" in json.loads(out)[0]["definition"]
+
     def test_an_output_naming_the_image_is_refused_and_the_image_kept(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:

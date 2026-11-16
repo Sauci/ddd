@@ -8,10 +8,15 @@ from fnmatch import fnmatchcase
 from typing import Final
 
 from ddd.diagnostics import DiagnosticBag, where
-from ddd.elf import Image, Variable
+from ddd.elf import DECLARED_ONLY, Image, Variable
 from ddd.toolbox.findings import place, report
 
 _GLOB: Final = frozenset("*?[")
+
+_UNDESCRIBED: Final = (
+    "defined where the debug information does not describe it, in assembly or in a unit built "
+    "without -g"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,16 +76,36 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
             if name in judged:
                 continue
             judged.add(name)
-            if others:
+            if others and any(member.address is not None for member in group):
                 _report_ambiguous(name, group, image, bag)
                 continue
             report(
                 bag,
                 "elf-no-storage",
-                f"'{name}' has no address in the image: {variable.missing}",
+                _without_storage(name, group, image),
                 place(image, variable.declared_at),
             )
     return chosen
+
+
+def _without_storage(name: str, group: Sequence[Variable], image: Image) -> str:
+    """The sentence for a name none of whose variables has an address. Where several units
+    describe it, as a header's ``static const`` each unit folded, no unit's prefix would take
+    it, so the sentence names the units and the reasons instead of asking for a prefix."""
+    (variable, *others) = group
+    if not others:
+        if variable.missing == DECLARED_ONLY and name in image.symbols:
+            return (
+                f"'{name}' has no address in the image: its debug information only declares "
+                f"it, and the symbol table holds it, {_UNDESCRIBED}"
+            )
+        return f"'{name}' has no address in the image: {variable.missing}"
+    units = ", ".join(f"'{member.unit}'" for member in group)
+    reasons = "; ".join(dict.fromkeys(member.missing for member in group))
+    return (
+        f"'{name}' has no address in the image, in any of its {len(group)} units, {units}: "
+        f"{reasons}"
+    )
 
 
 def _distinct(group: Sequence[Variable]) -> list[Variable]:
@@ -136,11 +161,13 @@ def _report_ambiguous(
     name: str, group: Sequence[Variable], image: Image, bag: DiagnosticBag
 ) -> None:
     units = ", ".join(f"'{variable.unit}'" for variable in group)
+    # A unit without storage would earn elf-no-storage, so the offered prefix is one that has some.
+    offered = next(variable for variable in group if variable.address is not None)
     report(
         bag,
         "elf-symbol-ambiguous",
         f"'{name}' names a variable in {len(group)} units, {units}: prefix it with one, "
-        f"as '{group[0].unit}:{name}'",
+        f"as '{offered.unit}:{name}'",
         place(image, group[0].declared_at),
         [
             (f"defined in '{variable.unit}'", place(image, variable.declared_at))

@@ -703,7 +703,7 @@ Options
        writes it after the link - again whenever the image relinks or a description changes,
        and never otherwise. ``DDD_A2L`` names it as before, and ``STRICT``,
        ``SEVERITY`` and ``BYTE_ORDER`` apply to it. The image has to be ELF with DWARF, built
-       with ``-g``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
+       with ``-g`` and without ``-flto``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
    * - ``SEVERITY <check=level>...``
@@ -788,6 +788,13 @@ build with nothing changed runs nothing at all. It writes the a2l into the
 directory the generation before the link wrote the c sources, the headers and the dictionary
 into, and takes none of them back (:ref:`what-a-run-owns`), so nothing is compiled again
 because the a2l was written.
+
+An image linked with gcc's link-time optimisation (``-flto``) cannot be read this way, and the
+step stops on it, exit 2, with "its DWARF comes from gcc's link-time optimisation, which this
+tool does not read; build it without -flto". A project that links with ``-flto`` and keeps it
+takes its addresses from a map instead (``ADDRESS_MAP``, below), with the offset of each
+structure member worked out beside it, since the a2l has to describe the image that is
+flashed.
 
 What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
 symbol's reason a note beneath it. The example above, built as ``RelWithDebInfo`` with the

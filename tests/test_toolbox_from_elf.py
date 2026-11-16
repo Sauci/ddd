@@ -15,6 +15,7 @@ import pytest
 
 from ddd.diagnostics import CHECKS, STANDALONE_POLICY, DiagnosticBag, Location, Severity, where
 from ddd.elf import (
+    DECLARED_ONLY,
     DW_ATE_BOOLEAN,
     DW_ATE_COMPLEX_FLOAT,
     DW_ATE_FLOAT,
@@ -22,6 +23,8 @@ from ddd.elf import (
     DW_ATE_SIGNED_CHAR,
     DW_ATE_UNSIGNED,
     DW_ATE_UNSIGNED_CHAR,
+    FOLDED,
+    REMOVED,
     Array,
     Base,
     CType,
@@ -302,16 +305,78 @@ class TestSelect:
         assert chosen(img, "Gain", bag=bag) == []
         assert [d.check for d in bag.sorted] == ["elf-symbol-ambiguous"]
 
-    def test_two_names_without_storage_in_two_units_are_two_variables(self) -> None:
-        """A static const each unit folded is no variable at one address: two units still
-        define the name, and only a unit says which is meant."""
+    def test_a_name_every_unit_left_without_storage_is_said_so_and_not_ambiguous(self) -> None:
+        """A header's static const each unit folded has no address anywhere: prefixing a unit
+        only earns elf-no-storage, so the name is reported as what it is, once."""
         bag = DiagnosticBag()
         img = image(
-            stored("Limit", unit="unit_a.c", address=None, missing="it was folded"),
-            stored("Limit", unit="unit_b.c", address=None, missing="it was folded"),
+            stored("Limit", unit="unit_a.c", address=None, missing=FOLDED, line=3),
+            stored("Limit", unit="unit_b.c", address=None, missing=FOLDED, line=3),
+        )
+        assert chosen(img, "Limit", "unit_a.c:Limit", bag=bag) == []
+        assert found(bag) == [
+            (
+                "elf-no-storage",
+                Severity.ERROR,
+                f"'Limit' has no address in the image, in any of its 2 units, 'unit_a.c', "
+                f"'unit_b.c': {FOLDED}",
+            )
+        ]
+        assert bag.sorted[0].location == Location(Path("unit_a.c"), line=3)
+
+    def test_the_reasons_of_units_that_differ_are_each_stated_once(self) -> None:
+        bag = DiagnosticBag()
+        img = image(
+            stored("Limit", unit="unit_a.c", address=None, missing=FOLDED),
+            stored("Limit", unit="unit_b.c", address=None, missing=REMOVED),
+            stored("Limit", unit="unit_c.c", address=None, missing=FOLDED),
         )
         assert chosen(img, "Limit", bag=bag) == []
-        assert [d.check for d in bag.sorted] == ["elf-symbol-ambiguous"]
+        assert [d.message for d in bag.sorted] == [
+            f"'Limit' has no address in the image, in any of its 3 units, 'unit_a.c', "
+            f"'unit_b.c', 'unit_c.c': {FOLDED}; {REMOVED}"
+        ]
+
+    def test_the_prefix_an_ambiguity_offers_is_of_a_unit_that_has_storage(self) -> None:
+        bag = DiagnosticBag()
+        img = image(
+            stored("Gain", unit="unit_a.c", address=None, missing=FOLDED),
+            stored("Gain", unit="unit_b.c", address=0x104),
+        )
+        assert chosen(img, "Gain", bag=bag) == []
+        assert [d.message for d in bag.sorted] == [
+            "'Gain' names a variable in 2 units, 'unit_a.c', 'unit_b.c': prefix it with one, "
+            "as 'unit_b.c:Gain'"
+        ]
+        assert chosen(img, "unit_b.c:Gain") == ["Gain"]
+
+    def test_a_global_only_declared_where_the_symbol_table_holds_it_is_not_defined_nowhere(
+        self,
+    ) -> None:
+        """Defined in assembly, or in a unit built without -g: the symbol table holds it."""
+        bag = DiagnosticBag()
+        img = image(
+            stored("Asm_Counter", address=None, missing=DECLARED_ONLY, line=5),
+            symbols=frozenset({"Asm_Counter"}),
+        )
+        assert chosen(img, "Asm_Counter", bag=bag) == []
+        assert found(bag) == [
+            (
+                "elf-no-storage",
+                Severity.ERROR,
+                "'Asm_Counter' has no address in the image: its debug information only "
+                "declares it, and the symbol table holds it, defined where the debug "
+                "information does not describe it, in assembly or in a unit built without -g",
+            )
+        ]
+
+    def test_a_global_declared_and_held_by_no_symbol_is_defined_nowhere(self) -> None:
+        bag = DiagnosticBag()
+        img = image(stored("Lost", address=None, missing=DECLARED_ONLY))
+        assert chosen(img, "Lost", bag=bag) == []
+        assert [d.message for d in bag.sorted] == [
+            f"'Lost' has no address in the image: {DECLARED_ONLY}"
+        ]
 
     @pytest.mark.parametrize("unit", ["src\\app\\a.c", "app\\a.c", "src/app/a.c", "a.c"])
     def test_a_unit_spelled_with_backslashes_matches_as_dwarf_recorded_it(self, unit: str) -> None:

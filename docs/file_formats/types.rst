@@ -331,9 +331,10 @@ A structure's members have offsets, and those follow from the target's alignment
 whatever packing the build applies - which means the honest source for them is the build
 itself and not a model of it. DDD reads the real layout back out of the compiled result rather
 than predicting it, on exactly the principle that already applies to addresses: ``ddd generate``
-writes ``0x00000000`` into the a2l until a build tells it otherwise, and ``--address-map`` takes
-the answer keyed on the access path of each member. A predicted offset would be indistinguishable
-from a measured one and wrong on the first target whose alignment differs.
+writes ``0x00000000`` into the a2l until a build tells it otherwise: ``--image`` reads the
+answer out of the linked image's debug information, member offsets included, and
+``--address-map`` takes it keyed on the access path of each member. A predicted offset would be
+indistinguishable from a measured one and wrong on the first target whose alignment differs.
 
 External types
 --------------

@@ -554,15 +554,17 @@ Why is the address of my variable still ``0x00000000``?
 --------------------------------------------------------
 
 Because no address was supplied for it. Zero is the placeholder DDD writes when a symbol is
-not in the address map, and it is what the whole file gets when no ``--address-map`` is given
-at all - a pre-link a2l is a perfectly normal artefact, and refusing to produce one would
-make it impossible to look at the description before the software exists.
+not placed by the image (``--image``) or in the address map, and it is what the whole file gets
+when neither is given at all - a pre-link a2l is a perfectly normal artefact, and refusing to
+produce one would make it impossible to look at the description before the software exists.
 
-A lone ``0x00000000`` in an otherwise populated file therefore means that the map does not
-mention that symbol, and the usual cause is a spelling difference: the map is keyed by the
-exact name of the object as declared, which is also its c identifier and its a2l record name.
-A symbol the map does not mention keeps address zero silently, on the grounds that a partial
-map is a legitimate thing to hand over:
+A lone ``0x00000000`` in an otherwise populated file therefore means that the image does not
+place that symbol, or that the map does not mention it. With an image, ``address-missing`` names
+the symbol and gives its reason as a note. With a map, the usual cause is a spelling
+difference: the map is keyed by the exact name of the object as declared, which is also its c
+identifier and its a2l record name. A symbol the map does not mention keeps address zero and
+is named once in the ``address-missing`` warning, which is a warning because a partial map is
+a legitimate thing to hand over:
 
 .. code-block:: text
 

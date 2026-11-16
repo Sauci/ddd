@@ -2651,7 +2651,11 @@ an offset into the section it dropped, so that an external variable with no obje
 linker discarded whatever the address, and so is a `static` with no local object symbol of its
 name there where the image holds any, a link made with `-Wl,-x` dropping them all and leaving
 the `static` to be read by its address alone - or at an address no section of the image
-holds - is `elf-no-storage`.
+holds - is `elf-no-storage`. A global the symbol table holds and no unit with debug
+information defines, one written in assembly or built without `-g`, is said to be defined where
+the debug information does not describe it. A name each of several units leaves without an
+address, as a header's `static const` each folded, is `elf-no-storage` once, naming the units,
+for a unit prefix would take none of them.
 
 What the image states, the declaration states:
 
@@ -2660,8 +2664,10 @@ What the image states, the declaration states:
   a `value_block` holds no structure ([section 3.7](#37-type-description)). A curve, a map or
   an axis is never inferred.
 - `datatype`: from the DWARF encoding and size - `boolean` of one byte, `uint8` to `uint64`,
-  `sint8` to `sint64`, `float32` and `float64`. Any other pairing, a pointer, a union, an
-  `_Atomic` type or a function is refused.
+  `sint8` to `sint64`, `float32` and `float64`. Any other pairing, a pointer, a union, a
+  function, or an `_Atomic` type where the debug information states it, is refused: gcc states
+  it from DWARF 5 only, and under `-gdwarf-4` (strict or not) writes `_Atomic uint32_t` as the
+  plain type, which is then read as one.
 - `conversion`: the identity, or an `enum` conversion carrying the enumerators in declaration
   order, named by the typedef closest to the enum, else by its tag, else by a name made from
   what first reaches it.

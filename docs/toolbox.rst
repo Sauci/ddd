@@ -253,7 +253,11 @@ under DDD's identifiers.
        at its address counts as discarded, and so does a ``static`` with no local object symbol of its name
        there where the image holds any, a link made with ``-Wl,-x`` dropping them all and
        leaving the ``static`` to be read by its address alone - or at an address no section
-       of the image holds
+       of the image holds. A global the symbol table holds and no unit with debug information
+       defines, one written in assembly or built without ``-g``, is said to be defined where
+       the debug information does not describe it. A name each of several units leaves without
+       an address, as a header's ``static const`` each folded, is reported once, naming the
+       units, since a unit prefix would take none of them
    * - ``elf-type-unsupported``
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,

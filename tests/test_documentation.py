@@ -45,6 +45,7 @@ from ddd.toolbox.findings import FINDINGS
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
+ELF_SOURCE = (ROOT / "src" / "ddd" / "elf.py").read_text(encoding="utf-8")
 SPEC = (ROOT / "SPEC.md").read_text(encoding="utf-8")
 EDITOR_INTEGRATION = (ROOT / "docs" / "editor_integration.rst").read_text(encoding="utf-8")
 DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
@@ -1983,6 +1984,75 @@ class TestTheTemplateReference:
         assert f"``.{name}" in self.TEMPLATES
 
 
+class TestTheFivePagesTheImageReaches:
+    """``--image`` reads the addresses out of a linked image, and the pages that name where an
+    address comes from say so beside the map."""
+
+    def test_the_acronyms_page_says_dwarf_is_read_and_the_address_comes_from_the_image(
+        self,
+    ) -> None:
+        page = flattened(PAGES["docs/acronyms.rst"])
+        assert "DDD does not read it" not in page
+        assert "``ddd generate a2l --image`` reads it to place the addresses the a2l needs" in page
+        assert (
+            "It is ``0x00000000`` until the linked image (``--image``) or an address map "
+            "supplies the real one."
+        ) in page
+        assert "even when neither an image nor an address map was given" in page
+
+    def test_the_faq_says_a_missing_address_is_warned_and_not_silent(self) -> None:
+        page = flattened(PAGES["docs/faq.rst"])
+        assert "keeps address zero silently" not in page
+        assert (
+            "Zero is the placeholder DDD writes when a symbol is not placed by the image "
+            "(``--image``) or in the address map, and it is what the whole file gets when "
+            "neither is given at all"
+        ) in page
+        assert (
+            "A symbol the map does not mention keeps address zero and is named once in the "
+            "``address-missing`` warning"
+        ) in page
+
+    def test_the_getting_started_page_offers_the_image_beside_the_map(self) -> None:
+        page = flattened(PAGES["docs/getting_started.rst"])
+        assert (
+            "``ddd generate a2l --image firmware.elf`` reads the real addresses out of the "
+            "linked image's debug information"
+        ) in page
+
+    def test_the_types_page_names_the_image_as_the_source_of_member_offsets(self) -> None:
+        page = flattened(PAGES["docs/file_formats/types.rst"])
+        assert (
+            "``--image`` reads the answer out of the linked image's debug information, member "
+            "offsets included"
+        ) in page
+
+
+class TestWhatTheReaderAndTheToolboxSay:
+    """The sentences about the reader's reach and the reasons a variable has no address."""
+
+    def test_the_reader_does_not_claim_every_variation_of_dwarf(self) -> None:
+        assert "Every variation of DWARF" not in ELF_SOURCE
+        assert "an image it cannot read - type units, gcc's link-time optimisation" in ELF_SOURCE
+
+    def test_the_spec_limits_the_atomic_refusal_to_what_the_debug_information_states(self) -> None:
+        spec = flattened(SPEC)
+        assert "or an `_Atomic` type where the debug information states it, is refused" in spec
+        assert "writes `_Atomic uint32_t` as the plain type, which is then read as one" in spec
+
+    def test_the_spec_and_the_page_state_the_two_messages_the_selection_gives(self) -> None:
+        said = (
+            "defined where the debug information does not describe it",
+            "is `elf-no-storage` once, naming the units",
+        )
+        spec = flattened(SPEC)
+        page = flattened(PAGES["docs/toolbox.rst"]).replace("``", "`")
+        for sentence in said:
+            assert sentence in spec
+        assert "defined where the debug information does not describe it" in page
+        assert "is reported once, naming the units, since a unit prefix would take none" in page
+
+
 class TestTheBuildIntegrationPage:
     """The cmake module is what a build runs, so the page and the module are held together."""
 
@@ -2106,6 +2176,22 @@ class TestTheBuildIntegrationPage:
             "until which, under Ninja, the generation runs at every build and a change of that "
             "component's header reaches its readers a build late"
         ) in flattened(SPEC)
+
+    def test_the_page_says_an_lto_image_cannot_be_read_by_the_image_step(self) -> None:
+        """The tool refuses an image gcc linked with ``-flto``, and the page leading with
+        ``ADDRESSES_FROM_IMAGE`` says so in the words of the refusal, and what to do."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        refusal = (
+            "its DWARF comes from gcc's link-time optimisation, which this tool does not read; "
+            "build it without -flto"
+        )
+        assert refusal in ELF_SOURCE.replace('"\n            f"', "")
+        assert f'exit 2, with "{refusal}"' in page
+        assert (
+            "A project that links with ``-flto`` and keeps it takes its addresses from a map "
+            "instead (``ADDRESS_MAP``, below)"
+        ) in page
+        assert "built with ``-g`` and without ``-flto``" in page
 
     def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
         """The page calls its block the shipped file minus comments, so that is what it is."""

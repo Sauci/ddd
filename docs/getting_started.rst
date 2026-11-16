@@ -531,8 +531,9 @@ tool sees the physical values the description promised rather than raw counts:
 
 The address is ``0x00000000`` because it is not known before the link step. The ``SYMBOL_LINK``
 entry is always written, so that an address patcher can fill the addresses in after linking;
-alternatively, ``ddd generate a2l --address-map addresses.json`` takes a symbol to address map
-produced from the linker output and writes the real addresses straight away.
+alternatively, ``ddd generate a2l --image firmware.elf`` reads the real addresses out of the
+linked image's debug information, and ``--address-map addresses.json`` takes a symbol to
+address map produced from the linker output, either writing the real addresses straight away.
 
 When the components disagree
 ----------------------------

@@ -65,9 +65,9 @@ Acronyms and abbreviations
        ``ddd`` was taken.
    * - DWARF
      - The debugging data format usually embedded in an ELF file, which describes the symbols
-       of the compiled software. DDD does not read it: the addresses it needs for the a2l are
-       supplied as a json map with ``--address-map``, produced from the linker output by
-       whatever already parses it in the build.
+       of the compiled software. ``ddd generate a2l --image`` reads it to place the addresses the
+       a2l needs; an image without it takes a json map with ``--address-map`` instead,
+       produced from the linker output by whatever already parses it in the build.
    * - ECU
      - Electronic control unit, a piece of electronic hardware running the software whose
        variables DDD describes. The term appears in the a2l keywords - ``ECU_ADDRESS`` - and
@@ -233,11 +233,12 @@ that the table can be read as a description of one file.
    * - ``ECU_ADDRESS``
      - The address of an object in the target, as it appears on a ``MEASUREMENT``. A
        ``CHARACTERISTIC`` and an ``AXIS_PTS`` carry the same value as their address field
-       instead. It is ``0x00000000`` until an address map supplies the real one.
+       instead. It is ``0x00000000`` until the linked image (``--image``) or an address map supplies the
+       real one.
    * - ``SYMBOL_LINK``
      - The name of the symbol an object corresponds to in the linked software, plus an offset.
        DDD always writes it, so that an address patcher can fill the addresses in after the
-       link even when no address map was given.
+       link even when neither an image nor an address map was given.
    * - ``IF_DATA``
      - An interface specific block, whose content is defined by the interface it names rather
        than by ASAP2 itself. DDD writes exactly one kind, ``IF_DATA XCP`` inside a

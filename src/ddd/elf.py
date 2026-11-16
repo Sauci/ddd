@@ -8,10 +8,11 @@ it to that.
 What it offers is a small model of C types - :class:`Base`, :class:`Enum`, :class:`Struct`,
 :class:`Array`, :class:`Qualified`, :class:`Typedef` and :class:`Unsupported` - and the
 variables of static storage an image holds, each with its type, its address and where its
-source declared it. Every variation of DWARF stops here: versions 2 to 5, gcc's spellings and
-clang's, compressed sections. A type this module cannot describe becomes an
-:class:`Unsupported` node where it occurs rather than an exception, so a caller can name the
-place and go on with everything else.
+source declared it. The DWARF it reads is versions 2 to 5 as gcc and clang write them,
+compressed with zlib; an image it cannot read - type units, gcc's link-time optimisation, zstd,
+no program contents - is refused with a message naming why. A type this module cannot describe
+becomes an :class:`Unsupported` node where it occurs rather than an exception, so a caller can
+name the place and go on with everything else.
 
 The readers work on two narrow protocols, :class:`Entry` and :class:`Unit`. pyelftools' DIEs
 satisfy the first and :class:`_PyelftoolsUnit` the second, and so do a test's doubles: the

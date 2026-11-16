@@ -1192,8 +1192,11 @@ below - says so on the line under its ``ASAP2_VERSION``, as the head of the file
 since no ``address-missing`` can: there is nothing to miss.
 
 Three mechanisms exist to fix that up, and DDD offers all three because projects are split
-between them. The first is ``SYMBOL_LINK``, which names the c symbol the record describes and is
-emitted for **every** object, always, whether or not an address is known. It is what an a2l
+between them. The first is ``SYMBOL_LINK``, which names the linker symbol the record lies in,
+with the offset from it, and is emitted for **every** object, always, whether or not an address
+is known. A variable that is not a member names itself at offset 0; a structure member names the
+variable and its own offset when ``--image`` placed it, and its path at offset 0 before the link
+or with a map, which is a path no linker map can answer. It is what an a2l
 address patcher - a tool that reads the map file or the debug information of the linked image
 and rewrites the ``ECU_ADDRESS`` fields - matches on, so a build that patches its a2l after
 linking needs no configuration on the DDD side at all.

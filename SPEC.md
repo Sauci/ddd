@@ -142,8 +142,8 @@ their axes.
 ```
 
 DDD is run once per build to generate the artefacts, the A2L among them. Without address
-information, every object in the A2L carries address zero, and `SYMBOL_LINK` names the
-symbol in every case ([section 6](#6-address-information)). A build that requires the A2L
+information, every object in the A2L carries address zero, and `SYMBOL_LINK` is written in
+every case ([section 6](#6-address-information)). A build that requires the A2L
 to carry the real addresses, which exist only after linking, runs DDD a second time, after
 the link, reading them out of the linked image or out of a map taken from the linker output.
 A build that does not require them stops after the first run.
@@ -1953,7 +1953,8 @@ ASAM MCD-2 MC output containing:
   structured objects it declares after the plain ones in each; a component contributing
   none gets no empty `GROUP`.
 - the address field of every object taken from the address information (`ECU_ADDRESS` is
-  the keyword the format uses for it), `SYMBOL_LINK` always; an object the address
+  the keyword the format uses for it), `SYMBOL_LINK` always, naming the linker symbol and the
+  offset from it where the image placed the record ([section 6](#6-address-information)); an object the address
   information does not cover keeps address `0x00000000`
   ([section 6](#6-address-information)).
 - deterministic order: records sorted by object name, member paths by path, `GROUP`s in the
@@ -2034,8 +2035,14 @@ A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A
 object per value-holding member, named by its C access path: an `Inlet` of the `Inlet_t`
 of [section 3.7](#37-type-description) contributes `Inlet.latest` and `Inlet.raw`, and a
 member that is itself a structure contributes its members beneath its own name. The path
-is at once the A2L name, the `SYMBOL_LINK` symbol and the key of the address map
-([section 6](#6-address-information)). A member of a measurement-kind object becomes a
+is at once the A2L name and the key of the address map ([section 6](#6-address-information)).
+`SYMBOL_LINK` names the linker symbol and the offset from it, as ASAP2 defines the record:
+with `--image`, `Inlet.cells[1].v` carries the variable's own symbol, `Inlet`, and the
+member's offset from that symbol's address in bytes, both taken from where the image placed
+the member. Before the link, and with an address map, which gives a symbol's address
+and nothing of a member's offset, the record of a member names its path at offset 0, and that
+is a path no linker map can answer. A tool that reads the debug information of the linked image
+may resolve it; no such tool was tried. A member of a measurement-kind object becomes a
 `MEASUREMENT`, and a member of a parameter-kind object becomes a `CHARACTERISTIC`, as
 `VALUE` when scalar and as `VAL_BLK` with `MATRIX_DIM` when an array. A member under
 a `string` conversion follows the string records of the first bullet of this section
@@ -2200,8 +2207,8 @@ byte order mark, as a description file may ([section 3](#3-file-formats)): it is
 a build step, and on Windows that is exactly where one comes from. A key the project does
 not know is ignored, and an object the map does not
 cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
-output legitimately omits some objects, and `SYMBOL_LINK` lets a downstream tool resolve
-those it cares about. An object that states a condition, of which the map names neither the
+output legitimately omits some objects, and `SYMBOL_LINK` names what a downstream tool
+resolves those it cares about by. An object that states a condition, of which the map names neither the
 object nor any member, is the exception: it is left out of the A2L, as it is for an image,
 because a map extracted from a linker output omits the objects a condition compiled away. A
 map that names the structure by its own name, as a symbol lister writes it, or some of its

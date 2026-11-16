@@ -757,7 +757,10 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 * the address of an object is `0x00000000` unless the linked image or an address map gives
   it (`ECU_ADDRESS` is simply the keyword the format uses), and a file written with neither -
   or with a map that has no entry - says so on the line under its `ASAP2_VERSION`;
-  `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking.
+  `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking; with
+  `--image` a structure member's names the variable's linker symbol and the member's offset from
+  it, and before the link, or with a map, it names the member's path at offset 0, which no
+  linker map can answer.
   `--image firmware.elf` reads every address out of the linked ELF image's DWARF - an object
   by its name, a structure member by its access path - and takes the image's byte order; a
   symbol the image cannot place keeps address 0 and is reported, its reason a note - unless

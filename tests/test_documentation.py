@@ -2059,6 +2059,79 @@ class TestTheFivePagesTheImageReaches:
         ) in page
 
 
+class TestWhatThePagesSayOfSymbolLink:
+    """``SYMBOL_LINK`` names a linker symbol and the offset from it. With ``--image`` a member's
+    names its variable and its offset; before the link, and with a map, it names the path at
+    offset 0, which no linker map can answer, and a tool reading the debug information may
+    resolve it, which nobody tried (finding 1:I9)."""
+
+    BEFORE = (
+        "Before the link, and with an address map, which gives a symbol's address and nothing "
+        "of a member's offset, the record names the member's path at offset 0, which is a path "
+        "no linker map can answer."
+    )
+    UNTRIED = (
+        "A tool that reads the debug information of the linked image may resolve it; no such "
+        "tool was tried."
+    )
+
+    def test_the_specification_says_what_an_image_and_what_a_map_gives_a_member(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "`SYMBOL_LINK` names the linker symbol and the offset from it, as ASAP2 defines the "
+            "record: with `--image`, `Inlet.cells[1].v` carries the variable's own symbol, "
+            "`Inlet`, and the member's offset from that symbol's address in bytes, both taken "
+            "from where the image placed the member."
+        ) in spec
+        assert (
+            "Before the link, and with an address map, which gives a symbol's address and "
+            "nothing of a member's offset, the record of a member names its path at offset 0, "
+            "and that is a path no linker map can answer."
+        ) in spec
+        assert self.UNTRIED in spec
+        assert "the `SYMBOL_LINK` symbol and the key of the address map" not in spec
+
+    def test_the_concept_page_says_it(self) -> None:
+        page = flattened(PAGES["docs/concept.rst"])
+        assert (
+            "With ``--image`` its record names the variable's symbol and the member's offset "
+            "from it, both taken from where the image placed the member"
+        ) in page
+        assert self.BEFORE in page
+        assert self.UNTRIED in page
+
+    def test_the_faq_says_a_map_based_patcher_needs_the_image_run_for_a_member(self) -> None:
+        page = flattened(PAGES["docs/faq.rst"])
+        assert (
+            "for a member only once the a2l was written with ``--image``, where the record "
+            "names the variable's symbol and the member's offset from it; before the link the "
+            "record of a member names a path no linker map can answer."
+        ) in page
+
+    def test_the_readme_says_it(self) -> None:
+        readme = flattened(README)
+        assert (
+            "with `--image` a structure member's names the variable's linker symbol and the "
+            "member's offset from it, and before the link, or with a map, it names the member's "
+            "path at offset 0, which no linker map can answer."
+        ) in readme
+
+    def test_the_types_and_artefacts_pages_say_it(self) -> None:
+        types = flattened(PAGES["docs/file_formats/types.rst"])
+        assert (
+            "the member's path at offset ``0``, which names no symbol a linker map holds. With "
+            "``--image`` it names the variable's own symbol, ``Inlet``, and the member's offset "
+            "from it in bytes"
+        ) in types
+        assert "The offset in ``SYMBOL_LINK`` is ``0`` and means it" not in types
+        page = flattened(PAGES["docs/generated_artefacts.rst"])
+        assert (
+            "a structure member names the variable and its own offset when ``--image`` placed "
+            "it, and its path at offset 0 before the link or with a map, which is a path no "
+            "linker map can answer."
+        ) in page
+
+
 class TestWhatThePagesSayTheImageIsHeldTo:
     """``elf-mismatch`` holds the definition on every image and a consumer's declaration where the
     compiler records it, which clang does not for an extern a unit only reads. The four pages that

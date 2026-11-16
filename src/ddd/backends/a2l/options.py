@@ -73,6 +73,12 @@ class A2lOptions:
     addresses: dict[str, int] = field(default_factory=dict)
     """Symbol to address map; a symbol that is missing gets address 0."""
 
+    links: dict[str, tuple[str, int]] = field(default_factory=dict)
+    """Symbol to the linker symbol it lies in and its byte offset from it, as the linked image
+    placed it (``Placed.links``): ``Inlet.latest.value`` is ``("Inlet", 8)``. A map gives a
+    symbol's address and nothing of a member's offset, so only an image states one; a symbol
+    that is missing names itself at offset 0."""
+
     has_address_source: bool = False
     """Whether the run had a source of addresses: the linked image, or an address map with an
     entry. Without one every address is 0 and no ``address-missing`` says so, an empty map
@@ -92,6 +98,16 @@ class A2lOptions:
 
     def filename(self, project: str) -> str:
         return f"{project}.a2l"
+
+    def link_of(self, symbol: str) -> tuple[str, int]:
+        """What ``SYMBOL_LINK`` states for ``symbol``: the linker symbol and the offset from it.
+
+        The image's, where it placed the symbol. Otherwise the symbol's own name at offset 0,
+        which for a variable that is not a member is the right answer and for a member is the
+        path no map holds: DDD cannot state the member's offset without predicting a layout
+        only the image knows.
+        """
+        return self.links.get(symbol, (symbol, 0))
 
     def address_of(self, symbol: str) -> str:
         return f"0x{self.addresses.get(symbol, 0):08X}"

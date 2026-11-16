@@ -551,7 +551,10 @@ the note under the warning above.
 
 The other route needs no map at all: ``SYMBOL_LINK`` is written for every object, always, so
 an a2l address patcher can resolve the symbols against the linked image itself and fill the
-addresses in afterwards. Both routes exist because projects differ in which tool owns the
+addresses in afterwards. A patcher that works from a linker map can do that for an object that
+is not a member of a structure, and for a member only once the a2l was written with ``--image``,
+where the record names the variable's symbol and the member's offset from it; before the link
+the record of a member names a path no linker map can answer. Both routes exist because projects differ in which tool owns the
 linker output; neither of them requires editing the generated file by hand.
 
 Why is the address of my variable still ``0x00000000``?

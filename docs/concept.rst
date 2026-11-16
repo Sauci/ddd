@@ -451,7 +451,8 @@ hole in it. A map that names none of them is not reported, ``--strict`` or not, 
 says so itself.
 ``SYMBOL_LINK`` is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
-have the symbol names in the file:
+have the symbol names in the file. It names a linker symbol and the offset from it, which for a
+variable that is not a member is its own name at offset 0:
 
 .. code-block:: text
 
@@ -460,6 +461,13 @@ have the symbol names in the file:
      ECU_ADDRESS 0x20000100
      SYMBOL_LINK "ValueE" 0
    /end MEASUREMENT
+
+A member of a structure is another matter. With ``--image`` its record names the variable's
+symbol and the member's offset from it, both taken from where the image placed the member:
+``SYMBOL_LINK "Inlet"`` and the offset in bytes for ``Inlet.cells[1].v``. Before the link, and with an address map,
+which gives a symbol's address and nothing of a member's offset, the record names the member's
+path at offset 0, which is a path no linker map can answer. A tool that reads the debug
+information of the linked image may resolve it; no such tool was tried.
 
 .. uml::
 

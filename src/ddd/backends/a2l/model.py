@@ -93,6 +93,9 @@ class MeasurementView:
     lower: str
     upper: str
     address: str
+    link: tuple[str, int]
+    """The linker symbol the record names and the offset from it (``SYMBOL_LINK``)."""
+
     matrix_dim: str | None
     format: str | None
     display_identifier: str | None
@@ -134,6 +137,9 @@ class CharacteristicView:
     description: str
     type: str
     address: str
+    link: tuple[str, int]
+    """The linker symbol the record names and the offset from it (``SYMBOL_LINK``)."""
+
     deposit: str
     compu_method: str
     lower: str
@@ -157,6 +163,9 @@ class AxisPtsView:
     name: str
     description: str
     address: str
+    link: tuple[str, int]
+    """The linker symbol the record names and the offset from it (``SYMBOL_LINK``)."""
+
     input_quantity: str
     deposit: str
     compu_method: str
@@ -490,6 +499,7 @@ class _A2lModelBuilder:
             description=leaf.description or leaf.path,
             type="ASCII" if string else ("VAL_BLK" if leaf.shape else "VALUE"),
             address=self._options.address_of(leaf.path),
+            link=self._options.link_of(leaf.path),
             deposit=self._layouts.values(leaf.datatype),
             compu_method=self._methods.reference(leaf),
             lower=format_number(leaf.limits.min),
@@ -511,6 +521,7 @@ class _A2lModelBuilder:
             lower=format_number(entry.limits.min),
             upper=format_number(entry.limits.max),
             address=self._options.address_of(entry.name),
+            link=self._options.link_of(entry.name),
             matrix_dim=_matrix_dim(entry),
             format=entry.a2l.format,
             display_identifier=entry.a2l.display_identifier,
@@ -531,6 +542,7 @@ class _A2lModelBuilder:
             description=entry.description or entry.name,
             type="ASCII" if string else _CHARACTERISTIC_TYPE[entry.kind],
             address=self._options.address_of(entry.name),
+            link=self._options.link_of(entry.name),
             deposit=(
                 self._layouts.counted(entry.kind, entry.datatype)
                 if entry.point_counts is PointCounts.LEADING
@@ -580,6 +592,7 @@ class _A2lModelBuilder:
             name=entry.name,
             description=entry.description or entry.name,
             address=self._options.address_of(entry.name),
+            link=self._options.link_of(entry.name),
             input_quantity=self._input_quantity(entry),
             deposit=(
                 self._layouts.counted(entry.kind, entry.datatype)

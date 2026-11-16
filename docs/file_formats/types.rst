@@ -493,9 +493,10 @@ load a file that uses it without a warning and then display nothing for it.
      SYMBOL_LINK "Inlet.latest.value" 0
    /end MEASUREMENT
 
-The offset in ``SYMBOL_LINK`` is ``0`` and means it: the offset of a symbol from itself. The
-name carries the whole path, so the address a build reports for ``Inlet.latest.value`` is the
-address of that member and nothing has to be added to it. The limits ``-40 150`` and the
+``SYMBOL_LINK`` is shown as it is written before the link and with an address map: the member's
+path at offset ``0``, which names no symbol a linker map holds. With ``--image`` it names the
+variable's own symbol, ``Inlet``, and the member's offset from it in bytes, as ASAP2 defines
+the record, and the same holds for the two records below. The limits ``-40 150`` and the
 ``CM_LIN_DEGC`` come from ``Temperature_t``, which the member names and the enclosing structure
 never repeats. Each leaf also joins the ``GROUP`` of the component that declares the variable,
 so a structured variable is not a hole in that component's measurement list.

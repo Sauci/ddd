@@ -69,7 +69,7 @@ ASAP2_VERSION {{ model.version }}
     /begin MEASUREMENT {{ measurement.name }} "{{ measurement.description | a2l }}"
       {{ measurement.datatype }} {{ measurement.compu_method }} 0 0 {{ measurement.lower }} {{ measurement.upper }}
       ECU_ADDRESS {{ measurement.address }}
-      SYMBOL_LINK "{{ measurement.name }}" 0
+      SYMBOL_LINK "{{ measurement.link[0] }}" {{ measurement.link[1] }}
 {% if measurement.matrix_dim %}
       MATRIX_DIM {{ measurement.matrix_dim }}
 {% endif %}
@@ -105,7 +105,7 @@ ASAP2_VERSION {{ model.version }}
 {% endif %}
     /begin AXIS_PTS {{ axis.name }} "{{ axis.description | a2l }}"
       {{ axis.address }} {{ axis.input_quantity }} {{ axis.deposit }} 0 {{ axis.compu_method }} {{ axis.max_points }} {{ axis.lower }} {{ axis.upper }}
-      SYMBOL_LINK "{{ axis.name }}" 0
+      SYMBOL_LINK "{{ axis.link[0] }}" {{ axis.link[1] }}
 {% if axis.format %}
       FORMAT "{{ axis.format }}"
 {% endif %}
@@ -121,7 +121,7 @@ ASAP2_VERSION {{ model.version }}
 {% endif %}
     /begin CHARACTERISTIC {{ characteristic.name }} "{{ characteristic.description | a2l }}"
       {{ characteristic.type }} {{ characteristic.address }} {{ characteristic.deposit }} 0 {{ characteristic.compu_method }} {{ characteristic.lower }} {{ characteristic.upper }}
-      SYMBOL_LINK "{{ characteristic.name }}" 0
+      SYMBOL_LINK "{{ characteristic.link[0] }}" {{ characteristic.link[1] }}
 {% if characteristic.matrix_dim %}
       MATRIX_DIM {{ characteristic.matrix_dim }}
 {% endif %}

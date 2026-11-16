@@ -1338,6 +1338,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
         addresses: dict[str, int] = {}
+        links: dict[str, tuple[str, int]] = {}
         left_out: frozenset[str] = frozenset()
         byte_order: str | None = getattr(args, "byte_order", None)
         image_path: Path | None = getattr(args, "image", None)
@@ -1371,6 +1372,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                 )
             placed = addresses_from_image(image, carried)
             addresses = placed.addresses
+            links = placed.links
             weigh_addresses(addresses, carried, image_path.as_posix())
             # An object is compiled out where the image defines none of it, not where it
             # holds it and cannot place a part, or holds it in a way that is a defect.
@@ -1428,6 +1430,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                     A2lOptions(
                         byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
                         addresses=addresses,
+                        links=links,
                         left_out=left_out,
                         # An image is a source whatever it places, the finding naming what it
                         # does not; a map is one once it has an entry, as for that finding.

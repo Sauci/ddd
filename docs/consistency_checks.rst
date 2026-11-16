@@ -488,6 +488,17 @@ or an a2l file that does not do what the description says - or that does not com
        bring in, so ``uint16_t`` is out), or is reserved for the implementation by C11 7.1.3 -
        any name containing a double underscore, or starting with an underscore followed by a
        capital letter.
+   * - ``a2l-keyword``
+     - error
+     - a name that reaches the a2l as an identifier, or as a part of one, is a keyword or an
+       enumeration value of ASAP2 1.6.1: ``MAP``, ``VALUE``, ``IDENTICAL``, ``ROOT`` and
+       ``MODULE`` are among them, and the standard keeps identifiers off its index. The match is
+       exact and case sensitive, so ``map`` is a name. It holds the project, a component that
+       gets a group, an object the a2l carries, each member of a path and a
+       ``display_identifier``. An object or a member the a2l leaves out is not held, and a
+       member is the finding of the file that declares its structure, once. It is separate
+       from ``reserved-identifier``, which is about c: a name can be fine for the compiler and
+       forbidden by the a2l.
    * - ``name-collision``
      - error
      - two names that are distinct in the description files would become the same c identifier
@@ -657,12 +668,20 @@ it is either a smell or a decision somebody should have taken consciously.
        everywhere else.
    * - ``a2l-unrepresentable``
      - warning
-     - an object the a2l carries cannot be fully described by the version DDD writes: today
-       that is an array of more than three dimensions, which the ``MATRIX_DIM`` of ASAP2 1.6.1
-       cannot carry. It fires for what the file carries rather than for what asked to be
-       exported, the closure over references included, so an object kept out of the a2l on its
-       own is still reported where an exported axis names it as its ``input``. The extra
-       dimensions are written out and only a 1.7 reader understands them.
+     - an object the a2l carries cannot be fully described by the version DDD writes, or the a2l
+       carries a string, an identifier or a part of one past what the format holds. An array of
+       more than three dimensions is the first: the ``MATRIX_DIM`` of ASAP2 1.6.1 cannot carry
+       it, and the extra dimensions are written out and only a 1.7 reader understands them.
+       The limits are those of table 5 of ASAP2 1.6.1: a string, which is a description of an
+       object, a member, a component or the project (written on ``PROJECT``, ``HEADER`` and
+       ``MODULE``), a unit, or the ``SYMBOL_LINK`` of a record before the image names the
+       variable, is at most 255 characters (``MAX_STRING``); a record's name is at most 1024
+       (``MAX_IDENT``); and a part of that name is at most 128 (``MAX_PARTIAL_IDENT``), an
+       array index counted within it, so an array of structures named with the full 128
+       characters passes it. The file is written whole. A string or the name of a member is the finding of the
+       file that states it, once. It fires for what the file carries rather than for what asked
+       to be exported, the closure over references included, so an object kept out of the a2l
+       on its own is still reported where an exported axis names it as its ``input``.
    * - ``point-counts-mismatch``
      - warning
      - a curve or a map stores its point counts one way and one of its axes the other. The a2l

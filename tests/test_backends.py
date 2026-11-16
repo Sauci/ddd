@@ -70,10 +70,12 @@ class TestLayering:
         # reserved.py is the documented exception: which names a c compiler claims is a
         # property of the input contract, because generating c is not optional. It is a file
         # of its own precisely so that this guard stays strict about everything else.
+        # a2l_keywords.py is the second, for the same reason: which names the a2l format keeps
+        # for itself is a property of the names a project gives, refused before any backend runs.
         text = "\n".join(
             path.read_text(encoding="utf-8")
             for path in (SOURCE / "models").glob("*.py")
-            if path.name != "reserved.py"
+            if path.name not in {"reserved.py", "a2l_keywords.py"}
         )
         # Spellings that belong to one output format only. "measurement" is not among them:
         # that is DDD's own word for an online value and part of the input file format - the

@@ -71,6 +71,7 @@ from ddd.models import (
     format_number,
     format_shape,
     infinite_limits_message,
+    is_a2l_keyword,
     is_above,
     is_below,
     is_reserved_identifier,
@@ -85,6 +86,14 @@ from ddd.plugins import resolve_blocks, run_check_hooks
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
+_A2L_MAX_STRING = 255
+"""``MAX_STRING`` of ASAP2 1.6.1, table 5: the longest ``string``, a ``LongIdentifier`` and a
+``SYMBOL_LINK``'s symbol name included."""
+_A2L_MAX_IDENT = 1024
+"""``MAX_IDENT``: the longest ``ident``, which a record's name is."""
+_A2L_MAX_PARTIAL_IDENT = 128
+"""``MAX_PARTIAL_IDENT``: the longest part of an ``ident`` between its dots, an index counted
+within the part."""
 
 _MAX_TYPE_NESTING = 64
 """How many levels of structure DDD reads.
@@ -721,6 +730,9 @@ class _Analysis:
         self._plugins = {plugin.name: plugin for plugin in workspace.plugins}
         """The plugins in play, by name; what resolves a block."""
         self._enums = _EnumRegistry()
+        self._a2l_said: set[tuple[object, ...]] = set()
+        """The findings about the a2l's names and limits already made, so that a member the
+        analysis reaches once per instance is reported once."""
         self._types = {entry.name: entry for entry in workspace.types}
         """Every type the project declares, by name - structures and scalars alike."""
         self._constants = {entry.name: entry for entry in workspace.constants}
@@ -850,6 +862,16 @@ class _Analysis:
             for name, refs in structured
         ]
         self._check_similar_names(ordered)
+        # A structured variable is in the closure whatever its members do; the group has a
+        # record to name only when one of them is carried.
+        self._check_a2l_groups(
+            reaching_a2l.difference(name for name, _ in structured)
+            | {
+                instance.name
+                for instance, leaves in instances
+                if any(leaf.a2l.exported and leaf.bits is None for leaf in leaves)
+            }
+        )
 
         # Only the declarations whose object resolved: the dictionary's component interfaces
         # must never name an object its `objects` and `instances` lists do not carry.
@@ -1765,6 +1787,17 @@ class _Analysis:
                     f"project name '{loaded.name}' is reserved by the c language",
                     Location(loaded.path, "project.name"),
                 )
+        # The a2l is written for the root: its name is the file's PROJECT and MODULE, and its
+        # description their text. A project it includes reaches no a2l.
+        if self._workspace.projects:
+            root = self._workspace.projects[0]
+            self._a2l_keyword(root.name, Location(root.path, "project.name"))
+            self._a2l_text(
+                f"description of project '{root.name}'",
+                root.project.description,
+                Location(root.path, "project.description"),
+                " on PROJECT, HEADER and MODULE",
+            )
 
     def _check_component_names(self) -> None:
         """Component names that differ only in case cannot both be generated.
@@ -3216,7 +3249,8 @@ class _Analysis:
         )
         leaves: list[ResolvedLeaf] = []
         for suffix in _element_paths(instance.shape):
-            self._flatten(instance, structure, f"{name}{suffix}", leaves, reference)
+            self._flatten(instance, self._types[named], f"{name}{suffix}", leaves, reference)
+        self._check_a2l_instance(instance, leaves, reference)
         # The same question _build_variable asks of a plain object, asked of every leaf that
         # reaches the a2l: a member is an a2l object of its own, so a member with too many
         # dimensions gets exactly the MATRIX_DIM a plain object with too many would.
@@ -3235,10 +3269,11 @@ class _Analysis:
     def _flatten(
         self,
         instance: ResolvedInstance,
-        structure: StructType,
+        entry: LoadedType,
         path: str,
         out: list[ResolvedLeaf],
         reference: DeclarationRef,
+        chain: tuple[tuple[LoadedType, int, Member], ...] = (),
     ) -> None:
         """Walk one structure, adding a leaf for every member that holds a value.
 
@@ -3246,8 +3281,14 @@ class _Analysis:
         path; an *array* of structures contributes them once per element, because there is no
         one address that describes ``cell[0].raw`` and ``cell[1].raw`` at the same time. An
         array of values is left whole: the a2l describes that with a ``MATRIX_DIM``.
+
+        ``chain`` is the members the walk came down through, each with the structure that
+        declares it: what the a2l's name of a leaf is made of, and so where a finding about a
+        part of that name is written.
         """
-        for member in structure.members:
+        structure = entry.structure
+        assert structure is not None
+        for position, member in enumerate(structure.members):
             if self._member_external(member) is not None:
                 # Opaque storage: the member reaches the generated structure verbatim and
                 # nothing else. DDD knows neither its layout nor its meaning, so there is no
@@ -3257,6 +3298,8 @@ class _Analysis:
             nested = self._member_nested_structure(member)
             if nested is None:
                 datatype, unit, conversion, limits = self._member_meaning(member)
+                if instance.a2l.exported and member.a2l.exported and member.bits is None:
+                    self._check_a2l_member(entry, position, member, chain)
                 out.append(
                     ResolvedLeaf(
                         path=here,
@@ -3291,8 +3334,179 @@ class _Analysis:
                     )
                 )
                 continue
+            assert member.typename is not None  # it names the structure found above
             for suffix in _element_paths(self._numeric_shape(member.dimensions)):
-                self._flatten(instance, nested, f"{here}{suffix}", out, reference)
+                self._flatten(
+                    instance,
+                    self._types[member.typename],
+                    f"{here}{suffix}",
+                    out,
+                    reference,
+                    (*chain, (entry, position, member)),
+                )
+
+    def _a2l_first(self, *key: object) -> bool:
+        """Whether this is the first time a finding of the a2l's names and limits is asked for.
+
+        A type's member is reached once per instance, and once per element of an array of
+        structures; the cause is the type file's, so it is said once.
+        """
+        if key in self._a2l_said:
+            return False
+        self._a2l_said.add(key)
+        return True
+
+    def _a2l_keyword(self, name: str, location: Location) -> None:
+        """``a2l-keyword``: a name the a2l writes as an identifier, or as part of one."""
+        if is_a2l_keyword(name) and self._a2l_first("keyword", name, location):
+            self._bag.add(
+                "a2l-keyword",
+                f"'{name}' is a keyword of ASAP2 1.6.1, which an identifier of the a2l may not be",
+                location,
+            )
+
+    def _a2l_text(self, what: str, text: str, location: Location, written: str = "") -> None:
+        """``a2l-unrepresentable``: a string the a2l carries past ``MAX_STRING``."""
+        if len(text) > _A2L_MAX_STRING and self._a2l_first("string", what, location):
+            self._bag.add(
+                "a2l-unrepresentable",
+                f"the {what} is a string of {len(text)} characters, but the a2l of ASAP2 1.6.1 "
+                f"carries {_A2L_MAX_STRING} (MAX_STRING); it is written whole{written}",
+                location,
+            )
+
+    def _a2l_partial(self, what: str, name: str, shape: Shape, location: Location) -> None:
+        """``a2l-unrepresentable``: a part of a record's name past ``MAX_PARTIAL_IDENT``.
+
+        An array of structures puts its index in the part, ``name[11]``, and the one that
+        counts is the last: the longest.
+        """
+        counted = name + "".join(f"[{size - 1}]" for size in shape)
+        if len(counted) > _A2L_MAX_PARTIAL_IDENT and self._a2l_first("partial", what, location):
+            self._bag.add(
+                "a2l-unrepresentable",
+                f"the {what} with its index is {len(counted)} characters, but a partial "
+                f"identifier of the a2l of ASAP2 1.6.1 carries {_A2L_MAX_PARTIAL_IDENT} "
+                f"(MAX_PARTIAL_IDENT), an index counted within it",
+                location,
+            )
+
+    def _check_a2l_object(
+        self, name: str, definition: DataObject, reference: DeclarationRef
+    ) -> None:
+        """What the a2l writes of an object it carries, asked of the declaration that states it."""
+        self._a2l_keyword(name, reference.location("definition.name"))
+        if definition.a2l.display_identifier is not None:
+            self._a2l_keyword(
+                definition.a2l.display_identifier,
+                reference.location("definition.a2l.display_identifier"),
+            )
+        self._a2l_text(
+            f"description of '{name}'",
+            definition.description,
+            reference.location("definition.description"),
+        )
+        named = reference.declaration.definition.typename
+        if named is not None:
+            # The unit came from a scalar type: the type's to fix.
+            self._a2l_text(
+                f"unit of type '{named}'",
+                definition.unit,
+                self._types[named].location("unit"),
+            )
+            return
+        self._a2l_text(f"unit of '{name}'", definition.unit, reference.location("definition.unit"))
+
+    def _check_a2l_member(
+        self,
+        entry: LoadedType,
+        position: int,
+        member: Member,
+        chain: tuple[tuple[LoadedType, int, Member], ...],
+    ) -> None:
+        """What the a2l writes of a member it carries, at the type file that declares it.
+
+        The parts of the name above it, the members it is reached through, are held as well:
+        the record's name is built from them, and each is a part of an identifier.
+        """
+        for above, above_position, nested in chain:
+            where = above.location(f"members[{above_position}].name")
+            self._a2l_keyword(nested.name, where)
+            self._a2l_partial(
+                f"name of member '{nested.name}' of structure '{above.name}'",
+                nested.name,
+                self._numeric_shape(nested.dimensions),
+                where,
+            )
+        self._a2l_keyword(member.name, entry.location(f"members[{position}].name"))
+        display = member.a2l.display_identifier
+        if display is not None:
+            self._a2l_keyword(
+                display, entry.location(f"members[{position}].a2l.display_identifier")
+            )
+        about = f"member '{member.name}' of structure '{entry.name}'"
+        self._a2l_text(
+            f"description of {about}",
+            member.description,
+            entry.location(f"members[{position}].description"),
+        )
+        declared = self._declared_of(member)
+        if isinstance(declared, ScalarType):
+            self._a2l_text(
+                f"unit of type '{declared.name}'",
+                declared.unit,
+                self._types[declared.name].location("unit"),
+            )
+        else:
+            self._a2l_text(
+                f"unit of {about}", member.unit, entry.location(f"members[{position}].unit")
+            )
+
+    def _check_a2l_instance(
+        self, instance: ResolvedInstance, leaves: list[ResolvedLeaf], reference: DeclarationRef
+    ) -> None:
+        """What the a2l writes of a structured variable, which it carries as its members.
+
+        The variable's own name is the first part of every record's, and the longest record
+        name is the one that can pass what the format holds.
+        """
+        carried = [leaf for leaf in leaves if leaf.a2l.exported and leaf.bits is None]
+        if not carried:
+            return
+        where = reference.location("definition.name")
+        self._a2l_keyword(instance.name, where)
+        self._a2l_partial(f"name '{instance.name}'", instance.name, instance.shape, where)
+        longest = max(len(leaf.path) for leaf in carried)
+        if longest > _A2L_MAX_IDENT:
+            self._bag.add(
+                "a2l-unrepresentable",
+                f"'{instance.name}' reaches the a2l under a path of {longest} characters, but "
+                f"an identifier of the a2l of ASAP2 1.6.1 carries {_A2L_MAX_IDENT} (MAX_IDENT)",
+                reference.location("definition"),
+            )
+        elif longest > _A2L_MAX_STRING:
+            self._bag.add(
+                "a2l-unrepresentable",
+                f"'{instance.name}' reaches the a2l under a path of {longest} characters, but "
+                f"a string of the a2l of ASAP2 1.6.1 carries {_A2L_MAX_STRING} (MAX_STRING), "
+                f"which is what the SYMBOL_LINK of a record holds until the image names the "
+                f"variable",
+                reference.location("definition"),
+            )
+
+    def _check_a2l_groups(self, carried: set[str]) -> None:
+        """A component the a2l writes a group for: its name, and its description."""
+        for loaded in self._workspace.components:
+            declared = {declaration.definition.name for declaration in loaded.component.interface}
+            if not declared & carried:
+                continue
+            component = loaded.component
+            self._a2l_keyword(component.name, loaded.location("component.name"))
+            self._a2l_text(
+                f"description of component '{component.name}'",
+                component.description,
+                loaded.location("component.description"),
+            )
 
     def _member_nested_structure(self, member: Member) -> StructType | None:
         """The structure a member is, or nothing when it holds a value of its own."""
@@ -3347,6 +3561,9 @@ class _Analysis:
                 f"a 1.7 reader understands them",
                 reference.location("definition"),
             )
+
+        if reaches_a2l:
+            self._check_a2l_object(name, definition, reference)
 
         return Variable(
             name=name,

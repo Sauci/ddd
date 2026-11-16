@@ -559,6 +559,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
 | error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares or brings in (`<stddef.h>`'s `size_t` among them), or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
+| error | `a2l-keyword` | a name reaching the a2l, as an identifier or a part of one, is a keyword or an enumeration value of ASAP2 1.6.1 (`MAP`, `VALUE`, `IDENTICAL`, `ROOT` and `MODULE` among them) |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |
@@ -576,7 +577,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |
 | warning | `enum-duplicate-value` | two enumerators share a value |
 | warning | `name-similar` | two variables differ only in upper/lower case |
-| warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
+| warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has, or the a2l carries a string past 255 characters, an identifier past 1024 or a part of one past 128 (an array index counted within it) |
 | warning | `reference-left-out` | a curve or map is left out of the a2l with its axis, which the build left out, while the build holds it |
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |

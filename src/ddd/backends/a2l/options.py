@@ -33,10 +33,10 @@ class A2lOptions:
     under its version."""
 
     left_out: frozenset[str] = frozenset()
-    """The objects the build compiled out, which the a2l does not write: each states a
-    condition, and the image or the map that placed the rest places none of it. Naming a
-    curve's axis or an axis's input makes those records go with it, since the reference would
-    otherwise name a record the file lacks."""
+    """The symbols of the objects the build compiled out, which the a2l does not write: each
+    states a condition, and the image defines none of it or the map names none of it. A curve
+    or a map over an axis among them goes too, since its reference would name a record the
+    file lacks; an axis whose input is among them is written indexed by nothing."""
 
     def filename(self, project: str) -> str:
         return f"{project}.a2l"

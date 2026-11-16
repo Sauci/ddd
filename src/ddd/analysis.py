@@ -3535,12 +3535,14 @@ class _Analysis:
         """A reference holds only where the object it names is built whenever the referrer is.
 
         An unconditional curve over an axis written under ``defined(F)``: a build without ``F``
-        holds the curve and not the axis, and the a2l of that build names a record it does not
-        have. The same for an axis over a conditional input, or two different conditions, which
-        are compared as text as every condition is. A referrer under a condition over an
-        unconditional object is fine, and so are two objects under the same one. A warning, as
-        ``point-counts-mismatch`` beside it is, for the same standing: the project generates and
-        a build with the condition holding is right; it is the one without that is not.
+        holds the curve and not the axis, and the a2l of that build cannot name the axis: it
+        leaves the curve out with it, as it leaves an axis indexed by an object that went
+        without its input quantity. The same for an axis over a conditional input, or two
+        different conditions, which are compared as text as every condition is. A referrer under
+        a condition over an unconditional object is fine, and so are two objects under the
+        same one. A warning, as ``point-counts-mismatch`` beside it is, for the same standing:
+        the project generates and a build with the condition holding is right; it is the one
+        without that is not.
         """
         by_name = {variable.name: variable for variable in variables}
         for variable in variables:
@@ -3553,8 +3555,8 @@ class _Analysis:
                     "condition-mismatch",
                     f"'{variable.name}' under {describe_condition(variable.condition)} refers to "
                     f"'{name}' under {describe_condition(target.condition)}; where the build holds "
-                    f"'{variable.name}' and not '{name}', the reference names a record that is "
-                    "not there",
+                    f"'{variable.name}' and not '{name}', the a2l leaves out '{variable.name}', or "
+                    f"its reference to '{name}'",
                     reference.location("definition"),
                 )
 

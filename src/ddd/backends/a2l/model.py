@@ -232,14 +232,34 @@ def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
     return _A2lModelBuilder(dictionary, A2lOptions()).addressed()
 
 
-def conditional_symbols(dictionary: DataDictionary) -> dict[str, str]:
-    """Each symbol this dictionary's a2l carries that states a condition, with the condition.
+@dataclass(frozen=True, slots=True)
+class ConditionalObject:
+    """An object of the a2l that states a condition, and the symbols the file carries for it."""
 
-    Asked of the builder, as :func:`addressed_symbols` is, for the same reason: a run that
-    has just learnt which of those symbols its image or map places none of them needs the
-    ones a feature may have compiled out, and which they are is that one selection's answer.
+    name: str
+    """The object's name: a plain object's, or a structured one's, whose members are its symbols."""
+
+    condition: str
+
+    symbols: tuple[str, ...]
+    """What an image or a map is asked about: the object's name, or one access path per
+    member the file carries."""
+
+
+def conditional_objects(dictionary: DataDictionary) -> tuple[ConditionalObject, ...]:
+    """The objects this dictionary's a2l carries that state a condition, in order of name.
+
+    Asked of the builder, as :func:`addressed_symbols` is, for the same reason: the run that
+    has just asked an image or a map where the symbols are needs to know which of them
+    belong to an object a feature may have compiled out.
     """
-    return _A2lModelBuilder(dictionary, A2lOptions()).conditions()
+    return _A2lModelBuilder(dictionary, A2lOptions()).conditional()
+
+
+def dragged_with(dictionary: DataDictionary, left_out: frozenset[str]) -> tuple[str, ...]:
+    """The objects the a2l would carry that go with ``left_out``, sorted: a curve or a map
+    whose axis is among them, which the file cannot name once the axis has no record."""
+    return _A2lModelBuilder(dictionary, A2lOptions(left_out=left_out)).dragged()
 
 
 class _A2lModelBuilder:
@@ -298,13 +318,47 @@ class _A2lModelBuilder:
         )
         return tuple(sorted({entry.name for entry in entries}))
 
-    def conditions(self) -> dict[str, str]:
-        """:meth:`addressed`'s symbols that state a condition, each with it."""
-        entries: tuple[ResolvedObject | ResolvedLeaf, ...] = (
-            *self._exported_objects(),
-            *self._carried_leaves(),
+    def conditional(self) -> tuple[ConditionalObject, ...]:
+        """:meth:`addressed`'s objects that state a condition, a structured one gathered from
+        its members."""
+        symbols: dict[str, list[str]] = {}
+        conditions: dict[str, str] = {}
+        for entry in self._exported_objects():
+            if entry.condition:
+                symbols[entry.name] = [entry.name]
+                conditions[entry.name] = entry.condition
+        for leaf in self._carried_leaves():
+            if leaf.condition:
+                symbols.setdefault(leaf.instance, []).append(leaf.name)
+                conditions[leaf.instance] = leaf.condition
+        return tuple(
+            ConditionalObject(name, conditions[name], tuple(symbols[name]))
+            for name in sorted(symbols)
         )
-        return {entry.name: entry.condition for entry in entries if entry.condition}
+
+    def dragged(self) -> tuple[str, ...]:
+        """The objects that would reach the file but for an axis among the options' left out."""
+        return tuple(sorted(self._dragged()))
+
+    def _dragged(self) -> set[str]:
+        if not self._options.left_out:
+            # The common run, and one walk of the project fewer: nothing is left out.
+            return set()
+        return {
+            entry.name
+            for entry in self._dictionary.objects
+            if entry.a2l.exported
+            and entry.name not in self._options.left_out
+            and self._loses_an_axis(entry)
+        }
+
+    def _loses_an_axis(self, entry: ResolvedObject) -> bool:
+        """Whether ``entry`` is a curve or a map over an axis the options leave out; its
+        ``AXIS_DESCR`` would name a record the file lacks."""
+        return any(
+            entry.references.get(key) in self._options.left_out
+            for key in ("axis", "x_axis", "y_axis")
+        )
 
     def build(self, generator: str) -> A2lModel:
         dictionary = self._dictionary
@@ -361,39 +415,32 @@ class _A2lModelBuilder:
         measurement that was, is a dangling reference and makes the file invalid rather than
         smaller. An object is therefore pulled back in by whoever points at it, transitively -
         a curve pulls its axis, and that axis pulls the measurement it is indexed by.
+
+        What a build left out (:attr:`A2lOptions.left_out`) is neither written nor pulled in,
+        and a curve or map over an axis among it goes too (:meth:`_dragged`), taking with it
+        what only it pulled in, such as an axis that asked to stay out of the file for itself.
+        The axis that stays loses an input that went, and says it is indexed by nothing
+        (:meth:`_input_quantity`). Only an unconditional curve over a conditional axis can
+        ask for that, the case ``condition-mismatch`` reports.
         """
         by_name = self._by_name
-        names = {entry.name for entry in self._dictionary.objects if entry.a2l.exported}
+        gone = self._options.left_out
+        dragged = self._dragged()
+        names = {
+            entry.name
+            for entry in self._dictionary.objects
+            if entry.a2l.exported and entry.name not in gone and entry.name not in dragged
+        }
         pending = list(names)
         while pending:
             # Everything in `names` is a key of `by_name`: the initial set comes from the
             # objects themselves, and the only other way in is the membership test below.
             entry = by_name[pending.pop()]
             for referenced in entry.references.values():
-                if referenced not in names and referenced in by_name:
+                if referenced not in names and referenced not in gone and referenced in by_name:
                     names.add(referenced)
                     pending.append(referenced)
-        return self._without_what_the_build_left_out(names)
-
-    def _without_what_the_build_left_out(self, names: set[str]) -> set[str]:
-        """``names`` less the objects of :attr:`A2lOptions.left_out`, and the curves and maps
-        left holding an axis among them.
-
-        After the closure above rather than before it, because an axis's input is pulled in
-        like any other reference and is exactly what a feature that is off takes with it. The
-        axis stays, indexed by nothing (:meth:`_input_quantity`); a curve cannot, since its
-        ``AXIS_DESCR`` names the axis's record, so it goes where its axis went - which only an
-        unconditional curve over a conditional axis can ask for, the case ``condition-mismatch``
-        reports.
-        """
-        gone = self._options.left_out
-        by_name = self._by_name
-        axes = ("axis", "x_axis", "y_axis")
-        return {
-            name
-            for name in names - gone
-            if not any(by_name[name].references.get(key) in gone for key in axes)
-        }
+        return names
 
     def _carries(self, leaf: ResolvedLeaf) -> bool:
         """Whether this member can be described at all, and was asked to be.
@@ -406,7 +453,8 @@ class _A2lModelBuilder:
 
         The export question is already answered: the analysis resolves the variable's answer
         and the member's into the one the leaf carries, so this backend and ``ddd compare``
-        cannot reach different conclusions about which members reach the file.
+        cannot reach different conclusions about which members reach the file - bar the
+        members a run's own :attr:`A2lOptions.left_out` takes out, which no comparison sees.
         """
         if leaf.bits is not None or leaf.name in self._options.left_out:
             return False

@@ -311,7 +311,7 @@ class TestDefinitionAgreement:
         assert checks(bag) == ["condition-mismatch"]
         assert (
             "'Cv' under none refers to 'Ax' under 'defined(F)'; where the build holds 'Cv' and "
-            "not 'Ax', the reference names a record that is not there"
+            "not 'Ax', the a2l leaves out 'Cv', or its reference to 'Ax'"
         ) in messages(bag)
         assert [diagnostic.severity for diagnostic in bag] == [Severity.WARNING]
 

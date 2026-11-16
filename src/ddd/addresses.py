@@ -138,6 +138,13 @@ information does not describe, so the unit defining it was compiled without ``-g
 
 
 @dataclass(frozen=True, slots=True)
+class _Absent:
+    """The reason a variable has no address when the image holds no definition of it at all."""
+
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class Placed:
     """Where an image puts each symbol it places, and why it places none of the others."""
 
@@ -146,6 +153,12 @@ class Placed:
 
     reasons: dict[str, str]
     """Every symbol not placed, and why, in one sentence naming the part of it that failed."""
+
+    absent: frozenset[str] = frozenset()
+    """The symbols of ``reasons`` whose variable the image does not define: no variable of the
+    name, no symbol of it, or a declaration alone, as a header's ``extern`` stays where the
+    unit that defines the variable removed it. What a build without a feature looks like; the
+    other reasons say the image holds the variable, or something of its name."""
 
 
 def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
@@ -164,29 +177,35 @@ def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
         named.setdefault(variable.name, []).append(variable)
     addresses: dict[str, int] = {}
     reasons: dict[str, str] = {}
+    absent: set[str] = set()
     for symbol in symbols:
         placed = _placed(symbol, image, named)
         if isinstance(placed, int):
             addresses[symbol] = placed
+        elif isinstance(placed, _Absent):
+            reasons[symbol] = placed.reason
+            absent.add(symbol)
         else:
             reasons[symbol] = placed
-    return Placed(addresses, reasons)
+    return Placed(addresses, reasons, frozenset(absent))
 
 
-def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> int | str:
+def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> int | str | _Absent:
     """The address of ``symbol``, or why the image gives it none."""
     root = _ROOT.match(symbol)
     # The symbols of an a2l are those addressed_symbols lists: an object's identifier, or a
     # member's path, which ddd.analysis writes starting with the variable's identifier.
     assert root is not None
     found = _variable(root.group(), image, named.get(root.group(), []))
-    if isinstance(found, str):
+    if isinstance(found, str | _Absent):
         return found
     address, ctype = found
     return _walk(symbol, root.end(), address, ctype)
 
 
-def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, CType] | str:
+def _variable(
+    name: str, image: Image, named: Sequence[Variable]
+) -> tuple[int, CType] | str | _Absent:
     """The address and the type of the global ``name``, or why the image holds none."""
     from ddd.elf import DECLARED_ONLY, without_address
 
@@ -199,8 +218,8 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
             )
         missing = f"the image's debug information holds no variable named '{name}'"
         if name in image.symbols:
-            missing += _WITHOUT_G
-        return missing
+            return missing + _WITHOUT_G
+        return _Absent(missing)
     located: dict[int, Variable] = {}
     for variable in external:
         if variable.address is not None:
@@ -210,7 +229,10 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
         # it, compiled without, describes nothing: the reader keeps the declaration alone.
         if external[0].missing == DECLARED_ONLY and name in image.symbols:
             return f"the image's debug information only declares '{name}'{_WITHOUT_G}"
-        return without_address(name, external[0].missing)
+        reason = without_address(name, external[0].missing)
+        # Declared and not defined, with no symbol of the name either: the unit that defines
+        # it is not in the image.
+        return _Absent(reason) if external[0].missing == DECLARED_ONLY else reason
     if len(located) > 1:
         listed = ", ".join(f"0x{address:X}" for address in sorted(located))
         return f"'{name}' names globals at {len(located)} addresses of the image, {listed}"

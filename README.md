@@ -571,7 +571,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `unknown-extension` | an `extensions` block names a plugin the project does not load |
 | warning | `storage-mismatch` | components disagree on how the a2l shows the object; the producer wins |
 | warning | `section-alignment` | an object needs stricter alignment than its section guarantees |
-| warning | `condition-mismatch` | declarations of one variable use different conditions |
+| warning | `condition-mismatch` | declarations of one variable, or an object and what it refers to, use different conditions |
 | warning | `unused-output` | an output nobody reads |
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |
 | warning | `enum-duplicate-value` | two enumerators share a value |
@@ -579,7 +579,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |
-| info | `condition-left-out` | an object stating a condition gets no address from the image or map the run was given, and is left out of the a2l |
+| info | `condition-left-out` | the build holds nothing of an object stating a condition (the image defines no variable of its name, the map names none of it), and the a2l leaves it out |
 | info | `empty-component` | a component declares no variable |
 | info | `empty-vocabulary` | a types, units, constants, sections or rasters file declares nothing |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
@@ -758,7 +758,8 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
   `--image firmware.elf` reads every address out of the linked ELF image's DWARF - an object
   by its name, a structure member by its access path - and takes the image's byte order; a
   symbol the image cannot place keeps address 0 and is reported, its reason a note - unless
-  its object states a condition, which the a2l then leaves out - and in
+  its object states a condition and the image defines none of it, which the a2l then leaves
+  out - and in
   cmake `ADDRESSES_FROM_IMAGE` makes the a2l one step after the link.  `--address-map` serves
   an image without debug information, and in cmake `ADDRESS_MAP` makes the a2l the same step,
   reading the map.

@@ -1462,8 +1462,10 @@ Warnings:
   or an object refers to another one whose condition it does not state: an unconditional
   curve over a conditional axis, an axis over a conditional input, a curve under one
   condition over an axis under another. A build without the condition holds the referrer
-  and not the object, and its A2L would name a record that is not there. The reference
-  is the other half of what `condition-left-out` leaves out of the A2L.
+  and not the object, so the A2L of that build, written by a run that finds the object
+  compiled out (`condition-left-out`), leaves the referrer out too, or writes an axis with
+  no input quantity. The one id serves both comparisons: `-W condition-mismatch=ignore`
+  silences both.
 - `unused-output`: an output is read by nobody.
 - `limits-out-of-range`: limits exceed what the datatype can represent under the
   conversion; for an enum that is the span of its enumerators. The comparison allows a
@@ -1499,14 +1501,20 @@ Warnings:
 
 Information:
 
-- `condition-left-out`: an object the A2L would carry states a condition, and the image or
-  the address map with entries the run was given places none of it: the build left it out,
-  as a build without the feature does, and the A2L has no record of it. One finding per
-  condition, naming the objects it guards, located at the image or the map, with the image's
-  reasons as notes. A condition cannot be told true or false from here, and what the build
-  does not hold is no hole in its addresses: an object that states none is still
-  `address-missing`. A curve or a map over an axis left out goes with it, and an axis whose
-  input was left out is written with `NO_INPUT_QUANTITY`.
+- `condition-left-out`: an object the A2L would carry states a condition, and the build
+  does not hold it: the image defines no variable of its name, nor holds a symbol of it,
+  or the address map with entries names neither the object nor any of its members. The A2L
+  then has no record of it, as for a build without the feature. One finding per condition,
+  naming the objects it guards, located at the image or the map. A condition cannot be told
+  true or false from here, so what counts is absence, and every other reason an image gives
+  - the variable is only a `static`, its unit built without `-g`, it sits at several
+  addresses, its type lacks a member the declaration names, the linker discarded it - is a
+  defect in what the build holds and stays `address-missing`, as does an object that states
+  no condition. A structured object is decided as one: left out only where none of its
+  members is placed, and kept, its unplaced members `address-missing`, where the build
+  holds some of it. A curve or a map over an axis left out cannot be described without it
+  and goes with it, named in a finding of its own at the same severity; an axis whose input
+  was left out is written with `NO_INPUT_QUANTITY`.
 - `empty-component`: a component declares no data object at all.
 - `empty-vocabulary`: a types, units, constants, sections or rasters file declares nothing,
   its own list being empty. The file loads: emptying one is how a project goes from one entry
@@ -1967,9 +1975,10 @@ another producer is not checked again, where a dangling name would make the modu
 
 A record whose object is declared under a preprocessor condition is preceded by a comment
 naming that condition, because the format has no conditional construct of its own. When
-the run has an address source that places none of the object, a map with entries or an
-image ([section 6](#6-address-information)), the build did not hold it, and the record is
-left out of the file; `condition-left-out` says so at `info`
+the run has an address source that shows the build does not hold the object, an image that
+defines no variable of its name or a map with entries that names neither it nor a member of
+it ([section 6](#6-address-information)), the record is left out of the file, and a curve
+or a map over an axis so left out with it; `condition-left-out` says so at `info`
 ([section 4](#4-consistency-checks)).
 
 A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A2L as one
@@ -2074,8 +2083,10 @@ these are, and no further. The A2L
 takes the byte order the image states: a `--byte-order` that agrees is accepted, and one
 that contradicts the image is a usage error. A symbol the image does not place keeps
 address `0x00000000` and is reported by `address-missing`
-([section 4](#4-consistency-checks)), unless its object states a condition, which is then
-left out of the A2L and reported by `condition-left-out` instead. Why it is not placed is a
+([section 4](#4-consistency-checks)). Only where its object states a condition and the
+image defines no variable of that name, and holds no symbol of it, is the object taken for
+one the build left out of the A2L and reported by `condition-left-out` instead; every
+other reason below is a defect in what the build holds. Why a symbol is not placed is a
 note of the finding: the image
 holds no variable of that name, or only a `static` of it; the variable has no storage -
 only declared, folded into a constant, removed by the compiler or discarded by the linker,
@@ -2108,10 +2119,13 @@ a 64 bit host. The file **may** begin with a
 byte order mark, as a description file may ([section 3](#3-file-formats)): it is written by
 a build step, and on Windows that is exactly where one comes from. A key the project does
 not know is ignored, and an object the map does not
-cover keeps address `0x00000000` rather than failing the run, and an object of the map's
-build that states a condition and is not in the map is left out of the A2L, as it is for an
-image: a map extracted from a linker output legitimately omits the objects a condition
-compiled away.
+cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
+output legitimately omits some objects, and `SYMBOL_LINK` lets a downstream tool resolve
+those it cares about. An object that states a condition, of which the map names neither the
+object nor any member, is the exception: it is left out of the A2L, as it is for an image,
+because a map extracted from a linker output omits the objects a condition compiled away. A
+map that names the structure by its own name, as a symbol lister writes it, or some of its
+members, holds the object, and the members it lacks are `address-missing`.
 
 A map with entries, or an image, that leaves an object of the A2L uncovered, one that
 states no condition, is `address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under

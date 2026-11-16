@@ -1334,9 +1334,11 @@ defined when the image was built. DDD states the condition in a comment above th
 Whether the record is there at all depends on what DDD is told about the build. Without an
 image or a map it cannot tell, and writes every conditional object, as it writes every
 address, as 0. Given an image (``--image``) or a map with entries (``--address-map``) that
-places the object, the build held it and the record is written, at its address. Given one that
-places none of it, the build was made without the feature: the object is left out of the a2l,
-and the run says so at ``info``, naming the object and the condition, as ``condition-left-out``:
+places the object, the build held it and the record is written, at its address. Given an image
+that defines no variable of its name, with no symbol of it either, or a map that names neither
+the object nor any member of it, the build was made without the feature: the object is left
+out of the a2l, and the run says so at ``info``, naming the object and the condition, as
+``condition-left-out``:
 
 .. code-block:: text
 
@@ -1347,12 +1349,17 @@ An a2l that kept the record at address 0 would describe storage the image does n
 a calibration tool would read and write at 0. Nothing is lost by leaving it out, since the
 a2l is generated again, after the link, for each build; and the finding keeps the omission
 visible, so that a record missing from the file is never mistaken for one that was not
-declared. An object that states no condition is another matter: a hole in the map is a hole,
-and stays ``address-missing``, so that ``--strict`` still stops a build for it.
+declared. Only absence counts. An image that holds the variable and cannot place it - as a
+``static``, from a unit built without ``-g``, at several addresses, with a member the C
+lacks, or discarded by the linker - has a defect to show, and a map that names a structure
+by its own name, as a symbol lister writes it, holds it: those stay ``address-missing`` for
+what they do not place. So does an object that states no condition, a hole in the map being a
+hole, so that ``--strict`` still stops a build for it.
 
 Leaving an object out cannot leave a record naming it behind. A curve or a map over an axis
-that was left out goes with it, and an axis indexed by a measurement that was left out is
-written without an input quantity. A project should not rely on that: an object
+that was left out cannot be described without it and goes with it, which the build holds:
+the run names it, in a finding of its own at ``info``. An axis indexed by a measurement that
+was left out is written without an input quantity. A project should not rely on that: an object
 that refers to another one under a condition it does not share is reported by
 ``ddd check`` as ``condition-mismatch``, since a build without the condition holds the one and
 not the other.

@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
 
     from ddd.addresses import Placed
-    from ddd.backends import Backend, GeneratedFile, WriteStatus
+    from ddd.backends import Backend, ConditionalObject, GeneratedFile, WriteStatus
     from ddd.elf import Image
     from ddd.ir import Comparable, DataDictionary
     from ddd.plugins import Plugin
@@ -1041,25 +1041,37 @@ def _check_image_coverage(
     )
 
 
-def _report_left_out(
-    left_out: dict[str, str],
+def _leave_out(
+    absent: Sequence[ConditionalObject],
+    dictionary: DataDictionary,
+    carried: tuple[str, ...],
     lacking: str,
     path: Path,
     reasons: Mapping[str, str],
     bag: DiagnosticBag,
-) -> None:
+) -> tuple[frozenset[str], tuple[str, ...]]:
     """Say, at ``info``, which objects the a2l leaves out because the build compiled them out.
 
-    One finding per condition, the objects it guards named as ``address-missing`` names its
-    own. ``lacking`` is how the source says it holds nothing for them - ``the image has no
-    address for`` or ``the address map has no entry for`` - and ``reasons`` is why, for an
-    image, which a map does not give.
+    ``absent`` are the conditional objects the source holds nothing of. One finding per
+    condition, the objects it guards named as ``address-missing`` names its own. ``lacking``
+    is how the source says it holds nothing for them - ``the image has no address for`` or
+    ``the address map has no entry for`` - and ``reasons`` is why, for an image, which a map
+    does not give.
+
+    A curve or a map over an axis among them goes with it, which the build holds and the file
+    cannot describe: a finding of its own names those. What comes back is the symbols left
+    out, and the ``carried`` ones that still reach the file, which are the ones
+    ``address-missing`` is about.
     """
-    for condition in dict.fromkeys(left_out.values()):
-        names = [symbol for symbol, guard in left_out.items() if guard == condition]
+    for condition in dict.fromkeys(entry.condition for entry in absent):
+        objects = [entry for entry in absent if entry.condition == condition]
+        names = [entry.name for entry in objects]
         plural = len(names) != 1
         reasons_given = dict.fromkeys(
-            reasons[name] for name in names[:_LISTED_LIMIT] if name in reasons
+            reasons[symbol]
+            for entry in objects[:_LISTED_LIMIT]
+            for symbol in entry.symbols[:1]
+            if symbol in reasons
         )
         bag.add(
             "condition-left-out",
@@ -1069,6 +1081,21 @@ def _report_left_out(
             where(path),
             notes=[(reason, None) for reason in reasons_given],
         )
+    from ddd.backends import dragged_with
+
+    left_out = frozenset(symbol for entry in absent for symbol in entry.symbols)
+    dragged = dragged_with(dictionary, left_out)
+    if dragged:
+        plural = len(dragged) != 1
+        bag.add(
+            "condition-left-out",
+            f"{_listed(list(dragged))} {'refer' if plural else 'refers'} to an axis left out "
+            f"above, and the a2l cannot describe {'them' if plural else 'it'} without the axis; "
+            f"{'they are' if plural else 'it is'} left out too",
+            where(path),
+        )
+    gone = left_out.union(dragged)
+    return left_out, tuple(symbol for symbol in carried if symbol not in gone)
 
 
 def _at_address_0(missing: list[str]) -> str:
@@ -1215,7 +1242,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         Manifest,
         RemovalError,
         addressed_symbols,
-        conditional_symbols,
+        conditional_objects,
         describe_write_failure,
         render,
         weigh_addresses,
@@ -1256,7 +1283,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
         addresses: dict[str, int] = {}
-        left_out: dict[str, str] = {}
+        left_out: frozenset[str] = frozenset()
         byte_order: str | None = getattr(args, "byte_order", None)
         image_path: Path | None = getattr(args, "image", None)
         if image_path is not None:
@@ -1276,20 +1303,22 @@ def _command_generate(args: argparse.Namespace) -> int:
             placed = addresses_from_image(image, carried)
             addresses = placed.addresses
             weigh_addresses(addresses, carried, image_path.as_posix())
-            left_out = {
-                symbol: guard
-                for symbol, guard in conditional_symbols(dictionary).items()
-                if symbol in placed.reasons
-            }
-            _report_left_out(
-                left_out, "the image has no address for", image_path, placed.reasons, bag
-            )
-            _check_image_coverage(
-                tuple(symbol for symbol in carried if symbol not in left_out),
-                placed,
+            # An object is compiled out where the image defines none of it, not where it
+            # holds it and cannot place a part, or holds it in a way that is a defect.
+            left_out, reaching = _leave_out(
+                [
+                    entry
+                    for entry in conditional_objects(dictionary)
+                    if all(symbol in placed.absent for symbol in entry.symbols)
+                ],
+                dictionary,
+                carried,
+                "the image has no address for",
                 image_path,
+                placed.reasons,
                 bag,
             )
+            _check_image_coverage(reaching, placed, image_path, bag)
         elif wants_addresses:
             # The symbols the a2l of this run will state an address for, read once: they
             # decide both which entries of the map are held to what an ECU_ADDRESS can hold
@@ -1299,26 +1328,25 @@ def _command_generate(args: argparse.Namespace) -> int:
             weigh_addresses(addresses, carried, args.address_map.as_posix())
             # Before the gate below, so that a --strict build stops rather than writing a
             # file whose addresses it has just been told are incomplete.
-            # A map that names something has been through the link: an object it lacks that
-            # states a condition is a feature the build left out, which is no hole in it.
-            left_out = (
-                {
-                    symbol: guard
-                    for symbol, guard in conditional_symbols(dictionary).items()
-                    if symbol not in addresses
-                }
-                if addresses
-                else {}
-            )
-            _report_left_out(
-                left_out, "the address map has no entry for", args.address_map, {}, bag
-            )
-            _check_address_coverage(
-                tuple(symbol for symbol in carried if symbol not in left_out),
-                addresses,
+            # A map that names something has been through the link: a conditional object it
+            # names no part of, nor the object itself as a symbol lister writes a structure,
+            # is a feature the build left out, which is no hole in it.
+            left_out, reaching = _leave_out(
+                [
+                    entry
+                    for entry in conditional_objects(dictionary)
+                    if addresses
+                    and entry.name not in addresses
+                    and not any(symbol in addresses for symbol in entry.symbols)
+                ],
+                dictionary,
+                carried,
+                "the address map has no entry for",
                 args.address_map,
+                {},
                 bag,
             )
+            _check_address_coverage(reaching, addresses, args.address_map, bag)
         if bag.has_errors and not args.force:
             _report(bag, args.format)
             return EXIT_FINDINGS
@@ -1334,7 +1362,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                     A2lOptions(
                         byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
                         addresses=addresses,
-                        left_out=frozenset(left_out),
+                        left_out=left_out,
                         # An image is a source whatever it places, the finding naming what it
                         # does not; a map is one once it has an entry, as for that finding.
                         has_address_source=image_path is not None or bool(addresses),

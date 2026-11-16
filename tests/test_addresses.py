@@ -290,6 +290,57 @@ class TestACplusplusScope:
         assert found.reasons == {"OnlyInNs": f"'OnlyInNs' is {OTHER_SCOPE}"}
 
 
+class TestWhatTheImageDoesNotDefine:
+    """``Placed.absent`` marks the symbols whose variable the image does not define at all, and
+    no other reason: the ones a build without a feature leaves behind."""
+
+    def absent(self, img: Image, *symbols: str) -> frozenset[str]:
+        found = placed(img, *symbols)
+        assert set(symbols) - set(found.addresses) == set(found.reasons)
+        return found.absent
+
+    def test_a_name_the_image_knows_nowhere_is_absent(self) -> None:
+        assert self.absent(image(stored("Gain")), "Gian") == {"Gian"}
+
+    def test_a_member_of_a_variable_it_does_not_define_is_absent_too(self) -> None:
+        assert self.absent(image(), "Cells[0].raw") == {"Cells[0].raw"}
+
+    def test_a_declaration_alone_with_no_symbol_is_absent(self) -> None:
+        """A header's ``extern`` stays where the unit that defined the variable was left out."""
+        img = image(stored("Gain", address=None, missing=DECLARED_ONLY))
+        assert self.absent(img, "Gain") == {"Gain"}
+
+    def test_a_declaration_alone_beside_a_symbol_of_its_name_is_not(self) -> None:
+        img = image(
+            stored("Gain", address=None, missing=DECLARED_ONLY), symbols=frozenset({"Gain"})
+        )
+        assert self.absent(img, "Gain") == frozenset()
+
+    def test_a_name_only_the_symbol_table_holds_is_not(self) -> None:
+        assert self.absent(image(symbols=frozenset({"Nodebug"})), "Nodebug") == frozenset()
+
+    def test_a_static_is_not(self) -> None:
+        img = image(stored("Gain", address=0x200, external=False))
+        assert self.absent(img, "Gain") == frozenset()
+
+    def test_globals_at_two_addresses_are_not(self) -> None:
+        img = image(stored("Twice", unit="a.c", address=0x2000), stored("Twice", address=0x1000))
+        assert self.absent(img, "Twice") == frozenset()
+
+    def test_a_variable_with_no_storage_is_not(self) -> None:
+        for missing in (FOLDED, REMOVED, DISCARDED, THREAD_LOCAL, NOT_AN_ADDRESS):
+            img = image(stored("Gain", address=None, missing=missing))
+            assert self.absent(img, "Gain") == frozenset(), missing
+
+    def test_a_variable_the_linker_left_with_no_symbol_is_not(self) -> None:
+        img = image(stored("Gain", address=0x100), objects=frozenset())
+        assert self.absent(img, "Gain") == frozenset()
+
+    def test_a_member_the_c_lacks_is_not(self) -> None:
+        img = image(stored("P", PAIR, address=0x100))
+        assert self.absent(img, "P.mid") == frozenset()
+
+
 class TestTheVariable:
     """Which variable of the image a symbol names: the global of that name."""
 

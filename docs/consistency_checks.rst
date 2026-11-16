@@ -673,8 +673,8 @@ it is either a smell or a decision somebody should have taken consciously.
        legitimately lacks the objects that were not linked into this image, and an image lacks
        the objects a condition compiled out of it, which is why the run goes on; a post-link
        build that wants an a2l with no hole in it runs with ``--strict``, which makes this an
-       error and writes nothing. An object stating a condition is not reported here: it is
-       left out of the a2l, and ``condition-left-out`` says so.
+       error and writes nothing. An object stating a condition is not reported here where the
+       build holds nothing of it: it is left out of the a2l, and ``condition-left-out`` says so.
 
 Information
 ~~~~~~~~~~~
@@ -688,11 +688,13 @@ Information
      - Fires when
    * - ``condition-left-out``
      - info
-     - an object that states a condition gets no address from the image ``--image`` was given,
-       or from the map ``--address-map`` was given, which has entries: the build was made
-       without the feature, so the a2l leaves the object out. One finding per condition, with
-       the image's reasons as notes. A curve or map over an axis left out goes with it. An
-       object stating no condition is ``address-missing`` instead, so that a hole stays one.
+     - an object that states a condition is absent from the build: the image ``--image`` was
+       given defines no variable of its name and holds no symbol of it, or the map
+       ``--address-map`` was given, which has entries, names neither the object nor any member
+       of it. The build was made without the feature, so the a2l leaves the object out. One
+       finding per condition. A curve or map over an axis left out cannot be described without
+       it and goes with it, named in a finding of its own. Any other reason an image gives, and
+       an object stating no condition, are ``address-missing`` instead, so that a hole stays one.
    * - ``empty-component``
      - info
      - a component declares no variable at all. Perfectly legal - a component may have no global

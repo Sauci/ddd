@@ -7,7 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from conftest import component, declare, project, render_files, run_analysis
-from ddd.backends import A2lBackend, A2lOptions, ByteOrder, render, write
+from ddd.backends import (
+    A2lBackend,
+    A2lOptions,
+    ByteOrder,
+    conditional_objects,
+    dragged_with,
+    render,
+    write,
+)
 from ddd.backends.a2l.model import a2l_string
 from ddd.diagnostics import DiagnosticBag
 from ddd.loading import load_dictionary
@@ -122,6 +130,70 @@ class TestMeasurements:
         content = next(file.content for file in rendered if file.path.name == "Device.a2l")
         assert "MEASUREMENT S.b" in content
         assert "S.a" not in content
+
+    def test_a_map_over_an_x_axis_the_build_left_out_goes_with_it(self, tree: Path) -> None:
+        content = a2l(
+            tree,
+            declare("local", "Speed"),
+            declare("local", "Ax", "uint16", kind="axis", size=2, input="Speed", condition="F"),
+            declare("local", "Ay", "uint16", kind="axis", size=2, input="Speed"),
+            declare("local", "M", "uint8", kind="map", x_axis="Ax", y_axis="Ay"),
+            left_out=frozenset({"Ax"}),
+        )
+        assert "CHARACTERISTIC M" not in content
+        assert "AXIS_PTS Ay" in content
+
+    def test_an_axis_only_a_left_out_object_pulled_in_is_not_written(self, tree: Path) -> None:
+        """``Ax`` asks to stay out of the file for itself and is written for ``Cv`` alone: with
+        ``Cv`` left out nothing refers to it."""
+        content = a2l(
+            tree,
+            declare("local", "Speed"),
+            declare(
+                "local", "Ax", "uint16", kind="axis", size=2, input="Speed", a2l={"export": False}
+            ),
+            declare("local", "Cv", "uint8", kind="curve", axis="Ax", condition="F"),
+            left_out=frozenset({"Cv"}),
+        )
+        assert "AXIS_PTS" not in content
+        assert "CHARACTERISTIC" not in content
+
+    def test_a_curve_that_goes_with_a_left_out_axis_is_named_by_dragged_with(
+        self, tree: Path
+    ) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Speed"),
+                declare("local", "Ax", "uint16", kind="axis", size=2, input="Speed", condition="F"),
+                declare("local", "Cv", "uint8", kind="curve", axis="Ax"),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        assert dragged_with(dictionary, frozenset({"Ax"})) == ("Cv",)
+        assert dragged_with(dictionary, frozenset()) == ()
+        assert dragged_with(dictionary, frozenset({"Ax", "Cv"})) == (), "left out in its own right"
+        assert [(o.name, o.condition, o.symbols) for o in conditional_objects(dictionary)] == [
+            ("Ax", "F", ("Ax",))
+        ]
+
+    def test_a_curve_that_asked_to_stay_out_of_the_file_is_not_dragged(self, tree: Path) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Speed"),
+                declare("local", "Ax", "uint16", kind="axis", size=2, input="Speed"),
+                declare("local", "Cv", "uint8", kind="curve", axis="Ax", a2l={"export": False}),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        assert dragged_with(dictionary, frozenset({"Ax"})) == ()
 
     def test_a_map_over_an_axis_the_build_left_out_goes_with_it(self, tree: Path) -> None:
         content = a2l(

@@ -192,7 +192,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("storage-mismatch", Severity.WARNING,
                "components disagree on how the a2l presents the object; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
-               "declarations of one variable use different preprocessor conditions"),
+               "declarations of one variable, or an object and what it refers to, use different "
+               "preprocessor conditions"),
         _check("unused-output", Severity.WARNING, "an output variable is read by no component",
                needs_every_component=True),
         _check("enum-duplicate-value", Severity.WARNING,

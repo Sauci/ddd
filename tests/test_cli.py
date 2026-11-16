@@ -28,6 +28,7 @@ from conftest import (
     component,
     declare,
     project,
+    types,
     value_member,
     write_tree,
 )
@@ -1088,6 +1089,172 @@ class TestGenerate:
         assert "error[address-missing]: the address map has no entry for 'ValueE'; " in captured
         assert "ValueG" not in captured.split("address-missing", 1)[1].splitlines()[0]
         assert not (tmp_path / "gen").exists()
+
+    PAIR_T = types(
+        {
+            "name": "Pair_t",
+            "type": "struct",
+            "members": [
+                {
+                    "name": "a",
+                    "member": "value",
+                    "datatype": "uint8",
+                    "conversion": {"kind": "identity"},
+                },
+                {
+                    "name": "b",
+                    "member": "value",
+                    "datatype": "uint8",
+                    "conversion": {"kind": "identity"},
+                },
+            ],
+        }
+    )
+
+    def generate_strict(
+        self,
+        tmp_path: Path,
+        interface: list[dict[str, Any]],
+        mapping: dict[str, str],
+        *extra: str,
+        files: dict[str, Any] | None = None,
+    ) -> tuple[int, str, str]:
+        """``generate a2l --strict`` of a project of ``interface`` with a map: the exit status,
+        what it printed, and the a2l it wrote ("" when it wrote none)."""
+        includes = ["a.ddd.json", *(files or {})]
+        write_tree(
+            tmp_path / "tree",
+            {
+                "project.ddd.json": project("Device", *includes),
+                "a.ddd.json": component("A", *interface),
+                **(files or {}),
+            },
+        )
+        (tmp_path / "map.json").write_text(json.dumps(mapping), encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(tmp_path / "tree" / "project.ddd.json"),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(tmp_path / "map.json"),
+                "--strict",
+                "-W",
+                "missing-id=ignore",
+                *extra,
+            ]
+        )
+        written = tmp_path / "gen" / "Device.a2l"
+        return code, "", written.read_text(encoding="utf-8") if written.is_file() else ""
+
+    @staticmethod
+    def a_conditional_pair() -> list[dict[str, Any]]:
+        return [
+            declare("local", "S", typename="Pair_t", condition="defined(F)"),
+            declare("local", "Kept"),
+        ]
+
+    def test_a_conditional_structure_the_map_holds_by_its_own_name_keeps_its_members_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A symbol lister writes ``S`` and no member path: the build holds the structure, so
+        its members are holes the recipe lowers, not a feature that is off."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_conditional_pair(),
+            {"Kept": "0x20000100", "S": "0x20000200"},
+            files={"t.ddd.json": self.PAIR_T},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'S.a', 'S.b'" in captured
+        assert "condition-left-out" not in captured
+        assert a2l == ""
+
+    def test_a_conditional_structure_the_map_holds_in_part_keeps_the_rest_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, _ = self.generate_strict(
+            tmp_path,
+            self.a_conditional_pair(),
+            {"Kept": "0x20000100", "S.a": "0x20000200"},
+            "--force",
+            files={"t.ddd.json": self.PAIR_T},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'S.b'; " in captured
+        assert "condition-left-out" not in captured
+        assert "MEASUREMENT S.a" in (tmp_path / "gen" / "Device.a2l").read_text(encoding="utf-8")
+
+    def test_a_conditional_structure_the_map_knows_nothing_of_is_left_out_as_one_object(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_conditional_pair(),
+            {"Kept": "0x20000100"},
+            files={"t.ddd.json": self.PAIR_T},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert (
+            "info[condition-left-out]: the address map has no entry for 'S', which is only "
+            "present in the build when 'defined(F)'; it is left out of the a2l"
+        ) in captured
+        assert "MEASUREMENT Kept" in a2l
+        assert "S.a" not in a2l
+
+    @staticmethod
+    def a_curve_over_a_conditional_axis() -> list[dict[str, Any]]:
+        return [
+            declare("local", "Speed"),
+            declare("local", "Ax", "uint16", "defined(F)", kind="axis", size=2, input="Speed"),
+            declare("local", "Cv", kind="curve", axis="Ax"),
+        ]
+
+    def test_several_curves_that_go_with_a_left_out_axis_are_named_together(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, _ = self.generate_strict(
+            tmp_path,
+            [
+                *self.a_curve_over_a_conditional_axis(),
+                declare("local", "Cw", kind="curve", axis="Ax"),
+            ],
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+        )
+        assert code == EXIT_OK
+        assert (
+            "info[condition-left-out]: 'Cv', 'Cw' refer to an axis left out above, and the a2l "
+            "cannot describe them without the axis; they are left out too"
+        ) in capsys.readouterr().err
+
+    def test_a_curve_that_goes_with_a_left_out_axis_is_named(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The build holds ``Cv`` and the file cannot describe it without ``Ax``: the run says
+        so, and ``address-missing`` does not claim it reaches the a2l."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_curve_over_a_conditional_axis(),
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert (
+            "info[condition-left-out]: 'Cv' refers to an axis left out above, and the a2l "
+            "cannot describe it without the axis; it is left out too"
+        ) in captured
+        assert "address-missing" not in captured
+        assert "MEASUREMENT Speed" in a2l
+        assert "Cv" not in a2l
 
     def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -5500,6 +5667,63 @@ class TestGenerateFromAnImage:
         assert "2 infos" in captured
         text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
         assert [name for name in ("Ghost", "Wraith", "Shade") if name in text] == []
+
+    def test_a_conditional_member_the_c_lacks_is_a_hole_and_stops_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The image defines ``Tuning``; it is a declaration that names a member its C does not
+        have, which is no feature that is off, and the other members are placed."""
+        project = edited_project(tmp_path, "types.ddd.json", with_a_window)
+        engine = project.parent / "engine.ddd.json"
+        described = json.loads(engine.read_text(encoding="utf-8"))
+        (tuning,) = [
+            entry
+            for entry in described["component"]["interface"]
+            if entry["definition"]["name"] == "Tuning"
+        ]
+        tuning["condition"] = "defined(FEATURE_T)"
+        engine.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--strict"]) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "error[address-missing]: the image has no address for 'Tuning.window'" in captured
+        assert "condition-left-out" not in captured
+        assert main(arguments) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert (
+            a2l_addresses(text)["Tuning.gain"] == ADDRESS_ROWS["x86_64"]["addresses"]["Tuning.gain"]
+        )
+
+    def test_a_conditional_variable_the_image_holds_only_as_a_static_stops_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tmp_path / "tree",
+            {
+                "project.ddd.json": project("Device", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Static_Used", "uint16", condition="defined(F)")
+                ),
+            },
+        )
+        arguments = [
+            "generate",
+            "a2l",
+            str(tmp_path / "tree" / "project.ddd.json"),
+            "-o",
+            str(tmp_path / "gen"),
+            "--image",
+            str(FIXTURES / "x86_64.elf"),
+            "--strict",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "error[address-missing]: the image has no address for 'Static_Used'" in captured
+        assert "the image holds 'Static_Used' only as a static" in captured
+        assert "condition-left-out" not in captured
+        assert not (tmp_path / "gen").exists()
 
     def test_an_unconditional_variable_the_image_lacks_beside_one_left_out_still_fails_strict(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

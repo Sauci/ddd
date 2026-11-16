@@ -800,8 +800,9 @@ flashed.
 
 What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
 symbol's reason a note beneath it; under ``STRICT`` that is an error, and the build stops rather
-than ship an a2l with an address of 0. An object that states a condition is not reported that
-way: the build was made without it, and the a2l leaves it out. The example above, built as
+than ship an a2l with an address of 0. An object that states a condition, and of which the
+image defines nothing at all, is not reported that way: the build was made without it, and the
+a2l leaves it out. The example above, built as
 ``RelWithDebInfo`` with the keyword added, places every object of the demo but ``ValueG``, which
 a condition compiles out of this image:
 
@@ -811,8 +812,9 @@ a condition compiles out of this image:
        note: the image's debug information holds no variable named 'ValueG'
    1 info
 
-``STRICT`` lets that through, and has no a2l record to stop at for it. ``BYTE_ORDER`` is held to the byte order the image states: one that contradicts it stops
-the build as well. So does an image the reader cannot read, in the reader's own words - one
+``STRICT`` lets that through: the a2l has no record of ``ValueG``, so there is no object left at
+address 0 for it to stop at. ``BYTE_ORDER`` is held to the byte order the image states: one
+that contradicts it stops the build as well. So does an image the reader cannot read, in the reader's own words - one
 built without ``-g`` is told to be, and one that is not ELF at all, as a host build on Windows
 links, is refused as such. A build like that reads an address map instead, in the same step
 (below).

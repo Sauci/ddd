@@ -395,10 +395,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   one of another type - is now `elf-type-conflict`, naming each size, and the variable is left out;
   an ambiguity beside it is still reported.  Where two sections a linker script overlays hold an
   address and the symbol names neither, the new error `elf-section-ambiguous` replaces the first
-  section's bytes, which every variable there took.  A name two arguments reach from two units is
-  refused in the words the user typed, and the tool's internal component name no longer appears in a
-  message.  Migrating costs a variable that was described silently from the first unit's answer: it
-  is now an error naming both answers, and the units have to agree.
+  section's bytes, which every variable there took.  A name two arguments reach from two units,
+  which DDD's own check reported as `duplicate-declaration` of the tool's internal component, is
+  now `elf-symbol-ambiguous`, in the words the user typed, and that component's name no longer
+  appears in a message.  Migrating costs a variable that was described silently from the first
+  unit's answer: it is now an error naming both answers, and the units have to agree.  A script
+  that matched `duplicate-declaration` for a name asked for twice matches `elf-symbol-ambiguous`
+  instead, at the same exit status.
 
 * **`ddd tool from-elf` refuses the C++ it does not read.**  A structure with a base class, one with
   a static member where the debug information writes it as a member, and a variable whose definition

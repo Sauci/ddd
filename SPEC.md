@@ -1487,8 +1487,11 @@ Warnings:
   one finding per axis, naming the axis, its condition and what goes with it, a map over two
   such axes named under each. It is a warning, so that a `--strict` build stops for it even
   where `condition-mismatch`, which reports the cause at `ddd check`, is ignored.
-- `address-missing`: an object the A2L carries, one that states no condition, gets no
-  address from the address map or the image the run was given. It fires for a map only when the map has at least one entry:
+- `address-missing`: an object the A2L carries gets no address from the address map or the
+  image the run was given. An object that states a condition, and of which the build holds
+  nothing, is not carried: the A2L leaves it out, as `condition-left-out` says. One the build
+  holds, and the map or the image does not place, is `address-missing` whatever condition it
+  states. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction. That is the run
   a build makes before it has linked anything, and it is as well the step after the link
   when the map it reads has no entry, one the project's step extracted nothing into among
@@ -1546,9 +1549,13 @@ Information:
   naming the objects it guards, located at the image or the map. A condition cannot be told
   true or false from here, so what counts is absence, and every other reason an image gives
   - the variable is only a `static`, its unit built without `-g`, it sits at several
-  addresses, its type lacks a member the declaration names, the linker discarded it - is a
-  defect in what the build holds and stays `address-missing`, as does an object that states
-  no condition. A structured object is decided as one: left out only where none of its
+  addresses, its type lacks a member the declaration names, the linker discarded it and the
+  image still shows so, at an address of 0 or all ones or at one no symbol of its name holds -
+  is a defect in what the build holds and stays `address-missing`, as does an object that
+  states no condition. A unit GNU ld discards whole loses its debug information too
+  ([section 6](#6-address-information)), so a variable of it reads as absent and is left out
+  as one a condition compiled out is, the run having nothing to tell the two apart by. A
+  structured object is decided as one: left out only where none of its
   members is placed, and kept, its unplaced members `address-missing`, where the build
   holds some of it. A curve or a map over an axis left out cannot be described without it
   and goes with it, which `reference-left-out` names as a warning; an axis whose input
@@ -2014,10 +2021,11 @@ another producer is not checked again, where a dangling name would make the modu
 A record whose object is declared under a preprocessor condition is preceded by a comment
 naming that condition, because the format has no conditional construct of its own. When
 the run has an address source that shows the build does not hold the object, an image that
-defines no variable of its name or a map with entries that names neither it nor a member of
-it ([section 6](#6-address-information)), the record is left out of the file, and a curve
-or a map over an axis so left out with it; `condition-left-out` says so at `info`
-([section 4](#4-consistency-checks)).
+defines no variable of its name and holds no symbol of it, or a map with entries that names
+neither it nor a member of it ([section 6](#6-address-information)), the record is left out
+of the file, which `condition-left-out` says at `info`. A curve or a map over an axis so left
+out goes with it, and since the build holds the curve or the map, `reference-left-out` names
+it at `warning` ([section 4](#4-consistency-checks)).
 
 A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A2L as one
 object per value-holding member, named by its C access path: an `Inlet` of the `Inlet_t`
@@ -2182,12 +2190,14 @@ because a map extracted from a linker output omits the objects a condition compi
 map that names the structure by its own name, as a symbol lister writes it, or some of its
 members, holds the object, and the members it lacks are `address-missing`.
 
-A map with entries, or an image, that leaves an object of the A2L uncovered, one that
-states no condition, is `address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under
-`--strict`, and a run that reports it as an error writes nothing rather than a file whose
-addresses it has just been told are incomplete, unless `--force` asks for the file anyway
-([section 7](#7-tool-interface)). A run given neither, or given a map with no entry, has no
-address source: every address of its A2L is `0x00000000`, and no `address-missing` reports
+A map with entries, or an image, that leaves an object of the A2L uncovered is
+`address-missing` ([section 4](#4-consistency-checks)), an object that states a condition among
+them wherever the build holds anything of it, one it holds nothing of being left out as above:
+a warning by default, an error under `--strict`, and a run that reports it as an error writes
+nothing rather than a file whose addresses it has just been told are incomplete, unless
+`--force` asks for the file anyway ([section 7](#7-tool-interface)). A run given neither, or
+given a map with no entry, has no address source: every address of its A2L is `0x00000000`,
+and no `address-missing` reports
 it, an empty map naming no object for the A2L to miss, and `--strict` does not fail it,
 so the file says so itself, on the line under `ASAP2_VERSION`:
 `/* written with no address source: every address below is 0x00000000 */`.

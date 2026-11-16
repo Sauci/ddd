@@ -696,8 +696,9 @@ Options
        produces; a missing map in the source tree stays an error. An empty map gives no
        address and raises no ``address-missing``, so ``STRICT`` does not fail it, and the a2l
        says so itself; a map that names some objects and not others raises it, once, for the
-       objects that state no condition: a conditional one it lacks is left out of the a2l and
-       reported at ``info``.
+       objects it lacks, save a conditional one of which it names neither the object nor a
+       member, which is left out of the a2l and reported at ``info``: a structure the map names
+       by its own name, as ``nm`` lists it, keeps its members ``address-missing``.
    * - ``ADDRESSES_FROM_IMAGE``
      - write the a2l once the image is linked, every address it carries read out of the
        image's debug information, so that one build gives the complete a2l: the run before the
@@ -812,19 +813,26 @@ What the image cannot place keeps address 0 and is reported once, as ``address-m
 symbol's reason a note beneath it; under ``STRICT`` that is an error, and the build stops rather
 than ship an a2l with an address of 0. An object that states a condition, and of which the
 image defines nothing at all, is not reported that way: the build was made without it, and the
-a2l leaves it out. The example above, built as
-``RelWithDebInfo`` with the keyword added, places every object of the demo but ``ValueG``, which
-a condition compiles out of this image:
+a2l leaves it out. The example above, built as ``RelWithDebInfo`` with the keyword added,
+places every object of the demo but ``ValueG``, which a condition compiles out of this image.
+Built where gcc links position independent by default, as it does on a Debian or Ubuntu host and
+in the ``cmake`` compose service, it prints:
 
 .. code-block:: text
 
+   firmware.elf: info[image-load-relative]: the image is position independent, so the addresses the a2l states are offsets from where it loads
+       note: a project that adds its load base when it reads the a2l is right, and one that does not finds every address wrong
    firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
        note: the image's debug information holds no variable named 'ValueG'
-   1 info
+   2 infos
 
-``STRICT`` lets that through: the a2l has no record of ``ValueG``, so there is no object left at
-address 0 for it to stop at. ``BYTE_ORDER`` is held to the byte order the image states: one
-that contradicts it stops the build as well. So does an image the reader cannot read, in the reader's own words - one
+The first is ``image-load-relative``: a position independent image holds offsets from where it
+loads, which the a2l states as they are, right for a project that adds its load base when it
+reads the a2l and wrong for any other, and the build of an image linked at fixed addresses, as
+an embedded one usually is or as ``-no-pie`` links this one, prints the second alone. ``STRICT``
+lets both through, being information: the a2l has no record of ``ValueG``, so there is no object
+left at address 0 for it to stop at. ``BYTE_ORDER`` is held to the byte order the image states:
+one that contradicts it stops the build as well. So does an image the reader cannot read, in the reader's own words - one
 built without ``-g`` is told to be, and one that is not ELF at all, as a host build on Windows
 links, is refused as such. A build like that reads an address map instead, in the same step
 (below).

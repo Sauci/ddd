@@ -627,8 +627,10 @@ it is either a smell or a decision somebody should have taken consciously.
        components do not agree on when the variable exists at all. The producer's condition is
        the one that guards the generated definition. It is also raised for a reference: a curve
        or a map over an axis, or an axis over its input, where the object referred to carries a
-       condition the referrer does not. A build without it holds the one and not the other, and
-       the a2l of that build would name a record it does not have.
+       condition the referrer does not. A build without it holds the one and not the other: the
+       a2l of that build, written from an image or a map that shows the object compiled out,
+       leaves a curve or a map out with its axis (``reference-left-out``), and writes an axis
+       whose input it left out with no input quantity.
    * - ``unused-output``
      - warning
      - a variable is declared ``output`` by its producer and read by no component. Either a

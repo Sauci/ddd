@@ -1344,7 +1344,7 @@ defined when the image was built. DDD states the condition in a comment above th
        /* only present in the build when: defined(FEATURE_X) */
        /begin MEASUREMENT ValueG "Measurement that only exists when FEATURE_X is defined"
          UWORD CM_LIN_V 0 0 0 5
-         ECU_ADDRESS 0x20000100
+         ECU_ADDRESS 0x20000104
          SYMBOL_LINK "ValueG" 0
        /end MEASUREMENT
 

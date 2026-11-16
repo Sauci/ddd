@@ -319,6 +319,18 @@ class TestTheCheckReference:
         assert "address map" in description
         assert "image" in description
 
+    def test_the_registry_describes_condition_left_out_by_what_the_build_holds(self) -> None:
+        """``ddd checks`` prints the registry's one-liner, which said the check was for an object
+        stating a condition that gets no address: one the build holds and the source cannot
+        place is ``address-missing``, whatever condition it states."""
+        description = CHECKS["condition-left-out"].description
+        assert "gets no address" not in description
+        assert description == (
+            "the build holds nothing of an object stating a condition, which the a2l leaves out: "
+            "the image defines no variable or symbol of its name, or the address map names none "
+            "of it"
+        )
+
     def test_the_pages_say_reference_left_out_names_each_axis_and_its_condition(self) -> None:
         """One finding named every curve that went with any axis, pointing at an information
         printed after it, which a project may ignore: each axis now has a finding of its own."""
@@ -2203,6 +2215,104 @@ class TestWhatTheReaderAndTheToolboxSay:
         assert "and a variable the debug information gives no type, as `-g1` leaves every one" in (
             page
         )
+
+
+class TestWhatThePagesSayOfAnObjectTheBuildLeftOut:
+    """An object that states a condition is left out only where the build holds nothing of it,
+    and that rule has to read the same wherever a reader meets it."""
+
+    def test_the_specification_s_address_missing_is_not_for_unconditional_objects_alone(
+        self,
+    ) -> None:
+        spec = flattened(SPEC)
+        assert "an object the A2L carries, one that states no condition, gets no" not in spec
+        assert (
+            "An object that states a condition, and of which the build holds nothing, is not "
+            "carried: the A2L leaves it out, as `condition-left-out` says. One the build holds, "
+            "and the map or the image does not place, is `address-missing` whatever condition it "
+            "states."
+        ) in spec
+        assert "uncovered, one that states no condition, is `address-missing`" not in spec
+        assert (
+            "is `address-missing` ([section 4](#4-consistency-checks)), an object that states a "
+            "condition among them wherever the build holds anything of it, one it holds nothing "
+            "of being left out as above"
+        ) in spec
+
+    def test_the_specification_says_when_a_linker_s_discard_reads_as_absence(self) -> None:
+        """gold leaves a variable of a unit it discarded at an offset with no symbol, and GNU ld
+        a tombstone address where it discards a section, both defects to show; GNU ld drops the
+        debug information of a unit it discards whole, and nothing is left to read."""
+        spec = flattened(SPEC)
+        assert (
+            "the linker discarded it and the image still shows so, at an address of 0 or all "
+            "ones or at one no symbol of its name holds - is a defect"
+        ) in spec
+        assert (
+            "A unit GNU ld discards whole loses its debug information too "
+            "([section 6](#6-address-information)), so a variable of it reads as absent and is "
+            "left out as one a condition compiled out is"
+        ) in spec
+
+    def test_the_specification_names_the_curve_that_goes_with_its_axis_at_warning(self) -> None:
+        spec = flattened(SPEC)
+        assert "over an axis so left out with it; `condition-left-out` says so at `info`" not in (
+            spec
+        )
+        assert (
+            "A curve or a map over an axis so left out goes with it, and since the build holds "
+            "the curve or the map, `reference-left-out` names it at `warning`"
+        ) in spec
+
+    def test_the_build_page_and_the_check_reference_say_what_the_run_does(self) -> None:
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert "once, for the objects that state no condition" not in page
+        assert (
+            "raises it, once, for the objects it lacks, save a conditional one of which it names "
+            "neither the object nor a member, which is left out of the a2l and reported at "
+            "``info``: a structure the map names by its own name, as ``nm`` lists it, keeps its "
+            "members ``address-missing``"
+        ) in page
+        reference = flattened(CONSISTENCY_CHECKS)
+        assert "would name a record it does not have" not in reference
+        assert (
+            "leaves a curve or a map out with its axis (``reference-left-out``), and writes an "
+            "axis whose input it left out with no input quantity"
+        ) in reference
+
+    def test_the_build_page_shows_what_its_example_prints_where_gcc_links_position_independent(
+        self,
+    ) -> None:
+        """Run as the page says, the example's image is position independent on a Debian or
+        Ubuntu host, and the step says so first."""
+        page = PAGES["docs/build_integration.rst"]
+        assert (
+            "   firmware.elf: info[image-load-relative]: the image is position independent, so the "
+            "addresses the a2l states are offsets from where it loads\n"
+            "       note: a project that adds its load base when it reads the a2l is right, and "
+            "one that does not finds every address wrong\n"
+            "   firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', "
+            "which is only present in the build when 'defined(FEATURE_X)'; it is left out of the "
+            "a2l\n"
+            "       note: the image's debug information holds no variable named 'ValueG'\n"
+            "   2 infos\n"
+        ) in page
+        flat = flattened(page)
+        assert (
+            "Built where gcc links position independent by default, as it does on a Debian or "
+            "Ubuntu host and in the ``cmake`` compose service, it prints:"
+        ) in flat
+        assert (
+            "The first is ``image-load-relative``: a position independent image holds offsets "
+            "from where it loads, which the a2l states as they are"
+        ) in flat
+        assert "as ``-no-pie`` links this one, prints the second alone" in flat
+
+    def test_the_changelog_names_both_identifiers_of_a_name_asked_for_twice(self) -> None:
+        assert (
+            "A script that matched `duplicate-declaration` for a name asked for twice matches "
+            "`elf-symbol-ambiguous` instead, at the same exit status."
+        ) in flattened(CHANGELOG)
 
 
 class TestTheBuildIntegrationPage:

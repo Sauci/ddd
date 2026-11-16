@@ -219,8 +219,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object reaching the a2l gets no address from the address map or the image the "
                "run was given"),
         _check("condition-left-out", Severity.INFO,
-               "an object stating a condition gets no address from the image or the address map "
-               "the run was given, and is left out of the a2l"),
+               "the build holds nothing of an object stating a condition, which the a2l leaves "
+               "out: the image defines no variable or symbol of its name, or the address map "
+               "names none of it"),
         _check("image-load-relative", Severity.INFO,
                "the image the a2l takes its addresses from is position independent, so they are "
                "offsets from where it loads"),

@@ -509,7 +509,7 @@ already parses it in your build:
 
 .. code-block:: json
 
-   { "ValueE": "0x20000100", "AxisA": "0x08004000", "ParameterA": 134234112 }
+   { "ValueE": "0x20000100", "AxisA": "0x08004000", "ParameterA": 134234128 }
 
 .. code-block:: text
 

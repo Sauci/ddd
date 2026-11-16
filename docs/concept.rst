@@ -439,7 +439,7 @@ object, with the addresses written in decimal or hexadecimal:
 
 .. code-block:: json
 
-   { "ValueE": "0x20000100", "AxisA": "0x08004000", "CurveA": 134234112 }
+   { "ValueE": "0x20000100", "AxisA": "0x08004000", "CurveA": 134234128 }
 
 .. code-block:: text
 

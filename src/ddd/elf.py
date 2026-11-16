@@ -56,6 +56,17 @@ REMOVED: Final = "the compiler removed its storage"
 THREAD_LOCAL: Final = "it is thread-local, with an address of its own in every thread"
 NOT_AN_ADDRESS: Final = "its location is not a fixed address"
 DISCARDED: Final = "the linker discarded its storage"
+WITHOUT_G: Final = (
+    "; the symbol table holds it, so the unit defining it was built without debug information (-g)"
+)
+"""The ending of a reason the symbol table answers: it holds a name whose definition the debug
+information does not describe, so the unit defining it was compiled without ``-g``."""
+SPLIT: Final = (
+    "; the symbol table holds it, and the debug information of this image is in separate .dwo "
+    "files (-gsplit-dwarf), which this tool does not read"
+)
+"""The same ending for an image whose debug information is split: the unit was built with ``-g``,
+and what it describes is in the ``.dwo`` files the image holds a skeleton of."""
 OTHER_SCOPE: Final = (
     "a variable of a C++ namespace or class, which DDD does not read: it reads C, and a "
     "short name does not say which one it is"

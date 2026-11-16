@@ -1862,6 +1862,12 @@ class TestTheReleaseNote:
             "which is rewritten `true` or `false`; the diff shows it. The values mean the same."
         ) in text
 
+    def test_the_changelog_names_both_identifiers_of_a_name_asked_for_twice(self) -> None:
+        assert (
+            "A script that matched `duplicate-declaration` for a name asked for twice matches "
+            "`elf-symbol-ambiguous` instead, at the same exit status."
+        ) in flattened(UNRELEASED)
+
     def test_it_counts_the_checks_needing_every_component_as_the_registry_does(self) -> None:
         for word in project_wide_counts(UNRELEASED):
             assert NUMBER_WORDS[word.lower()] == len(project_wide_checks()), (
@@ -2300,19 +2306,13 @@ class TestWhatThePagesSayOfAnObjectTheBuildLeftOut:
         flat = flattened(page)
         assert (
             "Built where gcc links position independent by default, as it does on a Debian or "
-            "Ubuntu host and in the ``cmake`` compose service, it prints:"
+            "Ubuntu host, it prints:"
         ) in flat
         assert (
             "The first is ``image-load-relative``: a position independent image holds offsets "
             "from where it loads, which the a2l states as they are"
         ) in flat
         assert "as ``-no-pie`` links this one, prints the second alone" in flat
-
-    def test_the_changelog_names_both_identifiers_of_a_name_asked_for_twice(self) -> None:
-        assert (
-            "A script that matched `duplicate-declaration` for a name asked for twice matches "
-            "`elf-symbol-ambiguous` instead, at the same exit status."
-        ) in flattened(CHANGELOG)
 
 
 class TestTheBuildIntegrationPage:

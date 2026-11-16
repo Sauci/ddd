@@ -582,7 +582,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |
 | warning | `elf-mismatch` | the image the a2l takes its addresses from holds a variable with another size, encoding, qualifiers or shape than its description states, or describes it in two ways |
 | info | `image-load-relative` | the image the a2l takes its addresses from is position independent, so they are offsets from where it loads |
-| info | `condition-left-out` | the build holds nothing of an object stating a condition (the image defines no variable of its name, the map names none of it), and the a2l leaves it out |
+| info | `condition-left-out` | the build holds nothing of an object stating a condition (the image defines neither a variable nor a symbol of its name, the map names none of it), and the a2l leaves it out |
 | info | `empty-component` | a component declares no variable |
 | info | `empty-vocabulary` | a types, units, constants, sections or rasters file declares nothing |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
@@ -772,7 +772,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
   an address outside `0` .. `0xFFFFFFFF` is refused rather than written out malformed:
 
   ```json
-  { "ValueE": "0x20000100", "AxisA": "0x08004000", "Kp": 134234112 }
+  { "ValueE": "0x20000100", "AxisA": "0x08004000", "Kp": 134234128 }
   ```
 
 * a2l has no notion of preprocessor conditions, so a conditional variable is exported with a

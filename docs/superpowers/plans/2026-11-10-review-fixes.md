@@ -1606,8 +1606,10 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **A leading underscore on C symbols** (task 2, `11:I1`): an external is placed only where the
   symbol table holds an object of the name its debug information gives, so a toolchain that
   prefixes C symbols with an underscore would have no external placed, where the branch's base
-  placed it by its address. None of the toolchains SPEC names as tested does so, and none here
-  could show it. No branch owns `addresses.py`.
+  placed it by its address. `from-elf` meets such a toolchain the same way: it refuses every
+  external that the symbol table does not hold under the name the debug information gives, as
+  `elf-no-storage`, where the branch's base described each one. None of the toolchains SPEC names
+  as tested does so, and none here could show it. No branch owns `addresses.py`.
 - **An image with debug information and no symbol table** (task 2; R72): neither `--image` nor
   `from-elf` takes an external variable from it, each saying of every one that the symbol table
   holds no object of its name there, as a linker leaves a variable of a unit it discarded; rare,
@@ -1986,9 +1988,10 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 
 | Branch | Pull request | Merged | Notes |
 | --- | --- | --- | --- |
-| 1, `fix/edit-engine` | #84 | not merged | Its four Criticals and the edit engine's Importants; the re-review's residuals carried into branch 2's D0 |
-| 2, `fix/build-integration` | #85 | not merged | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
-| 3, `fix/gui-values` | #86 | not merged | `3:C1` and `15:C1`, what the page writes when a person types, picks or pastes a value; the re-review's residuals carried into branch 4's D0 |
+| 1, `fix/edit-engine` | #84 | 2026-11-15, into master (`ac0fb9b0`) | Its four Criticals and the edit engine's Importants; the re-review's residuals carried into branch 2's D0 |
+| 2, `fix/build-integration` | #85 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
+| 3, `fix/gui-values` | #86 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `3:C1` and `15:C1`, what the page writes when a person types, picks or pastes a value; the re-review's residuals carried into branch 4's D0 |
+| 4, `fix/elf-and-addresses` | #88 | not merged | Its Critical (`11:C1`) and what the branch covers: what is read from a linked image, and where an address comes from; the re-review's residuals carried into branch 5's D0; task 6a's four Importants, 8b and 6b stay with the maintainer after two safety stops |
 
 ## Self-review
 

@@ -1255,7 +1255,7 @@ whichever the tool producing it finds easier:
    {
      "ValueE": "0x20000100",
      "AxisA": "0x08004000",
-     "ParameterA": 134234112
+     "ParameterA": 134234128
    }
 
 A string address is written in decimal, or in hexadecimal behind a ``0x`` prefix, and in
@@ -1291,7 +1291,7 @@ filled in:
        /end AXIS_PTS
 
        /begin CHARACTERISTIC ParameterA "Single calibratable constant"
-         VALUE 0x08004000 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
+         VALUE 0x08004010 RL_VALUES_UWORD 0 CM_LIN_HZ 500 1500
          SYMBOL_LINK "ParameterA" 0
        /end CHARACTERISTIC
 

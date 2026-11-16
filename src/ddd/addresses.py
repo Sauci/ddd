@@ -176,19 +176,6 @@ _STEP: Final = re.compile(r"\.(\w+)|\[(\d+)\]")
 
 _UNKNOWN: Final = "where '{}' lies cannot be worked out from the image's debug information"
 
-_WITHOUT_G: Final = (
-    "; the symbol table holds it, so the unit defining it was built without debug information (-g)"
-)
-"""The ending of a reason the symbol table answers: it holds a name whose definition the debug
-information does not describe, so the unit defining it was compiled without ``-g``."""
-
-_SPLIT: Final = (
-    "; the symbol table holds it, and the debug information of this image is in separate .dwo "
-    "files (-gsplit-dwarf), which this tool does not read"
-)
-"""The same ending for an image whose debug information is split: the unit was built with ``-g``,
-and what it describes is in the ``.dwo`` files the image holds a skeleton of."""
-
 _UNTYPED: Final = (
     "the image's debug information gives '{}' no type, as -g1 leaves it, so no path into it can "
     "be followed"
@@ -348,7 +335,9 @@ def _variable(
 
 def _ending(image: Image) -> str:
     """Why the symbol table holds a name the debug information does not describe."""
-    return _SPLIT if image.split_dwarf else _WITHOUT_G
+    from ddd.elf import SPLIT, WITHOUT_G
+
+    return SPLIT if image.split_dwarf else WITHOUT_G
 
 
 def _walk(symbol: str, at: int, address: int, ctype: CType) -> tuple[int, CType] | str:

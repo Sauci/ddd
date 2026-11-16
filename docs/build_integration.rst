@@ -815,8 +815,8 @@ than ship an a2l with an address of 0. An object that states a condition, and of
 image defines nothing at all, is not reported that way: the build was made without it, and the
 a2l leaves it out. The example above, built as ``RelWithDebInfo`` with the keyword added,
 places every object of the demo but ``ValueG``, which a condition compiles out of this image.
-Built where gcc links position independent by default, as it does on a Debian or Ubuntu host and
-in the ``cmake`` compose service, it prints:
+Built where gcc links position independent by default, as it does on a Debian or Ubuntu host, it
+prints:
 
 .. code-block:: text
 

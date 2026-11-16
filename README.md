@@ -712,11 +712,10 @@ Access rules are enforced by visibility: a component includes its own header, an
 header declares only what the component declared.  The enforcement is the include path -
 `ddd_globals.h` sits next to the component headers and declares everything, and only asks
 in a comment not to be included; the cmake integration is what makes the path narrow in
-practice.  With `--const-inputs` the enforcement becomes stronger,
-inputs are then declared `extern const` so that writing to a foreign variable does not
-compile.  The definition in `ddd_globals.c` stays non-const, which is a constraint violation
-in strict c but is accepted by the usual embedded toolchains; that is why the option is
-opt-in.
+practice.  An input is declared as its producer defines it: a header that declared it `const`
+while the definition is not would leave two declarations that c leaves undefined, so a write to
+a foreign variable is a matter for review.  (`--const-inputs`, `CONST_INPUTS` and the template
+pieces that served them were removed in 0.12.0 and are refused with that reason; delete them.)
 
 The artefact is part of the command: `ddd generate c` renders the c sources alone,
 `ddd generate a2l` writes the a2l alone - no c, no template directory; the second run of a
@@ -902,7 +901,7 @@ Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DI
 the schemas), `ADDRESS_MAP` and `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
 addresses read out of the map a step of the project's extracts, or out of the linked image),
 `BYTE_ORDER`,
-`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
+`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an
 include order to decide which set a component compiles against.  DDD refuses that rather than
@@ -954,7 +953,6 @@ docker compose build
 docker compose run --rm check            # ddd check on the demo project
 docker compose run --rm generate         # ddd generate on the demo project, into build/gen
 docker compose run --rm compile          # generate + compile + link + verify
-docker compose run --rm compile-const    # same, with --const-inputs
 docker compose run --rm cmake            # build examples/cmake through cmake/Ddd.cmake
 docker compose run --rm test             # pytest with the coverage gate
 docker compose run --rm coverage         # same, plus an html report

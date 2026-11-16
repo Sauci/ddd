@@ -726,8 +726,6 @@ Options
        component that includes a generated header needing one of them has to link it itself.
    * - ``DEPENDS <file>...``
      - additional files that retrigger the generation.
-   * - ``CONST_INPUTS``
-     - declare input variables ``const`` in the consumer headers.
    * - ``NO_A2L``
      - do not generate the a2l file; no ``DDD_A2L`` property is set then. The run still
        produces everything else the project has, the artefacts of the plugins named with
@@ -952,7 +950,6 @@ the pages reach the image, installed with DDD.
    docker compose run --rm check           # ddd check on the demo project
    docker compose run --rm generate        # ddd generate into build/gen
    docker compose run --rm compile         # generate + compile + link + verify
-   docker compose run --rm compile-const   # the same, with --const-inputs
    docker compose run --rm cmake           # configure and build examples/cmake
    docker compose run --rm test            # pytest with the coverage gate
    docker compose run --rm coverage        # the same, plus build/htmlcov/index.html

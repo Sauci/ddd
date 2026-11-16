@@ -254,9 +254,8 @@ The model
        a digit becomes an underscore, a leading digit is prefixed, and ``_H`` is appended.
        Offered rather than imposed - a template that has its own convention writes it out.
    * - ``model.options``
-     - What the command line let the caller decide, which for the c backend is
-       ``const_inputs`` and nothing else: everything else that used to be an option is now a
-       property of the template you write.
+     - What the command line let the caller decide, which for the c backend is nothing:
+       everything that used to be an option is now a property of the template you write.
 
 The two groupings answer two different questions, which is why both exist. ``model.groups``
 is about *ownership* and drives the file that allocates the memory; ``model.headers`` is
@@ -282,11 +281,10 @@ themselves:
        ``const volatile uint16_t Gain = 3U`` for calibration data the description declares
        volatile. The template adds the semicolon, which is what lets it put something between
        the two.
-   * - ``.declaration(const=...)``
+   * - ``.declaration()``
      - The matching ``extern`` declaration, again without the semicolon, carrying the same
-       qualifier the definition does. ``const=true`` adds a ``const`` unless the object
-       already carries one, so asking for it on calibration data does not produce the
-       ``const const`` that no compiler accepts.
+       qualifier the definition does. It takes no argument: a ``const=`` keyword, which
+       ``--const-inputs`` needed, was removed in 0.12.0 and is refused in a sentence saying so.
    * - ``.comment``
      - The description, the unit in square brackets and, for calibration data, a note saying
        what the object is and what it is dimensioned by - or nothing at all if the
@@ -364,18 +362,18 @@ variable is declared differently in different headers:
    * - attribute
      - what it holds
    * - ``.line``
-     - The complete declaration, semicolon included, with ``const`` already applied where it
-       belongs. Most templates need nothing else.
+     - The complete declaration, semicolon included, qualified as the definition is. Most
+       templates need nothing else.
    * - ``.condition``
      - The preprocessor condition of this declaration, or nothing.
-   * - ``.const``
-     - Whether ``--const-inputs`` added a ``const`` to this declaration, for a template that
-       builds the line itself. It says nothing about the object's own qualifiers, which are
-       ``.variable.constant`` and ``.variable.volatile``.
    * - ``.variable``
      - The object behind the declaration, with everything the previous table lists - which is
        how a header comments a declaration with ``.variable.comment`` or names its producer
        with ``.variable.owner``.
+
+``.const`` of a header entry, which said whether ``--const-inputs`` had added a ``const``, was
+removed in 0.12.0 with the option and is refused in a sentence saying so; ``.line`` is the
+declaration.
 
 Helpers, and what a subdirectory is for
 ---------------------------------------

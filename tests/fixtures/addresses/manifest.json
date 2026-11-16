@@ -30,7 +30,7 @@
     "tests/fixtures/addresses/symbols.json": "61f4f8df27ea3edd8ac5788dbe9979c2f7f5f4c87f38900866b61ab80cc97136",
     "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
     "docker/build_elf_fixtures.py": "ab981e2e03b235c9569158859e52181ae0a1dbc11759fca365f48854b88391d2",
-    "docker/build_address_fixtures.py": "750733834f6ace0b9cf4ac586a11001973b90fbf1a83a5b88458384b6e629e00"
+    "docker/build_address_fixtures.py": "ac7860956c315dd6f8b10c0d0d86c4dae3093f6a3031ac673046903b93ec4517"
   },
   "rows": {
     "armv7m": {

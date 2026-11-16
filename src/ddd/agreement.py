@@ -270,9 +270,10 @@ def _declarations(
 
     A consumer's ``extern`` that leaves out ``volatile`` lets its compiler read the variable once
     where the description says something else writes it, and one that leaves out ``const`` lets
-    it write a calibration. What a declaration may add is ``const``, which ``--const-inputs``
-    gives the inputs of a component on purpose; every other difference is judged as the
-    definition's is.
+    it write a calibration. A declaration that adds ``const`` is named as well: the definition
+    is not ``const``, and a pair of declarations of one object that disagree about it is
+    undefined, so a compiler may hand the reader a stale value. Every difference is judged as
+    the definition's is.
     """
     stated = (entry.is_calibration, entry.volatile)
     found: list[Mismatch] = []
@@ -280,7 +281,7 @@ def _declarations(
         seen = _seen(declaration.type)
         if isinstance(seen.core, Unsupported) and seen.core.what == _UNTYPED:
             continue
-        if seen.volatile == stated[1] and (seen.const or not stated[0]):
+        if (seen.const, seen.volatile) == stated:
             continue
         holds = _qualifiers(seen.const, seen.volatile)
         found.append(

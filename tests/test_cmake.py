@@ -3099,6 +3099,20 @@ message(STATUS "DDD_A2L=${{a2l}}")
         # Rewrapped: cmake folds a message to its own width.
         assert said in " ".join(run.stderr.split())
 
+    def test_const_inputs_is_refused_at_configure_time_with_the_release_that_removed_it(
+        self, tmp_path: Path
+    ) -> None:
+        self.write(tmp_path, options="\n             CONST_INPUTS")
+        run = attempt(tmp_path, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        # Rewrapped: cmake folds a message to its own width.
+        assert (
+            "ddd_generate: CONST_INPUTS was removed in 0.12.0: the header it wrote declared an "
+            "input const while the input's definition is not const. C leaves such a pair of "
+            "declarations undefined, so an optimising compiler may hand the reader a stale "
+            "value. Generate the headers without it." in " ".join(run.stderr.split())
+        )
+
     def test_under_strict_a_symbol_the_image_cannot_place_stops_the_build(
         self, tmp_path: Path
     ) -> None:

@@ -316,7 +316,6 @@ keep those examples working.
 def build_backends(**options: Any) -> list[Backend]:
     """The backend list a `ddd generate` run with these options would use."""
     template_dir = options.pop("template_dir", TEMPLATES)
-    const_inputs = options.pop("const_inputs", False)
     emit_a2l = options.pop("emit_a2l", True)
     byte_order = options.pop("byte_order", ByteOrder.LITTLE)
     addresses = options.pop("addresses", None)
@@ -324,7 +323,7 @@ def build_backends(**options: Any) -> list[Backend]:
     if options:
         msg = f"unknown backend option(s): {sorted(options)}"
         raise TypeError(msg)
-    backends: list[Backend] = [CBackend(template_dir, COptions(const_inputs=const_inputs))]
+    backends: list[Backend] = [CBackend(template_dir, COptions())]
     if emit_a2l:
         backends.append(
             A2lBackend(

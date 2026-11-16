@@ -60,6 +60,12 @@ Distinct from the findings and usage codes on purpose: a script that stops a lon
 must not read the result as a project with errors.
 """
 
+CONST_INPUTS_REMOVED = (
+    "--const-inputs was removed in 0.12.0: the header it wrote declared an input const while "
+    "the input's definition is not const. C leaves such a pair of declarations undefined, so "
+    "an optimising compiler may hand the reader a stale value. Generate the headers without it."
+)
+
 GENERATOR = f"ddd {__version__}"
 
 _FORMAT_HELP = "output format"
@@ -703,7 +709,8 @@ def _add_generate_arguments(
         parser.add_argument(
             "--const-inputs",
             action="store_true",
-            help="declare input variables const in the consumer headers",
+            # Parsed only so that it can be refused in a sentence of its own; see _selected.
+            help=argparse.SUPPRESS,
         )
     if with_a2l:
         parser.add_argument(
@@ -1150,6 +1157,8 @@ def _selected(args: argparse.Namespace) -> None:
     stayed must still have them. The a2l's addresses come from one source, a map or an image,
     which is refused here too, before anything is read.
     """
+    if getattr(args, "const_inputs", False):
+        raise ValueError(CONST_INPUTS_REMOVED)
     for artefact in getattr(args, "without", ()):
         setattr(args, f"render_{artefact}", False)
 
@@ -1159,7 +1168,6 @@ def _selected(args: argparse.Namespace) -> None:
         raise ValueError(msg)
     for option, given, artefact in (
         ("-t/--template-dir", template_dir is not None, "c"),
-        ("--const-inputs", getattr(args, "const_inputs", False), "c"),
         ("--byte-order", getattr(args, "byte_order", None) is not None, "a2l"),
         ("--address-map", getattr(args, "address_map", None) is not None, "a2l"),
         ("--image", getattr(args, "image", None) is not None, "a2l"),
@@ -1390,9 +1398,7 @@ def _command_generate(args: argparse.Namespace) -> int:
 
         backends: list[Backend] = []
         if args.render_c:
-            backends.append(
-                CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
-            )
+            backends.append(CBackend(args.template_dir, COptions(), GENERATOR))
         if args.render_a2l:
             backends.append(
                 A2lBackend(

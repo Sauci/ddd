@@ -154,6 +154,14 @@ _EXTERN = "extern {{ %s.c_type }} {{ %s.name }}{{ %s.array_suffix }};"
 """A declaration written as a house style might, from the documented fields and without
 ``qualifier``."""
 
+_EXTERN_CONST = (
+    "{% with v = entry.variable %}"
+    'extern {{ "" if v.constant else "const " }}{{ v.qualifier }}{{ v.c_type }} {{ v.name }}'
+    "{{ v.array_suffix }}{% endwith %};"
+)
+"""A declaration that adds ``const`` to what the kind carries, as a house style might write it
+by hand: calibration data already carries one, and c refuses a repeated qualifier."""
+
 
 def generate_variant(name: str, directory: Path) -> None:
     """Write the C of one of :data:`VARIANTS` into ``directory``."""
@@ -183,9 +191,7 @@ def generate_variant(name: str, directory: Path) -> None:
             templates = work / "templates"
             shutil.copytree(TEMPLATES, templates)
             declaration = (
-                _EXTERN % (("entry.variable",) * 3)
-                if name == "lostqualifier"
-                else "{{ entry.variable.declaration(const=True) }};"
+                _EXTERN % (("entry.variable",) * 3) if name == "lostqualifier" else _EXTERN_CONST
             )
             _replaced(templates / "{component}.h.jinja2", "{{ entry.line }}", declaration, times=3)
         elif name == "widened":

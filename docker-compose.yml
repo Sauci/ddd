@@ -48,15 +48,6 @@ services:
       CDEFS: "-DFEATURE_X"
     command: ["ddd-compile", "examples/demo/demo.ddd.json", "build/gen"]
 
-  # Same, but with the input variables declared const in the consumer headers.
-  compile-const:
-    <<: *ddd
-    environment:
-      <<: *environment
-      CDEFS: "-DFEATURE_X"
-      GENFLAGS: "--const-inputs"
-    command: ["ddd-compile", "examples/demo/demo.ddd.json", "build/gen-const"]
-
   # Configures and builds examples/cmake, which integrates the tool through cmake/Ddd.cmake:
   # the components are collected through the link graph and the generated sources are compiled.
   cmake:

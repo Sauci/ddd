@@ -329,48 +329,25 @@ whether or not another component may read it.
    to include its own header. What travels to a component is that directory and the compile
    usage needed to read what is in it, never a link edge.
 
-``--const-inputs``
-~~~~~~~~~~~~~~~~~~
+Inputs are declared as they are defined
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Visibility stops a component from touching a variable it never declared, but it does not
-stop it from writing to one it declared as an ``input``. ``--const-inputs`` closes that gap
-by adding ``const`` to the input declarations of the consumer headers, which turns an
-assignment into a diagnostic the compiler issues at the offending line. It is the one c
-option left on the command line rather than in a template, because it changes what is
-declared and not how it is written: the qualifier is part of the declaration the model hands
-over, so any template that prints those declarations honours it. Generating the demo with
-``--const-inputs`` opens the inputs section of ``UserInterface.h`` like this:
+stop it from writing to one it declared as an ``input``. The generated headers do not try to:
+every declaration of an object carries the qualifiers its definition carries and no others,
+so a consumer sees ``extern int16_t ValueF;`` where ``ddd_globals.c`` defines
+``int16_t ValueF = -400;``. A header that declared the input ``const`` instead would leave two
+declarations of one object that disagree about their qualifiers, which c leaves undefined, and
+an optimising compiler may then read the variable once where its producer writes it in
+between. A write to a variable owned by somebody else is a matter for review.
 
-.. code-block:: c
-
-   /* inputs - produced elsewhere, UserInterface may only read them */
-   /** Measurement used as the input quantity of AxisA [Hz] */
-   extern const volatile uint16_t ValueE;  /* produced by Controller */
-   /** Signed measurement with a fixed point conversion [degC] */
-   extern const int16_t ValueF;  /* produced by Controller */
-   /** Floating point measurement without a conversion [degC] */
-   extern const float ValueC;  /* produced by SensorHub */
-   ...
-
-Note that ``volatile`` survives the transformation: ``const volatile`` is the correct
-qualification for a value that this translation unit may not write but that something else -
-here the producing component - changes underneath it, and dropping the ``volatile`` would let
-the optimiser cache a reading in a register. Objects that are already ``const``, the
-calibration data, are left alone; a second ``const`` does not compile.
-
-.. warning::
-   The definition in ``ddd_globals.c`` stays non-const, because the producing component has
-   to be able to write it. The consumer therefore sees ``extern const int16_t ValueF;`` while
-   the object is defined as ``int16_t ValueF = -400;``, and c requires that all declarations
-   of the same object agree on their type qualifiers. This is a constraint violation, and a
-   conforming compiler is entitled to reject it. In practice every embedded toolchain the
-   tool has been used with accepts it - the declarations are in different translation units,
-   the linker only matches names, and no compiler diagnoses across that boundary - but
-   "accepted in practice" is not "correct", which is why the behaviour is opt-in rather than
-   the default. The repository verifies the claim rather than asserting it: the container
-   target ``compile-const`` regenerates the demo with ``--const-inputs`` and compiles and
-   links the result with ``-std=c11 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wshadow
-   -Wcast-qual -Wstrict-prototypes``.
+.. note::
+   Migrating from 0.11: ``ddd generate c --const-inputs``, ``CONST_INPUTS`` of
+   ``ddd_generate()``, ``.const`` of a header entry and ``declaration(const=...)`` of an
+   object are refused in a sentence naming 0.12.0. Delete them; a template that printed
+   ``entry.line`` needs nothing else. ``ddd generate a2l --image`` names, where the
+   compiler records it, a header that declares a variable with a ``const`` its description
+   does not state.
 
 Conditional declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -436,8 +413,7 @@ else does - so DDD composes them independently instead of letting one displace t
 
 Every ``extern`` declaration of the object is qualified to match, in ``ddd_globals.h`` and in
 the header of each component that declared it, so that the whole image is compiled against
-one statement about the value. This is the argument ``--const-inputs`` makes one section
-above, applied to the other half of the data: ``const volatile`` is the correct qualification
+one statement about the value. ``const volatile`` is the correct qualification
 for a value this translation unit may not write but that something else changes underneath
 it, and whether that something else is the producing component or the calibration tool
 connected to the running ecu makes no difference to the compiler.

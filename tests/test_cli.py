@@ -551,6 +551,30 @@ class TestGenerate:
             assert exit_code.value.code == EXIT_USAGE
         assert "-t/--template-dir" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("artefact", ["c", "all"])
+    def test_const_inputs_is_refused_with_the_release_that_removed_it(
+        self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        output = tmp_path / "gen"
+        arguments = ["generate", artefact, str(DEMO), "-t", str(TEMPLATES), "-o", str(output)]
+        assert main([*arguments, "--const-inputs"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert captured.err == (
+            "ddd: --const-inputs was removed in 0.12.0: the header it wrote declared an input "
+            "const while the input's definition is not const. C leaves such a pair of "
+            "declarations undefined, so an optimising compiler may hand the reader a stale "
+            "value. Generate the headers without it.\n"
+        )
+        assert captured.out == ""
+        assert not output.exists()
+
+    def test_const_inputs_is_not_offered_by_the_help(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit):
+            main(["generate", "c", "--help"])
+        assert "const-inputs" not in capsys.readouterr().out
+
     def test_the_a2l_artefact_refuses_the_options_of_the_c_one(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

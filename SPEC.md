@@ -1529,9 +1529,9 @@ Warnings:
   defining it, as a consumer does through a component header, is held to the qualifiers of
   the kind as well, since a header that leaves out `volatile` lets that unit's compiler read
   the variable once where the description says something else writes it: the finding names
-  the unit and the qualifier it lost. A declaration may add `const`, which `--const-inputs`
-  gives the inputs of a component on purpose; every other difference is judged as the
-  definition's is, and only the qualifiers are compared. The declarations are those the
+  the unit and the qualifier it lost. A declaration that adds `const` is named too, since the
+  definition is not `const` and two declarations of one object that disagree about it are
+  undefined; every difference is judged as the definition's is, and only the qualifiers are compared. The declarations are those the
   image's debug information states, which gcc writes for a variable a unit reads and clang
   leaves out, so the images of clang say nothing of them. It is a warning, so a `--strict` build
   stops at it; the A2L is written from the description either way, and a calibration tool
@@ -1833,9 +1833,10 @@ in it, exactly as naming a plugin runs its module ([section 3.11](#311-plugins))
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
 variables and calibration objects are `const`, each of them additionally `volatile` when
 its declaration states so; a declaration that carries a condition is offered with that
-condition, so that it can be wrapped in `#if` / `#endif`; and input objects are marked
-`const` for the consumer header when the project asks for it
-(`ddd generate c --const-inputs`), so that a write access does not compile. The qualifier
+condition, so that it can be wrapped in `#if` / `#endif`; and an input is declared as its
+producer defines it, never `const` where the definition is not, since two declarations of one
+object that disagree about their qualifiers are undefined (C11 6.2.7, 6.7.3); `ddd generate c
+--const-inputs`, which wrote the disagreement, was removed in 0.12.0. The qualifier
 reaches the hand written code that reads the object, so a project that turns `volatile` on
 for an array finds that passing it to a helper typed for a plain `const` one no longer
 compiles, and re-types the helper; the cast that would silence it is itself refused by a
@@ -2540,7 +2541,7 @@ naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,
-`CONST_INPUTS`, `NO_A2L` - which subtracts the a2l from the run rather than narrowing it to
+`NO_A2L` - which subtracts the a2l from the run rather than narrowing it to
 the c artefact, so the plugins' artefacts are produced either way - `STRICT` and repeatable
 `SEVERITY` entries written
 `check=severity` ([section 4](#4-consistency-checks)), the latter two also recorded in the

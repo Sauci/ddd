@@ -240,13 +240,9 @@ A source file of ``Controller`` includes this one header and nothing else, so it
 way of naming a variable that belongs to ``SensorHub`` and was not declared as one of its own
 inputs - the access rule is enforced by the compiler rather than by review. Reading a foreign
 input is possible by construction, since that is what an input is; *writing* one still
-compiles here, because the declaration is not ``const``. ``ddd generate c --const-inputs``
-declares inputs ``extern const`` instead, which stops that too, at the cost of a definition
-that stays non-const - strictly a constraint violation, accepted by the usual embedded
-toolchains, and therefore opt-in. An input that is volatile becomes ``extern const volatile``,
-since the qualifier the object asked for is not dropped for the one the option adds. It is an
-option rather than a matter for the templates because it changes what is declared and not how
-the declaration is written. The whole picture is on the
+compiles here, because the declaration is not ``const``: a header that declared an input
+``const`` while the definition is not would leave two declarations of one object that c leaves
+undefined, so a write to a foreign input is a matter for review. The whole picture is on the
 :doc:`generated artefacts </generated_artefacts>` page.
 
 condition

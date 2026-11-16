@@ -37,6 +37,21 @@ from ddd.models import (
 
 UNRESOLVED_GROUP = "<unresolved>"
 
+REMOVED_ENTRY_CONST = (
+    "'.const' of a header entry was removed in 0.12.0 with --const-inputs: it said whether the "
+    "option had added a const to the declaration, and the option is gone because a header that "
+    "declares an input const while its definition is not leaves C's two declarations "
+    "undefined. Use entry.line."
+)
+"""What a template that still reads ``.const`` of a header entry is told."""
+
+REMOVED_DECLARATION_CONST = (
+    "'declaration(const=...)' was removed in 0.12.0 with --const-inputs: the option is gone "
+    "because a header that declares an input const while its definition is not leaves C's two "
+    "declarations undefined. Call declaration() without it."
+)
+"""What a template that still passes ``const`` to ``declaration()`` is told."""
+
 
 @dataclass(frozen=True, slots=True)
 class ObjectView:
@@ -108,11 +123,15 @@ class ObjectView:
             text += f" = {self.initializer}"
         return text
 
-    def declaration(self, *, const: bool = False) -> str:
-        """``extern const volatile uint16_t Speed[4]``, without the trailing semicolon."""
-        # Calibration data already carries const, and c refuses a repeated qualifier.
-        prefix = "const " if const and not self.constant else ""
-        return f"extern {prefix}{self.qualifier}{self.c_type} {self.name}{self.array_suffix}"
+    def declaration(self, *, const: object = None) -> str:
+        """``extern const volatile uint16_t Speed[4]``, without the trailing semicolon.
+
+        ``const`` is the keyword ``--const-inputs`` needed, and is refused in a sentence naming
+        its removal rather than as python's own ``unexpected keyword argument``.
+        """
+        if const is not None:
+            raise ValueError(REMOVED_DECLARATION_CONST)
+        return f"extern {self.qualifier}{self.c_type} {self.name}{self.array_suffix}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,11 +193,16 @@ class DeclarationView:
 
     variable: ObjectView
     condition: str | None
-    const: bool
 
     @property
     def line(self) -> str:
-        return self.variable.declaration(const=self.const) + ";"
+        return self.variable.declaration() + ";"
+
+    @property
+    def const(self) -> bool:
+        """Removed with ``--const-inputs``, and refused in a sentence naming the removal rather
+        than as jinja's own ``has no attribute``."""
+        raise ValueError(REMOVED_ENTRY_CONST)
 
 
 @dataclass(frozen=True, slots=True)
@@ -448,7 +472,7 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
         structures=tuple(_struct_view(entry) for entry in dictionary.types),
         groups=tuple(groups),
         sections=_section_groups(dictionary, views),
-        headers=tuple(_header(component, views, options) for component in dictionary.components),
+        headers=tuple(_header(component, views) for component in dictionary.components),
         needs_stdint=needs_stdint(dictionary.datatypes),
         needs_stdbool=needs_stdbool(dictionary.datatypes),
         external_includes=_external_includes(dictionary),
@@ -609,9 +633,7 @@ def _view(
     )
 
 
-def _header(
-    component: ResolvedComponent, views: dict[str, ObjectView], options: COptions
-) -> ComponentHeaderView:
+def _header(component: ResolvedComponent, views: dict[str, ObjectView]) -> ComponentHeaderView:
     buckets: dict[Scope, list[DeclarationView]] = {scope: [] for scope in Scope}
     for declaration in component.declarations:
         # Every name here has a view: the analysis keeps a declaration out of the component's
@@ -621,7 +643,6 @@ def _header(
             DeclarationView(
                 variable=views[declaration.name],
                 condition=declaration.condition,
-                const=options.const_inputs and declaration.scope is Scope.INPUT,
             )
         )
     return ComponentHeaderView(

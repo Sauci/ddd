@@ -499,11 +499,10 @@ description files. The local parameter appears in its own section, and only here
    #endif /* DDD_COMPONENT_CONTROLLER_H */
 
 Controller can read ``CabinTemperature`` and can also write it, since the declaration in its
-header is not ``const``; ``ddd generate c --const-inputs`` declares inputs ``extern const`` in the
-consumer headers instead, so that writing to a variable owned by somebody else stops compiling
-rather than being caught in review. It is opt-in because the definition in ``ddd_globals.c``
-stays non-const, which strict c calls a constraint violation even though the usual embedded
-toolchains accept it.
+header is not ``const``. That is deliberate: a header that declared it ``const`` while the
+definition in ``ddd_globals.c`` is not would leave two declarations of one object that c leaves
+undefined, so a write to a variable owned by somebody else is caught in review, not by the
+compiler.
 
 Everything about the shape of those files - the banner, the plain c comments, the section
 headings, the note naming the producer - comes from the templates copied into the project a
@@ -614,7 +613,7 @@ maps and their shared axes, enum conversions, preprocessor conditions and the pe
 settings.
 
 :doc:`command_line_interface` documents every command and every option, including the ones this
-page only mentioned in passing: ``--const-inputs``, ``--address-map``, the ``-W`` severity
+page only mentioned in passing: ``--address-map``, the ``-W`` severity
 overrides, the machine readable ``--format json`` output for a ci job, and the commands that
 answer questions ``check`` does not - ``ddd compare`` for whether a delivery may replace its
 predecessor, and ``ddd dump`` for the resolved data dictionary itself.

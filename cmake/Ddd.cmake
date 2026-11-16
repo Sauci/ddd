@@ -872,7 +872,6 @@ endfunction()
 #              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
 #              [LINK_LIBRARIES <target>...]  # usage requirements for compiling the generated definition file
 #              [DEPENDS <file>...]           # additional dependencies retriggering the generation
-#              [CONST_INPUTS]                # declare input variables const in the consumer headers
 #              [NO_A2L]                      # do not generate the a2l file
 #              [NO_DICTIONARY]               # do not write the resolved data dictionary
 #              [STRICT]                      # treat DDD warnings as errors
@@ -913,8 +912,16 @@ endfunction()
 # stamp for its one output, and each shared file a rule of its own, depending on the step's target
 # (_ddd_files_of_a_step); the {component} files stay byproducts, with no rule under make.
 function(ddd_generate image)
+    # Not a keyword any more, and looked for before the arguments are parsed, so that it is refused in a sentence of its
+    # own, the one the tool gives for its option, and not as an unknown argument.
+    if("CONST_INPUTS" IN_LIST ARGN)
+        message(FATAL_ERROR "ddd_generate: CONST_INPUTS was removed in 0.12.0: the header it wrote declared an input "
+                            "const while the input's definition is not const. C leaves such a pair of declarations "
+                            "undefined, so an optimising compiler may hand the reader a stale value. Generate the "
+                            "headers without it.")
+    endif()
     cmake_parse_arguments(PARSE_ARGV 1 arg
-                          "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
+                          "NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
                           "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
                           "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     if(arg_UNPARSED_ARGUMENTS)
@@ -923,7 +930,7 @@ function(ddd_generate image)
     # The three lists of cmake_parse_arguments() above, spelled the same way.
     _ddd_refuse_empty_keywords(
         "ddd_generate" ${ARGC}
-        "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
+        "NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
         "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
         "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     # The a2l takes its addresses from one place, and ADDRESSES_FROM_IMAGE is that place being the image: beside a map
@@ -1104,9 +1111,6 @@ function(ddd_generate image)
     endif()
     if(arg_NO_A2L OR a2l_after_the_link)
         list(APPEND generate_options --without a2l)
-    endif()
-    if(arg_CONST_INPUTS)
-        list(APPEND generate_options --const-inputs)
     endif()
     # The byte order belongs to the a2l, so a run that subtracts it has no use for it.
     if(arg_BYTE_ORDER AND NOT arg_NO_A2L AND NOT a2l_after_the_link)

@@ -704,10 +704,9 @@ it is either a smell or a decision somebody should have taken consciously.
        size, encoding and shape. A unit that declares the variable without defining it, as a
        consumer does through a component header, is held to the qualifiers of the kind too,
        and the finding names the unit: a header that leaves out ``volatile`` lets that unit's
-       compiler read the variable once. A declaration may add ``const``, which
-       ``--const-inputs`` gives the inputs of a component on purpose; any other difference is
-       judged as the definition's is. Only declarations the image's debug information states
-       are seen, which gcc writes for a variable a unit reads and clang does not.
+       compiler read the variable once, and one that adds ``const`` leaves two declarations
+       of an object c leaves undefined; every difference is judged as the definition's is.
+       Only declarations the image's debug information states are seen, which gcc writes for a variable a unit reads and clang does not.
 
 Information
 ~~~~~~~~~~~

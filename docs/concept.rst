@@ -159,8 +159,7 @@ what the :doc:`cmake integration <build_integration>` hands each component - so 
 that the directory holds the headers of this image and no others, so an include that reaches
 across is at least an include of a component the image really links, and it is one line a
 reviewer can see. What the generated code does enforce by itself is below: a component's own
-header declares only what that component declared, and ``--const-inputs`` makes a write to a
-foreign variable a constraint violation wherever its declaration is read.
+header declares only what that component declared.
 
 .. code-block:: c
 
@@ -183,28 +182,11 @@ foreign variable a constraint violation wherever its declaration is read.
    extern int16_t ValueH;
 
 Visibility alone cannot stop a component from writing to a variable it legitimately reads,
-since a consumer needs the declaration in order to read it at all. ``--const-inputs`` closes
-that gap by qualifying inputs ``const`` in the consumer headers, which turns a write to a
-foreign variable from a convention into a constraint violation the compiler has to diagnose:
-
-.. code-block:: c
-
-   /* UserInterface.h, generated with --const-inputs */
-
-   /* inputs - produced elsewhere, UserInterface may only read them */
-   /** Measurement used as the input quantity of AxisA [Hz] */
-   extern const volatile uint16_t ValueE;  /* produced by Controller */
-   /** Signed measurement with a fixed point conversion [degC] */
-   extern const int16_t ValueF;  /* produced by Controller */
-
-.. note::
-
-   The definition in ``ddd_globals.c`` stays non-const, because the producer has to be able to
-   write it. Declaring the same object ``const`` in one translation unit and non-const in
-   another is a constraint violation in strict c, even though the usual embedded toolchains
-   accept it and generate exactly the code one expects. That is why the stronger enforcement
-   is opt-in rather than the default: a project decides for itself whether its toolchain and
-   its coding standard allow it.
+since a consumer needs the declaration in order to read it at all, and the generated headers
+leave it at that: they declare an input exactly as its producer defines it. A header that
+declared it ``const`` while the definition is not would leave two declarations of one object
+that c leaves undefined, so an optimising compiler could hand the reader a stale value. A write
+to a foreign variable is caught in review.
 
 The same principle runs through the rest of the tool. A component local variable is defined in
 ``ddd_globals.c`` like any other, so that the project still has exactly one definition per
@@ -231,8 +213,7 @@ the file names above are the example templates': ``ddd_globals.h`` is called tha
 template is called ``ddd_globals.h.jinja2``. :doc:`templates` describes the rules in full.
 
 Owning the presentation is not owning the rules. A component template is handed the
-declarations of its own component - already grouped by scope, already spelled in c, already
-qualified ``const`` where ``--const-inputs`` says so - and the ownership, the visibility and
+declarations of its own component - already grouped by scope, already spelled in c - and the ownership, the visibility and
 the datatypes are settled before any template runs. The example templates write plain c
 comments because a comment convention is exactly the kind of decision this principle leaves to
 the project; one that documents its generated code differently, or not at all, changes the

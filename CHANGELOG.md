@@ -469,7 +469,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `elf-mismatch`, naming what the description states and what the image holds.  A consumer's
   declaration of the variable is held to the qualifiers too, where the compiler records it, which
   gcc does for a variable a unit reads and clang does not, so a header that drops `volatile`, or
-  adds it, is named; adding `const` is allowed, as `--const-inputs` does.  A one-byte unsigned
+  adds it or `const`, is named.  A one-byte unsigned
   integer agrees with a `boolean`.  Migrating costs a fix or a silence: a `STRICT` build whose image
   disagrees with its description stops and writes no a2l, and `-W elf-mismatch=ignore`, or
   `SEVERITY` in cmake, lets it through; a run that is not stopped writes the a2l from the

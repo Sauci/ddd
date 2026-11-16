@@ -230,7 +230,7 @@ class TestComponentHeaders:
         )
         assert "extern uint8_t X;  /* produced by Producer */" in files["Consumer.h"]
 
-    def test_const_inputs(self, tree: Path) -> None:
+    def test_an_input_is_declared_as_its_producer_defines_it(self, tree: Path) -> None:
         files = generate(
             tree,
             {
@@ -238,10 +238,10 @@ class TestComponentHeaders:
                 "a.ddd.json": component("A", declare("output", "X")),
                 "b.ddd.json": component("B", declare("input", "X")),
             },
-            const_inputs=True,
         )
-        assert "extern const uint8_t X;" in files["B.h"]
+        assert "extern uint8_t X;" in files["B.h"]
         assert "extern uint8_t X;" in files["A.h"]
+        assert "const" not in files["B.h"]
         assert "const" not in files["ddd_globals.c"]
 
     def test_empty_component_gets_a_header(self, tree: Path) -> None:

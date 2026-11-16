@@ -863,13 +863,34 @@ class TestAConsumersDeclaration:
         a2l = tmp_path / "gen" / "AddressFixture.a2l"
         assert said == f"{findings}{noted}{count}\nwrote       {a2l.as_posix()} (created)\n"
 
-    @pytest.mark.parametrize("row", sorted(ADDRESS_ROWS))
-    def test_a_header_that_adds_const_as_const_inputs_does_is_not_said_a_word_of(
+    @pytest.mark.parametrize("row", GCC_ROWS)
+    def test_a_header_that_adds_const_is_said_for_each_variable_it_adds_it_to(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], row: str
     ) -> None:
-        """``declaration(const=True)``, which is what ``--const-inputs`` gives an input: every
-        variable the unit reads gains ``const`` and keeps what the kind carries."""
+        """A header that declares an input ``const`` where its definition is not leaves the two
+        declarations undefined, so the variables the unit reads that the kind leaves writable
+        are named: a calibration already carries ``const``, so the header adds nothing there."""
         image_path = ADDRESS_FIXTURES / "constinputs" / f"{row}.elf"
+        code, said = run_generate(capsys, tmp_path, image_path)
+        assert code == EXIT_OK, said
+        findings = "".join(
+            f"{where_of(image_path)}: warning[elf-mismatch]: '{name}' is declared in "
+            f"'consumer.c' otherwise than its description states: as its qualifiers, the "
+            f"description states volatile and the declaration holds const volatile\n"
+            "    note: a unit that reads the variable through such a declaration is compiled "
+            "without the qualifiers the description gives it\n"
+            f"    note: the image's debug information declares it at "
+            f"constinputs/Engine.h:{declaration_line('constinputs', name)}\n"
+            for name in ("Inlet", "Speed")
+        )
+        assert said.startswith(findings), said
+        assert said.count("elf-mismatch") == 2
+        assert "2 warnings" in said
+
+    def test_the_clang_row_states_no_declaration_of_a_const_either(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        image_path = ADDRESS_FIXTURES / "constinputs" / "aarch64_be.elf"
         code, said = run_generate(capsys, tmp_path, image_path, "--strict")
         assert code == EXIT_OK, said
         assert "elf-mismatch" not in said
@@ -900,6 +921,8 @@ class TestAConsumersDeclaration:
         [
             ({"volatile": True}, U16, "none"),
             ({"volatile": True}, const(U16), "const"),
+            ({}, const(U16), "const"),
+            ({"volatile": True}, const(volatile(UWORD)), "const volatile"),
             ({}, volatile(U16), "volatile"),
             ({"kind": "parameter"}, U16, "none"),
             ({"kind": "parameter"}, volatile(U16), "volatile"),
@@ -908,13 +931,15 @@ class TestAConsumersDeclaration:
         ids=[
             "volatile lost",
             "volatile lost beside const added",
+            "const added",
+            "const added to volatile",
             "volatile added",
             "const lost",
             "const lost beside volatile added",
             "const volatile losing volatile",
         ],
     )
-    def test_every_difference_but_an_added_const_is_said(
+    def test_every_difference_is_said(
         self, tmp_path: Path, stated: dict[str, Any], seen: CType, says_held: str
     ) -> None:
         wanted = (
@@ -930,22 +955,18 @@ class TestAConsumersDeclaration:
         ("stated", "seen"),
         [
             ({}, U16),
-            ({}, const(U16)),
             ({"volatile": True}, volatile(U16)),
-            ({"volatile": True}, const(volatile(UWORD))),
             ({"kind": "parameter"}, const(U16)),
             ({"volatile": True}, Unsupported("void")),
         ],
         ids=[
             "same",
-            "const added",
             "volatile kept",
-            "const added to volatile",
             "const kept",
             "untyped",
         ],
     )
-    def test_what_agrees_or_adds_const_is_not_said(
+    def test_what_agrees_is_not_said(
         self, tmp_path: Path, stated: dict[str, Any], seen: CType
     ) -> None:
         assert self.declared(tmp_path, stated, seen) == []

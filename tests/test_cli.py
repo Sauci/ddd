@@ -1118,6 +1118,7 @@ class TestGenerate:
         mapping: dict[str, str],
         *extra: str,
         files: dict[str, Any] | None = None,
+        strict: bool = True,
     ) -> tuple[int, str, str]:
         """``generate a2l --strict`` of a project of ``interface`` with a map: the exit status,
         what it printed, and the a2l it wrote ("" when it wrote none)."""
@@ -1140,7 +1141,7 @@ class TestGenerate:
                 str(tmp_path / "gen"),
                 "--address-map",
                 str(tmp_path / "map.json"),
-                "--strict",
+                *(["--strict"] if strict else []),
                 "-W",
                 "missing-id=ignore",
                 *extra,
@@ -1227,10 +1228,11 @@ class TestGenerate:
             {"Speed": "0x20000000"},
             "-W",
             "condition-mismatch=ignore",
+            strict=False,
         )
         assert code == EXIT_OK
         assert (
-            "info[condition-left-out]: 'Cv', 'Cw' refer to an axis left out above, and the a2l "
+            "warning[reference-left-out]: 'Cv', 'Cw' refer to an axis left out above, and the a2l "
             "cannot describe them without the axis; they are left out too"
         ) in capsys.readouterr().err
 
@@ -1245,16 +1247,33 @@ class TestGenerate:
             {"Speed": "0x20000000"},
             "-W",
             "condition-mismatch=ignore",
+            strict=False,
         )
         captured = capsys.readouterr().err
         assert code == EXIT_OK, captured
         assert (
-            "info[condition-left-out]: 'Cv' refers to an axis left out above, and the a2l "
+            "warning[reference-left-out]: 'Cv' refers to an axis left out above, and the a2l "
             "cannot describe it without the axis; it is left out too"
         ) in captured
         assert "address-missing" not in captured
         assert "MEASUREMENT Speed" in a2l
         assert "Cv" not in a2l
+
+    def test_that_warning_stops_a_strict_build_whatever_is_done_to_the_mismatch(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_curve_over_a_conditional_axis(),
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+        )
+        assert code == EXIT_FINDINGS
+        assert "error[reference-left-out]: 'Cv' refers to an axis left out above" in (
+            capsys.readouterr().err
+        )
+        assert a2l == ""
 
     def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

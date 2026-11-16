@@ -208,6 +208,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object cannot be described by the a2l version that is generated"),
         _check("point-counts-mismatch", Severity.WARNING,
                "a curve or map and one of its axes store their point counts differently"),
+        _check("reference-left-out", Severity.WARNING,
+               "a curve or a map is left out of the a2l with its axis, which the build left out "
+               "while it holds the curve or the map"),
         _check("address-missing", Severity.WARNING,
                "an object reaching the a2l gets no address from the address map or the image the "
                "run was given"),

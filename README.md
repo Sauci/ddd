@@ -577,6 +577,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `enum-duplicate-value` | two enumerators share a value |
 | warning | `name-similar` | two variables differ only in upper/lower case |
 | warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
+| warning | `reference-left-out` | a curve or map is left out of the a2l with its axis, which the build left out, while the build holds it |
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |
 | info | `condition-left-out` | the build holds nothing of an object stating a condition (the image defines no variable of its name, the map names none of it), and the a2l leaves it out |

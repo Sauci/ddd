@@ -1482,6 +1482,10 @@ Warnings:
 - `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.
+- `reference-left-out`: a curve or a map is left out of the A2L because the axis it refers
+  to was (`condition-left-out`), the build holding the curve or the map all the same. It is a
+  warning, so that a `--strict` build stops for it even where `condition-mismatch`, which
+  reports the cause at `ddd check`, is ignored.
 - `address-missing`: an object the A2L carries, one that states no condition, gets no
   address from the address map or the image the run was given. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction. That is the run
@@ -1513,7 +1517,7 @@ Information:
   no condition. A structured object is decided as one: left out only where none of its
   members is placed, and kept, its unplaced members `address-missing`, where the build
   holds some of it. A curve or a map over an axis left out cannot be described without it
-  and goes with it, named in a finding of its own at the same severity; an axis whose input
+  and goes with it, which `reference-left-out` names as a warning; an axis whose input
   was left out is written with `NO_INPUT_QUANTITY`.
 - `empty-component`: a component declares no data object at all.
 - `empty-vocabulary`: a types, units, constants, sections or rasters file declares nothing,

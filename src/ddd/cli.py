@@ -1088,7 +1088,7 @@ def _leave_out(
     if dragged:
         plural = len(dragged) != 1
         bag.add(
-            "condition-left-out",
+            "reference-left-out",
             f"{_listed(list(dragged))} {'refer' if plural else 'refers'} to an axis left out "
             f"above, and the a2l cannot describe {'them' if plural else 'it'} without the axis; "
             f"{'they are' if plural else 'it is'} left out too",

@@ -1358,7 +1358,8 @@ hole, so that ``--strict`` still stops a build for it.
 
 Leaving an object out cannot leave a record naming it behind. A curve or a map over an axis
 that was left out cannot be described without it and goes with it, which the build holds:
-the run names it, in a finding of its own at ``info``. An axis indexed by a measurement that
+the run names it, as a ``reference-left-out`` warning, since the a2l lacks what the build holds and
+a ``--strict`` build stops for it, whatever is done to ``condition-mismatch``. An axis indexed by a measurement that
 was left out is written without an input quantity. A project should not rely on that: an object
 that refers to another one under a condition it does not share is reported by
 ``ddd check`` as ``condition-mismatch``, since a build without the condition holds the one and

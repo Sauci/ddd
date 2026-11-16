@@ -665,6 +665,12 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - a curve or a map stores its point counts one way and one of its axes the other. The a2l
        describes each as resolved; the interpolation routine is unlikely to read both.
+   * - ``reference-left-out``
+     - warning
+     - a curve or a map is left out of the a2l because its axis was (``condition-left-out``),
+       while the build holds the curve or the map. A warning where the left-out axis is only
+       information, since the a2l lacks what the build has; ``--strict`` stops a build for it
+       even where ``condition-mismatch``, which reports the cause in ``ddd check``, is ignored.
    * - ``address-missing``
      - warning
      - an object that reaches the a2l has no entry in the map ``--address-map`` was given, or
@@ -693,7 +699,7 @@ Information
        ``--address-map`` was given, which has entries, names neither the object nor any member
        of it. The build was made without the feature, so the a2l leaves the object out. One
        finding per condition. A curve or map over an axis left out cannot be described without
-       it and goes with it, named in a finding of its own. Any other reason an image gives, and
+       it and goes with it, which ``reference-left-out`` names. Any other reason an image gives, and
        an object stating no condition, are ``address-missing`` instead, so that a hole stays one.
    * - ``empty-component``
      - info

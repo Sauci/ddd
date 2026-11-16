@@ -1392,3 +1392,47 @@ demo's calibration objects, ``ParameterA``, ``AxisB``, ``CurveA``, ``MapA``, ``C
    :doc:`ddd compare </comparing_deliveries>`: the ``changed-a2l`` check reports it as a
    warning when a candidate delivery is measured against an archived baseline, because a
    calibration file prepared against the previous a2l may no longer apply cleanly.
+
+.. _a2l-module-fragment:
+
+What the a2l leaves to the project
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+DDD writes what the data dictionary holds, and nothing about the target that reads the file.
+The ``IF_DATA`` blocks it writes on a measurement are described by an ``A2ML``, the ASAM MCD-2
+MC metalanguage, which ASAP2 asks the file to carry; the module's own ``IF_DATA`` - the protocol
+layer, the transport and the ``DAQ`` list of the XCP stack - is the stack's; and what lets a tool
+trust that this file belongs to this image, an ``EPK`` with its ``ADDR_EPK``, and the
+``MEMORY_SEGMENT`` of each memory the target has, are the target's as well. None of it is
+modelled. A project that needs any of it names a text file with ``--a2l-module-fragment``, or
+``A2L_MODULE_FRAGMENT`` in cmake, and the a2l holds that file once, unchanged, as the first thing
+inside the ``MODULE``:
+
+.. code-block:: text
+
+   ddd generate a2l project.ddd.json -o gen --a2l-module-fragment module.a2l
+
+.. code-block:: text
+
+     /begin MODULE DemoDevice "..."
+   /begin A2ML
+     ...
+   /end A2ML
+
+       /begin MOD_COMMON "global variables of DemoDevice"
+       ...
+
+The text is pasted as it is - not indented, not checked and not reordered - with a final
+newline added if the file has none. It comes before every ``IF_DATA`` of the file, so a reader
+that parses an ``IF_DATA`` by the metalanguage has met the metalanguage first. DDD does not read
+the fragment's keywords, with one exception: a ``MOD_PAR`` may appear once in a module, and
+``EPK``, ``ADDR_EPK`` and ``MEMORY_SEGMENT`` live inside it. DDD writes a ``MOD_PAR`` of its own
+wherever the project declares a :doc:`named constant <file_formats/constants>`, for its
+``SYSTEM_CONSTANT``\ s, so a fragment holding one beside a named constant is a usage error naming
+the fragment. In a project that declares no constant the fragment's ``MOD_PAR`` is the module's.
+A project with named constants therefore cannot carry an ``EPK`` through the fragment.
+
+A fragment that cannot be read, or is not UTF-8 text, is refused naming the file, as an address
+map is. In cmake the file is an input of whichever step writes the a2l, the run before the link
+or the one after it, so an edit to it writes the a2l again; it is the a2l's alone, and is
+refused beside ``NO_A2L`` or ``--without a2l``.

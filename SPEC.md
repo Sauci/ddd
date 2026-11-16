@@ -2050,9 +2050,23 @@ whose layout DDD does not know. A `bits` member reaches no A2L at all:
 `SYMBOL_LINK` can carry a byte offset but not a bit position, so a bitfield waits for a
 build to report both the word and the bits *(planned)*.
 
-Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, the module
-level `IF_DATA XCP` block describing the protocol layer, the transport and the `DAQ` events
-themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *planned*.
+What the A2L cannot state itself - the `A2ML` that describes an `IF_DATA` (the format asks
+for it), a module level `IF_DATA`, the `EPK` and its `ADDR_EPK`, a `MEMORY_SEGMENT` - is the
+project's to state, in a text file `--a2l-module-fragment FILE` names (`A2L_MODULE_FRAGMENT` in
+the cmake module). The A2L holds it **once**, as the first thing inside the `MODULE`, before
+the `MOD_COMMON` and so before every `IF_DATA` of the file; it is the file's text unchanged,
+with a final newline added where it has none, read as UTF-8 with or without a byte order mark.
+A fragment that cannot be read or is not UTF-8 text is a usage error naming it. ASAP2 allows
+one `MOD_PAR` in a `MODULE` and `EPK`, `ADDR_EPK` and `MEMORY_SEGMENT` live inside it, and DDD
+writes a `MOD_PAR` of its own wherever the project declares a named constant
+([section 3.9](#39-constant-vocabulary)): a fragment holding a `/begin MOD_PAR` beside one **shall** be
+refused, as a usage error naming the fragment, and where the project declares none the
+fragment's `MOD_PAR` is the module's. DDD reads nothing else of the fragment; it is not checked
+against the A2L's own text.
+
+Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, a model of
+`MEMORY_SEGMENT`, `EPK` and the XCP block as DDD's own output, `IF_DATA` for CCP, and A2L
+*import* for migration and merging are *planned*.
 
 ### 5.3 Data dictionary
 
@@ -2222,8 +2236,9 @@ the two built-in artefacts and the artefact of every plugin the project names th
 one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
 options of what it produces - a plugin's artefact takes the output directory, `--dry-run`,
 `--force` and the severity and format options, and none of the built-in artefacts' own;
-`a2l` and `all` take `--byte-order` and one source of the addresses, `--image` or
-`--address-map` ([section 6](#6-address-information));
+`a2l` and `all` take `--byte-order`, one source of the addresses, `--image` or
+`--address-map` ([section 6](#6-address-information)), and `--a2l-module-fragment`
+([section 5.2](#52-a2l)), each refused with `--without a2l`;
 `all` additionally takes a repeatable `--without c|a2l`, which leaves that built-in
 artefact out of the run while still producing the plugins'. What it subtracts it subtracts
 entirely: the options of an artefact left out are refused rather than accepted and ignored,
@@ -2525,7 +2540,7 @@ then - and deleting the stamp, or a clean, runs it.
 the generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after
 the link runs `ddd generate a2l` over the image with `--image`, or over the map with
 `--address-map`, the A2L its output. The step depends on the image, on the map with
-`ADDRESS_MAP`, and on what the project is read from - its description, the files it is
+`ADDRESS_MAP`, on the `A2L_MODULE_FRAGMENT` file, and on what the project is read from - its description, the files it is
 collected or included from, the `.py` plugins, the list of those files that `PROJECT` keeps in
 the build tree, and the tool - so it runs again when the image relinks, the map changes or a
 description does, and never otherwise. A target `<stem>_ddd_a2l`, built by default,
@@ -2541,6 +2556,7 @@ naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,
+`A2L_MODULE_FRAGMENT` (`--a2l-module-fragment`, refused beside `NO_A2L`),
 `NO_A2L` - which subtracts the a2l from the run rather than narrowing it to
 the c artefact, so the plugins' artefacts are produced either way - `STRICT` and repeatable
 `SEVERITY` entries written

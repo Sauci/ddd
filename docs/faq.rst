@@ -621,8 +621,10 @@ calibration tool would address the wrong element.
    protocol that reaches it: an exported measurement with a :doc:`raster
    <file_formats/rasters>` gets an ``IF_DATA XCP`` block naming its event channel, while the
    module level ``DAQ`` list defining the events, the ``PROTOCOL_LAYER`` and the transport
-   come from whatever configures the XCP stack. No file DDD writes contains an ``IF_DATA``
-   section for CCP.
+   come from whatever configures the XCP stack, and reach the a2l in the project's own
+   :ref:`module fragment <a2l-module-fragment>`, pasted at the head of the module with
+   ``--a2l-module-fragment`` - the ``A2ML`` describing them with it. No file DDD writes
+   contains an ``IF_DATA`` section for CCP.
 
 How large may an array be?
 --------------------------

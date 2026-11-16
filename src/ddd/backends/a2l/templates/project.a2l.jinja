@@ -12,6 +12,9 @@ ASAP2_VERSION {{ model.version }}
   /end HEADER
 
   /begin MODULE {{ model.module }} "{{ model.description | a2l }}"
+{% if model.module_fragment %}
+{{ model.module_fragment }}
+{% endif %}
 
     /begin MOD_COMMON "global variables of {{ model.project }}"
       BYTE_ORDER {{ model.byte_order }}

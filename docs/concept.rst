@@ -221,9 +221,14 @@ comment in the template and nothing else.
 
 The a2l file is the exception that proves the point. Its structure is dictated by ASAM rather
 than by a house style: a measurement and calibration tool rejects a ``COMPU_METHOD`` in the
-wrong place no matter whose coding standard produced it. There is nothing for a project to
-decide there, so there is no template option for the a2l either - that backend carries its own
-templates and stays internal.
+wrong place no matter whose coding standard produced it. There is nothing to decide about that
+structure, so there is no template option for the a2l - that backend carries its own template
+and stays internal. What a project does decide is what the file says beyond the data
+dictionary: the ``A2ML`` that describes the ``IF_DATA`` blocks, a module level ``IF_DATA``, an
+``EPK`` and a ``MEMORY_SEGMENT`` belong to the target and its tool chain, and DDD does not model
+them. A project hands the decision to DDD the way the c templates do, as a file of its own:
+``--a2l-module-fragment`` (``A2L_MODULE_FRAGMENT`` in cmake) names a text file that is pasted,
+unchanged, at the head of the module.
 
 
 Vocabulary

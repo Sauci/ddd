@@ -731,7 +731,8 @@ what would be written and exits `0` either way, so it is not a staleness gate on
 `--force` (generate despite errors - the files are written using the producing component's
 definition, but the command still reports every finding and still exits `1`),
 `--byte-order big`, `--address-map addresses.json`, `--image firmware.elf` (the a2l's
-addresses read out of the linked image, below).
+addresses read out of the linked image, below), `--a2l-module-fragment module.a2l` (a project's
+text at the head of the a2l's `MODULE`, below).
 
 ## A2L support
 
@@ -777,6 +778,11 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 * a2l has no notion of preprocessor conditions, so a conditional variable is exported with a
   comment stating the condition
 * `"a2l": {"export": false}` keeps a variable out of the file
+* what the file cannot state itself - the `A2ML` that describes an `IF_DATA`, a module level
+  `IF_DATA`, an `EPK`, a `MEMORY_SEGMENT` - is a text file of the project's, which
+  `--a2l-module-fragment FILE` (cmake `A2L_MODULE_FRAGMENT`) pastes unchanged at the head of the
+  `MODULE`; where the project declares a named constant, DDD writes the one `MOD_PAR` the module
+  may hold, so a fragment holding another is refused
 
 ## Command line
 
@@ -784,7 +790,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | --- | --- |
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
-| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts; `--image ELF` reads the a2l's addresses out of the linked image |
+| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts; `--image ELF` reads the a2l's addresses out of the linked image; `--a2l-module-fragment FILE` pastes a file at the head of the a2l's `MODULE` |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers; `--standalone` lists a component alone |
 | `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change; `--standalone` dumps a component alone |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |

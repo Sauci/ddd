@@ -737,6 +737,17 @@ def _add_generate_arguments(
                 "carries, and its byte order"
             ),
         )
+        parser.add_argument(
+            "--a2l-module-fragment",
+            type=Path,
+            metavar="FILE",
+            help=(
+                "text file pasted verbatim at the head of the a2l's MODULE: what the a2l cannot "
+                "state itself, such as the A2ML its IF_DATA are written in, and, where the "
+                "project declares no named constant, a MOD_PAR carrying EPK, ADDR_EPK and "
+                "MEMORY_SEGMENT"
+            ),
+        )
     if with_exclusions:
         parser.add_argument(
             "--without",
@@ -1171,6 +1182,11 @@ def _selected(args: argparse.Namespace) -> None:
         ("--byte-order", getattr(args, "byte_order", None) is not None, "a2l"),
         ("--address-map", getattr(args, "address_map", None) is not None, "a2l"),
         ("--image", getattr(args, "image", None) is not None, "a2l"),
+        (
+            "--a2l-module-fragment",
+            getattr(args, "a2l_module_fragment", None) is not None,
+            "a2l",
+        ),
     ):
         if given and not getattr(args, f"render_{artefact}"):
             msg = f"{option} belongs to the {artefact} artefact, left out by --without"
@@ -1276,6 +1292,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         addressed_symbols,
         conditional_objects,
         describe_write_failure,
+        load_module_fragment,
         render,
         weigh_addresses,
         write,
@@ -1310,6 +1327,12 @@ def _command_generate(args: argparse.Namespace) -> int:
                 "artefacts, and this project provides none"
             )
             raise ValueError(msg)
+
+        # Read with the address source, before the findings gate: a file the run cannot take is
+        # a usage error whatever state the project is in. _selected has seen to it that the
+        # option is only here for a run that writes the a2l.
+        fragment_path: Path | None = getattr(args, "a2l_module_fragment", None)
+        fragment = None if fragment_path is None else load_module_fragment(fragment_path)
 
         # Guarded on the artefact, not just on the option: a run that does not write the a2l
         # has no use for the map and must not be killed by one it was never going to read.
@@ -1409,6 +1432,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                         # An image is a source whatever it places, the finding naming what it
                         # does not; a map is one once it has an entry, as for that finding.
                         has_address_source=image_path is not None or bool(addresses),
+                        module_fragment=fragment,
                     ),
                     GENERATOR,
                 )

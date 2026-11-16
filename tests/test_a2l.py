@@ -6,13 +6,17 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from conftest import component, declare, project, render_files, run_analysis
 from ddd.backends import (
     A2lBackend,
     A2lOptions,
     ByteOrder,
+    ModuleFragment,
     conditional_objects,
     dragged_with,
+    load_module_fragment,
     render,
     write,
 )
@@ -758,3 +762,122 @@ class TestEncoding:
         assert 'IDENTICAL "%8.0" "°C"' in text
         assert "CM_IDENT_DEGC" in text
         assert "﻿" not in text
+
+
+class TestModuleFragment:
+    """A project's own text, pasted verbatim at the head of the ``MODULE``.
+
+    What the a2l cannot state itself - the ``A2ML`` describing an ``IF_DATA``, the module's own
+    ``IF_DATA``, an ``EPK`` and a ``MEMORY_SEGMENT`` - is the project's to say, as the house
+    style of the c is: the fragment is the extension point, and ddd does not model any of it.
+    """
+
+    A2ML = (
+        "/begin A2ML\n"
+        '  block "IF_DATA" taggedunion if_data {\n'
+        '    "XCP" struct { uint; };\n'
+        "  };\n"
+        "/end A2ML\n"
+    )
+
+    def named(self, tree: Path, text: str) -> ModuleFragment:
+        path = tree / "fragment.a2l"
+        path.write_text(text, encoding="utf-8", newline="")
+        return load_module_fragment(path)
+
+    def content(self, tree: Path, fragment: ModuleFragment | None, *constants: str) -> str:
+        files: dict[str, Any] = {
+            "project.ddd.json": project(
+                "Device", *(["constants.ddd.json"] if constants else []), "a.ddd.json"
+            ),
+            "a.ddd.json": component("A", declare("local", "X"), description="a component"),
+        }
+        if constants:
+            files["constants.ddd.json"] = {
+                "constants": [{"name": name, "value": 8} for name in constants]
+            }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen", module_fragment=fragment)
+        return next(file.content for file in rendered if file.path.name == "Device.a2l")
+
+    def test_the_fragment_is_once_the_head_of_the_module(self, tree: Path) -> None:
+        content = self.content(tree, self.named(tree, self.A2ML))
+        assert content.count(self.A2ML) == 1
+        opening = '/begin MODULE Device "Device"\n'
+        assert opening + self.A2ML + "\n    /begin MOD_COMMON" in content
+        assert content.index(self.A2ML) < content.index("/end MODULE")
+
+    def test_a_fragment_precedes_every_if_data_the_file_holds(self, tree: Path) -> None:
+        """A reader that parses an ``IF_DATA`` by the metalanguage meets the metalanguage first,
+        the blocks ddd writes on a measurement included."""
+        content = self.content(tree, self.named(tree, self.A2ML))
+        assert content.index("/begin A2ML") < content.index("/begin MEASUREMENT")
+
+    def test_the_text_is_the_files_with_a_final_newline_added_where_it_has_none(
+        self, tree: Path
+    ) -> None:
+        bare = "/begin A2ML\n/end A2ML"
+        assert 'MODULE Device "Device"\n' + bare + "\n\n    /begin MOD_COMMON" in self.content(
+            tree, self.named(tree, bare)
+        )
+
+    def test_a_fragment_is_pasted_unindented_and_unchanged(self, tree: Path) -> None:
+        odd = '\t/* keep  this   */\n\n\n  EPK  "x"\n'
+        assert self.content(tree, self.named(tree, odd)).count(odd + "\n    /begin MOD_COMMON") == 1
+
+    def test_a_byte_order_mark_in_front_of_the_text_is_not_part_of_it(self, tree: Path) -> None:
+        content = self.content(tree, self.named(tree, chr(0xFEFF) + self.A2ML))
+        assert content.count(chr(0xFEFF)) == 1
+        assert self.A2ML in content
+
+    def test_an_empty_fragment_adds_nothing(self, tree: Path) -> None:
+        assert self.content(tree, self.named(tree, "")) == self.content(tree, None)
+
+    def test_no_fragment_leaves_the_module_as_it_was(self, tree: Path) -> None:
+        content = self.content(tree, None)
+        assert 'MODULE Device "Device"\n\n    /begin MOD_COMMON' in content
+
+    def test_a_mod_par_of_the_fragment_is_the_modules_where_no_constant_is_named(
+        self, tree: Path
+    ) -> None:
+        fragment = '/begin MOD_PAR "ecu"\n  EPK "EPROM1"\n  ADDR_EPK 0x1000\n/end MOD_PAR\n'
+        content = self.content(tree, self.named(tree, fragment))
+        assert content.count("/begin MOD_PAR") == 1
+        assert content.count(fragment) == 1
+
+    def test_a_mod_par_of_the_fragment_beside_a_named_constant_is_refused(self, tree: Path) -> None:
+        fragment = self.named(tree, '/begin MOD_PAR "ecu"\n  EPK "EPROM1"\n/end MOD_PAR\n')
+        with pytest.raises(ValueError, match="MOD_PAR") as refused:
+            self.content(tree, fragment, "CELLS")
+        assert str(refused.value) == (
+            f"the a2l module fragment '{fragment.where}' holds a MOD_PAR, and the named "
+            "constants of this project make ddd write one: ASAP2 allows one MOD_PAR in a "
+            "MODULE, so a project that declares a named constant cannot carry EPK, ADDR_EPK "
+            "or MEMORY_SEGMENT through the fragment"
+        )
+
+    def test_the_spelling_of_the_opening_is_what_is_looked_for(self, tree: Path) -> None:
+        fragment = self.named(tree, '/begin   MOD_PAR "ecu"\n/end MOD_PAR\n')
+        with pytest.raises(ValueError, match="holds a MOD_PAR"):
+            self.content(tree, fragment, "CELLS")
+
+    def test_a_mod_par_only_mentioned_is_no_mod_par(self, tree: Path) -> None:
+        """A comment, or a string, naming one is the fragment's text and no block of the kind;
+        a named constant beside it takes ddd's own."""
+        fragment = self.named(
+            tree,
+            "/* /begin MOD_PAR */\n// /begin MOD_PAR\n/* over\n/begin MOD_PAR\nlines */\n"
+            '/begin A2ML\n"/begin MOD_PAR // not a comment"\n'
+            '"say \\" /begin MOD_PAR \\" again"\n/end A2ML\n',
+        )
+        content = self.content(tree, fragment, "CELLS")
+        assert content.count('SYSTEM_CONSTANT "CELLS" "8"') == 1
+        assert content.count("/begin MOD_PAR") == 6  # five mentions and the modules own
+
+    def test_a_fragment_beside_a_named_constant_comes_before_the_modules_own_mod_par(
+        self, tree: Path
+    ) -> None:
+        content = self.content(tree, self.named(tree, self.A2ML), "CELLS")
+        assert content.index("/end A2ML") < content.index("/begin MOD_COMMON")
+        assert content.index("/begin MOD_COMMON") < content.index("/begin MOD_PAR")

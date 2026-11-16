@@ -505,7 +505,8 @@ including the ones this image happens not to link.
    * - ``<stem>_ddd_a2l``
      - with ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP``, built by default: writes the a2l once
        the image is linked, every address it carries read out of the image or out of the map
-       (see below). It depends on the image, on the map with ``ADDRESS_MAP``, on the project
+       (see below). It depends on the image, on the map with ``ADDRESS_MAP``, on the
+       ``A2L_MODULE_FRAGMENT`` file, on the project
        description and the files collected into it, on a ``.py`` plugin the call names and on the
        tool, and on nothing the c alone is rendered from. A build that names its targets -
        ``cmake --build --target firmware.elf``, say, or ``firmware_ddd_generation`` - does not
@@ -712,6 +713,10 @@ Options
        with ``-g`` and without ``-flto``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
+   * - ``A2L_MODULE_FRAGMENT <file>``
+     - a text file pasted unchanged at the head of the a2l's ``MODULE``, whichever step writes
+       the a2l (:ref:`a2l-module-fragment`). It is an input of that step, so an edit to it writes
+       the a2l again. Refused together with ``NO_A2L``.
    * - ``SEVERITY <check=level>...``
      - severity overrides, exactly like ``-W`` on the command line. They apply to both the
        generation and the check target.

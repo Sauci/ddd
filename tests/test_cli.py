@@ -372,6 +372,120 @@ class TestGenerateAll:
         assert "would write nothing" in capsys.readouterr().err
 
 
+VOCABULARY = EXAMPLES / "vocabulary" / "project.ddd.json"
+MODULE_OPENING = '  /begin MODULE DemoDevice "'
+
+
+class TestTheA2lModuleFragment:
+    """``--a2l-module-fragment``: a project's file pasted at the head of the ``MODULE``."""
+
+    FRAGMENT = '/begin A2ML\n  block "IF_DATA" taggedunion if_data {\n  };\n/end A2ML\n'
+
+    def fragment(self, tmp_path: Path, text: str = FRAGMENT) -> Path:
+        path = tmp_path / "module.a2l"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    @pytest.mark.parametrize("addresses", [False, True], ids=["before-the-link", "after-the-link"])
+    def test_the_fragment_is_once_the_head_of_the_module_with_or_without_a_map(
+        self, addresses: bool, tmp_path: Path
+    ) -> None:
+        """The run before the link writes the a2l with no address source; the one after it
+        reads a map. Both write the file the same way round the fragment."""
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        arguments += ["--a2l-module-fragment", str(self.fragment(tmp_path))]
+        if addresses:
+            (tmp_path / "map.json").write_text('{"ValueE": "0x20001000"}', encoding="utf-8")
+            arguments += ["--address-map", str(tmp_path / "map.json")]
+        assert main(arguments) == EXIT_OK
+        content = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert content.count(self.FRAGMENT) == 1
+        assert content.count("/begin A2ML") == 1
+        head = content.index(MODULE_OPENING)
+        assert content.index(self.FRAGMENT) == content.index("\n", head) + 1
+        assert content.index(self.FRAGMENT) < content.index("/begin MOD_COMMON")
+        assert content.index("/end MOD_COMMON") < content.index("/end MODULE")
+        assert content.index(self.FRAGMENT) < content.index("/end MODULE")
+        assert ("ECU_ADDRESS 0x20001000" in content) is addresses
+
+    def test_all_hands_it_to_the_a2l_alone(self, tmp_path: Path) -> None:
+        arguments = ["generate", "all", str(LAYOUT), "-o", str(tmp_path / "gen")]
+        arguments += ["-t", str(TEMPLATES), "-W", "missing-id=ignore"]
+        arguments += ["--a2l-module-fragment", str(self.fragment(tmp_path))]
+        assert main(arguments) == EXIT_OK
+        written = {
+            path.name: path.read_text(encoding="utf-8") for path in (tmp_path / "gen").iterdir()
+        }
+        assert [name for name, text in written.items() if "/begin A2ML" in text] == [
+            "LayoutDevice.a2l"
+        ]
+
+    def test_the_c_artefact_does_not_take_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "c", str(DEMO), "-o", str(tmp_path / "gen"), "-t", str(TEMPLATES)]
+        with pytest.raises(SystemExit) as refused:
+            main([*arguments, "--a2l-module-fragment", str(self.fragment(tmp_path))])
+        assert refused.value.code == EXIT_USAGE
+        assert "--a2l-module-fragment" in capsys.readouterr().err
+
+    def test_a_subtracted_a2l_takes_the_option_with_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "all", str(LAYOUT), "-o", str(tmp_path / "gen")]
+        arguments += ["-t", str(TEMPLATES), "--without", "a2l", "-W", "missing-id=ignore"]
+        arguments += ["--a2l-module-fragment", str(self.fragment(tmp_path))]
+        assert main(arguments) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            "ddd: --a2l-module-fragment belongs to the a2l artefact, left out by --without\n"
+        )
+
+    def test_the_help_offers_it(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit):
+            main(["generate", "a2l", "--help"])
+        assert "--a2l-module-fragment" in capsys.readouterr().out
+
+    def test_a_missing_file_is_named(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        missing = tmp_path / "nosuch.a2l"
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--a2l-module-fragment", str(missing)]) == EXIT_USAGE
+        assert capsys.readouterr().err.endswith(
+            f"ddd: cannot read the a2l module fragment '{missing.as_posix()}': "
+            "No such file or directory\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_file_that_is_not_utf_8_is_named(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What Windows PowerShell's ``>`` writes, as for the address map."""
+        path = tmp_path / "module.a2l"
+        path.write_bytes(b"\xff\xfe" + "/begin A2ML".encode("utf-16-le"))
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--a2l-module-fragment", str(path)]) == EXIT_USAGE
+        assert capsys.readouterr().err.endswith(
+            f"ddd: the a2l module fragment '{path.as_posix()}' is not UTF-8 text, and Windows "
+            "PowerShell's > writes UTF-16; write the fragment as UTF-8\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_second_mod_par_is_a_usage_error_naming_the_fragment(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = self.fragment(tmp_path, '/begin MOD_PAR "ecu"\n  EPK "EPROM1"\n/end MOD_PAR\n')
+        arguments = ["generate", "a2l", str(VOCABULARY), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--a2l-module-fragment", str(path)]) == EXIT_USAGE
+        assert capsys.readouterr().err.endswith(
+            f"ddd: the a2l module fragment '{path.as_posix()}' holds a MOD_PAR, and the named "
+            "constants of this project make ddd write one: ASAP2 allows one MOD_PAR in a "
+            "MODULE, so a project that declares a named constant cannot carry EPK, ADDR_EPK "
+            "or MEMORY_SEGMENT through the fragment\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+
 class TestGenerateOwnsItsOutputDirectory:
     """What a run wrote once and no longer writes, the next run takes back.
 

@@ -200,6 +200,10 @@ class A2lModel:
     has_address_source: bool
     """Whether the run had a source of addresses (:attr:`A2lOptions.has_address_source`)."""
 
+    module_fragment: str
+    """What the project pastes at the head of the module, without the newline that ends it
+    (:attr:`A2lOptions.module_fragment`); empty where there is none."""
+
     system_constants: tuple[SystemConstantView, ...]
     """One per declared constant, in name order; the ``MOD_PAR`` is written only when the
     project declares any."""
@@ -403,6 +407,11 @@ class _A2lModelBuilder:
             version=self._options.version,
             byte_order=self._options.byte_order.a2l,
             has_address_source=self._options.has_address_source,
+            module_fragment=(
+                self._options.module_fragment.text.removesuffix("\n")
+                if self._options.module_fragment
+                else ""
+            ),
             system_constants=tuple(
                 SystemConstantView(name=entry.name, value=str(entry.value))
                 for entry in dictionary.constants

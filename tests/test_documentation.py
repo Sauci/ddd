@@ -725,13 +725,16 @@ def generate_options(artefact: str) -> set[str]:
 
 class TestTheA2lOptions:
     """The options the a2l takes and the c does not say where its addresses and its byte order
-    come from, so every document that says how to run ``generate`` names each of them."""
+    come from, and what the project pastes into its module, so every document that says how to
+    run ``generate`` names each of them."""
 
     OWN = sorted(generate_options("a2l") - generate_options("c"))
 
-    def test_they_are_the_two_sources_of_the_addresses_and_the_byte_order(self) -> None:
+    def test_they_are_the_sources_of_the_addresses_the_byte_order_and_the_module_fragment(
+        self,
+    ) -> None:
         """The positive control: what the test below is parametrized over is not nothing."""
-        assert self.OWN == ["--address-map", "--byte-order", "--image"]
+        assert self.OWN == ["--a2l-module-fragment", "--address-map", "--byte-order", "--image"]
 
     @pytest.mark.parametrize("option", OWN)
     @pytest.mark.parametrize(

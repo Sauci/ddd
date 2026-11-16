@@ -51,8 +51,10 @@ than by a project: its readers are measurement and calibration tools that implem
 standard, and a house style in that file is not a preference, it is a file the tool refuses.
 The distinction is the whole argument on this page in one line - the c code is read by your
 developers, so your project decides how it reads; the a2l file is read by a program, so the
-standard decides. See :doc:`generated artefacts <generated_artefacts>` for what the a2l
-backend produces.
+standard decides. What the standard leaves to the target - the ``A2ML``, an ``EPK``, a
+``MEMORY_SEGMENT`` - is a text file of the project's own, pasted at the head of the module by
+``--a2l-module-fragment``; see :ref:`the a2l's module fragment <a2l-module-fragment>`. See
+:doc:`generated artefacts <generated_artefacts>` for what the a2l backend produces.
 
 Why jinja2
 ----------

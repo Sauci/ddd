@@ -378,14 +378,16 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   being the image's, and an image whose code alone is left out of the file is still read by both.
   Migrating costs a script that ran `from-elf` over a companion file: it passes the linked image.
 
-* **A damaged image is refused where it hung, and a large one is read faster.**  The reader followed
-  each `DW_AT_sibling` pointer unchecked, so an entry aimed at itself sent the walk round in a
-  circle and no run finished.  It now walks a unit's entries forward only and refuses a sibling that
-  does not advance, at once, naming the offset.  A variable's type, and the line table its
-  declaration needs, are read only for the variables a run asks about: an image of 60,000 variables
-  opened in 2.9 s where it took 7.4 s, measured on the development PC.  How far a damaged line table
-  is bounded is still open, and this does not claim that every damaged image is refused.  No output
-  changes for a well-formed image.  Nothing to migrate.
+* **A damaged image is refused where it hung, and an image of many types opens faster.**  The
+  reader followed each `DW_AT_sibling` pointer unchecked, so an entry aimed at itself sent the walk
+  round in a circle and no run finished.  It now walks a unit's entries forward only and refuses a
+  sibling that does not advance, at once, naming the offset.  A variable's type, and the line table
+  its declaration needs, are read only for the variables a run asks about: an image of 60,000
+  variables, each of a structure of its own, opens in 3.3 s where it took 7.0 s, and one of 60,000
+  plain scalars, whose types are few, costs a little more, 2.8 s where it took 2.4 s, measured on
+  the development PC.  How far a damaged line table is bounded is still open, and this does not
+  claim that every damaged image is refused.  No output changes for a well-formed image.  Nothing
+  to migrate.
 
 * **`ddd tool from-elf` says where an image answers twice.**  It took the first of several answers
   and said nothing of the rest.  One name at one address that two units, or a unit and the symbol

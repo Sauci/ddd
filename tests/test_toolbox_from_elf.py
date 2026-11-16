@@ -9,6 +9,8 @@ import copy
 import json
 import math
 import struct
+from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -125,6 +127,17 @@ def chosen(img: Image, *arguments: str, bag: DiagnosticBag | None = None) -> lis
     return [v.name for v in select(img, [wanted(a) for a in arguments], bag)]
 
 
+class Counted(tuple[Variable, ...]):
+    """The variables of an image, counting every one a scan of them reaches."""
+
+    reached = 0
+
+    def __iter__(self) -> Iterator[Variable]:
+        for variable in super().__iter__():
+            self.reached += 1
+            yield variable
+
+
 class TestFindings:
     def test_no_finding_of_the_tool_is_a_check_of_the_catalogue(self) -> None:
         assert not set(FINDINGS) & set(CHECKS)
@@ -199,6 +212,19 @@ class TestSelect:
             "the image's debug information holds no variable named 'Gain'; the symbol table "
             "holds it, so the unit defining it was built without debug information (-g)"
         )
+
+    def test_a_glob_reads_the_image_a_few_times_and_not_once_for_each_name_it_matches(
+        self,
+    ) -> None:
+        """Each name a glob matches is judged over every unit of the image that describes it,
+        and finding those units by a scan of the whole image for each name made a glob over a
+        large image cost the square of the names it matched."""
+        count = 400
+        img = image(*(stored(f"Cal_{index:03d}", address=0x100 + index) for index in range(count)))
+        counted = Counted(img.variables)
+        picked = select(replace(img, variables=counted), [wanted("Cal_*")], DiagnosticBag())
+        assert len(picked) == count
+        assert counted.reached <= 3 * count
 
     def test_a_glob_matching_nothing_is_missing_too(self) -> None:
         bag = DiagnosticBag()

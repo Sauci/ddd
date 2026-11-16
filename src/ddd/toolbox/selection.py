@@ -54,6 +54,11 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
     variable, however many units describe it: ``-fcommon`` makes a tentative definition in
     several units one variable, which the DWARF of each unit describes.
     """
+    # Every unit's variable of each name, gathered once: a disagreement is judged over all of
+    # them, and a scan of the image for each name a glob matched cost the square of the names.
+    named: dict[str, list[Variable]] = {}
+    for variable in image.variables:
+        named.setdefault(variable.name, []).append(variable)
     chosen: list[tuple[Variable, str]] = []
     taken: set[tuple[str, int]] = set()
     judged: set[str] = set()
@@ -68,9 +73,7 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
             continue
         for name in sorted(matched):
             ordered = sorted(matched[name], key=lambda variable: variable.unit)
-            apart = described_apart(
-                [variable for variable in image.variables if variable.name == name], image
-            )
+            apart = described_apart(named[name], image)
             # Only the addresses this argument reaches: another is its own variable's.
             apart = {
                 address: there

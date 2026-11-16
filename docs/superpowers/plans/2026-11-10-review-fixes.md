@@ -1582,6 +1582,55 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   tabs' `refusalOf` choose a refused Apply's sentence inline, as the four sites that now call
   `refusalSentence` did, and the Files tab borrows the Units tab's. Branch 11 lists `screens/*`.
 
+**Branch 4:**
+- **The bound of a line table's header** (task 6a, `11:I6`; R67): the four Important findings of
+  6a's review stand. The bound on the counts a line table's header states is measured against
+  the length that header gives, not against its section, and takes every entry to be at least
+  one byte long; it is the one guard before the parser allocates, and since 6a it is reached
+  lazily, from any declaration a run asks for. Its tests hold the comparison on two numbers
+  alone, the tests of the forward cursor's refusals would hang rather than fail were a refusal
+  to go, and the bound's wiring into the reader is not tested. The changelog says the bound is
+  open. The maintainer's, after the two safety stops.
+- **8b** (task 8, `11:M2`, `11:M3`, `11:M4`; R66, R67): in task 8's own words, a damaged debug
+  string refused; debug sections past the file's end refused; a crafted attribute caught inside
+  `open_image`'s net; an odd type refusing only the variables it reaches, which is the catch per
+  variable. Until it lands, a type built on demand that fails stops the run, exit 2, at the
+  first variable it reaches, and the findings already gathered go unprinted, so decision 11.1's
+  odd type is not met; the seam R66 names is where the catch goes. `elf.py`'s module docstring,
+  which promises an `Unsupported` node and no exception for a type the module cannot describe,
+  holds for a well-formed type and not for a damaged one. The maintainer's.
+- **6b** (task 6; R67): tests end to end over damaged image files. What pins the refusals of the
+  forward cursor is stand-ins at its own interface, the test task 6 names, of two small damaged
+  images, is not in the suite, and what the changelog's headline says, that a damaged image is
+  refused where it hung, rests on them alone. The maintainer's; branch 16 lists `tests/*`.
+- **A leading underscore on C symbols** (task 2, `11:I1`): an external is placed only where the
+  symbol table holds an object of the name its debug information gives, so a toolchain that
+  prefixes C symbols with an underscore would have no external placed, where the branch's base
+  placed it by its address. None of the toolchains SPEC names as tested does so, and none here
+  could show it. No branch owns `addresses.py`.
+- **An image with debug information and no symbol table** (task 2; R72): neither `--image` nor
+  `from-elf` takes an external variable from it, each saying of every one that the symbol table
+  holds no object of its name there, as a linker leaves a variable of a unit it discarded; rare,
+  since a strip removes the debug information as well. No branch owns `addresses.py`.
+- **A debug-only companion under `--scope input`** (task 5; R65): `from-elf` refuses one whatever
+  the scope, though an input entry states neither the initial value nor the section a companion
+  lacks; SPEC 7.3 leaves a separate debug file out of what the tool reads. No branch owns
+  `toolbox/*.py`.
+- **A measurement only a left-out axis pulled in** (task 9; R69): where a map lacks an
+  unconditional object the build holds, `address-missing` also names, as reaching the a2l at
+  address 0, an `export: false` measurement that only an axis the run left out pulled in, and
+  `--strict` stops a build over a record that is not in the file; the list of what reaches the
+  a2l would be taken under the run's left-out symbols. Branch 5 lists `backends/a2l/*` and
+  `cli.py`.
+- **A declaration alone in a split image** (the final wave): `from-elf` tells a split image that
+  a name the symbol table holds, and no unit describes, is in its `.dwo` files, but a name a
+  unit only declares, in an image some of whose units are split, is still said to be defined in
+  assembly or in a unit built without `-g`, where the placement of `--image` names the `.dwo`
+  files in both. No branch owns `toolbox/*.py`.
+- **SPEC section 6's planned cross-check** (task 11; R71): the section ends by calling planned
+  the comparison of each linked variable's type with its declaration, which `elf-mismatch` now
+  makes. Branch 15 lists `SPEC.md`.
+
 ## Rulings taken
 
 Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so on.
@@ -1852,6 +1901,86 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R60.** What the whole-branch review set aside stays so, the debounce flag task 2 left read in
   the component and the pick dropped while the panel says only that it is updating among it, which
   the pull request states.
+
+**Branch 4:**
+- **R61.** Branch 4 runs a D0 first, the residuals branch 3's re-review left and its row of the
+  progress log, then task 1, then a D1, a journey that loaded a second address before the page
+  held its session and so failed once on a slow leg of branch 3's pull request, then tasks 2 to
+  11 in order, then its changelog as D2 (R4), then the whole-branch review and one final wave, as
+  branches 2 and 3 did (R27, R42). D1 waited for task 1's review, one agent at a time, branch 3
+  having had its one final wave.
+- **R62.** Task 1's two commits, local and unpushed, became one with `git reset --soft`, its
+  message written anew in the project's own words and the tree unchanged, against "never
+  `--amend`": the first message repeated words of the review. D0's first commit, which had taken
+  in a directory the docs container left under `docs/`, was undone the same way and made again
+  with its own files alone. Nothing pushed was rewritten (R34, R57).
+- **R63.** Task 2 checks a `static` as well, though its text names an external variable: against
+  the image's local object symbols wherever the image keeps any, and by its address alone where a
+  link made with `-Wl,-x` kept none, since gold leaves a discarded unit's statics at offsets too.
+  A static that a link kept and whose local symbol a tool removed afterwards is refused where it
+  was read.
+- **R64.** Task 3 takes the alignment cap from `e_machine` and `e_flags`, where its text names
+  `e_machine`: ARM's cap holds only under an EABI, which `e_flags` names, since the legacy ABIs
+  (`-mabi=apcs-gnu`, `atpcs`) lay structures out otherwise, and an RV32E image is not checked,
+  compilers differing on its cap and no fixture measuring GCC's; either gets the info
+  `elf-layout-unchecked`, which no task names. The pages say that a layout a build flag gives
+  every structure, `-fpack-struct` or `-malign-double`, is warned though the generated C built
+  the same way repeats it.
+- **R65.** Task 5 refuses a file that has allocated sections of the program, code and data
+  alike, and holds the contents of none of them, as a debug-only companion does, where its text
+  names executable sections: an image whose code alone lies outside the file, in a `NOLOAD`
+  region, keeps its data and its initial values, and is read.
+- **R66.** Task 6 takes as its own the half of `11:M4`'s change that `11:M5` names, a variable's
+  type built only when that variable is asked for, and leaves to task 8 the other half, the
+  catch per variable, on top: the two findings name one change, and the walk task 6 rewrites is
+  where it lives (B4-1). Since R67 that half is 8b's.
+- **R67.** Task 6 was split after a safety stop on its damaged-input work. 6a made the
+  forward-only walk and its refusal of a sibling that does not advance, the bound of a line
+  table header's counts before anything is allocated, and the types built on demand, tested
+  over in-memory stand-ins at the cursor's and the bound's own interfaces and over the committed
+  fixtures, no damaged image file being built by anyone. 6b, tests end to end over damaged image
+  files, is the maintainer's to decide: how, whether and by whom. 6a's fix round was stopped in
+  turn before it changed anything, so its four Important findings stay open, and the execution
+  stopped to ask the maintainer, task 8 being next on the same ground. On the maintainer's word
+  to go on (2026-11-16), task 8 was split as told: 8a, `11:M1` and `11:M6` to `11:M9` with
+  `1:M7`, what a well-formed image says; 8b, `11:M2` to `11:M4` with the catch per variable,
+  which stays the maintainer's with 6a's four findings and 6b (*Left open*, branch 4).
+- **R68.** Task 8a takes both of the ways `1:M7` offered: no conversion is written for an entry
+  or a member that is not an enum, and `--identity-conversions` writes the identity on the
+  author's word, an image saying nothing of raw against physical. It tells a C++ static member
+  by the declaration mark gcc writes on it rather than by a missing location, which a first
+  member also lacks where gcc leaves its offset out, and at DWARF 5, where gcc writes the static
+  apart, the structure is described by its storage. A unit prefix chooses the unit and nothing
+  more: the sizes of a variable are judged over every unit that holds its name at that address,
+  which the finding left unsaid.
+- **R69.** Task 9 leaves an object out only where the build holds nothing of it - no variable and
+  no symbol of its name in the image, a declaration alone included, or no entry of a map with
+  entries for it or for any member - where its text says an object the source does not place,
+  and decides a structured object as one. Every other reason stays `address-missing`, a linker's
+  discard among them where the image records it, by a tombstone address or by an address no
+  symbol of the name holds; GNU ld drops the debug information of a unit it discards whole, so a
+  conditional variable of such a unit reads as absent and is left out, which nothing in the image
+  tells apart from a feature compiled out. The final wave corrected the ruling, which had kept
+  every discard `address-missing`. A curve or a map that goes with a left-out axis is named by a
+  check of its own, `reference-left-out`, at `warning`, the build holding what the a2l lacks, so
+  that a `--strict` build stops for it whatever is done to `condition-mismatch`; since the final
+  wave one finding per axis names the axis and its condition. The reference across conditions
+  keeps the id it shares with the declarations, `condition-mismatch`, so `-W
+  condition-mismatch=ignore` silences both comparisons.
+- **R70.** Task 10 reads an `ET_DYN` image under `--image` and says so, as the new info
+  `image-load-relative`, where its text has it refused: `8:M5`'s change is a note on the run and
+  a sentence in SPEC section 6, the offsets are right for a project that adds its load base, and
+  a refusal would turn away every default Debian or Ubuntu gcc build, the shipped example's among
+  them (B4-2).
+- **R71.** Task 11 holds a consumer's declaration of a variable too, though its text names the
+  variable placed: where a unit's debug information declares it without the `volatile` its kind
+  carries, or with one the kind does not, `elf-mismatch` names that unit, and an added `const` is
+  allowed while `--const-inputs` gives an input one. The definition alone cannot show a header
+  that drops `volatile`; clang records no declaration of an extern a unit only reads, so its
+  images say nothing of one.
+- **R72.** What the whole-branch review set aside stays so, an image with debug information and
+  no symbol table placing nothing among it, which the pull request states (*Left open*, branch
+  4).
 
 ## Progress log
 

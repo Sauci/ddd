@@ -723,6 +723,70 @@ class TestThePath:
         )
 
 
+class TestWhatTheImageHoldsOfEachSymbol:
+    """``Placed.held``: the variable a symbol is, or belongs to, and the type its path ends at,
+    which ``ddd.agreement`` holds to the description."""
+
+    def test_an_object_is_held_as_the_type_of_its_variable_qualifiers_and_typedefs_kept(
+        self,
+    ) -> None:
+        ctype = Qualified(Typedef("UWORD", U16), const=True)
+        variable = stored("Gain", ctype, address=0x100)
+        held = placed(image(variable), "Gain").held["Gain"]
+        assert (held.variable, held.ctype, held.apart) == (variable, ctype, ())
+
+    def test_a_member_is_held_as_the_type_its_path_ends_at_of_the_variable_it_belongs_to(
+        self,
+    ) -> None:
+        variable = stored("Cells", Array(CELL, (3,)), address=0x700)
+        found = placed(image(variable), "Cells[2].v", "Cells[0].raw")
+        assert {symbol: (held.variable, held.ctype) for symbol, held in found.held.items()} == {
+            "Cells[2].v": (variable, U16),
+            "Cells[0].raw": (variable, U16),
+        }
+
+    def test_a_symbol_the_image_does_not_place_is_held_as_nothing(self) -> None:
+        found = placed(image(stored("Inlet", INLET)), "Inlet.pair.mid", "Missing")
+        assert found.held == {}
+
+    def test_units_stating_one_size_hold_no_two_descriptions(self) -> None:
+        first = stored("Gain", U32, unit="a.c", address=0x100)
+        second = stored("Gain", U32, unit="b.c", address=0x100)
+        assert placed(image(first, second), "Gain").held["Gain"].apart == ()
+
+    def test_units_stating_two_sizes_hold_both_descriptions_and_the_first_is_not_the_variable(
+        self,
+    ) -> None:
+        first = stored("Gain", U16, unit="a.c", address=0x100)
+        second = stored("Gain", U32, unit="b.c", address=0x100)
+        held = placed(image(first, second), "Gain").held["Gain"]
+        assert held.apart == (first, second)
+
+    def test_a_description_and_the_symbol_table_disagreeing_are_two_descriptions_too(self) -> None:
+        variable = stored("Gain", U16, address=0x100)
+        sized = Image(
+            Path("hand.elf"),
+            "little",
+            (variable,),
+            (EVERYWHERE,),
+            frozenset(),
+            b"",
+            frozenset({("Gain", 0x100)}),
+            object_sizes={("Gain", 0x100): 4},
+        )
+        assert addresses_from_image(sized, ["Gain"]).held["Gain"].apart == (variable,)
+
+    def test_a_static_of_the_same_name_at_the_same_address_is_no_second_description(self) -> None:
+        stray = stored("Gain", U32, unit="b.c", address=0x100, external=False)
+        variable = stored("Gain", U16, unit="a.c", address=0x100)
+        assert placed(image(variable, stray), "Gain").held["Gain"].apart == ()
+
+    def test_a_static_of_the_same_name_elsewhere_is_no_second_description(self) -> None:
+        stray = stored("Gain", U32, unit="b.c", address=0x200, external=False)
+        variable = stored("Gain", U16, unit="a.c", address=0x100)
+        assert placed(image(variable, stray), "Gain").held["Gain"].apart == ()
+
+
 class TestWithoutPyelftools:
     def test_reading_a_map_needs_no_pyelftools(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch

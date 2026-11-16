@@ -22,7 +22,9 @@ from build_address_fixtures import (
     OUTPUT,
     ROWS,
     SYMBOLS,
+    VARIANTS,
     generate_c,
+    generate_variant,
     hashed,
     listed,
     oracle_source,
@@ -58,6 +60,40 @@ def test_the_committed_c_is_what_ddd_generates_for_the_project(tmp_path: Path) -
     )
 
 
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_the_committed_c_of_a_variant_is_what_ddd_generates_with_the_one_change(
+    tmp_path: Path, variant: str
+) -> None:
+    """The templates of ``unqualified`` and the project of ``widened`` are made out of the
+    repository's own by one edit each, so that this holds them to today's: a change of the
+    shipped templates that moved a line the edit stands on fails the build of the variant."""
+    generate_variant(variant, tmp_path)
+    fresh = {
+        path.name: path.read_text(encoding="utf-8").replace(GENERATOR, LISTED["generator"])
+        for path in tmp_path.iterdir()
+    }
+    committed = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in (OUTPUT / variant).iterdir()
+        if path.suffix != ".elf"
+    }
+    assert fresh == committed, (
+        f"DDD no longer generates what tests/fixtures/addresses/{variant}/ holds: rewrite it with "
+        "'python docker/build_address_fixtures.py --generate', then rebuild the images"
+    )
+
+
+def test_a_variant_differs_from_the_generated_c_in_what_it_is_there_to_differ_in() -> None:
+    """``unqualified`` has no ``const`` and no ``volatile`` in a line of C that defines or
+    declares a variable, and ``widened`` changes the type of ``Speed`` and nothing else."""
+    generated = (GENERATED / "ddd_globals.c").read_text(encoding="utf-8").splitlines()
+    plain = (OUTPUT / "unqualified" / "ddd_globals.c").read_text(encoding="utf-8").splitlines()
+    wide = (OUTPUT / "widened" / "ddd_globals.c").read_text(encoding="utf-8").splitlines()
+    assert [line.replace("const ", "").replace("volatile ", "") for line in generated] == plain
+    changed = [(a, b) for a, b in zip(generated, wide, strict=True) if a != b]
+    assert changed == [("volatile uint16_t Speed;", "volatile uint32_t Speed;")]
+
+
 def test_the_symbols_are_the_ones_the_a2l_carries_and_the_bitfields_it_leaves_out() -> None:
     fresh = listed()
     assert (fresh["addressed"], fresh["bitfields"]) == (LISTED["addressed"], LISTED["bitfields"]), (
@@ -77,6 +113,8 @@ def test_every_row_is_built_and_described() -> None:
     assert list(FIXTURES["rows"]) == ROW_NAMES
     for row in ROW_NAMES:
         assert (OUTPUT / f"{row}.elf").is_file()
+        for variant in VARIANTS:
+            assert (OUTPUT / variant / f"{row}.elf").is_file()
 
 
 def test_the_rows_span_both_byte_orders_both_widths_and_both_compilers() -> None:

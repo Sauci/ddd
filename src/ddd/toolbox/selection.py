@@ -8,7 +8,7 @@ from fnmatch import fnmatchcase
 from typing import Final
 
 from ddd.diagnostics import DiagnosticBag, where
-from ddd.elf import DECLARED_ONLY, Image, Variable, size_of, without_address
+from ddd.elf import DECLARED_ONLY, Image, Variable, described_apart, size_of, without_address
 from ddd.toolbox.findings import place, report
 
 _GLOB: Final = frozenset("*?[")
@@ -68,7 +68,15 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
             continue
         for name in sorted(matched):
             ordered = sorted(matched[name], key=lambda variable: variable.unit)
-            apart = _described_apart(name, ordered, image)
+            apart = described_apart(
+                [variable for variable in image.variables if variable.name == name], image
+            )
+            # Only the addresses this argument reaches: another is its own variable's.
+            apart = {
+                address: there
+                for address, there in apart.items()
+                if address in {variable.address for variable in ordered}
+            }
             for address, there in apart.items():
                 if (name, address) not in disagreed:
                     disagreed.add((name, address))
@@ -150,31 +158,6 @@ def _listed(parts: Sequence[str]) -> str:
     if len(parts) == 1:
         return parts[0]
     return f"{', '.join(parts[:-1])} and {parts[-1]}"
-
-
-def _described_apart(
-    name: str, group: Sequence[Variable], image: Image
-) -> dict[int, list[Variable]]:
-    """The variables of ``name`` at each address of ``group`` where what is known of their size
-    is not one number: units whose descriptions differ in it, or a description and the symbol
-    table's own size for the name there (a symbol of size 0 states none). One name at one
-    address is one variable, however many units describe it, so every unit of the image is
-    asked and a unit prefix chooses the unit and nothing more."""
-    addresses = {variable.address for variable in group if variable.address is not None}
-    apart: dict[int, list[Variable]] = {}
-    for address in addresses:
-        variables = [
-            variable
-            for variable in image.variables
-            if variable.name == name and variable.address == address
-        ]
-        sizes = {size for variable in variables if (size := size_of(variable.type)) is not None}
-        symbol = image.object_sizes.get((name, address))
-        if symbol:
-            sizes.add(symbol)
-        if len(sizes) > 1:
-            apart[address] = variables
-    return apart
 
 
 def _report_disagreement(

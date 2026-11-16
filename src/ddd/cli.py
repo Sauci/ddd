@@ -1041,6 +1041,22 @@ def _check_image_coverage(
     )
 
 
+def _check_image_agreement(
+    dictionary: DataDictionary, placed: Placed, image: Image, path: Path, bag: DiagnosticBag
+) -> None:
+    """Report each placed variable the image holds otherwise than its description states.
+
+    The image is the one place the run sees the C the build compiled, which a project's own
+    templates write and anybody may edit, so what the generator promises of it is held there.
+    """
+    from ddd.agreement import disagreements
+
+    for found in disagreements(dictionary, placed, image):
+        bag.add(
+            "elf-mismatch", found.message, where(path), notes=[(note, None) for note in found.notes]
+        )
+
+
 def _leave_out(
     absent: Sequence[ConditionalObject],
     dictionary: DataDictionary,
@@ -1333,6 +1349,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                 bag,
             )
             _check_image_coverage(reaching, placed, image_path, bag)
+            _check_image_agreement(dictionary, placed, image, image_path, bag)
         elif wants_addresses:
             # The symbols the a2l of this run will state an address for, read once: they
             # decide both which entries of the map are held to what an ECU_ADDRESS can hold

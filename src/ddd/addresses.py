@@ -19,7 +19,7 @@ import json
 import re
 import sys
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -203,6 +203,23 @@ class _Absent:
 
 
 @dataclass(frozen=True, slots=True)
+class Held:
+    """What the image holds of one symbol it places: the variable it is or belongs to, and the
+    type its path ends at, which the description is held to."""
+
+    variable: Variable
+    """The variable of the image the symbol is, or belongs to."""
+
+    ctype: CType
+    """The type the symbol's path ends at: the variable's own for an object, a member's or an
+    element's for a path."""
+
+    apart: tuple[Variable, ...] = ()
+    """Every unit's description of the variable, where the units do not agree on its size: the
+    variable is then one the image describes in two ways, and none of them stands for it."""
+
+
+@dataclass(frozen=True, slots=True)
 class Placed:
     """Where an image puts each symbol it places, and why it places none of the others."""
 
@@ -218,6 +235,11 @@ class Placed:
     unit that defines the variable removed it. What a build without a feature looks like; the
     other reasons say the image holds the variable, or something of its name."""
 
+    held: dict[str, Held] = field(default_factory=dict, compare=False)
+    """What the image holds of every symbol of ``addresses``, for the comparison with the
+    description (:mod:`ddd.agreement`). Left out of an equality: it says what the image states,
+    where the rest says where, and ``addresses`` are what a caller compares."""
+
 
 def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
     """Place each symbol in ``image``: an object by its name, a member by its access path.
@@ -227,8 +249,8 @@ def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
     describe one variable at one address, as ``-fcommon`` makes them, describe one variable.
     Each step of the path sees through typedefs and qualifiers first; ``.member`` adds the
     member's offset within its structure, and ``[index]``, one per dimension, the index times
-    the size of the element, in C's row-major order. The type the path ends at is not compared
-    with the declaration.
+    the size of the element, in C's row-major order. The type the path ends at comes back with
+    the address, in :attr:`Placed.held`, for the caller to hold to the description.
     """
     named: dict[str, list[Variable]] = {}
     for variable in image.variables:
@@ -236,20 +258,23 @@ def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
     addresses: dict[str, int] = {}
     reasons: dict[str, str] = {}
     absent: set[str] = set()
+    held: dict[str, Held] = {}
     for symbol in symbols:
         placed = _placed(symbol, image, named)
-        if isinstance(placed, int):
-            addresses[symbol] = placed
+        if isinstance(placed, tuple):
+            addresses[symbol], held[symbol] = placed
         elif isinstance(placed, _Absent):
             reasons[symbol] = placed.reason
             absent.add(symbol)
         else:
             reasons[symbol] = placed
-    return Placed(addresses, reasons, frozenset(absent))
+    return Placed(addresses, reasons, frozenset(absent), held)
 
 
-def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> int | str | _Absent:
-    """The address of ``symbol``, or why the image gives it none."""
+def _placed(
+    symbol: str, image: Image, named: Mapping[str, list[Variable]]
+) -> tuple[int, Held] | str | _Absent:
+    """The address of ``symbol`` and what the image holds there, or why it gives none."""
     root = _ROOT.match(symbol)
     # The symbols of an a2l are those addressed_symbols lists: an object's identifier, or a
     # member's path, which ddd.analysis writes starting with the variable's identifier.
@@ -257,15 +282,19 @@ def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> i
     found = _variable(root.group(), image, named.get(root.group(), []))
     if isinstance(found, str | _Absent):
         return found
-    address, ctype = found
-    return _walk(symbol, root.end(), address, ctype)
+    address, variable, apart = found
+    reached = _walk(symbol, root.end(), address, variable.type)
+    if isinstance(reached, str):
+        return reached
+    return reached[0], Held(variable, reached[1], apart)
 
 
 def _variable(
     name: str, image: Image, named: Sequence[Variable]
-) -> tuple[int, CType] | str | _Absent:
-    """The address and the type of the global ``name``, or why the image holds none."""
-    from ddd.elf import DECLARED_ONLY, without_address
+) -> tuple[int, Variable, tuple[Variable, ...]] | str | _Absent:
+    """The address and the variable of the global ``name``, and every description of it where
+    the units that describe it disagree on its size, or why the image holds none."""
+    from ddd.elf import DECLARED_ONLY, described_apart, without_address
 
     external = [variable for variable in named if variable.external]
     if not external:
@@ -302,7 +331,8 @@ def _variable(
         )
     if image.section_of(address) is None:
         return image.unheld(name, address)
-    return address, variable.type
+    apart = described_apart(external, image).get(address, [])
+    return address, variable, tuple(apart)
 
 
 def _ending(image: Image) -> str:
@@ -310,8 +340,9 @@ def _ending(image: Image) -> str:
     return _SPLIT if image.split_dwarf else _WITHOUT_G
 
 
-def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
-    """``address`` moved along the steps of ``symbol`` from ``at``, or why it cannot be."""
+def _walk(symbol: str, at: int, address: int, ctype: CType) -> tuple[int, CType] | str:
+    """``address`` moved along the steps of ``symbol`` from ``at``, with the type it ends at,
+    or why it cannot be."""
     from ddd.elf import Array, Struct, Unsupported, core_of, size_of
 
     while at < len(symbol):
@@ -350,4 +381,4 @@ def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
             return _UNKNOWN.format(symbol[:at])
         address += position * size
         ctype = element
-    return address
+    return address, ctype

@@ -798,6 +798,13 @@ takes its addresses from a map instead (``ADDRESS_MAP``, below), with the offset
 structure member worked out beside it, since the a2l has to describe the image that is
 flashed.
 
+The step holds the image to the description as well. Each variable it places is compared with
+its object on the size and encoding of an element, its shape and the qualifiers the generated c
+gives its kind, and one that differs is a warning, ``elf-mismatch``, saying what the description
+states and what the image holds. A project template that leaves out a ``const`` or a ``volatile``
+the kind carries, and a definition of a ``uint32_t`` for a ``uint16``, are caught here, in the c
+that was compiled; under ``STRICT`` the build stops at it.
+
 What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
 symbol's reason a note beneath it; under ``STRICT`` that is an error, and the build stops rather
 than ship an a2l with an address of 0. An object that states a condition, and of which the

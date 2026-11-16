@@ -1503,6 +1503,27 @@ Warnings:
   one per reason, said once however many of the objects named share it, for the objects the
   finding names.
 
+- `elf-mismatch`: the image `--image` was given holds a variable it places otherwise than the
+  description states. Each variable the image places is compared on four things: the size of
+  one element, its encoding (a signed or an unsigned integer, a floating point number, a
+  boolean or an enumeration), its shape (a scalar, or the extent of each dimension, a table that
+  stores its point counts being the one run of them and its values) and the qualifiers the
+  generated C gives its kind, `const` on everything but a measurement and `volatile` where the
+  description says so. A type is compared by what it resolves to, typedefs and qualifiers seen
+  through: a `UWORD` defined as `uint16_t` agrees with a `uint16`, and a `uint32_t` behind a
+  `uint16` does not. A one byte unsigned integer agrees with a `boolean`, as AUTOSAR's does.
+  The member a path ends at is compared on its size, its encoding and its shape, its variable
+  carrying the qualifiers, and a structured variable on its qualifiers and its shape. It is
+  one finding per variable, naming each difference with what the description states and what
+  the image holds, located at the image, and a note gives the declaration the debug information
+  names. Where the units of the image describe one name at one address in two sizes, or a
+  description and the symbol table's size for it disagree, the finding says that instead, and
+  the variable is compared with none of them, since none is the one description. A variable the
+  image holds with no type (`-g1`) is not compared, and neither is a declaration in another
+  unit, which `--const-inputs` qualifies on purpose. It is a warning, so a `--strict` build
+  stops at it; the A2L is written from the description either way, and a calibration tool
+  reads the image by it.
+
 Information:
 
 - `image-load-relative`: the image `--image` was given is position independent (`ET_DYN`),
@@ -2082,7 +2103,8 @@ never stands for it, every object a dictionary describes being a global. A membe
 along its access path, typedefs and qualifiers seen through before each step: `.name` adds
 the member's offset within its structure, and `[i]`, one per dimension, `i` times the size
 of what the index steps over, so that an array of several dimensions is indexed row-major,
-as C lays it out. The type a path ends at is not compared with the declaration. An object
+as C lays it out. The type a path ends at is held to the declaration afterwards, as
+`elf-mismatch` ([section 4](#4-consistency-checks)). An object
 is placed where the image's symbol table holds an object symbol of its name at the address
 its debug information gives it, and where a section of the image holds that address: a
 linker that discards a unit under `--gc-sections` leaves one of two things: gold keeps the
@@ -2113,6 +2135,14 @@ structure; the variable has no type, which `-g1` leaves; an index is out of rang
 debug information; or a step names a bitfield, whose bits an address cannot describe. An
 address outside `0 .. 0xFFFFFFFF` for a symbol the A2L states an address for is a usage
 error naming the symbol and the image, and nothing is written.
+
+The image is also the place where the description is held to the C that was compiled, which the
+generator cannot promise of what a project's own templates or a hand edit write. Each variable
+placed is compared with its object on the size and the encoding of an element, its shape and
+the qualifiers its kind carries, and each member placed on its size, its encoding and its shape;
+a difference is `elf-mismatch`, a warning, naming the variable, what the description states and
+what the image holds ([section 4](#4-consistency-checks)). The A2L is written from the
+description whatever the image holds.
 
 `--address-map FILE` names one flat JSON object mapping each symbol to its address, for an
 image the build reads itself - one without debug information, say. A symbol **shall** be

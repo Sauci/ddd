@@ -86,7 +86,12 @@ half of the job and the subject of :doc:`consistency_checks`.
 
 The description is also the only place the information is written down. The same declaration
 produces the c definition, the comment above it, the ``extern`` declaration in each consumer's
-header and the ``MEASUREMENT`` entry of the a2l, so those four cannot disagree with each other.
+header and the ``MEASUREMENT`` entry of the a2l, so those four are written from one declaration
+and the generator cannot make them differ. A project's own template or a hand edit could, and the
+run that reads the linked image for the a2l's addresses closes that: it compares each variable it
+places - size, encoding, qualifiers and shape - with the declaration, so a template that drops
+a ``const`` or ``volatile`` the kind carries, or a definition of another type, is a warning,
+``elf-mismatch``, rather than a difference between the four that nothing says.
 Changing the scaling is one edit in one file, and everything that depends on it follows on the
 next build.
 

@@ -7,11 +7,19 @@ Two steps, each a mode of this script, both run from the repository root:
 1. ``python docker/build_address_fixtures.py --generate``, on the host, where DDD is importable,
    writes what ``ddd generate c`` writes for the project in ``tests/fixtures/addresses/project/``
    into ``tests/fixtures/addresses/generated/``; the symbols its a2l carries an ``ECU_ADDRESS``
-   for, and its bitfield members, which get none, into ``symbols.json``; and the oracle's
-   source, ``oracle.c``.
+   for, and its bitfield members, which get none, into ``symbols.json``; the oracle's source,
+   ``oracle.c``; and the C of the two :data:`VARIANTS`.
 2. ``docker compose run --rm address-fixtures`` compiles and links that C for five rows of the
-   toolbox's matrix (``build_elf_fixtures.py``), into ``tests/fixtures/addresses/<row>.elf``,
-   and writes ``manifest.json``.
+   toolbox's matrix (``build_elf_fixtures.py``), into ``tests/fixtures/addresses/<row>.elf``
+   and, for each variant, ``tests/fixtures/addresses/<variant>/<row>.elf``, and writes
+   ``manifest.json``.
+
+A variant is a build the description does not hold to, which ``ddd generate a2l --image`` has to
+say so of: ``unqualified`` is what a project's own templates write when they leave out the
+qualifiers the description's kinds carry (``const`` on calibration data, ``volatile`` where the
+description states it), and ``widened`` is a ``Speed`` the description declares ``uint16``
+defined as ``uint32_t``. Each is the project's C as ``ddd generate c`` writes it with the one
+change, so that what differs from the description is exactly that.
 
 The images are committed, so that the suite needs neither Docker nor a compiler; and the C they
 are built from is committed beside them, so that a test can hold it to what DDD generates today.
@@ -50,6 +58,7 @@ PROJECT = OUTPUT / "project" / "project.ddd.json"
 GENERATED = OUTPUT / "generated"
 SYMBOLS = OUTPUT / "symbols.json"
 ORACLE = OUTPUT / "oracle.c"
+VARIANTS = ("unqualified", "widened")
 MANIFEST = OUTPUT / "manifest.json"
 TEMPLATES = ROOT / "examples" / "templates"
 TOOLBOX = Path(build_elf_fixtures.__file__).resolve()
@@ -90,6 +99,8 @@ def hashed() -> dict[str, str]:
     """What the images are built from, by path relative to the repository, and its digest."""
     paths = [
         *sorted(GENERATED.iterdir()),
+        *(path for variant in VARIANTS for path in sorted((OUTPUT / variant).glob("*.[ch]"))),
+        *(path for variant in VARIANTS for path in sorted((OUTPUT / variant).glob(".ddd-*"))),
         ORACLE,
         SYMBOLS,
         DOCKERFILE,
@@ -114,14 +125,66 @@ def oracle_source(symbols: Sequence[str]) -> str:
     return _ORACLE_HEAD + "".join(entries) + _ORACLE_TAIL
 
 
-def generate_c(directory: Path) -> None:
-    """Write what ``ddd generate c`` writes for the project, with the repository's templates."""
+def generate_c(directory: Path, project: Path = PROJECT, templates: Path = TEMPLATES) -> None:
+    """Write what ``ddd generate c`` writes for a project, by default this one with the
+    repository's templates."""
     from ddd.cli import main
 
-    arguments = ["generate", "c", str(PROJECT), "-o", str(directory), "-t", str(TEMPLATES)]
+    arguments = ["generate", "c", str(project), "-o", str(directory), "-t", str(templates)]
     if main(arguments) != 0:
         msg = f"ddd {' '.join(arguments)} failed"
         raise SystemExit(msg)
+
+
+def _replaced(path: Path, old: str, new: str, times: int = 1) -> None:
+    """``old`` replaced by ``new`` in ``path``, which must hold it ``times`` times."""
+    text = path.read_text(encoding="utf-8")
+    if text.count(old) != times:
+        msg = f"{path.name} does not hold {old!r} {times} times: the variant is for other files"
+        raise SystemExit(msg)
+    path.write_text(text.replace(old, new), "utf-8", newline="\n")
+
+
+_EXTERN = "extern {{ %s.c_type }} {{ %s.name }}{{ %s.array_suffix }};"
+"""A declaration written as a house style might, from the documented fields and without
+``qualifier``."""
+
+
+def generate_variant(name: str, directory: Path) -> None:
+    """Write the C of one of :data:`VARIANTS` into ``directory``."""
+    with tempfile.TemporaryDirectory() as scratch:
+        work = Path(scratch)
+        project, templates = PROJECT, TEMPLATES
+        if name == "unqualified":
+            templates = work / "templates"
+            shutil.copytree(TEMPLATES, templates)
+            _replaced(
+                templates / "ddd_globals.c.jinja2",
+                "{{ variable.qualifier }}{{ variable.c_type }}",
+                "{{ variable.c_type }}",
+            )
+            _replaced(
+                templates / "ddd_globals.h.jinja2",
+                "{{ variable.declaration() }};",
+                _EXTERN % ("variable", "variable", "variable"),
+            )
+            _replaced(
+                templates / "{component}.h.jinja2",
+                "{{ entry.line }}",
+                _EXTERN % ("entry.variable", "entry.variable", "entry.variable"),
+                times=3,
+            )
+        elif name == "widened":
+            shutil.copytree(PROJECT.parent, work / "project")
+            project = work / "project" / PROJECT.name
+            _replaced(
+                work / "project" / "engine.ddd.json",
+                '"datatype": "uint16",\n          "unit": "rpm",',
+                '"datatype": "uint32",\n          "unit": "rpm",',
+            )
+        else:
+            raise SystemExit(f"no variant named {name}")
+        generate_c(directory, project, templates)
 
 
 def listed() -> dict[str, Any]:
@@ -151,18 +214,22 @@ def generate() -> None:
     found = listed()
     SYMBOLS.write_text(json.dumps(found, indent=2) + "\n", "utf-8", newline="\n")
     ORACLE.write_text(oracle_source(found["addressed"]), "utf-8", newline="\n")
+    for variant in VARIANTS:
+        shutil.rmtree(OUTPUT / variant, ignore_errors=True)
+        generate_variant(variant, OUTPUT / variant)
     print(
         f"wrote {len(found['addressed'])} symbols and {len(found['bitfields'])} bitfields into "
         f"{SYMBOLS.relative_to(ROOT).as_posix()}, and their oracle"
     )
 
 
-def build(row: Row, work: Path) -> Path:
+def build(row: Row, work: Path, variant: str = "generated") -> Path:
     """Compile the generated definitions and the oracle for one row and link them; the image
-    lands in ``work``."""
+    lands in ``work``. ``variant`` is the directory of the C that is compiled, ``generated``
+    or one of :data:`VARIANTS`."""
     objects: list[str] = []
-    for source in ("generated/ddd_globals.c", "oracle.c"):
-        target = work / f"{row.name}-{Path(source).stem}.o"
+    for source in (f"{variant}/ddd_globals.c", "oracle.c"):
+        target = work / f"{row.name}-{variant}-{Path(source).stem}.o"
         run(
             [
                 *row.compiler,
@@ -170,7 +237,7 @@ def build(row: Row, work: Path) -> Path:
                 *COMMON,
                 *row.dwarf,
                 f"-ffile-prefix-map={OUTPUT}=.",
-                "-Igenerated",
+                f"-I{variant}",
                 "-c",
                 source,
                 "-o",
@@ -179,7 +246,7 @@ def build(row: Row, work: Path) -> Path:
             cwd=OUTPUT,
         )
         objects.append(str(target))
-    image = work / f"{row.name}.elf"
+    image = work / f"{row.name}-{variant}.elf"
     run(
         [
             *row.compiler,
@@ -224,7 +291,9 @@ def main() -> None:
         work = Path(directory)
         for row in ROWS:
             image = build(row, work)
-            shutil.copyfile(image, OUTPUT / image.name)
+            shutil.copyfile(image, OUTPUT / f"{row.name}.elf")
+            for variant in VARIANTS:
+                shutil.copyfile(build(row, work, variant), OUTPUT / variant / f"{row.name}.elf")
             defined = macros(row)
             order: Literal["little", "big"] = (
                 "big" if defined["__BYTE_ORDER__"] == "__ORDER_BIG_ENDIAN__" else "little"

@@ -2059,6 +2059,18 @@ class TestUnitsThatDisagree:
             "elf-type-conflict"
         ]
 
+    def test_a_unit_prefix_reports_the_addresses_it_reaches_and_no_other(self) -> None:
+        """Two statics of one name at another address, which disagree with each other, are not
+        the disagreement of the variable a prefix asked for."""
+        img = image(
+            stored("Cal", U16, unit="a.c"),
+            stored("Cal", U16, unit="b.c", address=0x180, external=False),
+            stored("Cal", U32, unit="c.c", address=0x180, external=False),
+        )
+        description, bag = run(img, "a.c:Cal")
+        assert names(description) == ["Cal"]
+        assert not [d for d in bag.sorted if d.check == "elf-type-conflict"]
+
     def test_a_disagreeing_global_does_not_hide_another_unit_s_static_of_the_name(self) -> None:
         img = image(
             stored("Cal", U16, unit="a.c"),

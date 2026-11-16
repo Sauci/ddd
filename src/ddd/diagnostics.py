@@ -202,6 +202,10 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object needs stricter alignment than its section guarantees"),
         _check("limits-out-of-range", Severity.WARNING,
                "the physical limits exceed what the datatype can represent"),
+        _check("elf-mismatch", Severity.WARNING,
+               "the image the a2l takes its addresses from holds a variable with another size, "
+               "encoding, qualifiers or shape than its description states, or describes it in "
+               "two ways"),
         _check("name-similar", Severity.WARNING,
                "two variables differ only in upper/lower case"),
         _check("a2l-unrepresentable", Severity.WARNING,

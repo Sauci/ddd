@@ -681,6 +681,22 @@ it is either a smell or a decision somebody should have taken consciously.
        build that wants an a2l with no hole in it runs with ``--strict``, which makes this an
        error and writes nothing. An object stating a condition is not reported here where the
        build holds nothing of it: it is left out of the a2l, and ``condition-left-out`` says so.
+   * - ``elf-mismatch``
+     - warning
+     - the image ``--image`` was given holds a variable it places otherwise than its description
+       states: the size of one element, its encoding (a signed or an unsigned integer, a
+       floating point number, a boolean, an enumeration), its shape, or the qualifiers the
+       generated c gives its kind - ``const`` on everything but a measurement, ``volatile``
+       where the description says so. A type is compared by what it resolves to, so a
+       ``UWORD`` defined as ``uint16_t`` agrees with a ``uint16`` and a ``uint32_t`` does not.
+       A template that leaves out a qualifier the kind carries, and a definition of another
+       type, are what it catches: the generator cannot promise what a project's templates or a
+       hand edit write, and the image is the c that was compiled. One finding per variable,
+       each difference with what the description states and what the image holds. Where the
+       units of the image describe one name at one address in two sizes, the finding says that
+       and the variable is compared with none of them. A structure member is compared on its
+       size, encoding and shape; a declaration in another unit is not compared, since
+       ``--const-inputs`` qualifies one on purpose.
 
 Information
 ~~~~~~~~~~~

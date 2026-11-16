@@ -519,6 +519,27 @@ def size_of(ctype: CType) -> int | None:
     return None
 
 
+def described_apart(candidates: Sequence[Variable], image: Image) -> dict[int, list[Variable]]:
+    """The variables of one name, ``candidates``, at each address where what is known of their
+    size is not one number: units whose descriptions differ in it, or a description and the
+    symbol table's own size for the name there (a symbol of size 0 states none).
+
+    One name at one address is one variable, however many units describe it, so what is asked
+    is every unit of the image that describes the name, and not only the ones a caller chose:
+    a unit prefix on a command line chooses the unit and nothing more.
+    """
+    apart: dict[int, list[Variable]] = {}
+    for address in {variable.address for variable in candidates if variable.address is not None}:
+        variables = [variable for variable in candidates if variable.address == address]
+        sizes = {size for variable in variables if (size := size_of(variable.type)) is not None}
+        symbol = image.object_sizes.get((variables[0].name, address))
+        if symbol:
+            sizes.add(symbol)
+        if len(sizes) > 1:
+            apart[address] = variables
+    return apart
+
+
 def read_variables(
     units: Iterable[Unit],
     *,

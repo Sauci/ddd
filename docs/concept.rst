@@ -437,8 +437,9 @@ object, with the addresses written in decimal or hexadecimal:
 .. code-block:: text
 
    $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
-   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 13 others; they reach the a2l at address 0
-   1 warning
+   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 12 others; they reach the a2l at address 0
+   build/addresses.json: info[condition-left-out]: the address map has no entry for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
+   1 warning, 1 info
    wrote       build/gen/DemoDevice.a2l (updated)
 
 The ``a2l`` artefact is what makes the second run one that *cannot* touch the c sources: it

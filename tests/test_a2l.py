@@ -97,6 +97,76 @@ class TestMeasurements:
         content = a2l(tree, declare("local", "X", condition="defined(F)"))
         assert "/* only present in the build when: defined(F) */" in content
 
+    def test_a_member_the_build_left_out_has_no_record_and_the_others_stay(
+        self, tree: Path
+    ) -> None:
+        member = {"datatype": "uint8", "conversion": {"kind": "identity"}, "member": "value"}
+        files = {
+            "project.ddd.json": project("Device", "t.ddd.json", "a.ddd.json"),
+            "t.ddd.json": {
+                "types": [
+                    {
+                        "name": "Pair_t",
+                        "type": "struct",
+                        "members": [{"name": "a", **member}, {"name": "b", **member}],
+                    }
+                ]
+            },
+            "a.ddd.json": component(
+                "A", declare("local", "S", typename="Pair_t", condition="defined(F)")
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen", left_out=frozenset({"S.a"}))
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        assert "MEASUREMENT S.b" in content
+        assert "S.a" not in content
+
+    def test_a_map_over_an_axis_the_build_left_out_goes_with_it(self, tree: Path) -> None:
+        content = a2l(
+            tree,
+            declare("local", "Speed"),
+            declare("local", "Ax", "uint16", kind="axis", size=2, input="Speed"),
+            declare("local", "Ay", "uint16", kind="axis", size=2, input="Speed", condition="F"),
+            declare("local", "M", "uint8", kind="map", x_axis="Ax", y_axis="Ay"),
+            left_out=frozenset({"Ay"}),
+        )
+        assert "CHARACTERISTIC M" not in content
+        assert "AXIS_PTS Ax" in content
+
+    def test_an_object_the_build_left_out_has_no_record_and_no_group_entry(
+        self, tree: Path
+    ) -> None:
+        """A name in ``left_out`` is not written: no record, no entry of its component's group,
+        and an axis indexed by it names no input quantity, as one indexed by nothing."""
+        content = a2l(
+            tree,
+            declare("local", "Kept"),
+            declare("local", "Gone", condition="defined(F)"),
+            declare("local", "Ax", "uint16", kind="axis", size=2, input="Gone"),
+            addresses={"Kept": 0x20000100, "Ax": 0x20000200},
+            left_out=frozenset({"Gone"}),
+        )
+        assert "MEASUREMENT Kept" in content
+        assert "Gone" not in content
+        assert "REF_MEASUREMENT\n        Kept\n      /end REF_MEASUREMENT" in content
+        assert "0x20000200 NO_INPUT_QUANTITY" in content
+
+    def test_a_curve_over_an_axis_the_build_left_out_is_left_out_with_it(self, tree: Path) -> None:
+        """A curve naming an ``AXIS_PTS`` that is not in the file would make it invalid."""
+        content = a2l(
+            tree,
+            declare("local", "Speed"),
+            declare("local", "Ax", "uint16", kind="axis", size=2, input="Speed", condition="F"),
+            declare("local", "Cv", "uint8", kind="curve", axis="Ax"),
+            declare("local", "Kept", kind="parameter"),
+            left_out=frozenset({"Ax"}),
+        )
+        assert "AXIS_PTS" not in content
+        assert "CHARACTERISTIC Cv" not in content
+        assert "CHARACTERISTIC Kept" in content
+
     def test_address_map(self, tree: Path) -> None:
         content = a2l(tree, declare("local", "X"), addresses={"X": 0x20000100})
         assert "ECU_ADDRESS 0x20000100" in content

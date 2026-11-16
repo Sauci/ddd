@@ -32,6 +32,12 @@ class A2lOptions:
     naming nothing to miss, and ``--strict`` does not fail it, so the file says it itself,
     under its version."""
 
+    left_out: frozenset[str] = frozenset()
+    """The objects the build compiled out, which the a2l does not write: each states a
+    condition, and the image or the map that placed the rest places none of it. Naming a
+    curve's axis or an axis's input makes those records go with it, since the reference would
+    otherwise name a record the file lacks."""
+
     def filename(self, project: str) -> str:
         return f"{project}.a2l"
 

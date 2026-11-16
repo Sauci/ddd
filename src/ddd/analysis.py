@@ -844,6 +844,7 @@ class _Analysis:
             for name, refs in plain
         ]
         self._check_point_counts(variables)
+        self._check_reference_conditions(variables)
         instances = [
             self._build_instance(name, refs, owners[name], self._effective[name])
             for name, refs in structured
@@ -3528,6 +3529,33 @@ class _Analysis:
                     f"'{name}' and '{first}' differ only in upper/lower case",
                     by_name[name][0].location("definition.name"),
                     notes=[("other variable", by_name[first][0].location("definition"))],
+                )
+
+    def _check_reference_conditions(self, variables: list[Variable]) -> None:
+        """A reference holds only where the object it names is built whenever the referrer is.
+
+        An unconditional curve over an axis written under ``defined(F)``: a build without ``F``
+        holds the curve and not the axis, and the a2l of that build names a record it does not
+        have. The same for an axis over a conditional input, or two different conditions, which
+        are compared as text as every condition is. A referrer under a condition over an
+        unconditional object is fine, and so are two objects under the same one. A warning, as
+        ``point-counts-mismatch`` beside it is, for the same standing: the project generates and
+        a build with the condition holding is right; it is the one without that is not.
+        """
+        by_name = {variable.name: variable for variable in variables}
+        for variable in variables:
+            reference = variable.producer or variable.declarations[0]
+            for name in variable.definition.references.values():
+                target = by_name.get(name)
+                if target is None or not target.condition or target.condition == variable.condition:
+                    continue
+                self._bag.add(
+                    "condition-mismatch",
+                    f"'{variable.name}' under {describe_condition(variable.condition)} refers to "
+                    f"'{name}' under {describe_condition(target.condition)}; where the build holds "
+                    f"'{variable.name}' and not '{name}', the reference names a record that is "
+                    "not there",
+                    reference.location("definition"),
                 )
 
     def _check_point_counts(self, variables: list[Variable]) -> None:

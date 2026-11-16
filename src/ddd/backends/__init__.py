@@ -9,6 +9,7 @@ from ddd.backends.a2l import (
     A2lOptions,
     ByteOrder,
     addressed_symbols,
+    conditional_symbols,
     weigh_addresses,
 )
 from ddd.backends.base import (
@@ -41,6 +42,7 @@ __all__ = [
     "WriteResult",
     "WriteStatus",
     "addressed_symbols",
+    "conditional_symbols",
     "describe_write_failure",
     "example_template_directory",
     "render",

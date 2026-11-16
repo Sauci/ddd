@@ -579,6 +579,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |
+| info | `condition-left-out` | an object stating a condition gets no address from the image or map the run was given, and is left out of the a2l |
 | info | `empty-component` | a component declares no variable |
 | info | `empty-vocabulary` | a types, units, constants, sections or rasters file declares nothing |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
@@ -756,12 +757,14 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
   `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking.
   `--image firmware.elf` reads every address out of the linked ELF image's DWARF - an object
   by its name, a structure member by its access path - and takes the image's byte order; a
-  symbol the image cannot place keeps address 0 and is reported, its reason a note, and in
+  symbol the image cannot place keeps address 0 and is reported, its reason a note - unless
+  its object states a condition, which the a2l then leaves out - and in
   cmake `ADDRESSES_FROM_IMAGE` makes the a2l one step after the link.  `--address-map` serves
   an image without debug information, and in cmake `ADDRESS_MAP` makes the a2l the same step,
   reading the map.
   The map is a flat json object of symbol to address, decimal or hexadecimal, produced from
-  the linker output after the link; a symbol that is not in it keeps address 0, and
+  the linker output after the link; a symbol that is not in it keeps address 0 (a conditional
+  object not in it is left out), and
   an address outside `0` .. `0xFFFFFFFF` is refused rather than written out malformed:
 
   ```json

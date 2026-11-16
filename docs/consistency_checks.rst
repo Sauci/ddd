@@ -625,7 +625,10 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - the declarations of one variable carry different preprocessor conditions, so the
        components do not agree on when the variable exists at all. The producer's condition is
-       the one that guards the generated definition.
+       the one that guards the generated definition. It is also raised for a reference: a curve
+       or a map over an axis, or an axis over its input, where the object referred to carries a
+       condition the referrer does not. A build without it holds the one and not the other, and
+       the a2l of that build would name a record it does not have.
    * - ``unused-output``
      - warning
      - a variable is declared ``output`` by its producer and read by no component. Either a
@@ -670,7 +673,8 @@ it is either a smell or a decision somebody should have taken consciously.
        legitimately lacks the objects that were not linked into this image, and an image lacks
        the objects a condition compiled out of it, which is why the run goes on; a post-link
        build that wants an a2l with no hole in it runs with ``--strict``, which makes this an
-       error and writes nothing.
+       error and writes nothing. An object stating a condition is not reported here: it is
+       left out of the a2l, and ``condition-left-out`` says so.
 
 Information
 ~~~~~~~~~~~
@@ -682,6 +686,13 @@ Information
    * - Check
      - Default
      - Fires when
+   * - ``condition-left-out``
+     - info
+     - an object that states a condition gets no address from the image ``--image`` was given,
+       or from the map ``--address-map`` was given, which has entries: the build was made
+       without the feature, so the a2l leaves the object out. One finding per condition, with
+       the image's reasons as notes. A curve or map over an axis left out goes with it. An
+       object stating no condition is ``address-missing`` instead, so that a hole stays one.
    * - ``empty-component``
      - info
      - a component declares no variable at all. Perfectly legal - a component may have no global

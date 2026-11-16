@@ -514,8 +514,9 @@ already parses it in your build:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o gen -t examples/templates --address-map addresses.json
-   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 13 others; they reach the a2l at address 0
-   1 warning
+   addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 12 others; they reach the a2l at address 0
+   addresses.json: info[condition-left-out]: the address map has no entry for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
+   1 warning, 1 info
    ...
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
        /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
@@ -527,6 +528,8 @@ already parses it in your build:
 The objects the map leaves out keep address 0 and are named once, in the ``address-missing``
 warning - a map from a linker output legitimately lacks what was not linked into this image;
 ``--strict`` makes the warning an error for a post-link build that wants no hole in its a2l.
+An object that states a condition and is missing from a map with entries is not named there:
+the build was made without it, so the a2l leaves it out and an ``info`` says so.
 An entry the a2l *does* state an address for is range checked while the map is read rather
 than while the a2l is written. A
 negative value would otherwise render as ``0x-0000010`` and a wider one as a 33 bit literal,
@@ -564,7 +567,8 @@ the symbol and gives its reason as a note. With a map, the usual cause is a spel
 difference: the map is keyed by the exact name of the object as declared, which is also its c
 identifier and its a2l record name. A symbol the map does not mention keeps address zero and
 is named once in the ``address-missing`` warning, which is a warning because a partial map is
-a legitimate thing to hand over:
+a legitimate thing to hand over - unless its object states a condition, when the a2l leaves it
+out and the run says so at ``info`` instead:
 
 .. code-block:: text
 

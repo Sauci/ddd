@@ -282,6 +282,63 @@ class TestDefinitionAgreement:
         assert checks(bag) == ["condition-mismatch"]
         assert "component 'B' uses condition none while 'A' uses 'defined(A)'" in messages(bag)
 
+    @staticmethod
+    def referring(
+        tree: Path, curve: str | None, axis: str | None, speed: str | None = None
+    ) -> DiagnosticBag:
+        """A curve over an axis indexed by a measurement, each under the condition it is given."""
+        _, bag = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("local", "Speed", condition=speed),
+                    declare(
+                        "local", "Ax", "uint16", condition=axis, kind="axis", size=2, input="Speed"
+                    ),
+                    declare("local", "Cv", "uint8", condition=curve, kind="curve", axis="Ax"),
+                ),
+            },
+        )
+        return bag
+
+    def test_an_unconditional_curve_over_a_conditional_axis_is_a_condition_mismatch(
+        self, tree: Path
+    ) -> None:
+        """A build lacking ``F`` holds ``Cv`` but not ``Ax``, and names it from the a2l."""
+        bag = self.referring(tree, None, "defined(F)", "defined(F)")
+        assert checks(bag) == ["condition-mismatch"]
+        assert (
+            "'Cv' under none refers to 'Ax' under 'defined(F)'; where the build holds 'Cv' and "
+            "not 'Ax', the reference names a record that is not there"
+        ) in messages(bag)
+        assert [diagnostic.severity for diagnostic in bag] == [Severity.WARNING]
+
+    def test_an_axis_over_a_conditional_input_is_a_condition_mismatch(self, tree: Path) -> None:
+        bag = self.referring(tree, None, None, "defined(F)")
+        assert checks(bag) == ["condition-mismatch"]
+        assert "'Ax' under none refers to 'Speed' under 'defined(F)'" in messages(bag)
+
+    def test_a_curve_under_another_condition_than_its_axis_is_a_condition_mismatch(
+        self, tree: Path
+    ) -> None:
+        bag = self.referring(tree, "defined(G)", "defined(F)", "defined(F)")
+        assert checks(bag) == ["condition-mismatch"]
+        assert "'Cv' under 'defined(G)' refers to 'Ax' under 'defined(F)'" in messages(bag)
+
+    def test_references_that_share_a_condition_or_point_at_an_unconditional_are_fine(
+        self, tree: Path
+    ) -> None:
+        assert checks(self.referring(tree, "defined(F)", "defined(F)", "defined(F)")) == []
+        assert checks(self.referring(tree, "defined(F)", None, None)) == []
+        assert checks(self.referring(tree, None, None, None)) == []
+
+    def test_a_reference_mismatch_is_filed_on_the_referring_declaration(self, tree: Path) -> None:
+        bag = self.referring(tree, None, "defined(F)", "defined(F)")
+        (finding,) = bag
+        assert finding.location.pointer == "component.interface[2].definition"
+
 
 class TestValueChecks:
     def test_init_out_of_range(self, tree: Path) -> None:

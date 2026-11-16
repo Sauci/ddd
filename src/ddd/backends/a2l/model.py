@@ -232,6 +232,16 @@ def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
     return _A2lModelBuilder(dictionary, A2lOptions()).addressed()
 
 
+def conditional_symbols(dictionary: DataDictionary) -> dict[str, str]:
+    """Each symbol this dictionary's a2l carries that states a condition, with the condition.
+
+    Asked of the builder, as :func:`addressed_symbols` is, for the same reason: a run that
+    has just learnt which of those symbols its image or map places none of them needs the
+    ones a feature may have compiled out, and which they are is that one selection's answer.
+    """
+    return _A2lModelBuilder(dictionary, A2lOptions()).conditions()
+
+
 class _A2lModelBuilder:
     """Builds the whole a2l model of one dictionary.
 
@@ -287,6 +297,14 @@ class _A2lModelBuilder:
             *self._carried_leaves(),
         )
         return tuple(sorted({entry.name for entry in entries}))
+
+    def conditions(self) -> dict[str, str]:
+        """:meth:`addressed`'s symbols that state a condition, each with it."""
+        entries: tuple[ResolvedObject | ResolvedLeaf, ...] = (
+            *self._exported_objects(),
+            *self._carried_leaves(),
+        )
+        return {entry.name: entry.condition for entry in entries if entry.condition}
 
     def build(self, generator: str) -> A2lModel:
         dictionary = self._dictionary
@@ -355,7 +373,27 @@ class _A2lModelBuilder:
                 if referenced not in names and referenced in by_name:
                     names.add(referenced)
                     pending.append(referenced)
-        return names
+        return self._without_what_the_build_left_out(names)
+
+    def _without_what_the_build_left_out(self, names: set[str]) -> set[str]:
+        """``names`` less the objects of :attr:`A2lOptions.left_out`, and the curves and maps
+        left holding an axis among them.
+
+        After the closure above rather than before it, because an axis's input is pulled in
+        like any other reference and is exactly what a feature that is off takes with it. The
+        axis stays, indexed by nothing (:meth:`_input_quantity`); a curve cannot, since its
+        ``AXIS_DESCR`` names the axis's record, so it goes where its axis went - which only an
+        unconditional curve over a conditional axis can ask for, the case ``condition-mismatch``
+        reports.
+        """
+        gone = self._options.left_out
+        by_name = self._by_name
+        axes = ("axis", "x_axis", "y_axis")
+        return {
+            name
+            for name in names - gone
+            if not any(by_name[name].references.get(key) in gone for key in axes)
+        }
 
     def _carries(self, leaf: ResolvedLeaf) -> bool:
         """Whether this member can be described at all, and was asked to be.
@@ -370,7 +408,7 @@ class _A2lModelBuilder:
         and the member's into the one the leaf carries, so this backend and ``ddd compare``
         cannot reach different conclusions about which members reach the file.
         """
-        if leaf.bits is not None:
+        if leaf.bits is not None or leaf.name in self._options.left_out:
             return False
         return leaf.a2l.exported
 
@@ -458,7 +496,7 @@ class _A2lModelBuilder:
         axis stating that nothing indexes it.
         """
         name = entry.references.get("input")
-        return name if name in self._by_name else NO_INPUT_QUANTITY
+        return name if name in self._exported else NO_INPUT_QUANTITY
 
     def _axis_descr(self, axis: ResolvedObject, name: str) -> AxisDescrView:
         return AxisDescrView(

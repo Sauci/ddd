@@ -12,6 +12,7 @@ import shutil
 import stat
 import sys
 from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -985,7 +986,8 @@ class TestGenerate:
         captured = capsys.readouterr().err
         assert code == EXIT_OK, captured
         assert "address-missing" not in captured
-        assert (tmp_path / "gen" / "DemoDevice.a2l").is_file()
+        written = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert "ValueG" in self.a2l_symbols(written), "no link has told what the build holds"
 
     def test_a_complete_address_map_is_not_reported(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1011,6 +1013,81 @@ class TestGenerate:
         )
         assert code == EXIT_OK
         assert "address-missing" not in capsys.readouterr().err
+
+    def a_map_of_the_demo_built_without_feature_x(
+        self, tmp_path: Path, without: tuple[str, ...] = ()
+    ) -> tuple[Path, list[str]]:
+        """The map a build without ``FEATURE_X`` extracts: every record of the a2l that states
+        no condition, less the ``without``, and the symbols the condition guards, which it
+        does not hold."""
+        full = tmp_path / "full"
+        assert main(["generate", "a2l", str(DEMO), "-o", str(full)]) == EXIT_OK
+        written = (full / "DemoDevice.a2l").read_text(encoding="utf-8").splitlines()
+        guarded = [
+            line.split()[2]
+            for before, line in pairwise(written)
+            if "only present in the build when" in before
+        ]
+        symbols = self.a2l_symbols("\n".join(written))
+        addresses = tmp_path / "addresses.json"
+        kept = [symbol for symbol in symbols if symbol not in guarded and symbol not in without]
+        addresses.write_text(json.dumps(dict.fromkeys(kept, "0x20001000")), encoding="utf-8")
+        return addresses, guarded
+
+    def test_the_demo_built_without_its_condition_passes_strict_and_leaves_the_object_out(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A condition the build left out is a feature that is off, not a hole in the map:
+        ``ValueG`` is no record, the run says so at ``info`` and ``--strict`` lets it through."""
+        addresses, guarded = self.a_map_of_the_demo_built_without_feature_x(tmp_path)
+        assert "ValueG" in guarded
+        capsys.readouterr()
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+                "--strict",
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert "address-missing" not in captured
+        assert (
+            "info[condition-left-out]: the address map has no entry for 'ValueG', which is only "
+            "present in the build when 'defined(FEATURE_X)'; it is left out of the a2l"
+        ) in captured
+        written = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert "ValueG" not in self.a2l_symbols(written)
+        assert "ValueG" not in written
+        assert "ValueE" in self.a2l_symbols(written)
+
+    def test_an_unconditional_object_missing_beside_a_left_out_one_still_stops_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        addresses, _ = self.a_map_of_the_demo_built_without_feature_x(tmp_path, ("ValueE",))
+        capsys.readouterr()
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+                "--strict",
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'ValueE'; " in captured
+        assert "ValueG" not in captured.split("address-missing", 1)[1].splitlines()[0]
+        assert not (tmp_path / "gen").exists()
 
     def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -5072,6 +5149,25 @@ def with_a_window(described: dict[str, Any]) -> None:
     tuning["members"].append(value_member("window", "uint16"))
 
 
+def with_a_ghost(described: dict[str, Any]) -> None:
+    """``Engine`` gains ``Ghost``, a measurement under a condition, which no image holds."""
+    described["component"]["interface"].append(
+        {
+            "scope": "local",
+            "condition": "defined(FEATURE_X)",
+            "definition": {
+                "name": "Ghost",
+                "id": "gbcdefghjkmn",
+                "kind": "measurement",
+                "description": "A feature the build left out",
+                "datatype": "uint8",
+                "conversion": {"kind": "identity"},
+                "volatile": False,
+            },
+        }
+    )
+
+
 class TestASignedEnumFromAnImage:
     """Finding 11:C1: 200 and 40000 stay 200 and 40000 in what the reader says of a signed
     enum, and in everything generated from it."""
@@ -5350,6 +5446,81 @@ class TestGenerateFromAnImage:
             f"    note: 'Tuning' has no member named 'window' in the image\n"
             f"1 error\n"
         )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_conditional_variable_the_image_lacks_is_left_out_and_said_at_info(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The image holds no ``Ghost``, which is guarded by a condition: a feature compiled
+        out, so the a2l has no record of it, and a strict run does not stop at it."""
+        project = edited_project(tmp_path, "engine.ddd.json", with_a_ghost)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--strict"]) == EXIT_OK
+        shown = where(X86_ADDRESSES).render(Path.cwd())
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        assert capsys.readouterr().err == (
+            f"{shown}: info[condition-left-out]: the image has no address for 'Ghost', which is "
+            f"only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l\n"
+            f"    note: the image's debug information holds no variable named 'Ghost'\n"
+            f"1 info\n"
+            f"wrote       {a2l.as_posix()} (created)\n"
+        )
+        text = a2l.read_text(encoding="utf-8")
+        assert "Ghost" not in text
+        assert a2l_addresses(text) == ADDRESS_ROWS["x86_64"]["addresses"]
+
+    def test_the_objects_left_out_are_said_once_per_condition_in_the_plural_for_several(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def several(described: dict[str, Any]) -> None:
+            for name, ident, condition in (
+                ("Ghost", "gbcdefghjkmn", "defined(FEATURE_X)"),
+                ("Wraith", "wbcdefghjkmn", "defined(FEATURE_Y)"),
+                ("Shade", "sbcdefghjkmn", "defined(FEATURE_X)"),
+            ):
+                with_a_ghost(described)
+                entry = described["component"]["interface"][-1]
+                entry["condition"] = condition
+                entry["definition"]["name"] = name
+                entry["definition"]["id"] = ident
+
+        project = edited_project(tmp_path, "engine.ddd.json", several)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main(arguments) == EXIT_OK
+        captured = capsys.readouterr().err
+        assert (
+            "info[condition-left-out]: the image has no address for 'Ghost', 'Shade', which "
+            "are only present in the build when 'defined(FEATURE_X)'; they are left out of "
+            "the a2l\n"
+        ) in captured
+        assert (
+            "info[condition-left-out]: the image has no address for 'Wraith', which is only "
+            "present in the build when 'defined(FEATURE_Y)'; it is left out of the a2l\n"
+        ) in captured
+        assert "2 infos" in captured
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert [name for name in ("Ghost", "Wraith", "Shade") if name in text] == []
+
+    def test_an_unconditional_variable_the_image_lacks_beside_one_left_out_still_fails_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def both(described: dict[str, Any]) -> None:
+            with_a_ghost(described)
+            entry = {**described["component"]["interface"][-1]}
+            entry = json.loads(json.dumps(entry))
+            del entry["condition"]
+            entry["definition"]["name"] = "Phantom"
+            entry["definition"]["id"] = "pbcdefghjkmn"
+            described["component"]["interface"].append(entry)
+
+        project = edited_project(tmp_path, "engine.ddd.json", both)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--strict"]) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert (
+            "error[address-missing]: the image has no address for 'Phantom'; it reaches" in captured
+        )
+        assert "info[condition-left-out]: the image has no address for 'Ghost'" in captured
         assert not (tmp_path / "gen").exists()
 
     def test_the_notes_are_the_reasons_of_the_symbols_named_each_said_once(

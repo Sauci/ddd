@@ -607,7 +607,11 @@ output. `condition` is per declaration as well but **should** agree, and
 guarded by legitimately different expressions occur in practice. Conditions are
 compared as text, stripped of surrounding whitespace: `A && B` and `B && A` are different
 conditions, because deciding their equivalence would require a preprocessor, and a
-declaration stating no condition disagrees with one stating some. The dictionary records
+declaration stating no condition disagrees with one stating some. A reference is held to
+the same agreement: an object that refers to another one, a curve or a map to its axes and
+an axis to its input, **should** state the condition the other one does, or a condition
+of its own over an unconditional one; `condition-mismatch` says so, naming both, when the
+object referred to states a condition the referrer does not state. The dictionary records
 the producer's condition on the object, and every declaration's own condition with its
 declaring component.
 
@@ -1454,7 +1458,12 @@ Warnings:
 - `section-alignment`: an object needs stricter alignment than its section guarantees. This
   is a warning rather than an error because the need is the description's estimate, and the
   compiler's word on the real layout is final.
-- `condition-mismatch`: declarations of one object use different preprocessor conditions.
+- `condition-mismatch`: declarations of one object use different preprocessor conditions,
+  or an object refers to another one whose condition it does not state: an unconditional
+  curve over a conditional axis, an axis over a conditional input, a curve under one
+  condition over an axis under another. A build without the condition holds the referrer
+  and not the object, and its A2L would name a record that is not there. The reference
+  is the other half of what `condition-left-out` leaves out of the A2L.
 - `unused-output`: an output is read by nobody.
 - `limits-out-of-range`: limits exceed what the datatype can represent under the
   conversion; for an enum that is the span of its enumerators. The comparison allows a
@@ -1471,8 +1480,8 @@ Warnings:
 - `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.
-- `address-missing`: an object the A2L carries gets no address from the address map or the
-  image the run was given. It fires for a map only when the map has at least one entry:
+- `address-missing`: an object the A2L carries, one that states no condition, gets no
+  address from the address map or the image the run was given. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction. That is the run
   a build makes before it has linked anything, and it is as well the step after the link
   when the map it reads has no entry, one the project's step extracted nothing into among
@@ -1490,6 +1499,14 @@ Warnings:
 
 Information:
 
+- `condition-left-out`: an object the A2L would carry states a condition, and the image or
+  the address map with entries the run was given places none of it: the build left it out,
+  as a build without the feature does, and the A2L has no record of it. One finding per
+  condition, naming the objects it guards, located at the image or the map, with the image's
+  reasons as notes. A condition cannot be told true or false from here, and what the build
+  does not hold is no hole in its addresses: an object that states none is still
+  `address-missing`. A curve or a map over an axis left out goes with it, and an axis whose
+  input was left out is written with `NO_INPUT_QUANTITY`.
 - `empty-component`: a component declares no data object at all.
 - `empty-vocabulary`: a types, units, constants, sections or rasters file declares nothing,
   its own list being empty. The file loads: emptying one is how a project goes from one entry
@@ -1949,7 +1966,11 @@ checks leave no such reference in a project DDD resolves itself
 another producer is not checked again, where a dangling name would make the module invalid.
 
 A record whose object is declared under a preprocessor condition is preceded by a comment
-naming that condition, because the format has no conditional construct of its own.
+naming that condition, because the format has no conditional construct of its own. When
+the run has an address source that places none of the object, a map with entries or an
+image ([section 6](#6-address-information)), the build did not hold it, and the record is
+left out of the file; `condition-left-out` says so at `info`
+([section 4](#4-consistency-checks)).
 
 A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A2L as one
 object per value-holding member, named by its C access path: an `Inlet` of the `Inlet_t`
@@ -2053,7 +2074,9 @@ these are, and no further. The A2L
 takes the byte order the image states: a `--byte-order` that agrees is accepted, and one
 that contradicts the image is a usage error. A symbol the image does not place keeps
 address `0x00000000` and is reported by `address-missing`
-([section 4](#4-consistency-checks)), why it is not placed a note of the finding: the image
+([section 4](#4-consistency-checks)), unless its object states a condition, which is then
+left out of the A2L and reported by `condition-left-out` instead. Why it is not placed is a
+note of the finding: the image
 holds no variable of that name, or only a `static` of it; the variable has no storage -
 only declared, folded into a constant, removed by the compiler or discarded by the linker,
 thread-local, or at no fixed address; its symbol table holds no object of that name at the
@@ -2085,12 +2108,13 @@ a 64 bit host. The file **may** begin with a
 byte order mark, as a description file may ([section 3](#3-file-formats)): it is written by
 a build step, and on Windows that is exactly where one comes from. A key the project does
 not know is ignored, and an object the map does not
-cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
-output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK` lets a
-downstream tool resolve those it cares about.
+cover keeps address `0x00000000` rather than failing the run, and an object of the map's
+build that states a condition and is not in the map is left out of the A2L, as it is for an
+image: a map extracted from a linker output legitimately omits the objects a condition
+compiled away.
 
-A map with entries, or an image, that leaves an object of the A2L uncovered is
-`address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under
+A map with entries, or an image, that leaves an object of the A2L uncovered, one that
+states no condition, is `address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under
 `--strict`, and a run that reports it as an error writes nothing rather than a file whose
 addresses it has just been told are incomplete, unless `--force` asks for the file anyway
 ([section 7](#7-tool-interface)). A run given neither, or given a map with no entry, has no

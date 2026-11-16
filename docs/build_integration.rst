@@ -695,7 +695,9 @@ Options
        empty map (``{}``), since ninja refuses to start a build for want of an input nothing
        produces; a missing map in the source tree stays an error. An empty map gives no
        address and raises no ``address-missing``, so ``STRICT`` does not fail it, and the a2l
-       says so itself; a map that names some objects and not others raises it, once.
+       says so itself; a map that names some objects and not others raises it, once, for the
+       objects that state no condition: a conditional one it lacks is left out of the a2l and
+       reported at ``info``.
    * - ``ADDRESSES_FROM_IMAGE``
      - write the a2l once the image is linked, every address it carries read out of the
        image's debug information, so that one build gives the complete a2l: the run before the
@@ -797,18 +799,19 @@ structure member worked out beside it, since the a2l has to describe the image t
 flashed.
 
 What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
-symbol's reason a note beneath it. The example above, built as ``RelWithDebInfo`` with the
-keyword added, places every object of the demo but ``ValueG``, which a condition compiles out
-of this image:
+symbol's reason a note beneath it; under ``STRICT`` that is an error, and the build stops rather
+than ship an a2l with an address of 0. An object that states a condition is not reported that
+way: the build was made without it, and the a2l leaves it out. The example above, built as
+``RelWithDebInfo`` with the keyword added, places every object of the demo but ``ValueG``, which
+a condition compiles out of this image:
 
 .. code-block:: text
 
-   firmware.elf: warning[address-missing]: the image has no address for 'ValueG'; it reaches the a2l at address 0
+   firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
        note: the image's debug information holds no variable named 'ValueG'
-   1 warning
+   1 info
 
-Under ``STRICT`` that is an error, and the build stops rather than ship an a2l with an address
-of 0. ``BYTE_ORDER`` is held to the byte order the image states: one that contradicts it stops
+``STRICT`` lets that through, and has no a2l record to stop at for it. ``BYTE_ORDER`` is held to the byte order the image states: one that contradicts it stops
 the build as well. So does an image the reader cannot read, in the reader's own words - one
 built without ``-g`` is told to be, and one that is not ELF at all, as a host build on Windows
 links, is refused as such. A build like that reads an address map instead, in the same step

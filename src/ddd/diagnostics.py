@@ -210,6 +210,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("address-missing", Severity.WARNING,
                "an object reaching the a2l gets no address from the address map or the image the "
                "run was given"),
+        _check("condition-left-out", Severity.INFO,
+               "an object stating a condition gets no address from the image or the address map "
+               "the run was given, and is left out of the a2l"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
         _check("empty-vocabulary", Severity.INFO,
                "a types, units, constants, sections or rasters file declares nothing"),

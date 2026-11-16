@@ -381,32 +381,41 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 * **A damaged image is refused where it hung, and a large one is read faster.**  The reader followed
   each `DW_AT_sibling` pointer unchecked, so an entry aimed at itself sent the walk round in a
   circle and no run finished.  It now walks a unit's entries forward only and refuses a sibling that
-  does not advance, at once, naming the offset; a DWARF 5 line header that states more directories
-  or files than its bytes can hold is refused before anything is allocated.  A variable's type, and
-  the line table its declaration needs, are read only for the variables a run asks about: an image
-  of 60,000 variables opened in 2.9 s where it took 7.4 s, measured on the development PC.  This
-  does not claim that every damaged image is refused.  No output changes for a well-formed image.
-  Nothing to migrate.
+  does not advance, at once, naming the offset.  A variable's type, and the line table its
+  declaration needs, are read only for the variables a run asks about: an image of 60,000 variables
+  opened in 2.9 s where it took 7.4 s, measured on the development PC.  How far a damaged line table
+  is bounded is still open, and this does not claim that every damaged image is refused.  No output
+  changes for a well-formed image.  Nothing to migrate.
 
-* **`ddd tool from-elf` says where an image answers twice, and refuses what it does not read.** It
-  took the first of several answers and said nothing of the rest.  One name at one address that two
-  units, or a unit and the symbol table, give two sizes - a common symbol, an array of two lengths,
-  a weak definition over a strong one of another type - is now `elf-type-conflict`, naming each
-  size, and the variable is left out; an ambiguity beside it is still reported.  Where two sections
-  a linker script overlays hold an address and the symbol names neither, the new error
-  `elf-section-ambiguous` replaces the first section's bytes, which every variable there took.  A
-  structure with a base class, one with a static member where the debug information writes it as a
-  member, and a variable whose definition belongs to a namespace or a class are refused, each in a
-  sentence of its own, where they were described wrongly.  A `float32` of FLT_MAX or its negative is
-  written as the double each is, 3.4028234663852886e+38, where its shortest spelling was refused as
-  out of range; a name two arguments reach from two units is refused in the words the user typed,
-  and the tool's internal component name no longer appears in a message.  A name every unit left
-  without storage is reported once as `elf-no-storage`, where it was `elf-symbol-ambiguous` and a
-  unit prefix only earned a refusal for want of storage: a script that matches the old identifier
-  for such a name has to match the new one.  Migrating costs a variable that was described silently
-  from the first unit's answer: it is now an error naming both answers, and the units have to agree.
-  The build page also says that `--image` refuses an image gcc linked with `-flto`, and five pages
-  that spoke of the address map alone now name `--image`.
+* **`ddd tool from-elf` says where an image answers twice.**  It took the first of several answers
+  and said nothing of the rest.  One name at one address that two units, or a unit and the symbol
+  table, give two sizes - a common symbol, an array of two lengths, a weak definition over a strong
+  one of another type - is now `elf-type-conflict`, naming each size, and the variable is left out;
+  an ambiguity beside it is still reported.  Where two sections a linker script overlays hold an
+  address and the symbol names neither, the new error `elf-section-ambiguous` replaces the first
+  section's bytes, which every variable there took.  A name two arguments reach from two units is
+  refused in the words the user typed, and the tool's internal component name no longer appears in a
+  message.  Migrating costs a variable that was described silently from the first unit's answer: it
+  is now an error naming both answers, and the units have to agree.
+
+* **`ddd tool from-elf` refuses the C++ it does not read.**  A structure with a base class, one with
+  a static member where the debug information writes it as a member, and a variable whose definition
+  belongs to a namespace or a class were described wrongly, without the base members, with the
+  static as a value member, or under the short name of a variable in another scope.  Each is now
+  refused in a sentence of its own, as `elf-type-unsupported` or `elf-no-storage`.  A project that
+  relied on the wrong description has to describe those by hand.
+
+* **A `float32` of FLT_MAX is written as the double it is.**  `ddd tool from-elf` wrote its shortest
+  spelling, which lies past the range a `float32` holds, and DDD refused it as out of range.
+  FLT_MAX and its negative are now written as 3.4028234663852886e+38, which it accepts.  Nothing to
+  migrate.
+
+* **A name no unit gave storage is `elf-no-storage`, once.**  A name every unit left without an
+  address, as a header's `static const` each folded, was `elf-symbol-ambiguous`, and the unit prefix
+  it offered only earned a refusal for want of storage.  It is now reported once as
+  `elf-no-storage`, naming the units: a script that matches the old identifier for such a name has
+  to match the new one.  The build page also says that `--image` refuses an image gcc linked with
+  `-flto`, and five pages that spoke of the address map alone now name `--image`.
 
 * **`ddd tool from-elf` writes no conversion it cannot know.**  Every scalar and every structure
   member carried the identity conversion, which says that raw is physical, a claim an image says
@@ -432,7 +441,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `A2lOptions` gains `left_out`, and `ddd.backends` gains `conditional_objects`, `dragged_with` and
   `ConditionalObject`.
 
-* **A position independent image, an unreadable map and two debug options say what they are.** An
+* **A position independent image, an unreadable map and two debug options say what they are.**  An
   image linked position independent holds offsets from where it loads, and the a2l took them for
   addresses without a word.  It is still read, and the new info `image-load-relative` says that its
   addresses are load relative: right for a project that adds its base, wrong for one that does not.
@@ -456,7 +465,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   adds it, is named; adding `const` is allowed, as `--const-inputs` does.  A one-byte unsigned
   integer agrees with a `boolean`.  Migrating costs a fix or a silence: a `STRICT` build whose image
   disagrees with its description stops and writes no a2l, and `-W elf-mismatch=ignore`, or
-  `SEVERITY` in cmake, lets it through; the a2l is written from the description either way.
+  `SEVERITY` in cmake, lets it through; a run that is not stopped writes the a2l from the
+  description.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

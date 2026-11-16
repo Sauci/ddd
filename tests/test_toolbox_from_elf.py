@@ -24,6 +24,7 @@ from ddd.elf import (
     DW_ATE_UNSIGNED,
     DW_ATE_UNSIGNED_CHAR,
     FOLDED,
+    OTHER_SCOPE,
     REMOVED,
     Array,
     Base,
@@ -43,6 +44,7 @@ from ddd.toolbox.checked import POLICY
 from ddd.toolbox.findings import FINDINGS, place, report
 from ddd.toolbox.from_elf import (
     DEFAULT_SECTIONS,
+    IDENTITY_CLAIMED,
     NOT_INFERRED,
     VALUE_BLOCKS,
     Description,
@@ -67,6 +69,8 @@ def image(
     byte_order: Literal["little", "big"] = "little",
     machine: int | None = None,
     flags: int = 0,
+    object_sizes: dict[tuple[str, int], int] | None = None,
+    object_sections: dict[tuple[str, int], int | str] | None = None,
 ) -> Image:
     """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
     each global at its address, as a linker that kept the variable leaves it."""
@@ -87,6 +91,8 @@ def image(
         local_objects,
         machine,
         flags,
+        object_sizes or {},
+        object_sections or {},
     )
 
 
@@ -1342,7 +1348,7 @@ class TestValues:
 
     def test_the_largest_float32_is_not_spelled_past_what_a_float32_holds(self) -> None:
         largest = struct.unpack("<f", (0x7F7FFFFF).to_bytes(4, "little"))[0]
-        assert shortest_float32(largest) == 3.4028235e38
+        assert shortest_float32(largest) == 3.4028234663852886e38
 
     def test_a_float32_needing_nine_digits_gets_nine(self) -> None:
         value = struct.unpack("<f", (0x03AD66B5).to_bytes(4, "little"))[0]
@@ -1378,10 +1384,17 @@ class TestValues:
 
 
 def run(
-    img: Image, *arguments: str, scope: str = "output", component: str | None = None
+    img: Image,
+    *arguments: str,
+    scope: str = "output",
+    component: str | None = None,
+    identity: bool = False,
 ) -> tuple[Description, DiagnosticBag]:
     bag = DiagnosticBag()
-    return describe(img, list(arguments), scope=scope, component=component, bag=bag), bag
+    description = describe(
+        img, list(arguments), scope=scope, component=component, identity=identity, bag=bag
+    )
+    return description, bag
 
 
 def filled(*pairs: tuple[int, bytes], size: int = 0x100) -> bytes:
@@ -1407,7 +1420,6 @@ class TestDescribe:
                         "name": "Gain",
                         "kind": "measurement",
                         "datatype": "uint16",
-                        "conversion": IDENTITY,
                         "init": 300,
                         "volatile": False,
                     },
@@ -1417,6 +1429,19 @@ class TestDescribe:
         )
         assert found(bag) == [("elf-not-inferred", Severity.INFO, NOT_INFERRED)]
 
+    def test_with_the_option_a_variable_states_the_identity_the_author_asked_for(self) -> None:
+        img = image(stored("Gain", U16, line=3), contents=filled((0, bytes([0x2C, 0x01]))))
+        description, bag = run(img, "Gain", identity=True)
+        assert description.interface[0]["definition"] == {
+            "name": "Gain",
+            "kind": "measurement",
+            "datatype": "uint16",
+            "conversion": IDENTITY,
+            "init": 300,
+            "volatile": False,
+        }
+        assert found(bag) == [("elf-not-inferred", Severity.INFO, IDENTITY_CLAIMED)]
+
     def test_a_definition_states_its_keys_in_the_examples_order(self) -> None:
         calib = Section(".calib", 0x100, 0x100, 0)
         img = image(
@@ -1424,7 +1449,7 @@ class TestDescribe:
             sections=(calib,),
             contents=filled((0, bytes([1, 2]))),
         )
-        description, _ = run(img, "Table")
+        description, _ = run(img, "Table", identity=True)
         assert list(description.interface[0]["definition"]) == [
             "name",
             "kind",
@@ -1449,7 +1474,6 @@ class TestDescribe:
                 "name": "Level",
                 "kind": "measurement",
                 "datatype": "float32",
-                "conversion": IDENTITY,
                 "volatile": False,
             },
         }
@@ -1654,7 +1678,7 @@ class TestDescribe:
             stored("Config", Qualified(PAIR, const=True), line=7),
             contents=filled((0, bytes([1, 2]))),
         )
-        description, bag = run(img, "Config", component="Pump")
+        description, bag = run(img, "Config", component="Pump", identity=True)
         assert description.interface[0]["definition"] == {
             "name": "Config",
             "kind": "parameter",
@@ -1699,10 +1723,12 @@ class TestDescribe:
                 "elf-not-inferred",
                 Severity.INFO,
                 "an image states no unit, description, limits, scaling or id, so the output "
-                "states none: every conversion but an enum's is the identity, the limits are "
-                "the ones DDD derives, and 'ddd id --assign' writes the ids; and a const array "
-                "is a value block, since nothing in an image tells a curve, a map or an axis "
-                "from any other array",
+                "states none: it states no conversion for what is not an enum either, since raw "
+                "equalling physical is a claim about the data that an image does not make, and "
+                "'ddd check' asks its author to state it ('--identity-conversions' writes the "
+                "identity, where you state it); the limits are the ones DDD derives, and "
+                "'ddd id --assign' writes the ids; and a const array is a value block, since "
+                "nothing in an image tells a curve, a map or an axis from any other array",
             )
         ]
 
@@ -1888,3 +1914,397 @@ class TestTheCheckByDdd:
         description, bag = run(image(stored("Wide", wide)), "Wide")
         assert description.interface == ()
         assert [d.check for d in bag.sorted] == ["init-invalid"]
+
+
+FLT_MAX = struct.unpack("<f", (0x7F7FFFFF).to_bytes(4, "little"))[0]
+
+
+class TestTheLargestFloat:
+    """A float32 of FLT_MAX is written as DDD's own check accepts it (finding 11:M1)."""
+
+    def test_the_largest_float32_is_spelled_as_the_double_it_is(self) -> None:
+        assert shortest_float32(FLT_MAX) == FLT_MAX
+        assert shortest_float32(-FLT_MAX) == -FLT_MAX
+
+    def test_a_float32_whose_shortest_spelling_reads_back_is_still_spelled_so(self) -> None:
+        tenth = struct.unpack("<f", struct.pack("<f", 0.1))[0]
+        assert shortest_float32(tenth) == 0.1
+        assert shortest_float32(-tenth) == -0.1
+
+    @pytest.mark.parametrize("value", [FLT_MAX, -FLT_MAX], ids=["FLT_MAX", "-FLT_MAX"])
+    def test_ddd_accepts_what_the_tool_writes_for_it(self, value: float) -> None:
+        img = image(stored("Peak", F32), contents=filled((0, struct.pack("<f", value))))
+        description, bag = run(img, "Peak")
+        assert names(description) == ["Peak"]
+        assert description.interface[0]["definition"]["init"] == value
+        assert [check for check, _, _ in found(bag)] == ["elf-not-inferred"]
+        assert not bag.has_errors
+
+
+class TestUnitsThatDisagree:
+    """One name at one address, stated two ways, is reported and not described (finding 11:M6)."""
+
+    COMMON = (
+        "'Cal' at 0x100 is described as 2 bytes by 'unit_a.c' and as 4 bytes by 'unit_b.c': "
+        "one name at one address is one variable, so no one description of it is right"
+    )
+
+    def two_units(self, first: CType, second: CType) -> Image:
+        return image(
+            stored("Cal", first, unit="unit_a.c", line=3),
+            stored("Cal", second, unit="unit_b.c", line=4),
+            stored("Fine", U8, address=0x108),
+        )
+
+    def test_two_sizes_of_a_name_at_one_address_are_a_type_conflict(self) -> None:
+        description, bag = run(self.two_units(U16, U32), "Cal", "Fine")
+        assert names(description) == ["Fine"]
+        conflicts = [d for d in bag.sorted if d.check == "elf-type-conflict"]
+        assert [(d.severity, d.message, d.location) for d in conflicts] == [
+            (Severity.ERROR, self.COMMON, Location(Path("unit_a.c"), line=3))
+        ]
+        assert conflicts[0].notes == (
+            ("described as 2 bytes here", Location(Path("unit_a.c"), line=3)),
+            ("described as 4 bytes here", Location(Path("unit_b.c"), line=4)),
+        )
+
+    def test_an_array_declared_with_two_lengths_is_one(self) -> None:
+        img = image(
+            stored("Shared", Array(U32, (2,)), unit="unit_a.c"),
+            stored("Shared", Array(U32, (4,)), unit="unit_b.c"),
+        )
+        description, bag = run(img, "Shared")
+        assert description.interface == ()
+        assert [d.message for d in bag.sorted if d.check == "elf-type-conflict"] == [
+            "'Shared' at 0x100 is described as 8 bytes by 'unit_a.c' and as 16 bytes by "
+            "'unit_b.c': one name at one address is one variable, so no one description of it "
+            "is right"
+        ]
+
+    def test_units_of_one_size_are_one_variable(self) -> None:
+        description, bag = run(self.two_units(U32, S32), "Cal")
+        assert names(description) == ["Cal"]
+        assert not [d for d in bag.sorted if d.check == "elf-type-conflict"]
+
+    def test_the_symbol_s_size_is_held_against_a_single_description(self) -> None:
+        img = image(stored("Cal", U16, unit="unit_a.c", line=3), object_sizes={("Cal", 0x100): 4})
+        description, bag = run(img, "Cal")
+        assert description.interface == ()
+        assert [(d.check, d.message) for d in bag.sorted if d.check == "elf-type-conflict"] == [
+            (
+                "elf-type-conflict",
+                "'Cal' at 0x100 is described as 2 bytes by 'unit_a.c', and the symbol table "
+                "holds it as 4 bytes: one name at one address is one variable, so no one "
+                "description of it is right",
+            )
+        ]
+
+    def test_a_description_and_the_symbol_of_one_size_agree(self) -> None:
+        img = image(stored("Cal", U16), object_sizes={("Cal", 0x100): 2})
+        description, _ = run(img, "Cal")
+        assert names(description) == ["Cal"]
+
+    def test_a_symbol_of_no_size_says_nothing(self) -> None:
+        img = image(stored("Cal", U16), object_sizes={("Cal", 0x100): 0})
+        description, _ = run(img, "Cal")
+        assert names(description) == ["Cal"]
+
+    def test_a_type_with_no_size_is_not_compared(self) -> None:
+        img = image(
+            stored("Cal", Unsupported("a pointer"), unit="unit_a.c"),
+            stored("Cal", U32, unit="unit_b.c"),
+        )
+        _, bag = run(img, "Cal")
+        assert not [d for d in bag.sorted if d.check == "elf-type-conflict"]
+
+    def test_two_units_stating_one_size_beside_a_third_stating_another_are_named_together(
+        self,
+    ) -> None:
+        img = image(
+            stored("Cal", U16, unit="a.c"),
+            stored("Cal", U16, unit="b.c"),
+            stored("Cal", U32, unit="c.c"),
+        )
+        _, bag = run(img, "Cal")
+        assert [d.message for d in bag.sorted if d.check == "elf-type-conflict"] == [
+            "'Cal' at 0x100 is described as 2 bytes by 'a.c' and 'b.c' and as 4 bytes by "
+            "'c.c': one name at one address is one variable, so no one description of it is "
+            "right"
+        ]
+
+    def test_a_unit_whose_type_has_no_size_is_left_out_of_the_account(self) -> None:
+        img = image(
+            stored("Cal", Unsupported("a pointer"), unit="unit_a.c"),
+            stored("Cal", U16, unit="unit_b.c"),
+            object_sizes={("Cal", 0x100): 4},
+        )
+        _, bag = run(img, "Cal")
+        assert [d.message for d in bag.sorted if d.check == "elf-type-conflict"] == [
+            "'Cal' at 0x100 is described as 2 bytes by 'unit_b.c', and the symbol table holds "
+            "it as 4 bytes: one name at one address is one variable, so no one description of "
+            "it is right"
+        ]
+
+    def test_a_name_is_reported_once_however_many_arguments_reach_it(self) -> None:
+        _, bag = run(self.two_units(U16, U32), "Cal", "Ca*", "unit_a.c:Cal")
+        assert len([d for d in bag.sorted if d.check == "elf-type-conflict"]) == 1
+
+    def test_a_static_of_two_units_at_two_addresses_is_no_disagreement(self) -> None:
+        img = image(
+            stored("Gain", U16, unit="unit_a.c", address=0x100, external=False),
+            stored("Gain", U32, unit="unit_b.c", address=0x108, external=False),
+        )
+        _, bag = run(img, "unit_a.c:Gain")
+        assert not [d for d in bag.sorted if d.check == "elf-type-conflict"]
+
+
+GOLD = Section(".data", 0x100, 4, 0, index=1)
+SILVER = Section(".alt", 0x100, 4, 0, index=2)
+
+
+class TestSectionsAtOneAddress:
+    """Where two sections hold an address, the symbol's own section is the variable's, and
+    where nothing says which, the variable is refused (finding 11:M7)."""
+
+    def overlaid(self, **extra: Any) -> Image:
+        data = bytes([1, 0, 0, 0]) + bytes(0xFC)
+        return image(
+            stored("Page", U32, line=3),
+            sections=(GOLD, SILVER),
+            contents=data,
+            **extra,
+        )
+
+    def test_the_section_the_symbol_names_is_the_one(self) -> None:
+        img = self.overlaid(object_sections={("Page", 0x100): 2})
+        description, bag = run(img, "Page")
+        assert description.interface[0]["definition"]["section"] == ".alt"
+        assert [d.check for d in bag.sorted] == ["elf-section", "elf-not-inferred"]
+
+    def test_the_first_section_is_the_one_where_the_symbol_names_it(self) -> None:
+        img = self.overlaid(object_sections={("Page", 0x100): 1})
+        description, _ = run(img, "Page")
+        assert "section" not in description.interface[0]["definition"]
+
+    def test_where_nothing_says_which_the_variable_is_refused_and_both_are_named(self) -> None:
+        description, bag = run(self.overlaid(), "Page")
+        assert description.interface == ()
+        ambiguous = [d for d in bag.sorted if d.check == "elf-section-ambiguous"]
+        assert [(d.severity, d.message, d.location) for d in ambiguous] == [
+            (
+                Severity.ERROR,
+                "'Page' lies at 0x100, which the sections '.data' and '.alt' both hold, and "
+                "nothing in the image says which of them is its own, so its section and its "
+                "initial value cannot be stated",
+                Location(Path("unit.c"), line=3),
+            )
+        ]
+
+    def test_a_symbol_naming_a_section_that_does_not_hold_the_address_says_nothing(self) -> None:
+        elsewhere = Section(".far", 0x900, 4, 0, index=3)
+        img = image(
+            stored("Page", U32),
+            sections=(GOLD, SILVER, elsewhere),
+            object_sections={("Page", 0x100): 3},
+        )
+        _, bag = run(img, "Page")
+        assert [d.check for d in bag.sorted] == ["elf-section-ambiguous"]
+
+    def test_a_symbol_naming_a_special_section_says_nothing_either(self) -> None:
+        _, bag = run(self.overlaid(object_sections={("Page", 0x100): "SHN_ABS"}), "Page")
+        assert [d.check for d in bag.sorted] == ["elf-section-ambiguous"]
+
+    def test_three_sections_are_all_named(self) -> None:
+        third = Section(".third", 0x100, 4, 0, index=3)
+        img = image(stored("Page", U32), sections=(GOLD, SILVER, third))
+        _, bag = run(img, "Page")
+        (ambiguous,) = [d for d in bag.sorted if d.check == "elf-section-ambiguous"]
+        assert "the sections '.data', '.alt' and '.third' all hold" in ambiguous.message
+
+    def test_a_consumer_states_no_section_and_is_not_asked_which(self) -> None:
+        description, bag = run(self.overlaid(), "Page", scope="input")
+        assert names(description) == ["Page"]
+        assert not [d for d in bag.sorted if d.check == "elf-section-ambiguous"]
+
+    def test_the_initial_value_is_read_from_the_section_the_symbol_names(self) -> None:
+        silver = Section(".alt", 0x100, 4, 4, index=2)
+        data = bytes([1, 0, 0, 0, 9, 0, 0, 0]) + bytes(0xF8)
+        img = image(
+            stored("Page", U32),
+            sections=(GOLD, silver),
+            contents=data,
+            object_sections={("Page", 0x100): 2},
+        )
+        description, _ = run(img, "Page")
+        assert description.interface[0]["definition"]["init"] == 9
+
+
+class TestAnotherScope:
+    """A variable of a C++ namespace is no candidate by its short name (finding 11:M8)."""
+
+    def scoped(self) -> Image:
+        return image(
+            stored("OnlyInNs", U16, address=None, missing=OTHER_SCOPE, line=24),
+            stored("Gain", U16, address=0x100),
+        )
+
+    def test_it_is_refused_in_a_sentence_of_its_own(self) -> None:
+        description, bag = run(self.scoped(), "OnlyInNs", "Gain")
+        assert names(description) == ["Gain"]
+        assert [(d.check, d.message) for d in bag.sorted if d.check == "elf-no-storage"] == [
+            (
+                "elf-no-storage",
+                "'OnlyInNs' is a variable of a C++ namespace or class, which this tool does "
+                "not read: it reads C, and a short name does not say which one it is",
+            )
+        ]
+
+    def test_several_units_leaving_it_without_storage_are_named_with_their_reasons(self) -> None:
+        img = image(
+            stored("OnlyInNs", unit="a.cc", address=None, missing=OTHER_SCOPE),
+            stored("OnlyInNs", unit="b.cc", address=None, missing=OTHER_SCOPE),
+        )
+        _, bag = run(img, "OnlyInNs")
+        assert [d.message for d in bag.sorted if d.check == "elf-no-storage"] == [
+            f"'OnlyInNs' has no address in the image, in any of its 2 units, 'a.cc', 'b.cc': "
+            f"{OTHER_SCOPE}"
+        ]
+
+
+class TestAskedTwice:
+    """A name two variables share is refused in the reader's own terms (finding 11:M9)."""
+
+    def statics(self) -> Image:
+        return image(
+            stored("Offset", U16, unit="io_a.c", address=0x100, external=False, line=3),
+            stored("Offset", U16, unit="io_b.c", address=0x108, external=False, line=4),
+        )
+
+    def test_both_spellings_are_named_and_no_component_is(self) -> None:
+        description, bag = run(self.statics(), "io_a.c:Offset", "io_b.c:Offset")
+        assert description.interface == ()
+        refused = [d for d in bag.sorted if d.check == "elf-symbol-ambiguous"]
+        assert [(d.severity, d.message, d.location) for d in refused] == [
+            (
+                Severity.ERROR,
+                "'Offset' is asked for twice, as 'io_a.c:Offset' (in 'io_a.c') and as "
+                "'io_b.c:Offset' (in 'io_b.c'): DDD names an object once, so two variables of "
+                "one name cannot both be described",
+                Location(Path("io_b.c"), line=4),
+            )
+        ]
+        assert refused[0].notes == (
+            ("asked for as 'io_a.c:Offset'", Location(Path("io_a.c"), line=3)),
+            ("asked for as 'io_b.c:Offset'", Location(Path("io_b.c"), line=4)),
+        )
+        assert not [d for d in bag.sorted if "FromElf" in d.message]
+
+    def test_three_spellings_are_listed_with_a_count(self) -> None:
+        img = image(
+            stored("Offset", U16, unit="a.c", address=0x100, external=False),
+            stored("Offset", U16, unit="b.c", address=0x108, external=False),
+            stored("Offset", U16, unit="c.c", address=0x110, external=False),
+        )
+        _, bag = run(img, "a.c:Offset", "b.c:Offset", "c.c:Offset")
+        (refused,) = [d for d in bag.sorted if d.check == "elf-symbol-ambiguous"]
+        assert refused.message.startswith(
+            "'Offset' is asked for 3 times, as 'a.c:Offset' (in 'a.c'), as 'b.c:Offset' (in 'b.c') "
+            "and as 'c.c:Offset' (in 'c.c'): "
+        )
+
+    def test_a_pattern_reaching_both_is_the_ambiguity_it_always_was(self) -> None:
+        _, bag = run(self.statics(), "Off*")
+        (refused,) = [d for d in bag.sorted if d.check == "elf-symbol-ambiguous"]
+        assert refused.message.startswith("'Offset' names a variable in 2 units, ")
+
+    def test_the_first_is_left_out_with_the_second_so_that_neither_stands_for_the_name(
+        self,
+    ) -> None:
+        description, _ = run(self.statics(), "io_a.c:Offset", "io_b.c:Offset")
+        assert names(description) == []
+
+    def test_a_name_asked_twice_in_one_spelling_is_one_variable(self) -> None:
+        description, bag = run(image(stored("Offset", U16)), "Offset", "Offset")
+        assert names(description) == ["Offset"]
+        assert not bag.has_errors
+
+    def test_the_internal_name_reaches_no_message_of_a_check_ddd_makes(self) -> None:
+        img = image(stored("a-b", U16))
+        _, bag = run(img, "a-b")
+        assert bag.has_errors
+        assert not [d for d in bag.sorted if "FromElf" in d.message]
+
+
+class TestTheIdentityIsTheAuthors:
+    """An image does not say that raw is physical, so by default no conversion is written for
+    what is not an enum, and an option writes the identity where the author says so (finding
+    1:M7)."""
+
+    def variables(self) -> Image:
+        return image(
+            stored("Gain", U16, line=3),
+            stored("State", STATE, address=0x104),
+            stored("Pair", PAIR, address=0x108),
+        )
+
+    def test_by_default_a_scalar_states_no_conversion(self) -> None:
+        description, _ = run(self.variables(), "Gain")
+        assert "conversion" not in description.interface[0]["definition"]
+
+    def test_by_default_an_enum_still_states_its_enumerators(self) -> None:
+        description, _ = run(self.variables(), "State")
+        assert description.interface[0]["definition"]["conversion"]["kind"] == "enum"
+
+    def test_by_default_a_structure_s_members_state_none(self) -> None:
+        description, _ = run(self.variables(), "Pair", component="Inlet")
+        (entry,) = description.types
+        assert entry["members"] == [
+            {"name": "a", "member": "value", "datatype": "uint8"},
+            {"name": "b", "member": "value", "datatype": "uint8"},
+        ]
+
+    def test_the_option_writes_the_identity_where_the_author_says_so(self) -> None:
+        description, _ = run(self.variables(), "Gain", "Pair", identity=True)
+        assert description.interface[0]["definition"]["conversion"] == IDENTITY
+        assert description.types == (PAIR_ENTRY,)
+
+    def test_a_type_of_the_check_s_own_is_not_changed_for_the_next_run(self) -> None:
+        img = self.variables()
+        run(img, "Pair", identity=False)
+        description, _ = run(img, "Pair", identity=True)
+        assert description.types == (PAIR_ENTRY,)
+
+    def test_the_run_says_what_it_left_out_and_why(self) -> None:
+        _, bag = run(self.variables(), "Gain")
+        assert found(bag) == [
+            (
+                "elf-not-inferred",
+                Severity.INFO,
+                "an image states no unit, description, limits, scaling or id, so the output "
+                "states none: it states no conversion for what is not an enum either, since "
+                "raw equalling physical is a claim about the data that an image does not make, "
+                "and 'ddd check' asks its author to state it ('--identity-conversions' writes "
+                "the identity, where you state it); the limits are the ones DDD derives, and "
+                "'ddd id --assign' writes the ids",
+            )
+        ]
+
+    def test_with_the_option_the_run_says_the_claim_is_the_author_s(self) -> None:
+        _, bag = run(self.variables(), "Gain", identity=True)
+        assert found(bag) == [
+            (
+                "elf-not-inferred",
+                Severity.INFO,
+                "an image states no unit, description, limits, scaling or id, so the output "
+                "states none: every conversion but an enum's is the identity, which "
+                "'--identity-conversions' writes on your word, since nothing in an image says "
+                "that raw equals physical; the limits are the ones DDD derives, and "
+                "'ddd id --assign' writes the ids",
+            )
+        ]
+
+    def test_ddd_still_checks_the_identity_it_does_not_print(self) -> None:
+        img = image(stored("Level", F32), contents=filled((0, struct.pack("<f", 1.5))))
+        description, bag = run(img, "Level")
+        assert names(description) == ["Level"]
+        assert not bag.has_errors

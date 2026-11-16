@@ -22,6 +22,7 @@ from ddd.elf import (
     DW_ATE_UNSIGNED_CHAR,
     FOLDED,
     NOT_AN_ADDRESS,
+    OTHER_SCOPE,
     REMOVED,
     THREAD_LOCAL,
     Array,
@@ -269,6 +270,24 @@ def reason(img: Image, symbol: str) -> str:
     assert found.addresses == {}
     (said,) = found.reasons.values()
     return said
+
+
+class TestACplusplusScope:
+    """A variable of a namespace is no candidate by its short name, so a DDD object of that name
+    is not placed at it (finding 11:M8)."""
+
+    def test_a_variable_of_another_scope_places_nothing_and_says_why(self) -> None:
+        img = image(stored("OnlyInNs", address=None, missing=OTHER_SCOPE))
+        assert reason(img, "OnlyInNs") == f"'OnlyInNs' is {OTHER_SCOPE}"
+
+    def test_a_c_variable_of_the_same_short_name_is_the_one_placed(self) -> None:
+        img = image(stored("Shared", address=0x120))
+        assert placed(img, "Shared").addresses == {"Shared": 0x120}
+
+    def test_the_image_of_cplusplus_places_its_c_variable_and_not_the_namespace_s(self) -> None:
+        found = placed(open_image(FIXTURES / "cplusplus.elf"), "Cpp_Plain", "OnlyInNs")
+        assert sorted(found.addresses) == ["Cpp_Plain"]
+        assert found.reasons == {"OnlyInNs": f"'OnlyInNs' is {OTHER_SCOPE}"}
 
 
 class TestTheVariable:

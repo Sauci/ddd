@@ -6,6 +6,8 @@ import math
 import struct
 from typing import Any, Final
 
+from ddd.models.common import FLOAT32_MAX
+
 _FORMATS: Final = {
     "boolean": "B",
     "uint8": "B",
@@ -44,11 +46,16 @@ def initial_value(raw: bytes, datatype: str, dimensions: tuple[int, ...], byte_o
 
 def shortest_float32(value: float) -> float:
     """The shortest decimal that reads back to the float32 ``value``: 0.1 for ``0.1f``, rather
-    than the 0.10000000149011612 the same bits spell as a double."""
+    than the 0.10000000149011612 the same bits spell as a double.
+
+    The largest float32 is the one value whose shortest spelling, 3.4028235e38, lies past it as
+    a double, and DDD refuses a ``float32`` past its own range: it is written as the double it
+    is instead, which DDD takes, and so does the float32 it reads back to.
+    """
     for digits in range(1, _FLOAT32_DIGITS):
         candidate = float(f"{value:.{digits}g}")
         if _reads_back(candidate, value):
-            return candidate
+            return value if abs(candidate) > FLOAT32_MAX else candidate
     return float(f"{value:.{_FLOAT32_DIGITS}g}")
 
 

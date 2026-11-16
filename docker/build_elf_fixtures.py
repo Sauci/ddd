@@ -49,6 +49,7 @@ ENTRY = "fixture_entry"
 COMMON = ("-O2", "-std=gnu11", "-ffreestanding", "-fno-common")
 TLS = "FIXTURE_TLS"
 FOLDED = "FIXTURE_FOLDED"
+NEGATIVE_COMPILER = "x86_64-linux-gnu-gcc"
 
 
 @dataclass(frozen=True)
@@ -79,9 +80,26 @@ class Negative:
     link: tuple[str, ...] = ()
     """What names the linker, where the toolchain's default is not the one wanted."""
 
+    plain: tuple[str, ...] = ()
+    """Further sources built without ``-g`` and linked in: units whose symbols the image holds
+    and whose variables its debug information does not describe."""
+
+    suffix: str = "c"
+    """The extension of ``source`` and of ``also``."""
+
+    compiler: tuple[str, ...] = (NEGATIVE_COMPILER,)
+    """The compiler and the flags naming its target."""
+
+    common: tuple[str, ...] = COMMON
+    """The flags every source is built with."""
+
+    static: bool = True
+    """Whether the link is the host-like static one of :data:`GNU_LINK`."""
+
 
 GNU_LINK = ("-static", "-no-pie")
 CORTEX_M4 = ("-mcpu=cortex-m4", "-mthumb")
+CPP_COMMON = ("-O2", "-ffreestanding", "-fno-exceptions", "-fno-rtti")
 ROWS = (
     Row("x86_64", ("x86_64-linux-gnu-gcc",), ("-fPIE",), ("-gdwarf-5",), ("-static-pie",)),
     Row("i686", ("i686-linux-gnu-gcc",), (), ("-gdwarf-4",), GNU_LINK),
@@ -115,7 +133,6 @@ ROWS = (
     ),
 )
 
-NEGATIVE_COMPILER = "x86_64-linux-gnu-gcc"
 NEGATIVES = (
     Negative("type-units-dwarf4", "type_units", ("-gdwarf-4", "-fdebug-types-section")),
     Negative("type-units-dwarf5", "type_units", ("-gdwarf-5", "-fdebug-types-section")),
@@ -145,11 +162,37 @@ NEGATIVES = (
         also=("gold_unused",),
         link=("-fuse-ld=bfd",),
     ),
+    Negative(
+        "units-disagree",
+        "disagree_a",
+        ("-gdwarf-5", "-fcommon"),
+        also=("disagree_b",),
+    ),
+    Negative(
+        "units-undescribed",
+        "undescribed_a",
+        ("-gdwarf-5", "-fcommon"),
+        plain=("undescribed_b",),
+    ),
+    Negative("sections-overlaid", "overlay", ("-gdwarf-5", "-Wl,-T,overlay.ld")),
+    Negative(
+        "cplusplus",
+        "cpp",
+        ("-gdwarf-4",),
+        suffix="cc",
+        compiler=("arm-none-eabi-g++", *CORTEX_M4),
+        common=CPP_COMMON,
+        static=False,
+    ),
 )
 """DWARF type units at version 4 and at 5, gcc's link-time optimisation, a variable the linker
 discarded where its address, 0, holds code, and a unit whose ``.data`` nothing references,
 linked with ``--gc-sections`` by gold, which leaves the DWARF addresses of its variables as
-offsets into the section it discarded, and by GNU ld, which drops the unit's debug information."""
+offsets into the section it discarded, and by GNU ld, which drops the unit's debug information;
+two units that state one name at one address in two ways (a common symbol at two sizes, an array
+of two lengths, a weak definition over a strong one), and one unit built without ``-g`` whose
+symbols are larger than the description of the unit that has it; two sections a linker script
+overlays at one address; and a C++ unit, which the reader refuses in part."""
 
 _SYMBOL = re.compile(
     r"^\s*\d+:\s+[0-9a-f]+\s+(?P<size>0x[0-9a-f]+|\d+)\s+(?P<type>\w+)\s+\w+\s+\w+\s+"
@@ -302,18 +345,35 @@ def facts(image: Path) -> dict[str, object]:
 def build_negative(negative: Negative, work: Path) -> Path:
     """Compile and link one negative input; the image lands in ``work``."""
     image = work / f"{negative.name}.elf"
+    prefix = f"-ffile-prefix-map={SOURCE}=."
+    plain: list[str] = []
+    for unit in negative.plain:
+        target = work / f"{negative.name}-{unit}.o"
+        run(
+            [
+                *negative.compiler,
+                *negative.common,
+                prefix,
+                "-c",
+                f"{unit}.{negative.suffix}",
+                "-o",
+                str(target),
+            ]
+        )
+        plain.append(str(target))
     run(
         [
-            NEGATIVE_COMPILER,
-            *COMMON,
+            *negative.compiler,
+            *negative.common,
             *negative.flags,
-            f"-ffile-prefix-map={SOURCE}=.",
+            prefix,
             "-nostdlib",
             "-Wl,-e,entry",
-            *GNU_LINK,
+            *(GNU_LINK if negative.static else ()),
             *negative.link,
-            f"{negative.source}.c",
-            *(f"{unit}.c" for unit in negative.also),
+            f"{negative.source}.{negative.suffix}",
+            *(f"{unit}.{negative.suffix}" for unit in negative.also),
+            *plain,
             "-o",
             str(image),
         ]
@@ -363,10 +423,16 @@ def main() -> None:
             image = build_negative(negative, work)
             shutil.copyfile(image, OUTPUT / image.name)
             negatives[negative.name] = {
-                "compiler": run([NEGATIVE_COMPILER, "--version"]).splitlines()[0],
-                "source": f"{negative.source}.c",
-                "flags": [*COMMON, *negative.flags, *GNU_LINK, *negative.link],
-                "linker": linker((NEGATIVE_COMPILER,), (), negative.link),
+                "compiler": run([negative.compiler[0], "--version"]).splitlines()[0],
+                "source": f"{negative.source}.{negative.suffix}",
+                "flags": [
+                    *negative.compiler[1:],
+                    *negative.common,
+                    *negative.flags,
+                    *(GNU_LINK if negative.static else ()),
+                    *negative.link,
+                ],
+                "linker": linker(negative.compiler, (), negative.link),
                 "image": facts(image),
                 "variables": variables(image),
             }

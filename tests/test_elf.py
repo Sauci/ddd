@@ -30,6 +30,7 @@ from ddd.elf import (
     DW_ATE_UNSIGNED_CHAR,
     FOLDED,
     NOT_AN_ADDRESS,
+    OTHER_SCOPE,
     REMOVED,
     THREAD_LOCAL,
     Array,
@@ -801,13 +802,14 @@ class TestLinkage:
             specification=declaration,
             DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
         )
+        own = variable(b"Own", located=False, DW_AT_declaration=DECLARATION)
         states = die(
             "DW_TAG_variable",
-            specification=variable(b"Own", located=False, DW_AT_declaration=DECLARATION),
+            specification=own,
             DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
             DW_AT_alignment=64,
         )
-        found = read(declaration, completes, states)
+        found = read(declaration, completes, own, states)
         assert {v.name: v.alignment for v in found} == {"Spec": 32, "Own": 64}
 
     def test_a_variable_built_by_hand_stands_for_a_global(self) -> None:
@@ -2012,3 +2014,268 @@ class TestDamagedImages:
 
         path = damaged(tmp_path, "x86_64", "commented.elf", change)
         assert by_name(open_image(path), "Cal_Gain").address is not None
+
+
+class TestCplusplus:
+    """The reader is for C. A C++ shape it would describe wrongly is refused where it occurs
+    (decision 11.1, finding 11:M8)."""
+
+    BASE = die(
+        "DW_TAG_structure_type",
+        member(b"base_member", U8, DW_AT_data_member_location=0),
+        DW_AT_name=b"Base",
+        DW_AT_byte_size=1,
+    )
+
+    def test_a_structure_with_a_base_class_is_unsupported(self) -> None:
+        derived = die(
+            "DW_TAG_structure_type",
+            die("DW_TAG_inheritance", of=self.BASE, DW_AT_data_member_location=0),
+            member(b"own", U8, DW_AT_data_member_location=1),
+            DW_AT_name=b"Derived",
+            DW_AT_byte_size=2,
+        )
+        assert type_of(derived) == Unsupported("a structure with a base class")
+
+    def test_a_static_member_is_unsupported(self) -> None:
+        """At DWARF 4 gcc writes it as a member that is only declared, with no location."""
+        with_static = die(
+            "DW_TAG_structure_type",
+            member(b"value", U8, DW_AT_data_member_location=0),
+            member(b"counted", U8, DW_AT_external=EXTERNAL, DW_AT_declaration=DECLARATION),
+            DW_AT_name=b"WithStatic",
+            DW_AT_byte_size=1,
+        )
+        assert type_of(with_static) == Unsupported("a structure with a static member")
+
+    @pytest.mark.parametrize(
+        "marks",
+        [{"DW_AT_external": EXTERNAL}, {"DW_AT_declaration": DECLARATION}],
+        ids=["external", "declared"],
+    )
+    def test_either_mark_of_a_static_member_is_enough(self, marks: dict[str, Any]) -> None:
+        with_static = die(
+            "DW_TAG_structure_type",
+            member(b"counted", U8, **marks),
+            DW_AT_name=b"WithStatic",
+            DW_AT_byte_size=1,
+        )
+        assert type_of(with_static) == Unsupported("a structure with a static member")
+
+    @pytest.mark.parametrize(
+        "location",
+        [
+            {"DW_AT_data_member_location": 0},
+            {"DW_AT_data_bit_offset": 3, "DW_AT_bit_size": 2},
+        ],
+        ids=["a byte offset", "a bit offset"],
+    )
+    def test_a_member_with_a_location_of_its_own_is_described(
+        self, location: dict[str, Any]
+    ) -> None:
+        plain = die(
+            "DW_TAG_structure_type",
+            member(b"x", U8, **location),
+            DW_AT_name=b"Plain",
+            DW_AT_byte_size=1,
+        )
+        found = type_of(plain)
+        assert isinstance(found, Struct)
+        assert [m.name for m in found.members] == ["x"]
+
+    def test_a_variable_of_a_namespace_is_one_whose_definition_belongs_to_another_scope(
+        self,
+    ) -> None:
+        """gcc writes ``ns::OnlyInNs`` at the unit's top with a reference to its declaration,
+        which sits inside the namespace."""
+        declaration = variable(
+            b"OnlyInNs", located=False, DW_AT_declaration=DECLARATION, DW_AT_external=EXTERNAL
+        )
+        namespace = die("DW_TAG_namespace", declaration, DW_AT_name=b"ns")
+        definition = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(namespace, definition)
+        assert (found.name, found.address, found.missing) == ("OnlyInNs", None, OTHER_SCOPE)
+        assert found.external
+
+    def test_a_definition_beside_its_declaration_at_the_top_is_a_variable_of_c(self) -> None:
+        declaration = variable(b"Spec", located=False, DW_AT_declaration=DECLARATION)
+        definition = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(declaration, definition)
+        assert (found.name, found.address, found.missing) == ("Spec", 0x100, "")
+
+    def test_a_c_variable_of_the_same_short_name_is_the_one_a_name_asks_for(self) -> None:
+        declaration = variable(b"Shared", located=False, DW_AT_declaration=DECLARATION)
+        namespace = die("DW_TAG_namespace", declaration, DW_AT_name=b"ns")
+        scoped = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(namespace, scoped, variable(b"Shared"))
+        assert (found.name, found.address, found.missing) == ("Shared", 0x100, "")
+
+
+class TestTheImageOfCplusplus:
+    """cplusplus.elf: arm-none-eabi-g++ at DWARF 4, a structure with a base class, one with a
+    static member, a namespace's variable and a plain one (finding 11:M8)."""
+
+    def run(self, *names: str) -> tuple[list[str], list[tuple[str, str]]]:
+        bag = DiagnosticBag()
+        description = describe(
+            open_image(FIXTURES / "cplusplus.elf"),
+            list(names),
+            scope="output",
+            component=None,
+            bag=bag,
+        )
+        described = [entry["definition"]["name"] for entry in description.interface]
+        return described, [
+            (d.check, d.message) for d in bag.sorted if d.check != "elf-not-inferred"
+        ]
+
+    def test_a_structure_with_a_base_class_is_refused_and_says_so(self) -> None:
+        described, said = self.run("Cpp_Derived")
+        assert described == []
+        assert said == [
+            (
+                "elf-type-unsupported",
+                "'Cpp_Derived' is a structure with a base class, which DDD cannot state",
+            )
+        ]
+
+    def test_a_structure_with_a_static_member_is_refused_and_says_so(self) -> None:
+        described, said = self.run("Cpp_Static")
+        assert described == []
+        assert said == [
+            (
+                "elf-type-unsupported",
+                "'Cpp_Static' is a structure with a static member, which DDD cannot state",
+            )
+        ]
+
+    @pytest.mark.parametrize("name", ["OnlyInNs", "counted"])
+    def test_a_variable_defined_in_another_scope_is_no_candidate_by_its_short_name(
+        self, name: str
+    ) -> None:
+        described, said = self.run(name)
+        assert described == []
+        assert said == [
+            (
+                "elf-no-storage",
+                f"'{name}' is a variable of a C++ namespace or class, which this tool does not "
+                f"read: it reads C, and a short name does not say which one it is",
+            )
+        ]
+
+    def test_a_plain_variable_beside_them_is_described(self) -> None:
+        described, said = self.run("Cpp_Plain")
+        assert (described, said) == (["Cpp_Plain"], [])
+
+
+class TestUnitsThatDisagreeInTheImage:
+    """units-disagree.elf and units-undescribed.elf: what an ordinary linker makes of two units
+    that state one name two ways (finding 11:M6)."""
+
+    TAIL = ": one name at one address is one variable, so no one description of it is right"
+
+    def run(self, image: str, *names: str) -> tuple[list[str], list[tuple[str, str]]]:
+        bag = DiagnosticBag()
+        opened = open_image(FIXTURES / f"{image}.elf")
+        description = describe(opened, list(names), scope="output", component=None, bag=bag)
+        described = [entry["definition"]["name"] for entry in description.interface]
+        return described, [
+            (d.check, d.message) for d in bag.sorted if d.check != "elf-not-inferred"
+        ]
+
+    def address(self, image: str, name: str) -> int:
+        (address,) = {
+            variable.address
+            for variable in open_image(FIXTURES / f"{image}.elf").variables
+            if variable.name == name
+        }
+        assert address is not None
+        return address
+
+    @pytest.mark.parametrize(
+        ("name", "first", "second"),
+        [
+            ("Disagree_Cal", 2, 4),
+            ("Disagree_Shared", 8, 16),
+            ("Disagree_Weak", 2, 4),
+        ],
+        ids=["a common symbol", "an array", "a weak definition over a strong one"],
+    )
+    def test_two_units_stating_two_sizes_are_named(
+        self, name: str, first: int, second: int
+    ) -> None:
+        described, said = self.run("units-disagree", name)
+        at = self.address("units-disagree", name)
+        assert described == []
+        assert said == [
+            (
+                "elf-type-conflict",
+                f"'{name}' at {at:#x} is described as {first} bytes by 'disagree_a.c' and as "
+                f"{second} bytes by 'disagree_b.c', and the symbol table holds it as {second} "
+                f"bytes{self.TAIL}",
+            )
+        ]
+
+    def test_units_stating_one_size_are_one_variable(self) -> None:
+        described, said = self.run("units-disagree", "Disagree_Agreed")
+        assert (described, said) == (["Disagree_Agreed"], [])
+
+    @pytest.mark.parametrize("name", ["Undescribed_Common", "Undescribed_Weak"])
+    def test_a_description_is_held_against_the_symbol_s_size(self, name: str) -> None:
+        described, said = self.run("units-undescribed", name)
+        at = self.address("units-undescribed", name)
+        assert described == []
+        assert said == [
+            (
+                "elf-type-conflict",
+                f"'{name}' at {at:#x} is described as 2 bytes by 'undescribed_a.c', and the "
+                f"symbol table holds it as 4 bytes{self.TAIL}",
+            )
+        ]
+
+
+class TestSectionsOverlaidInTheImage:
+    """sections-overlaid.elf: a linker script overlays .page1 and .page2 at 0x20000 (finding
+    11:M7)."""
+
+    def described(self, *names: str) -> dict[str, dict[str, Any]]:
+        bag = DiagnosticBag()
+        description = describe(
+            open_image(FIXTURES / "sections-overlaid.elf"),
+            list(names),
+            scope="output",
+            component=None,
+            bag=bag,
+        )
+        assert not bag.has_errors
+        return {entry["definition"]["name"]: entry["definition"] for entry in description.interface}
+
+    def test_two_sections_hold_the_one_address(self) -> None:
+        image = open_image(FIXTURES / "sections-overlaid.elf")
+        assert [s.name for s in image.sections if s.address == 0x20000] == [".page1", ".page2"]
+
+    def test_each_variable_is_in_the_section_its_symbol_names_with_its_values(self) -> None:
+        found = self.described("Page1_Var", "Page2_Var")
+        assert {name: (d["section"], d["init"]) for name, d in found.items()} == {
+            "Page1_Var": (".page1", 0x11111111),
+            "Page2_Var": (".page2", 0x22222222),
+        }
+
+    def test_the_manifest_states_the_sections_the_toolchain_gave_them(self) -> None:
+        records = MANIFEST["negatives"]["sections-overlaid"]["variables"]
+        assert {record["name"]: record["section"] for record in records} == {
+            "Page1_Var": ".page1",
+            "Page2_Var": ".page2",
+        }

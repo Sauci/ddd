@@ -2644,7 +2644,16 @@ a component file whose `types` holds the structures the variables name. A `SYMBO
 to the compilation unit whose name is `UNIT` or ends in `/UNIT`, `/` and `\` separating alike.
 A candidate is a variable at the top of a unit with a static address; the `static` locals of a
 function are not candidates. One name at one address is one variable, however many units
-describe it, as a tentative definition `-fcommon` merges is. A variable without an address -
+describe it, as a tentative definition `-fcommon` merges is; where they describe it with two
+sizes, or one description is of another size than the symbol table states for the name - a
+common symbol declared at two sizes, an array of two lengths, a weak definition over a strong one
+of another type - the variable is `elf-type-conflict`, naming both, and is not described. The
+reader is for the C that gcc and clang write, and C++ is refused rather than described wrongly, each in a sentence of its own: a structure with a base class
+(`elf-type-unsupported`), a structure with a static member, which DWARF 4 writes as a member
+with no location (`elf-type-unsupported`), and a variable whose definition belongs to another
+scope, a namespace's or a class's, which gcc writes at the top of its unit with a reference to
+its declaration inside the scope, so that it is no candidate by its short name
+(`elf-no-storage`). A variable without an address -
 only declared, folded or removed by the compiler, thread-local, at no fixed address, or
 discarded by the linker, which leaves its DWARF address at 0, at all ones, or, under gold, at
 an offset into the section it dropped, so that an external variable with no object symbol of its name at its address is one the
@@ -2668,9 +2677,14 @@ What the image states, the declaration states:
   function, or an `_Atomic` type where the debug information states it, is refused: gcc states
   it from DWARF 5 only, and under `-gdwarf-4` (strict or not) writes `_Atomic uint32_t` as the
   plain type, which is then read as one.
-- `conversion`: the identity, or an `enum` conversion carrying the enumerators in declaration
-  order, named by the typedef closest to the enum, else by its tag, else by a name made from
-  what first reaches it.
+- `conversion`: an `enum` conversion carrying the enumerators in declaration order, named by
+  the typedef closest to the enum, else by its tag, else by a name made from what first reaches
+  it; for anything else none. That raw equals physical is an engineering claim the author states
+  ([section 3.4](#34-conversions)), and an image says nothing of it, so an entry or a
+  structure member the tool prints without one is a `schema` error until its author states it.
+  `--identity-conversions` writes the identity on every entry and member that is not an enum, on
+  the author's word for all of them, and `elf-not-inferred` says which it was. DDD's own check
+  of the declarations sees the identity either way.
   Only an enumerator of a signed enum, written as a fixed-width constant as wide as the enum,
   with its top bit set, is negative. Any other fixed-width constant is the unsigned value it
   holds, whatever the sign of the enum and whether its form is narrower or wider than the
@@ -2679,14 +2693,22 @@ What the image states, the declaration states:
   order, a bitfield a `bits` member. `const` or `volatile` on a member cannot be stated, and a
   `_Bool` bitfield is described as a `uint8` one.
 - `init`: from the image's bytes in its byte order - an array whose elements are all equal as
-  that one value, a `float32` as the shortest decimal that reads back to it - and none for a
+  that one value, a `float32` as the shortest decimal that reads back to it, except the largest
+  one, which is written as the double it is because its shortest spelling lies past the
+  `float32` range DDD holds it to - and none for a
   variable in a section without contents, whose bytes the image does not hold. A structured
   object states none ([section 3.7](#37-type-description)).
 - `section`: where the variable's section is not one of the toolchain's defaults, `.data`,
   `.bss`, `.rodata`, `.sdata`, `.sbss`, `.sdata2`, `.sbss2`, `.srodata`, `.data1` and
   `.rodata1`. It is the image's output section, which the project **must** declare
-  ([section 3.5](#35-memory-placement)).
+  ([section 3.5](#35-memory-placement)). It is the section the variable's symbol names
+  (`st_shndx`) where that holds its address; where two sections hold the address, as a linker
+  script that overlays them makes it, and the symbol names neither, the variable is refused,
+  `elf-section-ambiguous`, since its section and its initial value cannot be stated.
 - `volatile`: from the qualifier.
+
+A name two arguments each reach, by two unit prefixes, is refused as `elf-symbol-ambiguous`
+naming both arguments, since DDD names an object once.
 
 `--scope` is `output`, the default, `local` or `input`; an `input` entry states neither `init`
 nor `section` (`consumer-storage`, [section 3.3.1.2](#3312-storage)). Nothing else is stated:
@@ -2699,8 +2721,8 @@ DDD before its analysis. Their findings are reported with the tool's own, under 
 identifiers.
 
 The tool's own findings are not checks of [section 4](#4-consistency-checks) and take no `-W`:
-`elf-symbol-missing`, `elf-symbol-ambiguous`, `elf-no-storage`, `elf-type-unsupported`,
-`elf-type-conflict` and `elf-init-unsupported` are errors; `elf-init-dropped`,
+`elf-symbol-missing`, `elf-symbol-ambiguous`, `elf-no-storage`, `elf-section-ambiguous`,
+`elf-type-unsupported`, `elf-type-conflict` and `elf-init-unsupported` are errors; `elf-init-dropped`,
 `elf-bitfield-gap`, `elf-alignment`, `elf-layout`, `elf-qualifier-dropped`, `elf-section`,
 `elf-name-synthesized` and `elf-types-omitted` warnings; `elf-boolean-bitfield`,
 `elf-not-inferred` and `elf-layout-unchecked` infos. A finding about a variable is located at

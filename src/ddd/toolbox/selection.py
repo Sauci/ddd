@@ -8,7 +8,7 @@ from fnmatch import fnmatchcase
 from typing import Final
 
 from ddd.diagnostics import DiagnosticBag, where
-from ddd.elf import DECLARED_ONLY, Image, Variable
+from ddd.elf import DECLARED_ONLY, Image, Variable, size_of, without_address
 from ddd.toolbox.findings import place, report
 
 _GLOB: Final = frozenset("*?[")
@@ -54,9 +54,10 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
     variable, however many units describe it: ``-fcommon`` makes a tentative definition in
     several units one variable, which the DWARF of each unit describes.
     """
-    chosen: list[Variable] = []
+    chosen: list[tuple[Variable, str]] = []
     taken: set[tuple[str, int]] = set()
     judged: set[str] = set()
+    disagreed: set[tuple[str, int]] = set()
     for argument in arguments:
         matched: dict[str, list[Variable]] = {}
         for variable in image.variables:
@@ -66,12 +67,20 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
             report(bag, "elf-symbol-missing", _missing(argument, image), where(image.path))
             continue
         for name in sorted(matched):
-            group = _distinct(sorted(matched[name], key=lambda variable: variable.unit))
+            ordered = sorted(matched[name], key=lambda variable: variable.unit)
+            apart = _described_apart(ordered, image)
+            for address, there in apart.items():
+                if (name, address) not in disagreed:
+                    disagreed.add((name, address))
+                    _report_disagreement(name, address, there, image, bag)
+            group = _distinct([variable for variable in ordered if variable.address not in apart])
+            if not group:
+                continue
             (variable, *others) = group
             if not others and variable.address is not None:
                 if (name, variable.address) not in taken:
                     taken.add((name, variable.address))
-                    chosen.append(variable)
+                    chosen.append((variable, argument.text))
                 continue
             if name in judged:
                 continue
@@ -85,7 +94,7 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
                 _without_storage(name, group, image),
                 place(image, variable.declared_at),
             )
-    return chosen
+    return _once_each(chosen, image, bag)
 
 
 def _without_storage(name: str, group: Sequence[Variable], image: Image) -> str:
@@ -99,12 +108,97 @@ def _without_storage(name: str, group: Sequence[Variable], image: Image) -> str:
                 f"'{name}' has no address in the image: its debug information only declares "
                 f"it, and the symbol table holds it, {_UNDESCRIBED}"
             )
-        return f"'{name}' has no address in the image: {variable.missing}"
+        return without_address(name, variable.missing)
     units = ", ".join(f"'{member.unit}'" for member in group)
     reasons = "; ".join(dict.fromkeys(member.missing for member in group))
     return (
         f"'{name}' has no address in the image, in any of its {len(group)} units, {units}: "
         f"{reasons}"
+    )
+
+
+def _once_each(
+    chosen: Sequence[tuple[Variable, str]], image: Image, bag: DiagnosticBag
+) -> list[Variable]:
+    """The chosen variables with every name two of them share refused, in the reader's terms:
+    DDD names an object once, and a check of its own would say so in the words of a component
+    the tool made up, where here the reader is told which arguments reached which variables."""
+    by_name: dict[str, list[tuple[Variable, str]]] = {}
+    for variable, text in chosen:
+        by_name.setdefault(variable.name, []).append((variable, text))
+    twice = {name for name, found in by_name.items() if len(found) > 1}
+    for name in sorted(twice):
+        found = by_name[name]
+        spelt = [f"as '{text}' (in '{variable.unit}')" for variable, text in found]
+        times = "twice" if len(found) == 2 else f"{len(found)} times"
+        report(
+            bag,
+            "elf-symbol-ambiguous",
+            f"'{name}' is asked for {times}, {_listed(spelt)}: DDD names an object once, so two "
+            f"variables of one name cannot both be described",
+            place(image, found[-1][0].declared_at),
+            [
+                (f"asked for as '{text}'", place(image, variable.declared_at))
+                for variable, text in found
+            ],
+        )
+    return [variable for variable, _ in chosen if variable.name not in twice]
+
+
+def _listed(parts: Sequence[str]) -> str:
+    """``parts`` as prose: joined by commas, the last by ``and``."""
+    if len(parts) == 1:
+        return parts[0]
+    return f"{', '.join(parts[:-1])} and {parts[-1]}"
+
+
+def _described_apart(group: Sequence[Variable], image: Image) -> dict[int, list[Variable]]:
+    """The variables of ``group`` that sit at an address where what is known of their size is
+    not one number: units whose descriptions differ in it, or a description and the symbol
+    table's own size for the name there (a symbol of size 0 states none). One name at one
+    address is one variable, however many units describe it, and a description the image
+    contradicts cannot be the right one."""
+    there: dict[int, list[Variable]] = {}
+    for variable in group:
+        if variable.address is not None:
+            there.setdefault(variable.address, []).append(variable)
+    apart: dict[int, list[Variable]] = {}
+    for address, variables in there.items():
+        sizes = {size for variable in variables if (size := size_of(variable.type)) is not None}
+        symbol = image.object_sizes.get((variables[0].name, address))
+        if symbol:
+            sizes.add(symbol)
+        if len(sizes) > 1:
+            apart[address] = variables
+    return apart
+
+
+def _report_disagreement(
+    name: str, address: int, there: Sequence[Variable], image: Image, bag: DiagnosticBag
+) -> None:
+    by_size: dict[int, list[str]] = {}
+    for variable in there:
+        size = size_of(variable.type)
+        if size is not None:
+            by_size.setdefault(size, []).append(f"'{variable.unit}'")
+    described = _listed([f"as {size} bytes by {_listed(units)}" for size, units in by_size.items()])
+    message = f"'{name}' at {address:#x} is described {described}"
+    symbol = image.object_sizes.get((name, address))
+    if symbol:
+        message += f", and the symbol table holds it as {symbol} bytes"
+    message += ": one name at one address is one variable, so no one description of it is right"
+    report(
+        bag,
+        "elf-type-conflict",
+        message,
+        place(image, there[0].declared_at),
+        [
+            (
+                f"described as {size_of(variable.type)} bytes here",
+                place(image, variable.declared_at),
+            )
+            for variable in there
+        ],
     )
 
 

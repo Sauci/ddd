@@ -2028,6 +2028,64 @@ class TestTheFivePagesTheImageReaches:
         ) in page
 
 
+class TestWhatTheToolboxSaysOfDisagreementsAndCplusplus:
+    """The sentences about what the toolbox refuses, reports and leaves to the author."""
+
+    def pages(self) -> tuple[str, str]:
+        return flattened(SPEC), flattened(PAGES["docs/toolbox.rst"]).replace("``", "`")
+
+    def test_both_pages_state_that_the_reader_is_for_c_and_refuses_each_cplusplus_shape(
+        self,
+    ) -> None:
+        spec, page = self.pages()
+        for text in (spec, page):
+            assert "a structure with a base class" in text
+            assert "a structure with a static member" in text
+            assert "namespace" in text
+        assert (
+            "reader is for the C that gcc and clang write, and C++ is refused rather than "
+            "described wrongly"
+        ) in spec
+        assert "The reader is for the C that gcc and clang write, and C++ is not described" in page
+
+    def test_both_pages_state_that_units_disagreeing_about_a_variable_are_reported(self) -> None:
+        spec, page = self.pages()
+        assert (
+            "a common symbol declared at two sizes, an array of two lengths, a weak definition "
+            "over a strong one of another type"
+        ) in spec
+        assert "the variable is `elf-type-conflict`, naming both, and is not described" in spec
+        assert "a common symbol (`-fcommon`) declared at two sizes, an array declared with two" in (
+            page
+        )
+        assert "The variable is left out, since no one of the descriptions is right" in page
+
+    def test_both_pages_state_which_section_an_overlaid_address_belongs_to(self) -> None:
+        spec, page = self.pages()
+        assert "It is the section the variable's symbol names (`st_shndx`)" in spec
+        assert "`elf-section-ambiguous`, since its section and its initial value cannot" in spec
+        assert "the variable's section is the one its symbol names" in page
+        assert "a variable that nothing places in either is `elf-section-ambiguous`" in page
+
+    def test_both_pages_state_that_the_identity_is_the_author_s_to_state(self) -> None:
+        spec, page = self.pages()
+        assert "`--identity-conversions` writes the identity on every entry and member" in spec
+        assert "is a `schema` error until its author states it" in spec
+        assert "`--identity-conversions` writes the identity where you state it" in page
+        assert "``Cal_Gain`` states no `conversion`, and that is deliberate" in page.replace(
+            "`Cal_Gain` states", "``Cal_Gain`` states"
+        )
+
+    def test_the_largest_float32_is_said_to_be_written_as_the_double_it_is(self) -> None:
+        spec, _ = self.pages()
+        assert "except the largest one, which is written as the double it is" in spec
+
+    def test_a_name_two_arguments_reach_is_said_to_be_refused_naming_both(self) -> None:
+        spec, page = self.pages()
+        assert "naming both arguments, since DDD names an object once" in spec
+        assert "are refused too, naming both arguments" in page
+
+
 class TestWhatTheReaderAndTheToolboxSay:
     """The sentences about the reader's reach and the reasons a variable has no address."""
 

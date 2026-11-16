@@ -8,7 +8,7 @@
     "tests/fixtures/addresses/oracle.c": "7e8ae2e1ecf3d2943c596398cb1d3f1afa99ad97028240a70ebb19f336a4f31c",
     "tests/fixtures/addresses/symbols.json": "61f4f8df27ea3edd8ac5788dbe9979c2f7f5f4c87f38900866b61ab80cc97136",
     "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
-    "docker/build_elf_fixtures.py": "ac67dd524c1e79fef10f1ef5e55450f2772801a808a9b91e2a6617c5099bba04",
+    "docker/build_elf_fixtures.py": "cf17085cea88910f7d1ee465e7db3515757f8cde774247f51edbd3471749bcd4",
     "docker/build_address_fixtures.py": "083d2734b5f7b90ecf3491b2377d2344a4750d111a37e0efc252243dfca94d6d"
   },
   "rows": {

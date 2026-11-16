@@ -1,17 +1,24 @@
 {
   "hashes": {
+    "tests/fixtures/elf/src/cpp.cc": "dc62c053089e9815fc000952bcd28c2ecf1eb6749f47b2179529f639f34c9bbe",
+    "tests/fixtures/elf/src/disagree_a.c": "cd105e0495a83d8564ed2ac5b86afa6ff007b13e3ea0fcde8af5351a11f2bb9e",
+    "tests/fixtures/elf/src/disagree_b.c": "6b119232eb6e1788c684686b8c6c7c8c9d91e3ebc30331ad59ccb38c42b10326",
     "tests/fixtures/elf/src/gc_sections.c": "b21f09df1a69edf70fca8a540a4575d8f2dac669f586958794711c554e744241",
     "tests/fixtures/elf/src/gold_kept.c": "0018a4d99dd7556c080585a1f258607521dfec3bd78250c76ed03c5d7f111c92",
     "tests/fixtures/elf/src/gold_unused.c": "33d28690cef5712c8111cbb817d3e4295ab1dd241031d3351f7b28507925a5c1",
     "tests/fixtures/elf/src/lto.c": "cbb3ae9ca73fe507ccd6903ad2d4402efead45c1513ed6092e697cc4c2844253",
     "tests/fixtures/elf/src/main.c": "94d8ea18636832193b966a68432e2c17d7c2662f79935567af0bda40c9cc5c1e",
     "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
+    "tests/fixtures/elf/src/overlay.c": "0cc46a8273f1a8922614d82046e8b76e99c84ea6aa8d40294f81dde77796b409",
+    "tests/fixtures/elf/src/overlay.ld": "e05e4e16f5382092059a6f3d68343064211703c7e5b3129608019fb985cdfa1b",
     "tests/fixtures/elf/src/shared.h": "9cdfa71b5de8dd20c26451a0102a1de36c6f0f07d9c71941e9cc6cf6f761f214",
     "tests/fixtures/elf/src/type_units.c": "93fcd051c5a9047f87cff9b57cf39ac34732adb4f30a6311bd92299f402fe93c",
+    "tests/fixtures/elf/src/undescribed_a.c": "7dece1c2062100ba0ba89a28fc96963a09e3f476d8c60dc84182744e0c18acad",
+    "tests/fixtures/elf/src/undescribed_b.c": "654ce0e61ed3ca8fe7340521755a3d5c370edffcb599b638e8bbff371f1d3055",
     "tests/fixtures/elf/src/unit_a.c": "2c1ad445a0e8436d8cfd4583f3c6ce7372509cdf4f9348c152d4aeb94d7cbd3a",
     "tests/fixtures/elf/src/unit_b.c": "d01310e13f21f7e58ddf908944b4cb003aba9bbbe5b4850f2e08d77251591d1c",
     "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
-    "docker/build_elf_fixtures.py": "ac67dd524c1e79fef10f1ef5e55450f2772801a808a9b91e2a6617c5099bba04"
+    "docker/build_elf_fixtures.py": "cf17085cea88910f7d1ee465e7db3515757f8cde774247f51edbd3471749bcd4"
   },
   "rows": {
     "x86_64": {
@@ -4807,6 +4814,225 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        }
+      ]
+    },
+    "units-disagree": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "disagree_a.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-fcommon",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Disagree_Agreed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Disagree_Cal",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Disagree_Shared",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Disagree_Weak",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "units-undescribed": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "undescribed_a.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-fcommon",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Undescribed_Common",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Undescribed_Weak",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "sections-overlaid": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "overlay.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-Wl,-T,overlay.ld",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Page1_Var",
+          "section": ".page1",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Page2_Var",
+          "section": ".page2",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "cplusplus": {
+      "compiler": "arm-none-eabi-g++ (15:14.2.rel1-1) 14.2.1 20241119",
+      "source": "cpp.cc",
+      "flags": [
+        "-mcpu=cortex-m4",
+        "-mthumb",
+        "-O2",
+        "-ffreestanding",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-gdwarf-4"
+      ],
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "ARM",
+        "dwarf_versions": [
+          4
+        ],
+        "unit_types": [],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_frame",
+          ".debug_info",
+          ".debug_line",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cpp_Derived",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Cpp_Plain",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cpp_Static",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "_ZN10WithStatic7countedE",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "_ZN2ns8OnlyInNsE",
+          "section": ".data",
+          "contents": true,
+          "size": 2
         }
       ]
     }

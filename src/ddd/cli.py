@@ -574,7 +574,8 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "declaration of every C variable named or matched: its kind, datatype, shape, "
             "enumerators, structure members, initial value and section, as the image states "
             "them. What an image does not state - a unit, a description, limits, a scaling, "
-            "whether an array is a curve - is left out, and said once. DDD itself checks every "
+            "whether an array is a curve, whether a raw value is the physical one - is left out, "
+            "and said once. DDD itself checks every "
             "entry, as 'ddd check --standalone' checks a component, before it is printed. "
             "Needs an image built with debug information (-g)."
         ),
@@ -597,6 +598,16 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         help=(
             "print a component file of this name, holding the types its structures need, "
             "rather than a list of interface entries"
+        ),
+    )
+    from_elf.add_argument(
+        "--identity-conversions",
+        action="store_true",
+        help=(
+            "write the identity as the conversion of every entry and member that is not an "
+            "enum, on your word that its raw value is its physical one: an image does not say "
+            "so, so by default no conversion is written, and 'ddd check' asks the author for "
+            "one"
         ),
     )
     from_elf.add_argument(
@@ -1435,7 +1446,14 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
         _refuse_a_source(args.output, "-o", resolve_path(args.image))
     image = open_image(args.image)
     bag = DiagnosticBag()
-    description = describe(image, args.symbols, scope=args.scope, component=component, bag=bag)
+    description = describe(
+        image,
+        args.symbols,
+        scope=args.scope,
+        component=component,
+        identity=args.identity_conversions,
+        bag=bag,
+    )
     if bag.has_errors and not args.force:
         _report(bag, args.format, stream=sys.stderr)
         return EXIT_FINDINGS

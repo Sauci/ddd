@@ -20,6 +20,7 @@ FINDINGS: Final[dict[str, Severity]] = {
     "elf-symbol-missing": Severity.ERROR,
     "elf-symbol-ambiguous": Severity.ERROR,
     "elf-no-storage": Severity.ERROR,
+    "elf-section-ambiguous": Severity.ERROR,
     "elf-type-unsupported": Severity.ERROR,
     "elf-type-conflict": Severity.ERROR,
     "elf-init-unsupported": Severity.ERROR,

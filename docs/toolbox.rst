@@ -21,8 +21,8 @@ in place of an image. pyelftools, which reads the image, is installed with DDD.
 
 A variable is named as it is in C, or matched with a glob such as ``'Cal_*'``, and a
 ``static`` that several compilation units define is taken from one of them by naming its unit
-first, ``cal.c:Gain``. What the tool prints is the ``interface`` of a component, ready to paste
-into one; ``examples/firmware/firmware.elf`` is an image of the tests' fixture, built for a
+first, ``cal.c:Gain``. What the tool prints is the ``interface`` of a component, to paste
+into one once its author has stated what an image does not say, the conversions above all; ``examples/firmware/firmware.elf`` is an image of the tests' fixture, built for a
 Cortex-M4:
 
 .. code-block:: text
@@ -35,9 +35,6 @@ Cortex-M4:
          "name": "Cal_Gain",
          "kind": "parameter",
          "datatype": "uint16",
-         "conversion": {
-           "kind": "identity"
-         },
          "init": 300,
          "volatile": false
        }
@@ -62,7 +59,7 @@ Cortex-M4:
        }
      }
    ]
-   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
    1 info
    $ echo $?
    0
@@ -71,6 +68,36 @@ Cortex-M4:
 datatype is the one the image states, never the one its C spelling suggests elsewhere.
 ``--scope input`` prints the same entries as a consumer states them, without the initial value
 and the section; ``-o FILE`` writes them into a file instead of standard output.
+
+``Cal_Gain`` states no ``conversion``, and that is deliberate. Whether a raw value is the
+physical one is a claim about the data, not something a variable's type says, and DDD asks its
+author to state it (:doc:`faq`): pasted as it is, the entry is a ``schema`` error until it
+does. ``--identity-conversions`` writes the identity where you state it for every entry and
+member that is not an enum, so that it is one choice made for the whole run rather than a default
+the tool falls into:
+
+.. code-block:: text
+
+   $ ddd tool from-elf examples/firmware/firmware.elf Cal_Gain --identity-conversions
+   [
+     {
+       "scope": "output",
+       "definition": {
+         "name": "Cal_Gain",
+         "kind": "parameter",
+         "datatype": "uint16",
+         "conversion": {
+           "kind": "identity"
+         },
+         "init": 300,
+         "volatile": false
+       }
+     }
+   ]
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, which '--identity-conversions' writes on your word, since nothing in an image says that raw equals physical; the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   1 info
+   $ echo $?
+   0
 
 What an image states, and what it does not
 ------------------------------------------
@@ -89,8 +116,10 @@ What an image states, and what it does not
      - the encoding and size DWARF states: ``long``, plain ``char`` and an enum follow the
        target that built the image.
    * - ``conversion``
-     - the identity, or an ``enum`` conversion carrying the enumerators in declaration order,
-       named after the typedef closest to the enum, else its tag. An enumerator
+     - an ``enum`` conversion carrying the enumerators in declaration order, named after the
+       typedef closest to the enum, else its tag; for anything else none, since an image does
+       not say that raw is physical, and ``--identity-conversions`` writes the identity where
+       you do. An enumerator
        the image writes as a fixed-width constant is the unsigned value it holds, whatever the
        sign of its enum and whether its form is narrower or wider than the enum. An
        enumerator of a signed enum is negative only where its fixed-width constant is as
@@ -106,7 +135,9 @@ What an image states, and what it does not
    * - ``section``
      - stated only where the variable's section is not one of the toolchain's defaults. It is
        the image's output section, which is the name the source used when the linker script
-       kept it, and the project has to declare it in a sections file.
+       kept it, and the project has to declare it in a sections file. It is the section the
+       variable's symbol names, which is what tells two sections a linker script overlays at
+       one address apart.
    * - ``volatile``
      - the qualifier.
    * - ``typename`` and ``types``
@@ -144,7 +175,7 @@ component file, with a ``types`` entry for every structure the variables reach:
      }
    }
    main.c:57: warning[elf-name-synthesized]: an anonymous structure is named 'Inlet_t_pair_t', after the first thing that reaches it; rename it if the source has a better name
-   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
    main.c:63: info[elf-boolean-bitfield]: 'Inlet_t.ready' is a _Bool bitfield, described as a uint8 one of the same width: DDD refuses a boolean bitfield
    1 warning, 2 infos
 
@@ -206,10 +237,28 @@ nothing, unless ``--force`` asks for what could be described:
    $ ddd tool from-elf examples/firmware/firmware.elf Type_Pointer Tls_Counter Cal_Gain
    main.c:106: error[elf-no-storage]: 'Tls_Counter' has no address in the image: it is thread-local, with an address of its own in every thread
    main.c:38: error[elf-type-unsupported]: 'Type_Pointer' is a pointer, which DDD cannot state
-   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
    2 errors, 1 info
    $ echo $?
    1
+
+The reader is for the C that gcc and clang write, and C++ is not described by it. Where a C++
+shape would be described wrongly the tool refuses it, each in a sentence of its own, and describes
+nothing it does not state: a structure with a base class, whose members the base holds as well,
+is ``elf-type-unsupported``, as is a structure with a static member, which DWARF 4 writes as a
+member with no place in the object; and a variable of a namespace or a class, which gcc writes at
+the top of its unit beside the C variables, is ``elf-no-storage`` and no candidate by its short
+name, so that a DDD object of that name is not given the address of ``ns::name``.
+
+One name at one address is one variable, however many units describe it, and the tool says so
+where the descriptions disagree about it, ``elf-type-conflict``: a common symbol (``-fcommon``)
+declared at two sizes, an array declared with two lengths, a weak definition over a strong one of
+another type, and a description whose size is not the size its symbol states, as a unit built
+without ``-g`` leaves it. The variable is left out, since no one of the descriptions is right.
+Where a linker script overlays two sections at one address, the variable's section is the one its
+symbol names; a variable that nothing places in either is ``elf-section-ambiguous``. A name two
+arguments reach by their two unit prefixes, as ``cal.c:Gain`` and ``io.c:Gain`` do, is refused as
+``elf-symbol-ambiguous``, naming both arguments: DDD names an object once.
 
 A finding about a variable is shown at its declaration in the C source, as the image recorded
 the path. An image that cannot be used at all - not ELF, without DWARF, a relocatable object
@@ -243,7 +292,8 @@ under DDD's identifiers.
      - error
      - several compilation units define the name, other than as one variable at one
        address; ``UNIT:NAME`` takes one. A tentative definition two units share
-       (``-fcommon``) is one variable
+       (``-fcommon``) is one variable. Two arguments that each take a variable of one name,
+       from two units, are refused too, naming both arguments
    * - ``elf-no-storage``
      - error
      - the variable has no address: only declared, folded into a constant or removed by the
@@ -257,14 +307,22 @@ under DDD's identifiers.
        defines, one written in assembly or built without ``-g``, is said to be defined where
        the debug information does not describe it. A name each of several units leaves without
        an address, as a header's ``static const`` each folded, is reported once, naming the
-       units, since a unit prefix would take none of them
+       units, since a unit prefix would take none of them. A variable of a C++ namespace or
+       class, which no short name names, is refused here too
+   * - ``elf-section-ambiguous``
+     - error
+     - two sections of the image hold the variable's address, as a linker script that overlays
+       them makes it, and its symbol names neither, so its section and its initial value cannot
+       be stated
    * - ``elf-type-unsupported``
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,
-       a ``const`` array of structures - named at the member where it occurs
+       a ``const`` array of structures, a C++ structure with a base class or a static member -
+       named at the member where it occurs
    * - ``elf-type-conflict``
      - error
-     - one name stands for two different structures or enums
+     - one name stands for two different structures or enums, or for one variable that two
+       units, or a unit and the symbol table, give two sizes
    * - ``elf-init-unsupported``
      - error
      - an initial value DDD has no spelling for, such as NaN, or one whose bytes run past

@@ -4517,7 +4517,12 @@ class TestToolFromElf:
     ) -> None:
         expected = expected_definitions(FIXTURE_ROWS[row]["traits"])
         code, out, err = from_elf(
-            capsys, str(FIXTURES / f"{row}.elf"), *expected, "--component", "Fixture"
+            capsys,
+            str(FIXTURES / f"{row}.elf"),
+            *expected,
+            "--component",
+            "Fixture",
+            "--identity-conversions",
         )
         assert code == EXIT_OK, err
         document = json.loads(out)["component"]
@@ -4594,6 +4599,7 @@ class TestToolFromElf:
             "Nested_Frame",
             "--component",
             "Fixture",
+            "--identity-conversions",
         )
         assert code == EXIT_OK, err
         document = json.loads(out)["component"]
@@ -4976,6 +4982,42 @@ class TestToolFromElf:
         tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
         (scope,) = [action for action in tool._actions if action.dest == "scope"]
         assert set(scope.choices) == {member.value for member in Scope}
+
+    def test_by_default_no_conversion_is_printed_for_what_is_not_an_enum(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out, err = from_elf(capsys, str(X86), "Cal_Gain", "Enum_State")
+        assert code == EXIT_OK, err
+        definitions = {
+            entry["definition"]["name"]: entry["definition"] for entry in json.loads(out)
+        }
+        assert "conversion" not in definitions["Cal_Gain"]
+        assert definitions["Enum_State"]["conversion"]["kind"] == "enum"
+        assert "'--identity-conversions' writes the identity, where you state it" in err
+
+    def test_what_it_prints_by_default_is_a_schema_error_until_its_author_states_it(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        _, out, _ = from_elf(capsys, str(X86), "Cal_Gain", "--component", "Fixture")
+        written = tmp_path / "fixture.ddd.json"
+        written.write_text(out, encoding="utf-8")
+        assert main(["check", "--standalone", str(written)]) == EXIT_FINDINGS
+        assert "a 'datatype' comes with a 'conversion'" in capsys.readouterr().err
+
+    def test_the_option_prints_the_identity_and_says_it_was_asked_for(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out, err = from_elf(capsys, str(X86), "Cal_Gain", "--identity-conversions")
+        assert code == EXIT_OK, err
+        assert json.loads(out)[0]["definition"]["conversion"] == {"kind": "identity"}
+        assert "which '--identity-conversions' writes on your word" in err
+
+    def test_the_option_is_offered_and_says_why(self) -> None:
+        tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
+        (option,) = [a for a in tool._actions if a.dest == "identity_conversions"]
+        assert option.option_strings == ["--identity-conversions"]
+        assert option.default is False
+        assert "on your word that its raw value is its physical one" in option.help
 
     def test_the_diagnostics_formats_offered_are_text_and_json(self) -> None:
         """No test above asks for ``--format text`` by name: the default bypasses the choice

@@ -46,9 +46,18 @@ CHECKED_COMPONENT: Final = "FromElf"
 
 NOT_INFERRED: Final = (
     "an image states no unit, description, limits, scaling or id, so the output states none: "
-    "every conversion but an enum's is the identity, the limits are the ones DDD derives, and "
-    "'ddd id --assign' writes the ids"
+    "it states no conversion for what is not an enum either, since raw equalling physical is a "
+    "claim about the data that an image does not make, and 'ddd check' asks its author to state "
+    "it ('--identity-conversions' writes the identity, where you state it); the limits are the "
+    "ones DDD derives, and 'ddd id --assign' writes the ids"
 )
+IDENTITY_CLAIMED: Final = (
+    "an image states no unit, description, limits, scaling or id, so the output states none: "
+    "every conversion but an enum's is the identity, which '--identity-conversions' writes on "
+    "your word, since nothing in an image says that raw equals physical; the limits are the "
+    "ones DDD derives, and 'ddd id --assign' writes the ids"
+)
+IDENTITY: Final = {"kind": "identity"}
 VALUE_BLOCKS: Final = (
     "; and a const array is a value block, since nothing in an image tells a curve, a map or "
     "an axis from any other array"
@@ -69,11 +78,17 @@ def describe(
     *,
     scope: str,
     component: str | None,
+    identity: bool = False,
     bag: DiagnosticBag,
 ) -> Description:
     """The declarations of the variables ``arguments`` name, every finding reported into
     ``bag``; a malformed argument raises ``ValueError`` before anything is read, and so does an
-    image of debug information alone, whose initial values are not there to read."""
+    image of debug information alone, whose initial values are not there to read.
+
+    No conversion is printed for what is not an enum, unless ``identity`` says the author
+    states the identity for all of it: an image does not say that raw is physical. DDD's own
+    check still sees the identity, which its schema requires, so what it accepts is what the
+    author is then asked to state."""
     wanted_ = [wanted(text) for text in arguments]
     if image.without_contents:
         msg = (
@@ -103,10 +118,16 @@ def describe(
         bag=bag,
     )
     _report_sections(kept, image, bag)
-    _report_run(kept, image, bag, component=component)
-    interface = tuple({"scope": scope, "definition": c.definition} for c in kept)
+    _report_run(kept, image, bag, component=component, identity=identity)
     reached: set[str] = set().union(*(candidate.reaches for candidate in kept))
-    return Description(interface, tuple(mapper.types(reached)))
+    types = mapper.types(reached)
+    if identity:
+        interface = tuple({"scope": scope, "definition": c.definition} for c in kept)
+        return Description(interface, tuple(types))
+    interface = tuple(
+        {"scope": scope, "definition": _unclaimed(candidate.definition)} for candidate in kept
+    )
+    return Description(interface, tuple(_unclaimed_type(entry) for entry in types))
 
 
 def document_text(description: Description, component: str | None) -> str:
@@ -117,6 +138,17 @@ def document_text(description: Description, component: str | None) -> str:
     else:
         document = component_file(component, description.types, description.interface)
     return json.dumps(document, indent=2) + "\n"
+
+
+def _unclaimed(entry: dict[str, Any]) -> dict[str, Any]:
+    """``entry`` without the identity it states as its conversion; the enum conversion stays."""
+    return {key: value for key, value in entry.items() if (key, value) != ("conversion", IDENTITY)}
+
+
+def _unclaimed_type(entry: dict[str, Any]) -> dict[str, Any]:
+    """A ``struct`` entry of ``types`` whose members state no identity; a copy, since the mapper
+    keeps the entry the check saw."""
+    return {**entry, "members": [_unclaimed(member) for member in entry["members"]]}
 
 
 def _definition(
@@ -155,8 +187,8 @@ def _storage(
             location,
         )
         return False
-    section = image.section_of(variable.address)
-    if section is None:
+    holding = image.sections_of(variable.name, variable.address)
+    if not holding:
         report(
             bag,
             "elf-no-storage",
@@ -164,8 +196,23 @@ def _storage(
             location,
         )
         return False
+    if len(holding) > 1:
+        both = "both" if len(holding) == 2 else "all"
+        names_ = _quoted([f"'{held.name}'" for held in holding])
+        report(
+            bag,
+            "elf-section-ambiguous",
+            f"'{variable.name}' lies at {variable.address:#x}, which the sections {names_} "
+            f"{both} hold, and nothing in the image says which of them is its own, so its "
+            f"section and its initial value cannot be stated",
+            location,
+        )
+        return False
+    (section,) = holding
     if section.offset is not None:
-        raw = image.read(variable.address, typed.element_size * math.prod(typed.dimensions))
+        raw = image.read(
+            variable.address, typed.element_size * math.prod(typed.dimensions), section
+        )
         if raw is None:
             report(
                 bag,
@@ -201,6 +248,11 @@ def _storage(
     if section.name not in DEFAULT_SECTIONS:
         definition["section"] = section.name
     return True
+
+
+def _quoted(names: Sequence[str]) -> str:
+    """Two or more ``names`` as prose: joined by commas, the last by ``and``."""
+    return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def _without_conflicts(
@@ -248,11 +300,16 @@ def _report_sections(kept: Sequence[Candidate], image: Image, bag: DiagnosticBag
 
 
 def _report_run(
-    kept: Sequence[Candidate], image: Image, bag: DiagnosticBag, *, component: str | None
+    kept: Sequence[Candidate],
+    image: Image,
+    bag: DiagnosticBag,
+    *,
+    component: str | None,
+    identity: bool,
 ) -> None:
     if not kept:
         return
-    message = NOT_INFERRED
+    message = IDENTITY_CLAIMED if identity else NOT_INFERRED
     if any(candidate.definition["kind"] == "value_block" for candidate in kept):
         message += VALUE_BLOCKS
     report(bag, "elf-not-inferred", message, where(image.path))

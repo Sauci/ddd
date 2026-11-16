@@ -774,7 +774,9 @@ The commands
    * - ``ddd tool from-elf IMAGE SYMBOL...``
      - print, as json, the declarations of the C variables a linked ELF image's DWARF
        describes - by name, by glob, or narrowed to a unit as ``UNIT:NAME`` - checked by DDD
-       itself before they are printed; :doc:`toolbox` is the guide.
+       itself before they are printed. No conversion is printed for what is not an enum, since
+       an image does not say that raw is physical; ``--identity-conversions`` writes the identity
+       on the author's word. :doc:`toolbox` is the guide.
 
 ``FILE`` is a project description or a single component description in every command that
 takes one. A component checks, lists and dumps on its own - with ``--standalone`` holding

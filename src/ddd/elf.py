@@ -12,7 +12,9 @@ source declared it. The DWARF it reads is versions 2 to 5 as gcc and clang write
 compressed with zlib; an image it cannot read - type units, gcc's link-time optimisation, zstd,
 no program contents - is refused with a message naming why. A type this module cannot describe
 becomes an :class:`Unsupported` node where it occurs rather than an exception, so a caller can
-name the place and go on with everything else.
+name the place and go on with everything else. It is for the C that gcc and clang write, and a
+C++ shape it would describe wrongly - a base class, a static member, a variable of a namespace -
+is refused where it occurs.
 
 The readers work on two narrow protocols, :class:`Entry` and :class:`Unit`. pyelftools' DIEs
 satisfy the first and :class:`_PyelftoolsUnit` the second, and so do a test's doubles: the
@@ -24,7 +26,7 @@ from __future__ import annotations
 import io
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final, Literal, Protocol, cast, overload
 
@@ -54,6 +56,10 @@ REMOVED: Final = "the compiler removed its storage"
 THREAD_LOCAL: Final = "it is thread-local, with an address of its own in every thread"
 NOT_AN_ADDRESS: Final = "its location is not a fixed address"
 DISCARDED: Final = "the linker discarded its storage"
+OTHER_SCOPE: Final = (
+    "a variable of a C++ namespace or class, which this tool does not read: it reads C, and a "
+    "short name does not say which one it is"
+)
 
 _PYELFTOOLS_FLOOR: Final = (0, 32)
 """The oldest pyelftools this reader reads with: 0.32 is the first whose ``has_dwarf_info``
@@ -91,6 +97,10 @@ _UNSUPPORTED: Final = {
     "DW_TAG_atomic_type": "an _Atomic type",
     "DW_TAG_unspecified_type": "an unspecified type",
 }
+
+
+_BASE_CLASS: Final = "a structure with a base class"
+_STATIC_MEMBER: Final = "a structure with a static member"
 
 
 class ElfReadError(ValueError):
@@ -281,6 +291,10 @@ class Section:
     """Whether the section is a note (``SHT_NOTE``), which describes the file rather than holds
     the program: the build id of a debug-only companion has contents there."""
 
+    index: int | None = None
+    """Its index in the section header table, which the ``st_shndx`` of a symbol names; None
+    where a caller built the section by hand and states none."""
+
 
 @dataclass(frozen=True, slots=True)
 class Image:
@@ -314,6 +328,15 @@ class Image:
     """The header's ``e_flags``: which ABI of the machine the image was built for, where a
     machine has more than one (ARM's EABI version, RISC-V's reduced register set)."""
 
+    object_sizes: dict[tuple[str, int], int] = field(default_factory=dict)
+    """The ``st_size`` of every object symbol, by its name and address: how large the linker
+    says the variable is, which is what a description of it is held against."""
+
+    object_sections: dict[tuple[str, int], int | str] = field(default_factory=dict)
+    """The section every object symbol names (``st_shndx``), by its name and address, as the
+    index of the section or as the name of a special one (``SHN_ABS``): which of several sections
+    holding an address the variable is in."""
+
     @property
     def without_contents(self) -> bool:
         """Whether the image has allocated sections of the program, code and data alike, and
@@ -336,19 +359,39 @@ class Image:
         return not self.local_objects or (name, address) in self.local_objects
 
     def section_of(self, address: int) -> Section | None:
-        """The section holding ``address``, or None where none does."""
-        for section in self.sections:
-            if section.address <= address < section.address + section.size:
-                return section
-        return None
+        """The first section holding ``address``, or None where none does."""
+        held = self.sections_at(address)
+        return held[0] if held else None
+
+    def sections_at(self, address: int) -> tuple[Section, ...]:
+        """Every section holding ``address``: more than one where a linker script overlays
+        sections, as it does for a banked memory."""
+        return tuple(
+            section
+            for section in self.sections
+            if section.address <= address < section.address + section.size
+        )
+
+    def sections_of(self, name: str, address: int) -> tuple[Section, ...]:
+        """The sections that may be the variable ``name`` at ``address``'s: the one its symbol
+        names where that section holds the address, else every section that does."""
+        index = self.object_sections.get((name, address))
+        held = self.sections_at(address)
+        if index is not None:
+            named = [section for section in held if section.index == index]
+            if named:
+                return tuple(named)
+        return held
 
     def unheld(self, name: str, address: int) -> str:
         """The sentence for a variable ``name`` at an ``address`` that no section holds."""
         return f"'{name}' has an address, {address:#x}, that no section of the image holds"
 
-    def read(self, address: int, size: int) -> bytes | None:
-        """The ``size`` bytes at ``address``, or None where the image does not hold them."""
-        section = self.section_of(address)
+    def read(self, address: int, size: int, section: Section | None = None) -> bytes | None:
+        """The ``size`` bytes at ``address``, or None where the image does not hold them; in
+        ``section`` where the caller knows which of several holding the address is meant."""
+        if section is None:
+            section = self.section_of(address)
         if section is None or section.offset is None:
             return None
         if address + size > section.address + section.size:
@@ -441,6 +484,14 @@ def file_path(table: FileTable | None, index: int) -> str | None:
     return str(PurePosixPath(directory, name))
 
 
+def without_address(name: str, missing: str) -> str:
+    """The sentence for a variable ``name`` that has no address, for the reason ``missing``: a
+    variable of another scope is not one that lacks an address, it is one that is not read."""
+    if missing == OTHER_SCOPE:
+        return f"'{name}' is {missing}"
+    return f"'{name}' has no address in the image: {missing}"
+
+
 def size_of(ctype: CType) -> int | None:
     """The size of ``ctype`` in bytes, or None for a type this module does not describe."""
     if isinstance(ctype, Base | Enum | Struct):
@@ -471,9 +522,10 @@ def read_variables(
 
     A name that is only ever declared is kept, as a variable without storage, so that a
     caller asking for it can say why it is not there; a name that some unit defines drops
-    every declaration of it. ``thread_local`` names the thread-local symbols of the image: a
-    target whose DWARF cannot state a thread-local address gives such a variable no location
-    at all, and only the symbol table still says what it is.
+    every declaration of it. A variable of another scope, a C++ namespace's or a class's, is
+    kept the same way, and a C variable of its short name drops it. ``thread_local`` names the
+    thread-local symbols of the image: a target whose DWARF cannot state a thread-local address
+    gives such a variable no location at all, and only the symbol table still says what it is.
 
     ``objects`` holds the name and address of every object symbol of the image, and
     ``address_size`` the width of its addresses in bytes. A linker keeps the entry of a variable
@@ -490,13 +542,16 @@ def read_variables(
     defined: list[Variable] = []
     declared: dict[str, Variable] = {}
     for unit in units:
-        for entry in unit.children(unit.top):
-            if entry.tag != "DW_TAG_variable":
-                continue
-            variable = _variable(entry, unit, types, symbols, shown)
+        entries = [entry for entry in unit.children(unit.top) if entry.tag == "DW_TAG_variable"]
+        # A definition completes the declaration it names where that sits beside it at the top
+        # of the unit, as C writes one; gcc writes a C++ namespace's or a class's the same way,
+        # with the declaration inside the scope, and that variable is not one a short name names.
+        here = frozenset(entry.offset for entry in entries)
+        for entry in entries:
+            variable = _variable(entry, unit, types, symbols, shown, here)
             if variable is None:
                 continue
-            if variable.missing == DECLARED_ONLY:
+            if variable.missing in (DECLARED_ONLY, OTHER_SCOPE):
                 declared.setdefault(variable.name, variable)
                 continue
             defined.append(variable)
@@ -631,6 +686,7 @@ def _image(path: Path, contents: bytes) -> Image:
         )
         raise ElfReadError(msg)
     objects = _symbols(elf, "STT_OBJECT")
+    sizes, homes = _object_facts(elf)
     variables = read_variables(
         units,
         big_endian=not elf.little_endian,
@@ -650,12 +706,14 @@ def _image(path: Path, contents: bytes) -> Image:
         local_objects=_symbols(elf, "STT_OBJECT", local=True),
         machine=_machine(elf.header["e_machine"]),
         flags=int(elf.header["e_flags"]),
+        object_sizes=sizes,
+        object_sections=homes,
     )
 
 
 def _sections(elf: ELFFile) -> tuple[Section, ...]:
     sections: list[Section] = []
-    for section in elf.iter_sections():
+    for index, section in enumerate(elf.iter_sections()):
         flags = section["sh_flags"]
         if not flags & SH_FLAGS.SHF_ALLOC or flags & SH_FLAGS.SHF_TLS:
             continue
@@ -670,6 +728,7 @@ def _sections(elf: ELFFile) -> tuple[Section, ...]:
                 section["sh_size"],
                 offset,
                 note=section["sh_type"] == "SHT_NOTE",
+                index=index,
             )
         )
     return tuple(sections)
@@ -688,6 +747,25 @@ def _symbols(elf: ELFFile, kind: str, *, local: bool = False) -> frozenset[tuple
                 and (not local or symbol["st_info"]["bind"] == "STB_LOCAL")
             )
     return frozenset(found)
+
+
+def _object_facts(
+    elf: ELFFile,
+) -> tuple[dict[tuple[str, int], int], dict[tuple[str, int], int | str]]:
+    """The size, and the section (``st_shndx``), of every object symbol of any table, by its
+    name and address."""
+    sizes: dict[tuple[str, int], int] = {}
+    homes: dict[tuple[str, int], int | str] = {}
+    for section in elf.iter_sections():
+        if not isinstance(section, SymbolTableSection):
+            continue
+        for symbol in section.iter_symbols():
+            if symbol["st_info"]["type"] != "STT_OBJECT":
+                continue
+            key = (symbol.name, symbol["st_value"])
+            sizes[key] = symbol["st_size"]
+            homes[key] = symbol["st_shndx"]
+    return sizes, homes
 
 
 class _PyelftoolsUnit:
@@ -885,7 +963,12 @@ class _Symbols:
 
 
 def _variable(
-    entry: Entry, unit: Unit, types: _Types, symbols: _Symbols, shown: str
+    entry: Entry,
+    unit: Unit,
+    types: _Types,
+    symbols: _Symbols,
+    shown: str,
+    here: frozenset[int],
 ) -> Variable | None:
     named = entry
     if "DW_AT_specification" in entry.attributes:
@@ -893,6 +976,16 @@ def _variable(
     name = _text(named.attributes.get("DW_AT_name"))
     if name is None:
         return None
+    if named is not entry and named.offset not in here:
+        return Variable(
+            name,
+            unit.name,
+            Deferred(lambda: _guarded(shown, lambda: types.inner(named, unit))),
+            Deferred(lambda: _guarded(shown, lambda: _declared(entry, named, unit))),
+            None,
+            OTHER_SCOPE,
+            bool(_either(entry, named, "DW_AT_external")),
+        )
     # The type and the declaration are deferred, each behind the reader's net, so a run pays
     # for them only where a caller reads them, and a build that trips on a damaged image is
     # still the usage error open_image would have raised. A definition states a type of its own
@@ -1057,11 +1150,15 @@ class _Types:
     def _struct(self, entry: Entry, unit: Unit) -> CType:
         if "DW_AT_declaration" in entry.attributes:
             return Unsupported("a structure declared but never defined")
-        members = tuple(
-            self._member(child, unit)
-            for child in unit.children(entry)
-            if child.tag == "DW_TAG_member"
-        )
+        children = list(unit.children(entry))
+        # C++ shapes the reader would describe wrongly: a base class's members are the
+        # structure's own storage, a static member is none of it.
+        if any(child.tag == "DW_TAG_inheritance" for child in children):
+            return Unsupported(_BASE_CLASS)
+        fields = [child for child in children if child.tag == "DW_TAG_member"]
+        if any(_static(child) for child in fields):
+            return Unsupported(_STATIC_MEMBER)
+        members = tuple(self._member(child, unit) for child in fields)
         return Struct(
             tag=_text(entry.attributes.get("DW_AT_name")),
             size=int(_value(entry, "DW_AT_byte_size")),
@@ -1105,6 +1202,13 @@ class _Types:
         if self._big_endian:
             return location * 8 + old
         return location * 8 + storage * 8 - old - bit_size
+
+
+def _static(member: Entry) -> bool:
+    """Whether a member of a structure is a static one, which has no place in the structure: DWARF
+    4 writes it as a member that is only declared (with ``DW_AT_external``), and states no
+    location for it, where the members of an object always have one."""
+    return "DW_AT_declaration" in member.attributes or "DW_AT_external" in member.attributes
 
 
 def _member_location(entry: Entry) -> int | None:

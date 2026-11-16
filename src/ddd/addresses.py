@@ -188,7 +188,7 @@ def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> i
 
 def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, CType] | str:
     """The address and the type of the global ``name``, or why the image holds none."""
-    from ddd.elf import DECLARED_ONLY
+    from ddd.elf import DECLARED_ONLY, without_address
 
     external = [variable for variable in named if variable.external]
     if not external:
@@ -210,7 +210,7 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
         # it, compiled without, describes nothing: the reader keeps the declaration alone.
         if external[0].missing == DECLARED_ONLY and name in image.symbols:
             return f"the image's debug information only declares '{name}'{_WITHOUT_G}"
-        return f"'{name}' has no address in the image: {external[0].missing}"
+        return without_address(name, external[0].missing)
     if len(located) > 1:
         listed = ", ".join(f"0x{address:X}" for address in sorted(located))
         return f"'{name}' names globals at {len(located)} addresses of the image, {listed}"

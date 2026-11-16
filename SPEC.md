@@ -2148,8 +2148,10 @@ generator cannot promise of what a project's own templates or a hand edit write.
 placed is compared with its object on the size and the encoding of an element, its shape and
 the qualifiers its kind carries, and each member placed on its size, its encoding and its shape;
 a difference is `elf-mismatch`, a warning, naming the variable, what the description states and
-what the image holds ([section 4](#4-consistency-checks)). The A2L is written from the
-description whatever the image holds.
+what the image holds ([section 4](#4-consistency-checks)). A unit's declaration of a variable
+it does not define, a consumer's `extern`, is held to the qualifiers of its kind the same way
+where the image's debug information records it, which gcc's does for a variable a unit reads
+and clang's does not. The A2L is written from the description whatever the image holds.
 
 `--address-map FILE` names one flat JSON object mapping each symbol to its address, for an
 image the build reads itself - one without debug information, say. A symbol **shall** be

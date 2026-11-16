@@ -801,9 +801,12 @@ flashed.
 The step holds the image to the description as well. Each variable it places is compared with
 its object on the size and encoding of an element, its shape and the qualifiers the generated c
 gives its kind, and one that differs is a warning, ``elf-mismatch``, saying what the description
-states and what the image holds. A project template that leaves out a ``const`` or a ``volatile``
-the kind carries, and a definition of a ``uint32_t`` for a ``uint16``, are caught here, in the c
-that was compiled; under ``STRICT`` the build stops at it.
+states and what the image holds. The definition is held on every image: a ``uint32_t`` defined
+for a ``uint16``, or a template that leaves out a ``const`` or a ``volatile`` the kind carries
+there, is caught in the c that was compiled. A consumer's declaration is held to the qualifiers
+of its kind where the compiler records it in the debug information, which gcc does for a
+variable a unit reads and clang does not, so a component header that leaves out ``volatile`` is
+caught on a gcc image and not on a clang one. Under ``STRICT`` the build stops at it.
 
 What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
 symbol's reason a note beneath it; under ``STRICT`` that is an error, and the build stops rather

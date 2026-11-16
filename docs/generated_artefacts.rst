@@ -1236,7 +1236,9 @@ encoding of an element, its shape and the qualifiers its kind carries (``const``
 a measurement, ``volatile`` where the description says so), and a variable that differs is a
 warning, ``elf-mismatch``, naming what the description states and what the image holds. A type
 is compared by what it resolves to, so a ``UWORD`` defined as ``uint16_t`` agrees with a
-``uint16`` and a ``uint32_t`` does not. An image
+``uint16`` and a ``uint32_t`` does not. A consumer's ``extern`` that leaves out a qualifier of
+its kind is a warning too, where the compiler records the declaration in the debug information,
+which gcc does for a variable a unit reads and clang does not. An image
 whose debug information is split into ``.dwo`` files (``-gsplit-dwarf``) places nothing, the
 files being the ones the reader does not read, and one built with ``-g1``, which keeps the
 variables and no types, places the objects and not a member. An object that states a condition is the exception, and

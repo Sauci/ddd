@@ -395,6 +395,75 @@ class TestAVariableTheImageHoldsOtherwise:
         said, _ = judged(dictionary, held, "B", "A")
         assert [text.split("'")[1] for text in said] == ["A", "B"]
 
+    @pytest.mark.parametrize(
+        ("definition", "held", "differences", "note"),
+        [
+            ({"volatile": True}, U16, [differs("qualifiers", "volatile", "none")], "qualifier"),
+            (
+                {"volatile": True},
+                U32,
+                [
+                    differs("size", "2 bytes (uint16)", "4 bytes (unsigned int)"),
+                    differs("qualifiers", "volatile", "none"),
+                ],
+                "a2l",
+            ),
+            ({}, Array(U16, (2,)), [differs("shape", "a scalar", "[2]")], "a2l"),
+        ],
+        ids=["a qualifier alone", "a qualifier beside a size", "a shape alone"],
+    )
+    def test_the_note_says_what_follows_from_what_differs(
+        self,
+        tmp_path: Path,
+        definition: dict[str, Any],
+        held: CType,
+        differences: list[str],
+        note: str,
+    ) -> None:
+        """No reader of the a2l misreads a qualifier, which the a2l does not carry: the code is
+        what changes. A size, an encoding or a shape is read wrongly from the a2l."""
+        dictionary = described(declare("local", "V", "uint16", **definition), tmp_path=tmp_path)
+        said, notes = judged(dictionary, image(stored("V", held)), "V")
+        assert said == [says("V", *differences)]
+        assert notes == [
+            (
+                {
+                    "qualifier": "the a2l carries no qualifier, so what differs is the code "
+                    "compiled from this definition, which treats the variable as the image "
+                    "holds it",
+                    "a2l": "the a2l is written from the description, so a calibration tool "
+                    "reads this variable as the image does not hold it",
+                }[note],
+            )
+        ]
+
+    @pytest.mark.parametrize(
+        ("datatype", "held", "stated", "holds"),
+        [
+            ("uint8", U16, "1 byte (uint8)", "2 bytes (short unsigned int)"),
+            ("uint16", U8, "2 bytes (uint16)", "1 byte (unsigned char)"),
+            ("uint16", Enum("Mode_e", 4, False, ()), "2 bytes (uint16)", "4 bytes (enum Mode_e)"),
+            ("uint16", Enum(None, 4, False, ()), "2 bytes (uint16)", "4 bytes (an enumeration)"),
+        ],
+        ids=[
+            "one byte declared",
+            "one byte held",
+            "a tagged enumeration",
+            "an anonymous enumeration",
+        ],
+    )
+    def test_a_size_is_spelled_in_the_singular_for_one_and_a_type_as_the_source_names_it(
+        self, tmp_path: Path, datatype: str, held: CType, stated: str, holds: str
+    ) -> None:
+        dictionary = described(declare("local", "V", datatype), tmp_path=tmp_path)
+        said, _ = judged(dictionary, image(stored("V", held)), "V")
+        assert said == [says("V", differs("size", stated, holds))]
+
+    def test_a_structure_without_a_tag_or_a_typedef_is_a_structure(self, tmp_path: Path) -> None:
+        dictionary = described(declare("local", "V", "uint32"), tmp_path=tmp_path)
+        said, _ = judged(dictionary, image(stored("V", Struct(None, 4, ()))), "V")
+        assert said == [says("V", differs("type", "uint32", "a structure, which is not a number"))]
+
     def test_a_base_type_that_is_no_integer_nor_float_is_named_by_its_encoding(
         self, tmp_path: Path
     ) -> None:
@@ -509,6 +578,12 @@ class TestUnitsOfHandBuiltImages:
             "'b.c': one name at one address is one variable, so the description is held to none "
             "of them"
         )
+
+    def test_a_single_byte_is_one_byte_in_the_account_too(self, tmp_path: Path) -> None:
+        said = self.said(
+            tmp_path, stored("V", U8, unit="a.c"), stored("V", U16, unit="b.c"), sizes={}
+        )
+        assert "as 1 byte by 'a.c' and as 2 bytes by 'b.c'" in said
 
     def test_a_unit_whose_description_has_no_size_says_nothing_of_one(self, tmp_path: Path) -> None:
         said = self.said(
@@ -631,6 +706,10 @@ QUALIFIERS = {
 """What the project's descriptions give a variable of the address fixtures that carries a
 qualifier, as its kind and its ``volatile`` say; the other fourteen carry none."""
 
+QUALIFIER_NOTE = (
+    "    note: the a2l carries no qualifier, so what differs is the code compiled from this "
+    "definition, which treats the variable as the image holds it\n"
+)
 NOTE = (
     "    note: the a2l is written from the description, so a calibration tool reads this "
     "variable as the image does not hold it\n"
@@ -671,7 +750,7 @@ class TestTheImagesOfTheAddressFixtures:
         findings = "".join(
             f"{where_of(image_path)}: warning[elf-mismatch]: '{name}' is not held by the image as "
             f"its description states: as its qualifiers, the description states {stated} and the "
-            f"image holds none\n{NOTE}"
+            f"image holds none\n{QUALIFIER_NOTE}"
             f"    note: the image's debug information declares it at "
             f"unqualified/ddd_globals.c:{definition_line('unqualified', name)}\n"
             for name, stated in QUALIFIERS.items()

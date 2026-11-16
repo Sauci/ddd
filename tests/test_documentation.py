@@ -2028,6 +2028,54 @@ class TestTheFivePagesTheImageReaches:
         ) in page
 
 
+class TestWhatThePagesSayTheImageIsHeldTo:
+    """``elf-mismatch`` holds the definition on every image and a consumer's declaration where the
+    compiler records it, which clang does not for an extern a unit only reads. The four pages that
+    describe the run say so, since a page that promised the header half everywhere would be the
+    claim the check exists to retire (finding 1:I12)."""
+
+    CLAUSE = "which gcc does for a variable a unit reads and clang does not"
+
+    def test_the_concept_page_holds_the_definition_everywhere_and_the_header_where_recorded(
+        self,
+    ) -> None:
+        page = flattened(PAGES["docs/concept.rst"])
+        assert (
+            "it holds the definition of each variable it places - size, encoding, qualifiers "
+            "and shape - to the declaration, on every image, and a consumer's ``extern`` to "
+            "the qualifiers of its kind where the compiler records it in the debug "
+            f"information, {self.CLAUSE}."
+        ) in page
+        assert "so a template that drops a ``const`` or ``volatile`` the kind carries" not in page
+
+    def test_the_build_page_says_a_header_is_caught_on_a_gcc_image_and_not_a_clang_one(
+        self,
+    ) -> None:
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert "The definition is held on every image" in page
+        assert (
+            "A consumer's declaration is held to the qualifiers of its kind where the compiler "
+            f"records it in the debug information, {self.CLAUSE}, so a component header that "
+            "leaves out ``volatile`` is caught on a gcc image and not on a clang one."
+        ) in page
+        assert "are caught here, in the c that was compiled" not in page
+
+    def test_the_specification_and_the_artefacts_page_name_the_declaration_half(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "A unit's declaration of a variable it does not define, a consumer's `extern`, is "
+            "held to the qualifiers of its kind the same way where the image's debug "
+            "information records it, which gcc's does for a variable a unit reads and "
+            "clang's does not."
+        ) in spec
+        page = flattened(PAGES["docs/generated_artefacts.rst"])
+        assert (
+            "A consumer's ``extern`` that leaves out a qualifier of its kind is a warning too, "
+            "where the compiler records the declaration in the debug information, "
+            f"{self.CLAUSE}."
+        ) in page
+
+
 class TestWhatTheToolboxSaysOfDisagreementsAndCplusplus:
     """The sentences about what the toolbox refuses, reports and leaves to the author."""
 

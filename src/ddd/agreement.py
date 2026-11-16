@@ -175,8 +175,8 @@ def _numeric(core: CType, datatype: Datatype, spelled: str) -> list[str]:
         found.append(
             _says(
                 "size",
-                f"{datatype.size} bytes ({datatype.value})",
-                f"{core.size} bytes ({spelled})",
+                f"{_bytes(datatype.size)} ({datatype.value})",
+                f"{_bytes(core.size)} ({spelled})",
             )
         )
     kind = _kind(core)
@@ -188,6 +188,13 @@ def _numeric(core: CType, datatype: Datatype, spelled: str) -> list[str]:
         enumeration = " enumeration" if isinstance(core, Enum) else ""
         found.append(_says("encoding", wanted, f"{kind}{enumeration}"))
     return found
+
+
+def _bytes(count: int) -> str:
+    return f"{count} byte" if count == 1 else f"{count} bytes"
+
+
+_QUALIFIERS = "as its qualifiers"
 
 
 def _says(what: str, stated: str, holds: str) -> str:
@@ -312,19 +319,28 @@ def _reported(variable: Variable, problems: list[tuple[str, list[str]]]) -> list
     return [
         Mismatch(
             f"'{symbol}' is not held by the image as its description states: {'; '.join(found)}",
-            _notes(variable),
+            _notes(variable, qualifiers_only=all(text.startswith(_QUALIFIERS) for text in found)),
         )
         for symbol, found in problems
         if found
     ]
 
 
-def _notes(variable: Variable) -> tuple[str, ...]:
-    return (
-        "the a2l is written from the description, so a calibration tool reads this variable "
-        "as the image does not hold it",
-        *_declared(variable),
-    )
+def _notes(variable: Variable, *, qualifiers_only: bool) -> tuple[str, ...]:
+    """What follows from the difference: the a2l is written from the description, so a size, an
+    encoding or a shape the image does not hold is read wrongly by whoever reads the a2l; a
+    qualifier is no part of the a2l, and what changes is the code compiled from the C."""
+    if qualifiers_only:
+        consequence = (
+            "the a2l carries no qualifier, so what differs is the code compiled from this "
+            "definition, which treats the variable as the image holds it"
+        )
+    else:
+        consequence = (
+            "the a2l is written from the description, so a calibration tool reads this variable "
+            "as the image does not hold it"
+        )
+    return (consequence, *_declared(variable))
 
 
 def _declared(variable: Variable) -> tuple[str, ...]:
@@ -345,7 +361,7 @@ def _apart(held: Held, image: Image) -> Mismatch:
     symbol = image.object_sizes.get((variable.name, variable.address))
     if symbol:
         by_size.setdefault(symbol, []).append("the symbol table")
-    described = " and as ".join(f"{size} bytes by {_listed(by)}" for size, by in by_size.items())
+    described = " and as ".join(f"{_bytes(size)} by {_listed(by)}" for size, by in by_size.items())
     return Mismatch(
         f"'{variable.name}' at {variable.address:#x} is described by the image as {described}: "
         "one name at one address is one variable, so the description is held to none of them",

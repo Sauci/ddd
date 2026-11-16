@@ -697,8 +697,8 @@ Options
        address and raises no ``address-missing``, so ``STRICT`` does not fail it, and the a2l
        says so itself; a map that names some objects and not others raises it, once, for the
        objects it lacks, save a conditional one of which it names neither the object nor a
-       member, which is left out of the a2l and reported at ``info``: a structure the map names
-       by its own name, as ``nm`` lists it, keeps its members ``address-missing``.
+       member, which is left out of the a2l and reported at ``info`` with what only it pulled in:
+       a structure the map names by its own name, as ``nm`` lists it, keeps its members ``address-missing``.
    * - ``ADDRESSES_FROM_IMAGE``
      - write the a2l once the image is linked, every address it carries read out of the
        image's debug information, so that one build gives the complete a2l: the run before the

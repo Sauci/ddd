@@ -2245,6 +2245,25 @@ class TestWhatThePagesSayOfAnObjectTheBuildLeftOut:
             "of being left out as above"
         ) in spec
 
+    def test_the_pages_say_what_goes_with_an_object_left_out_is_not_named_by_address_missing(
+        self,
+    ) -> None:
+        """A measurement that asked to stay out of the a2l and was in it only as the input of an
+        axis the run left out is not in the file, so no page may say it reaches it."""
+        assert (
+            "What goes with an object so left out is not carried either, a curve or a map over an "
+            "axis left out, and a measurement that asked to stay out of the A2L and was in it only "
+            "as the input of such an axis."
+        ) in flattened(SPEC)
+        assert (
+            "what goes with an object so left out is not in the a2l and is not named, a "
+            "measurement that asked to stay out of the file and was in it only as the input of an "
+            "axis left out among it;"
+        ) in flattened(CONSISTENCY_CHECKS)
+        assert (
+            "left out of the a2l and reported at ``info`` with what only it pulled in: a structure"
+        ) in flattened(PAGES["docs/build_integration.rst"])
+
     def test_the_specification_says_when_a_linker_s_discard_reads_as_absence(self) -> None:
         """gold leaves a variable of a unit it discarded at an offset with no symbol, and GNU ld
         a tombstone address where it discards a section, both defects to show; GNU ld drops the
@@ -2276,8 +2295,8 @@ class TestWhatThePagesSayOfAnObjectTheBuildLeftOut:
         assert (
             "raises it, once, for the objects it lacks, save a conditional one of which it names "
             "neither the object nor a member, which is left out of the a2l and reported at "
-            "``info``: a structure the map names by its own name, as ``nm`` lists it, keeps its "
-            "members ``address-missing``"
+            "``info`` with what only it pulled in: a structure the map names by its own name, as "
+            "``nm`` lists it, keeps its members ``address-missing``"
         ) in page
         reference = flattened(CONSISTENCY_CHECKS)
         assert "would name a record it does not have" not in reference

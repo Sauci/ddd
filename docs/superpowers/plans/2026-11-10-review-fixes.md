@@ -1623,7 +1623,7 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   address 0, an `export: false` measurement that only an axis the run left out pulled in, and
   `--strict` stops a build over a record that is not in the file; the list of what reaches the
   a2l would be taken under the run's left-out symbols. Branch 5 lists `backends/a2l/*` and
-  `cli.py`.
+  `cli.py`. Branch 5's D1 closed it.
 - **A declaration alone in a split image** (the final wave): `from-elf` tells a split image that
   a name the symbol table holds, and no unit describes, is in its `.dwo` files, but a name a
   unit only declares, in an image some of whose units are split, is still said to be defined in

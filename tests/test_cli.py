@@ -1315,6 +1315,66 @@ class TestGenerate:
         ) in capsys.readouterr().err
         assert a2l == ""
 
+    def test_a_measurement_only_a_left_out_axis_pulled_in_is_not_named_as_reaching_the_a2l(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``Speed`` asks to stay out of the file and is in it only as the input of ``Ax``, which
+        the run leaves out: the a2l does not hold it, so ``address-missing`` has nothing to say
+        of it and ``--strict`` has nothing to stop for."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            [
+                declare("local", "Kept"),
+                declare("local", "Speed", a2l={"export": False}),
+                declare(
+                    "local",
+                    "Ax",
+                    "uint16",
+                    "defined(F)",
+                    kind="axis",
+                    size=2,
+                    input="Speed",
+                    a2l={"export": True},
+                ),
+            ],
+            {"Kept": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert "address-missing" not in captured
+        assert "info[condition-left-out]: the address map has no entry for 'Ax'" in captured
+        assert "MEASUREMENT Kept" in a2l
+        assert "Speed" not in a2l
+
+    def test_a_measurement_an_axis_the_run_keeps_pulled_in_is_still_named_when_the_map_lacks_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The control: the same measurement under an axis with no condition is in the file, at
+        address 0 where the map has no entry for it."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            [
+                declare("local", "Kept"),
+                declare("local", "Speed", a2l={"export": False}),
+                declare(
+                    "local",
+                    "Ax",
+                    "uint16",
+                    kind="axis",
+                    size=2,
+                    input="Speed",
+                    a2l={"export": True},
+                ),
+            ],
+            {"Kept": "0x20000000"},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'Ax', 'Speed'" in captured
+        assert a2l == ""
+
     def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

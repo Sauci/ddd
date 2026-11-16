@@ -218,8 +218,12 @@ def build_a2l_model(dictionary: DataDictionary, options: A2lOptions, generator: 
     return _A2lModelBuilder(dictionary, options).build(generator)
 
 
-def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
-    """Every symbol this dictionary's a2l carries an ``ECU_ADDRESS`` for, sorted.
+def addressed_symbols(
+    dictionary: DataDictionary, left_out: frozenset[str] = frozenset()
+) -> tuple[str, ...]:
+    """Every symbol this dictionary's a2l carries an ``ECU_ADDRESS`` for, sorted, under the
+    ``left_out`` symbols of a run: what the file leaves out is not among them, nor what only
+    an axis among them pulled in.
 
     Asked of the builder that renders the file rather than worked out again, because "which
     objects reach the file" is a question with several parts - what asked to be exported, what
@@ -229,7 +233,7 @@ def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
     seconds on top of a 1.7 second render at a thousand components. The selections are the
     same two; only the record views are not built.
     """
-    return _A2lModelBuilder(dictionary, A2lOptions()).addressed()
+    return _A2lModelBuilder(dictionary, A2lOptions(left_out=left_out)).addressed()
 
 
 @dataclass(frozen=True, slots=True)

@@ -1060,7 +1060,6 @@ def _check_image_agreement(
 def _leave_out(
     absent: Sequence[ConditionalObject],
     dictionary: DataDictionary,
-    carried: tuple[str, ...],
     lacking: str,
     path: Path,
     reasons: Mapping[str, str],
@@ -1078,8 +1077,9 @@ def _leave_out(
     cannot describe: a finding for each such axis names it, the condition it went under and
     what goes with it. It says all of that itself, since the findings print by severity, this
     warning before the information naming the axis, which a project may ignore. What comes
-    back is the symbols left out, and the ``carried`` ones that still reach the file, which
-    are the ones ``address-missing`` is about.
+    back is the symbols left out, and the ones that still reach the file, which are the ones
+    ``address-missing`` is about: the writer's own selection under them, so that what only an
+    axis among them pulled in, such as an ``export: false`` measurement, is not among them.
     """
     for condition in dict.fromkeys(entry.condition for entry in absent):
         objects = [entry for entry in absent if entry.condition == condition]
@@ -1099,7 +1099,7 @@ def _leave_out(
             where(path),
             notes=[(reason, None) for reason in reasons_given],
         )
-    from ddd.backends import dragged_with
+    from ddd.backends import addressed_symbols, dragged_with
 
     left_out = frozenset(symbol for entry in absent for symbol in entry.symbols)
     dragged = dragged_with(dictionary, left_out)
@@ -1119,8 +1119,7 @@ def _leave_out(
             f"{'they are' if plural else 'it is'} left out too",
             where(path),
         )
-    gone = left_out.union(dragged)
-    return left_out, tuple(symbol for symbol in carried if symbol not in gone)
+    return left_out, addressed_symbols(dictionary, left_out)
 
 
 def _at_address_0(missing: list[str]) -> str:
@@ -1351,7 +1350,6 @@ def _command_generate(args: argparse.Namespace) -> int:
                     if all(symbol in placed.absent for symbol in entry.symbols)
                 ],
                 dictionary,
-                carried,
                 "the image has no address for",
                 image_path,
                 placed.reasons,
@@ -1380,7 +1378,6 @@ def _command_generate(args: argparse.Namespace) -> int:
                     and not any(symbol in addresses for symbol in entry.symbols)
                 ],
                 dictionary,
-                carried,
                 "the address map has no entry for",
                 args.address_map,
                 {},

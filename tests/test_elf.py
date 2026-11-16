@@ -2083,6 +2083,22 @@ class TestCplusplus:
         assert isinstance(found, Struct)
         assert [m.name for m in found.members] == ["x"]
 
+    def test_at_dwarf_5_a_static_member_is_written_apart_and_the_structure_is_its_storage(
+        self,
+    ) -> None:
+        """gcc writes the static as a ``DW_TAG_variable`` child of the structure, which is no
+        member of the object: the structure is described by what it stores."""
+        with_static = die(
+            "DW_TAG_structure_type",
+            member(b"value", U8, DW_AT_data_member_location=0),
+            die("DW_TAG_variable", of=U8, DW_AT_name=b"counted", DW_AT_external=EXTERNAL),
+            DW_AT_name=b"WithStatic",
+            DW_AT_byte_size=1,
+        )
+        found = type_of(with_static)
+        assert isinstance(found, Struct)
+        assert [m.name for m in found.members] == ["value"]
+
     def test_a_variable_of_a_namespace_is_one_whose_definition_belongs_to_another_scope(
         self,
     ) -> None:
@@ -2170,7 +2186,7 @@ class TestTheImageOfCplusplus:
         assert said == [
             (
                 "elf-no-storage",
-                f"'{name}' is a variable of a C++ namespace or class, which this tool does not "
+                f"'{name}' is a variable of a C++ namespace or class, which DDD does not "
                 f"read: it reads C, and a short name does not say which one it is",
             )
         ]
@@ -2231,6 +2247,18 @@ class TestUnitsThatDisagreeInTheImage:
     def test_units_stating_one_size_are_one_variable(self) -> None:
         described, said = self.run("units-disagree", "Disagree_Agreed")
         assert (described, said) == (["Disagree_Agreed"], [])
+
+    def test_a_unit_prefix_does_not_hide_the_other_unit_s_description(self) -> None:
+        described, said = self.run("units-disagree", "disagree_b.c:Disagree_Cal")
+        at = self.address("units-disagree", "Disagree_Cal")
+        assert described == []
+        assert said == [
+            (
+                "elf-type-conflict",
+                f"'Disagree_Cal' at {at:#x} is described as 2 bytes by 'disagree_a.c' and as "
+                f"4 bytes by 'disagree_b.c', and the symbol table holds it as 4 bytes{self.TAIL}",
+            )
+        ]
 
     @pytest.mark.parametrize("name", ["Undescribed_Common", "Undescribed_Weak"])
     def test_a_description_is_held_against_the_symbol_s_size(self, name: str) -> None:

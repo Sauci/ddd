@@ -57,7 +57,7 @@ THREAD_LOCAL: Final = "it is thread-local, with an address of its own in every t
 NOT_AN_ADDRESS: Final = "its location is not a fixed address"
 DISCARDED: Final = "the linker discarded its storage"
 OTHER_SCOPE: Final = (
-    "a variable of a C++ namespace or class, which this tool does not read: it reads C, and a "
+    "a variable of a C++ namespace or class, which DDD does not read: it reads C, and a "
     "short name does not say which one it is"
 )
 
@@ -1206,8 +1206,9 @@ class _Types:
 
 def _static(member: Entry) -> bool:
     """Whether a member of a structure is a static one, which has no place in the structure: DWARF
-    4 writes it as a member that is only declared (with ``DW_AT_external``), and states no
-    location for it, where the members of an object always have one."""
+    4 writes it as a member that is only declared (with ``DW_AT_external``). It is told by those
+    marks and not by a missing location, since a member at the start of its structure may state
+    none. DWARF 5 writes the static apart, as a ``DW_TAG_variable`` child, which is no member."""
     return "DW_AT_declaration" in member.attributes or "DW_AT_external" in member.attributes
 
 

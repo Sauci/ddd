@@ -2077,8 +2077,23 @@ class TestWhatTheToolboxSaysOfDisagreementsAndCplusplus:
         )
 
     def test_the_largest_float32_is_said_to_be_written_as_the_double_it_is(self) -> None:
+        spec, page = self.pages()
+        assert "except FLT_MAX and its negative, which are written as the double each is" in spec
+        assert "except FLT_MAX and its negative, written as the double each is" in page
+
+    def test_the_pages_limit_the_static_member_refusal_to_where_dwarf_writes_it_as_a_member(
+        self,
+    ) -> None:
+        spec, page = self.pages()
+        for text in (spec, page):
+            assert "at DWARF 5 gcc writes it apart" in text
+            assert "described by its storage" in text
+
+    def test_the_spec_lists_the_scoped_variable_among_the_reasons_image_places_nothing(
+        self,
+    ) -> None:
         spec, _ = self.pages()
-        assert "except the largest one, which is written as the double it is" in spec
+        assert "a variable of a C++ namespace or class, which DDD does not read" in spec
 
     def test_a_name_two_arguments_reach_is_said_to_be_refused_naming_both(self) -> None:
         spec, page = self.pages()

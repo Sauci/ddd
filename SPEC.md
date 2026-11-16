@@ -2058,7 +2058,7 @@ holds no variable of that name, or only a `static` of it; the variable has no st
 only declared, folded into a constant, removed by the compiler or discarded by the linker,
 thread-local, or at no fixed address; its symbol table holds no object of that name at the
 address the debug information gives, as a linker leaves a variable of a unit it discarded,
-or no section of the image holds that address; the image's debug information only declares it while
+or no section of the image holds that address; a variable of a C++ namespace or class, which DDD does not read; the image's debug information only declares it while
 the symbol table holds it, the unit defining it built without `-g`; the name names globals
 at several addresses; its type has no member of that name, the C code and the declaration
 disagreeing; a step indexes what is not an array, or names a member of what is not a
@@ -2648,12 +2648,15 @@ describe it, as a tentative definition `-fcommon` merges is; where they describe
 sizes, or one description is of another size than the symbol table states for the name - a
 common symbol declared at two sizes, an array of two lengths, a weak definition over a strong one
 of another type - the variable is `elf-type-conflict`, naming both, and is not described. The
-reader is for the C that gcc and clang write, and C++ is refused rather than described wrongly, each in a sentence of its own: a structure with a base class
-(`elf-type-unsupported`), a structure with a static member, which DWARF 4 writes as a member
-with no location (`elf-type-unsupported`), and a variable whose definition belongs to another
+reader is for the C that gcc and clang write, and C++ is refused rather than described
+wrongly, each in a sentence of its own: a structure with a base class (`elf-type-unsupported`),
+a structure with a static member, where DWARF writes the static as a member of the structure, as
+DWARF 4 does with no location (`elf-type-unsupported`; at DWARF 5 gcc writes it apart, and the
+structure is described by its storage), and a variable whose definition belongs to another
 scope, a namespace's or a class's, which gcc writes at the top of its unit with a reference to
 its declaration inside the scope, so that it is no candidate by its short name
-(`elf-no-storage`). A variable without an address -
+(`elf-no-storage`). A unit prefix chooses the unit and nothing more: the sizes are judged over
+every unit of the image that holds the name at that address. A variable without an address -
 only declared, folded or removed by the compiler, thread-local, at no fixed address, or
 discarded by the linker, which leaves its DWARF address at 0, at all ones, or, under gold, at
 an offset into the section it dropped, so that an external variable with no object symbol of its name at its address is one the
@@ -2693,10 +2696,9 @@ What the image states, the declaration states:
   order, a bitfield a `bits` member. `const` or `volatile` on a member cannot be stated, and a
   `_Bool` bitfield is described as a `uint8` one.
 - `init`: from the image's bytes in its byte order - an array whose elements are all equal as
-  that one value, a `float32` as the shortest decimal that reads back to it, except the largest
-  one, which is written as the double it is because its shortest spelling lies past the
-  `float32` range DDD holds it to - and none for a
-  variable in a section without contents, whose bytes the image does not hold. A structured
+  that one value, a `float32` as the shortest decimal that reads back to it, except FLT_MAX
+  and its negative, which are written as the double each is, because their shortest spelling
+  lies past the `float32` range DDD holds it to - and none for a variable in a section without contents, whose bytes the image does not hold. A structured
   object states none ([section 3.7](#37-type-description)).
 - `section`: where the variable's section is not one of the toolchain's defaults, `.data`,
   `.bss`, `.rodata`, `.sdata`, `.sbss`, `.sdata2`, `.sbss2`, `.srodata`, `.data1` and

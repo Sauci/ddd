@@ -5,6 +5,7 @@ file, so every case is exactly the one its test names."""
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import struct
@@ -48,6 +49,7 @@ from ddd.toolbox.from_elf import (
     NOT_INFERRED,
     VALUE_BLOCKS,
     Description,
+    _unclaimed_type,
     describe,
     document_text,
 )
@@ -2034,8 +2036,8 @@ class TestUnitsThatDisagree:
 
     def test_a_unit_whose_type_has_no_size_is_left_out_of_the_account(self) -> None:
         img = image(
-            stored("Cal", Unsupported("a pointer"), unit="unit_a.c"),
-            stored("Cal", U16, unit="unit_b.c"),
+            stored("Cal", Unsupported("a pointer"), unit="unit_a.c", line=3),
+            stored("Cal", U16, unit="unit_b.c", line=4),
             object_sizes={("Cal", 0x100): 4},
         )
         _, bag = run(img, "Cal")
@@ -2044,6 +2046,32 @@ class TestUnitsThatDisagree:
             "it as 4 bytes: one name at one address is one variable, so no one description of "
             "it is right"
         ]
+        (conflict,) = [d for d in bag.sorted if d.check == "elf-type-conflict"]
+        assert conflict.location == Location(Path("unit_b.c"), line=4)
+        assert conflict.notes == (
+            ("described as 2 bytes here", Location(Path("unit_b.c"), line=4)),
+        )
+
+    def test_a_unit_prefix_chooses_the_unit_and_nothing_more(self) -> None:
+        description, bag = run(self.two_units(U16, U32), "unit_b.c:Cal")
+        assert description.interface == ()
+        assert [d.check for d in bag.sorted if d.check == "elf-type-conflict"] == [
+            "elf-type-conflict"
+        ]
+
+    def test_a_disagreeing_global_does_not_hide_another_unit_s_static_of_the_name(self) -> None:
+        img = image(
+            stored("Cal", U16, unit="a.c"),
+            stored("Cal", U32, unit="b.c"),
+            stored("Cal", U8, unit="c.c", address=0x180, external=False),
+            object_sizes={("Cal", 0x100): 4},
+        )
+        description, bag = run(img, "Cal")
+        assert description.interface == ()
+        checks = [d.check for d in bag.sorted]
+        assert "elf-type-conflict" in checks
+        (ambiguous,) = [d for d in bag.sorted if d.check == "elf-symbol-ambiguous"]
+        assert "names a variable in 2 units, 'a.c', 'c.c': prefix it with one" in ambiguous.message
 
     def test_a_name_is_reported_once_however_many_arguments_reach_it(self) -> None:
         _, bag = run(self.two_units(U16, U32), "Cal", "Ca*", "unit_a.c:Cal")
@@ -2054,8 +2082,10 @@ class TestUnitsThatDisagree:
             stored("Gain", U16, unit="unit_a.c", address=0x100, external=False),
             stored("Gain", U32, unit="unit_b.c", address=0x108, external=False),
         )
-        _, bag = run(img, "unit_a.c:Gain")
-        assert not [d for d in bag.sorted if d.check == "elf-type-conflict"]
+        _, bag = run(img, "Gain")
+        checks = [d.check for d in bag.sorted]
+        assert "elf-symbol-ambiguous" in checks
+        assert "elf-type-conflict" not in checks
 
 
 GOLD = Section(".data", 0x100, 4, 0, index=1)
@@ -2154,7 +2184,7 @@ class TestAnotherScope:
         assert [(d.check, d.message) for d in bag.sorted if d.check == "elf-no-storage"] == [
             (
                 "elf-no-storage",
-                "'OnlyInNs' is a variable of a C++ namespace or class, which this tool does "
+                "'OnlyInNs' is a variable of a C++ namespace or class, which DDD does "
                 "not read: it reads C, and a short name does not say which one it is",
             )
         ]
@@ -2268,11 +2298,11 @@ class TestTheIdentityIsTheAuthors:
         assert description.interface[0]["definition"]["conversion"] == IDENTITY
         assert description.types == (PAIR_ENTRY,)
 
-    def test_a_type_of_the_check_s_own_is_not_changed_for_the_next_run(self) -> None:
-        img = self.variables()
-        run(img, "Pair", identity=False)
-        description, _ = run(img, "Pair", identity=True)
-        assert description.types == (PAIR_ENTRY,)
+    def test_the_entry_the_check_saw_is_not_changed_to_leave_the_identity_out(self) -> None:
+        entry = copy.deepcopy(PAIR_ENTRY)
+        unclaimed = _unclaimed_type(entry)
+        assert entry == PAIR_ENTRY
+        assert "conversion" not in unclaimed["members"][0]
 
     def test_the_run_says_what_it_left_out_and_why(self) -> None:
         _, bag = run(self.variables(), "Gain")

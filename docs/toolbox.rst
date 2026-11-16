@@ -129,7 +129,9 @@ What an image states, and what it does not
      - the array's extents, in C order.
    * - ``init``
      - the image's own bytes, in its byte order; an array of one value as that value, a
-       ``float32`` in the fewest digits that read it back. None for a variable in a section
+       ``float32`` in the fewest digits that read it back, except FLT_MAX and its negative, written
+       as the double each is, since their shortest spelling lies past the range DDD holds a
+       ``float32`` to. None for a variable in a section
        without contents, whose bytes the image does not hold: ``.bss`` starts at zero, a
        ``.noinit`` section is not initialised at all, and ``section`` says which.
    * - ``section``
@@ -245,8 +247,9 @@ nothing, unless ``--force`` asks for what could be described:
 The reader is for the C that gcc and clang write, and C++ is not described by it. Where a C++
 shape would be described wrongly the tool refuses it, each in a sentence of its own, and describes
 nothing it does not state: a structure with a base class, whose members the base holds as well,
-is ``elf-type-unsupported``, as is a structure with a static member, which DWARF 4 writes as a
-member with no place in the object; and a variable of a namespace or a class, which gcc writes at
+is ``elf-type-unsupported``, as is a structure with a static member where DWARF writes the
+static as a member, which DWARF 4 does, with no place in the object (at DWARF 5 gcc writes it
+apart, and the structure is described by its storage); and a variable of a namespace or a class, which gcc writes at
 the top of its unit beside the C variables, is ``elf-no-storage`` and no candidate by its short
 name, so that a DDD object of that name is not given the address of ``ns::name``.
 
@@ -254,7 +257,8 @@ One name at one address is one variable, however many units describe it, and the
 where the descriptions disagree about it, ``elf-type-conflict``: a common symbol (``-fcommon``)
 declared at two sizes, an array declared with two lengths, a weak definition over a strong one of
 another type, and a description whose size is not the size its symbol states, as a unit built
-without ``-g`` leaves it. The variable is left out, since no one of the descriptions is right.
+without ``-g`` leaves it. The variable is left out, since no one of the descriptions is right, and a unit prefix does not
+change that: the sizes are judged over every unit of the image that holds the name there.
 Where a linker script overlays two sections at one address, the variable's section is the one its
 symbol names; a variable that nothing places in either is ``elf-section-ambiguous``. A name two
 arguments reach by their two unit prefixes, as ``cal.c:Gain`` and ``io.c:Gain`` do, is refused as
@@ -317,8 +321,8 @@ under DDD's identifiers.
    * - ``elf-type-unsupported``
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,
-       a ``const`` array of structures, a C++ structure with a base class or a static member -
-       named at the member where it occurs
+       a ``const`` array of structures, a C++ structure with a base class or, at DWARF 4, a static
+       member - named at the member where it occurs
    * - ``elf-type-conflict``
      - error
      - one name stands for two different structures or enums, or for one variable that two

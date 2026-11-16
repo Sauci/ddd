@@ -68,17 +68,17 @@ def select(image: Image, arguments: Sequence[Wanted], bag: DiagnosticBag) -> lis
             continue
         for name in sorted(matched):
             ordered = sorted(matched[name], key=lambda variable: variable.unit)
-            apart = _described_apart(ordered, image)
+            apart = _described_apart(name, ordered, image)
             for address, there in apart.items():
                 if (name, address) not in disagreed:
                     disagreed.add((name, address))
                     _report_disagreement(name, address, there, image, bag)
-            group = _distinct([variable for variable in ordered if variable.address not in apart])
-            if not group:
-                continue
+            group = _distinct(ordered)
             (variable, *others) = group
             if not others and variable.address is not None:
-                if (name, variable.address) not in taken:
+                # A disagreeing address is reported above and chosen by no argument; it is left
+                # out of what is chosen only, so that it still counts toward an ambiguity.
+                if variable.address not in apart and (name, variable.address) not in taken:
                     taken.add((name, variable.address))
                     chosen.append((variable, argument.text))
                 continue
@@ -152,20 +152,24 @@ def _listed(parts: Sequence[str]) -> str:
     return f"{', '.join(parts[:-1])} and {parts[-1]}"
 
 
-def _described_apart(group: Sequence[Variable], image: Image) -> dict[int, list[Variable]]:
-    """The variables of ``group`` that sit at an address where what is known of their size is
-    not one number: units whose descriptions differ in it, or a description and the symbol
+def _described_apart(
+    name: str, group: Sequence[Variable], image: Image
+) -> dict[int, list[Variable]]:
+    """The variables of ``name`` at each address of ``group`` where what is known of their size
+    is not one number: units whose descriptions differ in it, or a description and the symbol
     table's own size for the name there (a symbol of size 0 states none). One name at one
-    address is one variable, however many units describe it, and a description the image
-    contradicts cannot be the right one."""
-    there: dict[int, list[Variable]] = {}
-    for variable in group:
-        if variable.address is not None:
-            there.setdefault(variable.address, []).append(variable)
+    address is one variable, however many units describe it, so every unit of the image is
+    asked and a unit prefix chooses the unit and nothing more."""
+    addresses = {variable.address for variable in group if variable.address is not None}
     apart: dict[int, list[Variable]] = {}
-    for address, variables in there.items():
+    for address in addresses:
+        variables = [
+            variable
+            for variable in image.variables
+            if variable.name == name and variable.address == address
+        ]
         sizes = {size for variable in variables if (size := size_of(variable.type)) is not None}
-        symbol = image.object_sizes.get((variables[0].name, address))
+        symbol = image.object_sizes.get((name, address))
         if symbol:
             sizes.add(symbol)
         if len(sizes) > 1:
@@ -176,11 +180,10 @@ def _described_apart(group: Sequence[Variable], image: Image) -> dict[int, list[
 def _report_disagreement(
     name: str, address: int, there: Sequence[Variable], image: Image, bag: DiagnosticBag
 ) -> None:
+    sized = [(variable, size) for variable in there if (size := size_of(variable.type)) is not None]
     by_size: dict[int, list[str]] = {}
-    for variable in there:
-        size = size_of(variable.type)
-        if size is not None:
-            by_size.setdefault(size, []).append(f"'{variable.unit}'")
+    for variable, size in sized:
+        by_size.setdefault(size, []).append(f"'{variable.unit}'")
     described = _listed([f"as {size} bytes by {_listed(units)}" for size, units in by_size.items()])
     message = f"'{name}' at {address:#x} is described {described}"
     symbol = image.object_sizes.get((name, address))
@@ -191,13 +194,10 @@ def _report_disagreement(
         bag,
         "elf-type-conflict",
         message,
-        place(image, there[0].declared_at),
+        place(image, sized[0][0].declared_at),
         [
-            (
-                f"described as {size_of(variable.type)} bytes here",
-                place(image, variable.declared_at),
-            )
-            for variable in there
+            (f"described as {size} bytes here", place(image, variable.declared_at))
+            for variable, size in sized
         ],
     )
 

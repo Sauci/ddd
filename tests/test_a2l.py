@@ -173,12 +173,35 @@ class TestMeasurements:
         }
         dictionary, bag = run_analysis(tree, files)
         assert dictionary is not None, [d.render() for d in bag]
-        assert dragged_with(dictionary, frozenset({"Ax"})) == ("Cv",)
-        assert dragged_with(dictionary, frozenset()) == ()
-        assert dragged_with(dictionary, frozenset({"Ax", "Cv"})) == (), "left out in its own right"
+        assert dragged_with(dictionary, frozenset({"Ax"})) == {"Cv": ("Ax",)}
+        assert dragged_with(dictionary, frozenset()) == {}
+        assert dragged_with(dictionary, frozenset({"Ax", "Cv"})) == {}, "left out in its own right"
         assert [(o.name, o.condition, o.symbols) for o in conditional_objects(dictionary)] == [
             ("Ax", "F", ("Ax",))
         ]
+
+    def test_a_map_over_two_left_out_axes_is_named_with_both_by_dragged_with(
+        self, tree: Path
+    ) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "Speed"),
+                declare("local", "Ax", "uint16", kind="axis", size=2, input="Speed", condition="F"),
+                declare("local", "Ay", "uint16", kind="axis", size=2, input="Speed", condition="G"),
+                declare("local", "Az", "uint16", kind="axis", size=2, input="Speed"),
+                declare("local", "M", "uint8", kind="map", x_axis="Ax", y_axis="Ay"),
+                declare("local", "N", "uint8", kind="map", x_axis="Az", y_axis="Ay"),
+                description="a component",
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        assert dragged_with(dictionary, frozenset({"Ax", "Ay"})) == {
+            "M": ("Ax", "Ay"),
+            "N": ("Ay",),
+        }
 
     def test_a_curve_that_asked_to_stay_out_of_the_file_is_not_dragged(self, tree: Path) -> None:
         files = {
@@ -193,7 +216,7 @@ class TestMeasurements:
         }
         dictionary, bag = run_analysis(tree, files)
         assert dictionary is not None, [d.render() for d in bag]
-        assert dragged_with(dictionary, frozenset({"Ax"})) == ()
+        assert dragged_with(dictionary, frozenset({"Ax"})) == {}
 
     def test_a_map_over_an_axis_the_build_left_out_goes_with_it(self, tree: Path) -> None:
         content = a2l(

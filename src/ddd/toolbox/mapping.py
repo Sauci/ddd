@@ -59,6 +59,15 @@ _DATATYPES: Final = {
     ("float", 4): "float32",
     ("float", 8): "float64",
 }
+_NO_TYPE: Final = Unsupported("void")
+"""What the reader makes of a variable its debug information gives no type, as ``-g1`` leaves
+every variable: C's ``void``, which no variable is."""
+
+_UNTYPED: Final = (
+    "the image's debug information gives '{}' no type, as -g1 leaves it, so DDD cannot state it"
+)
+"""The sentence for such a variable, in the words the placement of ``--image`` gives a path into
+one."""
 _EM_ARM: Final = 40
 _EM_RISCV: Final = 243
 ALIGNMENT_CAPS: Final = {
@@ -216,6 +225,9 @@ class Mapper:
         shape = shape_of(variable.type)
         location = place(self._image, variable.declared_at)
         core = shape.core
+        if core == _NO_TYPE:
+            report(self._bag, "elf-type-unsupported", _UNTYPED.format(variable.name), location)
+            return None
         if isinstance(core, Unsupported):
             self._refuse(variable, Refusal(variable.name, core.what), location)
             return None

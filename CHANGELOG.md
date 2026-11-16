@@ -452,8 +452,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   words or a traceback with exit 1; each is now a usage error naming the file, exit 2.  An image
   built with `-gsplit-dwarf` places nothing and said its units had no `-g`; it now says the debug
   information is in `.dwo` files the reader does not read, and a `-g1` image says the variable has
-  no type, and is still placed.  Nothing to migrate; a build that counts its findings sees
-  `image-load-relative`, which `-W image-load-relative=ignore` silences.
+  no type, and is still placed.  `ddd tool from-elf` now says the same of both, where it gave a
+  split image that advice too and called a `-g1` variable `void`.  Nothing to migrate; a build
+  that counts its findings sees `image-load-relative`, which `-W image-load-relative=ignore`
+  silences.
 
 * **`ddd generate a2l --image` warns where the image holds a variable otherwise than its description
   says.**  The linked image is the only place a run sees the C that was compiled, and the addresses

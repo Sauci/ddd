@@ -1232,8 +1232,9 @@ class TestGenerate:
         )
         assert code == EXIT_OK
         assert (
-            "warning[reference-left-out]: 'Cv', 'Cw' refer to an axis left out above, and the a2l "
-            "cannot describe them without the axis; they are left out too"
+            "warning[reference-left-out]: 'Cv', 'Cw' refer to the axis 'Ax', which is only present "
+            "in the build when 'defined(F)' and is left out of the a2l; the a2l cannot describe "
+            "them without the axis, so they are left out too"
         ) in capsys.readouterr().err
 
     def test_a_curve_that_goes_with_a_left_out_axis_is_named(
@@ -1252,12 +1253,50 @@ class TestGenerate:
         captured = capsys.readouterr().err
         assert code == EXIT_OK, captured
         assert (
-            "warning[reference-left-out]: 'Cv' refers to an axis left out above, and the a2l "
-            "cannot describe it without the axis; it is left out too"
+            "warning[reference-left-out]: 'Cv' refers to the axis 'Ax', which is only present in "
+            "the build when 'defined(F)' and is left out of the a2l; the a2l cannot describe it "
+            "without the axis, so it is left out too"
         ) in captured
         assert "address-missing" not in captured
         assert "MEASUREMENT Speed" in a2l
         assert "Cv" not in a2l
+
+    def test_each_axis_left_out_is_named_with_its_condition_beside_what_goes_with_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Findings print by severity, so the warning comes before the information naming the
+        axis, and with that information ignored it is all a reader is told: each finding names
+        its own axis and the condition it went under, and a map over two goes with each."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            [
+                *self.a_curve_over_a_conditional_axis(),
+                declare("local", "Bx", "uint16", "defined(G)", kind="axis", size=2, input="Speed"),
+                declare("local", "Cw", kind="curve", axis="Bx"),
+                declare("local", "Mp", "uint8", kind="map", x_axis="Ax", y_axis="Bx"),
+            ],
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+            "-W",
+            "condition-left-out=ignore",
+            strict=False,
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        said = [line.split(": ", 1)[1] for line in captured.splitlines() if "-left-out]" in line]
+        assert said == [
+            "warning[reference-left-out]: 'Cv', 'Mp' refer to the axis 'Ax', which is only "
+            "present in the build when 'defined(F)' and is left out of the a2l; the a2l cannot "
+            "describe them without the axis, so they are left out too",
+            "warning[reference-left-out]: 'Cw', 'Mp' refer to the axis 'Bx', which is only "
+            "present in the build when 'defined(G)' and is left out of the a2l; the a2l cannot "
+            "describe them without the axis, so they are left out too",
+        ]
+        assert "above" not in captured
+        assert "MEASUREMENT Speed" in a2l
+        assert "AXIS_PTS" not in a2l
+        assert "CHARACTERISTIC" not in a2l
 
     def test_that_warning_stops_a_strict_build_whatever_is_done_to_the_mismatch(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1270,9 +1309,10 @@ class TestGenerate:
             "condition-mismatch=ignore",
         )
         assert code == EXIT_FINDINGS
-        assert "error[reference-left-out]: 'Cv' refers to an axis left out above" in (
-            capsys.readouterr().err
-        )
+        assert (
+            "error[reference-left-out]: 'Cv' refers to the axis 'Ax', which is only present in "
+            "the build when 'defined(F)'"
+        ) in capsys.readouterr().err
         assert a2l == ""
 
     def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
@@ -5114,6 +5154,36 @@ class TestToolFromElf:
         assert err.splitlines()[0] == (
             f"gc_sections.c:{line}: error[elf-no-storage]: 'Cal_Discarded' has no address in the "
             f"image: the linker discarded its storage"
+        )
+
+    def test_a_split_image_is_told_that_its_debug_information_is_in_dwo_files(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """split-dwarf.elf: ``-gsplit-dwarf`` leaves a skeleton of each unit in the image and the
+        unit itself in a ``.dwo`` file, so the unit was built with ``-g``, and telling the reader
+        to build it so sends them back to what the build already did."""
+        image = FIXTURES / "split-dwarf.elf"
+        code, out, err = from_elf(capsys, str(image), "Cal_Gain")
+        assert (code, out) == (EXIT_FINDINGS, "")
+        place, said = err.splitlines()[0].split(": ", 1)
+        assert place.endswith("split-dwarf.elf")
+        assert said == (
+            "error[elf-symbol-missing]: the image's debug information holds no variable named "
+            "'Cal_Gain'; the symbol table holds it, and the debug information of this image is in "
+            "separate .dwo files (-gsplit-dwarf), which this tool does not read"
+        )
+
+    def test_a_variable_debug_level_1_leaves_without_a_type_is_told_so(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """debug-level-1.elf: ``-g1`` keeps each variable and its address and no type, which the
+        reader reads as C's ``void``; the variable is not one of ``void``."""
+        code, out, err = from_elf(capsys, str(FIXTURES / "debug-level-1.elf"), "Cal_Gain")
+        assert (code, out) == (EXIT_FINDINGS, "")
+        line = fixture_line("type_units.c", "const uint16_t Cal_Gain")
+        assert err.splitlines()[0] == (
+            f"type_units.c:{line}: error[elf-type-unsupported]: the image's debug information "
+            f"gives 'Cal_Gain' no type, as -g1 leaves it, so DDD cannot state it"
         )
 
     def test_the_unit_gold_discarded_is_refused_and_the_static_a_kept_unit_holds_is_read(

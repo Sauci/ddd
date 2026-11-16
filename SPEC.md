@@ -1483,9 +1483,10 @@ Warnings:
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.
 - `reference-left-out`: a curve or a map is left out of the A2L because the axis it refers
-  to was (`condition-left-out`), the build holding the curve or the map all the same. It is a
-  warning, so that a `--strict` build stops for it even where `condition-mismatch`, which
-  reports the cause at `ddd check`, is ignored.
+  to was (`condition-left-out`), the build holding the curve or the map all the same. It is
+  one finding per axis, naming the axis, its condition and what goes with it, a map over two
+  such axes named under each. It is a warning, so that a `--strict` build stops for it even
+  where `condition-mismatch`, which reports the cause at `ddd check`, is ignored.
 - `address-missing`: an object the A2L carries, one that states no condition, gets no
   address from the address map or the image the run was given. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction. That is the run
@@ -2757,7 +2758,11 @@ name there where the image holds any, a link made with `-Wl,-x` dropping them al
 the `static` to be read by its address alone - or at an address no section of the image
 holds - is `elf-no-storage`. A global the symbol table holds and no unit with debug
 information defines, one written in assembly or built without `-g`, is said to be defined where
-the debug information does not describe it. A name each of several units leaves without an
+the debug information does not describe it. A name the symbol table holds and no unit's debug
+information describes at all is `elf-symbol-missing`, its unit said to be built without `-g`,
+or, where the image's debug information is split into `.dwo` files (`-gsplit-dwarf`), which the
+reader does not read, to be described there; and a variable `-g1` leaves without a type is
+`elf-type-unsupported`, in a sentence saying so. A name each of several units leaves without an
 address, as a header's `static const` each folded, is `elf-no-storage` once, naming the units,
 for a unit prefix would take none of them.
 

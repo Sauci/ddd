@@ -319,6 +319,17 @@ class TestTheCheckReference:
         assert "address map" in description
         assert "image" in description
 
+    def test_the_pages_say_reference_left_out_names_each_axis_and_its_condition(self) -> None:
+        """One finding named every curve that went with any axis, pointing at an information
+        printed after it, which a project may ignore: each axis now has a finding of its own."""
+        assert (
+            "It is one finding per axis, naming the axis, its condition and what goes with it, a "
+            "map over two such axes named under each."
+        ) in flattened(SPEC)
+        assert (
+            "One finding per axis names the axis and its condition beside what goes with it."
+        ) in flattened(CONSISTENCY_CHECKS)
+
     @pytest.mark.parametrize("page", sorted(PAGES))
     def test_the_fixed_checks_are_counted_as_the_registry_counts_them(self, page: str) -> None:
         """ "The five checks whose severity cannot be changed" went stale when two more joined.
@@ -2172,6 +2183,26 @@ class TestWhatTheReaderAndTheToolboxSay:
             assert sentence in spec
         assert "defined where the debug information does not describe it" in page
         assert "is reported once, naming the units, since a unit prefix would take none" in page
+
+    def test_the_spec_and_the_page_tell_a_split_image_and_a_g1_variable_what_they_are(
+        self,
+    ) -> None:
+        """``from-elf`` told a split image that its units had no ``-g`` and a ``-g1`` variable
+        that it was ``void``, as the placement of ``--image`` no longer does."""
+        spec = flattened(SPEC)
+        page = flattened(PAGES["docs/toolbox.rst"]).replace("``", "`")
+        assert (
+            "or, where the image's debug information is split into `.dwo` files (`-gsplit-dwarf`), "
+            "which the reader does not read, to be described there; and a variable `-g1` leaves "
+            "without a type is `elf-type-unsupported`, in a sentence saying so"
+        ) in spec
+        assert (
+            "or, in an image whose debug information is split into `.dwo` files (`-gsplit-dwarf`), "
+            "is described in those, which the tool does not read"
+        ) in page
+        assert "and a variable the debug information gives no type, as `-g1` leaves every one" in (
+            page
+        )
 
 
 class TestTheBuildIntegrationPage:

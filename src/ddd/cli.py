@@ -1075,9 +1075,11 @@ def _leave_out(
     does not give.
 
     A curve or a map over an axis among them goes with it, which the build holds and the file
-    cannot describe: a finding of its own names those. What comes back is the symbols left
-    out, and the ``carried`` ones that still reach the file, which are the ones
-    ``address-missing`` is about.
+    cannot describe: a finding for each such axis names it, the condition it went under and
+    what goes with it. It says all of that itself, since the findings print by severity, this
+    warning before the information naming the axis, which a project may ignore. What comes
+    back is the symbols left out, and the ``carried`` ones that still reach the file, which
+    are the ones ``address-missing`` is about.
     """
     for condition in dict.fromkeys(entry.condition for entry in absent):
         objects = [entry for entry in absent if entry.condition == condition]
@@ -1101,12 +1103,19 @@ def _leave_out(
 
     left_out = frozenset(symbol for entry in absent for symbol in entry.symbols)
     dragged = dragged_with(dictionary, left_out)
-    if dragged:
-        plural = len(dragged) != 1
+    condition_of = {symbol: entry.condition for entry in absent for symbol in entry.symbols}
+    going: dict[str, list[str]] = {}
+    for name, axes in dragged.items():
+        for axis in axes:
+            going.setdefault(axis, []).append(name)
+    for axis in sorted(going):
+        names = going[axis]
+        plural = len(names) != 1
         bag.add(
             "reference-left-out",
-            f"{_listed(list(dragged))} {'refer' if plural else 'refers'} to an axis left out "
-            f"above, and the a2l cannot describe {'them' if plural else 'it'} without the axis; "
+            f"{_listed(names)} {'refer' if plural else 'refers'} to the axis '{axis}', which is "
+            f"only present in the build when '{condition_of[axis]}' and is left out of the a2l; "
+            f"the a2l cannot describe {'them' if plural else 'it'} without the axis, so "
             f"{'they are' if plural else 'it is'} left out too",
             where(path),
         )

@@ -291,7 +291,8 @@ under DDD's identifiers.
      - error
      - a name or a pattern matches no variable of the image's debug information; where the
        symbol table holds the name and no unit's debug information does, the unit defining it
-       was built without ``-g``
+       was built without ``-g``, or, in an image whose debug information is split into ``.dwo``
+       files (``-gsplit-dwarf``), is described in those, which the tool does not read
    * - ``elf-symbol-ambiguous``
      - error
      - several compilation units define the name, other than as one variable at one
@@ -322,7 +323,8 @@ under DDD's identifiers.
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,
        a ``const`` array of structures, a C++ structure with a base class or, at DWARF 4, a static
-       member - named at the member where it occurs
+       member - named at the member where it occurs; and a variable the debug information gives
+       no type, as ``-g1`` leaves every one
    * - ``elf-type-conflict``
      - error
      - one name stands for two different structures or enums, or for one variable that two

@@ -18,6 +18,19 @@ _UNDESCRIBED: Final = (
     "without -g"
 )
 
+_WITHOUT_G: Final = (
+    "; the symbol table holds it, so the unit defining it was built without debug information (-g)"
+)
+"""The ending of a name no unit's debug information describes and the symbol table holds."""
+
+_SPLIT: Final = (
+    "; the symbol table holds it, and the debug information of this image is in separate .dwo "
+    "files (-gsplit-dwarf), which this tool does not read"
+)
+"""The same ending for an image whose debug information is split, as the placement of
+``--image`` words it: its units were built with ``-g``, and are described in the ``.dwo`` files
+the image holds a skeleton of."""
+
 
 @dataclass(frozen=True, slots=True)
 class Wanted:
@@ -230,10 +243,7 @@ def _missing(argument: Wanted, image: Image) -> str:
     # a variable is missing there, and its own unit has debug information.
     described = any(variable.name == argument.pattern for variable in image.variables)
     if argument.pattern in image.symbols and not described:
-        message += (
-            "; the symbol table holds it, so the unit defining it was built without debug "
-            "information (-g)"
-        )
+        message += _SPLIT if image.split_dwarf else _WITHOUT_G
     return message
 
 

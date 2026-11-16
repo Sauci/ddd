@@ -256,9 +256,12 @@ def conditional_objects(dictionary: DataDictionary) -> tuple[ConditionalObject, 
     return _A2lModelBuilder(dictionary, A2lOptions()).conditional()
 
 
-def dragged_with(dictionary: DataDictionary, left_out: frozenset[str]) -> tuple[str, ...]:
-    """The objects the a2l would carry that go with ``left_out``, sorted: a curve or a map
-    whose axis is among them, which the file cannot name once the axis has no record."""
+def dragged_with(
+    dictionary: DataDictionary, left_out: frozenset[str]
+) -> dict[str, tuple[str, ...]]:
+    """The objects the a2l would carry that go with ``left_out``, by name and sorted, each with
+    the axes among ``left_out`` it refers to: a curve or a map whose axis is among them, which
+    the file cannot name once the axis has no record."""
     return _A2lModelBuilder(dictionary, A2lOptions(left_out=left_out)).dragged()
 
 
@@ -336,9 +339,10 @@ class _A2lModelBuilder:
             for name in sorted(symbols)
         )
 
-    def dragged(self) -> tuple[str, ...]:
-        """The objects that would reach the file but for an axis among the options' left out."""
-        return tuple(sorted(self._dragged()))
+    def dragged(self) -> dict[str, tuple[str, ...]]:
+        """The objects that would reach the file but for an axis among the options' left out,
+        by name and sorted, each with the axes it loses."""
+        return {name: self._lost_axes(self._by_name[name]) for name in sorted(self._dragged())}
 
     def _dragged(self) -> set[str]:
         if not self._options.left_out:
@@ -349,15 +353,16 @@ class _A2lModelBuilder:
             for entry in self._dictionary.objects
             if entry.a2l.exported
             and entry.name not in self._options.left_out
-            and self._loses_an_axis(entry)
+            and self._lost_axes(entry)
         }
 
-    def _loses_an_axis(self, entry: ResolvedObject) -> bool:
-        """Whether ``entry`` is a curve or a map over an axis the options leave out; its
-        ``AXIS_DESCR`` would name a record the file lacks."""
-        return any(
-            entry.references.get(key) in self._options.left_out
+    def _lost_axes(self, entry: ResolvedObject) -> tuple[str, ...]:
+        """The axes a curve or a map ``entry`` refers to that the options leave out, in the
+        order of its references; its ``AXIS_DESCR`` would name a record the file lacks."""
+        return tuple(
+            axis
             for key in ("axis", "x_axis", "y_axis")
+            if (axis := entry.references.get(key)) is not None and axis in self._options.left_out
         )
 
     def build(self, generator: str) -> A2lModel:

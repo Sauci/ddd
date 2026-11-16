@@ -668,7 +668,8 @@ it is either a smell or a decision somebody should have taken consciously.
    * - ``reference-left-out``
      - warning
      - a curve or a map is left out of the a2l because its axis was (``condition-left-out``),
-       while the build holds the curve or the map. A warning where the left-out axis is only
+       while the build holds the curve or the map. One finding per axis names the axis and its
+       condition beside what goes with it. A warning where the left-out axis is only
        information, since the a2l lacks what the build has; ``--strict`` stops a build for it
        even where ``condition-mismatch``, which reports the cause in ``ddd check``, is ignored.
    * - ``address-missing``

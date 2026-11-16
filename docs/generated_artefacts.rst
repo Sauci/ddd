@@ -440,21 +440,20 @@ through the address of a plain ``const`` object prints, identically at ``-O0``, 
 exactly the failure a calibration engineer spends an afternoon on: the tool shows the new
 value, reads it back correctly, and the ecu behaves as it did before.
 
-``volatile`` is not free, and what it costs is the read only memory the ``const`` earned. gcc
-treats a volatile access as a side effect and takes the object out of the read only category
-altogether: ``.section .rodata`` becomes a plain ``.data``, the section flags ``readelf``
-reports go from ``A`` to ``WA``, and the class ``nm`` prints goes from ``R`` to ``D``.
-Measured with gcc 12.2.0 on DDD's own generated demo with the flag set quoted above, ``size
--A ddd_globals.o`` moved from ``.rodata 84`` and ``.data 2`` to ``.data 86`` - every byte of
-the calibration data changing category. Those two counts are of the demo as it stood when the
-measurement was taken, and they move with whatever the demo declares; what does not move is
-that all of it goes across. Naming a section
-explicitly does not change this - a ``.calib`` section is emitted ``A`` when its contents are
-``const`` and ``WA`` when they are ``const volatile``. On a flash target with an ordinary
-linker script that means a ram address with a load region in flash and a copy at startup, so
-the calibration tool programs a page the code never reads and the next reset overwrites what
-the tool wrote. A project that calibrates online therefore places these objects itself, in
-its linker script.
+Where the object lies is a separate question, and ``volatile`` does not answer it:
+``volatile`` does not move a value to RAM on any toolchain measured. The committed ELF images
+the test suite reads, built by gcc 14.2.0 (x86_64, i686, aarch64, powerpc and s390x),
+arm-none-eabi-gcc 14.2.1 and clang 19.1.7, hold every ``const volatile`` object in ``.rodata``,
+which is not writable, except the small ones on powerpc, which lie in ``.sdata``, a writable
+section, as the plain ``const`` objects of their size do. ``readelf`` reports the flags ``A``, not
+``WA``, for ``.rodata``, and ``nm`` the class ``R``, not ``D``. Where the compiler
+places such an object depends on the target and on the compiler's version, and no other
+version was measured: confirm it once on the toolchain a project ships with.
+
+Where a calibration parameter lives is the project's to decide, by the ``section`` DDD writes
+and by the linker script, and a tool writes a parameter that stays in flash through an overlay
+or an emulation memory. A project that calibrates from RAM places the object there itself,
+with the startup copy that implies.
 
 DDD states no preference between the two answers and reports nothing about the choice. There
 is nothing in a description it could derive one from - unlike the limits, which follow from

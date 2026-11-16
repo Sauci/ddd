@@ -5,12 +5,14 @@ from __future__ import annotations
 import errno
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from conftest import component, declare, project, render_files, run_analysis
+from conftest import DEMO, EXAMPLES, component, declare, project, render_files, run_analysis
 from ddd.backends import (
     MANIFEST_NAME,
     A2lBackend,
@@ -99,7 +101,7 @@ class TestGlobalDefinitionFile:
         source = files["ddd_globals.c"]
         assert "#if defined(FEATURE_X) && VERSION > 2\n" in source
         assert "#endif /* defined(FEATURE_X) && VERSION > 2 */" in source
-        assert source.index("#if ") < source.index("uint8_t A;") < source.index("#endif")
+        assert source.index("#if ") < source.index("uint8_t A;") < source.index("#endif /*")
 
     def test_description_and_unit_become_a_comment(self, tree: Path) -> None:
         files = generate(tree, simple(declare("local", "A", description="Flow rate", unit="l/min")))
@@ -624,3 +626,100 @@ class TestStringInitialisers:
     def test_a_signed_byte_string_takes_the_same_literal(self, tree: Path) -> None:
         files = generate(tree, self.string("abc", datatype="sint8", size=8))
         assert 'const int8_t Label[8] = "abc";' in files["ddd_globals.c"]
+
+
+class TestRetainingADefinitionAGarbageCollectingLinkWouldDrop:
+    """``DDD_RETAIN``, which the example ``ddd_globals.c`` template puts before every definition:
+    empty unless the project defines it, and then what keeps the object under ``--gc-sections``."""
+
+    RETAIN = "__attribute__((used, retain))"
+
+    @staticmethod
+    def generated(directory: Path) -> Path:
+        from ddd.cli import main
+
+        arguments = ["generate", "c", str(DEMO), "-o", str(directory), "-t"]
+        assert main([*arguments, str(EXAMPLES / "templates")]) == 0
+        return directory / "ddd_globals.c"
+
+    @staticmethod
+    def compiler() -> str:
+        gcc = shutil.which("gcc")
+        assert gcc, "no gcc on the path: the objects a link keeps are counted from its output"
+        return gcc
+
+    def run(self, *command: str | Path) -> str:
+        done = subprocess.run(
+            [str(part) for part in command], capture_output=True, text=True, check=False
+        )
+        assert done.returncode == 0, done.stderr
+        return done.stdout
+
+    def kept(self, tmp_path: Path, *flags: str) -> tuple[int, int, bytes, str]:
+        """Link the generated definitions with ``-fdata-sections`` and ``--gc-sections`` against
+        a ``main`` that references none of them: how many objects the unit defines, how many of
+        them the image keeps, the image's first bytes, and what ``ddd generate a2l`` says of it."""
+        source = self.generated(tmp_path / "gen")
+        main_c = tmp_path / "main.c"
+        main_c.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        include = f"-I{DEMO.parent / 'include'}"
+        gcc = self.compiler()
+        self.run(gcc, "-g", "-O2", "-fdata-sections", include, f"-I{source.parent}", *flags,
+                 "-c", source, "-o", tmp_path / "globals.o")  # fmt: skip
+        self.run(gcc, "-g", "-O2", "-c", main_c, "-o", tmp_path / "main.o")
+        image = tmp_path / "image.exe"
+        self.run(gcc, "-Wl,--gc-sections", tmp_path / "main.o", tmp_path / "globals.o", "-o", image)
+
+        def objects(path: Path) -> set[str]:
+            symbols = (line.split() for line in self.run("nm", path).splitlines())
+            return {s[2].removeprefix("_") for s in symbols if len(s) == 3 and s[1] in "BbDdRrGgSs"}
+
+        defined = objects(tmp_path / "globals.o")
+        return len(defined), len(defined & objects(image)), image.read_bytes()[:4], str(image)
+
+    def test_every_definition_is_retained_on_elf_and_dropped_on_pe_where_the_macro_is_set(
+        self, tmp_path: Path
+    ) -> None:
+        """Measured with gcc 15.2.0 and binutils 2.46: ``used`` alone keeps nothing, and
+        ``used, retain`` keeps every object. On PE gcc ignores ``retain``, and nothing is kept."""
+        total, empty, magic, _ = self.kept(tmp_path / "empty")
+        assert total >= 20
+        assert empty == 0
+        elf = magic == b"\x7fELF"
+        total, used, _, _ = self.kept(tmp_path / "used", "-DDDD_RETAIN=__attribute__((used))")
+        assert used == 0
+        total, retained, _, _ = self.kept(tmp_path / "retain", f"-DDDD_RETAIN={self.RETAIN}")
+        assert retained == (total if elf else 0)
+
+    def test_the_a2l_of_an_image_without_them_says_the_addresses_are_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from ddd.cli import main
+
+        _, _, magic, image = self.kept(tmp_path / "empty")
+        if magic != b"\x7fELF":
+            return  # an image the reader reads is an ELF one; PE is covered by the count above
+        arguments = ["generate", "a2l", str(DEMO), "--image", image, "-o", str(tmp_path / "a2l")]
+        main(arguments)
+        assert "warning[address-missing]" in capsys.readouterr().err
+
+    def test_the_macro_defaults_to_nothing_and_the_c_compiles_as_it_did(
+        self, tmp_path: Path
+    ) -> None:
+        """Compiled to assembly, the unit with ``DDD_RETAIN`` before each definition is the unit
+        without it, byte for byte."""
+        source = self.generated(tmp_path / "with")
+        text = source.read_text(encoding="utf-8")
+        assert text.count("DDD_RETAIN ") >= 20
+        without = tmp_path / "without"
+        without.mkdir()
+        (without / "ddd_globals.c").write_text(
+            text.replace("DDD_RETAIN ", ""), encoding="utf-8", newline="\n"
+        )
+        for directory in (source.parent, without):
+            self.run(
+                self.compiler(), "-S", "-O2", "-g0", "-fdata-sections", f"-I{source.parent}",
+                f"-I{DEMO.parent / 'include'}", directory / "ddd_globals.c",
+                "-o", directory / "out.s",
+            )  # fmt: skip
+        assert (source.parent / "out.s").read_bytes() == (without / "out.s").read_bytes()

@@ -423,19 +423,18 @@ does.  Where the load survives, `const` still lets the compiler serve two reads 
 them and move it across a call.  Either way, a program that writes a new value through such
 an object's address prints it back out of memory and then goes on computing with the old one.
 
-What that buys is paid for out of the read only memory.  gcc treats a volatile access as a
-side effect and takes the object out of the read only category, so `.rodata` becomes a plain
-`.data`: measured with gcc 12.2.0 on DDD's own generated demo with this repository's own flag
-set, `.rodata 84 / .data 2` became `.data 86` - every byte of it crossing over - and an
-explicitly attributed section moves the same way.  The two counts are of the demo as it stood
-when the measurement was taken and move with whatever it declares; what does not move is that
-all of it goes across.  The categorisation is target independent, but it is worth confirming once on the
-toolchain you actually ship with.  On a flash target with an ordinary linker script that means a RAM address with a load
-region in flash and a startup copy, so the tool programs a page the code never reads and the
-next reset overwrites what it wrote.  A project that calibrates online handles that placement
-in its linker script; one that does not states `false` and keeps its data in flash.
-**DDD states no preference and reports nothing about the choice** - it generates what the
-description says.
+Where the object lies is a separate question: `volatile` does not move a value to RAM on any
+toolchain measured.  The ELF images this project's test suite is built on - gcc 14.2.0 (x86_64,
+i686, aarch64, powerpc and s390x), arm-none-eabi-gcc 14.2.1 and clang 19.1.7 - hold every
+`const volatile` object in `.rodata`, which is not writable, except the small ones on powerpc,
+which lie in `.sdata`, a writable section, as the plain `const` objects of their size do.  Where
+the compiler places such an object depends on the target and on the compiler's version, and no
+other version was measured, so confirm it once on the toolchain you actually ship with.  Where a
+calibration parameter lives is the project's to decide, through the `section` DDD writes and the
+linker script, and a tool writes a parameter that stays in flash through an overlay or an
+emulation memory; a project that calibrates from RAM places the object there itself, with the
+startup copy that implies.  **DDD states no preference and reports nothing about the choice** -
+it generates what the description says.
 
 Two smaller consequences are worth knowing before writing `true`.  Handing a `const volatile`
 array to a helper that takes a plain `const` one is

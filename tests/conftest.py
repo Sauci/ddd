@@ -38,6 +38,22 @@ DEMO = EXAMPLES / "demo" / "demo.ddd.json"
 INCONSISTENT = EXAMPLES / "inconsistent" / "project.ddd.json"
 
 
+def placement(image: Path, name: str) -> tuple[str, bool]:
+    """The section the symbol table puts the variable ``name`` of an ELF image in, and whether
+    that section is writable: what the toolchain that linked it decided, read with pyelftools
+    and not with DDD's reader."""
+    from elftools.elf.constants import SH_FLAGS
+    from elftools.elf.elffile import ELFFile
+
+    with image.open("rb") as stream:
+        elf = ELFFile(stream)
+        symbols = elf.get_section_by_name(".symtab")
+        assert symbols is not None, f"{image.name} has no symbol table"
+        (symbol,) = symbols.get_symbol_by_name(name)
+        section = elf.get_section(symbol["st_shndx"])
+        return section.name, bool(section["sh_flags"] & SH_FLAGS.SHF_WRITE)
+
+
 def project(name: str = "TestProject", *includes: str, **extra: Any) -> dict[str, Any]:
     return {"project": {"name": name, "includes": list(includes), **extra}}
 

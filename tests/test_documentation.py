@@ -2180,6 +2180,100 @@ class TestWhatThePagesSayTheImageIsHeldTo:
         ) in page
 
 
+class TestWhereConstVolatileLiesAndWhatAGarbageCollectingLinkDrops:
+    """What the pages say of the placement of a ``const volatile`` object, which the committed
+    images measure (``test_a_const_volatile_object_lies_...``), and of ``--gc-sections``, which
+    the example template's ``DDD_RETAIN`` answers (``TestRetainingADefinition...``)."""
+
+    PLACEMENT = ("README.md", "SPEC.md", "docs/generated_artefacts.rst")
+    BRIEF = (
+        "docs/concept.rst",
+        "docs/getting_started.rst",
+        "docs/file_formats/variable_definition.rst",
+    )
+    GONE = (
+        "target independent",
+        "out of the read only category",
+        "becomes a plain",
+        "every byte of it crossing",
+        "-A ddd_globals.o",
+        "when they are ``const volatile``",
+        "leaves ``.rodata`` for ``.data``",
+        "out of ``.rodata`` into",
+        "stops putting the object in",
+        "out of read only memory",
+        "should** be confirmed",
+        "measured with gcc 12.2.0 on ddd's own generated demo",
+        "The definitions reach the image whole",
+    )
+
+    @staticmethod
+    def page(name: str) -> tuple[str, str]:
+        """The page flattened and lower cased, and the quote its markup writes code in."""
+        text = SPEC if name == "SPEC.md" else PAGES[name]
+        return flattened(text).lower(), "``" if name.endswith(".rst") else "`"
+
+    @pytest.mark.parametrize("name", [*PLACEMENT, *BRIEF])
+    def test_no_page_says_volatile_moves_an_object_out_of_read_only_data(self, name: str) -> None:
+        text, _ = self.page(name)
+        for gone in self.GONE:
+            assert gone.lower() not in text
+
+    @pytest.mark.parametrize("name", [*PLACEMENT, *BRIEF])
+    def test_every_page_says_volatile_does_not_move_a_value_to_ram_on_a_toolchain_measured(
+        self, name: str
+    ) -> None:
+        text, q = self.page(name)
+        assert f"{q}volatile{q} does not move a value to ram on any toolchain measured" in text
+
+    @pytest.mark.parametrize("name", PLACEMENT)
+    def test_the_placement_is_said_with_the_versions_measured_and_what_a_tool_does(
+        self, name: str
+    ) -> None:
+        text, q = self.page(name)
+        for sentence in (
+            "gcc 14.2.0 (x86_64, i686, aarch64, powerpc and s390x), arm-none-eabi-gcc 14.2.1 and "
+            "clang 19.1.7",
+            f"hold every {q}const volatile{q} object in {q}.rodata{q}, which is not writable, "
+            f"except the small ones on powerpc, which lie in {q}.sdata{q}, a writable section, "
+            f"as the plain {q}const{q} objects of their size do",
+            "depends on the target and on the compiler's version, and no other version was "
+            "measured",
+            "is the project's to decide",
+            "a tool writes a parameter that stays in flash through an overlay or an emulation "
+            "memory",
+        ):
+            assert sentence.lower() in text
+
+    @pytest.mark.parametrize("name", BRIEF)
+    def test_the_shorter_pages_say_the_placement_is_the_projects_and_depends_on_the_toolchain(
+        self, name: str
+    ) -> None:
+        text, _ = self.page(name)
+        assert "depends on the target and on the compiler's version" in text
+        assert "the project's to decide" in text
+
+    @pytest.mark.parametrize("name", ["SPEC.md", "docs/templates.rst"])
+    def test_the_specification_and_the_templates_page_say_what_gc_sections_does_and_the_macro(
+        self, name: str
+    ) -> None:
+        text, q = self.page(name)
+        for sentence in (
+            f"a link with {q}--gc-sections{q} drops a definition no code references",
+            f"the a2l then carries its object at address 0 or, given the image with "
+            f"{q}--image{q}, reports it {q}address-missing{q}",
+            f"the example template {q}ddd_globals.c.jinja2{q} puts {q}DDD_RETAIN{q} before every "
+            "definition, and it is empty unless the project defines it",
+            f"on elf a project that links with {q}--gc-sections{q} defines it as "
+            f"{q}__attribute__((used, retain)){q}, which with gcc 15.2.0, binutils 2.46 and "
+            f"{q}-fdata-sections{q} kept every object of the demo where the empty macro kept "
+            f"none, and {q}used{q} alone kept none",
+            f"on pe gcc ignores {q}retain{q}, and what is left is a reference to the object from "
+            "code that is linked, or a linker script that keeps its section",
+        ):
+            assert sentence.lower() in text
+
+
 class TestWhatTheToolboxSaysOfDisagreementsAndCplusplus:
     """The sentences about what the toolbox refuses, reports and leaves to the author."""
 

@@ -1355,7 +1355,8 @@ function(ddd_generate image)
 
     # The single definition file is compiled as an object library, so that every variable really ends up in the
     # image: a static library would drop the members whose symbols nobody references, and a measurement written only
-    # by the calibration tool has no referencing code at all.
+    # by the calibration tool has no referencing code at all. That answers an archive's selective pull and not the
+    # linker's --gc-sections, which drops the same objects: the example template's DDD_RETAIN is what a project sets.
     add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
     # The compile usage the definition file needs - the external type headers, read under the flags of the component
     # that declares them - reaches it through <stem>_ddd_headers, which it links below like any other consumer of

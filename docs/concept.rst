@@ -334,11 +334,12 @@ software runs is generated ``const volatile``, because ``const`` alone lets the 
 the initial value in place of a read wherever it can see it - within one translation unit at
 every optimisation level, ``-O0`` included, and across them under ``-flto`` - and, where the
 load does survive, still lets it serve two reads from one of them. Either way the tool writes
-a value the software does not pick up. The qualifier
-costs the read only section: gcc moves a ``const volatile`` object out of ``.rodata`` into
-``.data``, which on a flash target is a question the linker script has to answer. An object
-that is never tuned online states ``false``, is generated plain ``const`` and stays in read
-only memory. DDD states no preference between the two and reports nothing about the choice;
+a value the software does not pick up. Where the object lies
+is a separate question: ``volatile`` does not move a value to RAM on any toolchain measured,
+and where a calibration parameter lives is the project's to decide, by the ``section`` DDD
+writes and by the linker script. Where the compiler places it depends on the target and on
+the compiler's version, which :doc:`generated_artefacts` gives the measurement of. An object
+that is never tuned online states ``false`` and is generated plain ``const``. DDD states no preference between the two and reports nothing about the choice;
 it renders what the description says.
 
 The demo project uses both readings. ``AxisA`` is declared ``output`` by the controller and

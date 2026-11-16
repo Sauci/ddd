@@ -228,11 +228,11 @@ a2l as a ``CHARACTERISTIC`` the tool may change. That second half is what a cali
 ``volatile`` is about. The threshold here is meant to be tuned while the device runs, and
 ``const`` on its own would not allow that: the compiler is entitled to fold the 180 into the code
 that reads it, which it does even without optimisation wherever it can see the 180, so the tool
-would write a new value the software never picks up. The price is the read only memory: a value the
-compiler has to re-read is no longer constant data, so it leaves ``.rodata`` for ``.data``, and
-on a flash target that is a ram address the project has to place deliberately in its linker
-script. A project whose parameters only ever change with a new build states ``false`` instead and
-keeps them in flash; DDD renders what the description says and reports nothing about the choice.
+would write a new value the software never picks up. Where it lies is a separate question:
+``volatile`` does not move a value to RAM on any toolchain measured, and where a parameter lives
+is the project's to decide, by the linker script, since the placement depends on the target and
+on the compiler's version. A project whose parameters only ever change with a new build states
+``false`` instead and keeps them in flash; DDD renders what the description says and reports nothing about the choice.
 Its scope is ``local``, so it belongs to Controller alone and no other component will ever see
 it - the right choice for data that only parametrises the component that owns it. ``init`` is a
 raw value, so 180 means 18.0 degC.

@@ -80,10 +80,10 @@ rather than ignored.
        account, with the compiler output it was measured from, is in
        :doc:`../generated_artefacts`. There is no default because there is no answer DDD could derive, and
        because the two answers have different costs that only the project can weigh:
-       ``true`` keeps a value tunable while it runs and, on a typical toolchain, moves a
-       calibration object out of read only memory, since the compiler treats a volatile access
-       as a side effect and stops putting the object in ``.rodata``; ``false`` leaves it in
-       flash and lets the optimiser keep the value in a register. DDD states no preference and
+       ``true`` keeps a value tunable while it runs, and ``false`` lets the optimiser keep
+       the value in a register. ``volatile`` does not move a value to RAM on any toolchain
+       measured; where a calibration object lives depends on the target and on the compiler's
+       version, and is the project's to decide. DDD states no preference and
        reports nothing about the choice - it renders what the description says, and
        :doc:`generated artefacts </generated_artefacts>` follows what that costs into the
        image.
@@ -454,8 +454,9 @@ generated ``const``, and a calibration tool changes it through its address. A to
 a measurement through its address as well, and a measurement it is meant to poke is one of
 the cases ``volatile`` is for; what the division is about is which kind the *software* writes.
 
-Whether it also ends up in read only memory is the other question, and the one ``volatile``
-answers. ``const`` says who writes the object from inside the software, ``volatile`` says
+Whether the software has to notice a write from outside is the other question, and the one
+``volatile`` answers; where the object lies is not, since ``volatile`` does not move a value
+to RAM on any toolchain measured. ``const`` says who writes the object from inside the software, ``volatile`` says
 whether anything writes it from outside, and the two are independent: a parameter that a tool
 is meant to tune while the ecu runs is ``const volatile``, and a parameter that is only ever
 changed between builds is plain ``const`` and stays in flash.

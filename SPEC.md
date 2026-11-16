@@ -499,16 +499,20 @@ Kind specific attributes:
   translation units. Where the load does survive, for example in a component reading
   through the generated header of another and compiled without `-flto`, `const` still lets
   the compiler serve two reads from one load and move that load across a call. In either
-  case the tool writes a value the software does not pick up. What `const volatile` costs
-  is the read only memory: the compiler treats every read as a side effect and drops the
-  object out of the read only category, so it is emitted into a writable section instead of
-  `.rodata`. This behaviour was measured with GCC 12.2.0 and **should** be confirmed on the
-  toolchain a project ships with. On a flash target it means a RAM address with a load
-  region and a startup copy that overwrites what the tool wrote, unless the linker script
-  says otherwise. DDD states no preference between the two and reports nothing about the
-  choice: a project that calibrates online states `true` and places the object through its
-  linker script or by naming a `section` ([section 3.5](#35-memory-placement)), and a
-  project that does not calibrate online states `false` and keeps its data in flash.
+  case the tool writes a value the software does not pick up. Where the object lies is a
+  separate question: `volatile` does not move a value to RAM on any toolchain measured. The
+  ELF images the test suite is built on, by gcc 14.2.0 (x86_64, i686, aarch64, powerpc and
+  s390x), arm-none-eabi-gcc 14.2.1 and clang 19.1.7, hold every `const volatile` object in
+  `.rodata`, which is not writable, except the small ones on powerpc, which lie in `.sdata`,
+  a writable section, as the plain `const` objects of their size do. Where the compiler
+  places such an object depends on the target and on the compiler's version, and no other
+  version was measured. Where a calibration parameter lives is the project's to decide, by
+  the `section` DDD writes and by the linker script, and a tool writes a parameter that
+  stays in flash through an overlay or an emulation memory. DDD states no preference between
+  the two and reports nothing about the choice: a project that calibrates online states
+  `true` and places the object through its linker script or by naming a `section`
+  ([section 3.5](#35-memory-placement)), and a project that does not calibrate online states
+  `false` and keeps its data in flash.
 - `volatile` buys freshness and gives up coherence, which is worth knowing before it is
   turned on for a whole dictionary: the compiler has to re-read the object at every
   mention, so a set of parameters read at several points of one control step can straddle a
@@ -1903,13 +1907,26 @@ when it changes ([section 7.1](#71-build-system-integration)). A source has to b
 before it can be compiled, and a name read at configure time is one a renamed component
 makes stale until the build is configured again.
 
-The definitions reach the image whole. An object that no compiled code references, for
+The definitions reach the link whole. An object that no compiled code references, for
 example a measurement only the calibration tool reads, has nothing to pull it out of a
 library archive, so the definitions are compiled as a unit of their own and linked into the
 image rather than into the libraries of the components that own them. A definition file per
 component invites the second arrangement, in which the linker drops precisely the objects
 nobody but the calibration tool reads, and the A2L is left describing storage the image
 does not contain.
+
+That holds for an archive and not for the linker's own collection of sections. A link with
+`--gc-sections` drops a definition no code references, with or without `-fdata-sections`,
+and an object nobody but the calibration tool reads goes with it: the a2l then
+carries its object at address 0 or, given the image with `--image`, reports it
+`address-missing`. The example template `ddd_globals.c.jinja2` puts `DDD_RETAIN` before
+every definition, and it is empty unless the project defines it, so that the C is what it
+was. On ELF a project that links with `--gc-sections` defines it as
+`__attribute__((used, retain))`, which with gcc 15.2.0, binutils 2.46 and `-fdata-sections`
+kept every object of the demo where the empty macro kept none, and `used` alone kept none;
+it needs a gcc that knows `retain` and a binutils that keeps such a section. On PE gcc
+ignores `retain`, and what is left is a reference to the object from code that is linked,
+or a linker script that keeps its section.
 
 None of this forbids the arrangement: a `{component}` template renders a `.c` as readily as
 a `.h`. A project that wants its definitions spread over several files **may** also write

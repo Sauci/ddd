@@ -31,6 +31,7 @@ from build_address_fixtures import (
     oracle_source,
 )
 
+from conftest import placement
 from ddd.cli import GENERATOR
 
 FIXTURES = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -92,7 +93,9 @@ def test_a_variant_differs_from_the_generated_c_in_what_it_is_there_to_differ_in
     wide = (OUTPUT / "widened" / "ddd_globals.c").read_text(encoding="utf-8").splitlines()
     assert [line.replace("const ", "").replace("volatile ", "") for line in generated] == plain
     changed = [(a, b) for a, b in zip(generated, wide, strict=True) if a != b]
-    assert changed == [("volatile uint16_t Speed;", "volatile uint32_t Speed;")]
+    assert changed == [
+        ("DDD_RETAIN volatile uint16_t Speed;", "DDD_RETAIN volatile uint32_t Speed;")
+    ]
 
 
 @pytest.mark.parametrize("variant", CONSUMED)
@@ -170,3 +173,25 @@ def test_the_two_dimensional_array_of_structures_is_laid_out_row_major(row: str)
             for member in ("raw", "v"):
                 start = offsets[f"Grid[0][0].{member}"]
                 assert offsets[f"Grid[{i}][{j}].{member}"] == start + (i * 3 + j) * size
+
+
+SMALL_DATA = {"powerpc": ".sdata"}
+"""The one row whose toolchain keeps a small object in a section of its own, writable, whatever
+the object's qualifiers: where a ``const`` one lies as well as a ``const volatile`` one."""
+
+
+@pytest.mark.parametrize("row", ROW_NAMES)
+def test_a_const_volatile_object_lies_in_read_only_data_where_the_row_has_any_for_its_size(
+    row: str,
+) -> None:
+    """``volatile`` does not move a calibration value to RAM on any row: ``Gain`` and ``Tuning``,
+    ``const volatile``, lie in ``.rodata``, which is not writable, on every row but ``powerpc``,
+    whose small ``Gain`` lies in the small data section ``.sdata`` - with the plain ``const``
+    ``Enabled``, ``Limit`` and ``Table``, which are as small - and whose larger ``Tuning`` lies
+    in ``.rodata``."""
+    image = OUTPUT / f"{row}.elf"
+    small = SMALL_DATA.get(row)
+    expected = {"Gain": (small or ".rodata", small is not None), "Tuning": (".rodata", False)}
+    assert {name: placement(image, name) for name in expected} == expected
+    for plain in ("Enabled", "Limit", "Table"):
+        assert placement(image, plain) == (small or ".rodata", small is not None)

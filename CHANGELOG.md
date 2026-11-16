@@ -333,6 +333,131 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   its cells and a key press draws only the cell typed into: 27 ms a key at 4,096 cells, under the
   100 ms the design for large projects allows.  Nothing to migrate.
 
+* **`ddd tool from-elf` reads a positive enumerator of a signed enum as positive.**  In a signed
+  enum an enumerator written in a constant narrower than the enum was read as negative, so gcc's 200
+  came out -56 and 40000 came out -25536, and the generated header, the a2l's value table and the
+  limits worked out from them carried the wrong values, while the image itself was right; so did
+  2^31 and up written as four bytes in an eight-byte enum.  Only a fixed-width constant as wide as
+  its signed enum, with its top bit set, is negative now.  Migrating costs a run: a component file
+  or an interface written from an image with such an enumerator holds the wrong values, and has to
+  be written again by `ddd tool from-elf` and the project generated again.
+
+* **An address the linker left meaningless is not placed.**  A variable gold dropped under
+  `--gc-sections` keeps its debug information with its address as an offset into the section it
+  discarded, so `--image` wrote that offset into the a2l as an address and `from-elf` could read
+  code as the variable's initial value.  An external variable is now placed only where the image's
+  symbol table holds an object of its name at the address its debug information gives, and a section
+  of the image holds that address; a static is checked against the image's local symbols where it
+  keeps any, and read by its address alone where the link dropped them all.  What fails is
+  `address-missing` for `--image`, which now also refuses an address no section holds, and
+  `elf-no-storage` for `from-elf`, in new words; an image with debug information and no symbol table
+  places nothing.  GNU ld 2.44, gold 2.44 and lld 19 are the linkers the specification names as
+  tested.  Migrating costs a build that has such a variable: its a2l record is at address 0 with a
+  warning where it had a wrong address, and a `--strict` or `STRICT` build now stops at it.
+
+* **`ddd tool from-elf` warns where a structure is laid out otherwise than the generated C would lay
+  it out.**  The image states where each member sits and how large the structure is, and the tool
+  read neither, so a packed structure, `#pragma pack(2)`, a packed member and an unnamed or
+  zero-width bitfield became an ordinary structure in silence.  Each structure is now laid out as
+  the generated C would lay it out, under the alignment cap of the image's machine, and a difference
+  is the new warning `elf-layout`, once per structure.  Only x86-64, i386, 32-bit PowerPC, S/390,
+  ARM under an EABI, AArch64 and RISC-V other than RV32E are checked; for any other image the new
+  info `elf-layout-unchecked` says so once.  Two structures of one name that differ in a member's
+  offset or in size are an `elf-type-conflict` error, where they were one entry.  `elf-alignment`
+  also reports an alignment a variable states, with `_Alignas`, and a GNU vector that is a variable
+  or a member, which drew nothing before; a vector member also draws `elf-layout`.  `from-elf` takes
+  no `--strict`, so no warning stops it and the exit status of a run is as before; a script that
+  counts the findings, or a project that turns warnings into errors on its output, meets the new
+  ones, and the only way to silence one is to change the source.
+
+* **`ddd tool from-elf` refuses a debug-only file.**  An `objcopy --only-keep-debug` file keeps the
+  DWARF of the image it was split from and leaves every section without its bytes, and `from-elf`
+  printed each variable without its initial value, with no finding and exit 0.  A file none of whose
+  sections of the program, code and data alike, has contents is now a usage error, exit 2, naming
+  the linked image to give.  `ddd generate a2l --image` still reads such a file, the addresses in it
+  being the image's, and an image whose code alone is left out of the file is still read by both.
+  Migrating costs a script that ran `from-elf` over a companion file: it passes the linked image.
+
+* **A damaged image is refused where it hung, and a large one is read faster.**  The reader followed
+  each `DW_AT_sibling` pointer unchecked, so an entry aimed at itself sent the walk round in a
+  circle and no run finished.  It now walks a unit's entries forward only and refuses a sibling that
+  does not advance, at once, naming the offset; a DWARF 5 line header that states more directories
+  or files than its bytes can hold is refused before anything is allocated.  A variable's type, and
+  the line table its declaration needs, are read only for the variables a run asks about: an image
+  of 60,000 variables opened in 2.9 s where it took 7.4 s, measured on the development PC.  This
+  does not claim that every damaged image is refused.  No output changes for a well-formed image.
+  Nothing to migrate.
+
+* **`ddd tool from-elf` says where an image answers twice, and refuses what it does not read.** It
+  took the first of several answers and said nothing of the rest.  One name at one address that two
+  units, or a unit and the symbol table, give two sizes - a common symbol, an array of two lengths,
+  a weak definition over a strong one of another type - is now `elf-type-conflict`, naming each
+  size, and the variable is left out; an ambiguity beside it is still reported.  Where two sections
+  a linker script overlays hold an address and the symbol names neither, the new error
+  `elf-section-ambiguous` replaces the first section's bytes, which every variable there took.  A
+  structure with a base class, one with a static member where the debug information writes it as a
+  member, and a variable whose definition belongs to a namespace or a class are refused, each in a
+  sentence of its own, where they were described wrongly.  A `float32` of FLT_MAX or its negative is
+  written as the double each is, 3.4028234663852886e+38, where its shortest spelling was refused as
+  out of range; a name two arguments reach from two units is refused in the words the user typed,
+  and the tool's internal component name no longer appears in a message.  A name every unit left
+  without storage is reported once as `elf-no-storage`, where it was `elf-symbol-ambiguous` and a
+  unit prefix only earned a refusal for want of storage: a script that matches the old identifier
+  for such a name has to match the new one.  Migrating costs a variable that was described silently
+  from the first unit's answer: it is now an error naming both answers, and the units have to agree.
+  The build page also says that `--image` refuses an image gcc linked with `-flto`, and five pages
+  that spoke of the address map alone now name `--image`.
+
+* **`ddd tool from-elf` writes no conversion it cannot know.**  Every scalar and every structure
+  member carried the identity conversion, which says that raw is physical, a claim an image says
+  nothing of.  An entry or member that is not an enum is now printed without a conversion, and an
+  enum keeps its `enum` conversion.  Migrating costs an edit: the output pasted into a component is
+  a `schema` error, a `datatype` coming with a `conversion`, until its author states what raw is to
+  physical; `--identity-conversions` writes the identity on every such entry and member, on the
+  author's word for all of them, and `elf-not-inferred` says which of the two the run was.
+
+* **An object the build compiled out is left out of the a2l, and a reference across conditions is
+  checked.**  With an image, or a map that has entries, an object stating a condition that the image
+  defines no variable of, nor holds a symbol of, or that the map names neither it nor a member of,
+  was written at address 0 and warned as `address-missing`, which a `--strict` build could only get
+  past by lowering that check, so hiding a real hole too.  It is now left out of the file, and the
+  new info `condition-left-out` says so, once per condition; every other reason an image gives stays
+  `address-missing`.  A curve or a map over an axis so left out goes too, as the new warning
+  `reference-left-out`, which stops a `--strict` build; an axis over a left-out input is written
+  with no input quantity.  `condition-mismatch` also compares a reference, a curve over an axis or
+  an axis over its input stating a condition the referrer does not, so `-W
+  condition-mismatch=ignore` silences both.  Migrating costs a look: drop an `address-missing=info`
+  lowering kept for this, and a tool that expected the record, or its comment, finds none.  A
+  project with such a reference meets `condition-mismatch`, and under `--strict` an error.
+  `A2lOptions` gains `left_out`, and `ddd.backends` gains `conditional_objects`, `dragged_with` and
+  `ConditionalObject`.
+
+* **A position independent image, an unreadable map and two debug options say what they are.** An
+  image linked position independent holds offsets from where it loads, and the a2l took them for
+  addresses without a word.  It is still read, and the new info `image-load-relative` says that its
+  addresses are load relative: right for a project that adds its base, wrong for one that does not.
+  A map that is not UTF-8, as PowerShell's redirection writes, one nested deeper than the
+  interpreter reads, and one holding an address of more digits than it converts, were Python's own
+  words or a traceback with exit 1; each is now a usage error naming the file, exit 2.  An image
+  built with `-gsplit-dwarf` places nothing and said its units had no `-g`; it now says the debug
+  information is in `.dwo` files the reader does not read, and a `-g1` image says the variable has
+  no type, and is still placed.  Nothing to migrate; a build that counts its findings sees
+  `image-load-relative`, which `-W image-load-relative=ignore` silences.
+
+* **`ddd generate a2l --image` warns where the image holds a variable otherwise than its description
+  says.**  The linked image is the only place a run sees the C that was compiled, and the addresses
+  were taken without a look at what sat there, so a definition of another width, or a template that
+  dropped a qualifier its kind carries, went through unremarked.  Each variable placed is now
+  compared with its object on the size and encoding of an element, its shape and the qualifiers the
+  generated C gives its kind, and a member on the first three; the difference is the new warning
+  `elf-mismatch`, naming what the description states and what the image holds.  A consumer's
+  declaration of the variable is held to the qualifiers too, where the compiler records it, which
+  gcc does for a variable a unit reads and clang does not, so a header that drops `volatile`, or
+  adds it, is named; adding `const` is allowed, as `--const-inputs` does.  A one-byte unsigned
+  integer agrees with a `boolean`.  Migrating costs a fix or a silence: a `STRICT` build whose image
+  disagrees with its description stops and writes no a2l, and `-W elf-mismatch=ignore`, or
+  `SEVERITY` in cmake, lets it through; the a2l is written from the description either way.
+
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after
   a second of tries, and left a read-only stage beside it for each refusal; on Linux the rename

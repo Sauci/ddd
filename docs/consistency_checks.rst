@@ -695,8 +695,13 @@ it is either a smell or a decision somebody should have taken consciously.
        each difference with what the description states and what the image holds. Where the
        units of the image describe one name at one address in two sizes, the finding says that
        and the variable is compared with none of them. A structure member is compared on its
-       size, encoding and shape; a declaration in another unit is not compared, since
-       ``--const-inputs`` qualifies one on purpose.
+       size, encoding and shape. A unit that declares the variable without defining it, as a
+       consumer does through a component header, is held to the qualifiers of the kind too,
+       and the finding names the unit: a header that leaves out ``volatile`` lets that unit's
+       compiler read the variable once. A declaration may add ``const``, which
+       ``--const-inputs`` gives the inputs of a component on purpose; any other difference is
+       judged as the definition's is. Only declarations the image's debug information states
+       are seen, which gcc writes for a variable a unit reads and clang does not.
 
 Information
 ~~~~~~~~~~~

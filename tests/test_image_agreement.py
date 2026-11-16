@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from ddd.addresses import addresses_from_image
 from ddd.agreement import disagreements
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, main
 from ddd.elf import (
+    DECLARED_ONLY,
     DW_ATE_BOOLEAN,
     DW_ATE_COMPLEX_FLOAT,
     DW_ATE_FLOAT,
@@ -724,6 +726,181 @@ class TestTheImagesOfTheAddressFixtures:
         (found,) = [entry for entry in report["diagnostics"] if entry["check"] == "elf-mismatch"]
         assert found["severity"] == "warning"
         assert found["notes"][0]["message"].startswith("the a2l is written from the description")
+
+
+CONSUMED = {
+    "Enabled": "const",
+    "Gain": "const volatile",
+    "Inlet": "volatile",
+    "Limit": "const",
+    "Speed": "volatile",
+    "Table": "const",
+    "Tuning": "const volatile",
+}
+"""What the description says of each variable ``consumer.c`` reads, as its kind and ``volatile``
+say; the finding's trigger is the ones that carry ``volatile``."""
+
+GCC_ROWS = ["armv7m", "i686", "powerpc", "x86_64"]
+"""The rows whose compiler states a unit's declaration of a variable another unit defines in its
+debug information. clang's, on ``aarch64_be``, leaves it out, so what a consumer's header says
+cannot be seen there."""
+
+
+def declaration_line(variant: str, name: str) -> int:
+    lines = (ADDRESS_FIXTURES / variant / "Engine.h").read_text(encoding="utf-8").splitlines()
+    (line,) = [
+        number
+        for number, text in enumerate(lines, start=1)
+        if re.match(rf"extern .*\b{name}\b(\[.*\])?;", text)
+    ]
+    return line
+
+
+class TestAConsumersDeclaration:
+    """The finding's own trigger: a component header whose ``extern`` leaves out the qualifiers of
+    the kind, compiled into a unit that reads the variable (``tests/fixtures/addresses/
+    consumer.c``). The definition is right; what a poll on ``Speed`` compiles to is decided by the
+    declaration the consumer sees."""
+
+    @pytest.mark.parametrize("row", GCC_ROWS)
+    def test_a_header_leaving_out_the_qualifiers_is_said_for_each_variable_the_unit_reads(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        image_path = ADDRESS_FIXTURES / "lostqualifier" / f"{row}.elf"
+        code, said = run_generate(capsys, tmp_path, image_path)
+        assert code == EXIT_OK
+        findings = "".join(
+            f"{where_of(image_path)}: warning[elf-mismatch]: '{name}' is declared in "
+            f"'consumer.c' otherwise than its description states: as its qualifiers, the "
+            f"description states {stated} and the declaration holds none\n"
+            "    note: a unit that reads the variable through such a declaration is compiled "
+            "without the qualifiers the description gives it\n"
+            f"    note: the image's debug information declares it at "
+            f"lostqualifier/Engine.h:{declaration_line('lostqualifier', name)}\n"
+            for name, stated in CONSUMED.items()
+        )
+        count = f"{len(CONSUMED)} warnings" + (", 1 info" if row == "x86_64" else "")
+        noted = LOAD_RELATIVE.format(where_of(image_path)) if row == "x86_64" else ""
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        assert said == f"{findings}{noted}{count}\nwrote       {a2l.as_posix()} (created)\n"
+
+    @pytest.mark.parametrize("row", sorted(ADDRESS_ROWS))
+    def test_a_header_that_adds_const_as_const_inputs_does_is_not_said_a_word_of(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """``declaration(const=True)``, which is what ``--const-inputs`` gives an input: every
+        variable the unit reads gains ``const`` and keeps what the kind carries."""
+        image_path = ADDRESS_FIXTURES / "constinputs" / f"{row}.elf"
+        code, said = run_generate(capsys, tmp_path, image_path, "--strict")
+        assert code == EXIT_OK, said
+        assert "elf-mismatch" not in said
+
+    def test_the_clang_row_states_no_declaration_so_it_is_silent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        image_path = ADDRESS_FIXTURES / "lostqualifier" / "aarch64_be.elf"
+        code, said = run_generate(capsys, tmp_path, image_path)
+        assert (code, "elf-mismatch" in said) == (EXIT_OK, False)
+
+    def declared(self, tmp_path: Path, stated: dict[str, Any], seen: CType) -> list[str]:
+        """What is said of ``V`` defined as the description states and declared by ``c.c`` as
+        ``seen``."""
+        dictionary = described(declare("local", "V", "uint16", **stated), tmp_path=tmp_path)
+        defined: CType = U16
+        if stated.get("kind") == "parameter":
+            defined = const(defined)
+        if stated.get("volatile"):
+            defined = volatile(defined)
+        definition = stored("V", defined)
+        declaration = Variable("V", "c.c", seen, None, None, DECLARED_ONLY, True)
+        held = replace(image(definition), declarations=(declaration,))
+        return judged(dictionary, held, "V")[0]
+
+    @pytest.mark.parametrize(
+        ("stated", "seen", "says_held"),
+        [
+            ({"volatile": True}, U16, "none"),
+            ({"volatile": True}, const(U16), "const"),
+            ({}, volatile(U16), "volatile"),
+            ({"kind": "parameter"}, U16, "none"),
+            ({"kind": "parameter"}, volatile(U16), "volatile"),
+            ({"kind": "parameter", "volatile": True}, const(U16), "const"),
+        ],
+        ids=[
+            "volatile lost",
+            "volatile lost beside const added",
+            "volatile added",
+            "const lost",
+            "const lost beside volatile added",
+            "const volatile losing volatile",
+        ],
+    )
+    def test_every_difference_but_an_added_const_is_said(
+        self, tmp_path: Path, stated: dict[str, Any], seen: CType, says_held: str
+    ) -> None:
+        wanted = (
+            ("const " if stated.get("kind") == "parameter" else "")
+            + ("volatile" if stated.get("volatile") else "")
+        ).strip() or "none"
+        assert self.declared(tmp_path, stated, seen) == [
+            f"'V' is declared in 'c.c' otherwise than its description states: as its "
+            f"qualifiers, the description states {wanted} and the declaration holds {says_held}"
+        ]
+
+    @pytest.mark.parametrize(
+        ("stated", "seen"),
+        [
+            ({}, U16),
+            ({}, const(U16)),
+            ({"volatile": True}, volatile(U16)),
+            ({"volatile": True}, const(volatile(UWORD))),
+            ({"kind": "parameter"}, const(U16)),
+            ({"volatile": True}, Unsupported("void")),
+        ],
+        ids=[
+            "same",
+            "const added",
+            "volatile kept",
+            "const added to volatile",
+            "const kept",
+            "untyped",
+        ],
+    )
+    def test_what_agrees_or_adds_const_is_not_said(
+        self, tmp_path: Path, stated: dict[str, Any], seen: CType
+    ) -> None:
+        assert self.declared(tmp_path, stated, seen) == []
+
+    def test_a_variable_the_units_disagree_on_is_not_held_through_its_declarations(
+        self, tmp_path: Path
+    ) -> None:
+        dictionary = described(declare("local", "V", "uint16", volatile=True), tmp_path=tmp_path)
+        declaration = Variable("V", "c.c", U16, None, None, DECLARED_ONLY, True)
+        held = replace(
+            image(stored("V", U16, unit="a.c"), stored("V", U32, unit="b.c")),
+            declarations=(declaration,),
+        )
+        said, _ = judged(dictionary, held, "V")
+        assert len(said) == 1
+        assert "described by the image" in said[0]
+
+    def test_a_structured_variable_is_held_through_its_declarations_as_well(
+        self, tmp_path: Path
+    ) -> None:
+        sample = struct_type("Sample_t", member_of("raw", "uint16"))
+        dictionary = described(
+            declare("local", "S", typename="Sample_t", volatile=True),
+            tmp_path=tmp_path,
+            **{"t.ddd.json": types(sample)},
+        )
+        struct = Struct("Sample_t", 2, (Member("raw", U16, 0),))
+        declaration = Variable("S", "c.c", struct, None, None, DECLARED_ONLY, True)
+        held = replace(image(stored("S", volatile(struct))), declarations=(declaration,))
+        said, _ = judged(dictionary, held, "S.raw")
+        assert said == [
+            "'S' is declared in 'c.c' otherwise than its description states: as its "
+            "qualifiers, the description states volatile and the declaration holds none"
+        ]
 
 
 LOAD_RELATIVE = (

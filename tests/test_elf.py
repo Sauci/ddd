@@ -683,6 +683,26 @@ class TestVariables:
         (found,) = read(variable(b"Nowhere", located=False, DW_AT_declaration=DECLARATION))
         assert (found.address, found.missing) == (None, DECLARED_ONLY)
 
+    def test_the_declarations_of_other_units_are_handed_to_a_caller_who_asks(self) -> None:
+        """What a consumer's header says of a variable another unit defines: each unit's own
+        declaration, with the name defined, and neither the defining unit's own header's nor
+        that of a name nobody defines."""
+
+        def declared(name: bytes) -> Die:
+            return variable(name, located=False, DW_AT_declaration=DECLARATION)
+
+        units = [
+            FakeUnit(die("DW_TAG_compile_unit", declared(b"Shared"), variable(b"Shared")), "def.c"),
+            FakeUnit(die("DW_TAG_compile_unit", declared(b"Shared"), declared(b"Nowhere")), "a.c"),
+            FakeUnit(die("DW_TAG_compile_unit", declared(b"Shared")), "b.c"),
+        ]
+        found: list[Variable] = []
+        read_variables(units, big_endian=False, declarations=found)
+        assert [(entry.name, entry.unit, entry.missing) for entry in found] == [
+            ("Shared", "a.c", DECLARED_ONLY),
+            ("Shared", "b.c", DECLARED_ONLY),
+        ]
+
     def test_a_name_declared_by_two_units_is_kept_once(self) -> None:
         units = [
             FakeUnit(

@@ -214,6 +214,10 @@ class Held:
     """The type the symbol's path ends at: the variable's own for an object, a member's or an
     element's for a path."""
 
+    declarations: tuple[Variable, ...] = ()
+    """The declarations of the variable other units make without defining it: a consumer's
+    ``extern``, as its header spells it (:attr:`Image.declarations`)."""
+
     apart: tuple[Variable, ...] = ()
     """Every unit's description of the variable, where the units do not agree on its size: the
     variable is then one the image describes in two ways, and none of them stands for it."""
@@ -255,12 +259,15 @@ def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
     named: dict[str, list[Variable]] = {}
     for variable in image.variables:
         named.setdefault(variable.name, []).append(variable)
+    declared: dict[str, list[Variable]] = {}
+    for variable in image.declarations:
+        declared.setdefault(variable.name, []).append(variable)
     addresses: dict[str, int] = {}
     reasons: dict[str, str] = {}
     absent: set[str] = set()
     held: dict[str, Held] = {}
     for symbol in symbols:
-        placed = _placed(symbol, image, named)
+        placed = _placed(symbol, image, named, declared)
         if isinstance(placed, tuple):
             addresses[symbol], held[symbol] = placed
         elif isinstance(placed, _Absent):
@@ -272,7 +279,10 @@ def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
 
 
 def _placed(
-    symbol: str, image: Image, named: Mapping[str, list[Variable]]
+    symbol: str,
+    image: Image,
+    named: Mapping[str, list[Variable]],
+    declared: Mapping[str, list[Variable]],
 ) -> tuple[int, Held] | str | _Absent:
     """The address of ``symbol`` and what the image holds there, or why it gives none."""
     root = _ROOT.match(symbol)
@@ -283,10 +293,11 @@ def _placed(
     if isinstance(found, str | _Absent):
         return found
     address, variable, apart = found
+    declarations = tuple(declared.get(root.group(), ()))
     reached = _walk(symbol, root.end(), address, variable.type)
     if isinstance(reached, str):
         return reached
-    return reached[0], Held(variable, reached[1], apart)
+    return reached[0], Held(variable, reached[1], declarations, apart)
 
 
 def _variable(

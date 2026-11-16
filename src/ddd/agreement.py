@@ -39,7 +39,7 @@ from ddd.elf import (
     Variable,
     size_of,
 )
-from ddd.ir import DataDictionary, ResolvedLeaf, ResolvedObject
+from ddd.ir import DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
 from ddd.models import Datatype, PointCounts, format_shape
 
 _SIGNED = frozenset({DW_ATE_SIGNED, DW_ATE_SIGNED_CHAR})
@@ -252,6 +252,42 @@ def disagreements(dictionary: DataDictionary, placed: Placed, image: Image) -> l
             )
             problems.extend(_members(symbols, leaves))
         found.extend(_reported(variable, problems))
+        found.extend(_declarations(name, symbols[0][1], objects.get(name) or instances[name]))
+    return found
+
+
+def _declarations(
+    name: str, held: Held, entry: ResolvedObject | ResolvedInstance
+) -> list[Mismatch]:
+    """The units whose declaration of ``name`` states other qualifiers than its kind carries.
+
+    A consumer's ``extern`` that leaves out ``volatile`` lets its compiler read the variable once
+    where the description says something else writes it, and one that leaves out ``const`` lets
+    it write a calibration. What a declaration may add is ``const``, which ``--const-inputs``
+    gives the inputs of a component on purpose; every other difference is judged as the
+    definition's is.
+    """
+    stated = (entry.is_calibration, entry.volatile)
+    found: list[Mismatch] = []
+    for declaration in held.declarations:
+        seen = _seen(declaration.type)
+        if isinstance(seen.core, Unsupported) and seen.core.what == _UNTYPED:
+            continue
+        if seen.volatile == stated[1] and (seen.const or not stated[0]):
+            continue
+        holds = _qualifiers(seen.const, seen.volatile)
+        found.append(
+            Mismatch(
+                f"'{name}' is declared in '{declaration.unit}' otherwise than its description "
+                f"states: as its qualifiers, the description states {_qualifiers(*stated)} and "
+                f"the declaration holds {holds}",
+                (
+                    "a unit that reads the variable through such a declaration is compiled "
+                    "without the qualifiers the description gives it",
+                    *_declared(declaration),
+                ),
+            )
+        )
     return found
 
 

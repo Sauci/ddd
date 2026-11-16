@@ -1519,8 +1519,15 @@ Warnings:
   names. Where the units of the image describe one name at one address in two sizes, or a
   description and the symbol table's size for it disagree, the finding says that instead, and
   the variable is compared with none of them, since none is the one description. A variable the
-  image holds with no type (`-g1`) is not compared, and neither is a declaration in another
-  unit, which `--const-inputs` qualifies on purpose. It is a warning, so a `--strict` build
+  image holds with no type (`-g1`) is not compared. A unit that declares the variable without
+  defining it, as a consumer does through a component header, is held to the qualifiers of
+  the kind as well, since a header that leaves out `volatile` lets that unit's compiler read
+  the variable once where the description says something else writes it: the finding names
+  the unit and the qualifier it lost. A declaration may add `const`, which `--const-inputs`
+  gives the inputs of a component on purpose; every other difference is judged as the
+  definition's is, and only the qualifiers are compared. The declarations are those the
+  image's debug information states, which gcc writes for a variable a unit reads and clang
+  leaves out, so the images of clang say nothing of them. It is a warning, so a `--strict` build
   stops at it; the A2L is written from the description either way, and a calibration tool
   reads the image by it.
 

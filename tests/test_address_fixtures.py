@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from build_address_fixtures import (
+    CONSUMED,
     GENERATED,
     MANIFEST,
     ORACLE,
@@ -92,6 +93,18 @@ def test_a_variant_differs_from_the_generated_c_in_what_it_is_there_to_differ_in
     assert [line.replace("const ", "").replace("volatile ", "") for line in generated] == plain
     changed = [(a, b) for a, b in zip(generated, wide, strict=True) if a != b]
     assert changed == [("volatile uint16_t Speed;", "volatile uint32_t Speed;")]
+
+
+@pytest.mark.parametrize("variant", CONSUMED)
+def test_a_consumed_variant_differs_from_the_generated_c_in_the_component_header_alone(
+    variant: str,
+) -> None:
+    """The definitions are the project's own: what differs is the ``extern`` of the header the
+    consumer reads the variables through."""
+    for name in ("ddd_globals.c", "ddd_globals.h", "ddd_types.h"):
+        assert (OUTPUT / variant / name).read_bytes() == (GENERATED / name).read_bytes()
+    assert (OUTPUT / variant / "Engine.h").read_bytes() != (GENERATED / "Engine.h").read_bytes()
+    assert OUTPUT.joinpath("consumer.c").is_file()
 
 
 def test_the_symbols_are_the_ones_the_a2l_carries_and_the_bitfields_it_leaves_out() -> None:

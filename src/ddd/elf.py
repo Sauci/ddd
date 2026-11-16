@@ -342,6 +342,11 @@ class Image:
     links it): every address in it is an offset from where the image is loaded, which only the
     loader knows."""
 
+    declarations: tuple[Variable, ...] = ()
+    """What the units that only declare a variable some unit defines say of it, one entry per
+    declaration - a consumer's ``extern``, as its header spells it. Not among ``variables``,
+    which hold a name once, as its definition has it."""
+
     split_dwarf: bool = False
     """Whether the debug information is split (``-gsplit-dwarf``): the image holds a skeleton of
     each unit, and the unit itself is in a ``.dwo`` file beside it, which this module does not
@@ -548,6 +553,7 @@ def read_variables(
     objects: frozenset[tuple[str, int]] = frozenset(),
     address_size: int = 4,
     shown: str = "",
+    declarations: list[Variable] | None = None,
 ) -> tuple[Variable, ...]:
     """The variables at the top of every unit, each with its type, address and declaration.
 
@@ -567,11 +573,16 @@ def read_variables(
     Each variable's type and declaration are deferred (:class:`Deferred`), so this builds no
     type and reads no line table of its own; ``shown`` names the image in the refusal a
     deferred build raises, since that build happens after :func:`open_image` has returned.
+
+    ``declarations``, where a caller gives a list, receives every declaration a unit makes of
+    a name that some other unit defines - the ones dropped above - so that a caller holding a unit's
+    own spelling of a variable to what the definition says has them, which are not variables.
     """
     types = _Types(big_endian=big_endian)
     symbols = _Symbols(thread_local, objects, frozenset({0, (1 << (8 * address_size)) - 1}))
     defined: list[Variable] = []
     declared: dict[str, Variable] = {}
+    every: list[Variable] = []
     for unit in units:
         entries = [entry for entry in unit.children(unit.top) if entry.tag == "DW_TAG_variable"]
         # A definition completes the declaration it names where that sits beside it at the top
@@ -584,10 +595,21 @@ def read_variables(
                 continue
             if variable.missing in (DECLARED_ONLY, OTHER_SCOPE):
                 declared.setdefault(variable.name, variable)
+                if variable.missing == DECLARED_ONLY:
+                    every.append(variable)
                 continue
             defined.append(variable)
     names = {variable.name for variable in defined}
+    homes = {(variable.name, variable.unit) for variable in defined}
     defined.extend(variable for name, variable in declared.items() if name not in names)
+    if declarations is not None:
+        # A unit that defines a name states the declaration its definition completes as well,
+        # which is the unit's own header, and not another unit's reading of the variable.
+        declarations.extend(
+            variable
+            for variable in every
+            if variable.name in names and (variable.name, variable.unit) not in homes
+        )
     return tuple(defined)
 
 
@@ -718,6 +740,7 @@ def _image(path: Path, contents: bytes) -> Image:
         raise ElfReadError(msg)
     objects = _symbols(elf, "STT_OBJECT")
     sizes, homes = _object_facts(elf)
+    declarations: list[Variable] = []
     variables = read_variables(
         units,
         big_endian=not elf.little_endian,
@@ -725,6 +748,7 @@ def _image(path: Path, contents: bytes) -> Image:
         objects=objects,
         address_size=elf.elfclass // 8,
         shown=shown,
+        declarations=declarations,
     )
     return Image(
         path=path,
@@ -744,6 +768,7 @@ def _image(path: Path, contents: bytes) -> Image:
         flags=int(elf.header["e_flags"]),
         object_sizes=sizes,
         object_sections=homes,
+        declarations=tuple(declarations),
     )
 
 

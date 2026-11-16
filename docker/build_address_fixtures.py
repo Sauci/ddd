@@ -58,7 +58,11 @@ PROJECT = OUTPUT / "project" / "project.ddd.json"
 GENERATED = OUTPUT / "generated"
 SYMBOLS = OUTPUT / "symbols.json"
 ORACLE = OUTPUT / "oracle.c"
-VARIANTS = ("unqualified", "widened")
+VARIANTS = ("unqualified", "widened", "lostqualifier", "constinputs")
+CONSUMER = OUTPUT / "consumer.c"
+CONSUMED = ("lostqualifier", "constinputs")
+"""The variants whose image also links ``consumer.c``, a unit reading the variables through the
+component header: the one that differs in that header alone."""
 MANIFEST = OUTPUT / "manifest.json"
 TEMPLATES = ROOT / "examples" / "templates"
 TOOLBOX = Path(build_elf_fixtures.__file__).resolve()
@@ -102,6 +106,7 @@ def hashed() -> dict[str, str]:
         *(path for variant in VARIANTS for path in sorted((OUTPUT / variant).glob("*.[ch]"))),
         *(path for variant in VARIANTS for path in sorted((OUTPUT / variant).glob(".ddd-*"))),
         ORACLE,
+        CONSUMER,
         SYMBOLS,
         DOCKERFILE,
         TOOLBOX,
@@ -174,6 +179,15 @@ def generate_variant(name: str, directory: Path) -> None:
                 _EXTERN % ("entry.variable", "entry.variable", "entry.variable"),
                 times=3,
             )
+        elif name in CONSUMED:
+            templates = work / "templates"
+            shutil.copytree(TEMPLATES, templates)
+            declaration = (
+                _EXTERN % (("entry.variable",) * 3)
+                if name == "lostqualifier"
+                else "{{ entry.variable.declaration(const=True) }};"
+            )
+            _replaced(templates / "{component}.h.jinja2", "{{ entry.line }}", declaration, times=3)
         elif name == "widened":
             shutil.copytree(PROJECT.parent, work / "project")
             project = work / "project" / PROJECT.name
@@ -228,7 +242,10 @@ def build(row: Row, work: Path, variant: str = "generated") -> Path:
     lands in ``work``. ``variant`` is the directory of the C that is compiled, ``generated``
     or one of :data:`VARIANTS`."""
     objects: list[str] = []
-    for source in (f"{variant}/ddd_globals.c", "oracle.c"):
+    sources = [f"{variant}/ddd_globals.c", "oracle.c"]
+    if variant in CONSUMED:
+        sources.append("consumer.c")
+    for source in sources:
         target = work / f"{row.name}-{variant}-{Path(source).stem}.o"
         run(
             [

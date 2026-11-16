@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -780,6 +781,13 @@ class TestWhatTheImageHoldsOfEachSymbol:
         stray = stored("Gain", U32, unit="b.c", address=0x100, external=False)
         variable = stored("Gain", U16, unit="a.c", address=0x100)
         assert placed(image(variable, stray), "Gain").held["Gain"].apart == ()
+
+    def test_the_declarations_other_units_make_of_the_variable_come_with_it(self) -> None:
+        variable = stored("Gain", U16, unit="a.c", address=0x100)
+        declaration = stored("Gain", U16, unit="b.c", address=None, missing=DECLARED_ONLY)
+        other = stored("Loss", U16, unit="b.c", address=None, missing=DECLARED_ONLY)
+        held = placed(replace(image(variable), declarations=(declaration, other)), "Gain")
+        assert held.held["Gain"].declarations == (declaration,)
 
     def test_a_static_of_the_same_name_elsewhere_is_no_second_description(self) -> None:
         stray = stored("Gain", U32, unit="b.c", address=0x200, external=False)

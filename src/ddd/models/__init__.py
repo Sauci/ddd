@@ -1,6 +1,6 @@
 """Pydantic contracts for every json file format understood by DDD."""
 
-from ddd.models.a2l_keywords import A2L_KEYWORDS, is_a2l_keyword
+from ddd.models.a2l_keywords import A2L_KEYWORDS, IDENTITY_METHOD_PREFIX, is_a2l_keyword
 from ddd.models.common import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
@@ -98,6 +98,7 @@ __all__ = [
     "C_KEYWORDS",
     "IDENTIFIER_MAX_LENGTH",
     "IDENTITY",
+    "IDENTITY_METHOD_PREFIX",
     "MAX_DIMENSIONS",
     "MAX_ELEMENTS",
     "MEMBER_OBJECT_KINDS",

@@ -1491,7 +1491,9 @@ Warnings:
   An array of more than three dimensions is the first: the `MATRIX_DIM` of version 1.6.1
   cannot carry it, and a 1.7 reader accepts the dimensions written out. The limits are those
   of ASAP2 1.6.1, table 5: a string, which is a description of an object, a member, a
-  component or the project (written on `PROJECT`, `HEADER` and `MODULE`), a unit, and the
+  component or the project (written on `PROJECT`, `HEADER` and `MODULE`), a unit - 237 characters
+  at most under an identity conversion, whose method describes itself as `physical value in`
+  and the unit - and the
   `SYMBOL_LINK` a record holds until the image names the variable, is at most `MAX_STRING`
   255 characters; a record's name is at most `MAX_IDENT` 1024; and a part of that name, an
   index counted within it, is at most `MAX_PARTIAL_IDENT` 128, so an array of structures named

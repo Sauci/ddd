@@ -674,7 +674,8 @@ it is either a smell or a decision somebody should have taken consciously.
        it, and the extra dimensions are written out and only a 1.7 reader understands them.
        The limits are those of table 5 of ASAP2 1.6.1: a string, which is a description of an
        object, a member, a component or the project (written on ``PROJECT``, ``HEADER`` and
-       ``MODULE``), a unit, or the ``SYMBOL_LINK`` of a record before the image names the
+       ``MODULE``), a unit (237 characters at most under an identity conversion, whose
+       method describes itself as ``physical value in`` and the unit), or the ``SYMBOL_LINK`` of a record before the image names the
        variable, is at most 255 characters (``MAX_STRING``); a record's name is at most 1024
        (``MAX_IDENT``); and a part of that name is at most 128 (``MAX_PARTIAL_IDENT``), an
        array index counted within it, so an array of structures named with the full 128

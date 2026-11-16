@@ -7,9 +7,11 @@ copied from a file: the standard's text is not part of this project. It holds
 * every block and attribute keyword the grammar defines, ``/begin`` blocks and the attributes
   of each alike, with the per axis families (``X``, ``Y``, ``Z``, ``4`` and ``5``) spelled out,
 * the values the grammar fixes: the datatypes, the object and axis types, the conversion
-  types, the byte orders, the index modes, the monotony values, the memory types and the like,
-* the words of the ``IF_DATA`` block DDD itself writes for an object's event, which are the
-  XCP block's and not the core standard's.
+  types, the byte orders, the index modes, the monotony values, the memory types and the like.
+
+The words inside an ``IF_DATA`` block (``XCP``, ``DAQ_EVENT``, ``EVENT`` and the rest of what
+DDD writes for an object's event) belong to the interface's own metalanguage, not to ASAP2,
+and are not here: a measurement called ``EVENT`` is a name.
 
 Like :mod:`ddd.models.reserved`, which does the same for c, it is the one place in
 :mod:`ddd.models` that spells out an output format, and the layering test names it: the a2l is
@@ -18,8 +20,8 @@ gives, checked before any backend runs.
 
 A word of this list is matched exactly - the format is case sensitive, so ``Map`` is a name and
 ``MAP`` is the keyword. The list is the standard's and not the template's, but every word the
-a2l template and the record layouts DDD writes spell is in it (``tests/test_a2l_names.py``
-reads them off).
+a2l template (outside its ``IF_DATA`` blocks), the record layouts and the writer's own code
+spell is in it (``tests/test_a2l_names.py`` reads them off).
 """
 
 from __future__ import annotations
@@ -61,7 +63,9 @@ REF_MEMORY_SEGMENT REF_UNIT RES_AXIS RIGHT_SHIFT ROOT SIGN_EXTEND SI_EXPONENTS
 STATIC_RECORD_LAYOUT STATUS_STRING_REF STEP_SIZE SUB_FUNCTION SUB_GROUP SUPPLIER SYMBOL_LINK
 SYSTEM_CONSTANT UNIT UNIT_CONVERSION USER VAR_ADDRESS VAR_CHARACTERISTIC VAR_CRITERION
 VAR_FORBIDDEN_COMB VAR_MEASUREMENT VAR_NAMING VAR_SELECTOR VAR_SEPARATOR VARIANT_CODING
-VERSION VIRTUAL VIRTUAL_CHARACTERISTIC
+VERSION VIRTUAL VIRTUAL_CHARACTERISTIC USER_RIGHTS
+
+CALIBRATION NO_CALIBRATION NOT_IN_MCD_SYSTEM OFFLINE_CALIBRATION NUMERIC ALPHA
 
 UBYTE SBYTE UWORD SWORD ULONG SLONG A_UINT64 A_INT64 FLOAT32_IEEE FLOAT64_IEEE
 
@@ -83,7 +87,6 @@ CODE DATA OFFLINE_DATA VARIABLES SERAM RESERVED CALIBRATION_VARIABLES EXCLUDE_FR
 PRG_CODE PRG_DATA PRG_RESERVED ROM RAM EEPROM EPROM FLASH REGISTER INTERN EXTERN
 DERIVED EXTENDED_SI
 
-XCP DAQ_EVENT DEFAULT_EVENT_LIST EVENT VARIABLE
 """
 
 
@@ -93,6 +96,10 @@ def _words() -> frozenset[str]:
         words.update(family.format(axis) for axis in _AXIS_FAMILIES)
     return frozenset(words)
 
+
+IDENTITY_METHOD_PREFIX: Final = "physical value in "
+"""What the description of the ``COMPU_METHOD`` of an identity conversion opens with, the unit
+following it: a string of the a2l, so the unit it holds is held to ``MAX_STRING`` less this."""
 
 A2L_KEYWORDS: Final[frozenset[str]] = _words()
 """Every keyword and enumeration value the module's docstring names, spelled as in the file."""

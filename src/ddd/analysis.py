@@ -38,6 +38,7 @@ from ddd.ir import (
 from ddd.loading import LoadedComponent, LoadedRaster, LoadedType, Workspace
 from ddd.models import (
     COUNTED_KINDS,
+    IDENTITY_METHOD_PREFIX,
     MAX_ELEMENTS,
     MEMBER_OBJECT_KINDS,
     Axis,
@@ -48,6 +49,7 @@ from ddd.models import (
     Declaration,
     EnumConversion,
     ExternalType,
+    IdentityConversion,
     Limits,
     Map,
     Member,
@@ -3375,6 +3377,28 @@ class _Analysis:
                 location,
             )
 
+    def _a2l_unit(
+        self, what: str, unit: str, conversion: Conversion | None, location: Location
+    ) -> None:
+        """A unit, which the a2l writes twice: as the method's unit and, under an identity
+        conversion, after the words its description opens with - a string of its own."""
+        derived = len(IDENTITY_METHOD_PREFIX) + len(unit)
+        if (
+            isinstance(conversion, IdentityConversion)
+            and len(unit) <= _A2L_MAX_STRING < derived
+            and self._a2l_first("string", what, location)
+        ):
+            self._bag.add(
+                "a2l-unrepresentable",
+                f"the {what} is a string of {len(unit)} characters, and the description of the "
+                f"conversion the a2l builds from it, which opens with "
+                f"'{IDENTITY_METHOD_PREFIX}', is {derived}, but the a2l of ASAP2 1.6.1 carries "
+                f"{_A2L_MAX_STRING} (MAX_STRING); both are written whole",
+                location,
+            )
+            return
+        self._a2l_text(what, unit, location)
+
     def _a2l_partial(self, what: str, name: str, shape: Shape, location: Location) -> None:
         """``a2l-unrepresentable``: a part of a record's name past ``MAX_PARTIAL_IDENT``.
 
@@ -3409,13 +3433,19 @@ class _Analysis:
         named = reference.declaration.definition.typename
         if named is not None:
             # The unit came from a scalar type: the type's to fix.
-            self._a2l_text(
+            self._a2l_unit(
                 f"unit of type '{named}'",
                 definition.unit,
+                definition.conversion,
                 self._types[named].location("unit"),
             )
             return
-        self._a2l_text(f"unit of '{name}'", definition.unit, reference.location("definition.unit"))
+        self._a2l_unit(
+            f"unit of '{name}'",
+            definition.unit,
+            definition.conversion,
+            reference.location("definition.unit"),
+        )
 
     def _check_a2l_member(
         self,
@@ -3452,14 +3482,19 @@ class _Analysis:
         )
         declared = self._declared_of(member)
         if isinstance(declared, ScalarType):
-            self._a2l_text(
+            self._a2l_unit(
                 f"unit of type '{declared.name}'",
                 declared.unit,
+                declared.conversion,
                 self._types[declared.name].location("unit"),
             )
         else:
-            self._a2l_text(
-                f"unit of {about}", member.unit, entry.location(f"members[{position}].unit")
+            assert member.conversion is not None  # a member naming no type states its own
+            self._a2l_unit(
+                f"unit of {about}",
+                member.unit,
+                member.conversion,
+                entry.location(f"members[{position}].unit"),
             )
 
     def _check_a2l_instance(

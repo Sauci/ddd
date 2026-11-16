@@ -9,6 +9,7 @@ warning: the file is still written, and the standard's letter is what it breaks.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,9 @@ from conftest import (
     declare,
     messages,
     project,
+    render_files,
     run_analysis,
+    scalar_type,
     struct_type,
     types,
     value_member,
@@ -29,7 +32,7 @@ from ddd.backends import a2l as a2l_package
 from ddd.backends.a2l.model import _RecordLayoutBuilder
 from ddd.diagnostics import DiagnosticBag
 from ddd.models import Datatype, ObjectKind
-from ddd.models.a2l_keywords import A2L_KEYWORDS, is_a2l_keyword
+from ddd.models.a2l_keywords import A2L_KEYWORDS, IDENTITY_METHOD_PREFIX, is_a2l_keyword
 
 
 def run(tree: Path, *declarations: dict[str, Any]) -> DiagnosticBag:
@@ -68,9 +71,51 @@ class TestTheKeywordList:
         source = re.sub(r"\{\{.*?\}\}|\{%.*?%\}", " ", source)
         source = re.sub(r'"[^"]*"', " ", source)
         source = re.sub(r"/\*.*?\*/", " ", source, flags=re.DOTALL)
+        # the XCP block's words are the metalanguage's, not ASAP2's
+        source = re.sub(r"/begin IF_DATA.*?/end IF_DATA", " ", source, flags=re.DOTALL)
         words = set(re.findall(r"\b[A-Z][A-Z0-9_]*\b", source))
         assert words
         assert words - A2L_KEYWORDS == set()
+
+    def test_the_words_of_the_xcp_block_are_not_asap2s(self) -> None:
+        """A measurement called ``EVENT`` or ``VARIABLE`` reads fine to an a2l reader."""
+        for word in ("XCP", "DAQ_EVENT", "DEFAULT_EVENT_LIST", "EVENT", "VARIABLE"):
+            assert not is_a2l_keyword(word)
+
+    def test_it_holds_the_values_of_the_calibration_access_and_the_naming_blocks(self) -> None:
+        for word in (
+            "USER_RIGHTS",
+            "CALIBRATION",
+            "NO_CALIBRATION",
+            "NOT_IN_MCD_SYSTEM",
+            "OFFLINE_CALIBRATION",
+            "NUMERIC",
+            "ALPHA",
+        ):
+            assert is_a2l_keyword(word)
+
+    def test_it_holds_every_word_the_backend_writes_from_python(self) -> None:
+        """The datatypes, the byte orders, the object and conversion types and the layouts'
+        words, read off the string literals of the writer's own code (docstrings left out)."""
+        own = {
+            "ASAP2", "UTF", "NONE", "DEG", "MICRO", "OHM", "PCT",
+            "CM_", "CM_IDENT_", "CM_LIN_", "RL_", "RL_AXIS_", "RL_VALUES_", "VTAB_",
+            "NO_COMPU_METHOD", "NO_INPUT_QUANTITY",
+        }  # fmt: skip
+        words: set[str] = set()
+        for name in ("model", "types", "options", "backend"):
+            path = Path(a2l_package.__file__).parent / f"{name}.py"
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            docstrings = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and id(node) not in docstrings
+                ):
+                    words.update(re.findall(r"\b[A-Z][A-Z0-9_]*\b", node.value))
+        assert {"UBYTE", "MSB_FIRST", "COM_AXIS", "RAT_FUNC", "VAL_BLK"} <= words
+        assert words - own - A2L_KEYWORDS == set()
 
     def test_it_holds_every_word_a_record_layout_spells(self) -> None:
         builder = _RecordLayoutBuilder()
@@ -287,6 +332,14 @@ class TestWhatTheA2lDoesNotCarryIsNotHeld:
         assert checks(over(tree, files)) == []
 
 
+def enum_of(name: str, *enumerators: str) -> dict[str, Any]:
+    return {
+        "kind": "enum",
+        "name": name,
+        "enumerators": [{"name": e, "value": i} for i, e in enumerate(enumerators)],
+    }
+
+
 def long_unit_files(unit: str) -> dict[str, Any]:
     return {
         "project.ddd.json": project("Device", "a.ddd.json"),
@@ -303,8 +356,64 @@ class TestAStringPastTheLimit:
             "but the a2l of ASAP2 1.6.1 carries 255 (MAX_STRING); it is written whole"
         ]
 
-    def test_a_unit_of_255_characters_is_clean(self, tree: Path) -> None:
-        assert checks(over(tree, long_unit_files("u" * 255))) == []
+    def test_a_unit_of_255_characters_is_clean_under_a_conversion_that_does_not_repeat_it(
+        self, tree: Path
+    ) -> None:
+        files = long_unit_files("u" * 255)
+        files["a.ddd.json"] = component(
+            "A", declare("local", "X", unit="u" * 255, conversion={"kind": "linear", "factor": 2})
+        )
+        assert checks(over(tree, files)) == []
+
+    def test_an_identity_unit_that_fits_with_the_words_before_it_is_clean(self, tree: Path) -> None:
+        """The compu method of an identity conversion is described as the unit, after
+        ``physical value in `` of 18 characters, so 237 is the longest unit that fits whole."""
+        assert checks(over(tree, long_unit_files("u" * 237))) == []
+
+    def test_an_identity_unit_past_the_words_before_it_warns_on_the_description(
+        self, tree: Path
+    ) -> None:
+        assert at(over(tree, long_unit_files("u" * 238)), "a2l-unrepresentable") == [
+            "a.ddd.json#component.interface[0].definition.unit: "
+            "warning[a2l-unrepresentable]: the unit of 'X' is a string of 238 characters, and "
+            "the description of the conversion the a2l builds from it, which opens with "
+            "'physical value in ', is 256, but the a2l of ASAP2 1.6.1 carries 255 "
+            "(MAX_STRING); both are written whole"
+        ]
+
+    def test_the_words_before_the_unit_are_the_ones_the_a2l_writes(self, tree: Path) -> None:
+        files = long_unit_files("u" * 250)
+        dictionary, _ = run_analysis(tree, files)
+        assert dictionary is not None
+        text = next(
+            f.content for f in render_files(dictionary, tree / "gen") if f.path.name == "Device.a2l"
+        )
+        assert f'"{IDENTITY_METHOD_PREFIX}{"u" * 250}"' in text
+        assert len(IDENTITY_METHOD_PREFIX) == 18
+
+    def test_every_string_the_a2l_derives_from_a_name_fits_a_name_of_128(self, tree: Path) -> None:
+        """The ones built around a project's name, an enum's, a constant's: the longest a name
+        can be leaves them inside ``MAX_STRING``, so none needs a finding of its own."""
+        long = "n" * 128
+        files = {
+            "project.ddd.json": project(long, "a.ddd.json", "c.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "X", "uint8", conversion=enum_of(long, "ONE")),
+                declare("local", "Y", "uint8", conversion={"kind": "linear", "factor": 0.5}),
+            ),
+            "c.ddd.json": {"constants": [{"name": long, "value": 1}]},
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, messages(bag)
+        text = next(
+            f.content
+            for f in render_files(dictionary, tree / "gen")
+            if f.path.name.endswith(".a2l")
+        )
+        strings = re.findall(r'"((?:[^"\\]|\\.)*)"', text)
+        assert strings
+        assert max(len(string) for string in strings) <= 255
 
     def test_a_unit_on_an_object_the_a2l_leaves_out_is_clean(self, tree: Path) -> None:
         files = {
@@ -429,12 +538,63 @@ class TestAStringPastTheLimit:
             "(MAX_STRING); it is written whole"
         ]
 
+    def test_a_member_unit_past_the_words_before_it_is_the_members(self, tree: Path) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            "t.ddd.json": types(struct_type("S_t", value_member("v", unit="u" * 238))),
+        }
+        found = at(over(tree, files), "a2l-unrepresentable")
+        assert len(found) == 1
+        assert found[0].startswith("t.ddd.json#types[0].members[0].unit: ")
+        assert "which opens with 'physical value in '" in found[0]
+
+    def test_the_unit_of_a_scalar_type_a_member_names_is_the_types(self, tree: Path) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            "t.ddd.json": types(
+                scalar_type("T_t", "uint16", unit="u" * 238),
+                struct_type("S_t", value_member("v", typename="T_t")),
+            ),
+        }
+        found = at(over(tree, files), "a2l-unrepresentable")
+        assert len(found) == 1
+        assert found[0].startswith("t.ddd.json#types[0].unit: ")
+        assert "which opens with" in found[0]
+
+    def test_a_scaled_member_and_a_scaled_type_keep_the_whole_of_255(self, tree: Path) -> None:
+        scaled = {"kind": "linear", "factor": 2}
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component(
+                "A", declare("local", "X", typename="S_t"), declare("local", "Y", typename="T_t")
+            ),
+            "t.ddd.json": types(
+                struct_type("S_t", value_member("v", unit="u" * 255, conversion=scaled)),
+                scalar_type("T_t", "uint16", unit="u" * 255, conversion=scaled),
+            ),
+        }
+        assert checks(over(tree, files)) == []
+
+    def test_the_unit_of_a_scalar_type_past_the_words_before_it_is_the_types(
+        self, tree: Path
+    ) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", typename="Speed_t")),
+            "t.ddd.json": types(scalar_type("Speed_t", "uint16", unit="u" * 238)),
+        }
+        found = at(over(tree, files), "a2l-unrepresentable")
+        assert len(found) == 1
+        assert found[0].startswith("t.ddd.json#types[0].unit: ")
+
     def test_a_member_description_of_255_characters_is_clean(self, tree: Path) -> None:
         files = {
             "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
             "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
             "t.ddd.json": types(
-                struct_type("S_t", value_member("v", description="d" * 255, unit="u" * 255))
+                struct_type("S_t", value_member("v", description="d" * 255, unit="u" * 237))
             ),
         }
         assert checks(over(tree, files)) == []

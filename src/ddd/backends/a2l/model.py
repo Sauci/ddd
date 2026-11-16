@@ -34,6 +34,7 @@ from ddd.backends.a2l.types import A2L_TYPE
 from ddd.ir import DataDictionary, ResolvedComponent, ResolvedLeaf, ResolvedObject
 from ddd.models import (
     IDENTIFIER_MAX_LENGTH,
+    IDENTITY_METHOD_PREFIX,
     Conversion,
     Datatype,
     EnumConversion,
@@ -773,7 +774,7 @@ class _CompuMethodBuilder:
             )
         return CompuMethodView(
             name=self._unique(f"CM_IDENT_{_slug(unit)}"),
-            description=f"physical value in {unit}" if unit else "identity",
+            description=f"{IDENTITY_METHOD_PREFIX}{unit}" if unit else "identity",
             conversion_type="IDENTICAL",
             format=_default_format(datatype, conversion),
             unit=unit,

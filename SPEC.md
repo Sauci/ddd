@@ -1491,9 +1491,9 @@ Warnings:
   image the run was given. An object that states a condition, and of which the build holds
   nothing, is not carried: the A2L leaves it out, as `condition-left-out` says. One the build
   holds, and the map or the image does not place, is `address-missing` whatever condition it
-  states. What goes with an object so left out is not carried either, a curve or a map over an
-  axis left out, and a measurement that asked to stay out of the A2L and was in it only as the
-  input of such an axis. It fires for a map only when the map has at least one entry:
+  states. What the A2L leaves out with it is not carried either: a curve or a map over an
+  axis left out, which `reference-left-out` names, and a measurement that asked to stay out of
+  the A2L and was in it only as the input of such an axis, which no finding names. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction. That is the run
   a build makes before it has linked anything, and it is as well the step after the link
   when the map it reads has no entry, one the project's step extracted nothing into among

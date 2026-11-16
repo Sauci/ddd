@@ -337,6 +337,16 @@ class Image:
     index of the section or as the name of a special one (``SHN_ABS``): which of several sections
     holding an address the variable is in."""
 
+    load_relative: bool = False
+    """Whether the image is position independent (``ET_DYN``, as ``-static-pie`` or ``-pie``
+    links it): every address in it is an offset from where the image is loaded, which only the
+    loader knows."""
+
+    split_dwarf: bool = False
+    """Whether the debug information is split (``-gsplit-dwarf``): the image holds a skeleton of
+    each unit, and the unit itself is in a ``.dwo`` file beside it, which this module does not
+    read."""
+
     @property
     def without_contents(self) -> bool:
         """Whether the image has allocated sections of the program, code and data alike, and
@@ -697,6 +707,11 @@ def _image(path: Path, contents: bytes) -> Image:
     )
     return Image(
         path=path,
+        load_relative=kind == "ET_DYN",
+        split_dwarf=any(
+            "DW_AT_dwo_name" in unit.top.attributes or "DW_AT_GNU_dwo_name" in unit.top.attributes
+            for unit in units
+        ),
         byte_order=byte_order,
         variables=variables,
         sections=sections,

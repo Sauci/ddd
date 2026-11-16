@@ -127,6 +127,11 @@ Acronyms and abbreviations
    * - PEP
      - Python Enhancement Proposal. PEP 440 says what a version of a python package may be,
        which is why the development builds on TestPyPI cannot carry their commit in theirs.
+   * - PIE
+     - Position independent executable, an image linked to load at an address the loader chooses
+       (``-pie``, or ``-static-pie``), whose ELF type is ``ET_DYN``. The addresses in it are
+       offsets from where it loads, which ``ddd generate a2l --image`` states as they are and
+       says so, as ``image-load-relative``.
    * - RAM
      - Random access memory, the volatile storage a measurement normally lives in. Named in
        the :doc:`checks <consistency_checks>` for what a section usually stands for.

@@ -1505,6 +1505,11 @@ Warnings:
 
 Information:
 
+- `image-load-relative`: the image `--image` was given is position independent (`ET_DYN`),
+  so the addresses the A2L takes from it are offsets from where the image loads, which only
+  the loader knows. The A2L states them as they are, which is right for a project that adds
+  its load base when it reads the file and wrong for one that does not; the finding is
+  located at the image, and says so in a note.
 - `condition-left-out`: an object the A2L would carry states a condition, and the build
   does not hold it: the image defines no variable of its name, nor holds a symbol of it,
   or the address map with entries names neither the object nor any of its members. The A2L
@@ -2066,7 +2071,10 @@ example `Inlet.latest` or `Inlet[2].raw`, exactly as the A2L names it
 
 `--image FILE` reads a linked ELF image, `ET_EXEC` or `ET_DYN`, and its DWARF debug
 information, versions 2 to 5: the images the reader of `ddd tool from-elf` reads
-([section 7.3](#73-toolbox)), any other being a usage error in that reader's words. Each
+([section 7.3](#73-toolbox)), any other being a usage error in that reader's words. The
+addresses of an `ET_DYN` image, which a position independent link writes, are offsets from
+where it loads: the A2L states them as they are, and `image-load-relative` says so at
+`info`. Each
 symbol the A2L states an address for is placed on its own. An object is the image's
 variable of that name with external linkage: the units describing one variable at one
 address, as `-fcommon` makes them, describe one variable, and a `static` of the same name
@@ -2097,10 +2105,11 @@ only declared, folded into a constant, removed by the compiler or discarded by t
 thread-local, or at no fixed address; its symbol table holds no object of that name at the
 address the debug information gives, as a linker leaves a variable of a unit it discarded,
 or no section of the image holds that address; a variable of a C++ namespace or class, which DDD does not read; the image's debug information only declares it while
-the symbol table holds it, the unit defining it built without `-g`; the name names globals
+the symbol table holds it, the unit defining it built without `-g`, or the debug information
+split into `.dwo` files (`-gsplit-dwarf`), which the reader does not read; the name names globals
 at several addresses; its type has no member of that name, the C code and the declaration
 disagreeing; a step indexes what is not an array, or names a member of what is not a
-structure; an index is out of range; where a step lies cannot be worked out from the image's
+structure; the variable has no type, which `-g1` leaves; an index is out of range; where a step lies cannot be worked out from the image's
 debug information; or a step names a bitfield, whose bits an address cannot describe. An
 address outside `0 .. 0xFFFFFFFF` for a symbol the A2L states an address for is a usage
 error naming the symbol and the image, and nothing is written.
@@ -2115,7 +2124,9 @@ unsigned 32 bit
 `ECU_ADDRESS`: a map that is not a JSON
 object, a value that is neither of those two spellings, or an address outside
 `0 .. 0xFFFFFFFF` **for a symbol the A2L states an address for**, is a usage error and
-nothing is written. The address of any other symbol is never formatted into anything and is
+nothing is written. So is a file that is not UTF-8 text, as one Windows PowerShell's `>`
+writes is UTF-16, one nested deeper than the reader takes, and a number of more digits than
+the interpreter converts (4300 by default): each names the file. The address of any other symbol is never formatted into anything and is
 therefore not held to that range: extracting every defined symbol of an image - which is what
 [section 7.1](#71-build-system-integration) describes - legitimately yields entries a 32 bit
 field could not hold, and refusing them would make the two-run flow impossible to complete on

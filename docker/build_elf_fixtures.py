@@ -175,6 +175,9 @@ NEGATIVES = (
         plain=("undescribed_b",),
     ),
     Negative("sections-overlaid", "overlay", ("-gdwarf-5", "-Wl,-T,overlay.ld")),
+    Negative("split-dwarf", "type_units", ("-gdwarf-5", "-gsplit-dwarf")),
+    Negative("split-dwarf-4", "type_units", ("-gdwarf-4", "-gsplit-dwarf")),
+    Negative("debug-level-1", "type_units", ("-gdwarf-5", "-g1")),
     Negative(
         "cplusplus",
         "cpp",
@@ -192,7 +195,10 @@ offsets into the section it discarded, and by GNU ld, which drops the unit's deb
 two units that state one name at one address in two ways (a common symbol at two sizes, an array
 of two lengths, a weak definition over a strong one), and one unit built without ``-g`` whose
 symbols are larger than the description of the unit that has it; two sections a linker script
-overlays at one address; and a C++ unit, which the reader refuses in part."""
+overlays at one address; a C++ unit, which the reader refuses in part; and images whose debug
+information is less than the reader looks for: one split into ``.dwo`` files by ``-gsplit-dwarf``
+at DWARF 5, one at DWARF 4, where GNU's extension names the skeleton's file another way, and one
+that ``-g1`` leaves without types."""
 
 _SYMBOL = re.compile(
     r"^\s*\d+:\s+[0-9a-f]+\s+(?P<size>0x[0-9a-f]+|\d+)\s+(?P<type>\w+)\s+\w+\s+\w+\s+"

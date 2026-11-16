@@ -5408,8 +5408,63 @@ class TestASignedEnumFromAnImage:
         assert "int32_t Enum_Signed = -2;" in definitions
 
 
+LOAD_RELATIVE_FINDING = (
+    "{}: info[image-load-relative]: the image is position independent, so the addresses the "
+    "a2l states are offsets from where it loads\n"
+    "    note: a project that adds its load base when it reads the a2l is right, and one that "
+    "does not finds every address wrong\n"
+)
+"""What a run says of a position independent image: the finding, at the image, before whatever
+else the run has to say of it."""
+LOAD_RELATIVE_NOTE = LOAD_RELATIVE_FINDING + "1 info\n"
+"""The whole of it where it is all the run says."""
+
+
 class TestGenerateFromAnImage:
     """``ddd generate a2l --image``: every address the a2l carries, out of the linked image."""
+
+    def test_a_position_independent_image_is_read_and_its_addresses_said_to_be_offsets(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ET_DYN``: the link-time addresses of a static pie are offsets from where it loads.
+        The a2l carries them as they are: a project that adds its load base reads them right, and
+        the run says so at info, so that a strict build does not stop at it."""
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        arguments = [*self.arguments(tmp_path), "--image", str(X86_ADDRESSES), "--strict"]
+        assert main(arguments) == EXIT_OK
+        shown = where(X86_ADDRESSES).render(Path.cwd())
+        assert capsys.readouterr().err == (
+            LOAD_RELATIVE_NOTE.format(shown) + f"wrote       {a2l.as_posix()} (created)\n"
+        )
+        assert a2l_addresses(a2l.read_text(encoding="utf-8")) == ADDRESS_ROWS["x86_64"]["addresses"]
+
+    def test_a_fixed_address_image_is_not_noted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        image = ADDRESS_FIXTURES / "armv7m.elf"
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
+        assert "image-load-relative" not in capsys.readouterr().err
+
+    def test_an_address_map_naming_a_pie_is_not_noted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only an image states its type; a map is what the author wrote."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text("{}", encoding="utf-8")
+        assert main([*self.arguments(tmp_path), "--address-map", str(addresses)]) == EXIT_OK
+        assert "image-load-relative" not in capsys.readouterr().err
+
+    def test_a_map_that_cannot_be_read_is_a_usage_error_naming_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A map nested deeper than the reader takes was a traceback with the findings exit."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text("[" * 200_000, encoding="utf-8")
+        assert main([*self.arguments(tmp_path), "--address-map", str(addresses)]) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: the address map '{addresses.as_posix()}' is not valid json: it is nested "
+            f"more deeply than this tool reads\n"
+        )
 
     def arguments(self, tmp_path: Path, project: Path = ADDRESS_PROJECT) -> list[str]:
         return ["generate", "a2l", str(project), "-o", str(tmp_path / "gen")]
@@ -5426,7 +5481,10 @@ class TestGenerateFromAnImage:
         a2l = tmp_path / "gen" / "AddressFixture.a2l"
         image = ADDRESS_FIXTURES / f"{row}.elf"
         assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
-        assert capsys.readouterr().err == f"wrote       {a2l.as_posix()} (created)\n"
+        noted = (
+            LOAD_RELATIVE_NOTE.format(where(image).render(Path.cwd())) if row == "x86_64" else ""
+        )
+        assert capsys.readouterr().err == f"{noted}wrote       {a2l.as_posix()} (created)\n"
         text = a2l.read_text(encoding="utf-8")
         assert a2l_addresses(text) == expected["addresses"]
         assert [path for path in expected["bitfields"] if path in text] == []
@@ -5578,7 +5636,8 @@ class TestGenerateFromAnImage:
         image.write_bytes(bytes(data))
         assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_USAGE
         assert capsys.readouterr().err == (
-            f"ddd: {image.as_posix()}: address of 'Speed' is {moved}, outside the range "
+            LOAD_RELATIVE_NOTE.format(image.as_posix())
+            + f"ddd: {image.as_posix()}: address of 'Speed' is {moved}, outside the range "
             f"0 .. 0xFFFFFFFF that an a2l address can hold\n"
         )
 
@@ -5595,7 +5654,9 @@ class TestGenerateFromAnImage:
         monkeypatch.chdir(ADDRESS_FIXTURES)
         arguments = [*self.arguments(tmp_path, project), "--image", "x86_64.elf"]
         assert main([*arguments, "--format", "json"]) == EXIT_OK
-        assert json.loads(capsys.readouterr().out)["diagnostics"] == [
+        found = json.loads(capsys.readouterr().out)["diagnostics"]
+        assert [entry["check"] for entry in found] == ["address-missing", "image-load-relative"]
+        assert found[:1] == [
             {
                 "check": "address-missing",
                 "severity": "warning",
@@ -5627,10 +5688,11 @@ class TestGenerateFromAnImage:
         assert main([*arguments, "--strict"]) == EXIT_FINDINGS
         shown = where(X86_ADDRESSES).render(Path.cwd())
         assert capsys.readouterr().err == (
-            f"{shown}: error[address-missing]: the image has no address for 'Tuning.window'; it "
-            f"reaches the a2l at address 0\n"
+            f"{shown}: error[address-missing]: the image has no address for 'Tuning.window'; "
+            f"it reaches the a2l at address 0\n"
             f"    note: 'Tuning' has no member named 'window' in the image\n"
-            f"1 error\n"
+            + LOAD_RELATIVE_FINDING.format(shown)
+            + "1 error, 1 info\n"
         )
         assert not (tmp_path / "gen").exists()
 
@@ -5645,10 +5707,12 @@ class TestGenerateFromAnImage:
         shown = where(X86_ADDRESSES).render(Path.cwd())
         a2l = tmp_path / "gen" / "AddressFixture.a2l"
         assert capsys.readouterr().err == (
-            f"{shown}: info[condition-left-out]: the image has no address for 'Ghost', which is "
-            f"only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l\n"
+            LOAD_RELATIVE_FINDING.format(shown)
+            + f"{shown}: info[condition-left-out]: the image has no address for 'Ghost', which "
+            f"is only present in the build when 'defined(FEATURE_X)'; it is left out of the "
+            f"a2l\n"
             f"    note: the image's debug information holds no variable named 'Ghost'\n"
-            f"1 info\n"
+            f"2 infos\n"
             f"wrote       {a2l.as_posix()} (created)\n"
         )
         text = a2l.read_text(encoding="utf-8")
@@ -5683,7 +5747,7 @@ class TestGenerateFromAnImage:
             "info[condition-left-out]: the image has no address for 'Wraith', which is only "
             "present in the build when 'defined(FEATURE_Y)'; it is left out of the a2l\n"
         ) in captured
-        assert "2 infos" in captured
+        assert "3 infos" in captured
         text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
         assert [name for name in ("Ghost", "Wraith", "Shade") if name in text] == []
 
@@ -5790,7 +5854,8 @@ class TestGenerateFromAnImage:
             f"'Bells[0].v', 'Bells[1].raw', 'Bells[1].v', 'Bells[2].raw' and 2 others; they "
             f"reach the a2l at address 0\n"
             f"    note: the image's debug information holds no variable named 'Bells'\n"
-            f"1 warning\n"
+            + LOAD_RELATIVE_FINDING.format(shown)
+            + "1 warning, 1 info\n"
             f"wrote       {a2l.as_posix()} (created)\n"
         )
 
@@ -5896,7 +5961,10 @@ class TestGenerateFromAnImage:
         capsys.readouterr()
         a2l = output / "AddressFixture.a2l"
         assert main([*self.arguments(tmp_path), "--image", str(X86_ADDRESSES)]) == EXIT_OK
-        assert capsys.readouterr().err == f"wrote       {a2l.as_posix()} (created)\n"
+        assert capsys.readouterr().err == (
+            LOAD_RELATIVE_NOTE.format(where(X86_ADDRESSES).render(Path.cwd()))
+            + f"wrote       {a2l.as_posix()} (created)\n"
+        )
         kept = {
             path.name: (path.read_bytes(), path.stat().st_mtime_ns)
             for path in output.iterdir()

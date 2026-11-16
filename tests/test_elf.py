@@ -2307,3 +2307,18 @@ class TestSectionsOverlaidInTheImage:
             "Page1_Var": ".page1",
             "Page2_Var": ".page2",
         }
+
+
+class TestWhereAnImageLoads:
+    """``ET_DYN`` is what a position independent link writes: its addresses are offsets."""
+
+    @pytest.mark.parametrize(("row", "relative"), [("x86_64", True), ("armv7m", False)])
+    def test_an_image_is_load_relative_when_it_is_a_shared_object_type(
+        self, row: str, relative: bool
+    ) -> None:
+        image = open_image(FIXTURES / f"{row}.elf")
+        assert image.load_relative is relative
+        assert MANIFEST["rows"][row]["image"]["elf_type"] == ("DYN" if relative else "EXEC")
+
+    def test_the_debug_only_companion_of_a_pie_is_one_too(self) -> None:
+        assert open_image(FIXTURES / "x86_64.debug").load_relative

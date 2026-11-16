@@ -18,7 +18,7 @@
     "tests/fixtures/elf/src/unit_a.c": "2c1ad445a0e8436d8cfd4583f3c6ce7372509cdf4f9348c152d4aeb94d7cbd3a",
     "tests/fixtures/elf/src/unit_b.c": "d01310e13f21f7e58ddf908944b4cb003aba9bbbe5b4850f2e08d77251591d1c",
     "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
-    "docker/build_elf_fixtures.py": "cf17085cea88910f7d1ee465e7db3515757f8cde774247f51edbd3471749bcd4"
+    "docker/build_elf_fixtures.py": "ab981e2e03b235c9569158859e52181ae0a1dbc11759fca365f48854b88391d2"
   },
   "rows": {
     "x86_64": {
@@ -4970,6 +4970,172 @@
           "section": ".page2",
           "contents": true,
           "size": 4
+        }
+      ]
+    },
+    "split-dwarf": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "type_units.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-gsplit-dwarf",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_skeleton",
+          "DW_UT_split_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_addr",
+          ".debug_aranges",
+          ".debug_gnu_pubnames",
+          ".debug_gnu_pubtypes",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Mode",
+          "section": ".rodata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        }
+      ]
+    },
+    "split-dwarf-4": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "type_units.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-4",
+        "-gsplit-dwarf",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          4
+        ],
+        "unit_types": [],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_addr",
+          ".debug_aranges",
+          ".debug_gnu_pubnames",
+          ".debug_gnu_pubtypes",
+          ".debug_info",
+          ".debug_line",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Mode",
+          "section": ".rodata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        }
+      ]
+    },
+    "debug-level-1": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "type_units.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-g1",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Mode",
+          "section": ".rodata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
         }
       ]
     },

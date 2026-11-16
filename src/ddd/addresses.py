@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,7 +62,31 @@ def load_address_map(path: Path) -> dict[str, int]:
     """
     where = path.as_posix()
     try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=_no_repeats)
+        data = json.loads(
+            path.read_text(encoding="utf-8-sig"),
+            object_pairs_hook=_no_repeats,
+            parse_int=_whole,
+        )
+    except UnicodeDecodeError:
+        # What Windows PowerShell's `>` writes is UTF-16, which is where a map written by a
+        # build step on Windows most often comes from; python's own words name a byte.
+        msg = (
+            f"the address map '{where}' is not valid json: it is not UTF-8 text, and Windows "
+            "PowerShell's > writes UTF-16; write the map as UTF-8"
+        )
+        raise ValueError(msg) from None
+    except RecursionError:
+        msg = (
+            f"the address map '{where}' is not valid json: it is nested more deeply than this "
+            "tool reads"
+        )
+        raise ValueError(msg) from None
+    except _TooManyDigitsError:
+        msg = (
+            f"{where}: the address map holds a number of more than "
+            f"{sys.get_int_max_str_digits()} digits, which this tool does not read"
+        )
+        raise ValueError(msg) from None
     except json.JSONDecodeError as error:
         # The bare json message names neither file nor purpose, and this one is typically
         # written by a linker script or a patch tool nobody is looking at.
@@ -83,6 +108,19 @@ def load_address_map(path: Path) -> dict[str, int]:
     for symbol, value in data.items():
         addresses[symbol] = _address(where, symbol, value)
     return addresses
+
+
+class _TooManyDigitsError(ValueError):
+    """A number of the map document has more digits than python converts to an integer."""
+
+
+def _whole(text: str) -> int:
+    """The ``parse_int`` of the reader: ``int(text)``, with python's digit limit as an error of
+    this module's, which its caller words."""
+    try:
+        return int(text)
+    except ValueError:
+        raise _TooManyDigitsError from None
 
 
 class _RepeatedSymbolError(ValueError):
@@ -120,7 +158,15 @@ def _address(where: str, symbol: str, value: object) -> int:
             f"with a '0x' prefix: {value!r}"
         )
         raise ValueError(msg)
-    return int(text, 16 if text.lower().startswith("0x") else 10)
+    try:
+        return int(text, 16 if text.lower().startswith("0x") else 10)
+    except ValueError:
+        # The grammar above was met, so only python's digit limit refuses a decimal number.
+        msg = (
+            f"{where}: address of '{symbol}' has more than {sys.get_int_max_str_digits()} "
+            "digits, which this tool does not read"
+        )
+        raise ValueError(msg) from None
 
 
 _ROOT: Final = re.compile(r"\w+")
@@ -135,6 +181,18 @@ _WITHOUT_G: Final = (
 )
 """The ending of a reason the symbol table answers: it holds a name whose definition the debug
 information does not describe, so the unit defining it was compiled without ``-g``."""
+
+_SPLIT: Final = (
+    "; the symbol table holds it, and the debug information of this image is in separate .dwo "
+    "files (-gsplit-dwarf), which this tool does not read"
+)
+"""The same ending for an image whose debug information is split: the unit was built with ``-g``,
+and what it describes is in the ``.dwo`` files the image holds a skeleton of."""
+
+_UNTYPED: Final = (
+    "the image's debug information gives '{}' no type, as -g1 leaves it, so no path into it can "
+    "be followed"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,7 +276,7 @@ def _variable(
             )
         missing = f"the image's debug information holds no variable named '{name}'"
         if name in image.symbols:
-            return missing + _WITHOUT_G
+            return missing + _ending(image)
         return _Absent(missing)
     located: dict[int, Variable] = {}
     for variable in external:
@@ -228,7 +286,7 @@ def _variable(
         # A unit compiled with -g and reading the global declares it, where the one defining
         # it, compiled without, describes nothing: the reader keeps the declaration alone.
         if external[0].missing == DECLARED_ONLY and name in image.symbols:
-            return f"the image's debug information only declares '{name}'{_WITHOUT_G}"
+            return f"the image's debug information only declares '{name}'{_ending(image)}"
         reason = without_address(name, external[0].missing)
         # Declared and not defined, with no symbol of the name either: the unit that defines
         # it is not in the image.
@@ -247,9 +305,14 @@ def _variable(
     return address, variable.type
 
 
+def _ending(image: Image) -> str:
+    """Why the symbol table holds a name the debug information does not describe."""
+    return _SPLIT if image.split_dwarf else _WITHOUT_G
+
+
 def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
     """``address`` moved along the steps of ``symbol`` from ``at``, or why it cannot be."""
-    from ddd.elf import Array, Struct, core_of, size_of
+    from ddd.elf import Array, Struct, Unsupported, core_of, size_of
 
     while at < len(symbol):
         step = _STEP.match(symbol, at)
@@ -259,6 +322,8 @@ def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
         reached = symbol[:at]
         at = step.end()
         core = core_of(ctype)
+        if core == Unsupported("void"):
+            return _UNTYPED.format(reached)
         member, index = step.groups()
         if member is not None:
             if not isinstance(core, Struct):

@@ -111,6 +111,10 @@ def test_each_negative_input_carries_what_it_is_named_for() -> None:
             "Gold_Kept",
             "Gold_Static",
         ]
+    assert "DW_UT_skeleton" in negatives["split-dwarf"]["image"]["unit_types"]
+    assert negatives["split-dwarf-4"]["image"]["dwarf_versions"] == [4]
+    assert "-gsplit-dwarf" in negatives["split-dwarf-4"]["flags"]
+    assert "-g1" in negatives["debug-level-1"]["flags"]
     assert negatives["gold-gc-sections"]["linker"].startswith("GNU gold")
     assert negatives["bfd-gc-sections"]["linker"].startswith("GNU ld")
 

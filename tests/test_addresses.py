@@ -137,6 +137,58 @@ class TestTheMap:
             f"cannot read the address map '{path.as_posix()}': No such file or directory"
         )
 
+    def test_a_map_that_is_not_utf_8_names_the_file_and_what_wrote_it(self, tree: Path) -> None:
+        """What Windows PowerShell's ``>`` writes: UTF-16 with its byte order mark. Python's
+        own words about a byte at a position name no file and no remedy."""
+        path = tree / "addresses.json"
+        path.write_bytes(b"\xff\xfe" + '{"A": "0x10"}'.encode("utf-16-le"))
+        assert refusal(path) == (
+            f"the address map '{path.as_posix()}' is not valid json: it is not UTF-8 text, and "
+            f"Windows PowerShell's > writes UTF-16; write the map as UTF-8"
+        )
+
+    def test_a_map_nested_deeper_than_the_reader_takes_is_refused_naming_the_file(
+        self, tree: Path
+    ) -> None:
+        # The limit is the interpreter's, and a different one on each python: 200,000 is past
+        # all of them, and a document that deep is 400 KB.
+        depth = 200_000
+        path = tree / "addresses.json"
+        path.write_text("[" * depth + "]" * depth, encoding="utf-8")
+        assert refusal(path) == (
+            f"the address map '{path.as_posix()}' is not valid json: it is nested more "
+            f"deeply than this tool reads"
+        )
+
+    def test_a_number_of_more_digits_than_the_reader_takes_is_refused_naming_the_file(
+        self, tree: Path
+    ) -> None:
+        limit = sys.get_int_max_str_digits()
+        assert limit > 0
+        path = tree / "addresses.json"
+        path.write_text('{"A": ' + "9" * (limit + 1) + "}", encoding="utf-8")
+        assert refusal(path) == (
+            f"{path.as_posix()}: the address map holds a number of more than {limit} digits, "
+            f"which this tool does not read"
+        )
+
+    def test_an_address_written_in_more_digits_than_the_reader_takes_names_its_symbol(
+        self, tree: Path
+    ) -> None:
+        limit = sys.get_int_max_str_digits()
+        path = tree / "addresses.json"
+        path.write_text('{"A": "' + "9" * (limit + 1) + '"}', encoding="utf-8")
+        assert refusal(path) == (
+            f"{path.as_posix()}: address of 'A' has more than {limit} digits, which this "
+            f"tool does not read"
+        )
+
+    def test_a_number_of_as_many_digits_as_the_reader_takes_is_read(self, tree: Path) -> None:
+        limit = sys.get_int_max_str_digits()
+        path = tree / "addresses.json"
+        path.write_text('{"A": ' + "9" * limit + "}", encoding="utf-8")
+        assert load_address_map(path) == {"A": int("9" * limit)}
+
     @pytest.mark.parametrize("content", ["[1, 2]", '{"A": "nowhere"}', '{"A": 1, "A": 2}'])
     def test_every_complaint_about_a_map_spells_the_path_forward_slashed(
         self, tree: Path, content: str
@@ -236,6 +288,7 @@ def image(
     symbols: frozenset[str] = frozenset(),
     objects: frozenset[tuple[str, int]] | None = None,
     sections: tuple[Section, ...] = (EVERYWHERE,),
+    split_dwarf: bool = False,
 ) -> Image:
     """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
     each global at its address, as a linker that kept the variable leaves it."""
@@ -245,7 +298,16 @@ def image(
             for variable in variables
             if variable.external and variable.address is not None
         )
-    return Image(Path("hand.elf"), "little", variables, sections, symbols, b"", objects)
+    return Image(
+        Path("hand.elf"),
+        "little",
+        variables,
+        sections,
+        symbols,
+        b"",
+        objects,
+        split_dwarf=split_dwarf,
+    )
 
 
 def stored(
@@ -417,6 +479,54 @@ class TestTheVariable:
         """Only a declaration says that no unit with debug information defines the global."""
         img = image(stored("Gain", address=None, missing=FOLDED), symbols=frozenset({"Gain"}))
         assert reason(img, "Gain") == f"'Gain' has no address in the image: {FOLDED}"
+
+    def test_a_name_only_the_symbol_table_holds_in_a_split_image_is_not_placed_naming_the_dwo(
+        self,
+    ) -> None:
+        """``-gsplit-dwarf`` leaves a skeleton in the image and the debug information in ``.dwo``
+        files beside it: the unit was built with ``-g``, and saying it was not sends the reader
+        to what the build already did."""
+        img = image(symbols=frozenset({"Cal_Gain"}), split_dwarf=True)
+        assert reason(img, "Cal_Gain") == (
+            "the image's debug information holds no variable named 'Cal_Gain'; the symbol "
+            "table holds it, and the debug information of this image is in separate .dwo files "
+            "(-gsplit-dwarf), which this tool does not read"
+        )
+
+    def test_a_name_only_declared_in_a_split_image_is_not_placed_naming_the_dwo(self) -> None:
+        img = image(
+            stored("Gain", address=None, missing=DECLARED_ONLY),
+            symbols=frozenset({"Gain"}),
+            split_dwarf=True,
+        )
+        assert reason(img, "Gain") == (
+            "the image's debug information only declares 'Gain'; the symbol table holds it, and "
+            "the debug information of this image is in separate .dwo files (-gsplit-dwarf), "
+            "which this tool does not read"
+        )
+
+    def test_a_name_the_split_image_does_not_hold_at_all_is_still_absent(self) -> None:
+        found = addresses_from_image(image(split_dwarf=True), ["Gone"])
+        assert found.absent == frozenset({"Gone"})
+
+    @pytest.mark.parametrize("symbol", ["Notyped.raw[0]", "Notyped[0]"])
+    def test_a_path_into_a_variable_the_debug_level_gave_no_type_says_so(self, symbol: str) -> None:
+        """``-g1`` keeps the variable and its address and no type: it is not an array or a
+        structure that the path was wrong about."""
+        img = image(stored("Notyped", Unsupported("void")))
+        assert reason(img, symbol) == (
+            "the image's debug information gives 'Notyped' no type, as -g1 leaves it, so no "
+            "path into it can be followed"
+        )
+
+    def test_the_variable_itself_is_placed_where_the_debug_level_gave_it_no_type(self) -> None:
+        img = image(stored("Notyped", Unsupported("void"), address=0x40))
+        assert placed(img, "Notyped") == Placed({"Notyped": 0x40}, {})
+
+    def test_a_name_that_is_no_array_is_still_said_so_beside_the_untyped_one(self) -> None:
+        assert reason(image(stored("Inlet", Unsupported("a pointer"))), "Inlet[2]") == (
+            "'Inlet' is not an array, so it has no element [2]"
+        )
 
     @pytest.mark.parametrize(
         "missing", [DECLARED_ONLY, FOLDED, REMOVED, DISCARDED, THREAD_LOCAL, NOT_AN_ADDRESS]
@@ -631,3 +741,46 @@ class TestWithoutPyelftools:
         path = tree / "addresses.json"
         path.write_text('{"A": "0x10"}', encoding="utf-8")
         assert fresh.load_address_map(path) == {"A": 0x10}
+
+
+class TestTheImagesOfTwoCompilerOptions:
+    """Built by ``docker/build_elf_fixtures.py`` from the source of the type unit fixture, which
+    holds ``Struct_Inlet`` (a structure with an array) and ``Cal_Gain``."""
+
+    def test_a_split_image_names_the_dwo_files_for_every_symbol(self) -> None:
+        img = open_image(FIXTURES / "split-dwarf.elf")
+        found = addresses_from_image(img, ["Struct_Inlet.raw[0]", "Cal_Gain"])
+        assert found.addresses == {}
+        said = (
+            "the symbol table holds it, and the debug information of this image is in separate "
+            ".dwo files (-gsplit-dwarf), which this tool does not read"
+        )
+        assert found.reasons == {
+            "Struct_Inlet.raw[0]": (
+                f"the image's debug information holds no variable named 'Struct_Inlet'; {said}"
+            ),
+            "Cal_Gain": f"the image's debug information holds no variable named 'Cal_Gain'; {said}",
+        }
+
+    def test_a_split_image_of_dwarf_4_is_told_the_same(self) -> None:
+        """GNU's DWARF 4 extension names the skeleton's ``.dwo`` another way."""
+        img = open_image(FIXTURES / "split-dwarf-4.elf")
+        assert img.split_dwarf
+        assert "separate .dwo files" in reason(img, "Cal_Gain")
+
+    def test_an_image_of_debug_level_1_places_the_variables_and_not_a_path_into_one(self) -> None:
+        img = open_image(FIXTURES / "debug-level-1.elf")
+        found = addresses_from_image(img, ["Struct_Inlet", "Cal_Gain", "Struct_Inlet.raw[0]"])
+        assert sorted(found.addresses) == ["Cal_Gain", "Struct_Inlet"]
+        assert found.reasons == {
+            "Struct_Inlet.raw[0]": (
+                "the image's debug information gives 'Struct_Inlet' no type, as -g1 leaves it, "
+                "so no path into it can be followed"
+            )
+        }
+
+    def test_an_image_of_full_debug_information_is_neither(self) -> None:
+        for name in ("x86_64", "armv7m"):
+            assert not open_image(FIXTURES / f"{name}.elf").split_dwarf
+        assert open_image(FIXTURES / "split-dwarf.elf").split_dwarf
+        assert not open_image(FIXTURES / "debug-level-1.elf").split_dwarf

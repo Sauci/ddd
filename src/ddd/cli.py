@@ -1300,6 +1300,20 @@ def _command_generate(args: argparse.Namespace) -> int:
                 )
                 raise ValueError(msg)
             byte_order = image.byte_order
+            if image.load_relative:
+                bag.add(
+                    "image-load-relative",
+                    "the image is position independent, so the addresses the a2l states are "
+                    "offsets from where it loads",
+                    where(image_path),
+                    notes=[
+                        (
+                            "a project that adds its load base when it reads the a2l is right, "
+                            "and one that does not finds every address wrong",
+                            None,
+                        )
+                    ],
+                )
             placed = addresses_from_image(image, carried)
             addresses = placed.addresses
             weigh_addresses(addresses, carried, image_path.as_posix())

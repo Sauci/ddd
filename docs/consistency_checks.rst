@@ -692,6 +692,12 @@ Information
    * - Check
      - Default
      - Fires when
+   * - ``image-load-relative``
+     - info
+     - the image ``--image`` was given is position independent (``ET_DYN``): the addresses the a2l
+       takes from it are offsets from where it loads, and the a2l states them as they are. Right
+       for a project that adds its load base when it reads the file, wrong for one that does not,
+       which the note says.
    * - ``condition-left-out``
      - info
      - an object that states a condition is absent from the build: the image ``--image`` was

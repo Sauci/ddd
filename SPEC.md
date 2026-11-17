@@ -1692,8 +1692,9 @@ was not shown the rest. An output gone from it is therefore `removed-object` wit
 not claim to know who read it, where "no component read it" is a claim about components the run never saw, and
 an input the component stopped reading is `removed-input`, an information, because a
 component that reads less harms nobody. An object it declares `local` keeps its grade,
-`removed-unused-object`, because no other component can read it. `ddd check --standalone --baseline` and `ddd compare`
-take it from the file. An archived dictionary carries no mark of how it was read, `ddd dump
+`removed-unused-object`, because no other component can read it. `ddd check --standalone --baseline`, `ddd compare` and the Compare tab of `ddd gui`
+take it from the file, and read it under the floor `ddd check --standalone` reads a component under,
+whether or not the run said so, because one component file is read one way by every caller. An archived dictionary carries no mark of how it was read, `ddd dump
 --standalone` included: the mark is a change of the format, and is deferred, so a comparison
 against such a dump is graded as one of a whole project is, whose readers the dump records as
 they were. A candidate given as a
@@ -1701,7 +1702,9 @@ description is analysed too, and all of its findings are reported at their own s
 The verdict is that the candidate can replace the baseline exactly when no finding of the
 run is reported as an error - the candidate's own, the baseline's carried ones and the
 comparison's alike - and the exit code follows the verdict
-([section 7](#7-tool-interface)). When a side cannot be read, or the baseline carries an
+([section 7](#7-tool-interface)). `ddd compare`, `ddd check --baseline` and the Compare tab of
+`ddd gui` give one pair one verdict, since they ask one function: the tab counts the open project's own errors in it as the commands do, under the strictest
+reading of the build records that grade it, and says how many the project has of its own. When a side cannot be read, or the baseline carries an
 error and the candidate is a description, no verdict is printed and the exit code is 1.
 
 In plain text the report closes with a verdict line naming the two files and saying whether

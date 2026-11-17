@@ -5929,10 +5929,58 @@ class TestAComponentFileReadAloneIsComparedByWhatOneFileCanKnow:
     def test_the_comparison_page_says_which_callers_know_a_component_file(self) -> None:
         flat = flattened(COMPARING_DELIVERIES)
         assert (
-            "``ddd check --standalone --baseline`` and ``ddd compare`` take it from the file"
-            in (flat)
-        )
+            "``ddd check --standalone --baseline``, ``ddd compare`` and the Compare tab of "
+            "``ddd gui`` take it from the file"
+        ) in flat
         assert "An input the component stopped reading is ``removed-input``" in flat
+
+    def test_the_specification_and_the_comparison_page_say_the_floor_is_the_same_for_all_three(
+        self,
+    ) -> None:
+        for name, text, tick in (
+            ("SPEC.md", SPEC, "`"),
+            ("docs/comparing_deliveries.rst", COMPARING_DELIVERIES, "``"),
+        ):
+            flat = flattened(text)
+            assert f"the Compare tab of {tick}ddd gui{tick} take it from the file" in flat, name
+            assert "whether or not the run said so" in flat, name
+        assert "because one component file is read one way by every caller" in flattened(SPEC)
+        assert (
+            "so that an input of the component nobody was shown the producer of is not an error "
+            "of the baseline"
+        ) in flattened(COMPARING_DELIVERIES)
+
+
+class TestOneVerdictOnOnePairWhoeverAsks:
+    """``ddd compare``, ``ddd check --baseline`` and the Compare tab ask one function, and the
+    tab counts the open project's own errors in its verdict as the commands do."""
+
+    def test_the_specification_says_the_three_give_one_pair_one_verdict(self) -> None:
+        flat = flattened(SPEC)
+        assert (
+            "`ddd compare`, `ddd check --baseline` and the Compare tab of `ddd gui` give one "
+            "pair one verdict, since they ask one function"
+        ) in flat
+        assert "the tab counts the open project's own errors in it as the commands do" in flat
+        assert "and says how many the project has of its own" in flat
+
+    def test_the_comparison_page_says_the_same(self) -> None:
+        flat = flattened(COMPARING_DELIVERIES)
+        assert "One pair gets one verdict, whoever asks." in flat
+        assert (
+            "whether it is the candidate's own, one carried over from the baseline, or the "
+            "comparison's"
+        ) in flat
+        assert "and its answer says how many the project has of its own" in flat
+
+    def test_the_command_line_page_no_longer_keeps_the_projects_errors_out_of_the_tab(
+        self,
+    ) -> None:
+        flat = flattened(COMMAND_LINE_INTERFACE)
+        assert "Its verdict is the one ``ddd compare`` exits on" in flat
+        assert "the project's own errors count in it" in flat
+        assert "the answer says how many errors the project has of its own" in flat
+        assert "take no part in it" not in flat
 
     def test_the_command_line_page_does_not_promise_a_supplier_more_than_the_gate_holds(
         self,

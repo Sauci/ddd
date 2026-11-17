@@ -816,7 +816,10 @@ gate grades a removal by what one file can know. An output the component stopped
 component read it" is a claim about components the run never saw. An input the component stopped reading is
 ``removed-input``, an information, because a component that reads less harms nobody. An object it declares ``local`` keeps its
 grade, ``removed-unused-object``, because no other component can read it.
-``ddd check --standalone --baseline`` and ``ddd compare`` take it from the file. A dictionary
+``ddd check --standalone --baseline``, ``ddd compare`` and the Compare tab of ``ddd gui`` take it
+from the file, and read it under the floor ``ddd check --standalone`` reads a component under
+whether or not the run said so, so that an input of the component nobody was shown the producer
+of is not an error of the baseline. A dictionary
 archived by ``ddd dump --standalone`` carries no mark of how it was read, and the mark is a
 change of the format, so it is deferred: a comparison against such a dump is graded as one of
 a whole project is, which costs the supplier's gate its scope until the baseline is the
@@ -831,6 +834,12 @@ candidate side the errors are reported beside the comparison and the verdict is 
 A ``-W`` of this run does not relax one of them either - the line saying the dictionary the
 comparison rests on cannot be trusted is not this run's to soften. A baseline that is to be
 compared against has to be one that checks clean of errors on its own.
+
+One pair gets one verdict, whoever asks. ``ddd compare``, ``ddd check --baseline`` and the Compare
+tab of ``ddd gui`` ask the same function, and the delivery cannot replace the baseline when any
+finding of the run is an error, whether it is the candidate's own, one carried over from the
+baseline, or the comparison's. The tab counts the open project's own errors in its verdict as the commands do,
+and its answer says how many the project has of its own.
 
 In a build pipeline
 -------------------

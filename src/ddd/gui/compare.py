@@ -14,16 +14,18 @@ is Task 1's shared policy - a bag of its own, ``-W`` never reaching it, only its
 over - and using anything else here would drift from ``ddd compare`` the first time either side
 changed.
 
-**A comparison is :func:`ddd.compare.compare` and then
-:func:`ddd.plugins.run_compare_hooks`**, in that order, which is what both
-``ddd compare`` and ``ddd check --baseline`` do. The second half is not an extra: the thirteen
-built-in comparison checks grade what every delivery has, and a plugin's comparison rules grade
-what *this* project stamps on it - a layout key a dataset is keyed on, a version that has to
-rise with the bytes. Running the first half alone answered "can replace" for a delivery the
-command exits 1 on, and lost ``missing-plugin``, which the hooks file and which exists to say
-that a rule did not run at all. Running them needs the candidate's plugins, which is why
-:class:`~ddd.gui.session.Revision` carries the whole :class:`~ddd.deliveries.Resolved` the
-session's analysis produced rather than its dictionary alone.
+**A comparison is :func:`ddd.deliveries.compare_deliveries`**, the one function ``ddd compare`` and
+``ddd check --baseline`` call as well: :func:`ddd.compare.compare`, then
+:func:`ddd.plugins.run_compare_hooks`, then the verdict. Three copies of that order were written
+once and disagreed - the page's answered "can replace" for a delivery the command exits 1 on,
+because it left out the hooks, and then because its verdict did not count the project's own
+errors. The second half is not an extra: the thirteen built-in comparison checks grade what every
+delivery has, and a plugin's comparison rules grade what *this* project stamps on it - a layout
+key a dataset is keyed on, a version that has to rise with the bytes - and ``missing-plugin`` is
+filed by the hooks, to say that a rule did not run at all. Running them needs the candidate's
+plugins, which is why :class:`~ddd.gui.session.Revision` carries the whole
+:class:`~ddd.deliveries.Resolved` the session's analysis produced rather than its dictionary
+alone.
 
 **A note on what a comparison's findings are filed on.** :func:`~ddd.lsp.diagnostics.group_findings`
 is the same function that turns a session's own analysis into rows the page can draw, and it is
@@ -62,19 +64,27 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from ddd.compare import compare, renames
-from ddd.deliveries import BASELINE_PREFIX, Reading, Refusal, Resolved, read_baseline
+from ddd.compare import renames
+from ddd.deliveries import (
+    BASELINE_PREFIX,
+    Reading,
+    Refusal,
+    Resolved,
+    compare_deliveries,
+    read_baseline,
+)
 from ddd.diagnostics import (
     CHECKS,
     CheckInfo,
     Diagnostic,
     DiagnosticBag,
+    Severity,
     SeverityPolicy,
     where,
 )
 from ddd.gui.session import Filed, Revision, stamped
 from ddd.lsp.diagnostics import group_findings
-from ddd.plugins import PluginError, run_compare_hooks
+from ddd.plugins import PluginError
 
 _REASONS: Final[dict[Refusal, str]] = {
     Refusal.NOT_JSON: "is not valid json",
@@ -158,7 +168,8 @@ class Compared:
     """Whether the open project can replace a baseline, and everything the page draws about it."""
 
     verdict: bool
-    """``True`` when no finding of severity error, in either list below, survived its policy."""
+    """``True`` when no finding of severity error survived its policy: the project's own
+    (:attr:`own_errors`), those the baseline carries over, and the comparison's."""
 
     findings: tuple[Filed, ...]
     """Every finding ``ddd.compare.compare`` itself reported, filed on the candidate exactly as
@@ -174,6 +185,11 @@ class Compared:
     renames: tuple[dict[str, str], ...]
     """Every object the two sides agree is one and the same but call differently now, as
     :func:`ddd.compare.renames` already shapes them - what ``ddd compare --renames`` writes."""
+
+    own_errors: int
+    """How many errors the open project has of its own, which the verdict counts as ``ddd compare``
+    exit code does: what the state's count of errors is, so that a reader told "cannot replace"
+    of a project whose comparison found nothing is told why."""
 
 
 def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCache) -> Compared:
@@ -230,37 +246,57 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
     # check it has never heard of, which is `Severity.ERROR` whatever the plugin declared.
     compare_bag.register(revision.checks)
     location = where(revision.project)
-    paired = compare(resolved.dictionary, candidate.dictionary, compare_bag, location=location)
-    try:
-        # What both commands do next, and what this did not: `compare()` grades the thirteen
-        # built-in comparison checks, and every rule a plugin states about a replacement -
-        # ``layout/key-changed``, that a dataset keyed on an entry now reads an orphan - is run
-        # from here. Missed, the verdict was a confident "can replace" with a hole in it, and
-        # ``missing-plugin``, which exists to close that hole, was missed with it.
-        run_compare_hooks(
-            candidate.plugins,
-            resolved.dictionary,
-            candidate.dictionary,
-            compare_bag,
-            candidate.locate,
-            location,
-            where(baseline),
-        )
-    except PluginError as error:
+
+    def refused(error: PluginError) -> None:
         # A hook raising is a defect of the plugin rather than of either delivery. ``ddd
         # compare`` answers a usage error; the server promises findings and never an exception,
         # so it is filed as one here, the way `ddd.lsp.diagnostics._run` files the same defect
         # met while analysing. `plugin-invalid` is an error, so the verdict refuses rather than
         # answering one the plugin's own rules never graded.
         compare_bag.add("plugin-invalid", str(error), location)
+
+    # What both commands do, from the one place that order is written: `compare()` grades the
+    # thirteen built-in comparison checks, and every rule a plugin states about a replacement -
+    # ``layout/key-changed``, that a dataset keyed on an entry now reads an orphan - is run
+    # after it, with ``missing-plugin``, which exists to close the hole a skipped rule leaves.
+    # Missed, the verdict was a confident "can replace" with a hole in it.
+    own_errors = _own_errors(revision)
+    comparison = compare_deliveries(
+        resolved,
+        candidate,
+        compare_bag,
+        location=location,
+        baseline_location=where(baseline),
+        on_plugin_error=refused,
+        # The two lists the verdict also answers for, which this keeps apart from the bag: the
+        # candidate's own errors and the baseline's carried ones, as the commands' one bag holds.
+        held_elsewhere=own_errors + baseline_bag.count(Severity.ERROR),
+    )
     compare_grouped: dict[Path, list[Diagnostic]] = {}
     group_findings(compare_bag, revision.project, compare_grouped)
     findings = tuple(
         Filed(path, found) for path in sorted(compare_grouped) for found in compare_grouped[path]
     )
 
-    verdict = not compare_bag.has_errors and not baseline_bag.has_errors
-    return Compared(verdict, findings, baseline_findings, tuple(renames(paired)))
+    return Compared(
+        comparison.verdict,
+        findings,
+        baseline_findings,
+        tuple(renames(comparison.paired)),
+        own_errors,
+    )
+
+
+def _own_errors(revision: Revision) -> int:
+    """How many findings of severity error the open project has of its own: what the state counts
+    of it, whichever build graded them, and so what ``ddd check`` exits 1 on.
+
+    Counted from the revision's findings rather than computed again under :func:`_policy_of`,
+    which grades ``compare``'s own checks and no other: the project's own are graded by each
+    build's own run, and a project whose builds disagree about a check keeps the finding of the
+    build that grades it an error - the one any build would refuse the delivery for.
+    """
+    return sum(1 for filed in revision.findings if filed.diagnostic.severity is Severity.ERROR)
 
 
 def _policy_of(revision: Revision) -> SeverityPolicy:

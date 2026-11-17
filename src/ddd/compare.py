@@ -506,6 +506,10 @@ def _instance_interface_fields(
 
 
 type _Joined = Comparable | ResolvedInstance
+
+type Pairing = list[tuple[_Joined, _Joined]]
+"""What :func:`compare` hands back: each object, leaf and leafless structured variable the two
+sides agree is one, as the baseline had it and as the candidate has it."""
 """What the pairing works on: a plain object, a member of a structured one, or the variable.
 
 The three are joined by exactly one rule - an id where there is one, a name otherwise - so
@@ -637,7 +641,7 @@ def compare(
     *,
     location: Location | None = None,
     baseline_alone: bool = False,
-) -> list[tuple[_Joined, _Joined]]:
+) -> Pairing:
     """Report how far ``candidate`` can stand in for ``baseline``, and hand back the pairing.
 
     The pairing is returned because it is a genuine product of comparing and the migration map

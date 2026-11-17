@@ -494,9 +494,10 @@ The commands
        description, at a path under the directory ``ddd gui`` was started in, refused, and
        told why, when it is outside that directory, unreadable, not valid json, a
        description or a dictionary this DDD could not read, or json that is neither. Its
-       verdict answers only whether the project can replace that
-       baseline, not whether the project is itself consistent: the project's own findings,
-       the Findings tab's own question, take no part in it. A finding that names a place in
+       verdict is the one ``ddd compare`` exits on, and the project's own errors count in it
+       as the baseline's and the comparison's do, so that a project the Findings tab shows
+       errors on cannot replace a baseline; the answer says how many errors the project has of
+       its own. A finding that names a place in
        this project leads there, as on the Findings tab: a plugin's comparison rule files at
        the declaration it is about. The comparison's own findings name the whole delivery
        rather than a place in one file, and the baseline's own, marked ``in the baseline:``,

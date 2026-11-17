@@ -2094,6 +2094,17 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   object whose own copy of the enum documents less states the copy the types header declares,
   where it stated its own; the conversions page already says that the better documented spelling
   is the one reaching the generated code.
+- **R86.** A dump this version writes reads back. Task 7 composes a structure member's display
+  identifier into the path of every leaf below it, `V[1].J.b`, and the leaf carried it in the
+  block a project writes, whose display identifier is one plain identifier, built by a copy that
+  validated nothing, so `ddd compare` and `ddd check --baseline` refused the archived dictionary
+  of any project that states one. The final wave's round gives a leaf's `a2l` block a model of
+  its own, `LeafA2lOptions`, whose display identifier is a path of identifiers, each with its
+  indices, and held to no length, since a variable kept out of the a2l is composed with no
+  finding, past `MAX_IDENT` included; the analysis builds it with validation. The block a project
+  writes keeps one plain identifier. Widening what a field accepts changes the document's shape,
+  so the dictionary is format 10, which 0.11.0 refuses as the dictionary of a newer DDD, and a
+  format 9 one reads back unchanged.
 
 ## Progress log
 

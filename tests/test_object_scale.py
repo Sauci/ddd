@@ -125,6 +125,128 @@ class TestWhatAViewOffers:
         assert (pair.unit, pair.conversion, pair.limits) == ("", None, None)
 
 
+class Counted(tuple):  # type: ignore[type-arg]
+    """The enumerators of an enum, counting every one a walk over them reaches.
+
+    What an object's view costs is counted rather than timed, as the model builders' walks
+    are: at 5,000 objects naming one enum of 200 values, ``ddd generate c`` took four times as
+    long as it did before the views offered an enum's enumerators, every one of them built and
+    made safe for a comment once for each object.
+    """
+
+    reached: int
+
+    def __new__(cls, items: Any) -> Counted:
+        counted: Counted = super().__new__(cls, items)
+        counted.reached = 0
+        return counted
+
+    def __iter__(self) -> Any:
+        for item in super().__iter__():
+            self.reached += 1
+            yield item
+
+
+class TestAnEnumIsViewedOnce:
+    """Each enum's enumerators are built once, and every object it converts shares them."""
+
+    ENUMERATORS = 10
+
+    def counted(self, tree: Path, objects: int) -> tuple[Any, Counted]:
+        """A project of ``objects`` outputs naming one enum, every copy of the enum counting."""
+        enum = {
+            "kind": "enum",
+            "name": "State_e",
+            "enumerators": [
+                {"name": f"S_{index}", "value": index, "description": f"state {index}"}
+                for index in range(self.ENUMERATORS)
+            ],
+        }
+        files = {
+            "project.ddd.json": project("P", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component(
+                "A", *(declare("output", f"V{n}", typename="State_t") for n in range(objects))
+            ),
+            "t.ddd.json": types(scalar_type("State_t", "uint8", conversion=enum)),
+        }
+        dictionary, bag = run_analysis(tree, files, severities=("unused-output=ignore",))
+        assert dictionary is not None, [finding.render() for finding in bag]
+        (declared,) = dictionary.enums
+        enumerators = Counted(declared.enumerators)
+        shared = declared.model_copy(update={"enumerators": enumerators})
+        counting = dictionary.model_copy(
+            update={
+                "enums": (shared,),
+                "objects": tuple(
+                    entry.model_copy(update={"conversion": shared}) for entry in dictionary.objects
+                ),
+            }
+        )
+        return counting, enumerators
+
+    def test_the_work_grows_with_the_enum_and_not_with_the_objects_it_converts(
+        self, tree: Path
+    ) -> None:
+        dictionary, enumerators = self.counted(tree, 40)
+        build_code_model(dictionary, COptions(), "ddd")
+        assert enumerators.reached <= 2 * self.ENUMERATORS, (
+            f"40 objects over one enum of {self.ENUMERATORS} values reached "
+            f"{enumerators.reached} enumerators, so each object builds the enum's views again"
+        )
+
+    def test_every_object_shares_the_views_the_types_header_is_written_from(
+        self, tree: Path
+    ) -> None:
+        dictionary, _ = self.counted(tree, 3)
+        model = build_code_model(dictionary, COptions(), "ddd")
+        (enum,) = model.enums
+        variables = [view for group in model.groups for view in group.variables]
+        assert len(variables) == 3
+        for view in variables:
+            assert view.conversion.enumerators is enum.enumerators
+
+    def test_an_enum_the_dictionary_does_not_list_is_built_once_too(self, tree: Path) -> None:
+        """A dictionary another producer wrote may leave an enum out of ``enums``: the objects
+        it converts still share one tuple of its views."""
+        dictionary, enumerators = self.counted(tree, 40)
+        model = build_code_model(dictionary.model_copy(update={"enums": ()}), COptions(), "ddd")
+        assert model.enums == ()
+        assert enumerators.reached == self.ENUMERATORS
+        variables = [view for group in model.groups for view in group.variables]
+        assert [e.name for e in variables[0].conversion.enumerators][:2] == ["S_0", "S_1"]
+        assert len({id(view.conversion.enumerators) for view in variables}) == 1
+
+    def test_the_better_documented_copy_reaches_the_view_as_it_reaches_the_types_header(
+        self, tree: Path
+    ) -> None:
+        """Two components spelling one enum, one of them without descriptions: the types header
+        writes the documented copy, and an object's view, which a template writes a table of
+        labels from, says the same."""
+        bare = {
+            "kind": "enum",
+            "name": "Mode_t",
+            "enumerators": [{"name": "MODE_OFF", "value": 0}, {"name": "MODE_ON", "value": 1}],
+        }
+        told = {
+            "kind": "enum",
+            "name": "Mode_t",
+            "enumerators": [
+                {"name": "MODE_OFF", "value": 0, "description": "off"},
+                {"name": "MODE_ON", "value": 1, "description": "on"},
+            ],
+        }
+        files = {
+            "project.ddd.json": project("P", "prod.ddd.json", "cons.ddd.json"),
+            "prod.ddd.json": component("Prod", declare("output", "Speed", conversion=bare)),
+            "cons.ddd.json": component("Cons", declare("input", "Speed", conversion=told)),
+        }
+        model = build_code_model(analysed(tree, files), COptions(), "ddd")
+        (enum,) = model.enums
+        assert [e.description for e in enum.enumerators] == ["off", "on"]
+        speed = views(tree, files)["Speed"]
+        assert [e.description for e in speed.conversion.enumerators] == ["off", "on"]
+
+
 class TestWhatTheExampleHeaderWrites:
     def test_a_linear_input_and_output_each_carry_a_factor_and_an_offset(self, tree: Path) -> None:
         written = headers(tree, two_components(LINEAR))

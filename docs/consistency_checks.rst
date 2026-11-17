@@ -673,9 +673,12 @@ it is either a smell or a decision somebody should have taken consciously.
        more than three dimensions is the first: the ``MATRIX_DIM`` of ASAP2 1.6.1 cannot carry
        it, and the extra dimensions are written out and only a 1.7 reader understands them; a
        member with too many is named once at its type, however many variables reach it. A
-       size past 65,535 is the second: the ``MATRIX_DIM`` of an array, the ``NUMBER`` of a string
-       and the ``MaxAxisPoints`` of an axis are a ``uint`` of two bytes, and the record is written
-       with the number whole; a curve or a map is named at its axis, and a member of a structure at its type, once.
+       size past 65,535 is the second: the ``MATRIX_DIM`` of an array, a string measurement's
+       among them, the ``NUMBER`` of a string characteristic and the ``MaxAxisPoints`` of an
+       axis are a ``uint`` of two bytes, and the record is written with the number whole; the
+       finding names the field the record writes. A curve or a map is named at its axis, and a
+       member of a structure at its type, once, a string member naming both of its fields,
+       since its record is a measurement or a characteristic as the variable holding it is.
        The limits are those of table 5 of ASAP2 1.6.1: a string, which is a description of an
        object, a member, a component or the project (written on ``PROJECT``, ``HEADER`` and
        ``MODULE``), a unit (237 characters at most under an identity conversion, whose

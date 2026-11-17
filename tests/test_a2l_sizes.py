@@ -7,6 +7,7 @@ said once per cause, at the declaration that states the size.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,25 @@ def one(tree: Path, *declarations: dict[str, Any]) -> Any:
         "a.ddd.json": component("A", *declarations),
     }
     return run_analysis(tree, files)[1]
+
+
+def size_fields(tree: Path, files: dict[str, Any]) -> tuple[str, dict[str, list[str]]]:
+    """What the run reports, and the size fields each record of the a2l it writes holds.
+
+    The finding names a field; the record is where the field is, so the two are read off one
+    run: a string is a ``NUMBER`` in a characteristic and a ``MATRIX_DIM`` in a measurement.
+    """
+    dictionary, bag = run_analysis(tree, files)
+    assert dictionary is not None, messages(bag)
+    rendered = render_files(dictionary, tree / "gen")
+    text = next(file.content for file in rendered if file.path.name == "P.a2l")
+    records = {
+        found.group(2): re.findall(r"^\s*(MATRIX_DIM|NUMBER) ", found.group(3), re.MULTILINE)
+        for found in re.finditer(
+            r"/begin (MEASUREMENT|CHARACTERISTIC) (\S+)(.*?)/end \1", text, re.DOTALL
+        )
+    }
+    return messages(bag), records
 
 
 class TestAnArray:
@@ -69,17 +89,27 @@ class TestAnArray:
         bag = one(tree, declare("local", "V", dimensions=[OVER], a2l={"export": False}))
         assert checks(bag) == []
 
-    def test_a_string_of_65536_characters_names_its_number(self, tree: Path) -> None:
-        files = {
+    def strings(self, kind: str) -> dict[str, Any]:
+        return {
             "project.ddd.json": project("P", "a.ddd.json", "t.ddd.json"),
             "a.ddd.json": component(
-                "A", declare("local", "S", typename="Text_t", dimensions=[OVER])
+                "A", declare("local", "S", typename="Text_t", dimensions=[OVER], kind=kind)
             ),
             "t.ddd.json": types(TEXT_TYPE),
         }
-        bag = run_analysis(tree, files)[1]
-        assert checks(bag) == ["a2l-unrepresentable"]
-        assert "NUMBER" in messages(bag)
+
+    def test_a_string_measurement_names_the_matrix_dim_its_record_writes(self, tree: Path) -> None:
+        """A string measurement stays the byte array it is, so its size is a ``MATRIX_DIM``."""
+        rendered, records = size_fields(tree, self.strings("measurement"))
+        assert records["S"] == ["MATRIX_DIM"]
+        assert "but the MATRIX_DIM of ASAP2 1.6.1 is a uint of two bytes" in rendered
+        assert "NUMBER" not in rendered
+
+    def test_a_string_value_block_names_the_number_its_record_writes(self, tree: Path) -> None:
+        rendered, records = size_fields(tree, self.strings("value_block"))
+        assert records["S"] == ["NUMBER"]
+        assert "but the NUMBER of ASAP2 1.6.1 is a uint of two bytes" in rendered
+        assert "MATRIX_DIM" not in rendered
 
     def structure_files(self, *, instances: int | None, size: int = OVER) -> dict[str, Any]:
         dimensions = {} if instances is None else {"dimensions": [instances]}
@@ -110,18 +140,43 @@ class TestAnArray:
         )
         assert checks(run_analysis(tree, files)[1]) == ["a2l-unrepresentable"]
 
-    def test_a_string_member_is_named_by_its_number_field(self, tree: Path) -> None:
+    def test_a_string_member_names_both_fields_its_records_write(self, tree: Path) -> None:
+        """A member is named once at its type, and its record is the instance's kind's: the
+        ``MATRIX_DIM`` of a measurement and the ``NUMBER`` of a characteristic, so both."""
         files = {
             "project.ddd.json": project("P", "a.ddd.json", "t.ddd.json"),
-            "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "X", typename="S_t"),
+                declare("local", "Y", typename="S_t", kind="parameter"),
+            ),
             "t.ddd.json": types(
                 TEXT_TYPE,
                 struct_type("S_t", value_member("v", typename="Text_t", dimensions=[OVER])),
             ),
         }
-        bag = run_analysis(tree, files)[1]
-        assert checks(bag) == ["a2l-unrepresentable"]
-        assert "the NUMBER of ASAP2" in messages(bag)
+        rendered, records = size_fields(tree, files)
+        assert (records["X.v"], records["Y.v"]) == (["MATRIX_DIM"], ["NUMBER"])
+        assert rendered.count("a2l-unrepresentable") == 1
+        assert (
+            "member 'v' of structure 'S_t' has a dimension of 65536 elements, but the "
+            "MATRIX_DIM of a measurement or the NUMBER of a characteristic of ASAP2 1.6.1 is a "
+            "uint of two bytes and carries at most 65535; the size is written whole"
+        ) in rendered
+
+    def test_a_member_that_is_no_string_names_the_matrix_dim_whatever_holds_it(
+        self, tree: Path
+    ) -> None:
+        files = self.structure_files(instances=None)
+        files["a.ddd.json"] = component(
+            "A",
+            declare("local", "X", typename="S_t"),
+            declare("local", "Y", typename="S_t", kind="parameter"),
+        )
+        rendered, records = size_fields(tree, files)
+        assert (records["X.v"], records["Y.v"]) == (["MATRIX_DIM"], ["MATRIX_DIM"])
+        assert "but the MATRIX_DIM of ASAP2 1.6.1 is a uint of two bytes" in rendered
+        assert "NUMBER" not in rendered
 
     def test_a_member_is_still_written_with_its_number(self, tree: Path) -> None:
         dictionary, _ = run_analysis(tree, self.structure_files(instances=None))

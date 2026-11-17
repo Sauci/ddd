@@ -333,7 +333,9 @@ themselves:
        ``.conversion.coefficients``, the six numbers of the a2l's rational function
        (``0 1 -offset 0 0 factor``) with ``.conversion.coefficient_literals`` beside them. An
        ``enum`` one has ``.conversion.name`` and ``.conversion.enumerators``, each with
-       ``.name``, ``.value`` and ``.description``. A field a kind does not have is empty.
+       ``.name``, ``.value`` and ``.description``: the enum's entries in ``model.enums``, so an
+       object whose own copy documents less states the copy the types header declares. A field
+       a kind does not have is empty.
    * - ``.limits``
      - The range the a2l states: the limits the description states, or what the datatype and
        the conversion imply. ``.limits.min`` and ``.limits.max``, each also as a c literal in

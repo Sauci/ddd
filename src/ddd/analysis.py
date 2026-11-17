@@ -92,6 +92,9 @@ _A2L_MAX_DIMENSIONS = 3
 _A2L_MAX_COUNT = 65535
 """The largest number of elements ``MATRIX_DIM``, ``NUMBER`` and ``MaxAxisPoints`` can state: each
 is a ``uint`` in ASAP2 1.6.1 (table 5), two bytes."""
+_MEMBER_STRING_SIZE_FIELDS = "MATRIX_DIM of a measurement or the NUMBER of a characteristic"
+"""The fields a string member's size reaches: its record is a measurement in a measurement
+variable and a characteristic in a calibrated one, and the member is named once for both."""
 _A2L_MAX_STRING = 255
 """``MAX_STRING`` of ASAP2 1.6.1, table 5: the longest ``string``, a ``LongIdentifier`` and a
 ``SYMBOL_LINK``'s symbol name included."""
@@ -369,6 +372,20 @@ class DeclarationRef:
 
     def location(self, suffix: str = "") -> Location:
         return self.owner.declaration_location(self.index, suffix)
+
+
+def _size_field(kind: ObjectKind, conversion: Conversion | None) -> str:
+    """The field of ASAP2 1.6.1 the record of a plain object states its size in.
+
+    ``MaxAxisPoints`` for an axis. A string is a ``CHARACTERISTIC`` of type ``ASCII`` with a
+    ``NUMBER`` where it is calibration data, and a measurement stays the byte array it is, with
+    the ``MATRIX_DIM`` every other array has.
+    """
+    if kind is ObjectKind.AXIS:
+        return "MaxAxisPoints"
+    if isinstance(conversion, StringConversion) and kind is not ObjectKind.MEASUREMENT:
+        return "NUMBER"
+    return "MATRIX_DIM"
 
 
 def _is_local(producer: DeclarationRef | None) -> bool:
@@ -3443,28 +3460,20 @@ class _Analysis:
                 location,
             )
 
-    def _a2l_count(
-        self,
-        name: str,
-        shape: Shape,
-        location: Location,
-        *,
-        axis: bool = False,
-        string: bool = False,
-    ) -> None:
+    def _a2l_count(self, name: str, shape: Shape, location: Location, field: str) -> None:
         """``a2l-unrepresentable``: a size past what a ``uint`` of two bytes holds.
 
-        The field is the one the a2l writes the size in: ``MaxAxisPoints`` for an axis,
-        ``NUMBER`` for a string, ``MATRIX_DIM`` for anything else. A curve or a map is not
-        weighed here: its points are its axes', and the axis states the size. The largest
-        dimension is the one named, once for the object, and the number is given whole. A
-        member's size is its type's, so it is named once at the type file, however many
-        instances and elements reach it.
+        ``field`` is the one the record writes the size in: ``MaxAxisPoints`` for an axis,
+        ``NUMBER`` for a string characteristic, ``MATRIX_DIM`` for anything else, a string
+        measurement among it, which stays the byte array it is (:func:`_size_field`). A curve
+        or a map is not weighed here: its points are its axes', and the axis states the size.
+        The largest dimension is the one named, once for the object, and the number is given
+        whole. A member's size is its type's, so it is named once at the type file, however
+        many instances and elements reach it.
         """
         largest = max(shape, default=0)
         if largest <= _A2L_MAX_COUNT or not self._a2l_first("count", name, location):
             return
-        field = "MaxAxisPoints" if axis else ("NUMBER" if string else "MATRIX_DIM")
         self._bag.add(
             "a2l-unrepresentable",
             f"{name} has a dimension of {largest} elements, but the {field} of ASAP2 1.6.1 "
@@ -3605,11 +3614,16 @@ class _Analysis:
         )
         declared = self._declared_of(member)
         conversion = declared.conversion if isinstance(declared, ScalarType) else member.conversion
+        # Named once at the type, while the record is the instance's kind's: a string member
+        # is a measurement's MATRIX_DIM in one variable and a characteristic's NUMBER in the
+        # next, so its finding names both.
         self._a2l_count(
             about,
             self._numeric_shape(member.dimensions),
             entry.location(f"members[{position}].dimensions"),
-            string=isinstance(conversion, StringConversion),
+            _MEMBER_STRING_SIZE_FIELDS
+            if isinstance(conversion, StringConversion)
+            else "MATRIX_DIM",
         )
         if isinstance(declared, ScalarType):
             self._a2l_unit(
@@ -3770,8 +3784,7 @@ class _Analysis:
                     f"'{name}'",
                     shape,
                     reference.location("definition"),
-                    axis=definition.kind is ObjectKind.AXIS,
-                    string=isinstance(definition.conversion, StringConversion),
+                    _size_field(definition.kind, definition.conversion),
                 )
 
         return Variable(

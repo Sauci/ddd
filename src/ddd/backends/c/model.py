@@ -64,7 +64,8 @@ class ConversionView:
     ``kind`` is ``identity``, ``linear``, ``enum`` or ``string``. The other fields say what
     the kind has and are empty or ``None`` for a kind that has not: a ``linear`` conversion
     has a ``factor`` and an ``offset`` (physical = raw * factor + offset), an ``enum`` its
-    ``name`` and ``enumerators``.
+    ``name`` and ``enumerators``, which are its entry's in ``model.enums``, the copy the types
+    header declares.
     """
 
     kind: str
@@ -507,7 +508,14 @@ def _by_owner(dictionary: DataDictionary) -> dict[str, list[ResolvedObject | Res
 
 def build_code_model(dictionary: DataDictionary, options: COptions, generator: str) -> CodeModel:
     """Turn the dictionary into the flat structures used by the templates."""
-    views: dict[str, ObjectView] = {entry.name: _object_view(entry) for entry in dictionary.objects}
+    enums = tuple(_enum_view(enum) for enum in dictionary.enums)
+    # One tuple of views per enum, shared by every object it converts and by the types header:
+    # built once per object, the views of a project of 5,000 objects naming an enum of 200
+    # values took a million calls, and four times as long as the rest of the generation.
+    enumerators = {enum.name: enum.enumerators for enum in enums}
+    views: dict[str, ObjectView] = {
+        entry.name: _object_view(entry, enumerators) for entry in dictionary.objects
+    }
     views.update({entry.name: _instance_view(entry) for entry in dictionary.instances})
 
     owned = _by_owner(dictionary)
@@ -546,7 +554,7 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
             )
             for entry in dictionary.constants
         ),
-        enums=tuple(_enum_view(enum) for enum in dictionary.enums),
+        enums=enums,
         structures=tuple(_struct_view(entry) for entry in dictionary.types),
         groups=tuple(groups),
         sections=_section_groups(dictionary, views),
@@ -665,7 +673,9 @@ def _instance_view(entry: ResolvedInstance) -> ObjectView:
     )
 
 
-def _object_view(entry: ResolvedObject) -> ObjectView:
+def _object_view(
+    entry: ResolvedObject, enumerators: dict[str, tuple[EnumeratorView, ...]]
+) -> ObjectView:
     # The initialiser lays its braces out over the numeric shape, whatever the spelling.
     return _view(
         entry,
@@ -673,6 +683,7 @@ def _object_view(entry: ResolvedObject) -> ObjectView:
         datatype=entry.datatype.value,
         initializer=initializer_of(entry),
         comment=doc_comment(entry),
+        conversion=_conversion_view(entry.conversion, enumerators),
     )
 
 
@@ -683,9 +694,10 @@ def _view(
     datatype: str,
     initializer: str | None,
     comment: str | None,
+    conversion: ConversionView | None = None,
 ) -> ObjectView:
     """What a plain object and a structured variable share, which is everything but the four
-    values that say what the thing is."""
+    values that say what the thing is, and the conversion a structured variable has none of."""
     return ObjectView(
         name=entry.name,
         kind=entry.kind,
@@ -710,9 +722,7 @@ def _view(
         ),
         extensions=entry.extensions,
         unit=entry.unit if isinstance(entry, ResolvedObject) else "",
-        conversion=_conversion_view(entry.conversion)
-        if isinstance(entry, ResolvedObject)
-        else None,
+        conversion=conversion,
         limits=(
             LimitsView(min=entry.limits.min, max=entry.limits.max)
             if isinstance(entry, ResolvedObject)
@@ -721,15 +731,24 @@ def _view(
     )
 
 
-def _conversion_view(conversion: Conversion) -> ConversionView:
+def _conversion_view(
+    conversion: Conversion, enumerators: dict[str, tuple[EnumeratorView, ...]]
+) -> ConversionView:
+    """The view of one object's conversion; an enum's enumerators are its entry's in
+    ``model.enums``, the very tuple, so an object states the copy the types header declares,
+    the better documented one where two copies differ in nothing else.
+
+    An enum the dictionary does not list, which only a dictionary another producer wrote can
+    leave out, has its views built the first time an object names it, and shared from then on.
+    """
     if isinstance(conversion, LinearConversion):
         return ConversionView(kind="linear", factor=conversion.factor, offset=conversion.offset)
     if isinstance(conversion, EnumConversion):
-        return ConversionView(
-            kind="enum",
-            name=conversion.name,
-            enumerators=tuple(_enumerator_view(e) for e in conversion.enumerators),
-        )
+        known = enumerators.get(conversion.name)
+        if known is None:
+            known = tuple(_enumerator_view(e) for e in conversion.enumerators)
+            enumerators[conversion.name] = known
+        return ConversionView(kind="enum", name=conversion.name, enumerators=known)
     return ConversionView(kind=conversion.kind)
 
 

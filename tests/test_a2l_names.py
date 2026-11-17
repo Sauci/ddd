@@ -82,6 +82,22 @@ class TestTheKeywordList:
         for word in ("XCP", "DAQ_EVENT", "DEFAULT_EVENT_LIST", "EVENT", "VARIABLE"):
             assert not is_a2l_keyword(word)
 
+    def test_it_holds_the_result_of_a_record_layout_and_the_definitions_of_a_function(
+        self,
+    ) -> None:
+        """``RIP_ADDR_W`` places the result of an interpolation in a ``RECORD_LAYOUT``, beside
+        the ``RIP_ADDR_X`` to ``_5`` of each axis, and ``DEF_CHARACTERISTIC`` lists what a
+        ``FUNCTION`` defines, beside its ``REF_CHARACTERISTIC``."""
+        for word in ("RIP_ADDR_W", "RIP_ADDR_X", "DEF_CHARACTERISTIC", "REF_CHARACTERISTIC"):
+            assert is_a2l_keyword(word), word
+
+    def test_the_name_of_a_parameter_of_the_grammar_is_not_a_keyword(self) -> None:
+        """``InputQuantity`` names a parameter of ``AXIS_PTS`` and ``AXIS_DESCR``, as
+        ``Conversion`` names another, and no block or attribute is called
+        ``INPUT_QUANTITY``: a measurement may be."""
+        for word in ("INPUT_QUANTITY", "CONVERSION", "MAX_AXIS_POINTS"):
+            assert not is_a2l_keyword(word), word
+
     def test_it_holds_the_values_of_the_calibration_access_and_the_naming_blocks(self) -> None:
         for word in (
             "USER_RIGHTS",

@@ -4438,6 +4438,14 @@ class TestTheSmallSentencesOfTheTemplateAndArtefactsPages:
         assert "The two differ only at the ends" not in self.TEMPLATES
         assert "narrowest type that holds it" not in self.TEMPLATES
 
+    def test_the_templates_page_says_an_object_states_the_enum_the_types_header_declares(
+        self,
+    ) -> None:
+        assert (
+            "the enum's entries in ``model.enums``, so an object whose own copy documents less "
+            "states the copy the types header declares"
+        ) in self.TEMPLATES
+
     def test_the_templates_page_says_a_placed_object_is_in_both_lists(self) -> None:
         assert "A placed object is in its component's group as well" in self.TEMPLATES
         assert "defines it twice" in self.TEMPLATES
@@ -4484,3 +4492,25 @@ class TestTheSmallSentencesOfTheTemplateAndArtefactsPages:
         assert "read from one field" not in self.DICTIONARY
         assert "``MATRIX_DIM`` from ``shape``" in self.DICTIONARY
         assert "writes the array from ``dimensions``" in self.DICTIONARY
+
+
+class TestWhatThePagesSayOfTheFieldASizeIsNamedBy:
+    """A size past 65,535 is named by the field its record writes. A string measurement stays
+    the byte array it is, with a ``MATRIX_DIM``; only a string characteristic has a
+    ``NUMBER``; and a string member, named once at its type, reaches both."""
+
+    @pytest.mark.parametrize(
+        ("text", "tick"),
+        [(flattened(SPEC), "`"), (flattened(CONSISTENCY_CHECKS), "``")],
+        ids=["SPEC", "the check reference"],
+    )
+    def test_spec_and_the_check_reference_name_the_records_field(
+        self, text: str, tick: str
+    ) -> None:
+        assert (
+            f"the {tick}MATRIX_DIM{tick} of an array, a string measurement's among them, the "
+            f"{tick}NUMBER{tick} of a string characteristic"
+        ) in text
+        assert "the finding names the field the record writes" in text
+        assert "a string member naming both of its fields" in text
+        assert f"the {tick}NUMBER{tick} of a string and" not in text

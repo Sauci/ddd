@@ -406,7 +406,8 @@ class TestTheCheckReference:
         "bitfield's width, the type a structured variable names, or the members of that "
         "structure in order, each with what it holds and its dimensions, nested and external "
         "ones included, an external one by its header too, save a member added at the end of it "
-        "when the variable is no array, or volatile turned on for an object a component reads"
+        "when the variable is no array, or volatile turned on for an object a component reads or a "
+        "component read alone produces"
     )
 
     def test_the_registry_and_the_three_tables_say_one_wording_of_changed_interface(
@@ -442,7 +443,10 @@ class TestTheCheckReference:
         why = "keeps the plain id for the unread rename"
         assert why in page and why in flattened(SPEC)
         assert "reported as a `renamed-object`, or a `renamed-read-object`" in flattened(SPEC)
-        said = "volatile turned on for an object a component reads is changed-interface instead"
+        said = (
+            "volatile turned on for an object a component reads or a component read alone produces "
+            "is changed-interface instead"
+        )
         assert said in CHECKS["changed-storage"].description
         assert said in flattened(README)
         assert said in page
@@ -454,7 +458,9 @@ class TestTheCheckReference:
         ``volatile`` turned on. The registry and each page say so."""
         assert CHECKS["renamed-read-object"].default_severity is Severity.ERROR
         assert CHECKS["renamed-object"].default_severity is Severity.WARNING
-        assert CHECKS["renamed-object"].description.endswith("no component read it")
+        assert CHECKS["renamed-object"].description.endswith(
+            "no component read it, and it is not an output of a component read alone"
+        )
         for name, text in {
             "README.md": README,
             "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
@@ -471,9 +477,10 @@ class TestTheCheckReference:
         assert "A ``-W renamed-object`` relaxation does not reach it" in flattened(
             COMPARING_DELIVERIES
         )
-        assert "volatile` turned on for an object a component reads is `changed-interface`" in (
-            flattened(SPEC)
-        )
+        assert (
+            "volatile` turned on for an object a component reads or a component read alone "
+            "produces is `changed-interface`"
+        ) in flattened(SPEC)
         assert "Turning ``volatile`` on is a changed interface for an object a component reads" in (
             flattened(COMPARING_DELIVERIES)
         )
@@ -507,7 +514,10 @@ class TestTheCheckReference:
         )
         assert "is narrowed-condition instead" in flattened(README)
         for text in (CONSISTENCY_CHECKS, COMPARING_DELIVERIES):
-            assert "component reads is ``narrowed-condition`` instead" in flattened(text)
+            assert (
+                "component reads, or on one a component read alone produces, is "
+                "``narrowed-condition`` instead"
+            ) in flattened(text)
         assert "A `-W changed-condition` relaxation does not reach it" in flattened(README)
         assert "A ``-W changed-condition`` relaxation does not reach it" in flattened(
             CONSISTENCY_CHECKS
@@ -5954,6 +5964,141 @@ class TestAComponentFileReadAloneIsComparedByWhatOneFileCanKnow:
         ) in flattened(COMPARING_DELIVERIES)
 
 
+class TestAnOutputOfAComponentReadAloneIsGradedAsRead:
+    """Who reads an output of a component read alone is what the run was not shown, so every
+    grade that waits on a reader takes it as read, as its removal does: a rename, a condition
+    added or replaced, ``volatile`` turned on and a measurement's limits. Each home of those
+    grades says so, and the ids that stand for an object nobody reads say where the output went."""
+
+    TABLES: ClassVar[dict[str, str]] = {
+        "README.md": README,
+        "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+        "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+    }
+
+    def test_the_registry_takes_it_as_read_for_each_grade(self) -> None:
+        for check, said in (
+            (
+                "renamed-read-object",
+                "an object of the baseline that somebody read, or that a component read alone "
+                "produced, is offered under a different name",
+            ),
+            (
+                "narrowed-condition",
+                "the preprocessor condition of an object somebody reads, or of one a component "
+                "read alone produces, was added or replaced",
+            ),
+            (
+                "widened-limits",
+                "the physical limits of a measurement somebody reads, or of one a component read "
+                "alone produces, got wider",
+            ),
+            (
+                "narrowed-read-limits",
+                "the physical limits of a measurement somebody reads, or of one a component read "
+                "alone produces, got tighter",
+            ),
+            (
+                "changed-interface",
+                "or volatile turned on for an object a component reads or a component read alone "
+                "produces",
+            ),
+            (
+                "changed-storage",
+                "volatile turned on for an object a component reads or a component read alone "
+                "produces is changed-interface instead",
+            ),
+            (
+                "narrowed-limits",
+                "a measurement somebody reads, or one a component read alone produces, is "
+                "widened-limits or narrowed-read-limits instead",
+            ),
+            (
+                "changed-condition",
+                "one added or replaced on an object somebody reads, or on one a component read "
+                "alone produces, is narrowed-condition instead",
+            ),
+            (
+                "renamed-object",
+                "no component read it, and it is not an output of a component read alone",
+            ),
+        ):
+            assert said in CHECKS[check].description, check
+
+    def test_each_table_takes_it_as_read_for_each_grade(self) -> None:
+        for name, text in self.TABLES.items():
+            flat = flattened(text)
+            for said in (
+                "that a component read, or that a component read alone produced, is offered under "
+                "a different name",
+                "the preprocessor condition of an object a component reads, or of one a component "
+                "read alone produces, was added or replaced",
+                "a measurement a component reads, or of one a component read alone produces, got "
+                "wider",
+                "a measurement a component reads, or of one a component read alone produces, got "
+                "tighter",
+                "one added or replaced on an object a component reads, or on one a component read "
+                "alone produces, is",
+            ):
+                assert said in flat, (name, said)
+        for name in ("README.md", "docs/comparing_deliveries.rst"):
+            flat = flattened(self.TABLES[name])
+            assert (
+                "volatile turned on for an object a component reads or a component read alone "
+                "produces is changed-interface instead"
+            ) in flat, name
+            assert (
+                "on a measurement a component reads, or on one a component read alone produces, "
+                "it is"
+            ) in flat, name
+        reference = flattened(CONSISTENCY_CHECKS)
+        assert "and every grade that waits on a reader takes such an output as read" in reference
+
+    def test_the_specification_takes_it_as_read_for_each_grade(self) -> None:
+        spec = flattened(SPEC)
+        for said in (
+            "An output of it is therefore taken as read by every grade that waits on a reader, "
+            "with a message that does not claim to know who read it",
+            "gone it is `removed-object`, renamed `renamed-read-object`, given a condition or "
+            "another one `narrowed-condition`, turned `volatile` `changed-interface`, and the "
+            "limits of a measurement widened are `widened-limits` and narrowed "
+            "`narrowed-read-limits`",
+            "any other change of an input is graded as one of an object its component reads",
+            "as it keeps every grade of an object nobody reads",
+            "is a change of interface for an object a component reads or a component read alone "
+            "produces",
+            "`renamed-read-object`: an object of the baseline that a component read, or that a "
+            "component read alone produced, is offered under a different name",
+            "and reported with the readers named, or said not to be known where a component read "
+            "alone produced it",
+            "a condition added to an object a component reads or a component read alone produces, "
+            "or one replaced by another",
+            "and it names the readers, or says they are not known",
+            "`widened-limits`: the physical limits of a measurement somebody reads, or of one a "
+            "component read alone produces, got wider",
+            "`narrowed-read-limits`: the physical limits of a measurement somebody reads, or of "
+            "one a component read alone produces, got tighter",
+            "and `narrowed-condition` where a component reads it or a component read alone "
+            "produces it",
+        ):
+            assert said in spec, said
+
+    def test_the_comparison_page_says_what_a_supplier_gate_grades_as_read(self) -> None:
+        page = flattened(COMPARING_DELIVERIES)
+        for said in (
+            "So a supplier's gate grades an output by what one file can know: it is taken as read "
+            "by every grade that waits on a reader, with a message that does not claim to know "
+            "who read it",
+            "renamed, it is ``renamed-read-object``, given a condition or another one "
+            "``narrowed-condition``, and turned ``volatile`` ``changed-interface``, each an error",
+            "and the limits of a measurement it widens are ``widened-limits`` and those it narrows "
+            "``narrowed-read-limits``",
+            "and every other grade of an object nobody reads",
+        ):
+            assert said in page, said
+        assert "So a supplier's gate grades a removal by what one file can know" not in page
+
+
 class TestOneVerdictOnOnePairWhoeverAsks:
     """``ddd compare``, ``ddd check --baseline`` and the Compare tab ask one function, and the
     tab counts the open project's own errors in its verdict as the commands do."""
@@ -5989,7 +6134,11 @@ class TestOneVerdictOnOnePairWhoeverAsks:
         self,
     ) -> None:
         flat = flattened(COMMAND_LINE_INTERFACE)
-        assert "an output a component drops fails that gate" in flat
+        assert (
+            "an output a component drops, renames, puts under a new condition or turns "
+            "``volatile`` fails that gate, whoever reads it"
+        ) in flat
+        assert "and one whose limits it widens is warned of" in flat
         assert "an input it stops reading does not" in flat
 
 

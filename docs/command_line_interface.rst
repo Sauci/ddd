@@ -788,9 +788,11 @@ takes one. A component checks, lists and dumps on its own - with ``--standalone`
 back the checks that need the rest of the project - which is what lets a supplier verify a
 component long before an integrator ever sees it. With ``--baseline`` the gate compares that
 component with its predecessor, and what it can know is what one file shows: an output a
-component drops fails that gate, whoever reads it, and an input it stops reading does not.
-That holds when the baseline is the component file itself; an archived dump of a component
-carries no mark of how it was read, and :doc:`comparing_deliveries` says what that costs.
+component drops, renames, puts under a new condition or turns ``volatile`` fails that gate,
+whoever reads it, and one whose limits it widens is warned of, while an input it stops reading
+does not fail it. That holds when the baseline is the component file itself; an archived dump
+of a component carries no mark of how it was read, and :doc:`comparing_deliveries` says what
+that costs.
 ``ddd generate`` takes no ``--standalone``: generating from a component is generating the c
 and the a2l of a project of one, and the inputs nobody produces there are errors that stop
 the run. A supplier who wants the files anyway asks for them with ``--force``, or silences

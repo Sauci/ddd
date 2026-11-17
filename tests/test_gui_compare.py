@@ -398,6 +398,26 @@ class TestTheComparison:
         # Only `renamed-object`, a warning: nothing about the object's interface changed.
         assert result.verdict is True
 
+    def test_a_component_baseline_whose_output_was_renamed_fails_the_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        """A component file named as the baseline is read alone, and who read its output is what
+        the tab was not shown: the rename is graded as one of an object somebody reads."""
+        root = tmp_path / "project"
+        speed = {"datatype": "uint16", "unit": "rpm", "id": "k7m2q9xr4t8w"}
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("A", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Velocity", **speed)),
+                "old/a.ddd.json": component("A", declare("output", "Speed", **speed)),
+            },
+        )
+        result = compared(revision, root / "old" / "a.ddd.json", root, {})
+        assert [found.diagnostic.check for found in result.findings] == ["renamed-read-object"]
+        assert "who read it is not known" in result.findings[0].diagnostic.message
+        assert result.verdict is False
+
     def test_a_revision_with_no_dictionary_cannot_be_compared(self, tmp_path: Path) -> None:
         root = tmp_path / "project"
         api = unloaded(root)

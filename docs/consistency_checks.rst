@@ -830,7 +830,8 @@ registry can be read in one place.
      - error
      - an object of the baseline is gone and a component read it, or an output of a component
        read alone, whose readers the run was not shown: the readers of a component file read
-       alone are the component itself, so the message does not claim that nobody read it.
+       alone are the component itself, so the message does not claim that nobody read it, and
+       every grade that waits on a reader takes such an output as read.
    * - ``changed-interface``
      - error
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
@@ -838,24 +839,24 @@ registry can be read in one place.
        bitfield's width, the type a structured variable names, or the members of that structure
        in order, each with what it holds and its dimensions, nested and external ones included,
        an external one by its header too, save a member added at the end of it when the variable
-       is no array, or volatile turned on for an object a
-       component reads. Turned on, ``volatile`` is the interface of an object a reader was
+       is no array, or volatile turned on for an object a component reads or a component read
+       alone produces. Turned on, ``volatile`` is the interface of an object a reader was
        compiled against: a reader built without the qualifier reaches it through an lvalue that
        is not volatile, which C leaves undefined, and the finding is not repeated as
        ``changed-storage``. Scaling compares an enum by its name and
        its ordered enumerators, whose descriptions are documentation and are not compared.
    * - ``renamed-read-object``
      - error
-     - an object of the baseline is offered under a different name and a component read it. A
-       reader may be a binary compiled against the baseline's headers, and it looks for a
-       spelling that is gone. A structured variable's rename is said under each leaf's path,
+     - an object of the baseline that a component read, or that a component read alone
+       produced, is offered under a different name. A reader may be a binary compiled against
+       the baseline's headers, and it looks for a spelling that is gone. A structured variable's rename is said under each leaf's path,
        and each leaf answers for its variable's readers. ``-W renamed-object`` relaxes the
        warning an unread object's rename is, and does not reach this error.
    * - ``narrowed-condition``
      - error
-     - the preprocessor condition of an object a component reads was added or replaced, so a
-       reader compiled against the baseline does not link in a build where the new condition is
-       false. DDD cannot weigh one condition against another and takes a replacement as the
+     - the preprocessor condition of an object a component reads, or of one a component read
+       alone produces, was added or replaced, so a reader compiled against the baseline does not
+       link in a build where the new condition is false. DDD cannot weigh one condition against another and takes a replacement as the
        builds the object is present in changing. A ``-W changed-condition`` relaxation does not
        reach it.
    * - ``reused-name``
@@ -901,8 +902,9 @@ registry can be read in one place.
        instead.
    * - ``widened-limits``
      - warning
-     - the physical limits of a measurement a component reads got wider, so a reader sized for
-       the range of the baseline may meet a value it was not written for. The ends are weighed
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got wider, so a reader sized for the range of the baseline may meet a value it
+       was not written for. The ends are weighed
        as ``narrowed-limits`` weighs them.
    * - ``changed-owner``
      - warning
@@ -910,7 +912,8 @@ registry can be read in one place.
    * - ``changed-condition``
      - warning
      - the preprocessor condition of an object changed; one added or replaced on an object a
-       component reads is ``narrowed-condition`` instead.
+       component reads, or on one a component read alone produces, is ``narrowed-condition``
+       instead.
    * - ``changed-a2l``
      - warning
      - the a2l entry of an object changed.
@@ -933,8 +936,8 @@ registry can be read in one place.
        can be disturbed by.
    * - ``narrowed-read-limits``
      - info
-     - the physical limits of a measurement a component reads got tighter: a reader still gets
-       values inside the range it was written for.
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got tighter: a reader still gets values inside the range it was written for.
    * - ``removed-input``
      - info
      - an input of a component read alone is gone: the component stops reading it, which harms

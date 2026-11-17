@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -25,7 +26,7 @@ from ddd.analysis import analyze
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, _build_parser, main
 from ddd.compare import _MOST_CANDIDATES, compare, renames
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
-from ddd.ir import DataDictionary, ResolvedObject
+from ddd.ir import DataDictionary, ResolvedMember, ResolvedObject, ResolvedStruct
 from ddd.loading import load_workspace
 from ddd.models import Datatype, IdentityConversion, Limits, ObjectKind
 
@@ -544,6 +545,46 @@ class TestAStructuredVariableIsComparedAsAVariable:
         code, report = ruling(tree, capsys)
         assert code == EXIT_FINDINGS, report
         assert "cannot replace" in report
+
+    @staticmethod
+    def limited(tree: Path, name: str, top: int, kind: str) -> Any:
+        """``X``, of a structure whose one member is limited to 0 .. ``top``, written by ``A`` and
+        read by ``B``."""
+        member = value_member("v", "uint8", limits={"min": 0, "max": top})
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project(
+                    "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
+                ),
+                f"{name}-t.ddd.json": types(struct_type("S_t", member)),
+                f"{name}-a.ddd.json": component(
+                    "A", declare("output", "X", typename="S_t", kind=kind)
+                ),
+                f"{name}-b.ddd.json": component(
+                    "B", declare("input", "X", typename="S_t", kind=kind)
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    @pytest.mark.parametrize(
+        "top", [pytest.param(200, id="widened"), pytest.param(50, id="narrowed")]
+    )
+    def test_a_members_limits_are_held_back_beside_its_variables_changed_kind(
+        self, tree: Path, top: int
+    ) -> None:
+        """The kind is compared at the variable, and the limits of its member that moved beside
+        it are not said, as a plain object's are not beside its own changed kind: the interface
+        change is the finding to act on, and graded by the kind the variable had, a measurement
+        turned into calibration data would be told as a measurement's limits."""
+        old = self.limited(tree, "old", 100, "measurement")
+        new = self.limited(tree, "new", top, "parameter")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert "'X' is not the same object any more (kind: parameter != measurement)" in (
+            messages(bag)
+        )
 
     def test_a_variable_produced_by_another_component_is_reported_once(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -1117,6 +1158,130 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
             assert (
                 f"'Rec' is not the same object any more (members of Rec_t: {spelled}), read by B"
             ) in messages(bag)
+
+    @staticmethod
+    def listed_backwards(dictionary: DataDictionary) -> DataDictionary:
+        """The dictionary with its structures listed the other way round, each before the ones
+        it nests, as a dictionary edited by hand or written by another tool may list them."""
+        return dictionary.model_copy(update={"types": dictionary.types[::-1]})
+
+    @pytest.mark.parametrize(
+        "nested",
+        [
+            pytest.param("In_t", id="the nested structure named before its holder"),
+            pytest.param("Sub_t", id="the nested structure named after its holder"),
+        ],
+    )
+    def test_the_order_the_dictionary_lists_its_structures_in_decides_nothing(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], nested: str
+    ) -> None:
+        """DDD's own dump lists a structure after every one it nests, and the layout of a
+        variable is the same whichever order a dictionary lists them in, and whichever way its
+        structures' names sort: a nested structure grown is still the variable's changed
+        interface with both sides listed backwards, and two deliveries alike still compare clean
+        with one of them listed so."""
+        holder = rec_t(value_member("inner", typename=nested), value_member("tail"))
+        held = struct_type(nested, *members_named("v"))
+        old = self.delivery(tree, "old", held, holder)
+        new = self.delivery(tree, "new", struct_type(nested, *members_named("v", "w")), holder)
+        same = self.delivery(tree, "same", held, holder)
+        assert [structure.name for structure in old.types] == [nested, "Rec_t"]
+        bag = verdict(self.listed_backwards(old), self.listed_backwards(new))
+        assert checks(bag) == ["changed-interface", "added-object"], messages(bag)
+        assert (
+            "'Rec' is not the same object any more (members of Rec_t.inner: v, w != v), read by B"
+        ) in messages(bag)
+        assert checks(verdict(self.listed_backwards(old), same)) == []
+        assert checks(verdict(old, self.listed_backwards(same))) == []
+        # A dump listed backwards on disk, as a dictionary edited by hand reaches `ddd compare`.
+        assert main(["dump", str(tree / "old.ddd.json"), "-o", str(tree / "old.json")]) == EXIT_OK
+        dumped = json.loads((tree / "old.json").read_text(encoding="utf-8"))
+        dumped["types"].reverse()
+        (tree / "old.json").write_text(json.dumps(dumped), encoding="utf-8")
+        capsys.readouterr()
+        assert main(["compare", str(tree / "old.json"), str(tree / "new.ddd.json")]) == (
+            EXIT_FINDINGS
+        )
+        assert "(members of Rec_t.inner: v, w != v)" in capsys.readouterr().err
+
+    def test_a_structure_nested_deeper_than_python_recurses_is_laid_out(self, tree: Path) -> None:
+        """A dictionary lists every structure declared, one nested deeper than the analysis
+        reads included, so a variable's layout is walked with a stack of its own rather than by
+        recursion, which a chain of a few thousand would end in a traceback."""
+        depth = sys.getrecursionlimit() + 100
+        # Listed as DDD dumps them, each after the ones it nests: the deepest first.
+        chain = (
+            ResolvedStruct(
+                name=f"Level{depth}_t",
+                members=(ResolvedMember(name="v", datatype=Datatype.UINT16),),
+            ),
+            *(
+                ResolvedStruct(
+                    name=f"Level{level}_t",
+                    members=(ResolvedMember(name="inner", type=f"Level{level + 1}_t"),),
+                )
+                for level in reversed(range(depth))
+            ),
+            ResolvedStruct(name="Rec_t", members=(ResolvedMember(name="inner", type="Level0_t"),)),
+        )
+        deep = self.delivery(tree, "old", rec_t(*members_named("a"))).model_copy(
+            update={"types": chain}
+        )
+        assert checks(verdict(deep, deep)) == []
+        assert checks(verdict(self.listed_backwards(deep), deep)) == []
+
+    @staticmethod
+    def holding(name: str, *types: str) -> ResolvedStruct:
+        """A structure whose members each hold one of ``types``, named after it in turn."""
+        return ResolvedStruct(
+            name=name,
+            members=tuple(
+                ResolvedMember(name=f"m{index}", type=held) for index, held in enumerate(types)
+            ),
+        )
+
+    def test_a_cycle_a_hand_edited_dictionary_holds_is_laid_out_alike_in_either_order(
+        self, tree: Path
+    ) -> None:
+        """Where a cycle is closed depends on where its walk starts, which is the first of its
+        structures by name on either side, and never the order they are listed in."""
+        cycle = (
+            self.holding("Rec_t", "A_t"),
+            self.holding("A_t", "B_t"),
+            self.holding("B_t", "A_t"),
+        )
+        looped = self.delivery(tree, "old", rec_t(*members_named("a"))).model_copy(
+            update={"types": cycle}
+        )
+        assert checks(verdict(looped, looped)) == []
+        assert checks(verdict(self.listed_backwards(looped), looped)) == []
+
+    def test_a_structure_nesting_another_twice_at_each_level_is_laid_out_once(
+        self, tree: Path
+    ) -> None:
+        """Each structure is laid out once and held by its id, so twenty-four levels of a
+        structure nesting the next twice is twenty-five layouts, where walking one again at each
+        member it is nested by would be two to the twenty-fourth. The bound is generous: the walk
+        is a millisecond here."""
+        levels = 24
+        doubled = (
+            ResolvedStruct(
+                name=f"Level{levels}_t",
+                members=(ResolvedMember(name="v", datatype=Datatype.UINT16),),
+            ),
+            *(
+                self.holding(f"Level{level}_t", f"Level{level + 1}_t", f"Level{level + 1}_t")
+                for level in reversed(range(levels))
+            ),
+            self.holding("Rec_t", "Level0_t"),
+        )
+        wide = self.delivery(tree, "old", rec_t(*members_named("a"))).model_copy(
+            update={"types": doubled}
+        )
+        started = time.perf_counter()
+        assert checks(verdict(wide, wide)) == []
+        elapsed = time.perf_counter() - started
+        assert elapsed < 5.0, f"the layouts took {elapsed:.1f} s"
 
 
 class TestAStructureWithNoLeafIsComparedAsAnObjectIs:
@@ -3691,6 +3856,21 @@ class TestAComponentFileReadAloneIsGradedByWhatOneFileCanKnow:
             "'Pressure' is gone, but was read by R"
         ], found
 
+    def test_an_input_gone_from_a_whole_baseline_keeps_the_grade_of_one_somebody_read(
+        self, tree: Path
+    ) -> None:
+        """Only a component read alone is its inputs' one reader. In a baseline compared as a
+        whole project, a dump of a component included, an input nobody produces is read by the
+        components that declare it, and they are named."""
+        tick = declare("input", "Tick")
+        old = self.resolved(tree, "old", component("Probe", self.PRESSURE, tick))
+        new = self.resolved(tree, "new", component("Probe", self.PRESSURE))
+        bag = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, bag)
+        assert [(found.check, found.message) for found in bag] == [
+            ("removed-object", "'Tick' is gone, but was read by Probe")
+        ], messages(bag)
+
     def test_compare_takes_the_baseline_as_read_alone_from_its_caller(self, tree: Path) -> None:
         """The dictionary carries no mark of how it was read, so the caller says."""
         old = self.resolved(tree, "old", self.sensor(self.PRESSURE, self.CLOCK))
@@ -3768,6 +3948,443 @@ class TestWhatAComponentReadAloneKeepsToItself:
         bag = self.grade(tree, "input", structured=True)
         assert set(checks(bag)) == {"removed-input"}, messages(bag)
         assert not bag.has_errors
+
+
+NOT_KNOWN = "the baseline is one component read alone, so who read it is not known"
+"""What a finding about an output of a component read alone says in place of its readers."""
+
+WRAPPED = "condition none became 'defined(FAST)', so"
+"""The head of what a finding says of ``Speed`` or ``Rec`` given the condition ``FAST``."""
+
+ABSENT = "it is now absent from every build where that condition is false"
+"""What it says such a condition costs, before it says who reads the object."""
+
+OUTPUT_EDITS = [
+    pytest.param(
+        {"name": "Velocity"},
+        "renamed-read-object",
+        "error",
+        f"'Speed' is now called 'Velocity'; {NOT_KNOWN}; every dataset, recording and script "
+        "keyed by the old spelling needs migrating",
+        id="renamed with its id kept",
+    ),
+    pytest.param(
+        {"condition": "defined(FAST)"},
+        "narrowed-condition",
+        "error",
+        f"'Speed': {WRAPPED} {ABSENT}; {NOT_KNOWN}",
+        id="given a condition",
+    ),
+    pytest.param(
+        {"volatile": True},
+        "changed-interface",
+        "error",
+        f"'Speed' is not the same object any more (volatile: true != false); {NOT_KNOWN}",
+        id="turned volatile",
+    ),
+    pytest.param(
+        {"limits": {"min": 0, "max": 200}},
+        "widened-limits",
+        "warning",
+        f"'Speed': limits widened from [0, 100] to [0, 200]; {NOT_KNOWN}",
+        id="its limits widened",
+    ),
+    pytest.param(
+        {"limits": {"min": 0, "max": 50}},
+        "narrowed-read-limits",
+        "info",
+        f"'Speed': limits tightened from [0, 100] to [0, 50]; {NOT_KNOWN}",
+        id="its limits narrowed",
+    ),
+]
+"""Each edit of the output ``Speed`` of a component read alone, the check it is, its severity and
+its message."""
+
+
+class TestAnOutputOfAComponentReadAloneIsGradedAsRead:
+    """A supplier's gate is shown one component, and whoever reads its outputs is in the rest of
+    the project, which the run never saw. So an output is graded as an object somebody reads by
+    every grade that waits on a reader - renamed, given a condition, turned ``volatile``, its
+    limits moved - as its removal already was, and each finding says the readers are not known
+    rather than naming none. What the component keeps ``local`` no other component can read, and
+    what it reads it reads itself, so both keep the grades they had."""
+
+    ID: ClassVar[str] = "k7m2q9xr4t8w"
+    LIMITS: ClassVar[dict[str, int]] = {"min": 0, "max": 100}
+
+    @classmethod
+    def speed(cls, scope: str, name: str = "Speed", **edit: Any) -> dict[str, Any]:
+        """``Speed`` as ``Sup`` declares it, a measurement of 0 .. 100, with ``edit`` made to it;
+        an input states no id, since a reader does not own the object."""
+        own: dict[str, Any] = {} if scope == "input" else {"id": cls.ID}
+        return declare(scope, name, **own, **{"limits": cls.LIMITS, **edit})
+
+    @staticmethod
+    def found(capsys: pytest.CaptureFixture[str]) -> list[tuple[str, str, str]]:
+        report = json.loads(capsys.readouterr().out)
+        return [
+            (entry["check"], entry["severity"], entry["message"]) for entry in report["diagnostics"]
+        ]
+
+    def gate(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        scope: str,
+        edit: dict[str, Any],
+        *options: str,
+    ) -> tuple[int, list[tuple[str, str, str]]]:
+        """``ddd check --standalone --baseline`` of the component's next version against this
+        one, both files alone, as a supplier runs it."""
+        write_tree(
+            tree,
+            {
+                "v1/sup.ddd.json": component("Sup", self.speed(scope)),
+                "v2/sup.ddd.json": component("Sup", self.speed(scope, **edit)),
+            },
+        )
+        capsys.readouterr()
+        code = main(
+            [
+                "check",
+                str(tree / "v2" / "sup.ddd.json"),
+                "--standalone",
+                "--baseline",
+                str(tree / "v1" / "sup.ddd.json"),
+                "--format",
+                "json",
+                "-W",
+                "missing-id=ignore",
+                *options,
+            ]
+        )
+        return code, self.found(capsys)
+
+    @pytest.mark.parametrize(("edit", "check", "severity", "message"), OUTPUT_EDITS)
+    def test_the_supplier_gate_grades_the_output_as_one_somebody_reads(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        edit: dict[str, Any],
+        check: str,
+        severity: str,
+        message: str,
+    ) -> None:
+        code, found = self.gate(tree, capsys, "output", edit)
+        assert found == [(check, severity, message)], found
+        assert code == (EXIT_FINDINGS if severity == "error" else EXIT_OK)
+
+    def test_a_widened_output_stops_a_strict_gate(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, found = self.gate(tree, capsys, "output", {"limits": {"min": 0, "max": 200}})
+        assert code == EXIT_OK and [entry[0] for entry in found] == ["widened-limits"]
+        code, found = self.gate(
+            tree, capsys, "output", {"limits": {"min": 0, "max": 200}}, "--strict"
+        )
+        assert code == EXIT_FINDINGS
+        assert [entry[:2] for entry in found] == [("widened-limits", "error")]
+
+    @pytest.mark.parametrize(("edit", "check", "severity", "message"), OUTPUT_EDITS)
+    def test_compare_grades_it_so_against_the_project_that_took_the_component_in(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        edit: dict[str, Any],
+        check: str,
+        severity: str,
+        message: str,
+    ) -> None:
+        """The candidate is the project, with a reader of the output; the baseline, one component
+        file, was never shown it, and is graded as it is by the gate."""
+        new = self.speed("output", **edit)
+        reader = declare(
+            "input",
+            new["definition"]["name"],
+            condition=new.get("condition"),
+            volatile=new["definition"]["volatile"],
+        )
+        write_tree(
+            tree,
+            {
+                "v1/sup.ddd.json": component("Sup", self.speed("output")),
+                "p/p.ddd.json": project("Sup", "sup.ddd.json", "rdr.ddd.json"),
+                "p/sup.ddd.json": component("Sup", new),
+                "p/rdr.ddd.json": component("Rdr", reader),
+            },
+        )
+        arguments = ["compare", str(tree / "v1" / "sup.ddd.json"), str(tree / "p" / "p.ddd.json")]
+        capsys.readouterr()
+        code = main([*arguments, "--format", "json", "-W", "missing-id=ignore"])
+        assert self.found(capsys) == [(check, severity, message)]
+        assert code == (EXIT_FINDINGS if severity == "error" else EXIT_OK)
+
+    def test_a_renamed_output_the_project_reads_under_its_new_name_cannot_replace(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Its reader in the project reads the new name, and a reader of the baseline built
+        elsewhere looks for the old one, which the component file cannot rule out."""
+        write_tree(
+            tree,
+            {
+                "v1/sup.ddd.json": component("Sup", self.speed("output")),
+                "p/p.ddd.json": project("Sup", "sup.ddd.json", "rdr.ddd.json"),
+                "p/sup.ddd.json": component("Sup", self.speed("output", "Velocity")),
+                "p/rdr.ddd.json": component("Rdr", declare("input", "Velocity")),
+            },
+        )
+        capsys.readouterr()
+        code = main(
+            [
+                "compare",
+                str(tree / "v1" / "sup.ddd.json"),
+                str(tree / "p" / "p.ddd.json"),
+                "-W",
+                "missing-id=ignore",
+            ]
+        )
+        report = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[renamed-read-object]" in report
+        assert "p.ddd.json cannot replace sup.ddd.json" in report
+
+    @pytest.mark.parametrize(
+        ("edit", "graded"),
+        [
+            pytest.param(
+                {"name": "Velocity"},
+                [
+                    (
+                        "renamed-object",
+                        "warning",
+                        "'Speed' is now called 'Velocity'; every dataset, recording and script "
+                        "keyed by the old spelling needs migrating",
+                    )
+                ],
+                id="renamed with its id kept",
+            ),
+            pytest.param(
+                {"condition": "defined(FAST)"},
+                [
+                    (
+                        "changed-condition",
+                        "warning",
+                        f"'Speed': {WRAPPED} {ABSENT}",
+                    )
+                ],
+                id="given a condition",
+            ),
+            pytest.param(
+                {"volatile": True},
+                [("changed-storage", "warning", "'Speed': volatile: true != false")],
+                id="turned volatile",
+            ),
+            pytest.param({"limits": {"min": 0, "max": 200}}, [], id="its limits widened"),
+            pytest.param(
+                {"limits": {"min": 0, "max": 50}},
+                [
+                    (
+                        "narrowed-limits",
+                        "warning",
+                        "'Speed': limits tightened from [0, 100] to [0, 50]",
+                    )
+                ],
+                id="its limits narrowed",
+            ),
+        ],
+    )
+    def test_a_local_object_keeps_the_grades_of_one_nobody_reads(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        edit: dict[str, Any],
+        graded: list[tuple[str, str, str]],
+    ) -> None:
+        code, found = self.gate(tree, capsys, "local", edit)
+        assert found == graded, found
+        assert code == EXIT_OK
+
+    @pytest.mark.parametrize(
+        ("edit", "graded"),
+        [
+            pytest.param(
+                {"condition": "defined(FAST)"},
+                (
+                    "narrowed-condition",
+                    "error",
+                    f"'Speed': {WRAPPED} {ABSENT}; read by Sup, whose builds do not link there",
+                ),
+                id="given a condition",
+            ),
+            pytest.param(
+                {"volatile": True},
+                (
+                    "changed-interface",
+                    "error",
+                    "'Speed' is not the same object any more (volatile: true != false), read by "
+                    "Sup",
+                ),
+                id="turned volatile",
+            ),
+            pytest.param(
+                {"limits": {"min": 0, "max": 200}},
+                (
+                    "widened-limits",
+                    "warning",
+                    "'Speed': limits widened from [0, 100] to [0, 200], read by Sup",
+                ),
+                id="its limits widened",
+            ),
+            pytest.param(
+                {"limits": {"min": 0, "max": 50}},
+                (
+                    "narrowed-read-limits",
+                    "info",
+                    "'Speed': limits tightened from [0, 100] to [0, 50], read by Sup",
+                ),
+                id="its limits narrowed",
+            ),
+        ],
+    )
+    def test_an_input_keeps_the_grades_of_its_reader_the_component(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        edit: dict[str, Any],
+        graded: tuple[str, str, str],
+    ) -> None:
+        """The one reader of an input in a component read alone is the component, and it is
+        named; an input states no id, so it has no rename to grade."""
+        _, found = self.gate(tree, capsys, "input", edit)
+        assert found == [graded], found
+
+    PAIR: ClassVar[dict[str, Any]] = types(
+        {"type": "external", "name": "Ha_t", "header": "ha.h"},
+        struct_type("Pair_t", value_member("x", limits={"min": 0, "max": 100}), value_member("y")),
+        struct_type("Bus_t", value_member("h", typename="Ha_t")),
+    )
+
+    def structured(
+        self,
+        tree: Path,
+        name: str,
+        variable: str = "Rec",
+        typename: str = "Pair_t",
+        condition: str | None = None,
+        **definition: Any,
+    ) -> DataDictionary:
+        """``Sup`` writing one structured output, its types beside it in a project, which
+        :func:`compare` is told is a component read alone."""
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("Sup", f"{name}-t.ddd.json", f"{name}-a.ddd.json"),
+                f"{name}-t.ddd.json": self.PAIR,
+                f"{name}-a.ddd.json": component(
+                    "Sup",
+                    declare(
+                        "output",
+                        variable,
+                        condition=condition,
+                        id=self.ID,
+                        typename=typename,
+                        **definition,
+                    ),
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    @pytest.mark.parametrize(
+        ("before", "after", "graded"),
+        [
+            pytest.param(
+                {},
+                {"variable": "Velocity"},
+                [
+                    (
+                        "renamed-read-object",
+                        f"'Rec.{member}' is now called 'Velocity.{member}'; {NOT_KNOWN}; every "
+                        "dataset, recording and script keyed by the old spelling needs migrating",
+                    )
+                    for member in ("x", "y")
+                ],
+                id="a variable renamed is each leaf's rename",
+            ),
+            pytest.param(
+                {},
+                {"condition": "defined(FAST)"},
+                [
+                    (
+                        "narrowed-condition",
+                        f"'Rec': {WRAPPED} {ABSENT}; {NOT_KNOWN}",
+                    )
+                ],
+                id="a condition at the variable",
+            ),
+            pytest.param(
+                {},
+                {"volatile": True},
+                [
+                    (
+                        "changed-interface",
+                        f"'Rec' is not the same object any more (volatile: true != false); "
+                        f"{NOT_KNOWN}",
+                    )
+                ],
+                id="volatile at the variable",
+            ),
+            pytest.param(
+                {"typename": "Bus_t"},
+                {"typename": "Bus_t", "variable": "Velocity"},
+                [
+                    (
+                        "renamed-read-object",
+                        f"'Rec' is now called 'Velocity'; {NOT_KNOWN}; every dataset, recording "
+                        "and script keyed by the old spelling needs migrating",
+                    )
+                ],
+                id="a variable with no leaf renamed at the variable",
+            ),
+        ],
+    )
+    def test_a_structured_output_is_graded_so_at_the_variable_and_at_each_leaf(
+        self,
+        tree: Path,
+        before: dict[str, Any],
+        after: dict[str, Any],
+        graded: list[tuple[str, str]],
+    ) -> None:
+        old = self.structured(tree, "old", **before)
+        new = self.structured(tree, "new", **after)
+        bag = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, bag, baseline_alone=True)
+        assert [(found.check, found.message) for found in bag] == graded, messages(bag)
+
+    def test_a_leaf_of_a_structured_output_widened_is_graded_as_read(self, tree: Path) -> None:
+        old = self.structured(tree, "old")
+        write_tree(
+            tree,
+            {
+                "new-t.ddd.json": types(
+                    struct_type(
+                        "Pair_t",
+                        value_member("x", limits={"min": 0, "max": 200}),
+                        value_member("y"),
+                    )
+                ),
+                "new.ddd.json": project("Sup", "new-t.ddd.json", "new-a.ddd.json"),
+                "new-a.ddd.json": component(
+                    "Sup", declare("output", "Rec", id=self.ID, typename="Pair_t")
+                ),
+            },
+        )
+        new = resolve(tree, "new.ddd.json")
+        bag = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, bag, baseline_alone=True)
+        assert [(found.check, found.message) for found in bag] == [
+            ("widened-limits", f"'Rec.x': limits widened from [0, 100] to [0, 200]; {NOT_KNOWN}")
+        ], messages(bag)
 
 
 class TestConstantsAndRastersAreComparedAsEntries:

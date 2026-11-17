@@ -146,7 +146,9 @@ def read_dictionary(
     read under the floor ``ddd check --standalone`` reads one under
     (:data:`~ddd.diagnostics.STANDALONE_POLICY`), whether or not the run said so: what the
     component was never shown is not a fault of the component. Taken before anything is loaded,
-    since the loader reports some of what the floor silences.
+    since the loader reports some of what the floor silences, and set on ``bag`` itself: its
+    policy is replaced by the floor under the overrides it held, and stays so after the read,
+    so a caller hands it a bag of its own, as :func:`read_baseline` does.
     """
     from ddd.analysis import analyze
     from ddd.loading import load_dictionary, load_workspace, read_json_document

@@ -247,11 +247,12 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "a declaration that produces a variable states no identity for it"),
         _check("renamed-object", Severity.WARNING,
                "an object of the baseline is offered under a different name; no component read "
-               "it",
+               "it, and it is not an output of a component read alone",
                comparison=True),
         _check("renamed-read-object", Severity.ERROR,
-               "an object of the baseline is offered under a different name and somebody read "
-               "it, so a reader compiled against the baseline looks for a spelling that is gone",
+               "an object of the baseline that somebody read, or that a component read alone "
+               "produced, is offered under a different name, so a reader compiled against the "
+               "baseline looks for a spelling that is gone",
                comparison=True),
         _check("removed-object", Severity.ERROR,
                "an object of the baseline is gone and somebody read it, or an output of a "
@@ -268,7 +269,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "the members of that structure in order, each with what it holds and its "
                "dimensions, nested and external ones included, an external one by its header "
                "too, save a member added at the end of it when the variable is no array, or "
-               "volatile turned on for an object a component reads",
+               "volatile turned on for an object a component reads or a component read alone "
+               "produces",
                comparison=True),
         _check("removed-constant", Severity.ERROR,
                "a constant of the baseline is gone, so a reader that uses its macro no longer "
@@ -283,31 +285,36 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("changed-storage", Severity.WARNING,
                "the initial value, volatility, memory section or measurement raster of an "
                "object changed, or the event or cycle of a raster; volatile turned on for an "
-               "object a component reads is changed-interface instead",
+               "object a component reads or a component read alone produces is "
+               "changed-interface instead",
                comparison=True),
         _check("narrowed-limits", Severity.WARNING,
                "the physical limits of an object got tighter, so calibrated data may not fit; "
-               "a measurement somebody reads is widened-limits or narrowed-read-limits instead",
+               "a measurement somebody reads, or one a component read alone produces, is "
+               "widened-limits or narrowed-read-limits instead",
                comparison=True),
         _check("widened-limits", Severity.WARNING,
-               "the physical limits of a measurement somebody reads got wider, so a reader "
-               "sized for the baseline's range may meet a value it was not written for",
+               "the physical limits of a measurement somebody reads, or of one a component "
+               "read alone produces, got wider, so a reader sized for the baseline's range may "
+               "meet a value it was not written for",
                comparison=True),
         _check("narrowed-read-limits", Severity.INFO,
-               "the physical limits of a measurement somebody reads got tighter: a reader "
-               "still gets values inside the range it was written for",
+               "the physical limits of a measurement somebody reads, or of one a component "
+               "read alone produces, got tighter: a reader still gets values inside the range "
+               "it was written for",
                comparison=True),
         _check("changed-owner", Severity.WARNING,
                "another component produces the object now",
                comparison=True),
         _check("narrowed-condition", Severity.ERROR,
-               "the preprocessor condition of an object somebody reads was added or replaced, "
-               "so a reader compiled against the baseline does not link in a build where the "
-               "new condition is false",
+               "the preprocessor condition of an object somebody reads, or of one a component "
+               "read alone produces, was added or replaced, so a reader compiled against the "
+               "baseline does not link in a build where the new condition is false",
                comparison=True),
         _check("changed-condition", Severity.WARNING,
                "the preprocessor condition of an object changed; one added or replaced on an "
-               "object somebody reads is narrowed-condition instead",
+               "object somebody reads, or on one a component read alone produces, is "
+               "narrowed-condition instead",
                comparison=True),
         _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed",
                comparison=True),
@@ -638,11 +645,13 @@ class DiagnosticBag:
         """Record a finding; returns ``None`` when the check is ignored.
 
         ``severity`` states one the policy has no say over, for a finding whose severity was
-        decided by another analysis: the errors a baseline's own analysis produced are carried
-        into this run's report prefixed, and they are that delivery's findings rather than
-        this run's to re-grade. Graded here, a ``-W`` of this run would relax or silence the
-        one word saying that the dictionary the comparison rests on could not be trusted, and
-        the run would report no verdict and exit 0.
+        decided elsewhere. The errors a baseline's own analysis produced are carried into this
+        run's report prefixed, and they are that delivery's findings rather than this run's to
+        re-grade: graded here, a ``-W`` of this run would relax or silence the one word saying
+        that the dictionary the comparison rests on could not be trusted, and the run would
+        report no verdict and exit 0. And a producer the candidate lost under the floor of
+        ``--standalone`` is filed by the comparison as the error its check is by default, since
+        the floor's ``ignore`` is the policy's only word on it (:attr:`SeverityPolicy.floored`).
         """
         if severity is None:
             severity = self.policy.resolve(check, self._registered.get(check))

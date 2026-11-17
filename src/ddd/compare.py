@@ -528,15 +528,15 @@ def _instance_interface_fields(
 
 
 type _Joined = Comparable | ResolvedInstance
-
-type Pairing = list[tuple[_Joined, _Joined]]
-"""What :func:`compare` hands back: each object, leaf and leafless structured variable the two
-sides agree is one, as the baseline had it and as the candidate has it."""
 """What the pairing works on: a plain object, a member of a structured one, or the variable.
 
 The three are joined by exactly one rule - an id where there is one, a name otherwise - so
 the pairing is written once and asked three times rather than copied.
 """
+
+type Pairing = list[tuple[_Joined, _Joined]]
+"""What :func:`compare` hands back: each object, leaf and leafless structured variable the two
+sides agree is one, as the baseline had it and as the candidate has it."""
 
 
 def _identity(entry: _Joined) -> tuple[str, str] | None:
@@ -680,15 +680,18 @@ def compare(
 
     ``baseline_alone`` is the caller saying the baseline is a component file read on its own,
     which the dictionary cannot say of itself. The readers it records are then the component's
-    own and nobody else's, because the run was not shown the rest: an output gone is
-    ``removed-object`` without a claim about who read it, and an input the component stopped
-    reading is ``removed-input``, an information. A candidate read alone needs no such flag -
-    the readers a whole baseline records are known, and are the ones named.
+    own and nobody else's, because the run was not shown the rest: an output is taken as read
+    by every grade that waits on a reader, with no claim about who read it - gone it is
+    ``removed-object``, renamed ``renamed-read-object`` - and an input the component stopped
+    reading is ``removed-input``, an information (:func:`_readers_not_known`). A candidate read
+    alone needs no such flag - the readers a whole baseline records are known, and are the ones
+    named.
 
     ``candidate_analysed`` is the caller saying the candidate was analysed in this very run, so
-    that ``missing-producer`` has already been said of an object that lost its producer while
-    somebody still reads it, by the analysis and under this run's own policy: an archived
-    dictionary was not, and a dump of a project that failed holds such an object
+    that the analysis has said ``missing-producer`` of an object that lost its producer while
+    somebody still reads it, under this run's own policy - unless the floor of ``--standalone``
+    alone silenced it there, and the comparison says it itself. An archived dictionary was not
+    analysed, and a dump of a project that failed holds such an object
     (:func:`_compare_declaration`).
     """
     if baseline.name != candidate.name:
@@ -720,8 +723,17 @@ def compare(
 
     for old, new in paired:
         if old.name != new.name:
-            _report_rename(old, new, bag, location)
-        _compare_object(old, new, bag, location, was, now, candidate_analysed=candidate_analysed)
+            _report_rename(old, new, bag, location, baseline_alone=baseline_alone)
+        _compare_object(
+            old,
+            new,
+            bag,
+            location,
+            was,
+            now,
+            baseline_alone=baseline_alone,
+            candidate_analysed=candidate_analysed,
+        )
 
     _report_reused_names(was, now, paired, was.keys() & now.keys(), bag, location)
 
@@ -735,15 +747,51 @@ def compare(
     return [*paired, *bare]
 
 
+_READERS_NOT_KNOWN = "the baseline is one component read alone, so who read it is not known"
+"""What a finding about an output of a component read alone says in place of its readers."""
+
+
+def _readers_not_known(entry: _Joined, *, baseline_alone: bool) -> bool:
+    """Whether the baseline's ``entry`` is an output of a component read alone.
+
+    The readers such a baseline records are the component's own and nobody else's, so an object
+    it produces may be read by any component of the project the run was not shown: every grade
+    that waits on a reader takes it as read - gone, renamed, given a condition, turned
+    ``volatile``, its limits moved - and its finding says the readers are not known rather than
+    naming none, which would be a claim about the rest. A ``local`` object is private to the
+    component, so its readers are known even where the rest of the project is not, and the one
+    reader of an input is the component itself: both keep the grades a whole comparison gives.
+    """
+    return baseline_alone and entry.owner is not None and not entry.local
+
+
+def _is_read(entry: _Joined, *, baseline_alone: bool) -> bool:
+    """Whether a grade that waits on a reader takes the baseline's ``entry`` as read: one
+    question, asked by every such grade."""
+    return bool(entry.consumers) or _readers_not_known(entry, baseline_alone=baseline_alone)
+
+
+def _read_by(entry: _Joined, *, baseline_alone: bool) -> str:
+    """``, read by B``, the clause saying the readers are not known, or nothing: who reads the
+    baseline's ``entry``, as the end of a finding about it says it."""
+    if _readers_not_known(entry, baseline_alone=baseline_alone):
+        return f"; {_READERS_NOT_KNOWN}"
+    return f", read by {', '.join(entry.consumers)}" if entry.consumers else ""
+
+
 def _report_rename(
-    old: _Joined, new: _Joined, bag: DiagnosticBag, location: Location | None
+    old: _Joined,
+    new: _Joined,
+    bag: DiagnosticBag,
+    location: Location | None,
+    *,
+    baseline_alone: bool,
 ) -> None:
     """One object, or one structured variable with no leaf, under another name."""
-    readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
     bag.add(
-        "renamed-read-object" if old.consumers else "renamed-object",
-        f"'{old.name}' is now called '{new.name}'{readers}; every dataset, recording "
-        f"and script keyed by the old spelling needs migrating",
+        "renamed-read-object" if _is_read(old, baseline_alone=baseline_alone) else "renamed-object",
+        f"'{old.name}' is now called '{new.name}'{_read_by(old, baseline_alone=baseline_alone)}; "
+        f"every dataset, recording and script keyed by the old spelling needs migrating",
         location,
     )
 
@@ -861,13 +909,14 @@ class _Layouts:
     Each layout gets one id, shared by both sides, and a structure nested in another is held by
     the id of its layout rather than by its name. So two variables compare by one integer each,
     a nested structure renamed with its members kept is the same layout, and nothing is expanded,
-    which a structure nesting another twice at each of its levels would make exponential. The
-    structures are laid out in the order the dictionary lists them, which is dependency order, so
-    the layout of a nested structure is known before the structure holding it is laid out. One
-    that is not known by then - a name no entry declares, or a structure on a cycle, which a dump
-    written under ``--force`` lists although no variable's layout can hold one - holds no
-    members, since the document says nothing of what it holds; so does the structure of a
-    variable that its dictionary, edited by hand, does not list at all.
+    which a structure nesting another twice at each of its levels would make exponential. A
+    structure is laid out on its first need, after every structure it nests, so the order the
+    dictionary lists them in decides nothing: DDD's own dumps list a structure after the ones it
+    nests, and a dictionary edited by hand, or written by another tool, need not. A member naming
+    a structure no entry declares holds no members, since the document says nothing of what it
+    holds, and so does the member that closes a cycle, which a dump written under ``--force``
+    lists although no variable's layout can hold one; so does the structure of a variable that
+    its dictionary, edited by hand, does not list at all.
     """
 
     def __init__(self, baseline: DataDictionary, candidate: DataDictionary) -> None:
@@ -878,15 +927,44 @@ class _Layouts:
         self.now = self._lay_out(candidate, spelled=spelled)
 
     def _lay_out(self, dictionary: DataDictionary, *, spelled: bool) -> dict[str, int]:
-        """The id of every structure of one side, by name."""
+        """The id of every structure of one side, by name, each laid out on its first need.
+
+        A depth first walk in name order, as the analysis orders the structures it dumps
+        (``_ordered_structures``), and with a stack of its own rather than by recursion for the
+        reason it gives: a dictionary lists every structure declared, one nested deeper than the
+        analysis reads included. The walk carries the names it is still following and does not
+        follow one of them a second time, so the member closing a cycle finds nothing laid out.
+        """
         sizes = {constant.name: constant.value for constant in dictionary.constants}
+        declared = {structure.name: structure for structure in dictionary.types}
         laid: dict[str, int] = {}
-        for structure in dictionary.types:
-            layout = tuple(
-                _held(member, laid, sizes, spelled=spelled) for member in structure.members
-            )
-            laid[structure.name] = self._ids.setdefault(layout, len(self._ids))
-            self.layouts[laid[structure.name]] = layout
+        walking: set[str] = set()
+        for start in sorted(declared):
+            if start in laid:
+                continue
+            walking.add(start)
+            stack = [(start, iter(declared[start].members))]
+            while stack:
+                name, pending = stack[-1]
+                member = next(pending, None)
+                if member is None:
+                    stack.pop()
+                    walking.discard(name)
+                    layout = tuple(
+                        _held(held, laid, sizes, spelled=spelled) for held in declared[name].members
+                    )
+                    laid[name] = self._ids.setdefault(layout, len(self._ids))
+                    self.layouts[laid[name]] = layout
+                    continue
+                nested = member.type
+                if (
+                    nested is not None
+                    and nested in declared
+                    and nested not in laid
+                    and nested not in walking
+                ):
+                    walking.add(nested)
+                    stack.append((nested, iter(declared[nested].members)))
         return laid
 
     def moved(self, old: ResolvedInstance, new: ResolvedInstance) -> str | None:
@@ -912,7 +990,8 @@ def _held(
     *,
     spelled: bool,
 ) -> _Held:
-    """One member as its structure's layout holds it, against the structures laid out so far."""
+    """One member as its structure's layout holds it, against the structures laid out already:
+    every one it nests, but the one closing a cycle."""
     holds: int | str
     if member.external is not None:
         holds = member.external
@@ -1124,26 +1203,17 @@ def _report_removal(
     else:
         bucket = candidates.get(_bucket_key(old, of_a_leaf=isinstance(old, ResolvedLeaf)), ())
         notes = _lost_identity_note(old, bucket, was, now)
-    # A ``local`` object is private to the component, so its readers are known even where
-    # the rest of the project is not: it keeps the grade a whole comparison gives it.
-    read_alone = baseline_alone and not old.local
-    if read_alone and old.owner is None:
+    if _readers_not_known(old, baseline_alone=baseline_alone):
+        bag.add(
+            "removed-object", f"'{old.name}' is gone; {_READERS_NOT_KNOWN}", location, notes=notes
+        )
+    elif baseline_alone and old.owner is None:
         # What a component read alone does not produce is an input, and its readers are the
         # component itself: it stops reading something, which harms nobody downstream.
         bag.add(
             "removed-input",
             f"'{old.name}' is no longer read by {', '.join(old.consumers)}; the component "
             f"stops reading it, which harms nobody",
-            location,
-            notes=notes,
-        )
-    elif read_alone:
-        # What a component read alone produces is an output, and who reads it is exactly what
-        # this run was not shown: "no component read it" is a claim about the rest.
-        bag.add(
-            "removed-object",
-            f"'{old.name}' is gone; the baseline is one component read alone, so who read it "
-            f"is not known",
             location,
             notes=notes,
         )
@@ -1244,6 +1314,8 @@ def _volatile_read(
     old: Comparable | ResolvedInstance,
     new: Comparable | ResolvedInstance,
     storage: list[ComparedField[Any]],
+    *,
+    baseline_alone: bool,
 ) -> tuple[list[ComparedField[Any]], list[ComparedField[Any]]]:
     """Split ``volatile`` turned on out of the storage differences, when somebody reads it.
 
@@ -1253,7 +1325,7 @@ def _volatile_read(
     and not a second time under ``changed-storage``. Turned off it is only storage, as it is
     for an object nobody reads. Returns the fields to say as interface and the storage left.
     """
-    if not new.volatile or not old.consumers:
+    if not new.volatile or not _is_read(old, baseline_alone=baseline_alone):
         return [], storage
     return (
         [field for field in storage if field.name == "volatile"],
@@ -1269,18 +1341,21 @@ def _compare_object(
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
     *,
+    baseline_alone: bool,
     candidate_analysed: bool,
 ) -> None:
     interface = differing(_interface_fields(old, new), old, new)
     references = _compare_references(old, new, was, now)
-    volatile, storage = _volatile_read(old, new, differing(_storage_fields(old), old, new))
+    volatile, storage = _volatile_read(
+        old, new, differing(_storage_fields(old), old, new), baseline_alone=baseline_alone
+    )
     if interface or references or volatile:
-        readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
         spelled = spell_out([*interface, *volatile], old, new) if interface or volatile else ""
         both = ", ".join(part for part in (spelled, references or "") if part)
         bag.add(
             "changed-interface",
-            f"'{old.name}' is not the same object any more ({both}){readers}",
+            f"'{old.name}' is not the same object any more ({both})"
+            f"{_read_by(old, baseline_alone=baseline_alone)}",
             location,
         )
 
@@ -1302,7 +1377,9 @@ def _compare_object(
     # id: ``widened-limits``, ``narrowed-read-limits`` and ``narrowed-limits``. A measurement
     # nobody reads has no reader to promise anything to and is graded like calibration data.
     # When the interface already changed - references included - a different range is a
-    # consequence of it - reporting both would bury the cause under its own symptom.
+    # consequence of it - reporting both would bury the cause under its own symptom. A member's
+    # kind is its variable's, compared at the variable rather than in its leaf's interface, and
+    # holds its limits back as an object's own kind does.
     #
     # Weighed with the tolerance the analysis weighs a derived limit with, because most
     # limits are derived and deriving one goes through a float: a baseline archived before
@@ -1313,13 +1390,18 @@ def _compare_object(
     # are the same number.
     narrowed = is_above(new.limits.min, old.limits.min) or is_below(new.limits.max, old.limits.max)
     widened = is_below(new.limits.min, old.limits.min) or is_above(new.limits.max, old.limits.max)
-    if (narrowed or widened) and not interface and references is None:
-        was_read = old.kind is ObjectKind.MEASUREMENT and bool(old.consumers)
+    held = bool(interface) or references is not None or old.kind is not new.kind
+    if (narrowed or widened) and not held:
+        # Graded by the kind the candidate states, which is the baseline's too wherever a grade
+        # is given, a changed kind holding the limits back.
+        was_read = new.kind is ObjectKind.MEASUREMENT and _is_read(
+            old, baseline_alone=baseline_alone
+        )
         change = (
             f"[{format_number(old.limits.min)}, {format_number(old.limits.max)}] to "
             f"[{format_number(new.limits.min)}, {format_number(new.limits.max)}]"
         )
-        readers = f", read by {', '.join(old.consumers)}"
+        readers = _read_by(old, baseline_alone=baseline_alone)
         if was_read and widened:
             bag.add(
                 "widened-limits", f"'{old.name}': limits widened from {change}{readers}", location
@@ -1336,7 +1418,14 @@ def _compare_object(
     if not isinstance(old, ResolvedLeaf):
         # A member has no producer and no condition of its own: both are the variable's, and
         # are compared there once rather than repeated under every member's path.
-        _compare_declaration(old, new, bag, location, candidate_analysed=candidate_analysed)
+        _compare_declaration(
+            old,
+            new,
+            bag,
+            location,
+            baseline_alone=baseline_alone,
+            candidate_analysed=candidate_analysed,
+        )
 
     # Compared as it will actually be rather than as it was written: a baseline that
     # simply omits the block is not asking for the object to be dropped from the a2l.
@@ -1354,6 +1443,7 @@ def _compare_declaration(
     bag: DiagnosticBag,
     location: Location | None,
     *,
+    baseline_alone: bool,
     candidate_analysed: bool,
 ) -> None:
     """Who produces the thing, and under which condition: two findings of their own.
@@ -1365,7 +1455,8 @@ def _compare_declaration(
 
     A condition that narrows what somebody reads is ``narrowed-condition``, an error, and any
     other change of one is ``changed-condition``, a warning: an id carries one severity, so
-    the grade that depends on the readers is carried by the id.
+    the grade that depends on the readers is carried by the id. An output of a component read
+    alone is one somebody reads (:func:`_readers_not_known`).
 
     A producer that went while somebody still reads the object is not a change of owner: it is
     ``missing-producer``, the id ``ddd check`` gives the same fault, with its one severity and
@@ -1404,11 +1495,12 @@ def _compare_declaration(
             )
 
     if old.condition != new.condition:
-        narrowed = new.condition is not None and bool(old.consumers)
+        narrowed = new.condition is not None and _is_read(old, baseline_alone=baseline_alone)
+        consequence = _condition_consequence(old, new, baseline_alone=baseline_alone)
         bag.add(
             "narrowed-condition" if narrowed else "changed-condition",
             f"'{old.name}': condition {describe_condition(old.condition)} became "
-            f"{describe_condition(new.condition)}, so {_condition_consequence(old, new)}",
+            f"{describe_condition(new.condition)}, so {consequence}",
             location,
         )
 
@@ -1470,9 +1562,11 @@ def _compare_instances(
     for old, new in paired:
         interface = differing(_instance_interface_fields(old, new), old, new)
         moved = layouts.moved(old, new)
-        volatile, storage = _volatile_read(old, new, differing(_INSTANCE_STORAGE_FIELDS, old, new))
+        volatile, storage = _volatile_read(
+            old, new, differing(_INSTANCE_STORAGE_FIELDS, old, new), baseline_alone=baseline_alone
+        )
         if interface or volatile or moved is not None:
-            readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
+            readers = _read_by(old, baseline_alone=baseline_alone)
             spelled = spell_out([*interface, *volatile], old, new) if interface or volatile else ""
             both = ", ".join(part for part in (spelled, moved or "") if part)
             bag.add(
@@ -1488,12 +1582,19 @@ def _compare_instances(
                 location,
             )
 
-        _compare_declaration(old, new, bag, location, candidate_analysed=candidate_analysed)
+        _compare_declaration(
+            old,
+            new,
+            bag,
+            location,
+            baseline_alone=baseline_alone,
+            candidate_analysed=candidate_analysed,
+        )
 
     bare = [(old, new) for old, new in paired if old.name not in leafed]
     for old, new in bare:
         if old.name != new.name:
-            _report_rename(old, new, bag, location)
+            _report_rename(old, new, bag, location, baseline_alone=baseline_alone)
     _report_reused_names(
         was,
         now,
@@ -1612,20 +1713,22 @@ def _compare_rasters(
             )
 
 
-def _condition_consequence(old: _Joined, new: _Joined) -> str:
+def _condition_consequence(old: _Joined, new: _Joined, *, baseline_alone: bool) -> str:
     """What the change of a condition costs, which depends on its direction.
 
     Wrapping an object that was always there is the damaging direction and has to say so:
     every build where the new condition is false loses the object and a calibration dataset
     loses the label. The message used to describe every direction as a widening, which read
     as reassurance exactly when it was least warranted. Where somebody reads the object, the
-    readers are named, because their builds are the ones that no longer link.
+    readers are named, because their builds are the ones that no longer link, and an output of
+    a component read alone says they are not known.
     """
-    readers = (
-        f"; read by {', '.join(old.consumers)}, whose builds do not link there"
-        if old.consumers
-        else ""
-    )
+    if _readers_not_known(old, baseline_alone=baseline_alone):
+        readers = f"; {_READERS_NOT_KNOWN}"
+    elif old.consumers:
+        readers = f"; read by {', '.join(old.consumers)}, whose builds do not link there"
+    else:
+        readers = ""
     if new.condition is None:
         return "it is now present in every build"
     if old.condition is None:

@@ -106,8 +106,9 @@ _COMPARISON_CHECKS: Final = frozenset(
 """Every check whose grade the comparison owns, read from the registry's own flag rather
 than listed again - the same reasoning :data:`ddd.diagnostics.STANDALONE_POLICY` gives for
 deriving its own list instead of naming checks by hand. ``missing-producer``, which ``compare``
-also files of a dumped candidate, is not one of them, and is never filed here: the open project is
-a description, and its analysis has said it."""
+also files - of a dumped candidate, and of one analysed under the floor of ``--standalone`` - is
+not one of them, and is never filed here: the open project is a description analysed under no
+floor, and its analysis has said it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,14 +457,17 @@ def _resolved_baseline(
 def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> Cached:
     """The baseline at ``path``, read and stamped, or the reason it is not one.
 
-    ``known`` are the files the last read of it was made of, stamped with ``path`` before this
-    one begins (:attr:`Cached.verified`).
+    ``known`` are the files stamped with ``path`` before this read begins
+    (:attr:`Cached.verified`): those the last read of it was made of, or, for a first read, those
+    the file names itself (:func:`~ddd.gui.session._named_by`).
 
     The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
     a directory, one whose permissions refuse - before ``read_baseline`` is asked for a reading
     that would report it as something else entirely. Reading the bytes here as well, which is
     what the fingerprint key used to need, meant the 45 MB dump of a thousand object project
-    went through twice.
+    went through twice on every read. A first read still parses it twice, once to learn what it
+    names (:func:`~ddd.gui.session._named_by`) and once in ``read_baseline``, a cost paid once
+    per baseline the cache does not hold.
     """
     try:
         with path.open("rb"):

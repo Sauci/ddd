@@ -1694,11 +1694,16 @@ of either is clean. The Compare tab reads it under the relaxations that every bu
 the project makes. What reaches it as well is `--standalone`, which states how the file was
 handed over rather than how strictly the run grades. A baseline that is a component file is a component read alone, and the
 readers its dictionary records are the component's own and nobody else's, because the run
-was not shown the rest. An output gone from it is therefore `removed-object` with a message that does
-not claim to know who read it, where "no component read it" is a claim about components the run never saw, and
-an input the component stopped reading is `removed-input`, an information, because a
-component that reads less harms nobody. An object it declares `local` keeps its grade,
-`removed-unused-object`, because no other component can read it. `ddd check --standalone --baseline`, `ddd compare` and the Compare tab of `ddd gui`
+was not shown the rest. An output of it is therefore taken as read by every grade that waits on a
+reader, with a message that does not claim to know who read it, where "no component read it" is a
+claim about components the run never saw: gone it is `removed-object`, renamed
+`renamed-read-object`, given a condition or another one `narrowed-condition`, turned `volatile`
+`changed-interface`, and the limits of a measurement widened are `widened-limits` and narrowed
+`narrowed-read-limits`. An input the component stopped reading is `removed-input`, an information,
+because a component that reads less harms nobody, and any other change of an input is graded as one
+of an object its component reads. An object it declares `local` keeps its grade,
+`removed-unused-object`, because no other component can read it, as it keeps every grade of an
+object nobody reads. `ddd check --standalone --baseline`, `ddd compare` and the Compare tab of `ddd gui`
 take it from the file, and read it under the floor `ddd check --standalone` reads a component under,
 whether or not the run said so, because a component given as the baseline is read one way by every
 caller.
@@ -1785,8 +1790,9 @@ compile:
   declares, so renaming the structure changes the interface even when its members are
   untouched, while a structure nested in it is reached through the member that holds it, so
   renaming that one with its layout kept changes nothing. Turning `volatile` on, from false
-  to true, is a change of interface for an object a component reads, and is reported here
-  once, at the variable for a structured one, and not again as `changed-storage`: a reader
+  to true, is a change of interface for an object a component reads or a component read
+  alone produces, and is reported here once, at the variable for a structured one, and not
+  again as `changed-storage`: a reader
   compiled against the baseline's headers reaches the object through an lvalue that is not
   volatile, which C leaves undefined. A constant is compared as an entry, by its name, on its
   value: every constant reaches the generated header as a macro and the A2L as a
@@ -1797,20 +1803,22 @@ compile:
   spelling alone reads the same on both sides of a size that changed behind it. The description of a constant is documentation and is never compared, and a baseline of
   format 3 or older, which recorded no constants, has none to compare them with. The header of
   an external member is part of the layout above, and is said once, at the variable.
-- `renamed-read-object`: an object of the baseline is offered under a different name and a
-  component read it. A reader may be a binary compiled against the baseline's headers, and it
-  looks for a spelling that is gone. It is found as `renamed-object` is, by the `id`
-  ([section 3.3](#33-data-object-definition)), and reported with the readers named; a
+- `renamed-read-object`: an object of the baseline that a component read, or that a
+  component read alone produced, is offered under a different name. A reader may be a binary compiled
+  against the baseline's headers, and it looks for a spelling that is gone. It is found as
+  `renamed-object` is, by the `id` ([section 3.3](#33-data-object-definition)), and reported with
+  the readers named, or said not to be known where a component read alone produced it; a
   structured variable's rename is said under each leaf's path, each leaf answering for the
   readers of its variable; a variable with no leaf is said at the variable. A check has one
   severity, so a project's `-W renamed-object` relaxes only the warning below and does not
   reach this error; that is why the rename's pair of ids runs the other way from the removals',
   and `renamed-object` keeps the plain id for the unread rename.
-- `narrowed-condition`: a condition added to an object a component reads, or one replaced by
-  another, so the builds the object is present in changed. A reader may be a binary compiled
+- `narrowed-condition`: a condition added to an object a component reads or a component read
+  alone produces, or one replaced by another, so the builds the object is present in changed. A reader may be a binary compiled
   against the baseline's headers, and in a build where the new condition is false it looks
   for an object that is not there and does not link. DDD cannot weigh one condition against
-  another, so it takes a replacement as the builds changing, and it names the readers. A
+  another, so it takes a replacement as the builds changing, and it names the readers, or says
+  they are not known. A
   check has one severity, so a project's `-W changed-condition` relaxes only the warning
   below and does not reach this error; the same narrowing of an object nobody reads, and a
   condition going away, stay `changed-condition`.
@@ -1874,8 +1882,8 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   of a raster, which are compared as entries by name and said at the raster, the cycle
   by the period it resolves to and not by its spelling; a raster that came or went is not
   said, because an object that names it says its own change of raster; `volatile` turned on for an
-  object a component reads is `changed-interface` instead, and turned off it is this check
-  whoever reads. On a calibration object the
+  object a component reads or a component read alone produces is `changed-interface` instead,
+  and turned off it is this check whoever reads. On a calibration object the
   volatility also decides whether a tool can still change the value in a running target,
   the section says literally which memory the object ends up in, and the raster which event
   a measuring tool receives the value in. An `init` is compared as the storage it produces
@@ -1898,8 +1906,9 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   is the product of a float: a candidate that writes down the limits its datatype and
   conversion imply is not narrowing the range of a baseline archived before those ends
   were rounded ([section 3.3](#33-data-object-definition)).
-- `widened-limits`: the physical limits of a measurement somebody reads got wider, so a
-  reader sized for the range of the baseline may meet a value it was not written for. The
+- `widened-limits`: the physical limits of a measurement somebody reads, or of one a
+  component read alone produces, got wider, so a reader sized for the range of the baseline may
+  meet a value it was not written for. The
   ends are weighed as `narrowed-limits` weighs them.
 - `changed-owner`: another component produces the object now.
 - `changed-condition`: the preprocessor condition changed, namely the producer's, which is
@@ -1907,7 +1916,7 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   ([section 3.3.1](#331-one-object-several-declarations)). A condition going away is this
   check whoever reads the object, because the object is then in every build; one added or
   replaced is this check only for an object nobody reads, and `narrowed-condition` where a
-  component reads it.
+  component reads it or a component read alone produces it.
 - `changed-a2l`: the resolved A2L presentation changed, that is the export (compared as
   resolved, [section 3.3.1](#331-one-object-several-declarations)), `format` or
   `display_identifier`. The instance's name at the head of a composed `display_identifier`
@@ -1933,8 +1942,9 @@ Information:
   variable with no leaf included.
 - `added-constant`: the candidate declares a constant the baseline did not, which no reader
   of the baseline can be disturbed by.
-- `narrowed-read-limits`: the physical limits of a measurement somebody reads got tighter,
-  which is an information, because a reader still gets values inside the range it was
+- `narrowed-read-limits`: the physical limits of a measurement somebody reads, or of one a
+  component read alone produces, got tighter, which is an information, because a reader still
+  gets values inside the range it was
   written for.
 - `removed-input`: an input of a baseline that is a component read alone is gone: the
   component stops reading it, which harms nobody. Reported only for a component file, and

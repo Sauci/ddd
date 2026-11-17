@@ -234,18 +234,20 @@ them together with everything else.
        bitfield's width, the type a structured variable names, or the members of that structure
        in order, each with what it holds and its dimensions, nested and external ones included,
        an external one by its header too, save a member added at the end of it when the variable
-       is no array, or volatile turned on for an object a
-       component reads
+       is no array, or volatile turned on for an object a component reads or a component read
+       alone produces
    * - error
      - ``renamed-read-object``
-     - an object of the baseline is offered under a different name and a component read it, so
-       a reader compiled against the baseline looks for a spelling that is gone; its ``id``
-       says so. A ``-W renamed-object`` relaxation does not reach it
+     - an object of the baseline that a component read, or that a component read alone
+       produced, is offered under a different name, so a reader compiled against the baseline
+       looks for a spelling that is gone; its ``id`` says so. A ``-W renamed-object`` relaxation does not
+       reach it
    * - error
      - ``narrowed-condition``
-     - the preprocessor condition of an object a component reads was added or replaced, so a
-       reader compiled against the baseline does not link in a build where the new condition is
-       false; a ``-W changed-condition`` relaxation does not reach it
+     - the preprocessor condition of an object a component reads, or of one a component read
+       alone produces, was added or replaced, so a reader compiled against the baseline does not
+       link in a build where the new condition is false; a ``-W changed-condition``
+       relaxation does not reach it
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object
@@ -263,25 +265,26 @@ them together with everything else.
    * - warning
      - ``changed-storage``
      - the initial value, volatility, memory section or measurement raster of an object changed,
-       or the event or cycle of a raster; volatile turned on for an object a component reads is
-       changed-interface
-       instead
+       or the event or cycle of a raster; volatile turned on for an object a component reads or a
+       component read alone produces is changed-interface instead
    * - warning
      - ``narrowed-limits``
      - the physical limits of an object got tighter, so calibrated data may not fit; on a
-       measurement a component reads it is ``widened-limits`` or ``narrowed-read-limits``
-       instead
+       measurement a component reads, or on one a component read alone produces, it is
+       ``widened-limits`` or ``narrowed-read-limits`` instead
    * - warning
      - ``widened-limits``
-     - the physical limits of a measurement a component reads got wider, so a reader sized
-       for the baseline's range may meet a value it was not written for
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got wider, so a reader sized for the baseline's range may meet a value it was
+       not written for
    * - warning
      - ``changed-owner``
      - another component produces the object now
    * - warning
      - ``changed-condition``
      - the preprocessor condition of an object changed; one added or replaced on an object a
-       component reads is ``narrowed-condition`` instead
+       component reads, or on one a component read alone produces, is ``narrowed-condition``
+       instead
    * - warning
      - ``changed-a2l``
      - the a2l entry of an object changed
@@ -300,8 +303,8 @@ them together with everything else.
      - the candidate declares a constant the baseline did not
    * - info
      - ``narrowed-read-limits``
-     - the physical limits of a measurement a component reads got tighter: a reader still gets
-       values inside the range it was written for
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got tighter: a reader still gets values inside the range it was written for
    * - info
      - ``removed-input``
      - an input of a component read alone is gone: the component stops reading it, which harms
@@ -837,11 +840,16 @@ baseline was handed over the same way.
 
 A baseline that is a component file is read alone, and the readers its dictionary records are
 the component's own and nobody else's, because the run was not shown the rest. So a supplier's
-gate grades a removal by what one file can know. An output the component stopped offering is
-``removed-object``, an error, with a message that does not claim to know who read it: "no
-component read it" is a claim about components the run never saw. An input the component stopped reading is
-``removed-input``, an information, because a component that reads less harms nobody. An object it declares ``local`` keeps its
-grade, ``removed-unused-object``, because no other component can read it.
+gate grades an output by what one file can know: it is taken as read by every grade that waits
+on a reader, with a message that does not claim to know who read it, since "no component read
+it" is a claim about components the run never saw. An output the component stopped offering is
+``removed-object``; renamed, it is ``renamed-read-object``, given a condition or another one
+``narrowed-condition``, and turned ``volatile`` ``changed-interface``, each an error; and the
+limits of a measurement it widens are ``widened-limits`` and those it narrows
+``narrowed-read-limits``. An input the component stopped reading is ``removed-input``, an
+information, because a component that reads less harms nobody. An object it declares ``local``
+keeps its grade, ``removed-unused-object``, because no other component can read it, and every
+other grade of an object nobody reads.
 ``ddd check --standalone --baseline``, ``ddd compare`` and the Compare tab of ``ddd gui`` take it
 from the file, and read it under the floor ``ddd check --standalone`` reads a component under
 whether or not the run said so, so that an input of the component nobody was shown the producer

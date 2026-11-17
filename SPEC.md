@@ -1712,8 +1712,8 @@ old-to-new name pairs the comparison established, so that a calibration dataset,
 recording or a test script keyed by the old spelling can be migrated without parsing the
 findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
 name changed, sorted by `to`, `[]` when nothing was renamed; a structured variable with no
-leaf is listed once, under its own `id`, and any other member of a structured
-object is listed once per member, its `id` being the instance's `id` followed by the
+leaf is listed once, under its own `id`, and a member of a structured variable that has
+leaves is listed once per member, its `id` being the instance's `id` followed by the
 member's path below the instance as the access path spells it - `.latest` for a member of a
 single structure, `[2].raw` for a member of the third element of an array of them, with no
 `.` before the index. The file is written whether or not the comparison found errors,
@@ -1781,10 +1781,10 @@ compile:
   looks for a spelling that is gone. It is found as `renamed-object` is, by the `id`
   ([section 3.3](#33-data-object-definition)), and reported with the readers named; a
   structured variable's rename is said under each leaf's path, each leaf answering for the
-  readers of its variable; a variable with no leaf is said at the variable. A check has one severity, so a project's `-W renamed-object`
-  relaxes only the warning below and does not reach this error; that is why the rename's pair
-  of ids runs the other way from the removals', and `renamed-object` keeps the plain id for the
-  unread rename.
+  readers of its variable; a variable with no leaf is said at the variable. A check has one
+  severity, so a project's `-W renamed-object` relaxes only the warning below and does not
+  reach this error; that is why the rename's pair of ids runs the other way from the removals',
+  and `renamed-object` keeps the plain id for the unread rename.
 - `narrowed-condition`: a condition added to an object a component reads, or one replaced by
   another, so the builds the object is present in changed. A reader may be a binary compiled
   against the baseline's headers, and in a build where the new condition is false it looks
@@ -1909,7 +1909,7 @@ id did not travel with it`. It asserts nothing and pairs nothing - the two may s
 different objects - and stays silent the moment more than one addition matches equally well.
 It stays silent too where a delivery offers more than a handful of additions alike in every
 one of those properties: a crowd no single candidate was going to come out of, and the note
-is advisory where the answer to it is not. This is the only part of the feature that helps a
+is advisory where the answer to it is not. A removed structured variable with no leaf carries no such note, since it has no interface to match an addition on. This is the only part of the feature that helps a
 project which never adopts `id` at all.
 
 A member of a structured object ([section 3.7](#37-type-description)) has no declaration

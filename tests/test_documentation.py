@@ -514,6 +514,54 @@ class TestTheCheckReference:
         assert "a condition added to an object a component reads" in flattened(SPEC)
         assert "no longer link there" in flattened(COMPARING_DELIVERIES)
 
+    def test_the_pages_say_a_structured_variable_with_no_leaf_is_compared_as_an_object(
+        self,
+    ) -> None:
+        """A structure holding members of external types alone has no leaf, so what a leaf says
+        of its variable - gone, renamed, reused, new - is said at the variable, graded as an
+        object is, and its ``kind`` once at the variable; a variable that has leaves is not said
+        a second time, and a removal at the variable carries no lost-identity note. The SPEC and
+        the comparison page say so."""
+        spec = flattened(SPEC)
+        for sentence in (
+            "an instance with no leaf included: its removal, its rename, its reuse of a name "
+            "and its `kind` are reported at the instance, where nothing else says them",
+            "is the only record of a variable of a structure holding members of external types "
+            "alone, which has no leaf",
+            "A structured variable with no leaf is one, said at the variable; one that has "
+            "leaves is said by its leaves, and not a second time.",
+            "a variable with no leaf is said at the variable.",
+            "A structured variable with no leaf is one of the names, and says it at the variable",
+            "`removed-unused-object`: an object is gone that no component read, a structured "
+            "variable with no leaf included.",
+            "`added-object`: the candidate declares an object the baseline did not, a "
+            "structured variable with no leaf included.",
+            "a structured variable with no leaf is listed once, under its own `id`, and a "
+            "member of a structured variable that has leaves is listed once per member",
+            "its `kind`, its array shape and its locality as interface",
+            "A structure holding only members of external types, at any depth, holds nothing "
+            "DDD can see into, and its variable has no leaf.",
+            "Such a variable **shall** therefore be reported as an object is, at the variable, "
+            "and graded as one",
+            "A variable that has leaves is not said a second time at the variable.",
+            "A removed structured variable with no leaf carries no such note, since it has no "
+            "interface to match an addition on.",
+        ):
+            assert sentence in spec, sentence
+        page = flattened(COMPARING_DELIVERIES)
+        for sentence in (
+            "A structured variable of a structure that holds members of external types alone, "
+            "at any depth, has no leaf",
+            "the variable is reported as an object is, at the variable",
+            "``renames.json`` lists it under its own id",
+            "A variable that has leaves is not said a second time at the variable.",
+            "a structured variable with no leaf is an object here",
+            "no component read it, a structured variable with no leaf included",
+            "is one ``changed-interface`` at the variable and not one per member, a structure "
+            "of external members included",
+        ):
+            assert sentence in page, sentence
+
     def test_every_page_compares_constants_and_rasters_as_entries(self) -> None:
         """A constant reaches every reader as a macro and the a2l as a ``SYSTEM_CONSTANT``, and a
         raster is the event every ``IF_DATA`` that names it carries: a changed value is an

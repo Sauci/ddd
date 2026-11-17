@@ -172,7 +172,8 @@ delivery that cannot be accepted still needs its renames listed so that whoever 
 what moved. This is what a calibration dataset, a recorded measurement or a test script keyed
 by the old spelling is migrated with.
 
-The comparison itself reports ``renamed-object`` for each pair it finds this way, and the
+The comparison itself reports ``renamed-object`` for each pair it finds this way, or
+``renamed-read-object``, an error, for a pair whose object a component reads, and the
 ordinary interface comparison still runs across the pair, so a rename that also changed the
 object is no longer invisible. And where a spelling freed by a rename has been claimed by a
 different object in the same delivery, it reports ``reused-name`` instead - the failure that
@@ -209,13 +210,20 @@ them together with everything else.
        counts changed, or the layout a released structure fixed: a bitfield's width, the type
        a structured variable names, or the members of that structure in order, each with what
        it holds and its dimensions, nested and external ones included, save a member added at
-       the end of it when the variable is no array
+       the end of it when the variable is no array, or volatile turned on for an object a
+       component reads
+   * - error
+     - ``renamed-read-object``
+     - an object of the baseline is offered under a different name and a component read it, so
+       a reader compiled against the baseline looks for a spelling that is gone; its ``id``
+       says so. A ``-W renamed-object`` relaxation does not reach it
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object
    * - warning
      - ``renamed-object``
-     - an object of the baseline is offered under a different name; its ``id`` says so
+     - an object of the baseline is offered under a different name and no component read it;
+       its ``id`` says so
    * - warning
      - ``removed-unused-object``
      - an object of the baseline is gone; no component read it
@@ -285,6 +293,19 @@ variable, not only through its members: its ``type`` is what every consumer's he
 declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a changed
 interface, while a structure nested in it is reached through the member that holds it, so
 renaming that one with its layout kept changes nothing.
+
+A reader may be a binary compiled against the previous headers, and two edits cost it more
+than they cost the people who keep an object nobody reads. Turning ``volatile`` on is a
+changed interface for an object a component reads: a reader built without the qualifier now
+reaches the object through an lvalue that is not volatile, which C leaves undefined, so the
+finding is ``changed-interface``, said once, at the variable for a structured one, and not
+again as ``changed-storage``. Renaming such an object is ``renamed-read-object``: the reader
+looks for a spelling that is gone. Both cannot replace the baseline. The same edits on an
+object nobody reads stay ``changed-storage`` and ``renamed-object``, warnings, and turning
+``volatile`` off is ``changed-storage`` everywhere. A structured variable's rename is still
+said under each leaf's path, since a dataset is keyed by it, and each leaf answers for the
+readers of its variable. ``-W renamed-object=ignore`` relaxes the warning only: an id carries
+one severity, so the error stands under its own.
 
 ``changed-storage`` covers the four properties that change how an object behaves rather than
 what it means: the initial value, ``volatile``, the memory ``section`` and the measurement

@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from ddd.diagnostics import DiagnosticBag, Location
 from ddd.ir import (
@@ -613,7 +613,7 @@ def compare(
         if old.name != new.name:
             readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
             bag.add(
-                "renamed-object",
+                "renamed-read-object" if old.consumers else "renamed-object",
                 f"'{old.name}' is now called '{new.name}'{readers}; every dataset, recording "
                 f"and script keyed by the old spelling needs migrating",
                 location,
@@ -1071,6 +1071,27 @@ def _describe_reference_change(
     return f"references: {', '.join(news)} != {', '.join(olds)}"
 
 
+def _volatile_read(
+    old: Comparable | ResolvedInstance,
+    new: Comparable | ResolvedInstance,
+    storage: list[ComparedField[Any]],
+) -> tuple[list[ComparedField[Any]], list[ComparedField[Any]]]:
+    """Split ``volatile`` turned on out of the storage differences, when somebody reads it.
+
+    A reader may be a binary compiled against the previous headers, and one that never saw the
+    qualifier now reaches the object through an lvalue that has it, which C leaves undefined.
+    That is the interface of the object and not its storage, said under ``changed-interface``
+    and not a second time under ``changed-storage``. Turned off it is only storage, as it is
+    for an object nobody reads. Returns the fields to say as interface and the storage left.
+    """
+    if not new.volatile or not old.consumers:
+        return [], storage
+    return (
+        [field for field in storage if field.name == "volatile"],
+        [field for field in storage if field.name != "volatile"],
+    )
+
+
 def _compare_object(
     old: Comparable,
     new: Comparable,
@@ -1081,9 +1102,10 @@ def _compare_object(
 ) -> None:
     interface = differing(_interface_fields(old, new), old, new)
     references = _compare_references(old, new, was, now)
-    if interface or references:
+    volatile, storage = _volatile_read(old, new, differing(_storage_fields(old), old, new))
+    if interface or references or volatile:
         readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
-        spelled = spell_out(interface, old, new) if interface else ""
+        spelled = spell_out([*interface, *volatile], old, new) if interface or volatile else ""
         both = ", ".join(part for part in (spelled, references or "") if part)
         bag.add(
             "changed-interface",
@@ -1091,7 +1113,6 @@ def _compare_object(
             location,
         )
 
-    storage = differing(_storage_fields(old), old, new)
     if storage:
         bag.add(
             "changed-storage",
@@ -1207,9 +1228,10 @@ def _compare_instances(
     for old, new in paired:
         interface = differing(_instance_interface_fields(old, new), old, new)
         moved = layouts.moved(old, new)
-        if interface or moved is not None:
+        volatile, storage = _volatile_read(old, new, differing(_INSTANCE_STORAGE_FIELDS, old, new))
+        if interface or volatile or moved is not None:
             readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
-            spelled = spell_out(interface, old, new) if interface else ""
+            spelled = spell_out([*interface, *volatile], old, new) if interface or volatile else ""
             both = ", ".join(part for part in (spelled, moved or "") if part)
             bag.add(
                 "changed-interface",
@@ -1217,7 +1239,6 @@ def _compare_instances(
                 location,
             )
 
-        storage = differing(_INSTANCE_STORAGE_FIELDS, old, new)
         if storage:
             bag.add(
                 "changed-storage",

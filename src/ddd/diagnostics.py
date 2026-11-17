@@ -246,7 +246,12 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("missing-id", Severity.INFO,
                "a declaration that produces a variable states no identity for it"),
         _check("renamed-object", Severity.WARNING,
-               "an object of the baseline is offered under a different name",
+               "an object of the baseline is offered under a different name; no component read "
+               "it",
+               comparison=True),
+        _check("renamed-read-object", Severity.ERROR,
+               "an object of the baseline is offered under a different name and somebody read "
+               "it, so a reader compiled against the baseline looks for a spelling that is gone",
                comparison=True),
         _check("removed-object", Severity.ERROR,
                "an object of the baseline is gone and somebody read it",
@@ -257,7 +262,7 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "bitfield's width, the type a structured variable names, or the members of that "
                "structure in order, each with what it holds and its dimensions, nested and "
                "external ones included, save a member added at the end of it when the variable "
-               "is no array",
+               "is no array, or volatile turned on for an object a component reads",
                comparison=True),
         _check("reused-name", Severity.ERROR,
                "a name of the baseline now belongs to a different object",

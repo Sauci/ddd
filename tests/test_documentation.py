@@ -45,7 +45,7 @@ from ddd.backends.c.model import (
     ObjectView,
 )
 from ddd.cli import EXIT_OK, _build_parser, main, schema_models
-from ddd.diagnostics import CHECKS
+from ddd.diagnostics import CHECKS, Severity
 from ddd.loading import FILE_KINDS
 from ddd.models import MAX_ELEMENTS, Component, DataObject, Datatype, ObjectKind, ScalarType
 from ddd.toolbox.findings import FINDINGS
@@ -322,7 +322,8 @@ class TestTheCheckReference:
         "counts changed, or the layout a released structure fixed: a bitfield's width, the type a "
         "structured variable names, or the members of that structure in order, each with what it "
         "holds and its dimensions, nested and external ones included, save a member added at the "
-        "end of it when the variable is no array"
+        "end of it when the variable is no array, or volatile turned on for an object a "
+        "component reads"
     )
 
     def test_the_registry_and_the_three_tables_say_one_wording_of_changed_interface(
@@ -342,6 +343,37 @@ class TestTheCheckReference:
         }
         for name, text in tables.items():
             assert description in flattened(text), name
+
+    def test_every_page_grades_a_rename_by_whether_somebody_reads_the_object(self) -> None:
+        """A reader may be a binary compiled against the previous headers, so a rename of an
+        object a component reads is an error under an id of its own and the warning stays for
+        an object nobody reads; ``changed-interface`` and ``changed-storage`` say the same for
+        ``volatile`` turned on. The registry and each page say so."""
+        assert CHECKS["renamed-read-object"].default_severity is Severity.ERROR
+        assert CHECKS["renamed-object"].default_severity is Severity.WARNING
+        assert CHECKS["renamed-object"].description.endswith("no component read it")
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert "renamed-read-object" in flat, name
+            assert "different name and no component read it" in flat, name
+        assert "does not reach this error" in flattened(CONSISTENCY_CHECKS)
+        assert "does not reach this error" in flattened(SPEC)
+        assert "turned off it is this check whoever reads" in flattened(SPEC)
+        assert "A `-W renamed-object` relaxation does not reach it" in flattened(README)
+        assert "A ``-W renamed-object`` relaxation does not reach it" in flattened(
+            COMPARING_DELIVERIES
+        )
+        assert "volatile` turned on for an object a component reads is `changed-interface`" in (
+            flattened(SPEC)
+        )
+        assert "Turning ``volatile`` on is a changed interface for an object a component reads" in (
+            flattened(COMPARING_DELIVERIES)
+        )
 
     def test_the_registry_describes_address_missing_as_the_pages_do(self) -> None:
         """``ddd checks`` prints the registry's one-liner, and since ``--image`` the check is

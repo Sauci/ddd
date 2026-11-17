@@ -2659,3 +2659,141 @@ class TestARenamedInstanceKeepsItsComposedDisplayIdentifier:
         )
         assert checks(verdict(old, same)) == []
         assert checks(verdict(old, other)) == ["changed-a2l"]
+
+
+class TestWhatAReaderPrecompiledAgainstTheBaselineCannotAbsorb:
+    """Two edits whose grade depends on whether anybody reads the object.
+
+    A reader may be a binary compiled against the previous headers. One that never saw the
+    qualifier now reaches a ``volatile`` object through a lvalue that is not, which C leaves
+    undefined, and one that looks for the old spelling finds nothing. So turning ``volatile``
+    on is a ``changed-interface`` and a rename is a ``renamed-read-object``, each an error,
+    for an object a component reads; for one nobody reads they stay ``changed-storage`` and
+    ``renamed-object``, the warnings they always were. One id carries one severity, so the
+    grade that depends on readers is carried by the id the finding goes under.
+    """
+
+    ID: ClassVar[str] = "k7m2q9xr4t8w"
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        *,
+        read: bool,
+        variable: str = "X",
+        structured: bool = False,
+        **definition: Any,
+    ) -> DataDictionary:
+        typed: dict[str, Any] = {"typename": "Pair_t"} if structured else {}
+        files: dict[str, Any] = {
+            f"{name}.ddd.json": project(
+                "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
+            ),
+            f"{name}-t.ddd.json": types(
+                struct_type("Pair_t", value_member("x"), value_member("y"))
+            ),
+            f"{name}-a.ddd.json": component(
+                "A", declare("output", variable, id=self.ID, **typed, **definition)
+            ),
+            f"{name}-b.ddd.json": component(
+                "B", *([declare("input", variable, **typed)] if read else [])
+            ),
+        }
+        write_tree(tree, files)
+        return resolve(tree, f"{name}.ddd.json")
+
+    def test_volatile_turned_on_under_a_reader_cannot_replace(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", read=True)
+        new = self.delivery(tree, "new", read=True, volatile=True)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert "'X' is not the same object any more (volatile: true != false), read by B" in (
+            messages(bag)
+        )
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_volatile_turned_on_that_nobody_reads_is_changed_storage(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=False)
+        new = self.delivery(tree, "new", read=False, volatile=True)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        assert not bag.has_errors
+
+    def test_volatile_turned_off_stays_changed_storage_under_a_reader(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=True, volatile=True)
+        new = self.delivery(tree, "new", read=True)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        assert not bag.has_errors
+
+    def test_the_storage_finding_keeps_what_is_left_of_storage(self, tree: Path) -> None:
+        """``volatile`` is said once, in the interface finding, and the initial value that
+        changed beside it stays the storage finding's."""
+        old = self.delivery(tree, "old", read=True)
+        new = self.delivery(tree, "new", read=True, volatile=True, init=3)
+        bag = verdict(old, new)
+        assert sorted(checks(bag)) == ["changed-interface", "changed-storage"], messages(bag)
+        for diagnostic in bag:
+            volatile = "volatile: true != false" in diagnostic.render()
+            assert volatile == (diagnostic.check == "changed-interface"), messages(bag)
+
+    def test_a_structured_variable_turned_volatile_is_one_finding_at_the_variable(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", read=True, structured=True, variable="Rec")
+        new = self.delivery(tree, "new", read=True, structured=True, variable="Rec", volatile=True)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert "'Rec' is not the same object any more (volatile: true != false), read by B" in (
+            messages(bag)
+        )
+
+    def test_a_structured_variable_nobody_reads_turned_volatile_is_changed_storage(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", read=False, structured=True, variable="Rec")
+        new = self.delivery(tree, "new", read=False, structured=True, variable="Rec", volatile=True)
+        assert checks(verdict(old, new)) == ["changed-storage"]
+
+    def test_a_rename_under_a_reader_is_an_error_naming_the_readers(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", read=True, variable="Old")
+        new = self.delivery(tree, "new", read=True, variable="New")
+        bag = verdict(old, new)
+        assert checks(bag) == ["renamed-read-object"], messages(bag)
+        assert "'Old' is now called 'New', read by B" in messages(bag)
+        assert bag.has_errors
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+
+    def test_a_rename_nobody_reads_is_a_warning(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=False, variable="Old")
+        new = self.delivery(tree, "new", read=False, variable="New")
+        bag = verdict(old, new)
+        assert checks(bag) == ["renamed-object"], messages(bag)
+        assert not bag.has_errors
+
+    def test_a_relaxed_renamed_object_leaves_the_rename_of_a_read_one_standing(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", read=True, variable="Old")
+        new = self.delivery(tree, "new", read=True, variable="New")
+        bag = verdict(old, new, "renamed-object=ignore")
+        assert checks(bag) == ["renamed-read-object"], messages(bag)
+        assert bag.has_errors
+
+    def test_a_structured_variable_renamed_under_a_reader_is_each_leafs_error(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", read=True, structured=True, variable="Old")
+        new = self.delivery(tree, "new", read=True, structured=True, variable="New")
+        bag = verdict(old, new)
+        assert checks(bag) == ["renamed-read-object"] * 2, messages(bag)
+        assert "'Old.x' is now called 'New.x', read by B" in messages(bag)

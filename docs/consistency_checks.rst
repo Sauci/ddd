@@ -831,8 +831,19 @@ registry can be read in one place.
        counts changed, or the layout a released structure fixed: a bitfield's width, the type
        a structured variable names, or the members of that structure in order, each with what
        it holds and its dimensions, nested and external ones included, save a member added at
-       the end of it when the variable is no array. Scaling compares an enum by its name and
+       the end of it when the variable is no array, or volatile turned on for an object a
+       component reads. Turned on, ``volatile`` is the interface of an object a reader was
+       compiled against: a reader built without the qualifier reaches it through an lvalue that
+       is not volatile, which C leaves undefined, and the finding is not repeated as
+       ``changed-storage``. Scaling compares an enum by its name and
        its ordered enumerators, whose descriptions are documentation and are not compared.
+   * - ``renamed-read-object``
+     - error
+     - an object of the baseline is offered under a different name and a component read it. A
+       reader may be a binary compiled against the baseline's headers, and it looks for a
+       spelling that is gone. A structured variable's rename is said under each leaf's path,
+       and each leaf answers for its variable's readers. ``-W renamed-object`` relaxes the
+       warning an unread object's rename is, and does not reach this error.
    * - ``reused-name``
      - error
      - a name of the baseline now belongs to a different object: the object that carried it
@@ -840,8 +851,8 @@ registry can be read in one place.
        looks broken, and a dataset or a recording keyed by the name binds to the wrong storage.
    * - ``renamed-object``
      - warning
-     - an object of the baseline is offered under a different name; its ``id`` is what says
-       so. The interface comparison still runs across the pair, and ``--renames`` writes the
+     - an object of the baseline is offered under a different name and no component read it;
+       its ``id`` is what says so. The interface comparison still runs across the pair, and ``--renames`` writes the
        old and the new spelling out, for migrating datasets and recordings.
    * - ``removed-unused-object``
      - warning

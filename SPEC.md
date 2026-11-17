@@ -1746,7 +1746,18 @@ compile:
   a nested structure grown. A structured variable's `type` is what every consumer's header
   declares, so renaming the structure changes the interface even when its members are
   untouched, while a structure nested in it is reached through the member that holds it, so
-  renaming that one with its layout kept changes nothing.
+  renaming that one with its layout kept changes nothing. Turning `volatile` on, from false
+  to true, is a change of interface for an object a component reads, and is reported here
+  once, at the variable for a structured one, and not again as `changed-storage`: a reader
+  compiled against the baseline's headers reaches the object through an lvalue that is not
+  volatile, which C leaves undefined.
+- `renamed-read-object`: an object of the baseline is offered under a different name and a
+  component read it. A reader may be a binary compiled against the baseline's headers, and it
+  looks for a spelling that is gone. It is found as `renamed-object` is, by the `id`
+  ([section 3.3](#33-data-object-definition)), and reported with the readers named; a
+  structured variable's rename is said under each leaf's path, each leaf answering for the
+  readers of its variable. A check has one severity, so a project's `-W renamed-object`
+  relaxes only the warning below and does not reach this error.
 - `reused-name`: a name of the baseline now names a different object. Three things prove it,
   and a rename proves it from either end. Two ids stated under one name that differ prove it
   outright. So does the baseline's object under that name having already been paired, by `id`,
@@ -1768,18 +1779,21 @@ compile:
 
 Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 
-- `renamed-object`: an object of the baseline is offered under a different name; its `id`
+- `renamed-object`: an object of the baseline is offered under a different name and no
+  component read it; its `id`
   is what says so ([section 3.3](#33-data-object-definition)). A rename that also changed
   the interface **shall** report both findings rather than only one, and a baseline recorded
   before an id existed on either side **shall** infer no rename - it is reported as a
   removal and an addition, exactly as `missing-id` warns it would be
-  ([section 4](#4-consistency-checks)). Warning rather than error: every consumer names the
-  object it reads, so a rename that left one behind already failed `ddd check`; what breaks
-  is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
+  ([section 4](#4-consistency-checks)). Warning rather than error for an object nobody
+  reads: every consumer names the object it reads, so a rename that left one behind already
+  failed `ddd check`; what breaks is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
   documents keyed by the old spelling.
 - `removed-unused-object`: an object is gone that no component read.
 - `changed-storage`: the initial value, the volatility, the section or the measurement
-  raster ([section 3.10](#310-measurement-rasters)) changed. On a calibration object the
+  raster ([section 3.10](#310-measurement-rasters)) changed; `volatile` turned on for an
+  object a component reads is `changed-interface` instead, and turned off it is this check
+  whoever reads. On a calibration object the
   volatility also decides whether a tool can still change the value in a running target,
   the section says literally which memory the object ends up in, and the raster which event
   a measuring tool receives the value in. An `init` is compared as the storage it produces

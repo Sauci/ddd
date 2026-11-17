@@ -434,11 +434,15 @@ that one across an opaque call, so a value that changes while the software runs 
 observed to change between them - and with ``-flto`` it folds outright. Reading the parameter
 once into a ram copy at startup is no escape either: ``RamGain = Gain;`` is ``mov eax, 3``.
 
-What that costs is not a write that fails but a write nobody notices. A program that stores 7
-through the address of a plain ``const`` object prints, identically at ``-O0``, ``-O2`` and
-``-Os``, that memory now holds ``Gain=7`` and that ``apply(1)`` still returns 3, which is
-exactly the failure a calibration engineer spends an afternoon on: the tool shows the new
-value, reads it back correctly, and the ecu behaves as it did before.
+What a tool's write then does was run as a hosted program (gcc 15.2.0, binutils 2.46) that stores
+7 through the address of ``Gain`` and prints what memory holds, what ``Gain`` reads and what
+``apply(1)`` returns. On an ordinary hosted build the store faults, a segmentation fault, at
+``-O0``, ``-O2`` and ``-Os``, for ``const`` and ``const volatile`` alike, because both lie in
+``.rodata``. With the page made writable first (``mprotect``, as an overlay or an emulation
+memory makes it for a tool), a plain ``const`` object reads 3 and ``apply(1)`` returns 3 at all
+three levels, while memory holds 7 at ``-O0`` and still 3 at ``-O2`` and ``-Os``. A ``const volatile`` object reads 7 and ``apply(1)`` returns 7 at all
+three. What a particular target does with a store to flash is the target's to say, and was not
+measured.
 
 Where the object lies is a separate question, and ``volatile`` does not answer it:
 ``volatile`` does not move a value to RAM on any toolchain measured. The committed ELF images
@@ -446,7 +450,8 @@ the test suite reads, built by gcc 14.2.0 (x86_64, i686, aarch64, powerpc and s3
 arm-none-eabi-gcc 14.2.1 and clang 19.1.7, hold every ``const volatile`` object in ``.rodata``,
 which is not writable, except the small ones on powerpc, which lie in ``.sdata``, a writable
 section, as the plain ``const`` objects of their size do. ``readelf`` reports the flags ``A``, not
-``WA``, for ``.rodata``, and ``nm`` the class ``R``, not ``D``. Where the compiler
+``WA``, for ``.rodata``, and ``nm`` the class ``R``, not ``D``, on every image measured but
+the small objects of powerpc. Where the compiler
 places such an object depends on the target and on the compiler's version, and no other
 version was measured: confirm it once on the toolchain a project ships with.
 

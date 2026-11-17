@@ -508,7 +508,8 @@ archive's selective pull, but not out of the linker's collection of sections. A 
 ``--gc-sections`` drops a definition no code references, with or without ``-fdata-sections``,
 and an object nobody but the calibration tool reads goes with it: the a2l then
 carries its object at address 0 or, given the image with ``--image``, reports it
-``address-missing``.
+``address-missing``. Linking the demo this way gave the same result on this host with
+``-fdata-sections`` and without it.
 
 The example template ``ddd_globals.c.jinja2`` puts ``DDD_RETAIN`` before every definition, and
 it is empty unless the project defines it, so that the c is what it was without it. On ELF a
@@ -516,9 +517,10 @@ project that links with ``--gc-sections`` defines it as ``__attribute__((used, r
 with gcc 15.2.0, binutils 2.46 and ``-fdata-sections`` kept every object of the demo where the
 empty macro kept none, and ``used`` alone kept none; it needs a gcc that knows ``retain`` and a
 binutils that keeps such a section, and the definition goes on the compiler's command line
-(``-D``) or in a header the build includes first. On PE gcc ignores ``retain``, and what is left is a reference to the
-object from code that is linked, or a linker script that keeps its section. A project that
-writes its own definition template spells the same thing in it.
+(``-D``) or in a header the build includes first. On PE gcc ignores ``retain``, so the macro
+does not keep a definition there, and a reference to the object from code that is linked, or a
+linker script that keeps the section, does. A project that writes its own definition template
+spells the same thing in it.
 
 .. note::
    How these examples comment the generated code is not a recommendation. A different

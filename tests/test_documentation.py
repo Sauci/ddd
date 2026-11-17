@@ -2205,6 +2205,8 @@ class TestWhereConstVolatileLiesAndWhatAGarbageCollectingLinkDrops:
         "should** be confirmed",
         "measured with gcc 12.2.0 on ddd's own generated demo",
         "The definitions reach the image whole",
+        "What that costs is not a write that fails",
+        "prints, identically at",
     )
 
     @staticmethod
@@ -2245,6 +2247,22 @@ class TestWhereConstVolatileLiesAndWhatAGarbageCollectingLinkDrops:
         ):
             assert sentence.lower() in text
 
+    def test_the_artefacts_page_says_what_the_hosted_program_and_nm_showed(self) -> None:
+        text, q = self.page("docs/generated_artefacts.rst")
+        for sentence in (
+            "on an ordinary hosted build the store faults, a segmentation fault, at "
+            f"{q}-O0{q}, {q}-O2{q} and {q}-Os{q}, for {q}const{q} and {q}const volatile{q} alike, "
+            f"because both lie in {q}.rodata{q}",
+            f"a plain {q}const{q} object reads 3 and {q}apply(1){q} returns 3 at all three "
+            f"levels, while memory holds 7 at {q}-O0{q} and still 3 at {q}-O2{q} and {q}-Os{q}",
+            f"a {q}const volatile{q} object reads 7 and {q}apply(1){q} returns 7 at all three",
+            "what a particular target does with a store to flash is the target's to say, and "
+            "was not measured",
+            f"{q}nm{q} the class {q}R{q}, not {q}D{q}, on every image measured but the small "
+            "objects of powerpc",
+        ):
+            assert sentence.lower() in text
+
     @pytest.mark.parametrize("name", BRIEF)
     def test_the_shorter_pages_say_the_placement_is_the_projects_and_depends_on_the_toolchain(
         self, name: str
@@ -2268,8 +2286,11 @@ class TestWhereConstVolatileLiesAndWhatAGarbageCollectingLinkDrops:
             f"{q}__attribute__((used, retain)){q}, which with gcc 15.2.0, binutils 2.46 and "
             f"{q}-fdata-sections{q} kept every object of the demo where the empty macro kept "
             f"none, and {q}used{q} alone kept none",
-            f"on pe gcc ignores {q}retain{q}, and what is left is a reference to the object from "
-            "code that is linked, or a linker script that keeps its section",
+            f"on pe gcc ignores {q}retain{q}, so the macro does not keep a definition there, and "
+            "a reference to the object from code that is linked, or a linker script that keeps "
+            "the section, does",
+            "linking the demo this way gave the same result on this host with "
+            f"{q}-fdata-sections{q} and without it",
         ):
             assert sentence.lower() in text
 

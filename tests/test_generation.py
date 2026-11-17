@@ -655,10 +655,10 @@ class TestRetainingADefinitionAGarbageCollectingLinkWouldDrop:
         assert done.returncode == 0, done.stderr
         return done.stdout
 
-    def kept(self, tmp_path: Path, *flags: str) -> tuple[int, int, bytes, str]:
+    def kept(self, tmp_path: Path, *flags: str) -> tuple[set[str], set[str], bytes, str]:
         """Link the generated definitions with ``-fdata-sections`` and ``--gc-sections`` against
-        a ``main`` that references none of them: how many objects the unit defines, how many of
-        them the image keeps, the image's first bytes, and what ``ddd generate a2l`` says of it."""
+        a ``main`` that references none of them: the objects the unit defines, the ones the image
+        keeps, the image's first bytes, and its path."""
         source = self.generated(tmp_path / "gen")
         main_c = tmp_path / "main.c"
         main_c.write_text("int main(void) { return 0; }\n", encoding="utf-8")
@@ -675,30 +675,39 @@ class TestRetainingADefinitionAGarbageCollectingLinkWouldDrop:
             return {s[2].removeprefix("_") for s in symbols if len(s) == 3 and s[1] in "BbDdRrGgSs"}
 
         defined = objects(tmp_path / "globals.o")
-        return len(defined), len(defined & objects(image)), image.read_bytes()[:4], str(image)
+        return defined, defined & objects(image), image.read_bytes()[:4], str(image)
 
-    def test_every_definition_is_retained_on_elf_and_dropped_on_pe_where_the_macro_is_set(
+    def test_the_macro_keeps_every_definition_on_elf_and_no_more_than_the_empty_one_on_pe(
         self, tmp_path: Path
     ) -> None:
-        """Measured with gcc 15.2.0 and binutils 2.46: ``used`` alone keeps nothing, and
-        ``used, retain`` keeps every object. On PE gcc ignores ``retain``, and nothing is kept."""
-        total, empty, magic, _ = self.kept(tmp_path / "empty")
-        assert total >= 20
-        assert empty == 0
-        elf = magic == b"\x7fELF"
-        total, used, _, _ = self.kept(tmp_path / "used", "-DDDD_RETAIN=__attribute__((used))")
-        assert used == 0
-        total, retained, _, _ = self.kept(tmp_path / "retain", f"-DDDD_RETAIN={self.RETAIN}")
-        assert retained == (total if elf else 0)
+        """Measured on ELF with gcc 15.2.0 and binutils 2.46: the empty macro and ``used`` alone
+        keep nothing, and ``used, retain`` keeps every object. On PE gcc ignores ``retain``, so the
+        macro keeps what the empty one does, whatever the linker leaves of that: no count is held
+        there, since it is the linker's."""
+        defined, empty, magic, _ = self.kept(tmp_path / "empty")
+        _, used, _, _ = self.kept(tmp_path / "used", "-DDDD_RETAIN=__attribute__((used))")
+        _, retained, _, _ = self.kept(tmp_path / "retain", f"-DDDD_RETAIN={self.RETAIN}")
+        version = self.run(self.compiler(), "--version").splitlines()[0]
+        met = f"{version}: the empty macro kept {sorted(empty)}, used {sorted(used)}"
+        assert len(defined) >= 20, met
+        if magic == b"\x7fELF":
+            assert empty == used == set(), met
+            assert retained == defined, f"{met}, used and retain {sorted(retained)}"
+        else:
+            assert magic[:2] == b"MZ", met
+            assert used == retained == empty, f"{met}, used and retain {sorted(retained)}"
 
     def test_the_a2l_of_an_image_without_them_says_the_addresses_are_missing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """On an ELF image the a2l run warns ``address-missing``; the reader reads no other
+        format, so what a PE leg holds is that the image it linked is a PE one."""
         from ddd.cli import main
 
         _, _, magic, image = self.kept(tmp_path / "empty")
         if magic != b"\x7fELF":
-            return  # an image the reader reads is an ELF one; PE is covered by the count above
+            assert magic[:2] == b"MZ", "the linked image is neither an ELF nor a PE one"
+            return
         arguments = ["generate", "a2l", str(DEMO), "--image", image, "-o", str(tmp_path / "a2l")]
         main(arguments)
         assert "warning[address-missing]" in capsys.readouterr().err

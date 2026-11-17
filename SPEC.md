@@ -1919,14 +1919,15 @@ That holds for an archive and not for the linker's own collection of sections. A
 `--gc-sections` drops a definition no code references, with or without `-fdata-sections`,
 and an object nobody but the calibration tool reads goes with it: the a2l then
 carries its object at address 0 or, given the image with `--image`, reports it
-`address-missing`. The example template `ddd_globals.c.jinja2` puts `DDD_RETAIN` before
+`address-missing`. Linking the demo this way gave the same result on this host with
+`-fdata-sections` and without it. The example template `ddd_globals.c.jinja2` puts `DDD_RETAIN` before
 every definition, and it is empty unless the project defines it, so that the C is what it
 was. On ELF a project that links with `--gc-sections` defines it as
 `__attribute__((used, retain))`, which with gcc 15.2.0, binutils 2.46 and `-fdata-sections`
 kept every object of the demo where the empty macro kept none, and `used` alone kept none;
 it needs a gcc that knows `retain` and a binutils that keeps such a section. On PE gcc
-ignores `retain`, and what is left is a reference to the object from code that is linked,
-or a linker script that keeps its section.
+ignores `retain`, so the macro does not keep a definition there, and a reference to the
+object from code that is linked, or a linker script that keeps the section, does.
 
 None of this forbids the arrangement: a `{component}` template renders a `.c` as readily as
 a `.h`. A project that wants its definitions spread over several files **may** also write

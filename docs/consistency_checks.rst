@@ -886,7 +886,9 @@ registry can be read in one place.
        grade of calibration data and of a measurement nobody reads. The ends are compared with
        the relative tolerance of ``limits-out-of-range``: most limits are derived, and a
        candidate that writes down the ones its datatype implies is not narrowing the unrounded
-       ends an older baseline carries.
+       ends an older baseline carries. A project that relaxed ``narrowed-limits`` for a
+       measurement a component reads relaxes ``narrowed-read-limits`` and ``widened-limits``
+       instead.
    * - ``widened-limits``
      - warning
      - the physical limits of a measurement a component reads got wider, so a reader sized for

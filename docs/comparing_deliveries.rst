@@ -538,7 +538,7 @@ Against the archived dictionary, the same five changes look rather different:
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
-   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits narrowed from [0, 100] to [0, 80], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
    2 errors, 1 warning, 2 infos
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
@@ -590,7 +590,7 @@ additionally reads a ``ValvePosition`` that nobody produces:
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
-   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits narrowed from [0, 100] to [0, 80], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'ValvePosition' is new in PressureLoop (measurement, produced by nobody)
    3 errors, 1 warning, 3 infos
@@ -704,7 +704,7 @@ likely explanation is that the wrong file was picked up:
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    examples/pressure/work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
    examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
-   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits narrowed from [0, 100] to [0, 80], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
    2 errors, 2 warnings, 2 infos
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json

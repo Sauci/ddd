@@ -5795,6 +5795,15 @@ class TestLimitsAreGradedByTheDirectionDataFlows:
         flat = flattened(CONSISTENCY_CHECKS)
         assert "this is the grade of calibration data and of a measurement nobody reads" in flat
 
+    def test_the_check_reference_tells_a_project_that_relaxed_narrowed_limits_what_to_relax(
+        self,
+    ) -> None:
+        flat = flattened(CONSISTENCY_CHECKS)
+        assert (
+            "A project that relaxed ``narrowed-limits`` for a measurement a component reads "
+            "relaxes ``narrowed-read-limits`` and ``widened-limits`` instead"
+        ) in flat
+
     def test_the_readme_and_the_faq_say_the_direction_depends_on_the_flow(self) -> None:
         assert "**A limit is graded by the direction the data flows.**" in flattened(README)
         assert "widening it is a warning while narrowing it is an information" in flattened(README)
@@ -5802,28 +5811,133 @@ class TestLimitsAreGradedByTheDirectionDataFlows:
         assert "``widened-limits`` is a warning on a measurement a component reads" in faq
         assert "the other way round for a measurement a component reads" in faq
 
-    def test_the_worked_example_shows_what_the_command_prints(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """The five changes of ``examples/pressure``, run as the page runs them."""
-        monkeypatch.chdir(ROOT)
-        capsys.readouterr()
-        main(
-            [
-                "compare",
-                "examples/pressure/release/pressure.ddd.json",
-                "examples/pressure/work/pressure.ddd.json",
-            ]
+    # The blocks of the comparison page that show a run of ``examples/pressure``, each with
+    # the edit of the working tree that block says it ran on (``None``: the tree as shipped).
+    # A block is held to its own run as a whole - findings, summary and verdict - and not to
+    # a line that is somewhere on the page, because the same finding is shown in several.
+    RUNS: ClassVar[dict[str, str | None]] = {
+        "ddd check examples/pressure/release/pressure.ddd.json": None,
+        "ddd check examples/pressure/work/pressure.ddd.json": None,
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json": None,
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  # the candidate without FilterGain": "no-gain",
+        "ddd check examples/pressure/work/pressure.ddd.json "
+        "--baseline examples/pressure/release/PressureLoop-1.4.0.json  "
+        "# the candidate also reading ValvePosition": "position",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  "
+        "# FilterGain's limits narrowed to 0 .. 0.5 instead": "gain-limits",
+        "ddd check examples/pressure/work/pressure.ddd.json  "
+        "# PressureRaw rescaled to a factor of 0.01 instead": "rescaled",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  "
+        "# PressureRaw rescaled to a factor of 0.01 instead": "rescaled",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json  # the candidate renamed AirLoop": "airloop",
+        "ddd compare examples/pressure/release/PressureLoop-1.4.0.json "
+        "examples/pressure/work/pressure.ddd.json -W widened-limits=ignore "
+        "-W narrowed-read-limits=ignore -W added-object=ignore": None,
+    }
+
+    @staticmethod
+    def edit_component(tree: Path, name: str, change: Any) -> None:
+        path = tree / "examples" / "pressure" / "work" / "components" / f"{name}.ddd.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        change(data["component"]["interface"])
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def tree_for(self, tmp_path: Path, scenario: str | None) -> None:
+        """Copy the example, dump the release as the page does, then apply the scenario."""
+        shutil.copytree(ROOT / "examples" / "pressure", tmp_path / "examples" / "pressure")
+        release = tmp_path / "examples" / "pressure" / "release"
+        work = tmp_path / "examples" / "pressure" / "work"
+        assert (
+            main(
+                [
+                    "dump",
+                    str(release / "pressure.ddd.json"),
+                    "-o",
+                    str(release / "PressureLoop-1.4.0.json"),
+                ]
+            )
+            == EXIT_OK
         )
-        findings = [
-            line
-            for line in capsys.readouterr().err.splitlines()
-            if line.startswith("examples/pressure/work/pressure.ddd.json: ")
-        ]
-        assert len(findings) == 5
-        page = COMPARING_DELIVERIES
-        for line in findings:
-            assert f"   {line}\n" in page
-        assert "warning[widened-limits]: 'SupplyVoltage'" in findings[2]
-        assert "info[narrowed-read-limits]: 'ValveDuty'" in findings[3]
-        assert "Five findings for five changes." in flattened(page)
+        if scenario is None:
+            return
+        # Every other scenario is the release with one edit, as the page's "suppose" says.
+        if scenario not in ("position", "airloop"):
+            shutil.rmtree(work)
+            shutil.copytree(release, work, ignore=shutil.ignore_patterns("PressureLoop-1.4.0.json"))
+
+        def named(interface: list[dict[str, Any]], name: str) -> dict[str, Any]:
+            return next(e["definition"] for e in interface if e["definition"]["name"] == name)
+
+        def rescale(interface: list[dict[str, Any]]) -> None:
+            for entry in interface:
+                if entry["definition"]["name"] == "PressureRaw":
+                    entry["definition"]["conversion"] = {"factor": 0.01}
+                    entry["definition"]["limits"] = {"min": 0, "max": 250}
+
+        if scenario == "no-gain":
+            self.edit_component(
+                tmp_path,
+                "sensor",
+                lambda i: i.remove(next(e for e in i if e["definition"]["name"] == "FilterGain")),
+            )
+        elif scenario == "gain-limits":
+            self.edit_component(
+                tmp_path, "sensor", lambda i: named(i, "FilterGain")["limits"].update(max=0.5)
+            )
+        elif scenario == "rescaled":
+            for component in ("sensor", "controller"):
+                self.edit_component(tmp_path, component, rescale)
+        elif scenario == "airloop":
+            path = work / "pressure.ddd.json"
+            path.write_text(
+                path.read_text(encoding="utf-8").replace("PressureLoop", "AirLoop"),
+                encoding="utf-8",
+            )
+        else:
+            assert scenario == "position"
+            self.edit_component(
+                tmp_path,
+                "actuator",
+                lambda i: i.append(
+                    {
+                        "scope": "input",
+                        "definition": {**dict(named(i, "SupplyVoltage")), "name": "ValvePosition"},
+                    }
+                ),
+            )
+
+    def test_every_block_of_the_comparison_page_that_shows_a_run_is_what_the_command_prints(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Each block, as a whole: the findings, the summary line and the verdict line."""
+        blocks: dict[str, list[str]] = {}
+        lines = COMPARING_DELIVERIES.splitlines()
+        for number, line in enumerate(lines):
+            if not line.startswith("   $ ddd ") or " > " in line:
+                continue
+            shown: list[str] = []
+            for following in lines[number + 1 :]:
+                if not following.startswith("   ") or following.startswith("   $ "):
+                    break
+                shown.append(following[3:])
+            blocks.setdefault(line[5:], []).append("\n".join(shown))
+        held = 0
+        for command, scenario in self.RUNS.items():
+            assert command in blocks, command
+            shutil.rmtree(tmp_path / "examples", ignore_errors=True)
+            self.tree_for(tmp_path, scenario)
+            monkeypatch.chdir(tmp_path)
+            capsys.readouterr()
+            main(shlex.split(command.split("  #")[0])[1:])
+            captured = capsys.readouterr()
+            printed = (captured.out + captured.err).rstrip("\n")
+            for shown_text in blocks[command]:
+                assert printed == shown_text, command
+                held += 1
+        assert held == 10
+        assert "Five findings for five changes." in flattened(COMPARING_DELIVERIES)

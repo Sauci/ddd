@@ -1236,7 +1236,7 @@ def _compare_object(
         elif was_read:
             bag.add(
                 "narrowed-read-limits",
-                f"'{old.name}': limits narrowed from {change}{readers}",
+                f"'{old.name}': limits tightened from {change}{readers}",
                 location,
             )
         elif narrowed:

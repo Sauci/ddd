@@ -3146,7 +3146,7 @@ class TestLimitsAreGradedByTheDirectionDataFlows:
         new = self.delivery(tree, "new", self.NARROW)
         bag = verdict(old, new)
         assert checks(bag) == ["narrowed-read-limits"], messages(bag)
-        assert "'Speed': limits narrowed from [0, 100] to [0, 50], read by B" in messages(bag)
+        assert "'Speed': limits tightened from [0, 100] to [0, 50], read by B" in messages(bag)
         code, report = ruling(tree, capsys, "--strict")
         assert code == EXIT_OK
         assert "can replace" in report
@@ -3184,6 +3184,12 @@ class TestLimitsAreGradedByTheDirectionDataFlows:
     def test_a_widening_beside_a_changed_interface_is_said_once(self, tree: Path) -> None:
         old = self.delivery(tree, "old", self.BASE, datatype="uint16")
         new = self.delivery(tree, "new", self.WIDE, datatype="uint32")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+
+    def test_a_narrowing_beside_a_changed_interface_is_said_once(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", self.BASE, datatype="uint16")
+        new = self.delivery(tree, "new", self.NARROW, datatype="uint32")
         bag = verdict(old, new)
         assert checks(bag) == ["changed-interface"], messages(bag)
 

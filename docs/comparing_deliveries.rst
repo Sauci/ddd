@@ -332,7 +332,11 @@ calibration engineer works with while invalidating nobody's code. An initial val
 as the bytes it produces and not as it was spelled - DDD offers ``7`` on a ``uint8[4]`` and
 ``[7, 7, 7, 7]`` as two spellings of one array, and a string's text as the character codes it
 stands for - so a delivery that respells one without moving a byte still replaces its
-predecessor. Where two of them do differ, the finding spells both the way the file spells
+predecessor. A scalar is the array it fills only when every element of the array holds it, so
+two tables that differ in any element - a square map and its transpose - are two initial
+values, and the finding names the first index they part at, in the order c lays the elements
+out. ``-0.0`` is not ``0.0``, since the sign bit is a stored byte, and changing one into the
+other is a change of the initial value; in an integer datatype ``-0`` is ``0``. Where two of them do differ, the finding spells both the way the file spells
 them, cut short past a few elements when the array is long, and names the first index they
 part at. On a structured variable those three properties are the variable's own, its members
 having no volatility, section or raster of their own, and are reported at the variable, once,

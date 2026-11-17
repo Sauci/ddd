@@ -211,7 +211,9 @@ repeated inside one object; the file is refused (`json-syntax`) rather than read
 surviving value. A file that is not valid UTF-8, or whose nesting exceeds the depth the
 parser accepts, is refused the same way (`json-syntax`). So is a file spelling `NaN` or
 `Infinity`, which JSON does not define; a number too large for the parser's floating point,
-such as `1e400`, reads as infinity and is refused as `schema` where it is written. A file
+such as `1e400`, reads as infinity and is refused as `schema` where it is written, and a
+number whose digits are not zero but which the parser reads as zero, such as `1e-400`, is refused
+by name (`json-syntax`). A file
 whose top level is not an object is `file-kind`. Unknown keys are rejected, with one
 exception: a top level `$schema` key **shall** be accepted and ignored, because it is the
 standard way an editor binds a JSON file to its schema and thereby turns the published
@@ -460,7 +462,10 @@ Kind specific attributes:
   that is not zero and that the storage rounds to zero is `init-invalid`, because the value
   the object would start with is not the value the description states - `1e-50` on a
   `float32`, whose smallest magnitude is about 1.4e-45, and which the generated C carries as
-  a literal a compiler refuses rather than silently zeroes. It is
+  a literal a compiler refuses rather than silently zeroes. A literal that no `float64`
+  holds either, such as `1e-400`, is refused where it is written (`json-syntax`) as `NaN` is,
+  because the reader would otherwise take it for the zero it rounds to before this rule saw
+  it; a zero in any spelling is kept. It is
   compared neither against the limits, which
   are physical while `init` is raw, nor against the enumerators of an enum conversion.
   A `string` object ([section 3.4](#34-conversions)) **may** state its `init` as a JSON
@@ -1810,7 +1815,12 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   and not as it was spelled: a scalar written for an array is the array it fills, and a
   string's text is the character codes it stands for followed by the zeros that pad the
   array ([section 3.3](#33-data-object-definition)), so a delivery that respells an initial
-  value without moving a byte of it replaces its predecessor. Both spellings are the tool's
+  value without moving a byte of it replaces its predecessor. A scalar is the array it fills
+  only when every element of the array holds it: two tables that differ in any element,
+  such as a square map and its transpose, are two initial values, and the finding names the
+  first index where they part, the elements taken in the order C lays them out. A floating
+  point `-0.0` is not `0.0`, since the sign bit is a stored byte, so an initial value changing
+  from one to the other is a change; in an integer datatype `-0` is `0`. Both spellings are the tool's
   own offer, and a finding naming them is what the description writes: the two values as
   JSON, cut short past a few elements when the array is long, with the first index at which
   they part named beside them.

@@ -330,6 +330,7 @@ class TestGradedChanges:
         bag = verdict(old, new)
         assert checks(bag) == ["changed-storage"]
         assert "init: 2 != 1" in messages(bag)
+        assert "first differs" not in messages(bag), "two scalars name no index"
 
     def test_gaining_an_initial_value_is_a_warning(self, tree: Path) -> None:
         old = one_component(tree, "old", declare("local", "X"))
@@ -1262,6 +1263,146 @@ class TestAnInitComparesAsBytes:
         old, new = self.deliveries(tree, 7, [7, 7, 7, 7])
         assert old.by_name["V"].init == 7
         assert new.by_name["V"].init == (7, 7, 7, 7)
+
+
+class TestTwoDifferentInitsAreTwoDifferentInits:
+    """An init is collapsed to a scalar only when every element of the whole of it is one value.
+
+    The collapse used to run level by level, so ``[[4, 4, 4], [5, 5, 5], [6, 6, 6]]`` read as
+    ``(4, 5, 6)`` and so did its transpose: two tables that generate different initialisers
+    compared equal, ``--strict`` exited 0, and the index named for a real difference was
+    another one. Each pair below is stored differently and each is a ``changed-storage``.
+    """
+
+    TABLE: ClassVar[list[list[int]]] = [[4, 5, 6], [4, 5, 6], [4, 5, 6]]
+    LAST_ROW_CHANGED: ClassVar[list[list[int]]] = [[4, 5, 6], [4, 5, 6], [4, 5, 7]]
+
+    EDGES: ClassVar[list[Any]] = [
+        pytest.param(
+            [2, 2], [[10, 10], [20, 20]], [[10, 20], [10, 20]], "[0][1]: 20 != 10", id="2x2"
+        ),
+        pytest.param(
+            [3, 3],
+            [[4, 4, 4], [5, 5, 5], [6, 6, 6]],
+            [[4, 5, 6], [4, 5, 6], [4, 5, 6]],
+            "[0][1]: 5 != 4",
+            id="3x3",
+        ),
+        pytest.param(
+            [2, 2, 2],
+            [[[3, 3], [3, 3]], [[4, 4], [4, 4]]],
+            [[[3, 4], [3, 4]], [[3, 4], [3, 4]]],
+            "[0][0][1]: 4 != 3",
+            id="2x2x2",
+        ),
+        pytest.param([3, 3], TABLE, LAST_ROW_CHANGED, "[2][2]: 7 != 6", id="the index of the part"),
+        pytest.param([2, 2], 7, [[7, 7], [7, 8]], "[1][1]: 8 != 7", id="a scalar against a table"),
+    ]
+
+    def deliveries(
+        self, tree: Path, datatype: str, dimensions: list[int], before: object, after: object
+    ) -> tuple[DataDictionary, DataDictionary]:
+        block = {"kind": "value_block", "dimensions": dimensions}
+        return (
+            one_component(tree, "old", declare("local", "V", datatype, init=before, **block)),
+            one_component(tree, "new", declare("local", "V", datatype, init=after, **block)),
+        )
+
+    def rulings(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> list[tuple[int, str]]:
+        """``--strict`` over both descriptions, and over a baseline archived as a dump."""
+        both = [ruling(tree, capsys, "--strict")]
+        assert main(["dump", str(tree / "old.ddd.json"), "-o", str(tree / "old.json")]) == EXIT_OK
+        capsys.readouterr()
+        code = main(["compare", str(tree / "old.json"), str(tree / "new.ddd.json"), "--strict"])
+        both.append((code, capsys.readouterr().err))
+        return both
+
+    @pytest.mark.parametrize(("dimensions", "before", "after", "where"), EDGES)
+    def test_two_tables_that_store_differently_are_a_finding(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        dimensions: list[int],
+        before: object,
+        after: object,
+        where: str,
+    ) -> None:
+        old, new = self.deliveries(tree, "uint8", dimensions, before, after)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        assert f"first differs at {where}" in messages(bag)
+        for code, report in self.rulings(tree, capsys):
+            assert code == EXIT_FINDINGS, report
+            assert "cannot replace" in report
+
+    def test_a_scalar_is_still_the_long_spelling_of_itself(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        for before, after in ((7, [[7, 7], [7, 7]]), ([[7, 7], [7, 7]], 7)):
+            old, new = self.deliveries(tree, "uint8", [2, 2], before, after)
+            assert checks(verdict(old, new)) == []
+            for code, report in self.rulings(tree, capsys):
+                assert code == EXIT_OK, report
+
+    @pytest.mark.parametrize("datatype", ["float32", "float64"])
+    def test_a_negative_zero_is_not_a_zero(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], datatype: str
+    ) -> None:
+        """The sign bit is a byte of the initialiser: ``0.0F`` and ``-0.0F`` are two floats."""
+        old = one_component(tree, "old", declare("local", "F", datatype, init=0.0))
+        new = one_component(tree, "new", declare("local", "F", datatype, init=-0.0))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        assert "'F': init: -0.0 != 0.0" in messages(bag)
+        for code, report in self.rulings(tree, capsys):
+            assert code == EXIT_FINDINGS, report
+            assert "cannot replace" in report
+
+    def test_a_negative_zero_in_a_table_is_told_at_its_index(self, tree: Path) -> None:
+        old, new = self.deliveries(
+            tree, "float32", [2, 2], [[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, -0.0]]
+        )
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        assert "first differs at [1][1]: -0.0 != 0.0" in messages(bag)
+
+    def test_a_negative_zero_against_itself_is_no_finding(self, tree: Path) -> None:
+        old = one_component(tree, "old", declare("local", "F", "float32", init=-0.0))
+        new = one_component(tree, "new", declare("local", "F", "float32", init=-0.0))
+        assert checks(verdict(old, new)) == []
+
+    def test_an_integers_minus_zero_is_zero(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """json reads ``-0`` as the integer 0: no sign survives in an integer datatype."""
+        old = one_component(tree, "old", declare("local", "I", "sint16", init=0))
+        text = json.dumps(component("A", declare("local", "I", "sint16", init=0)))
+        (tree / "new-a.ddd.json").write_text(text.replace('"init": 0', '"init": -0'), "utf-8")
+        write_tree(tree, {"new.ddd.json": project("P", "new-a.ddd.json")})
+        new = resolve(tree, "new.ddd.json")
+        assert '"init": -0' in (tree / "new-a.ddd.json").read_text("utf-8")
+        assert checks(verdict(old, new)) == []
+        for code, report in self.rulings(tree, capsys):
+            assert code == EXIT_OK, report
+
+    def test_a_literal_no_double_holds_is_refused_where_it_is_written(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``1e-400`` read as 0 before anything looked at it, so a comparison against ``0`` was
+        clean and ``ddd list`` showed 0: it is refused by name instead, as NaN is."""
+        one_component(tree, "old", declare("local", "F", "float64", init=0))
+        text = json.dumps(component("A", declare("local", "F", "float64", init="@@")))
+        (tree / "new-a.ddd.json").write_text(text.replace('"@@"', "1e-400"), "utf-8")
+        write_tree(tree, {"new.ddd.json": project("P", "new-a.ddd.json")})
+        code, report = ruling(tree, capsys, "--strict")
+        assert code != EXIT_OK, report
+        assert "1e-400" in report
+
+    def test_the_dump_of_a_zero_is_what_it_stores(self, tree: Path) -> None:
+        """A dump holds what the loader read, so there is nothing for the literal to be."""
+        old = one_component(tree, "old", declare("local", "F", "float64", init=0))
+        new = one_component(tree, "new", declare("local", "F", "float64", init=0.0))
+        assert checks(verdict(old, new)) == []
 
 
 class TestAnInitIsSpelledForAReader:

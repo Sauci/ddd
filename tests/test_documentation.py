@@ -5492,6 +5492,55 @@ class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:
         ) in self.SPEC_TEXT
 
 
+class TestWhatThePagesSayOfAnInitAndWhatItStores:
+    """A scalar is the array it fills only when every element holds it, ``-0.0`` is not ``0.0``,
+    and a literal no double has the bits for is refused where it is written."""
+
+    SPEC_TEXT = flattened(SPEC)
+    PAGE = flattened(PAGES["docs/comparing_deliveries.rst"])
+    FORMATS = flattened(PAGES["docs/file_formats/index.rst"])
+
+    def test_the_spec_says_when_a_scalar_is_the_array_and_which_zero_is_which(self) -> None:
+        for sentence in (
+            "A scalar is the array it fills only when every element of the array holds it: two "
+            "tables that differ in any element, such as a square map and its transpose, are two "
+            "initial values, and the finding names the first index where they part, the "
+            "elements taken in the order C lays them out.",
+            "A floating point `-0.0` is not `0.0`, since the sign bit is a stored byte, so an "
+            "initial value changing from one to the other is a change; in an integer datatype "
+            "`-0` is `0`.",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_spec_says_where_a_literal_that_rounds_to_zero_is_refused(self) -> None:
+        for sentence in (
+            "A literal that no `float64` holds either, such as `1e-400`, is refused where it is "
+            "written (`json-syntax`) as `NaN` is, because the reader would otherwise take it for "
+            "the zero it rounds to before this rule saw it; a zero in any spelling is kept.",
+            "and a number whose digits are not zero but which the parser reads as zero, such as "
+            "`1e-400`, is refused by name (`json-syntax`).",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_comparison_page_says_the_same_of_the_init(self) -> None:
+        assert (
+            "A scalar is the array it fills only when every element of the array holds it, so two "
+            "tables that differ in any element - a square map and its transpose - are two "
+            "initial values, and the finding names the first index they part at, in the order c "
+            "lays the elements out. ``-0.0`` is not ``0.0``, since the sign bit is a stored "
+            "byte, and changing one into the other is a change of the initial value; in an "
+            "integer datatype ``-0`` is ``0``."
+        ) in self.PAGE
+
+    def test_the_file_format_page_says_such_a_number_is_refused(self) -> None:
+        assert (
+            "A number no double has the bits for, such as ``1e-400``, is refused where it is "
+            "written, naming it, for a related reason: python would read it as zero before the "
+            "rule that a non-zero initial value which its storage rounds to zero is "
+            "``init-invalid`` could see it."
+        ) in self.FORMATS
+
+
 class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
     """A structured variable's layout is interface, read from the dictionary's ``types`` and said
     once at the variable; a member added after every member of the structure of a single

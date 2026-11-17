@@ -25,7 +25,8 @@ like the others, not a drift.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Mapping, Sequence
+import math
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -174,6 +175,8 @@ def _describe_init(value: object) -> str:
     """
     if value is None:
         return "none"
+    if isinstance(value, _NegativeZero):
+        return "-0.0"
     if isinstance(value, str):
         if len(value) <= _MOST_INIT_CHARACTERS:
             return json.dumps(value)
@@ -207,7 +210,17 @@ def _first_difference(before: object, after: object) -> tuple[str, str] | None:
 
     A string never reaches here as text: :func:`_stored_init` has already turned it into the
     character codes it stores, so every value below is a number, a bool or a list of them.
+    A scalar stands for every element of whatever it is held against, so the walk goes down
+    the list side and the scalar is met again at each element; elements are visited in the
+    order c lays them out.
     """
+    if not isinstance(before, tuple) and not isinstance(after, tuple):
+        return None
+    return _walk(before, after)
+
+
+def _walk(before: object, after: object) -> tuple[str, str] | None:
+    """:func:`_first_difference` below the top, where a scalar against a scalar is a value."""
     pairs: Iterable[tuple[object, object]]
     if isinstance(before, tuple) and isinstance(after, tuple):
         pairs = zip(before, after, strict=False)
@@ -216,15 +229,14 @@ def _first_difference(before: object, after: object) -> tuple[str, str] | None:
     elif isinstance(after, tuple):
         pairs = ((before, element) for element in after)
     else:
-        return None
+        if before == after:
+            return None
+        return "", f"{_describe_init(after)} != {_describe_init(before)}"
     for index, (mine, theirs) in enumerate(pairs):
-        if mine == theirs:
-            continue
-        deeper = _first_difference(mine, theirs)
+        deeper = _walk(mine, theirs)
         if deeper is not None:
             path, spelled = deeper
             return f"[{index}]{path}", spelled
-        return f"[{index}]", f"{_describe_init(theirs)} != {_describe_init(mine)}"
     return None
 
 
@@ -242,9 +254,10 @@ def _stored_init(entry: Comparable) -> object:
 
     So both spellings are reduced to one before they are compared, by collapsing the
     repetition rather than by expanding it - ``[7, 7, 7, 7]`` reads as ``7`` where ``7``
-    would have had to become ``(7, 7, 7, 7)``. Same equality, and the collapse needs no
-    shape, which is what keeps two things from going wrong. A delivery that resized the
-    array - already a ``changed-interface`` for its shape - would otherwise compare four
+    would have had to become ``(7, 7, 7, 7)``. Only a whole init of one value collapses
+    (:func:`_uniform`), so that a table is never read as another. Same equality, and the
+    collapse needs no shape, which is what keeps two things from going wrong. A delivery that
+    resized the array - already a ``changed-interface`` for its shape - would otherwise compare four
     sevens against eight and report a second finding reading ``init: 7 != 7``, true of the
     bytes and nonsense on the page. And expanding a scalar means building one element per
     element of the array to compare it, ten million of them at the cap a shape may reach,
@@ -254,6 +267,9 @@ def _stored_init(entry: Comparable) -> object:
     then the zeros c writes after them, up to the length of the array. The analysis has
     already refused a string that is not one dimensional and refused text that leaves no
     room for the terminator, so the padding here only fills what the array has left.
+
+    A negative zero is its own value: it is a different float from zero, a sign bit that
+    ``0.0F`` and ``-0.0F`` do not share, and python's ``==`` calls them equal.
     """
     init = entry.init
     if init is None:
@@ -262,21 +278,51 @@ def _stored_init(entry: Comparable) -> object:
         codes = tuple(ord(character) for character in init)
         width = entry.shape[0] if entry.shape else len(codes)
         return _uniform(codes + (0,) * (width - len(codes)))
-    return _uniform(init)
+    return _uniform(_signed(init))
+
+
+class _NegativeZero:
+    """The float ``-0.0`` as a stored value, which is equal to itself and to nothing else."""
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _NegativeZero)
+
+    def __hash__(self) -> int:
+        return hash("-0.0")
+
+
+def _signed(value: object) -> object:
+    """The init with each ``-0.0`` in it told from ``0.0``, which python's equality cannot."""
+    if isinstance(value, tuple):
+        return tuple(_signed(element) for element in value)
+    if isinstance(value, float) and value == 0.0 and math.copysign(1.0, value) < 0:
+        return _NegativeZero()
+    return value
+
+
+def _leaves(value: object) -> Iterator[object]:
+    """Every element of a nested init, in the order c lays them out."""
+    if isinstance(value, tuple):
+        for element in value:
+            yield from _leaves(element)
+    else:
+        yield value
 
 
 def _uniform(value: object) -> object:
-    """A nested init reduced to the one value it repeats, or left as it is.
+    """An init reduced to the one value it repeats when it repeats one value, else left as it is.
 
     The whole init may be written as a single scalar, and that is the only abbreviation the
-    file format offers - a scalar inside a nested list is refused - so a list every element
-    of which is the same value is the long spelling of exactly that scalar, at every depth.
+    file format offers - a scalar inside a nested list is refused - so what is the long
+    spelling of a scalar is a list of which *every* element, at every depth, is that one
+    value. Collapsing level by level was wrong: rows that are each one value collapse to a
+    column, and ``[[1, 1], [2, 2]]`` and its transpose are the same column, though they
+    are two tables.
     """
     if not isinstance(value, tuple):
         return value
-    collapsed = tuple(_uniform(element) for element in value)
-    repeated = set(collapsed)
-    return repeated.pop() if len(repeated) == 1 else collapsed
+    leaves = set(_leaves(value))
+    return leaves.pop() if len(leaves) == 1 else value
 
 
 def _point_counts(entry: Comparable) -> str:

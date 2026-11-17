@@ -1909,7 +1909,9 @@ id did not travel with it`. It asserts nothing and pairs nothing - the two may s
 different objects - and stays silent the moment more than one addition matches equally well.
 It stays silent too where a delivery offers more than a handful of additions alike in every
 one of those properties: a crowd no single candidate was going to come out of, and the note
-is advisory where the answer to it is not. A removed structured variable with no leaf carries no such note, since it has no interface to match an addition on. This is the only part of the feature that helps a
+is advisory where the answer to it is not. A removed structured variable with no leaf carries
+no such note, since it has no interface to match an addition on. This is the only part of the
+feature that helps a
 project which never adopts `id` at all.
 
 A member of a structured object ([section 3.7](#37-type-description)) has no declaration
@@ -1923,7 +1925,8 @@ on a type's member.
 
 A structured object **shall** be compared as the variable it is and not only through its
 members. The variable answers for what no member carries - its `type` and its layout - and
-for what every member carries only because the variable states it: its `kind`, its array shape and its
+for what every member carries only because the variable states it: its `kind`, its array
+shape and its
 locality as interface, and its volatility, its section, its raster, its producer and its
 condition as storage and as their own findings. Each of those is therefore reported once,
 at the variable, where the declaration that states it is. Reported under the members
@@ -2335,9 +2338,10 @@ where no component does, which a consistent project has none of), `consumers`, `
 `point_counts` (`"none"` or `"leading"`, resolved for a curve, a map or an axis, `"none"`
 for every other kind) and `a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
-`owner`, `consumers`, `local` and `a2l`, and is the only record of a variable of a structure holding
-members of external types alone, which has no leaf: a delivery comparison reads the removal, the rename and
-the reuse of such a variable from it ([section 4.1](#41-comparing-two-deliveries)); a leaf records `path`, `instance`, `instance_id`,
+`owner`, `consumers`, `local` and `a2l`, and is the only record of a variable of a structure
+holding members of external types alone, which has no leaf: a delivery comparison reads the
+removal, the rename and the reuse of such a variable from it
+([section 4.1](#41-comparing-two-deliveries)); a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
 `bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
 `a2l`, whose `export` is the instance's and the members' folded into one - true only where

@@ -186,8 +186,8 @@ A structured variable renamed with its ``id`` kept is each leaf's ``renamed-obje
 instance's name at their head is the rename told again; an identifier that changed in any other
 way, or one a leaf's own member states, is still ``changed-a2l``.
 
-A structured variable of a structure that holds members of external types alone, at any depth, has no leaf, because
-DDD cannot see into storage its own types do not describe, and so nothing says its removal, its
+A structured variable of a structure that holds members of external types alone, at any depth,
+has no leaf, because DDD cannot see into storage its own types do not describe, and so nothing says its removal, its
 rename or its reuse: the variable is reported as an object is, at the variable. Dropped, it is
 ``removed-object`` where a component read it and ``removed-unused-object`` where none did, and a
 baseline that is a component file read alone grades it by its scope, as it does an object; renamed
@@ -336,9 +336,9 @@ variable, not only through its members: its ``type`` is what every consumer's he
 declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a changed
 interface, while a structure nested in it is reached through the member that holds it, so
 renaming that one with its layout kept changes nothing. Its ``kind`` is the variable's as well:
-a measurement turned into a parameter is one edit of one declaration, and the declaration in every
-reader's header gains a ``const``, so it is one ``changed-interface``
-at the variable and not one per member, a structure of external members included.
+a measurement turned into a parameter is one edit of one declaration, and the declaration in
+every reader's header gains a ``const``, so it is one ``changed-interface`` at the variable and
+not one per member, a structure of external members included.
 
 The vocabularies an object reaches the outputs through are compared as entries too, by name,
 because a change in one of them changes what a reader or a measuring tool is given while every

@@ -546,6 +546,25 @@ class TestTheCheckReference:
             "A variable that has leaves is not said a second time at the variable.",
             "A removed structured variable with no leaf carries no such note, since it has no "
             "interface to match an addition on.",
+            "What a leaf says of a variable - that it is gone, that it went under another name, "
+            "that its name is another object's, that it is new - is then said by nothing",
+            "and a variable could be removed, renamed or reused with no finding at all while "
+            "every reader's header lost the declaration, or found another object where the "
+            "name was",
+            "its removal is `removed-object`, or `removed-unused-object` where no component "
+            "read it",
+            "where the baseline is a component read alone it is graded by its scope as an "
+            "object's is",
+            "its rename is `renamed-read-object`, or `renamed-object` where no component read "
+            "it, and is in the migration map",
+            "another `id` under its name is `reused-name`",
+            "and a variable that arrived is `added-object`",
+            "The side a finding is about says whether the variable has a leaf: the baseline's "
+            "for a removal, a rename and a reused name, the candidate's for an addition.",
+            "a variable with leaves says it at each of its leaves' paths.",
+            "where nothing else says them ([section 4.1](#41-comparing-two-deliveries))",
+            "a delivery comparison reads the removal, the rename and the reuse of such a "
+            "variable from it ([section 4.1](#41-comparing-two-deliveries))",
         ):
             assert sentence in spec, sentence
         page = flattened(COMPARING_DELIVERIES)
@@ -559,6 +578,18 @@ class TestTheCheckReference:
             "no component read it, a structured variable with no leaf included",
             "is one ``changed-interface`` at the variable and not one per member, a structure "
             "of external members included",
+            "because DDD cannot see into storage its own types do not describe, and so nothing "
+            "says its removal, its rename or its reuse",
+            "Dropped, it is ``removed-object`` where a component read it and "
+            "``removed-unused-object`` where none did",
+            "a baseline that is a component file read alone grades it by its scope, as it does "
+            "an object",
+            "renamed with its ``id`` kept, it is ``renamed-read-object`` or ``renamed-object``",
+            "another ``id`` under its name is ``reused-name``",
+            "and one that arrived is ``added-object``",
+            "Its ``kind`` is the variable's as well: a measurement turned into a parameter is "
+            "one edit of one declaration, and the declaration in every reader's header gains a "
+            "``const``",
         ):
             assert sentence in page, sentence
 

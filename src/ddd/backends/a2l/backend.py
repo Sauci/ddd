@@ -41,6 +41,18 @@ class A2lBackend:
         environment = make_environment(TEMPLATE_DIR)
         environment.filters["a2l"] = a2l_string
         filename = self.options.filename(dictionary.name)
+        fragment = self.options.module_fragment
+        if fragment is not None and fragment.holds_a_mod_par and dictionary.constants:
+            # ASAP2 allows one MOD_PAR in a MODULE, and EPK, ADDR_EPK and MEMORY_SEGMENT live
+            # inside it. ddd writes its own where a project names a constant, so the two would
+            # make a file no tool reads; the fragment is the module's only where there is none.
+            msg = (
+                f"the a2l module fragment '{fragment.where}' holds a MOD_PAR, and the named "
+                "constants of this project make ddd write one: ASAP2 allows one MOD_PAR in a "
+                "MODULE, so a project that declares a named constant cannot carry EPK, "
+                "ADDR_EPK or MEMORY_SEGMENT through the fragment"
+            )
+            raise ValueError(msg)
         rendered = render_template(
             environment,
             "project.a2l.jinja",

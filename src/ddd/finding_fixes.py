@@ -89,6 +89,11 @@ def _an_identity(path: Path, pointer: str, cache: dict[Path, Document]) -> tuple
     return (Fix(f"Give '{name}' an id", (FileEdit(path, (stamp(definition),)),)),)
 
 
+CODE_NOT_TOUCHED = " (the code of the readers is not touched)"
+"""What every reconcile fix says after what it changes: ``ddd check`` goes green once the
+descriptions agree, and the code that reads the variable keeps the scale it was written with."""
+
+
 def _reconciled(
     built: Index, path: Path, pointer: str, cache: dict[Path, Document]
 ) -> tuple[Fix, ...]:
@@ -120,5 +125,5 @@ def _reconciled(
             FileEdit(edit_path, operations)
             for edit_path, operations in operations_for(decision.settlement, decision.key)
         )
-        fixes.append(Fix(decision.title, changes))
+        fixes.append(Fix(f"{decision.title}{CODE_NOT_TOUCHED}", changes))
     return tuple(fixes)

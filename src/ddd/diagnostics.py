@@ -156,6 +156,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("reserved-identifier", Severity.ERROR,
                "a name is a c keyword, a name <stdint.h> or <stdbool.h> declares, or one c "
                "reserves for the implementation"),
+        _check("a2l-keyword", Severity.ERROR,
+               "a name reaching the a2l is a keyword or an enumeration value of ASAP2 1.6.1"),
         _check("name-collision", Severity.ERROR,
                "two generated names collide in the same c namespace or file name"),
         _check("duplicate-declaration", Severity.ERROR,
@@ -209,7 +211,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("name-similar", Severity.WARNING,
                "two variables differ only in upper/lower case"),
         _check("a2l-unrepresentable", Severity.WARNING,
-               "an object cannot be described by the a2l version that is generated"),
+               "an object cannot be described by the a2l version that is generated, or the a2l "
+               "carries a string, an identifier or a partial identifier past the limits of the "
+               "format"),
         _check("point-counts-mismatch", Severity.WARNING,
                "a curve or map and one of its axes store their point counts differently"),
         _check("reference-left-out", Severity.WARNING,
@@ -225,6 +229,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("image-load-relative", Severity.INFO,
                "the image the a2l takes its addresses from is position independent, so they are "
                "offsets from where it loads"),
+        _check("byte-order-defaulted", Severity.INFO,
+               "the a2l is written with neither --byte-order nor an image, so its byte order is "
+               "a default rather than a choice"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
         _check("empty-vocabulary", Severity.INFO,
                "a types, units, constants, sections or rasters file declares nothing"),

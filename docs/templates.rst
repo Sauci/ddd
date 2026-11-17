@@ -51,8 +51,10 @@ than by a project: its readers are measurement and calibration tools that implem
 standard, and a house style in that file is not a preference, it is a file the tool refuses.
 The distinction is the whole argument on this page in one line - the c code is read by your
 developers, so your project decides how it reads; the a2l file is read by a program, so the
-standard decides. See :doc:`generated artefacts <generated_artefacts>` for what the a2l
-backend produces.
+standard decides. What the standard leaves to the target - the ``A2ML``, an ``EPK``, a
+``MEMORY_SEGMENT`` - is a text file of the project's own, pasted at the head of the module by
+``--a2l-module-fragment``; see :ref:`the a2l's module fragment <a2l-module-fragment>`. See
+:doc:`generated artefacts <generated_artefacts>` for what the a2l backend produces.
 
 Why jinja2
 ----------
@@ -137,6 +139,8 @@ templates produce the following:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -200,14 +204,23 @@ The model
        an array dimensioned by a constant renders its ``array_suffix`` with the constant's
        *name*, which therefore has to be declared before the first array that uses it.
        ``.value`` is the number and nothing else, for a template that does its own
-       formatting; ``.literal`` is that value as a c literal of the narrowest type that
-       holds it, which is what to render where the value is simply to be emitted. The two
-       differ only at the ends of the 64 bit range, where there is no literal to write out
-       bare: ``-9223372036854775808`` renders as ``(-9223372036854775807LL - 1)``, because c
-       has no negative literal and the unary minus would be applied to a literal too large
-       for any signed type, and ``18446744073709551615`` renders as
-       ``18446744073709551615ULL``, because a compiler otherwise reads it as unsigned and
-       says so.
+       formatting; ``.literal`` is that value as a c literal, which is what to render where
+       the value is simply to be emitted. Which literal depends on the value's range alone,
+       and never on whether a narrower or an unsigned type would hold it:
+
+       * from ``-2147483648`` to ``2147483647`` it is written bare, ``5`` as ``5``. The most
+         negative of them is the unary minus applied to ``2147483648``, which c types as a
+         ``long`` or a ``long long`` and not as an ``int``;
+       * anywhere else up to the 64 bit signed ends it takes ``LL``: ``2147483648`` renders
+         as ``2147483648LL``, ``4294967295`` as ``4294967295LL`` although an ``unsigned int``
+         holds it, and ``-2147483649`` as ``-2147483649LL``;
+       * ``-9223372036854775808`` renders as ``(-9223372036854775807LL - 1)``, because c has
+         no negative literal and the unary minus would be applied to a literal too large for
+         any signed type;
+       * above ``9223372036854775807`` it takes ``ULL``, ``18446744073709551615`` as
+         ``18446744073709551615ULL``, because a compiler otherwise reads it as unsigned and
+         says so;
+       * a number with a fraction is a ``double`` literal, as it looks.
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.
@@ -228,9 +241,11 @@ The model
    * - ``model.sections``
      - The placed objects grouped per :doc:`linker section <file_formats/sections>`, one
        entry per section with ``.name`` and ``.objects``, strictest alignment first so that
-       data of one section packs without padding. Objects without a ``section`` are not
-       here - they stay in their component's group and the toolchain's default placement -
-       and the sequence is empty when the project places nothing.
+       data of one section packs without padding. A placed object is in its component's group
+       as well, so a template that walks ``model.groups`` and ``model.sections`` and defines
+       every object it meets defines it twice: take the definitions from ``model.groups`` and
+       the placement from here. An object without a ``section`` is in its group only, and the
+       sequence is empty when the project places nothing.
    * - ``model.headers``
      - One entry per component, in project order, whether or not the component declares
        anything. These are the interfaces, described below.
@@ -250,13 +265,13 @@ The model
        header after the standard includes, before the first structure that needs them.
    * - ``model.guard(*parts)``
      - A normalised include guard, e.g. ``model.guard("ddd", "globals")`` for
-       ``DDD_GLOBALS_H``: the parts are joined, upper cased, anything that is not a letter or
-       a digit becomes an underscore, a leading digit is prefixed, and ``_H`` is appended.
+       ``DDD_GLOBALS_H``: the parts are joined, upper cased, a run of anything that is not a
+       letter or a digit becomes one underscore, the underscores at either end are dropped,
+       a leading digit is prefixed, and ``_H`` is appended.
        Offered rather than imposed - a template that has its own convention writes it out.
    * - ``model.options``
-     - What the command line let the caller decide, which for the c backend is
-       ``const_inputs`` and nothing else: everything else that used to be an option is now a
-       property of the template you write.
+     - What the command line let the caller decide, which for the c backend is nothing:
+       everything that used to be an option is now a property of the template you write.
 
 The two groupings answer two different questions, which is why both exist. ``model.groups``
 is about *ownership* and drives the file that allocates the memory; ``model.headers`` is
@@ -282,11 +297,10 @@ themselves:
        ``const volatile uint16_t Gain = 3U`` for calibration data the description declares
        volatile. The template adds the semicolon, which is what lets it put something between
        the two.
-   * - ``.declaration(const=...)``
+   * - ``.declaration()``
      - The matching ``extern`` declaration, again without the semicolon, carrying the same
-       qualifier the definition does. ``const=true`` adds a ``const`` unless the object
-       already carries one, so asking for it on calibration data does not produce the
-       ``const const`` that no compiler accepts.
+       qualifier the definition does. It takes no argument: a ``const=`` keyword, which
+       ``--const-inputs`` needed, was removed in 0.12.0 and is refused in a sentence saying so.
    * - ``.comment``
      - The description, the unit in square brackets and, for calibration data, a note saying
        what the object is and what it is dimensioned by - or nothing at all if the
@@ -307,6 +321,25 @@ themselves:
    * - ``.owner``, ``.consumers``
      - The component that produces the object and the components that read it, for a comment
        that says where a value comes from.
+   * - ``.unit``
+     - The physical unit, exactly as the a2l states it: empty when the object has none, and
+       for a structured variable, whose members state their own.
+   * - ``.conversion``
+     - What turns the raw value into the physical one, as the a2l states it, or nothing for a
+       structured variable. ``.conversion.kind`` is ``identity``, ``linear``, ``enum`` or
+       ``string``. A ``linear`` one has ``.conversion.factor`` and ``.conversion.offset``
+       (physical = raw * factor + offset), each also as a c literal in
+       ``.conversion.factor_literal`` and ``.conversion.offset_literal``, and
+       ``.conversion.coefficients``, the six numbers of the a2l's rational function
+       (``0 1 -offset 0 0 factor``) with ``.conversion.coefficient_literals`` beside them. An
+       ``enum`` one has ``.conversion.name`` and ``.conversion.enumerators``, each with
+       ``.name``, ``.value`` and ``.description``: the enum's entries in ``model.enums``, so an
+       object whose own copy documents less states the copy the types header declares. A field
+       a kind does not have is empty.
+   * - ``.limits``
+     - The range the a2l states: the limits the description states, or what the datatype and
+       the conversion imply. ``.limits.min`` and ``.limits.max``, each also as a c literal in
+       ``.limits.min_literal`` and ``.limits.max_literal``; nothing for a structured variable.
 
 ``.kind``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.qualifier``, ``.initializer``,
 ``.dimensions``, ``.point_counts`` and ``.extensions`` are there as well, for a template that
@@ -341,6 +374,32 @@ declaration is better off testing the two booleans than matching text against th
 produce, and they are also what a MISRA deviation record above every ``volatile`` object, or
 a section attribute on the tunable data alone, is written from.
 
+``.unit``, ``.conversion`` and ``.limits`` are the values the a2l is written from, taken from
+the same place, so a template that writes a scale macro, a table or a header of its own cannot
+disagree with the a2l. The example ``{component}.h`` template uses them: beside each input and
+output whose conversion is ``linear`` it writes two macros, named after the variable with a
+double underscore and a suffix::
+
+   extern int16_t Speed;  /* produced by Prod */
+   #define Speed__FACTOR (0.1)
+   #define Speed__OFFSET (-40.0)
+
+A rescale of the conversion changes that header, so every file that includes it is compiled
+again; a reader that multiplies by ``Speed__FACTOR`` follows the rescale, and one that wrote
+the number itself does not, which no check of the descriptions can see. The names carry a
+double underscore because DDD refuses one in every name a project writes - a variable, a type,
+a constant, an enumerator - so no name the generated c holds can be one of them; the values
+are parenthesised so that a negative offset cannot join the sign in front of it. The names are
+sound C, which reserves a name that begins with two underscores, or with one and a capital
+letter, but not one that holds two further in. C++ reserves that too, so a C++ unit including
+the header meets ``Speed__FACTOR`` as a name reserved to the implementation; a project whose
+readers are C++ renames the macros in the two lines of the ``scale`` macro of
+``_macros.jinja2`` that spell them. The example
+writes nothing for any other kind of conversion: an ``identity`` and a ``string`` have no
+scale, and the ``typedef enum`` of an ``enum`` is already in the types header. A project whose
+templates were copied before this one keeps the headers it had, and gains the macros by
+copying the two lines and the macro of ``_macros.jinja2``.
+
 A component header
 ~~~~~~~~~~~~~~~~~~
 
@@ -354,6 +413,14 @@ nothing and lets the template say so rather than emit a header that is only a gu
 define ``DDD_TYPES_H`` before ``ddd_types.h`` was ever included, and the whole type header
 would preprocess away.
 
+A name with an underscore at an edge cannot take that form, which drops the underscore and would
+give ``Valve`` and ``Valve_`` one guard, so that a file including both finds the second header
+preprocessed away. Such a name has a prefix of its own, and the name without its edge
+underscores after it: ``DDD_COMPONENTS_TRAILING_VALVE_H`` for ``Valve_``,
+``DDD_COMPONENTS_LEADING_VALVE_H`` for ``_valve`` and ``DDD_COMPONENTS_BOTH_VALVE_H`` for
+``_valve_``. No guard holds a double underscore, which C++ reserves wherever it stands and
+DDD refuses in every name a project writes. Every other name keeps the guard it had.
+
 Each entry of the three lists is a declaration rather than a bare object, because the same
 variable is declared differently in different headers:
 
@@ -364,18 +431,18 @@ variable is declared differently in different headers:
    * - attribute
      - what it holds
    * - ``.line``
-     - The complete declaration, semicolon included, with ``const`` already applied where it
-       belongs. Most templates need nothing else.
+     - The complete declaration, semicolon included, qualified as the definition is. Most
+       templates need nothing else.
    * - ``.condition``
      - The preprocessor condition of this declaration, or nothing.
-   * - ``.const``
-     - Whether ``--const-inputs`` added a ``const`` to this declaration, for a template that
-       builds the line itself. It says nothing about the object's own qualifiers, which are
-       ``.variable.constant`` and ``.variable.volatile``.
    * - ``.variable``
      - The object behind the declaration, with everything the previous table lists - which is
        how a header comments a declaration with ``.variable.comment`` or names its producer
        with ``.variable.owner``.
+
+``.const`` of a header entry, which said whether ``--const-inputs`` had added a ``const``, was
+removed in 0.12.0 with the option and is refused in a sentence saying so; ``.line`` is the
+declaration.
 
 Helpers, and what a subdirectory is for
 ---------------------------------------
@@ -437,6 +504,8 @@ again. Regenerating a project that has not changed therefore reports:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    unchanged   build/gen/ddd_globals.c
    unchanged   build/gen/ddd_globals.h
    unchanged   build/gen/ddd_types.h
@@ -499,6 +568,28 @@ The example templates
 .. literalinclude:: ../examples/templates/{component}.h.jinja2
    :language: jinja
    :caption: {component}.h.jinja2 - the interface header, rendered once per component
+
+A link may drop a definition
+----------------------------
+
+Compiling the definitions as one unit and linking it into the image keeps them out of an
+archive's selective pull, but not out of the linker's collection of sections. A link with
+``--gc-sections`` drops a definition no code references, with or without ``-fdata-sections``,
+and an object nobody but the calibration tool reads goes with it: the a2l then
+carries its object at address 0 or, given the image with ``--image``, reports it
+``address-missing``. Linking the demo this way gave the same result on this host with
+``-fdata-sections`` and without it.
+
+The example template ``ddd_globals.c.jinja2`` puts ``DDD_RETAIN`` before every definition, and
+it is empty unless the project defines it, so that the c is what it was without it. On ELF a
+project that links with ``--gc-sections`` defines it as ``__attribute__((used, retain))``, which
+with gcc 15.2.0, binutils 2.46 and ``-fdata-sections`` kept every object of the demo where the
+empty macro kept none, and ``used`` alone kept none; it needs a gcc that knows ``retain`` and a
+binutils that keeps such a section, and the definition goes on the compiler's command line
+(``-D``) or in a header the build includes first. On PE gcc ignores ``retain``, so the macro
+does not keep a definition there, and a reference to the object from code that is linked, or a
+linker script that keeps the section, does. A project that writes its own definition template
+spells the same thing in it.
 
 .. note::
    How these examples comment the generated code is not a recommendation. A different

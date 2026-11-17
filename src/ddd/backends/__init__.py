@@ -9,9 +9,11 @@ from ddd.backends.a2l import (
     A2lOptions,
     ByteOrder,
     ConditionalObject,
+    ModuleFragment,
     addressed_symbols,
     conditional_objects,
     dragged_with,
+    load_module_fragment,
     weigh_addresses,
 )
 from ddd.backends.base import (
@@ -41,6 +43,7 @@ __all__ = [
     "ConditionalObject",
     "GeneratedFile",
     "Manifest",
+    "ModuleFragment",
     "RemovalError",
     "WriteResult",
     "WriteStatus",
@@ -49,6 +52,7 @@ __all__ = [
     "describe_write_failure",
     "dragged_with",
     "example_template_directory",
+    "load_module_fragment",
     "render",
     "weigh_addresses",
     "write",

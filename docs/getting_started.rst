@@ -217,8 +217,9 @@ calibration parameter of its own with scope ``local``:
 
 Repeating the definition of ``CabinTemperature`` in the consumer looks redundant, and it is the
 point of the exercise: the consumer states what it *expects* to read, DDD compares that with
-what the producer promises to write, and a disagreement becomes a finding instead of a field
-report. Where the two sides differ, the declaration of the producing component is the
+what the producer promises to write, and a disagreement between the two descriptions becomes a
+finding instead of a field report. It compares descriptions, never a description with the
+consumer's code. Where the two sides differ, the declaration of the producing component is the
 authoritative one - its definition is what gets generated, and the diagnostic points at the
 consumer that deviates.
 
@@ -228,11 +229,11 @@ a2l as a ``CHARACTERISTIC`` the tool may change. That second half is what a cali
 ``volatile`` is about. The threshold here is meant to be tuned while the device runs, and
 ``const`` on its own would not allow that: the compiler is entitled to fold the 180 into the code
 that reads it, which it does even without optimisation wherever it can see the 180, so the tool
-would write a new value the software never picks up. The price is the read only memory: a value the
-compiler has to re-read is no longer constant data, so it leaves ``.rodata`` for ``.data``, and
-on a flash target that is a ram address the project has to place deliberately in its linker
-script. A project whose parameters only ever change with a new build states ``false`` instead and
-keeps them in flash; DDD renders what the description says and reports nothing about the choice.
+would write a new value the software never picks up. Where it lies is a separate question:
+``volatile`` does not move a value to RAM on any toolchain measured, and where a parameter lives
+is the project's to decide, by the linker script, since the placement depends on the target and
+on the compiler's version. A project whose parameters only ever change with a new build states
+``false`` instead and keeps them in flash; DDD renders what the description says and reports nothing about the choice.
 Its scope is ``local``, so it belongs to Controller alone and no other component will ever see
 it - the right choice for data that only parametrises the component that owns it. ``init`` is a
 raw value, so 180 means 18.0 degC.
@@ -338,6 +339,8 @@ given with ``-o``, which is normally somewhere in the build tree rather than in 
 .. code-block:: text
 
    $ ddd generate all thermostat.ddd.json -o gen -t templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       gen/ddd_globals.c (created)
    wrote       gen/ddd_globals.h (created)
    wrote       gen/ddd_types.h (created)
@@ -350,6 +353,8 @@ Run it a second time without touching the description files and nothing is writt
 .. code-block:: text
 
    $ ddd generate all thermostat.ddd.json -o gen -t templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    unchanged   gen/ddd_globals.c
    unchanged   gen/ddd_globals.h
    unchanged   gen/ddd_types.h
@@ -415,17 +420,31 @@ than written by hand so that no variable can be defined twice or defined by the 
     * file exactly once; DDD is the only owner of these storage locations.
     */
 
+   /*
+    * A link with --gc-sections drops a definition no code references, a
+    * measurement only the calibration tool reads among them, and the a2l then
+    * describes storage the image does not hold.  A project on ELF that links so
+    * defines DDD_RETAIN as __attribute__((used, retain)), with -D or in a header
+    * the build includes first, with a gcc that knows 'retain' and a binutils that
+    * keeps such a section; where gcc ignores 'retain' (PE), a reference to the
+    * object or a linker script that keeps its section does the same.  Left
+    * undefined it is empty, and the definitions are what they were.
+    */
+   #ifndef DDD_RETAIN
+   #define DDD_RETAIN
+   #endif
+
    /* ---------------------------------------------------------------------------
     * Controller - Decides when to heat, from the cabin temperature
     * ------------------------------------------------------------------------ */
    /** Temperature below which the heater is switched on [degC] (calibration parameter) */
-   const volatile int16_t HeaterOnThreshold = 180;
+   DDD_RETAIN const volatile int16_t HeaterOnThreshold = 180;
 
    /* ---------------------------------------------------------------------------
     * SensorHub - Reads the sensors and publishes their conditioned values
     * ------------------------------------------------------------------------ */
    /** Temperature measured in the cabin [degC] */
-   volatile int16_t CabinTemperature = 0;
+   DDD_RETAIN volatile int16_t CabinTemperature = 0;
 
 The two component headers are where the access rules become physical. ``SensorHub.h`` contains
 the variable SensorHub owns and nothing else - SensorHub's sources include this one header and
@@ -458,6 +477,8 @@ path:
    /* outputs - written by SensorHub, read by other components */
    /** Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;
+   #define CabinTemperature__FACTOR (0.1)
+   #define CabinTemperature__OFFSET (0.0)
 
    #endif /* DDD_COMPONENT_SENSORHUB_H */
 
@@ -491,6 +512,8 @@ description files. The local parameter appears in its own section, and only here
    /* inputs - produced elsewhere, Controller may only read them */
    /** Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;  /* produced by SensorHub */
+   #define CabinTemperature__FACTOR (0.1)
+   #define CabinTemperature__OFFSET (0.0)
 
    /* locals - owned exclusively by Controller */
    /** Temperature below which the heater is switched on [degC] (calibration parameter) */
@@ -499,11 +522,10 @@ description files. The local parameter appears in its own section, and only here
    #endif /* DDD_COMPONENT_CONTROLLER_H */
 
 Controller can read ``CabinTemperature`` and can also write it, since the declaration in its
-header is not ``const``; ``ddd generate c --const-inputs`` declares inputs ``extern const`` in the
-consumer headers instead, so that writing to a variable owned by somebody else stops compiling
-rather than being caught in review. It is opt-in because the definition in ``ddd_globals.c``
-stays non-const, which strict c calls a constraint violation even though the usual embedded
-toolchains accept it.
+header is not ``const``. That is deliberate: a header that declared it ``const`` while the
+definition in ``ddd_globals.c`` is not would leave two declarations of one object that c leaves
+undefined, so a write to a variable owned by somebody else is caught in review, not by the
+compiler.
 
 Everything about the shape of those files - the banner, the plain c comments, the section
 headings, the note naming the producer - comes from the templates copied into the project a
@@ -582,7 +604,8 @@ agreed on are worse than no sources:
    components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
        note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
-   1 error, 1 warning
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 error, 1 warning, 1 info
 
 .. warning::
    ``--force`` generates in spite of the errors, using the producer's definition
@@ -614,7 +637,7 @@ maps and their shared axes, enum conversions, preprocessor conditions and the pe
 settings.
 
 :doc:`command_line_interface` documents every command and every option, including the ones this
-page only mentioned in passing: ``--const-inputs``, ``--address-map``, the ``-W`` severity
+page only mentioned in passing: ``--address-map``, the ``-W`` severity
 overrides, the machine readable ``--format json`` output for a ci job, and the commands that
 answer questions ``check`` does not - ``ddd compare`` for whether a delivery may replace its
 predecessor, and ``ddd dump`` for the resolved data dictionary itself.

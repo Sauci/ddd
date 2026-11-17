@@ -38,6 +38,22 @@ DEMO = EXAMPLES / "demo" / "demo.ddd.json"
 INCONSISTENT = EXAMPLES / "inconsistent" / "project.ddd.json"
 
 
+def placement(image: Path, name: str) -> tuple[str, bool]:
+    """The section the symbol table puts the variable ``name`` of an ELF image in, and whether
+    that section is writable: what the toolchain that linked it decided, read with pyelftools
+    and not with DDD's reader."""
+    from elftools.elf.constants import SH_FLAGS
+    from elftools.elf.elffile import ELFFile
+
+    with image.open("rb") as stream:
+        elf = ELFFile(stream)
+        symbols = elf.get_section_by_name(".symtab")
+        assert symbols is not None, f"{image.name} has no symbol table"
+        (symbol,) = symbols.get_symbol_by_name(name)
+        section = elf.get_section(symbol["st_shndx"])
+        return section.name, bool(section["sh_flags"] & SH_FLAGS.SHF_WRITE)
+
+
 def project(name: str = "TestProject", *includes: str, **extra: Any) -> dict[str, Any]:
     return {"project": {"name": name, "includes": list(includes), **extra}}
 
@@ -316,15 +332,15 @@ keep those examples working.
 def build_backends(**options: Any) -> list[Backend]:
     """The backend list a `ddd generate` run with these options would use."""
     template_dir = options.pop("template_dir", TEMPLATES)
-    const_inputs = options.pop("const_inputs", False)
     emit_a2l = options.pop("emit_a2l", True)
     byte_order = options.pop("byte_order", ByteOrder.LITTLE)
     addresses = options.pop("addresses", None)
     left_out = options.pop("left_out", frozenset())
+    module_fragment = options.pop("module_fragment", None)
     if options:
         msg = f"unknown backend option(s): {sorted(options)}"
         raise TypeError(msg)
-    backends: list[Backend] = [CBackend(template_dir, COptions(const_inputs=const_inputs))]
+    backends: list[Backend] = [CBackend(template_dir, COptions())]
     if emit_a2l:
         backends.append(
             A2lBackend(
@@ -333,6 +349,7 @@ def build_backends(**options: Any) -> list[Backend]:
                     addresses=addresses or {},
                     has_address_source=bool(addresses),
                     left_out=left_out,
+                    module_fragment=module_fragment,
                 )
             )
         )

@@ -1,5 +1,6 @@
 """Pydantic contracts for every json file format understood by DDD."""
 
+from ddd.models.a2l_keywords import A2L_KEYWORDS, IDENTITY_METHOD_PREFIX, is_a2l_keyword
 from ddd.models.common import (
     C_IDENTIFIER_PATTERN,
     IDENTIFIER_MAX_LENGTH,
@@ -43,6 +44,7 @@ from ddd.models.objects import (
     DataObject,
     Dimension,
     InitValue,
+    LeafA2lOptions,
     Limits,
     Map,
     Measurement,
@@ -90,12 +92,14 @@ from ddd.models.types import (
 from ddd.models.units import Unit, UnitDeclaration, UnitsFile
 
 __all__ = [
+    "A2L_KEYWORDS",
     "BITS_PER_BYTE",
     "COUNTED_KINDS",
     "C_IDENTIFIER_PATTERN",
     "C_KEYWORDS",
     "IDENTIFIER_MAX_LENGTH",
     "IDENTITY",
+    "IDENTITY_METHOD_PREFIX",
     "MAX_DIMENSIONS",
     "MAX_ELEMENTS",
     "MEMBER_OBJECT_KINDS",
@@ -122,6 +126,7 @@ __all__ = [
     "Identifier",
     "IdentityConversion",
     "InitValue",
+    "LeafA2lOptions",
     "Limits",
     "LinearConversion",
     "Map",
@@ -169,6 +174,7 @@ __all__ = [
     "format_number",
     "format_shape",
     "infinite_limits_message",
+    "is_a2l_keyword",
     "is_above",
     "is_below",
     "is_reserved_identifier",

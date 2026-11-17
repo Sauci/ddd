@@ -869,10 +869,10 @@ endfunction()
 #              [ADDRESS_MAP <file>]          # write the a2l after the link, its addresses read out of this map
 #              [ADDRESSES_FROM_IMAGE]        # write the a2l after the link, its addresses read out of the image
 #              [BYTE_ORDER little|big]       # byte order reported in the a2l
+#              [A2L_MODULE_FRAGMENT <file>]  # text pasted verbatim at the head of the a2l's MODULE
 #              [SEVERITY <check=level>...]   # severity overrides, like -W on the command line
 #              [LINK_LIBRARIES <target>...]  # usage requirements for compiling the generated definition file
 #              [DEPENDS <file>...]           # additional dependencies retriggering the generation
-#              [CONST_INPUTS]                # declare input variables const in the consumer headers
 #              [NO_A2L]                      # do not generate the a2l file
 #              [NO_DICTIONARY]               # do not write the resolved data dictionary
 #              [STRICT]                      # treat DDD warnings as errors
@@ -913,9 +913,17 @@ endfunction()
 # stamp for its one output, and each shared file a rule of its own, depending on the step's target
 # (_ddd_files_of_a_step); the {component} files stay byproducts, with no rule under make.
 function(ddd_generate image)
+    # Not a keyword any more, and looked for before the arguments are parsed, so that it is refused in a sentence of its
+    # own, the one the tool gives for its option, and not as an unknown argument.
+    if("CONST_INPUTS" IN_LIST ARGN)
+        message(FATAL_ERROR "ddd_generate: CONST_INPUTS was removed in 0.12.0: the header it wrote declared an input "
+                            "const while the input's definition is not const. C leaves such a pair of declarations "
+                            "undefined, so an optimising compiler may hand the reader a stale value. Generate the "
+                            "headers without it.")
+    endif()
     cmake_parse_arguments(PARSE_ARGV 1 arg
-                          "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
-                          "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
+                          "NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
+                          "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER;A2L_MODULE_FRAGMENT"
                           "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ddd_generate: unknown argument(s) \"${arg_UNPARSED_ARGUMENTS}\".")
@@ -923,8 +931,8 @@ function(ddd_generate image)
     # The three lists of cmake_parse_arguments() above, spelled the same way.
     _ddd_refuse_empty_keywords(
         "ddd_generate" ${ARGC}
-        "CONST_INPUTS;NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
-        "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER"
+        "NO_A2L;NO_DICTIONARY;STRICT;NO_PROPAGATE_HEADERS;ADDRESSES_FROM_IMAGE"
+        "PROJECT;NAME;OUTPUT_DIRECTORY;TEMPLATE_DIRECTORY;SCHEMA_DIRECTORY;ADDRESS_MAP;BYTE_ORDER;A2L_MODULE_FRAGMENT"
         "SEVERITY;LINK_LIBRARIES;DEPENDS;PLUGINS")
     # The a2l takes its addresses from one place, and ADDRESSES_FROM_IMAGE is that place being the image: beside a map
     # the call would name two, and beside NO_A2L it would read addresses for a file nobody writes.
@@ -935,6 +943,11 @@ function(ddd_generate image)
     if(arg_ADDRESSES_FROM_IMAGE AND arg_NO_A2L)
         message(FATAL_ERROR "ddd_generate: ADDRESSES_FROM_IMAGE cannot be given together with NO_A2L: the addresses "
                             "it reads out of the image are the a2l's.")
+    endif()
+    # The fragment is the a2l's, so beside NO_A2L it would be pasted into a file nobody writes.
+    if(arg_A2L_MODULE_FRAGMENT AND arg_NO_A2L)
+        message(FATAL_ERROR "ddd_generate: A2L_MODULE_FRAGMENT cannot be given together with NO_A2L: the fragment is "
+                            "the a2l's.")
     endif()
     # A hand written project names its own plugins, so a second list here would be a second source of truth.
     if(arg_PLUGINS AND arg_PROJECT)
@@ -984,6 +997,10 @@ function(ddd_generate image)
         if(map_is_generated AND NOT EXISTS "${arg_ADDRESS_MAP}")
             file(WRITE "${arg_ADDRESS_MAP}" "{}\n")
         endif()
+    endif()
+    # Pasted into the a2l by whichever step writes it, and an input of that step: an edit to it writes the a2l again.
+    if(arg_A2L_MODULE_FRAGMENT)
+        _ddd_absolute_input(arg_A2L_MODULE_FRAGMENT "${CMAKE_CURRENT_SOURCE_DIR}" "ddd_generate")
     endif()
     if(arg_BYTE_ORDER AND NOT arg_BYTE_ORDER MATCHES "^(little|big)$")
         message(FATAL_ERROR "ddd_generate: BYTE_ORDER must be little or big, got \"${arg_BYTE_ORDER}\".")
@@ -1105,12 +1122,15 @@ function(ddd_generate image)
     if(arg_NO_A2L OR a2l_after_the_link)
         list(APPEND generate_options --without a2l)
     endif()
-    if(arg_CONST_INPUTS)
-        list(APPEND generate_options --const-inputs)
-    endif()
     # The byte order belongs to the a2l, so a run that subtracts it has no use for it.
     if(arg_BYTE_ORDER AND NOT arg_NO_A2L AND NOT a2l_after_the_link)
         list(APPEND generate_options --byte-order ${arg_BYTE_ORDER})
+    endif()
+    # Likewise the fragment: a run that subtracts the a2l has no use for it, and the step after the link takes it itself.
+    set(fragment_dependency "")
+    if(arg_A2L_MODULE_FRAGMENT AND NOT a2l_after_the_link)
+        list(APPEND generate_options --a2l-module-fragment "${arg_A2L_MODULE_FRAGMENT}")
+        set(fragment_dependency "${arg_A2L_MODULE_FRAGMENT}")
     endif()
 
     # The templates are collected with a glob which the build system re-evaluates (CONFIGURE_DEPENDS), so that adding or
@@ -1225,7 +1245,7 @@ function(ddd_generate image)
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_TOUCH ${generation_touch})
     set_property(TARGET ${image} PROPERTY DDD_GENERATION_DEPENDS
                  "${project_file}" ${source_list} ${descriptions} ${plugin_files} ${arg_DEPENDS}
-                 ${every_template} "${template_list}" "${DDD_EXECUTABLE}")
+                 ${fragment_dependency} ${every_template} "${template_list}" "${DDD_EXECUTABLE}")
     set_property(TARGET ${image} PROPERTY DDD_COMPONENT_FILES "${component_files}")
     cmake_language(EVAL CODE "cmake_language(DEFER CALL _ddd_add_generation [==[${image}]==])")
     # And once the top directory is done, every link of the image known, the collected mode checks that the image
@@ -1259,6 +1279,9 @@ function(ddd_generate image)
         if(arg_BYTE_ORDER)
             list(APPEND a2l_options --byte-order ${arg_BYTE_ORDER})
         endif()
+        if(arg_A2L_MODULE_FRAGMENT)
+            list(APPEND a2l_options --a2l-module-fragment "${arg_A2L_MODULE_FRAGMENT}")
+        endif()
         if(arg_ADDRESSES_FROM_IMAGE)
             set(address_source --image "$<TARGET_FILE:${image}>")
             set(map_dependency "")
@@ -1280,8 +1303,8 @@ function(ddd_generate image)
                                    --output-dir "${arg_OUTPUT_DIRECTORY}"
                                    ${address_source} ${a2l_options}
                            ${a2l_touch}
-                           DEPENDS ${image} ${map_dependency} "${project_file}" ${source_list} ${descriptions}
-                                   ${plugin_files}
+                           DEPENDS ${image} ${map_dependency} ${arg_A2L_MODULE_FRAGMENT} "${project_file}"
+                                   ${source_list} ${descriptions} ${plugin_files}
                                    "${DDD_EXECUTABLE}"
                            COMMENT "${reading}"
                            COMMAND_EXPAND_LISTS
@@ -1332,7 +1355,8 @@ function(ddd_generate image)
 
     # The single definition file is compiled as an object library, so that every variable really ends up in the
     # image: a static library would drop the members whose symbols nobody references, and a measurement written only
-    # by the calibration tool has no referencing code at all.
+    # by the calibration tool has no referencing code at all. That answers an archive's selective pull and not the
+    # linker's --gc-sections, which drops the same objects: the example template's DDD_RETAIN is what a project sets.
     add_library(${image_stem}_ddd_globals OBJECT ${definition_files})
     # The compile usage the definition file needs - the external type headers, read under the flags of the component
     # that declares them - reaches it through <stem>_ddd_headers, which it links below like any other consumer of

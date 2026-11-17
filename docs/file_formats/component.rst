@@ -136,7 +136,8 @@ exists at all.
 The same variable is normally declared by several components: once by the one that writes it
 and once by each one that reads it. That repetition is not redundancy, it is the whole
 mechanism. The consumer states what it *expects*, the producer states what it *promises*, and
-DDD compares the two. Where they differ, the declaration of the **producing** component is the
+DDD compares the two descriptions - a declared type in place of the repetition leaves nothing
+to compare, which :doc:`../concept` weighs. Where they differ, the declaration of the **producing** component is the
 authoritative one: its definition is what gets generated, and the finding points at the
 consumer that deviates.
 
@@ -213,14 +214,22 @@ is ``Controller.h`` from the demo, shortened to the parts that matter:
    /* outputs - written by Controller, read by other components */
    /** Measurement used as the input quantity of AxisA [Hz] */
    extern volatile uint16_t ValueE;
+   #define ValueE__FACTOR (0.25)
+   #define ValueE__OFFSET (0.0)
    /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
    extern const uint16_t AxisA[6];
+   #define AxisA__FACTOR (0.25)
+   #define AxisA__OFFSET (0.0)
 
    /* inputs - produced elsewhere, Controller may only read them */
    /** Scalar measurement with a linear conversion [%] */
    extern uint8_t ValueA;  /* produced by SensorHub */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
+   #define ValueB__FACTOR (0.001)
+   #define ValueB__OFFSET (0.0)
 
    /* locals - owned exclusively by Controller */
    /** Component local measurement of the controller [%] */
@@ -240,13 +249,9 @@ A source file of ``Controller`` includes this one header and nothing else, so it
 way of naming a variable that belongs to ``SensorHub`` and was not declared as one of its own
 inputs - the access rule is enforced by the compiler rather than by review. Reading a foreign
 input is possible by construction, since that is what an input is; *writing* one still
-compiles here, because the declaration is not ``const``. ``ddd generate c --const-inputs``
-declares inputs ``extern const`` instead, which stops that too, at the cost of a definition
-that stays non-const - strictly a constraint violation, accepted by the usual embedded
-toolchains, and therefore opt-in. An input that is volatile becomes ``extern const volatile``,
-since the qualifier the object asked for is not dropped for the one the option adds. It is an
-option rather than a matter for the templates because it changes what is declared and not how
-the declaration is written. The whole picture is on the
+compiles here, because the declaration is not ``const``: a header that declared an input
+``const`` while the definition is not would leave two declarations of one object that c leaves
+undefined, so a write to a foreign input is a matter for review. The whole picture is on the
 :doc:`generated artefacts </generated_artefacts>` page.
 
 condition
@@ -283,7 +288,7 @@ comment on the ``#endif`` so that a long guarded region stays readable:
 
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
-   uint16_t ValueG = 1000U;
+   DDD_RETAIN uint16_t ValueG = 1000U;
    #endif /* defined(FEATURE_X) */
 
 a2l has no notion of preprocessor conditions - the file describes one built image, and DDD

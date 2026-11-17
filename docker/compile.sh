@@ -7,7 +7,7 @@
 # Environment:
 #   CDEFS    extra preprocessor defines, compiled as a second variant
 #            (e.g. CDEFS="-DFEATURE_X")
-#   GENFLAGS extra flags for 'ddd generate' (e.g. GENFLAGS="--const-inputs")
+#   GENFLAGS extra flags for 'ddd generate' (e.g. GENFLAGS="--strict")
 #   TEMPLATES  directory of the c templates, defaulting to the examples shipped with DDD
 #   CFLAGS   override the default warning set
 #   CC       override the compiler

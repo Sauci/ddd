@@ -197,7 +197,8 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 | a structure name in a `typename` | where the structure is declared | every member nesting it |
 | an `includes` entry | the file - wildcards land on every match | |
 
-**Quick fixes** reconcile a `definition-mismatch`.  Put the cursor on a `unit`, a
+**Quick fixes** reconcile a `definition-mismatch`. They change descriptions only: the code
+of the readers is not touched, and the fix a finding of `ddd gui` carries says so in its title.  Put the cursor on a `unit`, a
 `conversion`, a `datatype` or any other key the declarations have to agree on, and the editor
 offers every way of reconciling it, ordered by which component owns the variable: a consumer
 is shown the producer's value first, the producer its own.  A key nobody else states can be
@@ -420,22 +421,23 @@ but a substitution the front end makes while parsing, so it happens at `-O0` as 
 `-O2`, to an array element at a constant index as much as to a scalar, and to a value read
 once at startup as much as to one read in a loop; across translation units it is what `-flto`
 does.  Where the load survives, `const` still lets the compiler serve two reads from one of
-them and move it across a call.  Either way, a program that writes a new value through such
-an object's address prints it back out of memory and then goes on computing with the old one.
+them and move it across a call.  Either way, a store through such an object's address is not
+what the code goes on computing with: a hosted program built by gcc 15.2.0 that stores 7 into a
+`const` object of 3 faults at `-O0`, `-O2` and `-Os`, and with the page made writable first the
+object still reads 3 at all three, where a `const volatile` one reads the 7.
 
-What that buys is paid for out of the read only memory.  gcc treats a volatile access as a
-side effect and takes the object out of the read only category, so `.rodata` becomes a plain
-`.data`: measured with gcc 12.2.0 on DDD's own generated demo with this repository's own flag
-set, `.rodata 84 / .data 2` became `.data 86` - every byte of it crossing over - and an
-explicitly attributed section moves the same way.  The two counts are of the demo as it stood
-when the measurement was taken and move with whatever it declares; what does not move is that
-all of it goes across.  The categorisation is target independent, but it is worth confirming once on the
-toolchain you actually ship with.  On a flash target with an ordinary linker script that means a RAM address with a load
-region in flash and a startup copy, so the tool programs a page the code never reads and the
-next reset overwrites what it wrote.  A project that calibrates online handles that placement
-in its linker script; one that does not states `false` and keeps its data in flash.
-**DDD states no preference and reports nothing about the choice** - it generates what the
-description says.
+Where the object lies is a separate question: `volatile` does not move a value to RAM on any
+toolchain measured.  The ELF images this project's test suite is built on - gcc 14.2.0 (x86_64,
+i686, aarch64, powerpc and s390x), arm-none-eabi-gcc 14.2.1 and clang 19.1.7 - hold every
+`const volatile` object in `.rodata`, which is not writable, except the small ones on powerpc,
+which lie in `.sdata`, a writable section, as the plain `const` objects of their size do.  Where
+the compiler places such an object depends on the target and on the compiler's version, and no
+other version was measured, so confirm it once on the toolchain you actually ship with.  Where a
+calibration parameter lives is the project's to decide, through the `section` DDD writes and the
+linker script, and a tool writes a parameter that stays in flash through an overlay or an
+emulation memory; a project that calibrates from RAM places the object there itself, with the
+startup copy that implies.  **DDD states no preference and reports nothing about the choice** -
+it generates what the description says.
 
 Two smaller consequences are worth knowing before writing `true`.  Handing a `const volatile`
 array to a helper that takes a plain `const` one is
@@ -471,8 +473,10 @@ project's `includes` like a component and each with its own page in the document
 
 * a **types** file declares scalar types, structures and external types the project shares
   by name: a declaration states `"typename": "Sensor_t"` instead of `datatype`, the type
-  fixes the datatype, unit, conversion and limits, and there is nothing left for two
-  components to disagree about; an external type names a c type a hand written header
+  fixes the datatype, unit, conversion and limits, so two components have nothing to
+  disagree about, which also means `ddd check` cannot see a rescale of the type (the
+  example templates write its factor and offset as macros in each reader's header, and
+  `ddd compare` against a baseline names it); an external type names a c type a hand written header
   defines, which a structure member carries verbatim
   ([documentation](https://sauci.github.io/ddd/latest/file_formats/types.html));
 * a **units** file pins the unit spellings the project allows, so `Nm` here and
@@ -559,6 +563,7 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | error | `unknown-reference` | a curve, map or axis refers to an object nobody declares |
 | error | `reference-kind` | a reference points at an object of the wrong kind |
 | error | `reserved-identifier` | a name is a c keyword, one of the names `<stdint.h>` or `<stdbool.h>` declares or brings in (`<stddef.h>`'s `size_t` among them), or one C11 7.1.3 reserves for the implementation - any name containing a double underscore, or starting with an underscore followed by a capital letter |
+| error | `a2l-keyword` | a name reaching the a2l, as an identifier or a part of one, is a keyword or an enumeration value of ASAP2 1.6.1 (`MAP`, `VALUE`, `IDENTICAL`, `ROOT` and `MODULE` among them) |
 | error | `name-collision` | two generated names would be the same c identifier or the same header |
 | error | `consumer-storage` | an `input` declaration states `init` or `section`, which only the producing component decides |
 | error | `consumer-raster` | an input declaration states a measurement raster only the producer decides |
@@ -576,13 +581,14 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |
 | warning | `enum-duplicate-value` | two enumerators share a value |
 | warning | `name-similar` | two variables differ only in upper/lower case |
-| warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has |
+| warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has, or a size past 65,535 for a `MATRIX_DIM`, `NUMBER` or `MaxAxisPoints`, or the a2l carries a string past 255 characters, an identifier past 1024 or a part of one past 128 (an array index counted within it) |
 | warning | `reference-left-out` | a curve or map is left out of the a2l with its axis, which the build left out, while the build holds it |
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |
 | warning | `elf-mismatch` | the image the a2l takes its addresses from holds a variable with another size, encoding, qualifiers or shape than its description states, or describes it in two ways |
+| info | `byte-order-defaulted` | the a2l is written with neither `--byte-order` nor `--image`, so its byte order is a default rather than a choice |
 | info | `image-load-relative` | the image the a2l takes its addresses from is position independent, so they are offsets from where it loads |
-| info | `condition-left-out` | the build holds nothing of an object stating a condition (the image defines no variable of its name, the map names none of it), and the a2l leaves it out |
+| info | `condition-left-out` | the build holds nothing of an object stating a condition (the image defines neither a variable nor a symbol of its name, the map names none of it), and the a2l leaves it out |
 | info | `empty-component` | a component declares no variable |
 | info | `empty-vocabulary` | a types, units, constants, sections or rasters file declares nothing |
 | info | `incomplete-project` | a variable is missing from the dictionary and the finding that says why is silenced |
@@ -686,37 +692,42 @@ and a malformed one is refused by the calibration tool, so that generator stays 
 ```c
 /* ddd_globals.c, as the example templates render it */
 /** Measurement used as the input quantity of AxisA [Hz] */
-volatile uint16_t ValueE = 0U;
+DDD_RETAIN volatile uint16_t ValueE = 0U;
 /** Signed measurement with a fixed point conversion [degC] */
-int16_t ValueF = -400;
+DDD_RETAIN int16_t ValueF = -400;
 #if defined(FEATURE_X)
 /** Measurement that only exists when FEATURE_X is defined [V] */
-uint16_t ValueG = 1000U;
+DDD_RETAIN uint16_t ValueG = 1000U;
 #endif /* defined(FEATURE_X) */
 ```
 
 How that reads is the *example* templates' choice, not DDD's: a project that wants a
 different comment convention, a different banner, or no comments at all, says so in its own
-copy.
+copy.  The `DDD_RETAIN` before each definition is theirs too, a macro the file defines empty
+unless the build defines it first, which a build linking with `--gc-sections` on ELF does so
+that the linker keeps what no code references.
 
 ```c
 /* UserInterface.h - only what UserInterface declared */
 /* inputs - produced elsewhere, UserInterface may only read them */
 /** Measurement used as the input quantity of AxisA [Hz] */
 extern volatile uint16_t ValueE;  /* produced by Controller */
+#define ValueE__FACTOR (0.25)
+#define ValueE__OFFSET (0.0)
 /** Signed measurement with a fixed point conversion [degC] */
 extern int16_t ValueF;  /* produced by Controller */
+#define ValueF__FACTOR (0.1)
+#define ValueF__OFFSET (0.0)
 ```
 
 Access rules are enforced by visibility: a component includes its own header, and that
 header declares only what the component declared.  The enforcement is the include path -
 `ddd_globals.h` sits next to the component headers and declares everything, and only asks
 in a comment not to be included; the cmake integration is what makes the path narrow in
-practice.  With `--const-inputs` the enforcement becomes stronger,
-inputs are then declared `extern const` so that writing to a foreign variable does not
-compile.  The definition in `ddd_globals.c` stays non-const, which is a constraint violation
-in strict c but is accepted by the usual embedded toolchains; that is why the option is
-opt-in.
+practice.  An input is declared as its producer defines it: a header that declared it `const`
+while the definition is not would leave two declarations that c leaves undefined, so a write to
+a foreign variable is a matter for review.  (`--const-inputs`, `CONST_INPUTS` and the template
+pieces that served them were removed in 0.12.0 and are refused with that reason; delete them.)
 
 The artefact is part of the command: `ddd generate c` renders the c sources alone,
 `ddd generate a2l` writes the a2l alone - no c, no template directory; the second run of a
@@ -732,7 +743,8 @@ what would be written and exits `0` either way, so it is not a staleness gate on
 `--force` (generate despite errors - the files are written using the producing component's
 definition, but the command still reports every finding and still exits `1`),
 `--byte-order big`, `--address-map addresses.json`, `--image firmware.elf` (the a2l's
-addresses read out of the linked image, below).
+addresses read out of the linked image, below), `--a2l-module-fragment module.a2l` (a project's
+text at the head of the a2l's `MODULE`, below).
 
 ## A2L support
 
@@ -757,7 +769,10 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 * the address of an object is `0x00000000` unless the linked image or an address map gives
   it (`ECU_ADDRESS` is simply the keyword the format uses), and a file written with neither -
   or with a map that has no entry - says so on the line under its `ASAP2_VERSION`;
-  `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking.
+  `SYMBOL_LINK` is always emitted, so a2l address patchers can fill them in after linking; with
+  `--image` a structure member's names the variable's linker symbol and the member's offset from
+  it, and before the link, or with a map, it names the member's path at offset 0, which no
+  linker map can answer.
   `--image firmware.elf` reads every address out of the linked ELF image's DWARF - an object
   by its name, a structure member by its access path - and takes the image's byte order; a
   symbol the image cannot place keeps address 0 and is reported, its reason a note - unless
@@ -772,12 +787,17 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
   an address outside `0` .. `0xFFFFFFFF` is refused rather than written out malformed:
 
   ```json
-  { "ValueE": "0x20000100", "AxisA": "0x08004000", "Kp": 134234112 }
+  { "ValueE": "0x20000100", "AxisA": "0x08004000", "Kp": 134234128 }
   ```
 
 * a2l has no notion of preprocessor conditions, so a conditional variable is exported with a
   comment stating the condition
 * `"a2l": {"export": false}` keeps a variable out of the file
+* what the file cannot state itself - the `A2ML` that describes an `IF_DATA`, a module level
+  `IF_DATA`, an `EPK`, a `MEMORY_SEGMENT` - is a text file of the project's, which
+  `--a2l-module-fragment FILE` (cmake `A2L_MODULE_FRAGMENT`) pastes unchanged at the head of the
+  `MODULE`; where the project declares a named constant, DDD writes the one `MOD_PAR` the module
+  may hold, so a fragment holding another is refused
 
 ## Command line
 
@@ -785,7 +805,7 @@ display format, a `COMPU_VTAB` per enum and one `GROUP` per component that expor
 | --- | --- |
 | `ddd check FILE` | run all checks, exit 1 on errors; `--baseline` also compares, `--standalone` checks a component alone |
 | `ddd compare BASELINE CANDIDATE` | report whether one delivery can replace another; `--plugin` loads the plugins of an archived candidate |
-| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts; `--image ELF` reads the a2l's addresses out of the linked image |
+| `ddd generate all\|c\|a2l\|<plugin> FILE -o DIR` | check and generate; `--dictionary FILE` also writes the resolved dictionary, in the same write as the artefacts; `--image ELF` reads the a2l's addresses out of the linked image; `--a2l-module-fragment FILE` pastes a file at the head of the a2l's `MODULE` |
 | `ddd list FILE` | table (or `--format json`) of variables, producers and consumers; `--standalone` lists a component alone |
 | `ddd dump FILE [-o FILE]` | print the resolved dictionary, the contract the backends consume; `-o` writes it into a file, left untouched when its content would not change; `--standalone` dumps a component alone |
 | `ddd id --assign FILE...` | write an identity into every producing declaration that has none |
@@ -901,8 +921,8 @@ Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DI
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
 the schemas), `ADDRESS_MAP` and `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
 addresses read out of the map a step of the project's extracts, or out of the linked image),
-`BYTE_ORDER`,
-`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `CONST_INPUTS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
+`BYTE_ORDER`, `A2L_MODULE_FRAGMENT` (a file of the project's own pasted at the head of the a2l's
+`MODULE`), `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an
 include order to decide which set a component compiles against.  DDD refuses that rather than
@@ -954,7 +974,6 @@ docker compose build
 docker compose run --rm check            # ddd check on the demo project
 docker compose run --rm generate         # ddd generate on the demo project, into build/gen
 docker compose run --rm compile          # generate + compile + link + verify
-docker compose run --rm compile-const    # same, with --const-inputs
 docker compose run --rm cmake            # build examples/cmake through cmake/Ddd.cmake
 docker compose run --rm test             # pytest with the coverage gate
 docker compose run --rm coverage         # same, plus an html report

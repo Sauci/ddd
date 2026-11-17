@@ -29,7 +29,13 @@ from conftest import (
 from ddd.backends.a2l.model import build_a2l_model
 from ddd.backends.a2l.options import A2lOptions
 from ddd.backends.base import GeneratedFile, make_environment, render_template
-from ddd.backends.c.literals import c_literal, guard_name
+from ddd.backends.c.literals import (
+    c_constant_literal,
+    c_literal,
+    component_guard,
+    guard_name,
+    sanitize_comment,
+)
 from ddd.diagnostics import (
     CHECKS,
     DiagnosticBag,
@@ -367,6 +373,65 @@ class TestBackendEdges:
 
     def test_a_prefix_starting_with_a_digit_still_yields_a_valid_guard(self) -> None:
         assert guard_name("2fast", "types") == "N2FAST_TYPES_H"
+
+    def test_a_guard_collapses_runs_and_strips_underscores_as_it_always_did(self) -> None:
+        assert guard_name("a-", "b") == "A_B_H"
+        assert guard_name("_x_", "y") == "X_Y_H"
+        assert guard_name("a_", "_b") == "A_B_H"
+        assert guard_name("my-file.h", "a  b") == "MY_FILE_H_A_B_H"
+
+    def test_a_component_guard_is_the_old_one_unless_a_name_has_an_edge_underscore(self) -> None:
+        assert component_guard("Valve") == guard_name("ddd", "component", "Valve")
+        assert component_guard("2fast") == "DDD_COMPONENT_2FAST_H"
+        assert component_guard("Valve_") == "DDD_COMPONENTS_TRAILING_VALVE_H"
+        assert component_guard("_valve") == "DDD_COMPONENTS_LEADING_VALVE_H"
+        assert component_guard("_valve_") == "DDD_COMPONENTS_BOTH_VALVE_H"
+
+    @pytest.mark.parametrize(
+        ("text", "defused"),
+        [
+            ("a??/", "a? ?/"),
+            ("a???/", "a?? ?/"),
+            ("a????/", "a??? ?/"),
+            ("??-?", "? ?-?"),
+            ("??", "??"),
+            ("a ?? b", "a ?? b"),
+            ("??x", "??x"),
+        ],
+    )
+    def test_the_question_marks_of_a_trigraph_are_separated(self, text: str, defused: str) -> None:
+        assert sanitize_comment(text) == defused
+
+    @pytest.mark.parametrize(
+        ("value", "literal"),
+        [
+            (5, "5"),
+            (2147483647, "2147483647"),
+            (-2147483648, "-2147483648"),
+            (2147483648, "2147483648LL"),
+            (4294967295, "4294967295LL"),
+            (5000000000, "5000000000LL"),
+            (-2147483649, "-2147483649LL"),
+            (9223372036854775807, "9223372036854775807LL"),
+            (-9223372036854775808, "(-9223372036854775807LL - 1)"),
+            (18446744073709551615, "18446744073709551615ULL"),
+            (0.5, "0.5"),
+        ],
+    )
+    def test_a_constant_literal_is_chosen_by_range_alone(
+        self, value: int | float, literal: str
+    ) -> None:
+        """The values the templates page names, one by one."""
+        assert c_constant_literal(value) == literal
+
+    def test_no_docstring_calls_the_literal_the_narrowest_type(self) -> None:
+        from ddd.backends.c.model import ConstantView
+
+        for documented in (c_constant_literal, ConstantView.literal.fget):
+            assert documented is not None and documented.__doc__ is not None
+            text = " ".join(documented.__doc__.split())
+            assert "narrowest" not in text
+            assert "range alone" in text
 
     def test_float_literals_are_never_mistaken_for_integers(self) -> None:
         assert c_literal(2, Datatype.FLOAT32) == "2.0F"

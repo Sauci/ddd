@@ -94,8 +94,47 @@ on every image, and a consumer's ``extern`` to the qualifiers of its kind where 
 records it in the debug information, which gcc does for a variable a unit reads and clang does
 not. A definition of another type, or a template that drops a ``const`` or ``volatile`` there, is
 a warning, ``elf-mismatch``, and so is a header that drops them, on a gcc image.
-Changing the scaling is one edit in one file, and everything that depends on it follows on the
-next build.
+Changing the scaling is one edit in one file when the variables name a shared type, and one
+edit in each declaring file when each restates its definition; what is generated follows on the
+next build. The code a person wrote does not: a ``* 0.1`` in a consumer's source is nothing DDD
+reads, which is what the next section is about.
+
+What is detected, and what is not
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``ddd check`` compares **descriptions**. It never compares a description with code: the
+hand written c that multiplies ``ValueF`` by 0.1 is not read by anything in the tool, so a
+rescale to 0.01 leaves it wrong and silent. What is detected depends on how the variable is
+declared:
+
+* **Each component restates the definition.** Producer and consumer each write the datatype,
+  the unit, the conversion and the limits. Two descriptions that disagree are a
+  ``definition-mismatch``, reported before anything is built, naming the consumer to change.
+  This redundancy is what lets ``ddd check`` see the two sides drift apart. It does not reach
+  the code: once the consumer's description is edited to agree, the check is green whether or
+  not its code was updated.
+* **Producer and consumers name a shared** :doc:`type <file_formats/types>`. There is one
+  place to write the scaling and nothing for two descriptions to disagree about, so
+  ``ddd check`` has nothing to report - including when the type is rescaled and no reader has
+  seen it. The rescale is one edit that no reader's description shows. What names it is
+  ``ddd compare`` against a baseline dump archived before the change, which reports the
+  interface as changed; and the example templates write each linear conversion's factor and
+  offset as two macros in the header every reader includes (``Speed__FACTOR`` and
+  ``Speed__OFFSET``), so the rescale changes that header and every reader that includes it is
+  rebuilt. A reader that uses the macros follows the rescale; a reader that wrote the number
+  itself does not, and the rebuild is the only thing that tells it so. A project's own
+  templates get the same from ``.unit``, ``.conversion`` and ``.limits`` of each variable, see
+  :doc:`templates`.
+* **Reconciling is not a code change either.** The quick fix and the settle panel of
+  ``ddd gui`` push the producer's value into every consumer's description in one click. The
+  descriptions agree afterwards, and the code that reads the variable is untouched; the fix a
+  finding carries says so in its title.
+
+Choose a shared type when the meaning of the number is one fact the whole project holds, and
+accept that a change to it reaches the readers' headers and the a2l, not their descriptions or
+their code. Restate the definition where each side should be made to state, and be held to,
+what it expects: a deliberate duplication, paid for with one edit per file, which buys the
+check that notices when one side moves.
 
 Exactly one component owns each variable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -159,8 +198,7 @@ what the :doc:`cmake integration <build_integration>` hands each component - so 
 that the directory holds the headers of this image and no others, so an include that reaches
 across is at least an include of a component the image really links, and it is one line a
 reviewer can see. What the generated code does enforce by itself is below: a component's own
-header declares only what that component declared, and ``--const-inputs`` makes a write to a
-foreign variable a constraint violation wherever its declaration is read.
+header declares only what that component declared.
 
 .. code-block:: c
 
@@ -169,42 +207,33 @@ foreign variable a constraint violation wherever its declaration is read.
    /* outputs - written by Controller, read by other components */
    /** Measurement used as the input quantity of AxisA [Hz] */
    extern volatile uint16_t ValueE;
+   #define ValueE__FACTOR (0.25)
+   #define ValueE__OFFSET (0.0)
    /** Signed measurement with a fixed point conversion [degC] */
    extern int16_t ValueF;
+   #define ValueF__FACTOR (0.1)
+   #define ValueF__OFFSET (0.0)
 
    /* inputs - produced elsewhere, Controller may only read them */
    /** Scalar measurement with a linear conversion [%] */
    extern uint8_t ValueA;  /* produced by SensorHub */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
+   #define ValueB__FACTOR (0.001)
+   #define ValueB__OFFSET (0.0)
 
    /* locals - owned exclusively by Controller */
    /** Component local measurement of the controller [%] */
    extern int16_t ValueH;
 
 Visibility alone cannot stop a component from writing to a variable it legitimately reads,
-since a consumer needs the declaration in order to read it at all. ``--const-inputs`` closes
-that gap by qualifying inputs ``const`` in the consumer headers, which turns a write to a
-foreign variable from a convention into a constraint violation the compiler has to diagnose:
-
-.. code-block:: c
-
-   /* UserInterface.h, generated with --const-inputs */
-
-   /* inputs - produced elsewhere, UserInterface may only read them */
-   /** Measurement used as the input quantity of AxisA [Hz] */
-   extern const volatile uint16_t ValueE;  /* produced by Controller */
-   /** Signed measurement with a fixed point conversion [degC] */
-   extern const int16_t ValueF;  /* produced by Controller */
-
-.. note::
-
-   The definition in ``ddd_globals.c`` stays non-const, because the producer has to be able to
-   write it. Declaring the same object ``const`` in one translation unit and non-const in
-   another is a constraint violation in strict c, even though the usual embedded toolchains
-   accept it and generate exactly the code one expects. That is why the stronger enforcement
-   is opt-in rather than the default: a project decides for itself whether its toolchain and
-   its coding standard allow it.
+since a consumer needs the declaration in order to read it at all, and the generated headers
+leave it at that: they declare an input exactly as its producer defines it. A header that
+declared it ``const`` while the definition is not would leave two declarations of one object
+that c leaves undefined, so an optimising compiler could hand the reader a stale value. A write
+to a foreign variable is caught in review.
 
 The same principle runs through the rest of the tool. A component local variable is defined in
 ``ddd_globals.c`` like any other, so that the project still has exactly one definition per
@@ -231,8 +260,7 @@ the file names above are the example templates': ``ddd_globals.h`` is called tha
 template is called ``ddd_globals.h.jinja2``. :doc:`templates` describes the rules in full.
 
 Owning the presentation is not owning the rules. A component template is handed the
-declarations of its own component - already grouped by scope, already spelled in c, already
-qualified ``const`` where ``--const-inputs`` says so - and the ownership, the visibility and
+declarations of its own component - already grouped by scope, already spelled in c - and the ownership, the visibility and
 the datatypes are settled before any template runs. The example templates write plain c
 comments because a comment convention is exactly the kind of decision this principle leaves to
 the project; one that documents its generated code differently, or not at all, changes the
@@ -240,9 +268,14 @@ comment in the template and nothing else.
 
 The a2l file is the exception that proves the point. Its structure is dictated by ASAM rather
 than by a house style: a measurement and calibration tool rejects a ``COMPU_METHOD`` in the
-wrong place no matter whose coding standard produced it. There is nothing for a project to
-decide there, so there is no template option for the a2l either - that backend carries its own
-templates and stays internal.
+wrong place no matter whose coding standard produced it. There is nothing to decide about that
+structure, so there is no template option for the a2l - that backend carries its own template
+and stays internal. What a project does decide is what the file says beyond the data
+dictionary: the ``A2ML`` that describes the ``IF_DATA`` blocks, a module level ``IF_DATA``, an
+``EPK`` and a ``MEMORY_SEGMENT`` belong to the target and its tool chain, and DDD does not model
+them. A project hands the decision to DDD the way the c templates do, as a file of its own:
+``--a2l-module-fragment`` (``A2L_MODULE_FRAGMENT`` in cmake) names a text file that is pasted,
+unchanged, at the head of the module.
 
 
 Vocabulary
@@ -348,11 +381,12 @@ software runs is generated ``const volatile``, because ``const`` alone lets the 
 the initial value in place of a read wherever it can see it - within one translation unit at
 every optimisation level, ``-O0`` included, and across them under ``-flto`` - and, where the
 load does survive, still lets it serve two reads from one of them. Either way the tool writes
-a value the software does not pick up. The qualifier
-costs the read only section: gcc moves a ``const volatile`` object out of ``.rodata`` into
-``.data``, which on a flash target is a question the linker script has to answer. An object
-that is never tuned online states ``false``, is generated plain ``const`` and stays in read
-only memory. DDD states no preference between the two and reports nothing about the choice;
+a value the software does not pick up. Where the object lies
+is a separate question: ``volatile`` does not move a value to RAM on any toolchain measured,
+and where a calibration parameter lives is the project's to decide, by the ``section`` DDD
+writes and by the linker script. Where the compiler places it depends on the target and on
+the compiler's version, which :doc:`generated_artefacts` gives the measurement of. An object
+that is never tuned online states ``false`` and is generated plain ``const``. DDD states no preference between the two and reports nothing about the choice;
 it renders what the description says.
 
 The demo project uses both readings. ``AxisA`` is declared ``output`` by the controller and
@@ -398,9 +432,10 @@ silently accepting it.
 
    Scope is a property of a *declaration*, not of an object. The same object is ``output`` in
    the file of its producer and ``input`` in the file of every consumer, and each side states
-   the full definition. That redundancy is deliberate: it is precisely what allows DDD to
-   notice that the two sides have drifted apart, which a single shared declaration could never
-   do.
+   the full definition. That redundancy is deliberate when the declarations are restated: it
+   is what allows ``ddd check`` to notice that two descriptions have drifted apart, which a
+   shared type, naming the meaning once, trades away; see *What is detected, and what is not*
+   above.
 
 
 Position in the build process
@@ -419,6 +454,8 @@ and one header per component:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -439,14 +476,15 @@ object, with the addresses written in decimal or hexadecimal:
 
 .. code-block:: json
 
-   { "ValueE": "0x20000100", "AxisA": "0x08004000", "CurveA": 134234112 }
+   { "ValueE": "0x20000100", "AxisA": "0x08004000", "CurveA": 134234128 }
 
 .. code-block:: text
 
    $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
    build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 12 others; they reach the a2l at address 0
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
    build/addresses.json: info[condition-left-out]: the address map has no entry for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
-   1 warning, 1 info
+   1 warning, 2 infos
    wrote       build/gen/DemoDevice.a2l (updated)
 
 The ``a2l`` artefact is what makes the second run one that *cannot* touch the c sources: it
@@ -465,7 +503,8 @@ hole in it. A map that names none of them is not reported, ``--strict`` or not, 
 says so itself.
 ``SYMBOL_LINK`` is emitted in both cases, so a project that would rather patch the addresses
 into the a2l with a separate tool after linking can skip the second run entirely and still
-have the symbol names in the file:
+have the symbol names in the file. It names a linker symbol and the offset from it, which for a
+variable that is not a member is its own name at offset 0:
 
 .. code-block:: text
 
@@ -474,6 +513,13 @@ have the symbol names in the file:
      ECU_ADDRESS 0x20000100
      SYMBOL_LINK "ValueE" 0
    /end MEASUREMENT
+
+A member of a structure is another matter. With ``--image`` its record names the variable's
+symbol and the member's offset from it, both taken from where the image placed the member:
+``SYMBOL_LINK "Inlet"`` and the offset in bytes for ``Inlet.cells[1].v``. Before the link, and with an address map,
+which gives a symbol's address and nothing of a member's offset, the record names the member's
+path at offset 0, which is a path no linker map can answer. A tool that reads the debug
+information of the linked image may resolve it; no such tool was tried.
 
 .. uml::
 

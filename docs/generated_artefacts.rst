@@ -199,36 +199,36 @@ description change points at the component that changed:
 
    /* measurements */
    /** Measurement with a verbal conversion table */
-   uint8_t StateA = 0U;
+   DDD_RETAIN uint8_t StateA = 0U;
    /** Name of the current state, as text */
-   uint8_t StateName[16] = "OFF";
+   DDD_RETAIN uint8_t StateName[16] = "OFF";
    /** Measurement used as the input quantity of AxisA [Hz] */
-   volatile uint16_t ValueE = 0U;
+   DDD_RETAIN volatile uint16_t ValueE = 0U;
    /** Signed measurement with a fixed point conversion [degC] */
-   int16_t ValueF = -400;
+   DDD_RETAIN int16_t ValueF = -400;
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
-   uint16_t ValueG = 1000U;
+   DDD_RETAIN uint16_t ValueG = 1000U;
    #endif /* defined(FEATURE_X) */
    /** Component local measurement of the controller [%] */
-   int16_t ValueH = 0;
+   DDD_RETAIN int16_t ValueH = 0;
 
    /* calibration data */
    /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
-   const uint16_t AxisA[6] = { 0U, 3200U, 6400U, 12800U, 19200U, 32000U };
+   DDD_RETAIN const uint16_t AxisA[6] = { 0U, 3200U, 6400U, 12800U, 19200U, 32000U };
    /** Component local axis indexed by ValueA [%] (calibration axis, 4 points) */
-   const uint8_t AxisB[4] = { 0U, 60U, 140U, 200U };
+   DDD_RETAIN const uint8_t AxisB[4] = { 0U, 60U, 140U, 200U };
    /** Calibratable curve over AxisA [ms] (calibration curve over AxisA) */
-   const uint16_t CurveA[6] = { 1200U, 900U, 800U, 750U, 700U, 650U };
+   DDD_RETAIN const uint16_t CurveA[6] = { 1200U, 900U, 800U, 750U, 700U, 650U };
    /** Calibratable map over AxisA and AxisB [%] (calibration map over AxisA and AxisB) */
-   const int8_t MapA[4][6] = {
+   DDD_RETAIN const int8_t MapA[4][6] = {
        { 20, 24, 28, 30, 32, 30 },
        { 18, 22, 26, 28, 30, 28 },
        { 12, 16, 20, 22, 24, 22 },
        { 6, 10, 14, 16, 18, 16 }
    };
    /** Single calibratable constant [Hz] (calibration parameter) */
-   const uint16_t ParameterA = 3200U;
+   DDD_RETAIN const uint16_t ParameterA = 3200U;
 
 Several details of that excerpt are deliberate, and they fall on both sides of the split
 between the data and its presentation. The text of the comment is DDD's: it is assembled from
@@ -238,7 +238,10 @@ to open the json to find out that ``CurveA`` is indexed by ``AxisA``. What surro
 is the template's, and the examples put it in an ordinary ``/* ... */`` comment; whether the
 generated code should instead be documented in the form a documentation generator reads is a
 decision about the project's sources rather than about its data, and it is made by writing the
-markers that generator expects in the template. The values are DDD's again: every literal
+markers that generator expects in the template. So is the ``DDD_RETAIN`` before each
+definition, a macro the file defines empty unless the build defines it first, which a build
+linking with ``--gc-sections`` on ELF does so that the linker keeps what no code references
+(:doc:`templates`). The values are DDD's again: every literal
 carries the suffix its datatype asks for, in upper case as the coding standards common in the
 industry require: ``U`` for ``uint8``, ``uint16`` and ``uint32``, ``ULL`` and ``LL`` for the
 64 bit types, ``F`` for ``float32``, nothing for the signed narrow types and for
@@ -280,8 +283,12 @@ this:
    /* inputs - produced elsewhere, UserInterface may only read them */
    /** Measurement used as the input quantity of AxisA [Hz] */
    extern volatile uint16_t ValueE;  /* produced by Controller */
+   #define ValueE__FACTOR (0.25)
+   #define ValueE__OFFSET (0.0)
    /** Signed measurement with a fixed point conversion [degC] */
    extern int16_t ValueF;  /* produced by Controller */
+   #define ValueF__FACTOR (0.1)
+   #define ValueF__OFFSET (0.0)
    /** Floating point measurement without a conversion [degC] */
    extern float ValueC;  /* produced by SensorHub */
    /** Measurement with a verbal conversion table */
@@ -290,14 +297,20 @@ this:
    extern uint8_t StateName[16];  /* produced by Controller */
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
+   #define ValueB__FACTOR (0.001)
+   #define ValueB__OFFSET (0.0)
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
    extern uint16_t ValueG;  /* produced by Controller */
+   #define ValueG__FACTOR (0.001)
+   #define ValueG__OFFSET (0.0)
    #endif /* defined(FEATURE_X) */
    /** Counter written by the event logger */
    extern uint8_t ValueJ;  /* produced by EventLogger */
    /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
    extern const uint16_t AxisA[6];  /* produced by Controller */
+   #define AxisA__FACTOR (0.25)
+   #define AxisA__OFFSET (0.0)
 
    /* locals - owned exclusively by UserInterface */
    /** Second calibratable curve over the same shared axis [%] (calibration curve over AxisA) */
@@ -363,7 +376,7 @@ templates emit the same ``#if`` around all of them:
 
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
-   uint16_t ValueG = 1000U;
+   DDD_RETAIN uint16_t ValueG = 1000U;
    #endif /* defined(FEATURE_X) */
 
 They repeat the condition in the ``#endif`` comment because these guards are frequently
@@ -539,6 +552,8 @@ touched. Changing the description of one variable in ``SensorHub`` shows the gra
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the edit
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (updated)
    wrote       build/gen/ddd_globals.h (updated)
    unchanged   build/gen/ddd_types.h
@@ -608,6 +623,7 @@ writes, saying so:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates  # after the component left
+   ...
    wrote       build/gen/ddd_globals.c (updated)
    ...
    removed     build/gen/EventLogger.h
@@ -1049,7 +1065,8 @@ the situation rather than silently truncating:
 
    $ ddd generate all cube.ddd.json -o build/gen -t templates -W unused-output=ignore
    cube.ddd.json#component.interface[0].definition: warning[a2l-unrepresentable]: 'Cube' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
-   1 warning
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 warning, 1 info
    wrote       build/gen/ddd_globals.c (created)
    ...
 

@@ -224,7 +224,7 @@ reported:
 .. code-block:: c
 
    /* ddd_globals.c */
-   int16_t InletTemperature = -400;
+   DDD_RETAIN int16_t InletTemperature = -400;
 
 If the disagreement is real and the project needs to see the generated files anyway - to
 compare them, or to get an image out of the door while two teams argue - the ``--force``
@@ -456,7 +456,7 @@ generated c code:
 .. code-block:: c
 
    /* ddd_globals.c */
-   uint16_t ValueD[8];
+   DDD_RETAIN uint16_t ValueD[8];
 
 That asymmetry is deliberate. ``export`` describes what a calibration tool is shown; it says
 nothing about what the software is allowed to use, and a variable that vanished from the
@@ -615,7 +615,8 @@ only a 1.7 reader understands, and says so:
 
    $ ddd generate all buffers.ddd.json -o gen -t templates
    buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
-   1 warning
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 warning, 1 info
    wrote       gen/ddd_globals.c (created)
    ...
 
@@ -704,6 +705,8 @@ shipping a calibration description for variables the software does not contain.
 .. code-block:: text
 
    $ ddd generate all sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/sensor/ddd_globals.c (created)
    wrote       build/sensor/ddd_globals.h (created)
    wrote       build/sensor/ddd_types.h (created)
@@ -711,6 +714,8 @@ shipping a calibration description for variables the software does not contain.
    wrote       build/sensor/SensorOnly.a2l (created)
 
    $ ddd generate all full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/full/ddd_globals.c (created)
    wrote       build/full/ddd_globals.h (created)
    wrote       build/full/ddd_types.h (created)
@@ -727,9 +732,13 @@ produces each of its inputs, and that answer depends on what else is in the imag
 
    /* build/full/Controller.h */
    extern uint8_t ValueA;  /* produced by SensorHub */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
 
    /* build/ctrl/Controller.h - an image that does not link SensorHub */
    extern uint8_t ValueA;  /* produced by <unresolved> */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
 
 This is why the cmake integration refuses the ambiguous case instead of letting an include
 order decide it: only one ``ddd_generate`` call may hand its ``<stem>_ddd_headers`` to the

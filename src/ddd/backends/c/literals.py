@@ -259,11 +259,12 @@ def component_guard(name: str) -> str:
     ``DDD_COMPONENT_<NAME>_H``, for every name without an underscore at an edge. Dropped by
     :func:`guard_name`, such an underscore would give ``Valve`` and ``Valve_`` one guard, and a
     file including both headers would find the second preprocessed away. Written into the
-    guard, it would make a double underscore, which c reserves and the analysis refuses in a
-    name. So a name with one takes a prefix no other name can: ``DDD_COMPONENTS_TRAILING_``,
-    ``DDD_COMPONENTS_LEADING_`` or ``DDD_COMPONENTS_BOTH_``, ahead of the name without its edge
-    underscores. The character after ``COMPONENT`` is what tells the two families apart, and
-    the analysis refuses names that differ only in case, so no two names share a guard.
+    guard, it would make a double underscore, which C++ reserves wherever it stands and the
+    analysis refuses in a name. So a name with one takes a prefix no other name can:
+    ``DDD_COMPONENTS_TRAILING_``, ``DDD_COMPONENTS_LEADING_`` or ``DDD_COMPONENTS_BOTH_``,
+    ahead of the name without its edge underscores. The character after ``COMPONENT`` is what
+    tells the two families apart, and the analysis refuses names that differ only in case, so
+    no two names share a guard.
     """
     bare = name.strip("_")
     leading, trailing = name.startswith("_"), name.endswith("_")

@@ -202,7 +202,7 @@ A table resolved to ``"leading"`` is declared flat, counts first, in its own dat
 
 .. code-block:: c
 
-   const uint32_t M[2 + (16) * (16)] = { 16U, 16U, ... };
+   DDD_RETAIN const uint32_t M[2 + (16) * (16)] = { 16U, 16U, ... };
 
 and the a2l describes it with a record layout of its own, the counts ahead of the values it
 governs:

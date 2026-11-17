@@ -547,8 +547,9 @@ whoever states them, and only two *stated* sets of limits can disagree
 (`definition-mismatch`). The resolved limits come from the producer when it states them,
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
-reference. A derived end holds the physical value of its raw count, and is rounded outward
-where it is rounded at all. The tail of the arithmetic is taken off a short decimal, because a
+reference. A derived end holds the physical value of its raw count, and where it is rounded
+it moves inward of the computed product by no more than the arithmetic's tail of four units in
+the last place. The tail of the arithmetic is taken off a short decimal, because a
 decimal factor has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 ..
 `7.65`, the number its own largest raw count reads as, rather than the `7.6499999999999995`
 the multiplication produces. That may take the end inward of the float, by at most four units
@@ -1457,11 +1458,14 @@ Errors:
   (table 5, the index of keywords): `MAP`, `VALUE`, `IDENTICAL`, `ROOT` and `MODULE` are
   among them. The list is DDD's own, written from the 1.6.1 grammar, and the match is exact
   and case sensitive, so `map` is a name. It holds the project, a component that gets a group,
-  an object the A2L carries, each member of a path, and a `display_identifier`; an object, or a
-  member, the A2L leaves out is not held. A member is the finding of the file declaring its
-  structure, once however many variables use it. It is an error, so a build that passed
-  can stop on it, and it is not the c half of `reserved-identifier`: a name can be fine for
-  the compiler and forbidden by the A2L, and the reverse.
+  an object the A2L carries, each member of a path, and a `display_identifier`, judged from the
+  descriptions alone: an object or a member that states `export: false` for the A2L is not
+  held, but the check reads neither the image nor the map, so an object a run drops because
+  its build holds none of it (`condition-left-out`) still draws the error, and
+  `-W a2l-keyword=ignore` relaxes it for that run. A member is the finding of the file declaring its structure, once however many
+  variables use it. It is an error, so a build that passed can stop on it, and it is not the c
+  half of `reserved-identifier`: a name can be fine for the compiler and forbidden by the A2L,
+  and the reverse.
 - `name-collision`: two names that are distinct in the description files become the same
   C identifier or the same generated file. Exactly these pairs are compared: enumerators of
   different enums, an enumerator and a data object, a data object and the name of an enum
@@ -1530,10 +1534,14 @@ Warnings:
   255 characters; a record's name is at most `MAX_IDENT` 1024; and a part of that name, an
   index counted within it, is at most `MAX_PARTIAL_IDENT` 128, so an array of structures named
   with the full 128 characters passes it. A path made of members is held once per variable. A string
-  or a name of a member is the finding of the file that states it. The check fires only for an
-  object the A2L carries, the closure over references included
-  ([section 5.2](#52-a2l)). The text of a module fragment is the project's own A2L and is
-  never checked.
+  or a name of a member is the finding of the file that states it. The check fires for what the
+  descriptions send to the A2L, the closure over references included
+  ([section 5.2](#52-a2l)): an object or a member that states `export: false` for the A2L is
+  not held. Judged from the descriptions alone, it reads neither the image nor the map, so an
+  object a run drops because its build holds none of it (`condition-left-out`) is named all
+  the same, and stops a `--strict` run; `-W a2l-unrepresentable=ignore` relaxes it for that
+  run. The text of a module fragment is
+  the project's own A2L and is never checked.
 - `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.

@@ -421,8 +421,10 @@ but a substitution the front end makes while parsing, so it happens at `-O0` as 
 `-O2`, to an array element at a constant index as much as to a scalar, and to a value read
 once at startup as much as to one read in a loop; across translation units it is what `-flto`
 does.  Where the load survives, `const` still lets the compiler serve two reads from one of
-them and move it across a call.  Either way, a program that writes a new value through such
-an object's address prints it back out of memory and then goes on computing with the old one.
+them and move it across a call.  Either way, a store through such an object's address is not
+what the code goes on computing with: a hosted program built by gcc 15.2.0 that stores 7 into a
+`const` object of 3 faults at `-O0`, `-O2` and `-Os`, and with the page made writable first the
+object still reads 3 at all three, where a `const volatile` one reads the 7.
 
 Where the object lies is a separate question: `volatile` does not move a value to RAM on any
 toolchain measured.  The ELF images this project's test suite is built on - gcc 14.2.0 (x86_64,
@@ -690,18 +692,20 @@ and a malformed one is refused by the calibration tool, so that generator stays 
 ```c
 /* ddd_globals.c, as the example templates render it */
 /** Measurement used as the input quantity of AxisA [Hz] */
-volatile uint16_t ValueE = 0U;
+DDD_RETAIN volatile uint16_t ValueE = 0U;
 /** Signed measurement with a fixed point conversion [degC] */
-int16_t ValueF = -400;
+DDD_RETAIN int16_t ValueF = -400;
 #if defined(FEATURE_X)
 /** Measurement that only exists when FEATURE_X is defined [V] */
-uint16_t ValueG = 1000U;
+DDD_RETAIN uint16_t ValueG = 1000U;
 #endif /* defined(FEATURE_X) */
 ```
 
 How that reads is the *example* templates' choice, not DDD's: a project that wants a
 different comment convention, a different banner, or no comments at all, says so in its own
-copy.
+copy.  The `DDD_RETAIN` before each definition is theirs too, a macro the file defines empty
+unless the build defines it first, which a build linking with `--gc-sections` on ELF does so
+that the linker keeps what no code references.
 
 ```c
 /* UserInterface.h - only what UserInterface declared */
@@ -917,8 +921,8 @@ Options: `PROJECT`, `NAME`, `OUTPUT_DIRECTORY`, `TEMPLATE_DIRECTORY`, `SCHEMA_DI
 `PLUGINS` (the collected project's plugins, written into the generated description and closing
 the schemas), `ADDRESS_MAP` and `ADDRESSES_FROM_IMAGE` (the a2l written after the link, its
 addresses read out of the map a step of the project's extracts, or out of the linked image),
-`BYTE_ORDER`,
-`SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
+`BYTE_ORDER`, `A2L_MODULE_FRAGMENT` (a file of the project's own pasted at the head of the a2l's
+`MODULE`), `SEVERITY`, `LINK_LIBRARIES`, `DEPENDS`, `NO_A2L`, `NO_DICTIONARY`, `STRICT` and
 `NO_PROPAGATE_HEADERS`.  The last one matters for a project building **several** images from
 the same components: their generated headers differ, so two automatic sets would leave an
 include order to decide which set a component compiles against.  DDD refuses that rather than

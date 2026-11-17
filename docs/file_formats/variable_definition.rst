@@ -291,9 +291,9 @@ for a large array is the difference between a few bytes of image and a few kilob
 .. code-block:: c
 
    /** Floating point measurement without a conversion [degC] */
-   float ValueC;
+   DDD_RETAIN float ValueC;
    /** Component local measurement, kept out of the a2l */
-   uint16_t ValueD[8];
+   DDD_RETAIN uint16_t ValueD[8];
 
 A string object may state its ``init`` as text instead - printable ASCII, shorter than the
 dimension so that the terminator fits - and the c carries it as a string literal; the
@@ -313,7 +313,7 @@ uses it for ``CurveB``, whose ``"init": 200`` covers all six points of the axis 
 .. code-block:: c
 
    /** Second calibratable curve over the same shared axis [%] (calibration curve over AxisA) */
-   const uint8_t CurveB[6] = { 200U, 200U, 200U, 200U, 200U, 200U };
+   DDD_RETAIN const uint8_t CurveB[6] = { 200U, 200U, 200U, 200U, 200U, 200U };
 
 Everything about an initial value is checked against the object it belongs to. A value outside
 the raw range of the datatype, a fractional value in an integer object, and a nested list of
@@ -543,7 +543,7 @@ another task, and keeps the compiler from caching it in a register.
 .. code-block:: c
 
    /** Array measurement with four elements [V] */
-   volatile uint16_t ValueB[4] = { 0U, 0U, 0U, 0U };
+   DDD_RETAIN volatile uint16_t ValueB[4] = { 0U, 0U, 0U, 0U };
 
 .. code-block:: text
 
@@ -597,7 +597,7 @@ only memory.
 .. code-block:: c
 
    /** Single calibratable constant [Hz] (calibration parameter) */
-   const uint16_t ParameterA = 3200U;
+   DDD_RETAIN const uint16_t ParameterA = 3200U;
 
 .. code-block:: text
 
@@ -619,7 +619,7 @@ difference is whether the code that reads the value goes back to that address:
 .. code-block:: c
 
    /** Single calibratable constant [Hz] (calibration parameter) */
-   const volatile uint16_t ParameterA = 3200U;
+   DDD_RETAIN const volatile uint16_t ParameterA = 3200U;
 
 value_block
 ~~~~~~~~~~~
@@ -648,7 +648,7 @@ name a :doc:`declared constant <constants>` here exactly as on a measurement.
 .. code-block:: c
 
    /** Calibratable array of constants (calibration value block) */
-   const uint8_t BlockA[8] = { 0U, 12U, 28U, 52U, 84U, 124U, 180U, 255U };
+   DDD_RETAIN const uint8_t BlockA[8] = { 0U, 12U, 28U, 52U, 84U, 124U, 180U, 255U };
 
 .. code-block:: text
 
@@ -697,7 +697,7 @@ to be a measurement, and it has to exist.
 .. code-block:: c
 
    /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
-   const uint16_t AxisA[6] = { 0U, 3200U, 6400U, 12800U, 19200U, 32000U };
+   DDD_RETAIN const uint16_t AxisA[6] = { 0U, 3200U, 6400U, 12800U, 19200U, 32000U };
 
 .. code-block:: text
 
@@ -741,7 +741,7 @@ A curve is a one dimensional calibratable table laid over one axis. It names tha
 .. code-block:: c
 
    /** Calibratable curve over AxisA [ms] (calibration curve over AxisA) */
-   const uint16_t CurveA[6] = { 1200U, 900U, 800U, 750U, 700U, 650U };
+   DDD_RETAIN const uint16_t CurveA[6] = { 1200U, 900U, 800U, 750U, 700U, 650U };
 
 .. code-block:: text
 
@@ -809,7 +809,7 @@ the init data reads exactly like the table it is:
 .. code-block:: c
 
    /** Calibratable map over AxisA and AxisB [%] (calibration map over AxisA and AxisB) */
-   const int8_t MapA[4][6] = {
+   DDD_RETAIN const int8_t MapA[4][6] = {
        { 20, 24, 28, 30, 32, 30 },
        { 18, 22, 26, 28, 30, 28 },
        { 12, 16, 20, 22, 24, 22 },

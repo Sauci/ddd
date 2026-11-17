@@ -532,7 +532,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   carries, or past 1024, which an identifier does, and a part of a name past 128 characters with its
   array index counted; a unit under an identity conversion is held to 237 characters, since the
   method's description repeats it after 18 more. The file is written whole all the same, and the
-  finding names which of the limits it passes. Migrating costs a rename for the error, which stops
+  finding names which of the limits it passes. It cannot see a run's left-out objects either, so an
+  object only such a run drops is still named, and `-W a2l-unrepresentable=ignore` relaxes it for
+  that run. Migrating costs a rename for the error, which stops
   `ddd check`, `ddd generate` and a build that passed, and `-W a2l-keyword=ignore` relaxes it for a
   name the target's tool accepts; the warning stops a `--strict` or `STRICT` build, and `-W
   a2l-unrepresentable=ignore` lets it through.  The list of keywords is DDD's own, written without a
@@ -549,8 +551,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   'S_t'"; a member of more than three dimensions is named the same way, once at its type, where a
   warning for each element and each variable came before, at the variable's declaration and in the
   words "'X.hyper' has".  A script that read the text of such a warning, and its location, must read
-  the new.  A `--strict` or `STRICT` build with such a size stops; the cost is a smaller object, or
-  `-W a2l-unrepresentable=ignore`.
+  the new.  A `--strict` or `STRICT` build with such a size stops, and so does one whose object only
+  a run drops because its build holds none of it, since the check reads neither the image nor the
+  map; the cost is a smaller object, or `-W a2l-unrepresentable=ignore`.
 
 * **The example `ddd_globals.c` template keeps a definition through `--gc-sections`, and the pages
   say where `const volatile` lies.**  The pages said that `volatile` takes a `const volatile`

@@ -131,7 +131,7 @@ same header that declares their sizes:
    #define PRESSURE_CELLS 8 /**< cells of the pressure manifold */
 
    /* ddd_globals.c */
-   volatile uint16_t ManifoldPressure[PRESSURE_CELLS] __attribute__((section(".fast_ram")));
+   DDD_RETAIN volatile uint16_t ManifoldPressure[PRESSURE_CELLS] __attribute__((section(".fast_ram")));
 
 ``ddd list`` shows the spelling too - the ``SHAPE`` column of ``ManifoldPressure`` reads
 ``[PRESSURE_CELLS]`` - while every record of the a2l spells its sizes as resolved numbers,

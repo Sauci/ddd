@@ -420,17 +420,31 @@ than written by hand so that no variable can be defined twice or defined by the 
     * file exactly once; DDD is the only owner of these storage locations.
     */
 
+   /*
+    * A link with --gc-sections drops a definition no code references, a
+    * measurement only the calibration tool reads among them, and the a2l then
+    * describes storage the image does not hold.  A project on ELF that links so
+    * defines DDD_RETAIN as __attribute__((used, retain)), with -D or in a header
+    * the build includes first, with a gcc that knows 'retain' and a binutils that
+    * keeps such a section; where gcc ignores 'retain' (PE), a reference to the
+    * object or a linker script that keeps its section does the same.  Left
+    * undefined it is empty, and the definitions are what they were.
+    */
+   #ifndef DDD_RETAIN
+   #define DDD_RETAIN
+   #endif
+
    /* ---------------------------------------------------------------------------
     * Controller - Decides when to heat, from the cabin temperature
     * ------------------------------------------------------------------------ */
    /** Temperature below which the heater is switched on [degC] (calibration parameter) */
-   const volatile int16_t HeaterOnThreshold = 180;
+   DDD_RETAIN const volatile int16_t HeaterOnThreshold = 180;
 
    /* ---------------------------------------------------------------------------
     * SensorHub - Reads the sensors and publishes their conditioned values
     * ------------------------------------------------------------------------ */
    /** Temperature measured in the cabin [degC] */
-   volatile int16_t CabinTemperature = 0;
+   DDD_RETAIN volatile int16_t CabinTemperature = 0;
 
 The two component headers are where the access rules become physical. ``SensorHub.h`` contains
 the variable SensorHub owns and nothing else - SensorHub's sources include this one header and
@@ -590,7 +604,8 @@ agreed on are worse than no sources:
    components/controller.ddd.json#component.interface[0].definition: error[definition-mismatch]: 'CabinTemperature' is declared differently by component 'Controller' than by 'SensorHub' (datatype: uint16 != sint16)
        note: components/sensor_hub.ddd.json#component.interface[0].definition: reference declaration
    components/controller.ddd.json#component.interface[0].definition.limits: warning[limits-out-of-range]: limits [-40, 85] exceed the range [0, 6553.5] that uint16 can represent with this conversion
-   1 error, 1 warning
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 error, 1 warning, 1 info
 
 .. warning::
    ``--force`` generates in spite of the errors, using the producer's definition

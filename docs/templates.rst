@@ -389,7 +389,12 @@ again; a reader that multiplies by ``Speed__FACTOR`` follows the rescale, and on
 the number itself does not, which no check of the descriptions can see. The names carry a
 double underscore because DDD refuses one in every name a project writes - a variable, a type,
 a constant, an enumerator - so no name the generated c holds can be one of them; the values
-are parenthesised so that a negative offset cannot join the sign in front of it. The example
+are parenthesised so that a negative offset cannot join the sign in front of it. The names are
+sound C, which reserves a name that begins with two underscores, or with one and a capital
+letter, but not one that holds two further in. C++ reserves that too, so a C++ unit including
+the header meets ``Speed__FACTOR`` as a name reserved to the implementation; a project whose
+readers are C++ renames the macros in the two lines of the ``scale`` macro of
+``_macros.jinja2`` that spell them. The example
 writes nothing for any other kind of conversion: an ``identity`` and a ``string`` have no
 scale, and the ``typedef enum`` of an ``enum`` is already in the types header. A project whose
 templates were copied before this one keeps the headers it had, and gains the macros by
@@ -413,8 +418,8 @@ give ``Valve`` and ``Valve_`` one guard, so that a file including both finds the
 preprocessed away. Such a name has a prefix of its own, and the name without its edge
 underscores after it: ``DDD_COMPONENTS_TRAILING_VALVE_H`` for ``Valve_``,
 ``DDD_COMPONENTS_LEADING_VALVE_H`` for ``_valve`` and ``DDD_COMPONENTS_BOTH_VALVE_H`` for
-``_valve_``. No guard holds a double underscore, which c reserves. Every other name keeps the
-guard it had.
+``_valve_``. No guard holds a double underscore, which C++ reserves wherever it stands and
+DDD refuses in every name a project writes. Every other name keeps the guard it had.
 
 Each entry of the three lists is a declaration rather than a bare object, because the same
 variable is declared differently in different headers:

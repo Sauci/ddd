@@ -489,9 +489,9 @@ the declaration rather than to the members:
 .. code-block:: c
 
    /** The inlet sensor as this ecu sees it */
-   volatile Sensor_t Inlet;
+   DDD_RETAIN volatile Sensor_t Inlet;
    /** What the calibration tool may change about the inlet sensor */
-   const volatile SensorCal_t InletCal;
+   DDD_RETAIN const volatile SensorCal_t InletCal;
 
 Flattened into the a2l
 ~~~~~~~~~~~~~~~~~~~~~~

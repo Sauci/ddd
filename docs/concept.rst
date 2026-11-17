@@ -127,8 +127,8 @@ declared:
   :doc:`templates`.
 * **Reconciling is not a code change either.** The quick fix and the settle panel of
   ``ddd gui`` push the producer's value into every consumer's description in one click. The
-  descriptions agree afterwards, and the code that reads the variable is untouched; the
-  preview of each says so.
+  descriptions agree afterwards, and the code that reads the variable is untouched; the fix a
+  finding carries says so in its title.
 
 Choose a shared type when the meaning of the number is one fact the whole project holds, and
 accept that a change to it reaches the readers' headers and the a2l, not their descriptions or

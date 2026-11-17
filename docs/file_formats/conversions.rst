@@ -368,7 +368,7 @@ the rest of the array with zero:
 .. code-block:: c
 
    /** Software label of the controller, as text (calibration value block) */
-   const uint8_t SoftwareLabel[16] = "V1.2.3";
+   DDD_RETAIN const uint8_t SoftwareLabel[16] = "V1.2.3";
 
 In the a2l a calibration string is a ``CHARACTERISTIC`` of type ``ASCII``, the form Vector's
 own files use, over the ordinary record layout of its datatype, with no compu method and the
@@ -424,13 +424,20 @@ storage, run through the conversion:
   storage could hold.
 * **string** - the byte range of the datatype, 0 .. 255 for a ``uint8``; nobody may state others.
 
-A derived end is rounded to twelve significant digits, the width a reading is spelled at,
-because a decimal factor has no exact binary float: 255 counts of ``0.03`` multiply out to
+A derived end holds the physical value of its raw count. A decimal factor has no exact binary
+float, so the multiplication leaves a tail: 255 counts of ``0.03`` multiply out to
 ``7.6499999999999995``, and a calibration tool holding data to the limits it reads would then
-refuse ``7.65`` - the value that very raw count stands for. The rounded end is what reaches
-the a2l and the dumped dictionary. Limits **stated** by hand are never rounded; they are
-compared against the derived range with a relative tolerance of 1e-9, so a limit copied out of
-an a2l an earlier version wrote is not reported as off the range.
+refuse ``7.65`` - the value that very raw count stands for. An end within four units in the
+last place of its twelve digit decimal is written as that decimal, ``7.65`` here, which may
+sit up to those four units inward of the product: ``sint16`` under ``factor 0.1`` gives
+``3276.7`` where the product is ``3276.7000000000003``. Any other end is the number itself, in
+the fewest digits that read back as it: ``uint64`` under ``factor 1`` gives
+``1.8446744073709552e+19``, and ``uint32`` under 2^-10 ``4194303.9990234375``, where twelve
+digits would state a number short of the top count. Under the identity the ends are the raw
+ends, so a ``float32`` stops at ``FLT_MAX``, ``3.4028234663852886e+38``. The end is what
+reaches the a2l and the dumped dictionary. Limits **stated** by hand are never rounded; they
+are compared against the derived range with a relative tolerance of 1e-9, so a limit copied
+out of an a2l an earlier version wrote is not reported as off the range.
 
 A **negative factor swaps the two ends**, and DDD swaps them back: the conversion of the
 smallest raw value is then the largest physical value, and limits with ``min`` above ``max``

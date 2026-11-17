@@ -214,14 +214,22 @@ is ``Controller.h`` from the demo, shortened to the parts that matter:
    /* outputs - written by Controller, read by other components */
    /** Measurement used as the input quantity of AxisA [Hz] */
    extern volatile uint16_t ValueE;
+   #define ValueE__FACTOR (0.25)
+   #define ValueE__OFFSET (0.0)
    /** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */
    extern const uint16_t AxisA[6];
+   #define AxisA__FACTOR (0.25)
+   #define AxisA__OFFSET (0.0)
 
    /* inputs - produced elsewhere, Controller may only read them */
    /** Scalar measurement with a linear conversion [%] */
    extern uint8_t ValueA;  /* produced by SensorHub */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
+   #define ValueB__FACTOR (0.001)
+   #define ValueB__OFFSET (0.0)
 
    /* locals - owned exclusively by Controller */
    /** Component local measurement of the controller [%] */
@@ -280,7 +288,7 @@ comment on the ``#endif`` so that a long guarded region stays readable:
 
    #if defined(FEATURE_X)
    /** Measurement that only exists when FEATURE_X is defined [V] */
-   uint16_t ValueG = 1000U;
+   DDD_RETAIN uint16_t ValueG = 1000U;
    #endif /* defined(FEATURE_X) */
 
 a2l has no notion of preprocessor conditions - the file describes one built image, and DDD

@@ -180,9 +180,9 @@ the importable python package and the double extension of the description files,
 </tr>
 <tr class="row-odd"><td><p>DWARF</p></td>
 <td><p>The debugging data format usually embedded in an ELF file, which describes the symbols
-of the compiled software. DDD does not read it: the addresses it needs for the a2l are
-supplied as a json map with <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, produced from the linker output by
-whatever already parses it in the build.</p></td>
+of the compiled software. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--image</span></code> reads it to place the addresses the
+a2l needs; an image without it takes a json map with <code class="docutils literal notranslate"><span class="pre">--address-map</span></code> instead,
+produced from the linker output by whatever already parses it in the build.</p></td>
 </tr>
 <tr class="row-even"><td><p>ECU</p></td>
 <td><p>Electronic control unit, a piece of electronic hardware running the software whose
@@ -256,29 +256,35 @@ match a publisher somebody registered, so no API token is stored in the reposito
 <td><p>Python Enhancement Proposal. PEP 440 says what a version of a python package may be,
 which is why the development builds on TestPyPI cannot carry their commit in theirs.</p></td>
 </tr>
-<tr class="row-even"><td><p>RAM</p></td>
+<tr class="row-even"><td><p>PIE</p></td>
+<td><p>Position independent executable, an image linked to load at an address the loader chooses
+(<code class="docutils literal notranslate"><span class="pre">-pie</span></code>, or <code class="docutils literal notranslate"><span class="pre">-static-pie</span></code>), whose ELF type is <code class="docutils literal notranslate"><span class="pre">ET_DYN</span></code>. The addresses in it are
+offsets from where it loads, which <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--image</span></code> states as they are and
+says so, as <code class="docutils literal notranslate"><span class="pre">image-load-relative</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>RAM</p></td>
 <td><p>Random access memory, the volatile storage a measurement normally lives in. Named in
 the <a class="reference internal" href="consistency_checks.html"><span class="doc">checks</span></a> for what a section usually stands for.</p></td>
 </tr>
-<tr class="row-odd"><td><p>ROM</p></td>
+<tr class="row-even"><td><p>ROM</p></td>
 <td><p>Read-only memory, the storage a calibration value normally lives in - often behind an
 emulation overlay so that a calibration tool can write it. Another of the kinds of
 memory a declared section stands for.</p></td>
 </tr>
-<tr class="row-even"><td><p>UTF-16</p></td>
+<tr class="row-odd"><td><p>UTF-16</p></td>
 <td><p>The two byte Unicode encoding Windows PowerShell 5.1 re-encodes redirected output in,
 which is why <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">dump</span> <span class="pre">-o</span> <span class="pre">FILE</span></code> writes the file itself rather than leaving the bytes
 to the shell: a dictionary redirected with <code class="docutils literal notranslate"><span class="pre">&gt;</span></code> there cannot be read back.</p></td>
 </tr>
-<tr class="row-odd"><td><p>VSIX</p></td>
+<tr class="row-even"><td><p>VSIX</p></td>
 <td><p>The package format of a Visual Studio Code extension. The <code class="docutils literal notranslate"><span class="pre">ddd-&lt;version&gt;.vsix</span></code>
 attached to each GitHub release is the whole of how the editor extension is delivered.</p></td>
 </tr>
-<tr class="row-even"><td><p>WSL</p></td>
+<tr class="row-odd"><td><p>WSL</p></td>
 <td><p>The Windows Subsystem for Linux, where docker speaks linux containers on a Windows
 machine. It is where the compose services of this repository are run from.</p></td>
 </tr>
-<tr class="row-odd"><td><p>XCP</p></td>
+<tr class="row-even"><td><p>XCP</p></td>
 <td><p>Universal Measurement and Calibration Protocol, the successor of CCP. An exported
 measurement with a <a class="reference internal" href="file_formats/rasters.html"><span class="doc">raster</span></a> reaches the generated a2l with
 an <code class="docutils literal notranslate"><span class="pre">IF_DATA</span> <span class="pre">XCP</span></code> block naming its DAQ event; the rest of the protocol - the event
@@ -390,12 +396,13 @@ order. Version 1.6.1 carries exactly three, so an array of eight elements is wri
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ECU_ADDRESS</span></code></p></td>
 <td><p>The address of an object in the target, as it appears on a <code class="docutils literal notranslate"><span class="pre">MEASUREMENT</span></code>. A
 <code class="docutils literal notranslate"><span class="pre">CHARACTERISTIC</span></code> and an <code class="docutils literal notranslate"><span class="pre">AXIS_PTS</span></code> carry the same value as their address field
-instead. It is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code> until an address map supplies the real one.</p></td>
+instead. It is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code> until the linked image (<code class="docutils literal notranslate"><span class="pre">--image</span></code>) or an address map supplies the
+real one.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code></p></td>
 <td><p>The name of the symbol an object corresponds to in the linked software, plus an offset.
 DDD always writes it, so that an address patcher can fill the addresses in after the
-link even when no address map was given.</p></td>
+link even when neither an image nor an address map was given.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">IF_DATA</span></code></p></td>
 <td><p>An interface specific block, whose content is defined by the interface it names rather

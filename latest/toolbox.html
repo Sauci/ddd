@@ -121,11 +121,15 @@ compiled into an image. <code class="docutils literal notranslate"><span class="
 information, and prints the DDD declaration of every C variable it is asked for - as far as
 the image states it, and checked by DDD itself before it is printed, the way
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--standalone</span></code> checks a component. It needs an image built with debug information
-(<code class="docutils literal notranslate"><span class="pre">-g</span></code>); pyelftools, which reads it, is installed with DDD.</p>
+(<code class="docutils literal notranslate"><span class="pre">-g</span></code>) and with its contents, the linked image itself: a debug-only companion, the file
+<code class="docutils literal notranslate"><span class="pre">objcopy</span> <span class="pre">--only-keep-debug</span></code> splits off, has the DWARF and none of the contents of the image’s
+sections, so no initial value can be read from it, and the tool refuses it. An image whose code
+alone has no contents in the file, a <code class="docutils literal notranslate"><span class="pre">NOLOAD</span></code> region, keeps its data and is read. A separate debug file is not read
+in place of an image. pyelftools, which reads the image, is installed with DDD.</p>
 <p>A variable is named as it is in C, or matched with a glob such as <code class="docutils literal notranslate"><span class="pre">'Cal_*'</span></code>, and a
 <code class="docutils literal notranslate"><span class="pre">static</span></code> that several compilation units define is taken from one of them by naming its unit
-first, <code class="docutils literal notranslate"><span class="pre">cal.c:Gain</span></code>. What the tool prints is the <code class="docutils literal notranslate"><span class="pre">interface</span></code> of a component, ready to paste
-into one; <code class="docutils literal notranslate"><span class="pre">examples/firmware/firmware.elf</span></code> is an image of the tests’ fixture, built for a
+first, <code class="docutils literal notranslate"><span class="pre">cal.c:Gain</span></code>. What the tool prints is the <code class="docutils literal notranslate"><span class="pre">interface</span></code> of a component, to paste
+into one once its author has stated what an image does not say, the conversions above all; <code class="docutils literal notranslate"><span class="pre">examples/firmware/firmware.elf</span></code> is an image of the tests’ fixture, built for a
 Cortex-M4:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd tool from-elf examples/firmware/firmware.elf Cal_Gain Enum_State
 [
@@ -135,9 +139,6 @@ Cortex-M4:</p>
       "name": "Cal_Gain",
       "kind": "parameter",
       "datatype": "uint16",
-      "conversion": {
-        "kind": "identity"
-      },
       "init": 300,
       "volatile": false
     }
@@ -162,7 +163,7 @@ Cortex-M4:</p>
     }
   }
 ]
-examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
 1 info
 $ echo $?
 0
@@ -172,6 +173,34 @@ $ echo $?
 datatype is the one the image states, never the one its C spelling suggests elsewhere.
 <code class="docutils literal notranslate"><span class="pre">--scope</span> <span class="pre">input</span></code> prints the same entries as a consumer states them, without the initial value
 and the section; <code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">FILE</span></code> writes them into a file instead of standard output.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Cal_Gain</span></code> states no <code class="docutils literal notranslate"><span class="pre">conversion</span></code>, and that is deliberate. Whether a raw value is the
+physical one is a claim about the data, not something a variable’s type says, and DDD asks its
+author to state it (<a class="reference internal" href="faq.html"><span class="doc">FAQ</span></a>): pasted as it is, the entry is a <code class="docutils literal notranslate"><span class="pre">schema</span></code> error until it
+does. <code class="docutils literal notranslate"><span class="pre">--identity-conversions</span></code> writes the identity where you state it for every entry and
+member that is not an enum, so that it is one choice made for the whole run rather than a default
+the tool falls into:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd tool from-elf examples/firmware/firmware.elf Cal_Gain --identity-conversions
+[
+  {
+    "scope": "output",
+    "definition": {
+      "name": "Cal_Gain",
+      "kind": "parameter",
+      "datatype": "uint16",
+      "conversion": {
+        "kind": "identity"
+      },
+      "init": 300,
+      "volatile": false
+    }
+  }
+]
+examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, which '--identity-conversions' writes on your word, since nothing in an image says that raw equals physical; the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+1 info
+$ echo $?
+0
+</pre></div>
+</div>
 </section>
 <section id="what-an-image-states-and-what-it-does-not">
 <h2>What an image states, and what it does not<a class="headerlink" href="#what-an-image-states-and-what-it-does-not" title="Link to this heading"></a></h2>
@@ -196,22 +225,33 @@ any other array, so none is inferred.</p></td>
 target that built the image.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">conversion</span></code></p></td>
-<td><p>the identity, or an <code class="docutils literal notranslate"><span class="pre">enum</span></code> conversion carrying the enumerators in declaration order,
-named after the typedef closest to the enum, else its tag.</p></td>
+<td><p>an <code class="docutils literal notranslate"><span class="pre">enum</span></code> conversion carrying the enumerators in declaration order, named after the
+typedef closest to the enum, else its tag; for anything else none, since an image does
+not say that raw is physical, and <code class="docutils literal notranslate"><span class="pre">--identity-conversions</span></code> writes the identity where
+you do. An enumerator
+the image writes as a fixed-width constant is the unsigned value it holds, whatever the
+sign of its enum and whether its form is narrower or wider than the enum. An
+enumerator of a signed enum is negative only where its fixed-width constant is as
+wide as the enum and its top bit is set: 200 and 40000 in a signed 32 bit enum stay
+positive.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dimensions</span></code></p></td>
 <td><p>the array’s extents, in C order.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init</span></code></p></td>
 <td><p>the image’s own bytes, in its byte order; an array of one value as that value, a
-<code class="docutils literal notranslate"><span class="pre">float32</span></code> in the fewest digits that read it back. None for a variable in a section
+<code class="docutils literal notranslate"><span class="pre">float32</span></code> in the fewest digits that read it back, except FLT_MAX and its negative, written
+as the double each is, since their shortest spelling lies past the range DDD holds a
+<code class="docutils literal notranslate"><span class="pre">float32</span></code> to. None for a variable in a section
 without contents, whose bytes the image does not hold: <code class="docutils literal notranslate"><span class="pre">.bss</span></code> starts at zero, a
 <code class="docutils literal notranslate"><span class="pre">.noinit</span></code> section is not initialised at all, and <code class="docutils literal notranslate"><span class="pre">section</span></code> says which.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">section</span></code></p></td>
 <td><p>stated only where the variable’s section is not one of the toolchain’s defaults. It is
 the image’s output section, which is the name the source used when the linker script
-kept it, and the project has to declare it in a sections file.</p></td>
+kept it, and the project has to declare it in a sections file. It is the section the
+variable’s symbol names, which is what tells two sections a linker script overlays at
+one address apart.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">volatile</span></code></p></td>
 <td><p>the qualifier.</p></td>
@@ -251,7 +291,7 @@ component file, with a <code class="docutils literal notranslate"><span class="p
   }
 }
 main.c:57: warning[elf-name-synthesized]: an anonymous structure is named 'Inlet_t_pair_t', after the first thing that reaches it; rename it if the source has a better name
-examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
 main.c:63: info[elf-boolean-bitfield]: 'Inlet_t.ready' is a _Bool bitfield, described as a uint8 one of the same width: DDD refuses a boolean bitfield
 1 warning, 2 infos
 </pre></div>
@@ -262,21 +302,40 @@ shared types file rather than pasting it into both.</p>
 <p>A structure is named by the typedef closest to it, else by its tag, and an anonymous one after
 the first thing that reaches it (<code class="docutils literal notranslate"><span class="pre">elf-name-synthesized</span></code>). Two structures of one name that
 differ - one per compilation unit, each unit’s own - are <code class="docutils literal notranslate"><span class="pre">elf-type-conflict</span></code>, and no
-variable reaching either is printed. A <code class="docutils literal notranslate"><span class="pre">_Bool</span></code> bitfield is described as a <code class="docutils literal notranslate"><span class="pre">uint8</span></code> one
-(<code class="docutils literal notranslate"><span class="pre">elf-boolean-bitfield</span></code>), since DDD refuses a boolean bitfield, and <code class="docutils literal notranslate"><span class="pre">const</span></code> or <code class="docutils literal notranslate"><span class="pre">volatile</span></code>
-on a member is dropped (<code class="docutils literal notranslate"><span class="pre">elf-qualifier-dropped</span></code>): DDD qualifies whole objects. A structured
-object states no initial value, as DDD requires; values the image holds for one are dropped
-and said to be (<code class="docutils literal notranslate"><span class="pre">elf-init-dropped</span></code>).</p>
+variable reaching either is printed. They differ when their members do, and also when they lay
+the same members out at other offsets or to another size: a name that one unit packs and
+another lays out as the target does is a conflict. A <code class="docutils literal notranslate"><span class="pre">_Bool</span></code> bitfield is described as a
+<code class="docutils literal notranslate"><span class="pre">uint8</span></code> one (<code class="docutils literal notranslate"><span class="pre">elf-boolean-bitfield</span></code>), since DDD refuses a boolean bitfield, and <code class="docutils literal notranslate"><span class="pre">const</span></code>
+or <code class="docutils literal notranslate"><span class="pre">volatile</span></code> on a member is dropped (<code class="docutils literal notranslate"><span class="pre">elf-qualifier-dropped</span></code>): DDD qualifies whole
+objects. A structured object states no initial value, as DDD requires; values the image holds
+for one are dropped and said to be (<code class="docutils literal notranslate"><span class="pre">elf-init-dropped</span></code>).</p>
 <section id="the-layout-of-a-structure">
 <h3>The layout of a structure<a class="headerlink" href="#the-layout-of-a-structure" title="Link to this heading"></a></h3>
 <p>DDD states member order, datatypes and widths, never offsets, and the compiler lays out the
 structure it generates. Nothing in the a2l depends on that, but the structure DDD generates can
 lay out differently from the source’s where the source asked for a layout its members do not
-imply - and DWARF records none of those requests directly. The tool warns about the two traces
-it can read: bits skipped where the next bitfield would have fit, which an unnamed or zero
-width bitfield leaves (<code class="docutils literal notranslate"><span class="pre">elf-bitfield-gap</span></code>), and an alignment the source states
-(<code class="docutils literal notranslate"><span class="pre">elf-alignment</span></code>). Packing - <code class="docutils literal notranslate"><span class="pre">#pragma</span> <span class="pre">pack</span></code>, <code class="docutils literal notranslate"><span class="pre">packed</span></code> - is not detected: whether an
-offset is packed or merely the target’s own alignment depends on the ABI.</p>
+imply: packing (<code class="docutils literal notranslate"><span class="pre">#pragma</span> <span class="pre">pack</span></code>, <code class="docutils literal notranslate"><span class="pre">packed</span></code>), an alignment, an unnamed bitfield or a zero
+width one. DWARF records only some of those requests directly (DWARF 5’s alignment attribute
+records one, and <code class="docutils literal notranslate"><span class="pre">elf-alignment</span></code> reads it), and states what they did: where each member is,
+and how large the structure is.</p>
+<p>The tool lays each structure out as DDD’s generated C would, every member at the next offset
+its alignment allows, a scalar’s alignment held to what the image’s target allows inside a
+structure (the header’s <code class="docutils literal notranslate"><span class="pre">e_machine</span></code> and <code class="docutils literal notranslate"><span class="pre">e_flags</span></code> name it: a <code class="docutils literal notranslate"><span class="pre">double</span></code> is aligned to 4 on
+i386 and to 8 on the other machines the tool holds), and warns <code class="docutils literal notranslate"><span class="pre">elf-layout</span></code> where the image
+differs: the first member at another offset than the generated structure puts it at, or, where
+every member sits as generated, a size of its own. Packing, <code class="docutils literal notranslate"><span class="pre">pack(2)</span></code>, a packed member, and
+an unnamed or zero width bitfield anywhere in the structure are all found this way, and so is
+an alignment the source states, which <code class="docutils literal notranslate"><span class="pre">elf-alignment</span></code> names as well. Bits skipped where the
+next bitfield would have fit are <code class="docutils literal notranslate"><span class="pre">elf-bitfield-gap</span></code> instead, and the structure is not warned
+a second time. A layout a build flag gives every structure (<code class="docutils literal notranslate"><span class="pre">-fpack-struct</span></code>,
+<code class="docutils literal notranslate"><span class="pre">-malign-double</span></code>) is warned too, although the generated C, built the same way, repeats it.
+A structure the target lays out by its own alignment is never warned.</p>
+<p>The machines the tool holds are x86-64, i386, 32-bit PowerPC, S/390, ARM under an EABI,
+AArch64 and RISC-V other than RV32E. An image of another machine or ABI - ARM built for the
+older ABIs (<code class="docutils literal notranslate"><span class="pre">-mabi=apcs-gnu</span></code>, <code class="docutils literal notranslate"><span class="pre">atpcs</span></code>), RV32E - is not checked, and the run says so once
+(<code class="docutils literal notranslate"><span class="pre">elf-layout-unchecked</span></code>).</p>
+<p>A layout that a wire format or a non-volatile memory image depends on changes when the generated
+C replaces the source: read the offsets a warning names before relying on one.</p>
 </section>
 </section>
 <section id="what-the-tool-cannot-describe">
@@ -286,17 +345,36 @@ nothing, unless <code class="docutils literal notranslate"><span class="pre">--f
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd tool from-elf examples/firmware/firmware.elf Type_Pointer Tls_Counter Cal_Gain
 main.c:106: error[elf-no-storage]: 'Tls_Counter' has no address in the image: it is thread-local, with an address of its own in every thread
 main.c:38: error[elf-type-unsupported]: 'Type_Pointer' is a pointer, which DDD cannot state
-examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
 2 errors, 1 info
 $ echo $?
 1
 </pre></div>
 </div>
+<p>The reader is for the C that gcc and clang write, and C++ is not described by it. Where a C++
+shape would be described wrongly the tool refuses it, each in a sentence of its own, and describes
+nothing it does not state: a structure with a base class, whose members the base holds as well,
+is <code class="docutils literal notranslate"><span class="pre">elf-type-unsupported</span></code>, as is a structure with a static member where DWARF writes the
+static as a member, which DWARF 4 does, with no place in the object (at DWARF 5 gcc writes it
+apart, and the structure is described by its storage); and a variable of a namespace or a class, which gcc writes at
+the top of its unit beside the C variables, is <code class="docutils literal notranslate"><span class="pre">elf-no-storage</span></code> and no candidate by its short
+name, so that a DDD object of that name is not given the address of <code class="docutils literal notranslate"><span class="pre">ns::name</span></code>.</p>
+<p>One name at one address is one variable, however many units describe it, and the tool says so
+where the descriptions disagree about it, <code class="docutils literal notranslate"><span class="pre">elf-type-conflict</span></code>: a common symbol (<code class="docutils literal notranslate"><span class="pre">-fcommon</span></code>)
+declared at two sizes, an array declared with two lengths, a weak definition over a strong one of
+another type, and a description whose size is not the size its symbol states, as a unit built
+without <code class="docutils literal notranslate"><span class="pre">-g</span></code> leaves it. The variable is left out, since no one of the descriptions is right, and a unit prefix does not
+change that: the sizes are judged over every unit of the image that holds the name there.
+Where a linker script overlays two sections at one address, the variable’s section is the one its
+symbol names; a variable that nothing places in either is <code class="docutils literal notranslate"><span class="pre">elf-section-ambiguous</span></code>. A name two
+arguments reach by their two unit prefixes, as <code class="docutils literal notranslate"><span class="pre">cal.c:Gain</span></code> and <code class="docutils literal notranslate"><span class="pre">io.c:Gain</span></code> do, is refused as
+<code class="docutils literal notranslate"><span class="pre">elf-symbol-ambiguous</span></code>, naming both arguments: DDD names an object once.</p>
 <p>A finding about a variable is shown at its declaration in the C source, as the image recorded
 the path. An image that cannot be used at all - not ELF, without DWARF, a relocatable object
 rather than a linked image, one whose types sit in DWARF type units (<code class="docutils literal notranslate"><span class="pre">-fdebug-types-section</span></code>),
 one built with gcc’s link-time optimisation (<code class="docutils literal notranslate"><span class="pre">-flto</span></code>), one whose debug information is
-compressed with zstd rather than zlib (<code class="docutils literal notranslate"><span class="pre">-gz=zlib</span></code>), or a damaged file - is a usage error,
+compressed with zstd rather than zlib (<code class="docutils literal notranslate"><span class="pre">-gz=zlib</span></code>), a debug-only companion, whose sections
+hold none of the program, or a damaged file - is a usage error,
 exit <code class="docutils literal notranslate"><span class="pre">2</span></code>, and the message names the flag to build it with or without where one would do. So
 are a malformed argument and an <code class="docutils literal notranslate"><span class="pre">-o</span></code> naming the image, refused before the image is read.</p>
 <section id="the-findings">
@@ -321,46 +399,73 @@ under DDD’s identifiers.</p>
 <td><p>error</p></td>
 <td><p>a name or a pattern matches no variable of the image’s debug information; where the
 symbol table holds the name and no unit’s debug information does, the unit defining it
-was built without <code class="docutils literal notranslate"><span class="pre">-g</span></code></p></td>
+was built without <code class="docutils literal notranslate"><span class="pre">-g</span></code>, or, in an image whose debug information is split into <code class="docutils literal notranslate"><span class="pre">.dwo</span></code>
+files (<code class="docutils literal notranslate"><span class="pre">-gsplit-dwarf</span></code>), is described in those, which the tool does not read</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-symbol-ambiguous</span></code></p></td>
 <td><p>error</p></td>
 <td><p>several compilation units define the name, other than as one variable at one
 address; <code class="docutils literal notranslate"><span class="pre">UNIT:NAME</span></code> takes one. A tentative definition two units share
-(<code class="docutils literal notranslate"><span class="pre">-fcommon</span></code>) is one variable</p></td>
+(<code class="docutils literal notranslate"><span class="pre">-fcommon</span></code>) is one variable. Two arguments that each take a variable of one name,
+from two units, are refused too, naming both arguments</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-no-storage</span></code></p></td>
 <td><p>error</p></td>
 <td><p>the variable has no address: only declared, folded into a constant or removed by the
 compiler, thread-local, at a location that is not a fixed address, discarded by the
-linker - which leaves its address at 0, or at all ones, where no symbol of its name
-sits - or at an address no section of the image holds</p></td>
+linker - which leaves its address at 0, at all ones or, with gold, at an offset into
+the section it dropped, so that an external variable with no object symbol of its name
+at its address counts as discarded, and so does a <code class="docutils literal notranslate"><span class="pre">static</span></code> with no local object symbol of its name
+there where the image holds any, a link made with <code class="docutils literal notranslate"><span class="pre">-Wl,-x</span></code> dropping them all and
+leaving the <code class="docutils literal notranslate"><span class="pre">static</span></code> to be read by its address alone - or at an address no section
+of the image holds. A global the symbol table holds and no unit with debug information
+defines, one written in assembly or built without <code class="docutils literal notranslate"><span class="pre">-g</span></code>, is said to be defined where
+the debug information does not describe it. A name each of several units leaves without
+an address, as a header’s <code class="docutils literal notranslate"><span class="pre">static</span> <span class="pre">const</span></code> each folded, is reported once, naming the
+units, since a unit prefix would take none of them. A variable of a C++ namespace or
+class, which no short name names, is refused here too</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-type-unsupported</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-section-ambiguous</span></code></p></td>
+<td><p>error</p></td>
+<td><p>two sections of the image hold the variable’s address, as a linker script that overlays
+them makes it, and its symbol names neither, so its section and its initial value cannot
+be stated</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-type-unsupported</span></code></p></td>
 <td><p>error</p></td>
 <td><p>a type DDD cannot state - a pointer, a union, a <code class="docutils literal notranslate"><span class="pre">long</span> <span class="pre">double</span></code> wider than eight bytes,
-a <code class="docutils literal notranslate"><span class="pre">const</span></code> array of structures - named at the member where it occurs</p></td>
+a <code class="docutils literal notranslate"><span class="pre">const</span></code> array of structures, a C++ structure with a base class or, at DWARF 4, a static
+member - named at the member where it occurs; and a variable the debug information gives
+no type, as <code class="docutils literal notranslate"><span class="pre">-g1</span></code> leaves every one</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-type-conflict</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-type-conflict</span></code></p></td>
 <td><p>error</p></td>
-<td><p>one name stands for two different structures or enums</p></td>
+<td><p>one name stands for two different structures or enums, or for one variable that two
+units, or a unit and the symbol table, give two sizes</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-unsupported</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-unsupported</span></code></p></td>
 <td><p>error</p></td>
 <td><p>an initial value DDD has no spelling for, such as NaN, or one whose bytes run past
 the end of the section holding it</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-dropped</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-init-dropped</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>a structured object whose values the image holds</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-bitfield-gap</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-bitfield-gap</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>bits skipped where the next bitfield would have fit</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-alignment</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-alignment</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>an alignment the source states</p></td>
+<td><p>an alignment the source states, on a variable or a member, and a GNU vector, which the
+target aligns as a whole, as a variable or a member; none where the producer writes
+no alignment (<code class="docutils literal notranslate"><span class="pre">-gstrict-dwarf</span></code> at DWARF 4 and before)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-layout</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>a member at another offset, or a structure of another size, than the structure DDD
+generates has: packing, an alignment, an unnamed or a zero width bitfield</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-qualifier-dropped</span></code></p></td>
 <td><p>warning</p></td>
@@ -382,7 +487,12 @@ the end of the section holding it</p></td>
 <td><p>info</p></td>
 <td><p>a <code class="docutils literal notranslate"><span class="pre">_Bool</span></code> bitfield described as a <code class="docutils literal notranslate"><span class="pre">uint8</span></code> one</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-not-inferred</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">elf-layout-unchecked</span></code></p></td>
+<td><p>info</p></td>
+<td><p>an image of a machine whose alignment rules the tool does not hold, so no structure of it
+is checked for <code class="docutils literal notranslate"><span class="pre">elf-layout</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">elf-not-inferred</span></code></p></td>
 <td><p>info</p></td>
 <td><p>once per run: what an image never states</p></td>
 </tr>

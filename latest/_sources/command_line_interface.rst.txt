@@ -423,7 +423,9 @@ The commands
        is spelled, where it is typed or pasted in raw, and a fraction the double would drop
        with it; in physical it refuses a value whose raw count lies past 2^53. A float's cell
        takes every number as the double it is, but none past what its float holds, nor one
-       rounding to zero in it. A physical value comes to its raw count exactly, worked out on
+       rounding to zero in it; typed or pasted in raw into a ``float32`` cell, a number is
+       planned as the float32 it rounds to, so C's ``3.4028235e38`` is FLT_MAX's own double. A
+       physical value comes to its raw count exactly, worked out on
        the decimals typed and the conversion's own: a whole datatype's count is the nearest
        one, an exact half going to the even count, either side of zero, as ``round_physical``
        rounds; a float's is the float its datatype stores nearest, spelled as briefly as it
@@ -772,7 +774,9 @@ The commands
    * - ``ddd tool from-elf IMAGE SYMBOL...``
      - print, as json, the declarations of the C variables a linked ELF image's DWARF
        describes - by name, by glob, or narrowed to a unit as ``UNIT:NAME`` - checked by DDD
-       itself before they are printed; :doc:`toolbox` is the guide.
+       itself before they are printed. No conversion is printed for what is not an enum, since
+       an image does not say that raw is physical; ``--identity-conversions`` writes the identity
+       on the author's word. :doc:`toolbox` is the guide.
 
 ``FILE`` is a project description or a single component description in every command that
 takes one. A component checks, lists and dumps on its own - with ``--standalone`` holding

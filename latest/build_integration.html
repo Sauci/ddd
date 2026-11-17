@@ -777,7 +777,10 @@ A map inside the build tree that does not exist at configure time is seeded with
 empty map (<code class="docutils literal notranslate"><span class="pre">{}</span></code>), since ninja refuses to start a build for want of an input nothing
 produces; a missing map in the source tree stays an error. An empty map gives no
 address and raises no <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, so <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> does not fail it, and the a2l
-says so itself; a map that names some objects and not others raises it, once.</p></td>
+says so itself; a map that names some objects and not others raises it, once, for the
+objects it lacks, save a conditional one of which it names neither the object nor a
+member, which is left out of the a2l and reported at <code class="docutils literal notranslate"><span class="pre">info</span></code>: a structure the map names
+by its own name, as <code class="docutils literal notranslate"><span class="pre">nm</span></code> lists it, keeps its members <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ADDRESSES_FROM_IMAGE</span></code></p></td>
 <td><p>write the a2l once the image is linked, every address it carries read out of the
@@ -786,7 +789,7 @@ link leaves the a2l out, as <code class="docutils literal notranslate"><span cla
 writes it after the link - again whenever the image relinks or a description changes,
 and never otherwise. <code class="docutils literal notranslate"><span class="pre">DDD_A2L</span></code> names it as before, and <code class="docutils literal notranslate"><span class="pre">STRICT</span></code>,
 <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> and <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> apply to it. The image has to be ELF with DWARF, built
-with <code class="docutils literal notranslate"><span class="pre">-g</span></code>. Refused together with <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> or <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code>.</p></td>
+with <code class="docutils literal notranslate"><span class="pre">-g</span></code> and without <code class="docutils literal notranslate"><span class="pre">-flto</span></code>. Refused together with <code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code> or <code class="docutils literal notranslate"><span class="pre">NO_A2L</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span> <span class="pre">little|big</span></code></p></td>
 <td><p>byte order reported in the a2l.</p></td>
@@ -878,18 +881,43 @@ build with nothing changed runs nothing at all. It writes the a2l into the
 directory the generation before the link wrote the c sources, the headers and the dictionary
 into, and takes none of them back (<a class="reference internal" href="generated_artefacts.html#what-a-run-owns"><span class="std std-ref">What a run owns</span></a>), so nothing is compiled again
 because the a2l was written.</p>
+<p>An image linked with gcc’s link-time optimisation (<code class="docutils literal notranslate"><span class="pre">-flto</span></code>) cannot be read this way, and the
+step stops on it, exit 2, with “its DWARF comes from gcc’s link-time optimisation, which this
+tool does not read; build it without -flto”. A project that links with <code class="docutils literal notranslate"><span class="pre">-flto</span></code> and keeps it
+takes its addresses from a map instead (<code class="docutils literal notranslate"><span class="pre">ADDRESS_MAP</span></code>, below), with the offset of each
+structure member worked out beside it, since the a2l has to describe the image that is
+flashed.</p>
+<p>The step holds the image to the description as well. Each variable it places is compared with
+its object on the size and encoding of an element, its shape and the qualifiers the generated c
+gives its kind, and one that differs is a warning, <code class="docutils literal notranslate"><span class="pre">elf-mismatch</span></code>, saying what the description
+states and what the image holds. The definition is held on every image: a <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> defined
+for a <code class="docutils literal notranslate"><span class="pre">uint16</span></code>, or a template that leaves out a <code class="docutils literal notranslate"><span class="pre">const</span></code> or a <code class="docutils literal notranslate"><span class="pre">volatile</span></code> the kind carries
+there, is caught in the c that was compiled. A consumer’s declaration is held to the qualifiers
+of its kind where the compiler records it in the debug information, which gcc does for a
+variable a unit reads and clang does not, so a component header that leaves out <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is
+caught on a gcc image and not on a clang one. Under <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> the build stops at it.</p>
 <p>What the image cannot place keeps address 0 and is reported once, as <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, each
-symbol’s reason a note beneath it. The example above, built as <code class="docutils literal notranslate"><span class="pre">RelWithDebInfo</span></code> with the
-keyword added, places every object of the demo but <code class="docutils literal notranslate"><span class="pre">ValueG</span></code>, which a condition compiles out
-of this image:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>firmware.elf: warning[address-missing]: the image has no address for 'ValueG'; it reaches the a2l at address 0
+symbol’s reason a note beneath it; under <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> that is an error, and the build stops rather
+than ship an a2l with an address of 0. An object that states a condition, and of which the
+image defines nothing at all, is not reported that way: the build was made without it, and the
+a2l leaves it out. The example above, built as <code class="docutils literal notranslate"><span class="pre">RelWithDebInfo</span></code> with the keyword added,
+places every object of the demo but <code class="docutils literal notranslate"><span class="pre">ValueG</span></code>, which a condition compiles out of this image.
+Built where gcc links position independent by default, as it does on a Debian or Ubuntu host and
+in the <code class="docutils literal notranslate"><span class="pre">cmake</span></code> compose service, it prints:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>firmware.elf: info[image-load-relative]: the image is position independent, so the addresses the a2l states are offsets from where it loads
+    note: a project that adds its load base when it reads the a2l is right, and one that does not finds every address wrong
+firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
     note: the image's debug information holds no variable named 'ValueG'
-1 warning
+2 infos
 </pre></div>
 </div>
-<p>Under <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> that is an error, and the build stops rather than ship an a2l with an address
-of 0. <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> is held to the byte order the image states: one that contradicts it stops
-the build as well. So does an image the reader cannot read, in the reader’s own words - one
+<p>The first is <code class="docutils literal notranslate"><span class="pre">image-load-relative</span></code>: a position independent image holds offsets from where it
+loads, which the a2l states as they are, right for a project that adds its load base when it
+reads the a2l and wrong for any other, and the build of an image linked at fixed addresses, as
+an embedded one usually is or as <code class="docutils literal notranslate"><span class="pre">-no-pie</span></code> links this one, prints the second alone. <code class="docutils literal notranslate"><span class="pre">STRICT</span></code>
+lets both through, being information: the a2l has no record of <code class="docutils literal notranslate"><span class="pre">ValueG</span></code>, so there is no object
+left at address 0 for it to stop at. <code class="docutils literal notranslate"><span class="pre">BYTE_ORDER</span></code> is held to the byte order the image states:
+one that contradicts it stops the build as well. So does an image the reader cannot read, in the reader’s own words - one
 built without <code class="docutils literal notranslate"><span class="pre">-g</span></code> is told to be, and one that is not ELF at all, as a host build on Windows
 links, is refused as such. A build like that reads an address map instead, in the same step
 (below).</p>
@@ -1025,10 +1053,9 @@ permissions although this service runs as root, as every service does. <code cla
 change would serve what it was built from - and starts it, publishing the same port number on
 the host’s loopback alone, <code class="docutils literal notranslate"><span class="pre">-p</span> <span class="pre">127.0.0.1:8123:8123</span></code> - a different number outside would have
 the Host header <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> sees name a port it is not listening on, answered
-<code class="docutils literal notranslate"><span class="pre">421</span> <span class="pre">misdirected</span> <span class="pre">request</span></code>, and
-beyond the container’s loopback the token in the address it prints is the only guard, which is
-why nothing wider is published. Opening that address in a browser on the host is the image’s own
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> serving the checkout’s demo project.</p>
+<code class="docutils literal notranslate"><span class="pre">421</span> <span class="pre">misdirected</span> <span class="pre">request</span></code>, and beyond the container’s loopback the token in the address it prints
+is the only guard, which is why nothing wider is published. Opening that address in a browser on
+the host is the image’s own <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> serving the checkout’s demo project.</p>
 <section id="what-the-compile-service-proves">
 <h3>What the compile service proves<a class="headerlink" href="#what-the-compile-service-proves" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">compile</span></code> runs <code class="docutils literal notranslate"><span class="pre">docker/compile.sh</span></code>, which is deliberately more suspicious than a plain

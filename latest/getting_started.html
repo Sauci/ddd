@@ -602,8 +602,9 @@ tool sees the physical values the description promised rather than raw counts:</
 </div>
 <p>The address is <code class="docutils literal notranslate"><span class="pre">0x00000000</span></code> because it is not known before the link step. The <code class="docutils literal notranslate"><span class="pre">SYMBOL_LINK</span></code>
 entry is always written, so that an address patcher can fill the addresses in after linking;
-alternatively, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--address-map</span> <span class="pre">addresses.json</span></code> takes a symbol to address map
-produced from the linker output and writes the real addresses straight away.</p>
+alternatively, <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">a2l</span> <span class="pre">--image</span> <span class="pre">firmware.elf</span></code> reads the real addresses out of the
+linked image’s debug information, and <code class="docutils literal notranslate"><span class="pre">--address-map</span> <span class="pre">addresses.json</span></code> takes a symbol to
+address map produced from the linker output, either writing the real addresses straight away.</p>
 </section>
 </section>
 <section id="when-the-components-disagree">

@@ -695,7 +695,10 @@ Options
        empty map (``{}``), since ninja refuses to start a build for want of an input nothing
        produces; a missing map in the source tree stays an error. An empty map gives no
        address and raises no ``address-missing``, so ``STRICT`` does not fail it, and the a2l
-       says so itself; a map that names some objects and not others raises it, once.
+       says so itself; a map that names some objects and not others raises it, once, for the
+       objects it lacks, save a conditional one of which it names neither the object nor a
+       member, which is left out of the a2l and reported at ``info``: a structure the map names
+       by its own name, as ``nm`` lists it, keeps its members ``address-missing``.
    * - ``ADDRESSES_FROM_IMAGE``
      - write the a2l once the image is linked, every address it carries read out of the
        image's debug information, so that one build gives the complete a2l: the run before the
@@ -703,7 +706,7 @@ Options
        writes it after the link - again whenever the image relinks or a description changes,
        and never otherwise. ``DDD_A2L`` names it as before, and ``STRICT``,
        ``SEVERITY`` and ``BYTE_ORDER`` apply to it. The image has to be ELF with DWARF, built
-       with ``-g``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
+       with ``-g`` and without ``-flto``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
    * - ``SEVERITY <check=level>...``
@@ -789,20 +792,47 @@ directory the generation before the link wrote the c sources, the headers and th
 into, and takes none of them back (:ref:`what-a-run-owns`), so nothing is compiled again
 because the a2l was written.
 
+An image linked with gcc's link-time optimisation (``-flto``) cannot be read this way, and the
+step stops on it, exit 2, with "its DWARF comes from gcc's link-time optimisation, which this
+tool does not read; build it without -flto". A project that links with ``-flto`` and keeps it
+takes its addresses from a map instead (``ADDRESS_MAP``, below), with the offset of each
+structure member worked out beside it, since the a2l has to describe the image that is
+flashed.
+
+The step holds the image to the description as well. Each variable it places is compared with
+its object on the size and encoding of an element, its shape and the qualifiers the generated c
+gives its kind, and one that differs is a warning, ``elf-mismatch``, saying what the description
+states and what the image holds. The definition is held on every image: a ``uint32_t`` defined
+for a ``uint16``, or a template that leaves out a ``const`` or a ``volatile`` the kind carries
+there, is caught in the c that was compiled. A consumer's declaration is held to the qualifiers
+of its kind where the compiler records it in the debug information, which gcc does for a
+variable a unit reads and clang does not, so a component header that leaves out ``volatile`` is
+caught on a gcc image and not on a clang one. Under ``STRICT`` the build stops at it.
+
 What the image cannot place keeps address 0 and is reported once, as ``address-missing``, each
-symbol's reason a note beneath it. The example above, built as ``RelWithDebInfo`` with the
-keyword added, places every object of the demo but ``ValueG``, which a condition compiles out
-of this image:
+symbol's reason a note beneath it; under ``STRICT`` that is an error, and the build stops rather
+than ship an a2l with an address of 0. An object that states a condition, and of which the
+image defines nothing at all, is not reported that way: the build was made without it, and the
+a2l leaves it out. The example above, built as ``RelWithDebInfo`` with the keyword added,
+places every object of the demo but ``ValueG``, which a condition compiles out of this image.
+Built where gcc links position independent by default, as it does on a Debian or Ubuntu host and
+in the ``cmake`` compose service, it prints:
 
 .. code-block:: text
 
-   firmware.elf: warning[address-missing]: the image has no address for 'ValueG'; it reaches the a2l at address 0
+   firmware.elf: info[image-load-relative]: the image is position independent, so the addresses the a2l states are offsets from where it loads
+       note: a project that adds its load base when it reads the a2l is right, and one that does not finds every address wrong
+   firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
        note: the image's debug information holds no variable named 'ValueG'
-   1 warning
+   2 infos
 
-Under ``STRICT`` that is an error, and the build stops rather than ship an a2l with an address
-of 0. ``BYTE_ORDER`` is held to the byte order the image states: one that contradicts it stops
-the build as well. So does an image the reader cannot read, in the reader's own words - one
+The first is ``image-load-relative``: a position independent image holds offsets from where it
+loads, which the a2l states as they are, right for a project that adds its load base when it
+reads the a2l and wrong for any other, and the build of an image linked at fixed addresses, as
+an embedded one usually is or as ``-no-pie`` links this one, prints the second alone. ``STRICT``
+lets both through, being information: the a2l has no record of ``ValueG``, so there is no object
+left at address 0 for it to stop at. ``BYTE_ORDER`` is held to the byte order the image states:
+one that contradicts it stops the build as well. So does an image the reader cannot read, in the reader's own words - one
 built without ``-g`` is told to be, and one that is not ELF at all, as a host build on Windows
 links, is refused as such. A build like that reads an address map instead, in the same step
 (below).
@@ -951,10 +981,9 @@ gui`` builds the image first - the code it runs is the image's, so an image buil
 change would serve what it was built from - and starts it, publishing the same port number on
 the host's loopback alone, ``-p 127.0.0.1:8123:8123`` - a different number outside would have
 the Host header ``ddd gui`` sees name a port it is not listening on, answered
-``421 misdirected request``, and
-beyond the container's loopback the token in the address it prints is the only guard, which is
-why nothing wider is published. Opening that address in a browser on the host is the image's own
-``ddd gui`` serving the checkout's demo project.
+``421 misdirected request``, and beyond the container's loopback the token in the address it prints
+is the only guard, which is why nothing wider is published. Opening that address in a browser on
+the host is the image's own ``ddd gui`` serving the checkout's demo project.
 
 What the compile service proves
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1270,8 +1270,23 @@ linking needs no configuration on the DDD side at all.</p>
 an ELF image with DWARF debug information, in which every object the a2l carries is found by
 its name and every structure member by its access path, at the offset the compiler gave it.
 The a2l takes the byte order the image states, and an object the image does not place keeps
-address 0 and is reported, as <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, with why: no variable of that name - one a
-condition compiled out, say - or a member the image’s type does not have. Nothing has to be
+address 0 and is reported, as <code class="docutils literal notranslate"><span class="pre">address-missing</span></code>, with why: no variable of that name, or a
+member the image’s type does not have. An image linked position independent (<code class="docutils literal notranslate"><span class="pre">-pie</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">-static-pie</span></code>, which a hosted toolchain’s default often is) holds offsets from where it loads, not
+the addresses of a run: the a2l states them as they are, which is right for a project that adds
+its load base itself, and the run says so at <code class="docutils literal notranslate"><span class="pre">info</span></code>, as <code class="docutils literal notranslate"><span class="pre">image-load-relative</span></code>. The image is
+also held to the description: each variable it places is compared with its object on the size and
+encoding of an element, its shape and the qualifiers its kind carries (<code class="docutils literal notranslate"><span class="pre">const</span></code> on everything but
+a measurement, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> where the description says so), and a variable that differs is a
+warning, <code class="docutils literal notranslate"><span class="pre">elf-mismatch</span></code>, naming what the description states and what the image holds. A type
+is compared by what it resolves to, so a <code class="docutils literal notranslate"><span class="pre">UWORD</span></code> defined as <code class="docutils literal notranslate"><span class="pre">uint16_t</span></code> agrees with a
+<code class="docutils literal notranslate"><span class="pre">uint16</span></code> and a <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> does not. A consumer’s <code class="docutils literal notranslate"><span class="pre">extern</span></code> that leaves out a qualifier of
+its kind is a warning too, where the compiler records the declaration in the debug information,
+which gcc does for a variable a unit reads and clang does not. An image
+whose debug information is split into <code class="docutils literal notranslate"><span class="pre">.dwo</span></code> files (<code class="docutils literal notranslate"><span class="pre">-gsplit-dwarf</span></code>) places nothing, the
+files being the ones the reader does not read, and one built with <code class="docutils literal notranslate"><span class="pre">-g1</span></code>, which keeps the
+variables and no types, places the objects and not a member. An object that states a condition is the exception, and
+is left out of the a2l (<a class="reference internal" href="#conditional-objects">Conditional objects</a>). Nothing has to be
 extracted, and no member offset worked out by hand.</p>
 <p>The third is <code class="docutils literal notranslate"><span class="pre">--address-map</span></code>, for an image without debug information: DDD does the
 substitution itself, out of a file the build writes. It takes a flat json object mapping
@@ -1290,7 +1305,10 @@ nothing produces on purpose - a digit separator, a leading <code class="docutils
 is refused rather than guessed at. A symbol the file states twice is refused as well, instead
 of the second address quietly winning, because two addresses for one symbol mean the map was
 merged from two sources or written twice. The file may carry a byte order mark, as every
-other file DDD reads may.</p>
+other file DDD reads may. It has to be UTF-8 text, and the one thing that is not is what Windows
+PowerShell’s <code class="docutils literal notranslate"><span class="pre">&gt;</span></code> writes, which is UTF-16: the run refuses it, naming the file, and the remedy
+is to write the map another way. A map nested far deeper than any map is, or holding a number of
+more digits than python converts (4300 by default), is refused naming the file as well.</p>
 <p>Writing that file is the project’s step: DDD ships no extractor and runs no toolchain tool,
 so the map comes from whatever reads the linked image - <code class="docutils literal notranslate"><span class="pre">nm</span></code>, the map file, the debug
 information. <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a> shows one worked way of doing it, as a post-build step
@@ -1322,10 +1340,10 @@ artefact name says what the second run is there for: it renders no c - it takes 
 directory either - so it cannot invalidate the build it was produced from.</p>
 <p>A symbol the map does not mention keeps address 0, and the run says so: the
 <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> warning names the objects the map left out, once, and the a2l is written
-all the same. It is a warning rather than an error because a map produced from a linker
-output legitimately contains only the objects that ended up in the image - a conditional
-object absent from this build has no address to report - and it is a warning a post-link
-build can promote: under <code class="docutils literal notranslate"><span class="pre">--strict</span></code> (the <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> option of <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code>) it is an
+all the same. A conditional object the map does not mention is not one of them: see
+<a class="reference internal" href="#conditional-objects">Conditional objects</a> below. It is a warning rather than an error because a map produced from a linker
+output legitimately contains only the objects that ended up in the image, and it is a
+warning a post-link build can promote: under <code class="docutils literal notranslate"><span class="pre">--strict</span></code> (the <code class="docutils literal notranslate"><span class="pre">STRICT</span></code> option of <code class="docutils literal notranslate"><span class="pre">ddd_generate</span></code>) it is an
 error, nothing is written, and the map has to be completed or the check relaxed with
 <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">address-missing=ignore</span></code>. An address outside the range an a2l can hold, on the other
 hand, is refused before anything is written. With <code class="docutils literal notranslate"><span class="pre">bad.json</span></code> holding</p>
@@ -1350,27 +1368,45 @@ findings.</p>
 <h3>Conditional objects<a class="headerlink" href="#conditional-objects" title="Link to this heading"></a></h3>
 <p>a2l has no notion of preprocessor conditions. There is no way to say “this measurement exists
 only when <code class="docutils literal notranslate"><span class="pre">FEATURE_X</span></code> is defined”, and no way for a calibration tool to find out what was
-defined when the image was built. DDD therefore exports a conditional object unconditionally
-and states the condition in a comment above the record:</p>
+defined when the image was built. DDD states the condition in a comment above the record:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>/* only present in the build when: defined(FEATURE_X) */
 /begin MEASUREMENT ValueG "Measurement that only exists when FEATURE_X is defined"
   UWORD CM_LIN_V 0 0 0 5
-  ECU_ADDRESS 0x00000000
+  ECU_ADDRESS 0x20000104
   SYMBOL_LINK "ValueG" 0
 /end MEASUREMENT
 </pre></div>
 </div>
-<p>Exporting it is the lesser of the two evils. Leaving it out would mean generating a different
-a2l per build configuration, and the a2l would then have to be regenerated - not merely
-patched - whenever a define changed; worse, an object that is absent from the file cannot be
-distinguished from one that was never declared, so nobody would notice the omission. Leaving
-it in costs one record that resolves to nothing in a build where the feature is off, and the
-comment tells the reader why. The address information disambiguates the two cases in
-practice: if the image was built without <code class="docutils literal notranslate"><span class="pre">FEATURE_X</span></code>, the symbol is not in the linker
-output, the address map extracted from it does not mention the symbol, and the record keeps
-its address of 0 - which is not the address of anything DDD declared, and is therefore
-recognisable as “this object is not in this build” rather than being confused with a real
-variable.</p>
+<p>Whether the record is there at all depends on what DDD is told about the build. Without an
+image or a map it cannot tell, and writes every conditional object, as it writes every
+address, as 0. Given an image (<code class="docutils literal notranslate"><span class="pre">--image</span></code>) or a map with entries (<code class="docutils literal notranslate"><span class="pre">--address-map</span></code>) that
+places the object, the build held it and the record is written, at its address. Given an image
+that defines no variable of its name, with no symbol of it either, or a map that names neither
+the object nor any member of it, the build was made without the feature: the object is left
+out of the a2l, and the run says so at <code class="docutils literal notranslate"><span class="pre">info</span></code>, naming the object and the condition, as
+<code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
+    note: the image's debug information holds no variable named 'ValueG'
+</pre></div>
+</div>
+<p>An a2l that kept the record at address 0 would describe storage the image does not hold, and
+a calibration tool would read and write at 0. Nothing is lost by leaving it out, since the
+a2l is generated again, after the link, for each build; and the finding keeps the omission
+visible, so that a record missing from the file is never mistaken for one that was not
+declared. Only absence counts. An image that holds the variable and cannot place it - as a
+<code class="docutils literal notranslate"><span class="pre">static</span></code>, from a unit built without <code class="docutils literal notranslate"><span class="pre">-g</span></code>, at several addresses, with a member the C
+lacks, or discarded by the linker - has a defect to show, and a map that names a structure
+by its own name, as a symbol lister writes it, holds it: those stay <code class="docutils literal notranslate"><span class="pre">address-missing</span></code> for
+what they do not place. So does an object that states no condition, a hole in the map being a
+hole, so that <code class="docutils literal notranslate"><span class="pre">--strict</span></code> still stops a build for it.</p>
+<p>Leaving an object out cannot leave a record naming it behind. A curve or a map over an axis
+that was left out cannot be described without it and goes with it, which the build holds:
+the run names it, as a <code class="docutils literal notranslate"><span class="pre">reference-left-out</span></code> warning, since the a2l lacks what the build holds and
+a <code class="docutils literal notranslate"><span class="pre">--strict</span></code> build stops for it, whatever is done to <code class="docutils literal notranslate"><span class="pre">condition-mismatch</span></code>. An axis indexed by a measurement that
+was left out is written without an input quantity. A project should not rely on that: an object
+that refers to another one under a condition it does not share is reported by
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> as <code class="docutils literal notranslate"><span class="pre">condition-mismatch</span></code>, since a build without the condition holds the one and
+not the other.</p>
 </section>
 <section id="keeping-an-object-out-of-the-a2l">
 <h3>Keeping an object out of the a2l<a class="headerlink" href="#keeping-an-object-out-of-the-a2l" title="Link to this heading"></a></h3>

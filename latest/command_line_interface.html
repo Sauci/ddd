@@ -539,7 +539,9 @@ cell of an integer datatype refuses a number past 2^53 either side of zero, howe
 is spelled, where it is typed or pasted in raw, and a fraction the double would drop
 with it; in physical it refuses a value whose raw count lies past 2^53. A float’s cell
 takes every number as the double it is, but none past what its float holds, nor one
-rounding to zero in it. A physical value comes to its raw count exactly, worked out on
+rounding to zero in it; typed or pasted in raw into a <code class="docutils literal notranslate"><span class="pre">float32</span></code> cell, a number is
+planned as the float32 it rounds to, so C’s <code class="docutils literal notranslate"><span class="pre">3.4028235e38</span></code> is FLT_MAX’s own double. A
+physical value comes to its raw count exactly, worked out on
 the decimals typed and the conversion’s own: a whole datatype’s count is the nearest
 one, an exact half going to the even count, either side of zero, as <code class="docutils literal notranslate"><span class="pre">round_physical</span></code>
 rounds; a float’s is the float its datatype stores nearest, spelled as briefly as it
@@ -893,7 +895,9 @@ starting point for its own. They are an example and not a default: no run of
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">tool</span> <span class="pre">from-elf</span> <span class="pre">IMAGE</span> <span class="pre">SYMBOL...</span></code></p></td>
 <td><p>print, as json, the declarations of the C variables a linked ELF image’s DWARF
 describes - by name, by glob, or narrowed to a unit as <code class="docutils literal notranslate"><span class="pre">UNIT:NAME</span></code> - checked by DDD
-itself before they are printed; <a class="reference internal" href="toolbox.html"><span class="doc">The toolbox</span></a> is the guide.</p></td>
+itself before they are printed. No conversion is printed for what is not an enum, since
+an image does not say that raw is physical; <code class="docutils literal notranslate"><span class="pre">--identity-conversions</span></code> writes the identity
+on the author’s word. <a class="reference internal" href="toolbox.html"><span class="doc">The toolbox</span></a> is the guide.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1831,8 +1835,8 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 </section>
 <section id="ddd-tool-from-elf">
 <h4>ddd tool from-elf<a class="headerlink" href="#ddd-tool-from-elf" title="Link to this heading"></a></h4>
-<p>Reads a linked ELF image and its DWARF debug information, and prints as json the declaration of every C variable named or matched: its kind, datatype, shape, enumerators, structure members, initial value and section, as the image states them. What an image does not state - a unit, a description, limits, a scaling, whether an array is a curve - is left out, and said once. DDD itself checks every entry, as ‘ddd check –standalone’ checks a component, before it is printed. Needs an image built with debug information (-g).</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd tool from-elf [-h] [--component NAME]</span>
+<p>Reads a linked ELF image and its DWARF debug information, and prints as json the declaration of every C variable named or matched: its kind, datatype, shape, enumerators, structure members, initial value and section, as the image states them. What an image does not state - a unit, a description, limits, a scaling, whether an array is a curve, whether a raw value is the physical one - is left out, and said once. DDD itself checks every entry, as ‘ddd check –standalone’ checks a component, before it is printed. Needs an image built with debug information (-g).</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">usage: ddd tool from-elf [-h] [--component NAME] [--identity-conversions]</span>
 <span class="go">                         [--scope {output,local,input}] [-o OUTPUT] [--force]</span>
 <span class="go">                         [--format {text,json}]</span>
 <span class="go">                         image SYMBOL [SYMBOL ...]</span>
@@ -1860,6 +1864,12 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-component">
 <span class="sig-name descname"><span class="pre">--component</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;name&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-component" title="Link to this definition"></a></dt>
 <dd><p>print a component file of this name, holding the types its structures need, rather than a list of interface entries</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-ddd-tool-from-elf-identity-conversions">
+<span class="sig-name descname"><span class="pre">--identity-conversions</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-ddd-tool-from-elf-identity-conversions" title="Link to this definition"></a></dt>
+<dd><p>write the identity as the conversion of every entry and member that is not an enum, on your word that its raw value is its physical one: an image does not say so, so by default no conversion is written, and ‘ddd check’ asks the author for one</p>
 </dd></dl>
 
 <dl class="std option">

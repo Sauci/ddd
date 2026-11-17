@@ -1226,8 +1226,23 @@ The second is ``--image``, which lets DDD read the addresses out of the linked i
 an ELF image with DWARF debug information, in which every object the a2l carries is found by
 its name and every structure member by its access path, at the offset the compiler gave it.
 The a2l takes the byte order the image states, and an object the image does not place keeps
-address 0 and is reported, as ``address-missing``, with why: no variable of that name - one a
-condition compiled out, say - or a member the image's type does not have. Nothing has to be
+address 0 and is reported, as ``address-missing``, with why: no variable of that name, or a
+member the image's type does not have. An image linked position independent (``-pie``, or
+``-static-pie``, which a hosted toolchain's default often is) holds offsets from where it loads, not
+the addresses of a run: the a2l states them as they are, which is right for a project that adds
+its load base itself, and the run says so at ``info``, as ``image-load-relative``. The image is
+also held to the description: each variable it places is compared with its object on the size and
+encoding of an element, its shape and the qualifiers its kind carries (``const`` on everything but
+a measurement, ``volatile`` where the description says so), and a variable that differs is a
+warning, ``elf-mismatch``, naming what the description states and what the image holds. A type
+is compared by what it resolves to, so a ``UWORD`` defined as ``uint16_t`` agrees with a
+``uint16`` and a ``uint32_t`` does not. A consumer's ``extern`` that leaves out a qualifier of
+its kind is a warning too, where the compiler records the declaration in the debug information,
+which gcc does for a variable a unit reads and clang does not. An image
+whose debug information is split into ``.dwo`` files (``-gsplit-dwarf``) places nothing, the
+files being the ones the reader does not read, and one built with ``-g1``, which keeps the
+variables and no types, places the objects and not a member. An object that states a condition is the exception, and
+is left out of the a2l (`Conditional objects`_). Nothing has to be
 extracted, and no member offset worked out by hand.
 
 The third is ``--address-map``, for an image without debug information: DDD does the
@@ -1249,7 +1264,10 @@ nothing produces on purpose - a digit separator, a leading ``+``, digits of anot
 is refused rather than guessed at. A symbol the file states twice is refused as well, instead
 of the second address quietly winning, because two addresses for one symbol mean the map was
 merged from two sources or written twice. The file may carry a byte order mark, as every
-other file DDD reads may.
+other file DDD reads may. It has to be UTF-8 text, and the one thing that is not is what Windows
+PowerShell's ``>`` writes, which is UTF-16: the run refuses it, naming the file, and the remedy
+is to write the map another way. A map nested far deeper than any map is, or holding a number of
+more digits than python converts (4300 by default), is refused naming the file as well.
 
 Writing that file is the project's step: DDD ships no extractor and runs no toolchain tool,
 so the map comes from whatever reads the linked image - ``nm``, the map file, the debug
@@ -1286,10 +1304,10 @@ directory either - so it cannot invalidate the build it was produced from.
 
 A symbol the map does not mention keeps address 0, and the run says so: the
 ``address-missing`` warning names the objects the map left out, once, and the a2l is written
-all the same. It is a warning rather than an error because a map produced from a linker
-output legitimately contains only the objects that ended up in the image - a conditional
-object absent from this build has no address to report - and it is a warning a post-link
-build can promote: under ``--strict`` (the ``STRICT`` option of ``ddd_generate``) it is an
+all the same. A conditional object the map does not mention is not one of them: see
+`Conditional objects`_ below. It is a warning rather than an error because a map produced from a linker
+output legitimately contains only the objects that ended up in the image, and it is a
+warning a post-link build can promote: under ``--strict`` (the ``STRICT`` option of ``ddd_generate``) it is an
 error, nothing is written, and the map has to be completed or the check relaxed with
 ``-W address-missing=ignore``. An address outside the range an a2l can hold, on the other
 hand, is refused before anything is written. With ``bad.json`` holding
@@ -1319,29 +1337,50 @@ Conditional objects
 
 a2l has no notion of preprocessor conditions. There is no way to say "this measurement exists
 only when ``FEATURE_X`` is defined", and no way for a calibration tool to find out what was
-defined when the image was built. DDD therefore exports a conditional object unconditionally
-and states the condition in a comment above the record:
+defined when the image was built. DDD states the condition in a comment above the record:
 
 .. code-block:: text
 
        /* only present in the build when: defined(FEATURE_X) */
        /begin MEASUREMENT ValueG "Measurement that only exists when FEATURE_X is defined"
          UWORD CM_LIN_V 0 0 0 5
-         ECU_ADDRESS 0x00000000
+         ECU_ADDRESS 0x20000104
          SYMBOL_LINK "ValueG" 0
        /end MEASUREMENT
 
-Exporting it is the lesser of the two evils. Leaving it out would mean generating a different
-a2l per build configuration, and the a2l would then have to be regenerated - not merely
-patched - whenever a define changed; worse, an object that is absent from the file cannot be
-distinguished from one that was never declared, so nobody would notice the omission. Leaving
-it in costs one record that resolves to nothing in a build where the feature is off, and the
-comment tells the reader why. The address information disambiguates the two cases in
-practice: if the image was built without ``FEATURE_X``, the symbol is not in the linker
-output, the address map extracted from it does not mention the symbol, and the record keeps
-its address of 0 - which is not the address of anything DDD declared, and is therefore
-recognisable as "this object is not in this build" rather than being confused with a real
-variable.
+Whether the record is there at all depends on what DDD is told about the build. Without an
+image or a map it cannot tell, and writes every conditional object, as it writes every
+address, as 0. Given an image (``--image``) or a map with entries (``--address-map``) that
+places the object, the build held it and the record is written, at its address. Given an image
+that defines no variable of its name, with no symbol of it either, or a map that names neither
+the object nor any member of it, the build was made without the feature: the object is left
+out of the a2l, and the run says so at ``info``, naming the object and the condition, as
+``condition-left-out``:
+
+.. code-block:: text
+
+   firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
+       note: the image's debug information holds no variable named 'ValueG'
+
+An a2l that kept the record at address 0 would describe storage the image does not hold, and
+a calibration tool would read and write at 0. Nothing is lost by leaving it out, since the
+a2l is generated again, after the link, for each build; and the finding keeps the omission
+visible, so that a record missing from the file is never mistaken for one that was not
+declared. Only absence counts. An image that holds the variable and cannot place it - as a
+``static``, from a unit built without ``-g``, at several addresses, with a member the C
+lacks, or discarded by the linker - has a defect to show, and a map that names a structure
+by its own name, as a symbol lister writes it, holds it: those stay ``address-missing`` for
+what they do not place. So does an object that states no condition, a hole in the map being a
+hole, so that ``--strict`` still stops a build for it.
+
+Leaving an object out cannot leave a record naming it behind. A curve or a map over an axis
+that was left out cannot be described without it and goes with it, which the build holds:
+the run names it, as a ``reference-left-out`` warning, since the a2l lacks what the build holds and
+a ``--strict`` build stops for it, whatever is done to ``condition-mismatch``. An axis indexed by a measurement that
+was left out is written without an input quantity. A project should not rely on that: an object
+that refers to another one under a condition it does not share is reported by
+``ddd check`` as ``condition-mismatch``, since a build without the condition holds the one and
+not the other.
 
 Keeping an object out of the a2l
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

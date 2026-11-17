@@ -5945,7 +5945,9 @@ class TestAComponentFileReadAloneIsComparedByWhatOneFileCanKnow:
             flat = flattened(text)
             assert f"the Compare tab of {tick}ddd gui{tick} take it from the file" in flat, name
             assert "whether or not the run said so" in flat, name
-        assert "because one component file is read one way by every caller" in flattened(SPEC)
+        assert "because a component given as the baseline is read one way by every caller" in (
+            flattened(SPEC)
+        )
         assert (
             "so that an input of the component nobody was shown the producer of is not an error "
             "of the baseline"
@@ -6244,6 +6246,25 @@ class TestWhatThePagesSayOfTheNineSmallerVerdicts:
         assert "in a candidate dump when the baseline had a producer for it" in flattened(
             self.DICTIONARY
         )
+
+    def test_the_floor_does_not_reach_a_producer_the_baseline_had(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "The one exception is the floor of `ddd check --standalone`, which silences that "
+            "analysis for what a component read alone was never shown and does not reach a "
+            "producer the baseline had"
+        ) in spec
+        assert ("the comparison then says it, once, as an error whatever the floor says") in spec
+        assert "and a project's own `-W missing-producer=ignore` still silences it" in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert (
+            "The one exception is the floor of ``ddd check --standalone``, which silences that "
+            "analysis for what a component read alone was never shown and does not reach a "
+            "producer the baseline had"
+        ) in pages
+        assert "the comparison then says it, once, as an error whatever the floor says" in pages
+        assert "what makes a component that drops an output fail that gate" in pages
+        assert "and a project's own ``-W missing-producer=ignore`` still silences it" in pages
 
     def test_a_broken_baseline_withholds_nothing_of_the_candidates(self) -> None:
         spec = flattened(SPEC)

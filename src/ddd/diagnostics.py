@@ -516,11 +516,39 @@ class SeverityPolicy:
     because the caller relaxed ``dimension-value`` is exactly one.
     """
 
+    floored: frozenset[str] = frozenset()
+    """The checks whose override is the floor's alone: given to :meth:`from_strings` as ``floor``
+    and stated again by no ``-W`` of the caller.
+
+    What a comparison needs to tell the two apart. ``missing-producer=ignore`` is the floor
+    saying a component read alone was never shown its producers, and it is also a project saying
+    it can live with an input nobody produces; the first does not reach a producer the baseline
+    had, the second may.
+    """
+
     @classmethod
     def from_strings(
-        cls, values: Iterable[str], *, strict: bool = False, standalone: bool = False
+        cls,
+        values: Iterable[str],
+        *,
+        floor: Iterable[str] = (),
+        strict: bool = False,
+        standalone: bool = False,
     ) -> Self:
-        """Build a policy from ``check=severity`` strings (as given on the command line)."""
+        """Build a policy from ``check=severity`` strings (as given on the command line).
+
+        ``floor`` is read first and ``values`` over it, so that a caller's own ``-W`` keeps the
+        last word, and what no ``-W`` restated is :attr:`floored`.
+        """
+        if floor:
+            under = cls.from_strings(floor)
+            stated = cls.from_strings(values)
+            return cls(
+                {**under.overrides, **stated.overrides},
+                strict,
+                standalone,
+                frozenset(under.overrides) - frozenset(stated.overrides),
+            )
         overrides: dict[str, Severity] = {}
         for value in values:
             name, separator, severity = value.partition("=")

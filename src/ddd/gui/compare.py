@@ -10,9 +10,9 @@ purposes, and comparing it a second time would mean two copies of "how a candida
 dictionary" agreeing by coincidence rather than by construction.
 
 Reading the baseline is not this module's to reinvent either: :func:`ddd.deliveries.read_baseline`
-is Task 1's shared policy - a bag of its own, ``-W`` never reaching it, only its errors carried
-over - and using anything else here would drift from ``ddd compare`` the first time either side
-changed.
+is Task 1's shared policy - a bag of its own, the project's relaxations reaching it and no
+promotion of any ``-W``, only its errors carried over - and using anything else here would drift
+from ``ddd compare`` the first time either side changed.
 
 **A comparison is :func:`ddd.deliveries.compare_deliveries`**, the one function ``ddd compare`` and
 ``ddd check --baseline`` call as well: :func:`ddd.compare.compare`, then
@@ -83,7 +83,7 @@ from ddd.diagnostics import (
     SeverityPolicy,
     where,
 )
-from ddd.gui.session import Filed, Revision, stamped
+from ddd.gui.session import Filed, Revision, _named_by, stamped
 from ddd.lsp.diagnostics import group_findings
 from ddd.plugins import PluginError
 
@@ -126,11 +126,13 @@ class Cached:
     (:func:`~ddd.deliveries.relaxations`): a read under other ones is another read."""
 
     verified: bool
-    """Whether every file the read was made out of carried, when the read ended, the stamp it was
-    given *before* the read began - the order :mod:`ddd.gui.session` keeps for the open project,
-    "before, never after". A file written while the read went on moves its stamp whatever time the
-    write gives it, and an entry that cannot say so is read again rather than served: it still
-    names the files it was made of, which is what the next read stamps beforehand."""
+    """Whether every file the read was made out of carried, when the read ended, the very stamp it
+    was given *before* the read began - the order :mod:`ddd.gui.session` keeps for the open
+    project, "before, never after", and the equality its poll uses. A write that moves a file's
+    modification time or size while the read goes on is told, whatever time it gives the file; one
+    that leaves both exactly as they were is not, here as it is not for the session. An entry
+    that cannot say so is read again rather than served: it still names the files it was made of,
+    which is what the next read stamps beforehand."""
 
     stamps: dict[Path, tuple[int, int] | None]
     """The stamp of every file the read was made out of, as :func:`~ddd.gui.session.stamped`
@@ -435,11 +437,13 @@ def _resolved_baseline(
         or stamped(hit.stamps) != hit.stamps
     ):
         # Stamped before the read, by the files the last read of it was made of - an entry that
-        # was not kept still says which - and by the file it names, which is all a first read of
-        # a description knows. Compared with the stamps after it by equality, as the session
-        # compares a revision's: no window and no clock, so a write that keeps an older time, or
-        # a file dated ahead, is told as any other.
-        hit = _read(resolved, relaxed, () if hit is None else tuple(hit.stamps))
+        # was not kept still says which - and, for a first read, by the files the description
+        # names itself (:func:`~ddd.gui.session._named_by`, as the session opens a project), so
+        # that a flat project is kept from its first read. Compared with the stamps after it by
+        # equality, as the session compares a revision's: no window and no clock, so a write
+        # that moves the time or the size, an older time and a file dated ahead included, is told.
+        known = tuple(_named_by(resolved)) if hit is None else tuple(hit.stamps)
+        hit = _read(resolved, relaxed, known)
         # Taken out and put back rather than assigned in place, so that the entry dropped below
         # is the one read longest ago: updating a key leaves it where it first went in.
         cache.pop(resolved, None)

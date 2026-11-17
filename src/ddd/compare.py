@@ -30,7 +30,7 @@ from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, S
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
-from ddd.diagnostics import DiagnosticBag, Location, index_order
+from ddd.diagnostics import DiagnosticBag, Location, Severity, index_order
 from ddd.ir import (
     Comparable,
     DataDictionary,
@@ -1372,18 +1372,28 @@ def _compare_declaration(
     under the run's own ``-W``, said in place of ``changed-owner`` because it is the one fact. A
     dictionary dumped from a project that failed holds such an object and nothing in this run
     analysed it; a candidate analysed in this run has it said by the analysis, which is why it
-    is not said twice, and a relaxed check is silent on both paths. An object with no producer
-    on both sides is no change at all - the only thing a component dumped on its own holds of
-    every input - and the dictionary cannot say which of the two a dump is.
+    is not said twice, and a relaxed check is silent on both paths. The one exception is the
+    floor of ``--standalone``: it silences ``missing-producer`` for what a component read alone
+    was never shown, which is not a producer the baseline had, so where the policy says the
+    check is silenced by the floor alone (:attr:`~ddd.diagnostics.SeverityPolicy.floored`) the
+    comparison says it, as an error the floor does not reach - the grade an output gone from a
+    component read alone has - and a project's own ``-W missing-producer=ignore`` still
+    silences it. An object with no producer on both sides is no change at all - the only thing
+    a component dumped on its own holds of every input - and the dictionary cannot say which of
+    the two a dump is.
     """
     if old.owner != new.owner:
         if new.owner is None and new.consumers:
-            if not candidate_analysed:
+            floored = "missing-producer" in bag.policy.floored
+            if floored or not candidate_analysed:
                 bag.add(
                     "missing-producer",
                     f"'{old.name}' is read by {', '.join(new.consumers)} and nothing in the "
                     f"candidate produces it any more; {old.owner} produced it in the baseline",
                     location,
+                    # An error whatever the floor says: it silences what a component read alone
+                    # was never shown, and this is a producer the baseline had.
+                    severity=Severity.ERROR if floored else None,
                 )
         else:
             bag.add(

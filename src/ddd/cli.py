@@ -2132,7 +2132,7 @@ def _analyze(
     # the flag sets the floor for a component read alone, the caller still has the last word.
     standalone = list(STANDALONE_POLICY) if getattr(args, "standalone", False) else []
     policy = SeverityPolicy.from_strings(
-        [*standalone, *args.severity], strict=args.strict, standalone=bool(standalone)
+        args.severity, floor=standalone, strict=args.strict, standalone=bool(standalone)
     )
     bag = DiagnosticBag(policy)
     # The load is inside the block too: a plugin's model that raises while a block is validated

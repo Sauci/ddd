@@ -724,3 +724,104 @@ class TestAJsonHoldingOnlyANameIsNoDelivery:
         bag = DiagnosticBag()
         resolved = read_dictionary(dump, bag)
         assert resolved is not None and len(bag) == 0
+
+
+def _turned_into_an_input(tmp_path: Path) -> tuple[Path, Path]:
+    """A component in two versions, the second of which reads ``X`` where the first wrote it: an
+    output the component dropped, which is what the supplier's gate exists to refuse."""
+    write_tree(
+        tmp_path,
+        {
+            "v1.ddd.json": component(
+                "C", declare("output", "Speed", unit="rpm"), declare("output", "X", unit="rpm")
+            ),
+            "v2.ddd.json": component(
+                "C", declare("output", "Speed", unit="rpm"), declare("input", "X", unit="rpm")
+            ),
+        },
+    )
+    return tmp_path / "v1.ddd.json", tmp_path / "v2.ddd.json"
+
+
+def _findings(report: str) -> list[str]:
+    return [
+        line
+        for line in report.splitlines()
+        if "[missing-producer]" in line or "[changed-owner]" in line
+    ]
+
+
+class TestAProducerLostInAComponentReadAlone:
+    """The floor of ``--standalone`` silences ``missing-producer`` for what the component was never
+    shown, and a producer the baseline had is not that: the comparison says it, as an error that
+    the floor does not reach, graded as an output gone from a component read alone is."""
+
+    @pytest.mark.parametrize("extra", [[], ["--strict"]], ids=["by default", "under --strict"])
+    def test_check_baseline_standalone_refuses_the_dropped_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], extra: list[str]
+    ) -> None:
+        one, two = _turned_into_an_input(tmp_path)
+        capsys.readouterr()
+        assert main(["check", str(two), "--baseline", str(one), "--standalone", *extra]) == (
+            EXIT_FINDINGS
+        )
+        found = _findings(capsys.readouterr().err)
+        assert len(found) == 1
+        assert (
+            "error[missing-producer]: 'X' is read by C and nothing in the candidate produces"
+            in (found[0])
+        )
+
+    def test_the_two_standalone_dumps_say_the_same(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        one, two = _turned_into_an_input(tmp_path)
+        first, second = tmp_path / "d1.json", tmp_path / "d2.json"
+        assert main(["dump", str(one), "--standalone", "-o", str(first)]) == EXIT_OK
+        assert main(["dump", str(two), "--standalone", "-o", str(second)]) == EXIT_OK
+        capsys.readouterr()
+        assert main(["compare", str(first), str(second)]) == EXIT_FINDINGS
+        found = _findings(capsys.readouterr().err)
+        assert len(found) == 1 and "error[missing-producer]: 'X' is read by C" in found[0]
+
+    def test_a_project_can_still_silence_it_with_its_own_w(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        one, two = _turned_into_an_input(tmp_path)
+        argv = ["check", str(two), "--baseline", str(one), "--standalone", "--strict"]
+        capsys.readouterr()
+        assert main([*argv, "-W", "missing-producer=ignore"]) == EXIT_OK
+        assert _findings(capsys.readouterr().err) == []
+
+    def test_a_grade_of_its_own_is_the_analysis_to_say_and_is_said_once(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        one, two = _turned_into_an_input(tmp_path)
+        capsys.readouterr()
+        argv = ["check", str(two), "--baseline", str(one), "--standalone"]
+        assert main([*argv, "-W", "missing-producer=warning"]) == EXIT_OK
+        found = _findings(capsys.readouterr().err)
+        assert len(found) == 1 and "warning[missing-producer]" in found[0]
+
+    def test_the_policy_knows_which_overrides_are_the_floors_alone(self) -> None:
+        floor = ("missing-producer=ignore", "unknown-type=ignore")
+        plain = SeverityPolicy.from_strings(["missing-id=ignore"], floor=floor, standalone=True)
+        assert plain.floored == {"missing-producer", "unknown-type"}
+        assert plain.overrides["missing-producer"] is Severity.IGNORE
+        stated = SeverityPolicy.from_strings(["missing-producer=ignore"], floor=floor)
+        assert stated.floored == {"unknown-type"}
+        raised = SeverityPolicy.from_strings(["missing-producer=error"], floor=floor)
+        assert raised.floored == {"unknown-type"}
+        assert raised.overrides["missing-producer"] is Severity.ERROR
+        assert SeverityPolicy.from_strings(["missing-id=ignore"]).floored == frozenset()
+
+    def test_a_whole_project_is_not_told_twice(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without the floor the analysis says it, and the comparison leaves it to it."""
+        write_tree(tmp_path / "old", CLEAN)
+        write_tree(tmp_path / "new", {**CLEAN, "a.ddd.json": component("A")})
+        capsys.readouterr()
+        argv = ["check", str(tmp_path / "new" / "p.ddd.json"), "--baseline"]
+        main([*argv, str(tmp_path / "old" / "p.ddd.json")])
+        assert len(_findings(capsys.readouterr().err)) == 1

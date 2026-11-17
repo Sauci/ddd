@@ -931,11 +931,12 @@ class TestABaselineIsStampedBeforeItIsRead:
             assert compared(revision, dump, root, cache).verdict is True
         assert len(asked) == 1
 
-    def test_a_description_is_kept_from_its_second_read_on(
+    def test_a_flat_description_is_kept_from_its_first_read(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The first read learns which files the baseline is made of, which nothing could have
-        stamped before it; the second is stamped by them, and kept."""
+        """The files its own ``includes`` name are stamped before the first read, as the session
+        stamps them before the first analysis of a project it opens: nobody waits for a second
+        read of a baseline that nothing has changed."""
         root = tmp_path / "project"
         revision = _revision(
             root,
@@ -944,6 +945,31 @@ class TestABaselineIsStampedBeforeItIsRead:
                 "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
                 "old/p.ddd.json": project("P", "a.ddd.json"),
                 "old/a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        baseline = root / "old" / "p.ddd.json"
+        asked = self.reads(monkeypatch)
+        cache: BaselineCache = {}
+        for _ in range(4):
+            assert compared(revision, baseline, root, cache).verdict is True
+        assert len(asked) == 1
+
+    def test_a_description_naming_a_sub_project_is_kept_from_its_second_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """What the session cannot name beforehand either: a sub-project's own files have no stamp
+        from before the first read, which learns them for the second."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+                "old/p.ddd.json": project("P", "sub/q.ddd.json"),
+                "old/sub/q.ddd.json": project("Q", "a.ddd.json"),
+                "old/sub/a.ddd.json": component(
+                    "A", declare("output", "Speed", "uint16", unit="rpm")
+                ),
             },
         )
         baseline = root / "old" / "p.ddd.json"

@@ -1700,7 +1700,8 @@ an input the component stopped reading is `removed-input`, an information, becau
 component that reads less harms nobody. An object it declares `local` keeps its grade,
 `removed-unused-object`, because no other component can read it. `ddd check --standalone --baseline`, `ddd compare` and the Compare tab of `ddd gui`
 take it from the file, and read it under the floor `ddd check --standalone` reads a component under,
-whether or not the run said so, because one component file is read one way by every caller.
+whether or not the run said so, because a component given as the baseline is read one way by every
+caller.
 `ddd compare` has no `--standalone` of its own: a component file given as the baseline is read
 under that floor, as above, and one given as the candidate is read as a project's file is, an
 input nobody in it produces being its own error. Two versions of a component with inputs are
@@ -1843,7 +1844,12 @@ compile:
   is no change the comparison makes: a dump of a component read alone holds every input it reads so,
   and a dictionary carries no mark of which a dump is. An input that arrived with no producer is
   `added-object` alone. A candidate given as a description has it said by its analysis, and
-  `changed-owner` is not said beside it there either.
+  `changed-owner` is not said beside it there either. The one exception is the floor of
+  `ddd check --standalone`, which silences that analysis for what a component read alone was never
+  shown and does not reach a producer the baseline had: the comparison then says it, once, as an
+  error whatever the floor says - the grade an output gone from a component read alone has, and the
+  gate's own for a component that drops an output - and a project's own `-W missing-producer=ignore`
+  still silences it.
 - `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
   longer builds, so it is an error whether or not an object is dimensioned by it. A constant
   has no `id`, so one renamed is this finding for the old name and `added-constant` for the

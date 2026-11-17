@@ -873,7 +873,11 @@ relaxes it as it relaxes the check. An object with no producer on both sides is 
 comparison makes - two dumps of one component read alone hold its inputs so, and the dictionary
 carries no mark of which a dump is - and an input that arrived with no producer is an
 ``added-object`` and no more. A candidate given as a description has it said by its analysis, with no
-``changed-owner`` beside it.
+``changed-owner`` beside it. The one exception is the floor of ``ddd check --standalone``, which
+silences that analysis for what a component read alone was never shown and does not reach a producer
+the baseline had: the comparison then says it, once, as an error whatever the floor says, which is
+what makes a component that drops an output fail that gate, and a project's own
+``-W missing-producer=ignore`` still silences it.
 
 One pair gets one verdict, whoever asks. ``ddd compare``, ``ddd check --baseline`` and the Compare
 tab of ``ddd gui`` ask the same function, and the delivery cannot replace the baseline when any

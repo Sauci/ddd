@@ -172,3 +172,69 @@ class TestAnAxisAndWhatIsOverIt:
     def test_a_curve_over_an_axis_at_the_limit_is_clean(self, tree: Path) -> None:
         bag = one(tree, *self.axes(65535, declare("local", "C", kind="curve", axis="Ax")))
         assert checks(bag) == []
+
+
+class TestAMemberWithTooManyDimensions:
+    """``MATRIX_DIM`` carries three dimensions. A member's dimensions are its type's, so a
+    member with four is named once, at the type file, however many variables reach it."""
+
+    def files(
+        self, *, variables: int = 2, instances: int | None = 1000, **member: Any
+    ) -> dict[str, Any]:
+        dimensions = {} if instances is None else {"dimensions": [instances]}
+        names = "ABCD"[:variables]
+        return {
+            "project.ddd.json": project("P", "w.ddd.json", "t.ddd.json"),
+            "w.ddd.json": component(
+                "W", *(declare("local", name, typename="Slot_t", **dimensions) for name in names)
+            ),
+            "t.ddd.json": types(
+                struct_type(
+                    "Slot_t",
+                    value_member("tensor", "uint8", dimensions=[2, 2, 2, 2], **member),
+                    value_member("raw"),
+                )
+            ),
+        }
+
+    def test_a_member_is_named_once_at_the_type_whatever_reaches_it(self, tree: Path) -> None:
+        bag = run_analysis(tree, self.files())[1]
+        assert checks(bag) == ["a2l-unrepresentable"]
+        rendered = messages(bag)
+        assert "t.ddd.json#types[0].members[0].dimensions" in rendered
+        assert "member 'tensor' of structure 'Slot_t' has 4 dimensions" in rendered
+        assert "MATRIX_DIM" in rendered
+        assert "w.ddd.json" not in rendered
+
+    def test_one_instance_names_it_once_too(self, tree: Path) -> None:
+        bag = run_analysis(tree, self.files(variables=1, instances=None))[1]
+        assert checks(bag) == ["a2l-unrepresentable"]
+        assert "t.ddd.json#types[0].members[0].dimensions" in messages(bag)
+
+    def test_a_member_kept_out_of_the_a2l_says_nothing(self, tree: Path) -> None:
+        bag = run_analysis(tree, self.files(a2l={"export": False}))[1]
+        assert checks(bag) == []
+
+    def test_a_member_past_both_limits_is_named_in_one_walk_each_cause_once(
+        self, tree: Path
+    ) -> None:
+        files = self.files()
+        files["t.ddd.json"] = types(
+            struct_type("Slot_t", value_member("tensor", dimensions=[OVER, 2, 2, 2]))
+        )
+        bag = run_analysis(tree, files)[1]
+        assert checks(bag) == ["a2l-unrepresentable"] * 2
+        rendered = messages(bag)
+        assert rendered.count("has 4 dimensions") == 1
+        assert rendered.count("has a dimension of 65536 elements") == 1
+        assert "w.ddd.json" not in rendered
+
+    def test_a_declarations_own_dimensions_are_named_at_the_declaration(self, tree: Path) -> None:
+        files = {
+            "project.ddd.json": project("P", "w.ddd.json"),
+            "w.ddd.json": component("W", declare("local", "V", dimensions=[2, 2, 2, 2])),
+        }
+        bag = run_analysis(tree, files)[1]
+        assert checks(bag) == ["a2l-unrepresentable"]
+        assert "w.ddd.json#component.interface[0].definition" in messages(bag)
+        assert "'V' has 4 dimensions" in messages(bag)

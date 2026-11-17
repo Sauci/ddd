@@ -1513,7 +1513,8 @@ Warnings:
   described by the A2L version DDD writes, or the A2L carries a string, an identifier or a
   part of one past what the format holds. It is a warning, and the file is written whole.
   An array of more than three dimensions is the first: the `MATRIX_DIM` of version 1.6.1
-  cannot carry it, and a 1.7 reader accepts the dimensions written out. A size past 65,535
+  cannot carry it, and a 1.7 reader accepts the dimensions written out; a member with too many
+  is named once at its type, however many variables reach it. A size past 65,535
   is the second: the `MATRIX_DIM` of an array, the `NUMBER` of a string and the
   `MaxAxisPoints` of an axis are a `uint` of two bytes in ASAP2 1.6.1, and the record is
   written with the number whole; a curve or a map is named at its axis, and a member of a

@@ -3275,19 +3275,6 @@ class _Analysis:
         for suffix in _element_paths(instance.shape):
             self._flatten(instance, self._types[named], f"{name}{suffix}", leaves, reference)
         self._check_a2l_instance(instance, leaves, reference)
-        # The same question _build_variable asks of a plain object, asked of every leaf that
-        # reaches the a2l: a member is an a2l object of its own, so a member with too many
-        # dimensions gets exactly the MATRIX_DIM a plain object with too many would.
-        for leaf in leaves:
-            carried = instance.a2l.exported and leaf.a2l.exported
-            if carried and len(leaf.shape) > _A2L_MAX_DIMENSIONS:
-                self._bag.add(
-                    "a2l-unrepresentable",
-                    f"'{leaf.path}' has {len(leaf.shape)} dimensions, but the MATRIX_DIM of "
-                    f"ASAP2 1.6.1 carries {_A2L_MAX_DIMENSIONS}; the extra dimensions are "
-                    f"written out and only a 1.7 reader understands them",
-                    reference.location("definition"),
-                )
         return instance, leaves
 
     def _flatten(
@@ -3486,6 +3473,23 @@ class _Analysis:
             location,
         )
 
+    def _a2l_dimensions(self, name: str, shape: Shape, location: Location) -> None:
+        """``a2l-unrepresentable``: more dimensions than the ``MATRIX_DIM`` of ASAP2 1.6.1 carries.
+
+        Asked of a member, whose dimensions are its type's: it is named once at the type file,
+        however many instances and elements reach it. A declaration's own dimensions are asked
+        where its variable is built.
+        """
+        if len(shape) <= _A2L_MAX_DIMENSIONS or not self._a2l_first("dimensions", name, location):
+            return
+        self._bag.add(
+            "a2l-unrepresentable",
+            f"{name} has {len(shape)} dimensions, but the MATRIX_DIM of ASAP2 1.6.1 "
+            f"carries {_A2L_MAX_DIMENSIONS}; the extra dimensions are written out and only a "
+            f"1.7 reader understands them",
+            location,
+        )
+
     def _a2l_unit(
         self, what: str, unit: str, conversion: Conversion | None, location: Location
     ) -> None:
@@ -3593,6 +3597,11 @@ class _Analysis:
             f"description of {about}",
             member.description,
             entry.location(f"members[{position}].description"),
+        )
+        self._a2l_dimensions(
+            about,
+            self._numeric_shape(member.dimensions),
+            entry.location(f"members[{position}].dimensions"),
         )
         declared = self._declared_of(member)
         conversion = declared.conversion if isinstance(declared, ScalarType) else member.conversion

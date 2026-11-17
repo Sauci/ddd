@@ -979,7 +979,7 @@ class TestInputTheToolMustSurvive:
             },
         )
         assert "a2l-unrepresentable" in checks(bag)
-        assert "'X.hyper' has 4 dimensions" in messages(bag)
+        assert "member 'hyper' of structure 'S_t' has 4 dimensions" in messages(bag)
 
     def test_a_member_kept_out_of_the_a2l_raises_no_dimension_warning(self, tree: Path) -> None:
         """The warning is about the file the member reaches; a member that reaches none has

@@ -733,6 +733,7 @@ class _CompuMethodBuilder:
         self._methods: dict[object, CompuMethodView] = {}
         self._vtabs: dict[str, CompuVtabView] = {}
         self._names: set[str] = set()
+        self._counted: dict[str, int] = {}
 
     def reference(self, entry: ResolvedObject | ResolvedLeaf) -> str:
         conversion = entry.conversion
@@ -814,11 +815,14 @@ class _CompuMethodBuilder:
         unit is not capped at all, so the synthesised name is what has to fit.
         """
         candidate = base[:IDENTIFIER_MAX_LENGTH]
-        index = 1
+        # A name is never given back, so every suffix below the last one counted for this base
+        # is taken: counting resumes there, and the work is the methods and not their square.
+        index = self._counted.get(base, 1)
         while candidate in self._names:
             index += 1
             suffix = f"_{index}"
             candidate = f"{base[: IDENTIFIER_MAX_LENGTH - len(suffix)]}{suffix}"
+        self._counted[base] = index
         self._names.add(candidate)
         return candidate
 

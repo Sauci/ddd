@@ -673,7 +673,6 @@ class TestTheCache:
                 "a.ddd.json": component("A", declare("output", "Speed", "uint8", unit="rpm")),
             },
         )
-        _aged(root, old)
         cache: BaselineCache = {}
         first = compared(revision, dump, root, cache)
         assert first.verdict is True
@@ -690,7 +689,6 @@ class TestTheCache:
             old, {"a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm"))}
         )
         _dumped(old / "p.ddd.json", dump)
-        _aged(root, old)
         after = compared(revision, dump, root, cache)
         assert after.verdict is False
         assert len(cache) == 1
@@ -753,6 +751,32 @@ class TestTheCache:
         assert second is not None and second.number == 2
         assert compared(second, root / "p.ddd.json", root, cache).verdict is True
 
+    def test_a_baseline_read_again_is_the_newest_of_the_cache(self, tmp_path: Path) -> None:
+        """Replaced in place, an entry would keep the place it was first made in, and the next one
+        dropped would be a baseline somebody has just asked for."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        dump = root / "baseline.json"
+        _dumped(root / "p.ddd.json", dump)
+        archived = [root / f"baseline_{number}.json" for number in range(MAX_BASELINES + 1)]
+        cache: BaselineCache = {}
+        for copy in archived[:MAX_BASELINES]:
+            shutil.copy2(dump, copy)
+            compared(revision, copy, root, cache)
+        # The oldest is saved over, and so read again: it is now the newest.
+        archived[0].write_text(dump.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        compared(revision, archived[0], root, cache)
+        shutil.copy2(dump, archived[-1])
+        compared(revision, archived[-1], root, cache)
+        assert archived[0].resolve() in cache
+        assert archived[1].resolve() not in cache
+
     def test_a_baseline_that_was_refused_is_never_served_from_the_cache(
         self, tmp_path: Path
     ) -> None:
@@ -784,7 +808,6 @@ class TestTheCache:
         )
         dump = root / "baseline.json"
         _dumped(root / "p.ddd.json", dump)
-        _aged(root)
         archived = [root / f"baseline_{number}.json" for number in range(MAX_BASELINES + 1)]
         cache: BaselineCache = {}
         for copy in archived:
@@ -798,23 +821,121 @@ class TestTheCache:
         assert compared(revision, archived[0], root, cache).verdict is True
 
 
-def _aged(*roots: Path) -> None:
-    """Every file under ``roots`` made an hour old, as files are that nobody just saved: a
-    baseline file written moments before it is read is not kept (:func:`_settled`)."""
-    then = time.time_ns() - 3600 * 10**9
-    for root in roots:
-        for path in root.rglob("*"):
-            if path.is_file() and path.stat().st_mtime_ns > then:
-                os.utime(path, ns=(then, then))
-
-
 class TestABaselineIsStampedBeforeItIsRead:
-    """A save landing while a baseline is being read: the stamps taken afterwards describe the new
-    bytes, so the entry made from the old ones looked fresh and its verdict was served until the
-    next change. What is taken before the read is the time, and no entry is kept that holds a
-    file newer than it."""
+    """The files of a baseline are stamped *before* the read and compared with the stamps after it,
+    by equality, as the session does for the open project (``Revision``'s "before, never after"):
+    a write landing while the read goes on moves the stamp whatever time it gives the file, and
+    the entry made of the old bytes is never served. No window, no slack: a file dated ahead of the
+    clock is kept like any other.
 
-    def _trees(self, tmp_path: Path) -> tuple[Path, Revision, Path]:
+    What a read learns is which files make the baseline up, so a description is stamped before the
+    read by the files the last read of it learned - the first read of one is not yet kept, and the
+    second is."""
+
+    @staticmethod
+    def reads(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+        """Every path ``read_baseline`` is asked for, in order."""
+        asked: list[Path] = []
+        real = gui_compare.read_baseline
+
+        def counted(path: Path, *arguments: Any, **keywords: Any) -> Any:
+            asked.append(path)
+            return real(path, *arguments, **keywords)
+
+        monkeypatch.setattr(gui_compare, "read_baseline", counted)
+        return asked
+
+    @staticmethod
+    def saving(
+        monkeypatch: pytest.MonkeyPatch, target: Path, *, keeping: int | None = None
+    ) -> None:
+        """Make the next read of anything a read during which ``target`` is saved - the second
+        writer. ``keeping`` is the time the write gives the file, as ``cp -p`` and an unpacked
+        archive give an old one: left out, it is the time of the write."""
+        real = gui_compare.read_baseline
+
+        def saved_meanwhile(*arguments: Any, **keywords: Any) -> Any:
+            found = real(*arguments, **keywords)
+            target.write_text(target.read_text(encoding="utf-8").replace("uint16", "uint8"))
+            if keeping is not None:
+                os.utime(target, ns=(keeping, keeping))
+            return found
+
+        monkeypatch.setattr(gui_compare, "read_baseline", saved_meanwhile)
+
+    def _dump(self, tmp_path: Path) -> tuple[Path, Revision, Path]:
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        dump = root / "baseline.json"
+        _dumped(root / "p.ddd.json", dump)
+        return root, revision, dump
+
+    def test_a_save_in_the_window_is_not_served_stale(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, revision, dump = self._dump(tmp_path)
+        real = gui_compare.read_baseline
+        self.saving(monkeypatch, dump)
+        cache: BaselineCache = {}
+        # What was read is what it was - the old bytes, and the answer to them.
+        assert compared(revision, dump, root, cache).verdict is True
+        monkeypatch.setattr(gui_compare, "read_baseline", real)
+        # But it is not kept as though it were the file on disk.
+        assert compared(revision, dump, root, cache).verdict is False
+        assert main(["compare", str(dump), str(root / "p.ddd.json")]) != EXIT_OK
+
+    @pytest.mark.parametrize("kept", ["the time it had", "an older time"])
+    def test_a_write_that_keeps_an_older_time_is_not_served_stale_either(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kept: str
+    ) -> None:
+        """What ``cp -p``, ``rsync -t`` and an unpacked archive do: the new bytes under a time
+        that is not new. Compared with the stamp taken before the read, the size still moves, and
+        a time that went back moves it too."""
+        root, revision, dump = self._dump(tmp_path)
+        before = dump.stat().st_mtime_ns
+        real = gui_compare.read_baseline
+        self.saving(
+            monkeypatch, dump, keeping=before if kept == "the time it had" else before - 10**10
+        )
+        cache: BaselineCache = {}
+        assert compared(revision, dump, root, cache).verdict is True
+        monkeypatch.setattr(gui_compare, "read_baseline", real)
+        assert compared(revision, dump, root, cache).verdict is False
+
+    def test_an_unchanged_dump_is_read_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, revision, dump = self._dump(tmp_path)
+        asked = self.reads(monkeypatch)
+        cache: BaselineCache = {}
+        for _ in range(3):
+            assert compared(revision, dump, root, cache).verdict is True
+        assert len(asked) == 1
+
+    def test_a_file_dated_ahead_of_the_clock_is_kept_like_any_other(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A zip unpacked from another time zone: no window to wait out, so it is read once."""
+        root, revision, dump = self._dump(tmp_path)
+        ahead = time.time_ns() + 24 * 3600 * 10**9
+        os.utime(dump, ns=(ahead, ahead))
+        asked = self.reads(monkeypatch)
+        cache: BaselineCache = {}
+        for _ in range(3):
+            assert compared(revision, dump, root, cache).verdict is True
+        assert len(asked) == 1
+
+    def test_a_description_is_kept_from_its_second_read_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The first read learns which files the baseline is made of, which nothing could have
+        stamped before it; the second is stamped by them, and kept."""
         root = tmp_path / "project"
         revision = _revision(
             root,
@@ -825,93 +946,71 @@ class TestABaselineIsStampedBeforeItIsRead:
                 "old/a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
             },
         )
-        _aged(root)
-        return root, revision, root / "old" / "p.ddd.json"
+        baseline = root / "old" / "p.ddd.json"
+        asked = self.reads(monkeypatch)
+        cache: BaselineCache = {}
+        for _ in range(4):
+            assert compared(revision, baseline, root, cache).verdict is True
+        assert len(asked) == 2
 
-    def test_a_save_in_the_window_is_not_served_stale(
+    def test_a_save_in_the_window_of_a_description_is_not_served_stale(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        root, revision, baseline = self._trees(tmp_path)
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+                "old/p.ddd.json": project("P", "a.ddd.json"),
+                "old/a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        baseline = root / "old" / "p.ddd.json"
         real = gui_compare.read_baseline
-        now = [time.time_ns()]
-
-        class Clock:
-            """A read that takes ten seconds, so that the time a read began at and the time its
-            files are stamped at are as far apart as they are for a large description."""
-
-            @staticmethod
-            def time_ns() -> int:
-                return now[0]
-
-        def saved_meanwhile(*arguments: Any, **keywords: Any) -> Any:
-            found = real(*arguments, **keywords)
-            # The second writer: the baseline's component saved after the reader has read it, and
-            # while the rest of the window is still to run.
-            now[0] += 5 * 10**9
-            changed = root / "old" / "a.ddd.json"
-            write_tree(
-                root / "old",
-                {"a.ddd.json": component("A", declare("output", "Speed", "uint32", unit="rpm"))},
-            )
-            os.utime(changed, ns=(now[0], now[0]))
-            now[0] += 5 * 10**9
-            return found
-
-        monkeypatch.setattr(gui_compare, "read_baseline", saved_meanwhile)
-        monkeypatch.setattr(gui_compare, "time", Clock)
         cache: BaselineCache = {}
-        # What was read is what it was: the old bytes, and the answer to them.
+        compared(revision, baseline, root, cache)
+        assert compared(revision, baseline, root, cache).verdict is True
+        # Its component is touched, so that the entry is stale and the next ask reads it again...
+        component_file = root / "old" / "a.ddd.json"
+        then = component_file.stat().st_mtime_ns - 10**10
+        os.utime(component_file, ns=(then, then))
+        # ... and saved over while that read goes on, under the time it already has.
+        self.saving(monkeypatch, component_file, keeping=then)
         assert compared(revision, baseline, root, cache).verdict is True
         monkeypatch.setattr(gui_compare, "read_baseline", real)
-        # But it is not kept as though it were the file on disk.
         assert compared(revision, baseline, root, cache).verdict is False
-        assert main(["compare", str(baseline), str(root / "p.ddd.json")]) != EXIT_OK
 
-    def test_a_file_saved_before_the_read_is_kept(self, tmp_path: Path) -> None:
-        root, revision, baseline = self._trees(tmp_path)
-        cache: BaselineCache = {}
-        compared(revision, baseline, root, cache)
-        assert len(cache) == 1
-
-    def test_a_file_saved_a_moment_before_the_read_is_not_kept(self, tmp_path: Path) -> None:
-        """The clock a file's time comes from is coarser than the one the read began by, so a
-        save in the same instant could be either side of the start: it is read again."""
-        root, revision, baseline = self._trees(tmp_path)
-        now = time.time_ns()
-        os.utime(root / "old" / "a.ddd.json", ns=(now, now))
-        cache: BaselineCache = {}
-        assert compared(revision, baseline, root, cache).verdict is True
-        assert cache == {}
-
-    def test_a_file_gone_during_the_read_is_not_kept(
+    def test_a_file_that_is_new_to_the_baseline_is_not_stamped_by_the_read_that_found_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        root, revision, baseline = self._trees(tmp_path)
-        real = gui_compare.read_baseline
-
-        def deleted_meanwhile(*arguments: Any, **keywords: Any) -> Any:
-            found = real(*arguments, **keywords)
-            (root / "old" / "a.ddd.json").unlink()
-            return found
-
-        monkeypatch.setattr(gui_compare, "read_baseline", deleted_meanwhile)
-        cache: BaselineCache = {}
-        assert compared(revision, baseline, root, cache).verdict is True
-        assert cache == {}
-
-    def test_a_replaced_entry_is_dropped_when_the_new_read_is_not_kept(
-        self, tmp_path: Path
-    ) -> None:
-        root, revision, baseline = self._trees(tmp_path)
+        """An include the last read did not know cannot have been stamped before this one: the
+        entry is not kept, and the next read - which knows it - is."""
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+                "old/p.ddd.json": project("P", "a.ddd.json"),
+                "old/a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        baseline = root / "old" / "p.ddd.json"
         cache: BaselineCache = {}
         compared(revision, baseline, root, cache)
-        assert len(cache) == 1
+        compared(revision, baseline, root, cache)
         write_tree(
             root / "old",
-            {"a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm"))},
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "b.ddd.json": component("B", declare("input", "Speed", "uint16", unit="rpm")),
+            },
         )
-        assert compared(revision, baseline, root, cache).verdict is True
-        assert cache == {}
+        asked = self.reads(monkeypatch)
+        for _ in range(3):
+            assert compared(revision, baseline, root, cache).verdict is True
+        assert len(asked) == 2
 
 
 class TestTheTabReadsABaselineUnderTheProjectsRelaxations:
@@ -967,12 +1066,11 @@ class TestTheTabReadsABaselineUnderTheProjectsRelaxations:
     def test_a_cached_baseline_is_read_again_for_other_relaxations(self, tmp_path: Path) -> None:
         root = tmp_path / "project"
         write_tree(root, self.FILES)
-        _aged(root)
         cache: BaselineCache = {}
         plain = self._revision(root)
-        _aged(root)
+        # Twice: the first read of a description is not yet kept, the second is.
+        assert compared(plain, root / "old" / "p.ddd.json", root, cache).verdict is False
         assert compared(plain, root / "old" / "p.ddd.json", root, cache).verdict is False
         relaxed = self._revision(root, ["missing-producer=ignore"])
-        _aged(root)
         assert compared(relaxed, root / "old" / "p.ddd.json", root, cache).verdict is True
         assert len(cache) == 1

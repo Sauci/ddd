@@ -145,11 +145,12 @@ one that states no ``format``, no ``project`` and no ``component``, a file holdi
 for one - is no delivery, and is refused on either side in those words rather than read as an
 empty dictionary, of which every object would be an addition or a removal.
 
-``ddd compare`` has no ``--standalone``: it reads a file that is one component as
-``ddd check --standalone`` does, whether or not it is told so, as the section below on the baseline
-says. A component with an input that nobody in the file produces is therefore judged by
-``ddd compare`` and by ``ddd check --standalone --baseline`` alike, and ``--standalone`` is the
-option of the second.
+``ddd compare`` has no ``--standalone``. It reads a component file given as the baseline under the
+floor ``ddd check --standalone`` reads one under, whether or not it is told so, as the section
+below on the baseline says; a component file given as the candidate it reads as a project's file
+is read, so that an input nobody in the file produces is an error of the candidate. A supplier
+comparing two versions of a component with inputs therefore uses
+``ddd check --baseline --standalone``, the command that takes the option.
 
 Renames
 -------
@@ -773,7 +774,8 @@ renaming a project is a legitimate thing to do and the report is then exactly wh
 wants. It is reported before any object is compared, and among the warnings it comes first,
 because it should be looked at before anything below it is believed.
 
-A baseline that cannot be read at all is a different matter, and it stops the run:
+A baseline that cannot be read at all is a different matter: there is nothing to compare, so no
+verdict is printed, and what the candidate has of its own is reported all the same:
 
 .. code-block:: text
 
@@ -827,7 +829,9 @@ an input nobody produces, and that is as true of the trunk it is compared agains
 tree, so a project that builds with it can compare its branch against its trunk, as
 ``ddd check`` of either is clean. Only a lower grade than the check has by default is a
 relaxation; the Compare tab reads a baseline under the relaxations every build record of the
-project makes, and a check one of them does not relax is not relaxed. ``--standalone`` does reach
+project makes, and a check one of them does not relax is not relaxed. A plugin's check has no grade
+to compare with until its plugin is loaded, so a ``-W`` of it reaches the baseline as ``ignore``
+alone. ``--standalone`` does reach
 it, because that states how the file was handed over - a component read on its own - and the
 baseline was handed over the same way.
 
@@ -847,25 +851,29 @@ change of the format, so it is deferred: a comparison against such a dump is gra
 a whole project is, which costs the supplier's gate its scope until the baseline is the
 component file itself.
 
-Its errors are another matter. A baseline that could not be read, as in the missing-file
-example above, or whose own components disagree has no dictionary that can be trusted, so
-every error it produces is carried over under the ``in the baseline:`` prefix, at the severity
-its own analysis gave it, and the run fails on them: the errors are reported beside the
-comparison and the verdict is a refusal, whether the candidate is a dump or a description. A
-candidate given as a description is analysed all the same, and all its findings and its renames
-are reported - a broken baseline withholds nothing of the candidate's, as ``ddd check --baseline``
-never withheld it. Only a baseline that could not be read at all leaves nothing to compare, and
-prints no verdict. A promotion of this run does not make one of them an error, and a ``-W`` that
+Its errors are another matter. A baseline whose own components disagree has no dictionary that
+can be trusted, so every error it produces is carried over under the ``in the baseline:``
+prefix, at the severity its own analysis gave it, and the run fails on them: the comparison is
+made, the errors are reported beside it and the verdict is a refusal, whether the candidate is a
+dump or a description. A candidate given as a description is analysed all the same, and all its
+findings and its renames are reported - a broken baseline withholds nothing of the candidate's,
+as ``ddd check --baseline`` never withheld it. A baseline that could not be read at all, as in the
+missing-file example above, is carried over in the same way, but has no dictionary to compare
+with: no verdict is printed and no renames file is written, while the candidate's own findings are
+still reported. A promotion of this run does not make one of them an error, and a ``-W`` that
 relaxes the check relaxes it. A baseline that is to be compared against has to be one that checks
 clean of errors on its own, under the project's own policy.
 
 A dictionary dumped from a project that failed holds what the analysis left it: ``ddd dump`` exits
-1 on an input nobody produces and writes the file. Given as the candidate, an object with readers
-and no producer is ``missing-producer``, an error, as ``ddd check`` says of the same description,
-and so it cannot replace a baseline that had a producer for it; ``-W missing-producer=ignore``
-relaxes it as it relaxes the check. It is not said of an object the baseline held without a producer
-under the same name - two dumps of one component read alone hold its inputs so - and not of a
-candidate given as a description, whose analysis has said it already.
+1 on an input nobody produces and writes the file. Given as the candidate, an object that lost its
+producer while a component still reads it is ``missing-producer``, an error, as ``ddd check`` says
+of the same description, and so it cannot replace the baseline that had a producer for it; it is
+said in place of that pair's ``changed-owner``, being the one fact, and ``-W missing-producer=ignore``
+relaxes it as it relaxes the check. An object with no producer on both sides is no change the
+comparison makes - two dumps of one component read alone hold its inputs so, and the dictionary
+carries no mark of which a dump is - and an input that arrived with no producer is an
+``added-object`` and no more. A candidate given as a description has it said by its analysis, with no
+``changed-owner`` beside it.
 
 One pair gets one verdict, whoever asks. ``ddd compare``, ``ddd check --baseline`` and the Compare
 tab of ``ddd gui`` ask the same function, and the delivery cannot replace the baseline when any

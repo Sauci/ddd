@@ -179,7 +179,7 @@ plugin's own backend. See :doc:`plugins` for what a plugin does with them.
    dictionary whenever ``missing-producer`` is relaxed - a component checked or dumped on its
    own, or an inconsistent project generated with ``ddd generate --force``; the c backend
    files such an object under ``<unresolved>``. ``ddd compare`` says ``missing-producer`` of such
-   an object in a candidate dump that had a producer for it. Every other field is always present.
+   an object in a candidate dump when the baseline had a producer for it. Every other field is always present.
 
 Point counts ahead of a table
 -----------------------------

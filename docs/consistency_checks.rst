@@ -565,7 +565,7 @@ or an a2l file that does not do what the description says - or that does not com
        consumer header would declare a symbol nobody defines. A producer whose own declaration
        could not resolve still counts as a producer, so a consumer of the same variable is not
        told that nobody produces it. ``ddd compare`` says it too of an object a dumped candidate
-       holds with readers and no producer, at this severity and under this run's ``-W``.
+       lost the producer of while a component still reads it, at this severity and under this run's ``-W``.
    * - ``local-conflict``
      - error
      - a variable declared ``local`` by one component is also declared by another. ``local`` is

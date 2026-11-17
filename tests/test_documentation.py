@@ -326,11 +326,12 @@ class TestTheCheckReference:
                 current = Severity.INFO
             elif line.startswith(tuple(headings)):
                 current = headings[line.split()[0]]
-            elif (found := re.match(r"- `([a-z0-9-]+)`:", line)) and (
-                found.group(1) in CHECKS and CHECKS[found.group(1)].comparison
-            ):
+            elif (found := re.match(r"- `([a-z0-9-]+)`:", line)) and found.group(1) in CHECKS:
                 seen.setdefault(found.group(1), set()).add(current)
         assert seen, "no comparison id found in section 4.1"
+        # Not only a comparison check: the one id the comparison borrows from the consistency
+        # checks, ``missing-producer``, is listed there too, and holds a grade of its own.
+        assert "missing-producer" in seen
         wrong = {
             name: (under, CHECKS[name].default_severity)
             for name, under in seen.items()
@@ -6206,37 +6207,69 @@ class TestWhatThePagesSayOfTheNineSmallerVerdicts:
             "``[N=8] != [N=4]``"
         ) in flattened(COMPARING_DELIVERIES)
 
-    def test_a_dumped_candidate_with_readers_and_no_producer_is_missing_producer(self) -> None:
+    def test_an_object_that_lost_its_producer_is_missing_producer_and_said_once(self) -> None:
         spec = flattened(SPEC)
         assert (
-            "- `missing-producer`: the candidate, given as a dumped dictionary, holds an object or "
-            "a structured variable that a component reads and no component produces"
+            "- `missing-producer`: an object or a structured variable had a producer in the "
+            "baseline, and the candidate, given as a dumped dictionary, has a component that "
+            "still reads it and none that produces it"
         ) in spec
         assert "with its one severity and under the run's own `-W`" in spec
-        assert "nor of a candidate given as a description, whose analysis has said it" in spec
-        assert "which a delivery comparison says of a candidate as `missing-producer`" in spec
+        assert "and it is said in place of that pair's `changed-owner`, being the one fact" in spec
+        assert "An object with no producer on both sides is no change the comparison makes" in spec
+        assert "a dictionary carries no mark of which a dump is" in spec
+        assert "An input that arrived with no producer is `added-object` alone" in spec
+        assert (
+            "A candidate given as a description has it said by its analysis, and `changed-owner` "
+            "is not said beside it there either"
+        ) in spec
+        assert "which a delivery comparison says as `missing-producer` of a candidate whose" in spec
         pages = flattened(COMPARING_DELIVERIES)
         assert (
-            "an object with readers and no producer is ``missing-producer``, an error, as "
-            "``ddd check`` says of the same description"
+            "an object that lost its producer while a component still reads it is "
+            "``missing-producer``, an error, as ``ddd check`` says of the same description"
         ) in pages
+        assert "said in place of that pair's ``changed-owner``, being the one fact" in pages
+        assert "``-W missing-producer=ignore`` relaxes it as it relaxes the check" in pages
+        assert "An object with no producer on both sides is no change the comparison makes" in pages
         assert "two dumps of one component read alone hold its inputs so" in pages
-        assert "at this severity and under this run's ``-W``" in flattened(CONSISTENCY_CHECKS)
+        assert "an input that arrived with no producer is an ``added-object`` and no more" in pages
+        assert "has it said by its analysis, with no ``changed-owner`` beside it" in pages
+        assert "lost the producer of while a component still reads it" in flattened(
+            CONSISTENCY_CHECKS
+        )
         assert "``ddd compare`` says ``missing-producer`` of such an object" in flattened(
+            self.DICTIONARY
+        )
+        assert "in a candidate dump when the baseline had a producer for it" in flattened(
             self.DICTIONARY
         )
 
     def test_a_broken_baseline_withholds_nothing_of_the_candidates(self) -> None:
         spec = flattened(SPEC)
-        assert "and its renames are written, whatever the baseline carries" in spec
+        assert "and its renames are written, whatever errors the baseline carries" in spec
         assert "a broken baseline withholds nothing of the candidate's" in spec
+        assert (
+            "and one that could not be read at all, which leaves nothing to compare, still lets "
+            "the candidate's findings be reported"
+        ) in spec
         assert (
             "When the baseline carries an error, the comparison is made and the verdict is a "
             "refusal; when a side cannot be read, no verdict is printed"
         ) in spec
         pages = flattened(COMPARING_DELIVERIES)
         assert "a broken baseline withholds nothing of the candidate's" in pages
-        assert "Only a baseline that could not be read at all leaves nothing to compare" in pages
+        assert (
+            "A baseline that cannot be read at all is a different matter: there is nothing to "
+            "compare, so no verdict is printed, and what the candidate has of its own is "
+            "reported all the same"
+        ) in pages
+        assert (
+            "has no dictionary to compare with: no verdict is printed and no renames file is "
+            "written, while the candidate's own findings are still reported"
+        ) in pages
+        assert "the comparison is made, the errors are reported beside it and the verdict" in pages
+        assert "under the project's own policy" in pages
 
     def test_a_relaxation_reaches_a_description_baseline_and_a_promotion_does_not(self) -> None:
         spec = flattened(SPEC)
@@ -6244,6 +6277,10 @@ class TestWhatThePagesSayOfTheNineSmallerVerdicts:
         assert (
             "What does reach it is the relaxations of the project's `-W`, an override grading a "
             "check below the grade it has by default"
+        ) in spec
+        assert (
+            "a plugin's check, whose grade is not known until its plugin is loaded, only as "
+            "`ignore`"
         ) in spec
         assert "a project that builds with `-W missing-producer=ignore` can compare its branch" in (
             spec
@@ -6254,21 +6291,43 @@ class TestWhatThePagesSayOfTheNineSmallerVerdicts:
         ) in spec
         pages = flattened(COMPARING_DELIVERIES)
         assert "This run's ``-W`` reaches it in one direction only. A promotion does not" in pages
+        assert "``--strict`` does not reach it either" in pages
         assert "A relaxation does: ``-W missing-producer=ignore`` is a project deciding" in pages
+        assert "Only a lower grade than the check has by default is a relaxation" in pages
         assert "a check one of them does not relax is not relaxed" in pages
+        assert ("so a ``-W`` of it reaches the baseline as ``ignore`` alone") in pages
+        assert (
+            "A promotion of this run does not make one of them an error, and a ``-W`` that "
+            "relaxes the check relaxes it"
+        ) in pages
         assert "The relaxations of that policy reach a baseline given as a project" in flattened(
             CONSISTENCY_CHECKS
         )
 
-    def test_the_commands_name_which_one_takes_standalone(self) -> None:
+    def test_the_pages_say_per_side_what_ddd_compare_does_with_a_component_file(self) -> None:
         spec = flattened(SPEC)
         assert (
-            "`ddd compare` has no `--standalone` of its own, since it needs none: "
-            "`ddd check --baseline --standalone` is the command that takes the option"
+            "`ddd compare` has no `--standalone` of its own: a component file given as the "
+            "baseline is read under that floor, as above, and one given as the candidate is read "
+            "as a project's file is, an input nobody in it produces being its own error"
         ) in spec
-        assert "``ddd compare`` has no ``--standalone``: it reads a file that is one component" in (
-            flattened(COMPARING_DELIVERIES)
-        )
+        assert (
+            "Two versions of a component with inputs are therefore compared with "
+            "`ddd check --baseline --standalone`, the command that takes the option"
+        ) in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert (
+            "``ddd compare`` has no ``--standalone``. It reads a component file given as the "
+            "baseline under the floor"
+        ) in pages
+        assert (
+            "a component file given as the candidate it reads as a project's file is read, so "
+            "that an input nobody in the file produces is an error of the candidate"
+        ) in pages
+        assert (
+            "A supplier comparing two versions of a component with inputs therefore uses "
+            "``ddd check --baseline --standalone``, the command that takes the option"
+        ) in pages
 
     def test_null_against_explicit_zeros_is_no_change(self) -> None:
         assert (

@@ -248,15 +248,20 @@ def read_baseline(
     run is, so the baseline is analysed without ``--strict``; only its errors are carried over,
     prefixed, so that a broken baseline is visible. A candidate given as a dump is still
     compared against whatever resolved, because a delivery that cannot be accepted still needs
-    its differences listed; a candidate given as a description is not analysed once the shared
-    bag holds an error, so a broken baseline stops that run at the errors.
+    its differences listed; a candidate given as a description is analysed all the same, and a
+    broken baseline withholds nothing of it - its findings and its renames are reported beside
+    the carried errors, which count against the verdict and not against the candidate's reading
+    (:func:`read_dictionary`).
 
-    ``-W`` does not reach it either, for the same reason and against the same objection: the
-    overrides used to be shared, so ``-W unused-output=error`` - a run asking to be told about
-    *its own* unread outputs - promoted a warning about a predecessor into an error, carried
-    it over as ``in the baseline:`` and refused a verdict about the delivery. What does reach
-    it is ``standalone``, the floor a component read on its own sets: that is a statement
-    about how the file was handed over, and the baseline was handed over the same way. A
+    A promotion of ``-W`` does not reach it, for the same reason and against the same objection:
+    the overrides used to be shared, so ``-W unused-output=error`` - a run asking to be told
+    about *its own* unread outputs - promoted a warning about a predecessor into an error,
+    carried it over as ``in the baseline:`` and refused a verdict about the delivery. A
+    relaxation does (:func:`relaxations`): a project that decided it can live with a finding
+    decided it of the delivery it compares against as much as of its own, and a project that
+    relaxes ``missing-producer`` could not otherwise compare its branch against its trunk.
+    ``standalone`` reaches it too, the floor a component read on its own sets: that is a
+    statement about how the file was handed over, and the baseline was handed over the same way. A
     baseline that *is* one component file is read under that floor whether or not the run said
     so - ``ddd compare`` has no flag to say it with - so that one file is read one way by every
     caller: against the floor, the component's own input nobody was shown the producer of was
@@ -276,10 +281,10 @@ def read_baseline(
                 f"{BASELINE_PREFIX}{diagnostic.message}",
                 diagnostic.location,
                 diagnostic.notes,
-                # At the severity the baseline's own analysis gave it: "the run fails on
-                # them" (4.1) is what makes a comparison against an untrustworthy dictionary
-                # visible, and a `-W` of this run relaxing the check would leave the run
-                # reporting no verdict and exiting 0.
+                # At the severity the baseline's own analysis gave it, which is the project's
+                # relaxations over the check's own grade and never this run's promotions:
+                # "the run fails on them" (4.1) is what makes a comparison against an
+                # untrustworthy dictionary visible.
                 severity=diagnostic.severity,
             )
     return resolved

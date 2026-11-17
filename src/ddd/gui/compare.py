@@ -60,7 +60,6 @@ list it is in, not by where its path happens to resolve to.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -104,9 +103,11 @@ the reader is asked the bytes are known to be there."""
 _COMPARISON_CHECKS: Final = frozenset(
     identifier for identifier, info in CHECKS.items() if info.comparison
 )
-"""Every check :func:`ddd.compare.compare` can file, read from the registry's own flag rather
+"""Every check whose grade the comparison owns, read from the registry's own flag rather
 than listed again - the same reasoning :data:`ddd.diagnostics.STANDALONE_POLICY` gives for
-deriving its own list instead of naming checks by hand."""
+deriving its own list instead of naming checks by hand. ``missing-producer``, which ``compare``
+also files of a dumped candidate, is not one of them, and is never filed here: the open project is
+a description, and its analysis has said it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,10 +125,12 @@ class Cached:
     """The relaxations of the project this baseline was read under
     (:func:`~ddd.deliveries.relaxations`): a read under other ones is another read."""
 
-    begun: int
-    """The time, in nanoseconds, taken before the read began - never after, as the session takes
-    its stamps (:func:`~ddd.gui.session.stamped`): after it, a file saved while the read was
-    going on is stamped as the bytes that were read, and a stale entry looks fresh."""
+    verified: bool
+    """Whether every file the read was made out of carried, when the read ended, the stamp it was
+    given *before* the read began - the order :mod:`ddd.gui.session` keeps for the open project,
+    "before, never after". A file written while the read went on moves its stamp whatever time the
+    write gives it, and an entry that cannot say so is read again rather than served: it still
+    names the files it was made of, which is what the next read stamps beforehand."""
 
     stamps: dict[Path, tuple[int, int] | None]
     """The stamp of every file the read was made out of, as :func:`~ddd.gui.session.stamped`
@@ -235,7 +238,8 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
     for diagnostic in forwarded:
         # Replayed rather than re-derived: a cache hit skips reading the baseline again, and its
         # errors are read back from what the first read forwarded, at the severity that read
-        # gave them - the same "no `-W` of this run reaches them" rule `read_baseline` documents.
+        # gave them - under the relaxations of the project and no promotion of any `-W`, the rule
+        # `read_baseline` documents.
         # `baseline_bag`'s own policy plays no part in this: every one of these calls states its
         # severity, which is the one thing `DiagnosticBag.add` never asks the policy to resolve.
         baseline_bag.add(
@@ -424,42 +428,32 @@ def _resolved_baseline(
             f"the baseline '{resolved.as_posix()}' is outside the session root '{root.as_posix()}'"
         )
     hit = cache.get(resolved)
-    if hit is None or hit.relaxed != relaxed or stamped(hit.stamps) != hit.stamps:
-        hit = _read(resolved, relaxed)
+    if (
+        hit is None
+        or not hit.verified
+        or hit.relaxed != relaxed
+        or stamped(hit.stamps) != hit.stamps
+    ):
+        # Stamped before the read, by the files the last read of it was made of - an entry that
+        # was not kept still says which - and by the file it names, which is all a first read of
+        # a description knows. Compared with the stamps after it by equality, as the session
+        # compares a revision's: no window and no clock, so a write that keeps an older time, or
+        # a file dated ahead, is told as any other.
+        hit = _read(resolved, relaxed, () if hit is None else tuple(hit.stamps))
         # Taken out and put back rather than assigned in place, so that the entry dropped below
         # is the one read longest ago: updating a key leaves it where it first went in.
         cache.pop(resolved, None)
-        if _settled(hit):
-            cache[resolved] = hit
-            while len(cache) > MAX_BASELINES:
-                del cache[next(iter(cache))]
+        cache[resolved] = hit
+        while len(cache) > MAX_BASELINES:
+            del cache[next(iter(cache))]
     return hit.resolved, hit.forwarded
 
 
-_CLOCK_SLACK_NS: Final = 2 * 10**9
-"""How far before the read began a file's own time may lie and still be taken as possibly newer
-than it: the clock a file's time comes from is coarser than the one the read is begun by - a
-jiffy on one system, two seconds on a FAT volume - so a file saved in the same instant as the
-start could be stamped either side of it."""
-
-
-def _settled(entry: Cached) -> bool:
-    """Whether every file ``entry`` was read out of is older than the read that made it, and so
-    stamped as the bytes that were read: one that is not may have been saved while the read went
-    on, and an entry that held it would be served as the file on disk until the next change.
-    A file that is not there any more is one nothing is known of, and unsettled too. Not kept, it is
-    read again by the next ask, which costs one read and cannot be wrong."""
-    return all(
-        stamp is not None and stamp[0] < entry.begun - _CLOCK_SLACK_NS
-        for stamp in entry.stamps.values()
-    )
-
-
-def _read(path: Path, relaxed: dict[str, Severity]) -> Cached:
+def _read(path: Path, relaxed: dict[str, Severity], known: tuple[Path, ...]) -> Cached:
     """The baseline at ``path``, read and stamped, or the reason it is not one.
 
-    The time is taken before the read and the files are stamped after it, which is the order that
-    can be told apart (:attr:`Cached.begun`).
+    ``known`` are the files the last read of it was made of, stamped with ``path`` before this
+    one begins (:attr:`Cached.verified`).
 
     The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
     a directory, one whose permissions refuse - before ``read_baseline`` is asked for a reading
@@ -474,7 +468,7 @@ def _read(path: Path, relaxed: dict[str, Severity]) -> Cached:
         raise BaselineRefusedError(
             f"the baseline '{path.as_posix()}' is unreadable: {error}"
         ) from (error)
-    begun = time.time_ns()
+    before = stamped((path, *known))
     # The bag the carried errors are forwarded into, graded by the project's relaxations as
     # ``ddd compare``'s own bag is: that is where `read_baseline` takes them from.
     own = DiagnosticBag(SeverityPolicy(dict(relaxed)))
@@ -495,7 +489,9 @@ def _read(path: Path, relaxed: dict[str, Severity]) -> Cached:
         # two readers met the file, so there is always a reason here to put into words.
         assert reading.refusal is not None
         raise BaselineRefusedError(_refusal_reason(path, reading.refusal, forwarded))
-    return Cached(found, forwarded, dict(relaxed), begun, stamped(found.sources))
+    after = stamped(found.sources)
+    verified = all(file in before and before[file] == stamp for file, stamp in after.items())
+    return Cached(found, forwarded, dict(relaxed), verified, after)
 
 
 def _refusal_reason(path: Path, refusal: Refusal, diagnostics: tuple[Diagnostic, ...]) -> str:

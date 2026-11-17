@@ -413,6 +413,38 @@ class TestADumpFromAFailingProject:
         assert "error[missing-producer]: 'Speed' is read by B" in report
         assert "broken.json cannot replace base.json" in report
 
+    def test_it_is_said_once_and_the_producer_that_left_is_not_told_beside_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        base, broken = self._dumps(tmp_path)
+        capsys.readouterr()
+        main(["compare", str(base), str(broken), "--format", "json"])
+        found = [d["check"] for d in json.loads(capsys.readouterr().out)["diagnostics"]]
+        assert found == ["missing-producer"]
+
+    def test_two_dumps_that_fail_alike_hold_no_change(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _, broken = self._dumps(tmp_path)
+        again = tmp_path / "again.json"
+        assert main(["dump", str(tmp_path / "new" / "p.ddd.json"), "-o", str(again)]) == (
+            EXIT_FINDINGS
+        )
+        capsys.readouterr()
+        assert main(["compare", str(broken), str(again)]) == EXIT_OK
+
+    def test_a_description_that_lost_the_producer_is_told_by_its_analysis_alone(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(tmp_path / "old", CLEAN)
+        write_tree(tmp_path / "new", {**CLEAN, "a.ddd.json": component("A")})
+        capsys.readouterr()
+        argv = [str(tmp_path / "old" / "p.ddd.json"), str(tmp_path / "new" / "p.ddd.json")]
+        assert main(["compare", *argv]) == EXIT_FINDINGS
+        report = capsys.readouterr().err
+        assert report.count("[missing-producer]") == 1
+        assert "changed-owner" not in report
+
     def test_a_project_that_relaxes_the_check_has_chosen_to_hold_such_objects(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -420,6 +452,56 @@ class TestADumpFromAFailingProject:
         capsys.readouterr()
         assert main(["compare", str(base), str(broken), "-W", "missing-producer=ignore"]) == EXIT_OK
         assert "missing-producer" not in capsys.readouterr().err
+
+
+def _versions(tmp_path: Path) -> tuple[Path, Path]:
+    """One component, in two versions: the second reads one more input, which nobody in the file
+    produces - what a supplier's next release of a component does."""
+    write_tree(
+        tmp_path,
+        {
+            "v1.ddd.json": component("C", declare("input", "Speed", unit="rpm")),
+            "v2.ddd.json": component(
+                "C", declare("input", "Speed", unit="rpm"), declare("input", "Torque", unit="Nm")
+            ),
+        },
+    )
+    return tmp_path / "v1.ddd.json", tmp_path / "v2.ddd.json"
+
+
+class TestTwoVersionsOfAComponentWithInputs:
+    """The release-to-release comparison of a component read alone, which is ``check --baseline
+    --standalone``'s: what one file cannot know is not a fault of it."""
+
+    def test_two_standalone_dumps_compare_clean_when_the_second_reads_one_more_input(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        one, two = _versions(tmp_path)
+        first, second = tmp_path / "d1.json", tmp_path / "d2.json"
+        assert main(["dump", str(one), "--standalone", "-o", str(first)]) == EXIT_OK
+        assert main(["dump", str(two), "--standalone", "-o", str(second)]) == EXIT_OK
+        capsys.readouterr()
+        assert main(["compare", str(first), str(second)]) == EXIT_OK
+        report = capsys.readouterr().err
+        assert "missing-producer" not in report
+        assert "d2.json can replace d1.json" in report
+
+    def test_check_baseline_standalone_is_the_command_that_judges_the_two_files(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        one, two = _versions(tmp_path)
+        assert main(["check", str(two), "--baseline", str(one), "--standalone"]) == EXIT_OK
+
+    def test_compare_reads_a_component_candidate_as_a_projects_file_is_read(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only the baseline is read under the floor: the candidate's own inputs are the
+        candidate's own errors, which is why the supplier uses the command with the option."""
+        one, two = _versions(tmp_path)
+        assert main(["compare", str(one), str(two)]) == EXIT_FINDINGS
+        assert "error[missing-producer]: 'Torque' is read by component 'C'" in (
+            capsys.readouterr().err
+        )
 
 
 class TestABrokenBaselineWithholdsNothingOfTheCandidates:
@@ -484,6 +566,18 @@ class TestABrokenBaselineWithholdsNothingOfTheCandidates:
         assert json.loads(written.read_text(encoding="utf-8")) == [
             {"id": "aaaaaaaaaaaa", "from": "Old", "to": "New"}
         ]
+
+    def test_a_baseline_that_cannot_be_read_still_has_the_candidates_findings_reported(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Decision 5.2's other branch: nothing to compare, so no verdict - and the candidate,
+        analysed all the same, says what it has of its own."""
+        _, new = self._trees(tmp_path)
+        assert main(["compare", str(tmp_path / "gone.json"), str(new)]) == EXIT_FINDINGS
+        report = capsys.readouterr().err
+        assert "error[file-not-found]: in the baseline:" in report
+        assert "warning[unused-output]: 'Lonely'" in report
+        assert "replace" not in report
 
     def test_a_candidate_that_is_itself_broken_still_stops_at_its_own_errors(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -572,6 +666,7 @@ class TestADescriptionBaselineTakesTheProjectsRelaxationsAlone:
                 "definition-mismatch=warning",
                 "missing-id=warning",
                 "demo/rule=ignore",
+                "demo/mild=warning",
                 "demo/other=error",
             ],
             strict=True,

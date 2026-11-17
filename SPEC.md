@@ -1686,7 +1686,8 @@ its findings being its own; only its error findings are carried into the report,
 with "in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
 is visible without drowning the comparison and without this run's strictness promoting its
 warnings. What does reach it is the relaxations of the project's `-W`, an override grading a
-check below the grade it has by default, because a project that decided it can live with a
+check below the grade it has by default - a plugin's check, whose grade is not known until its
+plugin is loaded, only as `ignore` - because a project that decided it can live with a
 finding decided it of the delivery it compares against as much as of its own: a project that
 builds with `-W missing-producer=ignore` can compare its branch against its trunk, as `ddd check`
 of either is clean. The Compare tab reads it under the relaxations that every build record of
@@ -1700,15 +1701,17 @@ component that reads less harms nobody. An object it declares `local` keeps its 
 `removed-unused-object`, because no other component can read it. `ddd check --standalone --baseline`, `ddd compare` and the Compare tab of `ddd gui`
 take it from the file, and read it under the floor `ddd check --standalone` reads a component under,
 whether or not the run said so, because one component file is read one way by every caller.
-`ddd compare` has no `--standalone` of its own, since it needs none: `ddd check --baseline
---standalone` is the command that takes the option, and `ddd compare` reads a component file as it
-reads one with the option given. An archived dictionary carries no mark of how it was read, `ddd dump
+`ddd compare` has no `--standalone` of its own: a component file given as the baseline is read
+under that floor, as above, and one given as the candidate is read as a project's file is, an
+input nobody in it produces being its own error. Two versions of a component with inputs are
+therefore compared with `ddd check --baseline --standalone`, the command that takes the option. An archived dictionary carries no mark of how it was read, `ddd dump
 --standalone` included: the mark is a change of the format, and is deferred, so a comparison
 against such a dump is graded as one of a whole project is, whose readers the dump records as
 they were. A candidate given as a
 description is analysed too, and all of its findings are reported at their own severities, and its
-renames are written, whatever the baseline carries: a broken baseline withholds nothing of the
-candidate's. A file that is neither a dictionary nor a description - it states no `format`, no
+renames are written, whatever errors the baseline carries: a broken baseline withholds nothing of
+the candidate's, and one that could not be read at all, which leaves nothing to compare, still lets
+the candidate's findings be reported. A file that is neither a dictionary nor a description - it states no `format`, no
 `project` and no `component`, a file holding only a `name` among them - is no delivery, and is
 refused on either side in those words rather than read as an empty dictionary.
 The verdict is that the candidate can replace the baseline exactly when no finding of the
@@ -1830,14 +1833,17 @@ compile:
   deliberately relaxes the check with `-W reused-name=warning`. A structured variable with no
   leaf is one of the names, and says it at the variable; a variable with leaves says it at
   each of its leaves' paths.
-- `missing-producer`: the candidate, given as a dumped dictionary, holds an object or a structured
-  variable that a component reads and no component produces. A dictionary dumped from a project that
-  failed is written all the same, and with no producer the object compared as `changed-owner` alone,
-  a warning, and a replacement; it is the id `ddd check` gives the same fault
-  ([section 4](#4-consistency-checks)), with its one severity and under the run's own `-W`, so that a
-  project that relaxes it has chosen to hold such objects. It is not said of an object the baseline
-  held without a producer under the same name, which a dump of a component read alone holds for every
-  input it reads, nor of a candidate given as a description, whose analysis has said it.
+- `missing-producer`: an object or a structured variable had a producer in the baseline, and the
+  candidate, given as a dumped dictionary, has a component that still reads it and none that
+  produces it. A dictionary dumped from a project that failed is written all the same, and with no producer
+  the object compared as `changed-owner` alone, a warning, and a replacement. It is the id `ddd check`
+  gives the same fault ([section 4](#4-consistency-checks)), with its one severity and under the
+  run's own `-W`, so that a project that relaxes it has chosen to hold such objects, and it is said in
+  place of that pair's `changed-owner`, being the one fact. An object with no producer on both sides
+  is no change the comparison makes: a dump of a component read alone holds every input it reads so,
+  and a dictionary carries no mark of which a dump is. An input that arrived with no producer is
+  `added-object` alone. A candidate given as a description has it said by its analysis, and
+  `changed-owner` is not said beside it there either.
 - `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
   longer builds, so it is an error whether or not an object is dimensioned by it. A constant
   has no `id`, so one renamed is this finding for the old name and `added-constant` for the
@@ -2365,7 +2371,7 @@ own, else its component's default), `volatile`,
 names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
 and `{}` on an object that names none), `owner` (the component producing it, `null` only
 where no component does, which a consistent project has none of, and which a delivery comparison
-says of a candidate as `missing-producer` ([section 4.1](#41-comparing-two-deliveries))), `consumers`, `local`,
+says as `missing-producer` of a candidate whose object lost its producer ([section 4.1](#41-comparing-two-deliveries))), `consumers`, `local`,
 `point_counts` (`"none"` or `"leading"`, resolved for a curve, a map or an axis, `"none"`
 for every other kind) and `a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,

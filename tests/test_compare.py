@@ -4174,14 +4174,18 @@ class TestNoInitAndExplicitZerosAreOneStorage:
         assert "first differs at [1]: 7 != 0" in messages(verdict(old, new))
 
 
-class TestAnObjectWithReadersAndNoProducerIsAnError:
-    """A candidate dictionary dumped from a project that failed holds objects a component reads
-    and nobody produces, and compared as ``changed-owner`` alone it was a replacement. It is
-    ``missing-producer``, the id ``ddd check`` gives the same fault, with that id's one
-    severity and under the run's own ``-W``."""
+class TestAnObjectThatLostItsProducerWhileSomebodyReadsItIsAnError:
+    """A candidate dictionary dumped from a project that failed holds an object a component
+    reads and that nobody produces any more, and compared as ``changed-owner`` alone it was a
+    replacement. It is ``missing-producer``, the id ``ddd check`` gives the same fault, with that
+    id's one severity and under the run's own ``-W`` - said once, in place of the
+    ``changed-owner`` of that pair. An object with no producer on both sides is no change the
+    comparison makes, which is what a component dumped on its own holds of every input."""
 
     @staticmethod
-    def delivery(tree: Path, name: str, *, produced: bool) -> DataDictionary:
+    def delivery(
+        tree: Path, name: str, *, produced: bool, extra_input: bool = False
+    ) -> DataDictionary:
         write_tree(
             tree,
             {
@@ -4192,19 +4196,25 @@ class TestAnObjectWithReadersAndNoProducerIsAnError:
                     declare("output", "Other", unit="rpm"),
                 ),
                 f"{name}-b.ddd.json": component(
-                    "B", declare("input", "Speed", unit="rpm"), declare("input", "Other")
+                    "B",
+                    declare("input", "Speed", unit="rpm"),
+                    declare("input", "Other"),
+                    *([declare("input", "Torque")] if extra_input else []),
                 ),
             },
         )
         return resolve(tree, f"{name}.ddd.json")
 
-    def test_the_candidate_of_a_failed_dump_cannot_replace(self, tree: Path) -> None:
+    def test_the_candidate_of_a_failed_dump_cannot_replace_and_says_it_once(
+        self, tree: Path
+    ) -> None:
         old = self.delivery(tree, "old", produced=True)
         new = self.delivery(tree, "new", produced=False)
         bag = verdict(old, new)
-        assert sorted(checks(bag)) == ["changed-owner", "missing-producer"]
+        assert checks(bag) == ["missing-producer"]
         assert (
-            "error[missing-producer]: 'Speed' is read by B and nothing in the candidate produces it"
+            "error[missing-producer]: 'Speed' is read by B and nothing in the candidate "
+            "produces it any more; A produced it in the baseline"
         ) in messages(bag)
         assert bag.has_errors
 
@@ -4212,39 +4222,56 @@ class TestAnObjectWithReadersAndNoProducerIsAnError:
         old = self.delivery(tree, "old", produced=True)
         new = self.delivery(tree, "new", produced=False)
         bag = verdict(old, new, "missing-producer=ignore")
-        assert checks(bag) == ["changed-owner"]
+        assert checks(bag) == []
         assert not bag.has_errors
 
-    def test_an_object_the_baseline_held_without_a_producer_is_not_new(self, tree: Path) -> None:
-        """Two dumps of a component read alone hold it on both sides: nothing moved."""
+    def test_an_object_without_a_producer_on_both_sides_is_no_change(self, tree: Path) -> None:
+        """Two dumps of a project that fails alike, or of a component read alone: nothing moved."""
         old = self.delivery(tree, "old", produced=False)
         new = self.delivery(tree, "new", produced=False)
         assert checks(verdict(old, new)) == []
 
-    def test_an_object_that_arrived_with_readers_and_no_producer_is_an_error(
+    def test_an_input_that_arrived_without_a_producer_is_an_addition_and_no_more(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", produced=False)
+        new = self.delivery(tree, "new", produced=False, extra_input=True)
+        assert checks(verdict(old, new)) == ["added-object"]
+
+    def test_the_owner_that_changed_to_another_is_still_changed_owner(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", produced=True)
+        new = self.delivery(tree, "new", produced=True)
+        moved = new.by_name["Speed"].model_copy(update={"owner": "C"})
+        bag = verdict(
+            old,
+            new.model_copy(
+                update={"objects": tuple(moved if o.name == "Speed" else o for o in new.objects)}
+            ),
+        )
+        assert checks(bag) == ["changed-owner"]
+
+    def test_a_producer_gone_from_an_object_nobody_reads_is_still_changed_owner(
         self, tree: Path
     ) -> None:
         old = self.delivery(tree, "old", produced=True)
         new = self.delivery(tree, "new", produced=True)
-        ghost = new.by_name["Other"].model_copy(update={"name": "Ghost", "owner": None})
-        bag = verdict(old, new.model_copy(update={"objects": (*new.objects, ghost)}))
-        assert sorted(checks(bag)) == ["added-object", "missing-producer"]
-
-    def test_an_object_nobody_reads_is_not_one(self, tree: Path) -> None:
-        old = self.delivery(tree, "old", produced=True)
-        new = self.delivery(tree, "new", produced=True)
-        loose = new.by_name["Other"].model_copy(
-            update={"name": "Loose", "owner": None, "consumers": ()}
+        loose = new.by_name["Speed"].model_copy(update={"owner": None, "consumers": ()})
+        bag = verdict(
+            old,
+            new.model_copy(
+                update={"objects": tuple(loose if o.name == "Speed" else o for o in new.objects)}
+            ),
         )
-        bag = verdict(old, new.model_copy(update={"objects": (*new.objects, loose)}))
-        assert checks(bag) == ["added-object"]
+        assert checks(bag) == ["changed-owner"]
 
-    def test_a_candidate_that_was_analysed_in_this_run_is_not_told_twice(self, tree: Path) -> None:
+    def test_a_candidate_analysed_in_this_run_has_it_said_by_the_analysis_alone(
+        self, tree: Path
+    ) -> None:
         old = self.delivery(tree, "old", produced=True)
         new = self.delivery(tree, "new", produced=False)
         bag = DiagnosticBag()
         compare(old, new, bag, candidate_analysed=True)
-        assert checks(bag) == ["changed-owner"]
+        assert checks(bag) == []
 
     def test_a_structured_variable_is_one_too(self, tree: Path) -> None:
         def delivery(name: str, *, produced: bool) -> DataDictionary:
@@ -4269,4 +4296,15 @@ class TestAnObjectWithReadersAndNoProducerIsAnError:
             return resolve(tree, f"{name}.ddd.json")
 
         bag = verdict(delivery("old", produced=True), delivery("new", produced=False))
-        assert "'Rec' is read by B and nothing in the candidate produces it" in messages(bag)
+        assert "'Rec' is read by B and nothing in the candidate produces it any more" in (
+            messages(bag)
+        )
+        assert "changed-owner" not in checks(bag)
+        analysed = DiagnosticBag()
+        compare(
+            delivery("old", produced=True),
+            delivery("new", produced=False),
+            analysed,
+            candidate_analysed=True,
+        )
+        assert "missing-producer" not in checks(analysed)

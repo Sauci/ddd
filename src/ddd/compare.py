@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -632,8 +632,10 @@ def _pair[T: _Joined](
         new_done.add(name)
 
     paired.sort(key=lambda pair: index_order(pair[0].name))
-    removed = [was[name] for name in sorted(was, key=index_order) if name not in old_done]
-    added = [now[name] for name in sorted(now, key=index_order) if name not in new_done]
+    # Filtered before they are sorted: most of two deliveries is paired, and what is left over is
+    # what the sort is for.
+    removed = [was[name] for name in sorted(was.keys() - old_done, key=index_order)]
+    added = [now[name] for name in sorted(now.keys() - new_done, key=index_order)]
     return paired, removed, added
 
 
@@ -684,9 +686,10 @@ def compare(
     the readers a whole baseline records are known, and are the ones named.
 
     ``candidate_analysed`` is the caller saying the candidate was analysed in this very run, so
-    that ``missing-producer`` has already been said of it by the analysis, under this run's own
-    policy: an archived dictionary was not, and a dump of a project that failed holds objects a
-    component reads and nobody produces (:func:`_report_unproduced`).
+    that ``missing-producer`` has already been said of an object that lost its producer while
+    somebody still reads it, by the analysis and under this run's own policy: an archived
+    dictionary was not, and a dump of a project that failed holds such an object
+    (:func:`_compare_declaration`).
     """
     if baseline.name != candidate.name:
         # Two deliveries of one project share its name, so a mismatch usually means the
@@ -700,7 +703,14 @@ def compare(
             location,
         )
 
-    bare = _compare_instances(baseline, candidate, bag, location, baseline_alone=baseline_alone)
+    bare = _compare_instances(
+        baseline,
+        candidate,
+        bag,
+        location,
+        baseline_alone=baseline_alone,
+        candidate_analysed=candidate_analysed,
+    )
     _compare_constants(baseline, candidate, bag, location)
     _compare_rasters(baseline, candidate, bag, location)
 
@@ -711,11 +721,9 @@ def compare(
     for old, new in paired:
         if old.name != new.name:
             _report_rename(old, new, bag, location)
-        _compare_object(old, new, bag, location, was, now)
+        _compare_object(old, new, bag, location, was, now, candidate_analysed=candidate_analysed)
 
-    _report_reused_names(
-        was, now, paired, sorted(was.keys() & now.keys(), key=index_order), bag, location
-    )
+    _report_reused_names(was, now, paired, was.keys() & now.keys(), bag, location)
 
     candidates = _by_discriminators(added)
     for old in removed:
@@ -724,50 +732,7 @@ def compare(
     for new in added:
         _report_addition(new, candidate, bag, location)
 
-    if not candidate_analysed:
-        _report_unproduced(baseline, candidate, bag, location)
-
     return [*paired, *bare]
-
-
-def _report_unproduced(
-    baseline: DataDictionary,
-    candidate: DataDictionary,
-    bag: DiagnosticBag,
-    location: Location | None,
-) -> None:
-    """``missing-producer`` for each object and structured variable of the candidate that a
-    component reads and nobody produces, which the baseline did not already hold so.
-
-    A dictionary dumped from a project that failed is written all the same (``ddd dump`` exits 1
-    and keeps the file), and with no producer an object compared as ``changed-owner`` alone: a
-    warning, and a replacement. Nothing in the dictionary says it is one of those, so the one
-    thing a dump can be asked is the question ``ddd check`` asks a description: it is the same
-    id, with the one severity that id has and the run's own ``-W`` over it, so a project that
-    relaxes ``missing-producer`` has chosen to hold such objects.
-
-    Not told of an object the baseline held without a producer under the same name: a component
-    dumped on its own holds every input it reads that way, and two such dumps compared say
-    nothing has moved. A candidate analysed in this run is not asked at all, since the
-    analysis has said it.
-    """
-    held: dict[str, ResolvedObject | ResolvedInstance] = {}
-    held.update((entry.name, entry) for entry in baseline.objects)
-    held.update((entry.name, entry) for entry in baseline.instances)
-    named: list[ResolvedObject | ResolvedInstance] = [*candidate.objects]
-    named.extend(candidate.instances)
-    for entry in sorted(named, key=lambda entry: index_order(entry.name)):
-        if not entry.consumers or entry.owner is not None:
-            continue
-        before = held.get(entry.name)
-        if before is not None and before.owner is None:
-            continue
-        bag.add(
-            "missing-producer",
-            f"'{entry.name}' is read by {', '.join(entry.consumers)} and nothing in the "
-            f"candidate produces it",
-            location,
-        )
 
 
 def _report_rename(
@@ -787,14 +752,20 @@ def _report_reused_names[T: _Joined](
     was: Mapping[str, T],
     now: Mapping[str, T],
     paired: Sequence[tuple[T, T]],
-    names: Sequence[str],
+    names: Collection[str],
     bag: DiagnosticBag,
     location: Location | None,
 ) -> None:
-    """Say ``reused-name`` of each of these names, that both deliveries use, where it is so."""
+    """Say ``reused-name`` of each of these names, that both deliveries use, where it is so, in
+    the order ``ddd list`` gives - the names it is so of are sorted, and not all of them."""
     renamed = {old.name: new.name for old, new in paired if old.name != new.name}
     claimed = {new: old for old, new in renamed.items()}
-    for name in names:
+    reused = [
+        name
+        for name in names
+        if name in renamed or name in claimed or _states_different_identities(was[name], now[name])
+    ]
+    for name in sorted(reused, key=index_order):
         # Proof does not need both sides to have adopted an id, and a rename proves it from
         # either end. Pairing (above) may have matched the baseline's object under this name
         # to a *different* name in the candidate, which proves whatever still answers to the
@@ -804,12 +775,6 @@ def _report_reused_names[T: _Joined](
         # is silent about its identity is the one whose id nobody has to read (design 5.3).
         moved = renamed.get(name)
         taken = claimed.get(name)
-        if (
-            moved is None
-            and taken is None
-            and not _states_different_identities(was[name], now[name])
-        ):
-            continue
         # The failure that compiles, links, runs and reads the wrong storage: a dataset or a
         # recording keyed by this spelling binds to the new object as readily as to the old.
         notes = [(f"'{name}' is now called '{moved}'", None)] if moved else []
@@ -1303,6 +1268,8 @@ def _compare_object(
     location: Location | None,
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
+    *,
+    candidate_analysed: bool,
 ) -> None:
     interface = differing(_interface_fields(old, new), old, new)
     references = _compare_references(old, new, was, now)
@@ -1369,7 +1336,7 @@ def _compare_object(
     if not isinstance(old, ResolvedLeaf):
         # A member has no producer and no condition of its own: both are the variable's, and
         # are compared there once rather than repeated under every member's path.
-        _compare_declaration(old, new, bag, location)
+        _compare_declaration(old, new, bag, location, candidate_analysed=candidate_analysed)
 
     # Compared as it will actually be rather than as it was written: a baseline that
     # simply omits the block is not asking for the object to be dropped from the a2l.
@@ -1382,7 +1349,12 @@ def _compare_object(
 
 
 def _compare_declaration(
-    old: _Joined, new: _Joined, bag: DiagnosticBag, location: Location | None
+    old: _Joined,
+    new: _Joined,
+    bag: DiagnosticBag,
+    location: Location | None,
+    *,
+    candidate_analysed: bool,
 ) -> None:
     """Who produces the thing, and under which condition: two findings of their own.
 
@@ -1394,14 +1366,32 @@ def _compare_declaration(
     A condition that narrows what somebody reads is ``narrowed-condition``, an error, and any
     other change of one is ``changed-condition``, a warning: an id carries one severity, so
     the grade that depends on the readers is carried by the id.
+
+    A producer that went while somebody still reads the object is not a change of owner: it is
+    ``missing-producer``, the id ``ddd check`` gives the same fault, with its one severity and
+    under the run's own ``-W``, said in place of ``changed-owner`` because it is the one fact. A
+    dictionary dumped from a project that failed holds such an object and nothing in this run
+    analysed it; a candidate analysed in this run has it said by the analysis, which is why it
+    is not said twice, and a relaxed check is silent on both paths. An object with no producer
+    on both sides is no change at all - the only thing a component dumped on its own holds of
+    every input - and the dictionary cannot say which of the two a dump is.
     """
     if old.owner != new.owner:
-        bag.add(
-            "changed-owner",
-            f"'{old.name}' is now produced by {new.owner or 'nobody'} "
-            f"instead of {old.owner or 'nobody'}",
-            location,
-        )
+        if new.owner is None and new.consumers:
+            if not candidate_analysed:
+                bag.add(
+                    "missing-producer",
+                    f"'{old.name}' is read by {', '.join(new.consumers)} and nothing in the "
+                    f"candidate produces it any more; {old.owner} produced it in the baseline",
+                    location,
+                )
+        else:
+            bag.add(
+                "changed-owner",
+                f"'{old.name}' is now produced by {new.owner or 'nobody'} "
+                f"instead of {old.owner or 'nobody'}",
+                location,
+            )
 
     if old.condition != new.condition:
         narrowed = new.condition is not None and bool(old.consumers)
@@ -1420,6 +1410,7 @@ def _compare_instances(
     location: Location | None,
     *,
     baseline_alone: bool = False,
+    candidate_analysed: bool = False,
 ) -> list[tuple[ResolvedInstance, ResolvedInstance]]:
     """Compare the structured variables themselves, which their members cannot answer for.
 
@@ -1487,7 +1478,7 @@ def _compare_instances(
                 location,
             )
 
-        _compare_declaration(old, new, bag, location)
+        _compare_declaration(old, new, bag, location, candidate_analysed=candidate_analysed)
 
     bare = [(old, new) for old, new in paired if old.name not in leafed]
     for old, new in bare:
@@ -1497,7 +1488,7 @@ def _compare_instances(
         was,
         now,
         paired,
-        [name for name in sorted(was.keys() & now.keys()) if name not in leafed],
+        (was.keys() & now.keys()) - leafed,
         bag,
         location,
     )

@@ -5182,3 +5182,64 @@ class TestWhatTheReadmeAndTheConceptPageNoLongerOverstate:
     def test_the_concept_page_says_the_fix_says_so_and_nothing_of_a_preview(self) -> None:
         assert "the fix a finding carries says so in its title" in self.CONCEPT
         assert "the preview of each says so" not in self.CONCEPT
+
+
+class TestWhatTheReleaseNoteSaysOfBranchFive:
+    """Three claims of the unreleased entries, each held to what a run showed: what a baseline
+    0.11.0 archived meets, which cmake step prints ``byte-order-defaulted``, and the fields and
+    figures the a2l's entries name."""
+
+    TEXT = flattened(UNRELEASED)
+
+    def test_a_baseline_of_0_11_0_meets_the_member_blocks_as_changed_a2l(self) -> None:
+        assert (
+            "so `ddd compare` against a baseline 0.11.0 archived reports `changed-a2l` once for "
+            "every such leaf"
+        ) in self.TEXT
+        assert (
+            "so `ddd check --baseline --strict` of a project unchanged since passes with 0.11.0 "
+            "and exits 1 after the upgrade, its four warnings made errors"
+        ) in self.TEXT
+
+    def test_the_info_is_said_of_the_cmake_steps_that_write_an_a2l(self) -> None:
+        assert (
+            "A cmake build with no `BYTE_ORDER` prints it from the generation of a build of one "
+            "step and from the step that writes the a2l after the link with `ADDRESS_MAP`, and "
+            "from no step of a build with `ADDRESSES_FROM_IMAGE`, whose a2l takes the image's "
+            "byte order"
+        ) in self.TEXT
+        assert "printed on a pre-link run of a two step cmake flow" not in self.TEXT
+
+    def test_the_uint64_end_is_spelled_as_the_a2l_writes_it(self) -> None:
+        from ddd.models import format_number
+
+        written = format_number(float(2**64 - 1))
+        assert written == "1.8446744073709552e+19"
+        assert f"as `{written}` for the `uint64`" in self.TEXT
+        assert "1.8446744073709552e19" not in self.TEXT
+
+    def test_the_method_name_order_puts_every_other_calibration_object_after_the_axes(
+        self,
+    ) -> None:
+        assert (
+            "measurements first, then axes, then the other calibration objects, parameters, "
+            "value blocks, curves and maps together in the dictionary's order"
+        ) in self.TEXT
+        assert "then axes, then curves and maps, a member's" not in self.TEXT
+
+    def test_every_field_the_a2l_options_gained_is_named_where_it_stands(self) -> None:
+        from ddd.backends.a2l.options import A2lOptions
+
+        names = [field.name for field in dataclasses.fields(A2lOptions)]
+        assert {"module_fragment", "links", "alignment_cap"} <= set(names)
+        assert (
+            "gains three fields in this release: `module_fragment`, `links`, which a member's "
+            "`SYMBOL_LINK` below is written from, and `alignment_cap`, which `MOD_COMMON`'s "
+            "alignments below are"
+        ) in self.TEXT
+        assert names.index("alignment_cap") == 1
+        assert names.index("links") == names.index("addresses") + 1
+        assert (
+            "`alignment_cap` stands second, after `byte_order`, and `links` after `addresses`"
+            in (self.TEXT)
+        )

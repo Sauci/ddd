@@ -505,7 +505,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   fragment holding a `MOD_PAR` in a project that declares named constants, which DDD writes a
   `MOD_PAR` for, are usage errors, exit `2`.  Where a project declares none, the fragment's
   `MOD_PAR` is the module's, so an `EPK` can only be carried through the fragment there.  Nothing is
-  migrated: the option is new, and `A2lOptions` gains a `module_fragment` field.
+  migrated for the option, which is new.  `A2lOptions`, public through `ddd.backends`, gains three
+  fields in this release: `module_fragment`, `links`, which a member's `SYMBOL_LINK` below is
+  written from, and `alignment_cap`, which `MOD_COMMON`'s alignments below are.  `alignment_cap`
+  stands second, after `byte_order`, and `links` after `addresses`, so code that builds the options
+  by position meets them there: in `A2lOptions(ByteOrder.BIG, "1 61")` the version 0.11.0 took
+  second is taken for `alignment_cap`.
 
 * **A member's `SYMBOL_LINK` is where a linker map can find it.**  With `ddd generate a2l --image`,
   the record of a structure member, at any depth and in an element of an array of structures, said
@@ -605,7 +610,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   member that states it, in the types file, and the whole identifier made of the segments at the
   innermost one, once.  Two members of a structure displayed alike are not warned of, as two leaves
   displayed alike never were.  A project that relied on the ignored block sees fewer records in the
-  a2l, and a display identifier that was ignored now renames the records it stands for.
+  a2l, and a display identifier that was ignored now renames the records it stands for.  The
+  dumped dictionary records the block on each leaf below such a member, where one dumped by 0.11.0
+  records each without it, so `ddd compare` against a baseline 0.11.0 archived reports
+  `changed-a2l` once for every such leaf: four where one member of a structure, over two leaves,
+  gives them its format and display identifier, and another, over two, leaves them out with
+  `export: false`.
+  It is a warning, so `ddd check --baseline --strict` of a project unchanged since passes with
+  0.11.0 and exits 1 after the upgrade, its four warnings made errors.
 
 * **A derived limit no longer stops short of the largest raw value, and never passes the largest a
   float holds.**  A limit written from a datatype and a conversion was rounded to twelve significant
@@ -615,7 +627,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   within four units in the last place of its twelve digit decimal keeps the decimal, so `uint8`
   under a factor of 0.03 still states 7.65 and `sint16` under 0.1 still states 3276.7, which may sit
   up to four units inside the product; any other end is the float it is, written in the shortest
-  form that reads back as itself, as `1.8446744073709552e19` for the `uint64`, `4194303.9990234375`
+  form that reads back as itself, as `1.8446744073709552e+19` for the `uint64`, `4194303.9990234375`
   for a `uint32` under 2^-10 and `FLT_MAX` and `DBL_MAX` exactly for the two identities.  Only an
   a2l or a dumped dictionary with an end of more than twelve digits changes, in the digits after the
   twelfth, and an archived one compares as the same limit in `ddd compare` and in the check on
@@ -630,11 +642,13 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   only because something has to be stated, so a big endian target that forgot to say so got a file
   whose every multi byte value a tool read swapped, and nothing said so.  Such a run now prints the
   new info `byte-order-defaulted`, which is most of the runs of a project that gives neither, and
-  says to state it with `--byte-order big` or `BYTE_ORDER` in cmake.  It stops nothing, but it is
-  printed on a pre-link run of a two step cmake flow that has no `BYTE_ORDER` and not on the image
-  run after it, and a script that read the count of diagnostics from `--format json`, expecting
-  none, now finds one; `-W byte-order-defaulted=ignore` silences it, and so does stating the byte
-  order.
+  says to state it with `--byte-order big` or `BYTE_ORDER` in cmake.  It stops nothing.  A cmake
+  build with no `BYTE_ORDER` prints it from the generation of a build of one step and from the
+  step that writes the a2l after the link with `ADDRESS_MAP`, and from no step of a build with
+  `ADDRESSES_FROM_IMAGE`, whose a2l takes the image's byte order; the run before the link of
+  either writes no a2l.  A script that read the count of diagnostics from `--format json`,
+  expecting none, now finds one; `-W byte-order-defaulted=ignore` silences it, and so does stating
+  the byte order.
 
 * **The a2l's records, groups and methods are named and ordered the same way on every run.**  A
   `GROUP` listed the elements of an array of structures sorted by their path as text, so `SA[10].v`
@@ -642,8 +656,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   as a number; the `GROUP` now lists them in that order too, so only the order of a `GROUP`'s
   members changes.  The compu method name with no suffix, `CM_LIN_V` for a unit `V`, went to the
   first object the dictionary met that used it, and `CM_LIN_V_2` to the second; it now goes to the
-  first record the file writes, measurements first, then axes, then curves and maps, a member's
-  after a plain object's.  A project that has two conversions in one unit, and whose first holder
+  first record the file writes, measurements first, then axes, then the other calibration objects,
+  parameters, value blocks, curves and maps together in the dictionary's order, a member's after a
+  plain object's.  A project that has two conversions in one unit, and whose first holder
   changed, sees the two names swap between the records, which a tool that addresses a method by its
   name sees.  And the naming of the methods took time quadratic in their count: measured by timing
   that naming alone, over objects that each had a factor of their own in one unit, so each needed a

@@ -696,6 +696,161 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   left-out objects the a2l is, so the finding names only what the file holds, and the measurement is
   not named at all.
 
+* **A delivery that moves what a precompiled reader was built against is `changed-interface`, once,
+  and "cannot replace".**  A component that reads an object may be a binary built against the
+  baseline's headers, and three changes left it reading the wrong storage while the comparison
+  passed: a structured variable whose layout moved (a member of its structure inserted, removed,
+  renamed or reordered, a nested structure grown or rearranged, a nested array of another size, an
+  external member of another type, another header or other dimensions), a constant whose value
+  changed, and `volatile` turned on for an object a component reads.  Each is now the error
+  `changed-interface`, so `ddd compare`, `ddd check --baseline` and the Compare tab of `ddd gui` say
+  the candidate cannot replace the baseline, with or without `--strict`.  A layout is said at each
+  variable it changes, naming the structure and where the two layouts part; a constant at the
+  constant; `volatile` once, at the variable for a structured one, where it was `changed-storage`.
+  A reorder used to be said once, at the structure, by a `changed-interface` that named none of the
+  variables; it is now said at each variable, so a structure of three variables is three findings,
+  and a structure no variable uses gives none, where it was an error.  A nested structure renamed
+  with the same layout gives none either, and the variable's own type renamed stays
+  `changed-interface`; a member added after every member of the structure of a single variable stays
+  `added-object` alone; a baseline of dictionary format 3 or older compares dimensions by value
+  alone.  Migrating costs the delivery: a released structure that has to grow grows at the end of a
+  single variable's structure, or the finding is accepted for that delivery by relaxing
+  `changed-interface`.  A `-W changed-storage=...` kept to let `volatile` turned on pass no longer
+  reaches it, and a script that matched the old reorder message follows the new one.  No file format
+  changes; the dictionary stays format 10.
+
+* **A constant that is gone stops a comparison, one that is new does not, and a constant's size is
+  told as the number.**  `removed-constant` is a new error, since a reader that uses the macro no
+  longer builds whether or not an object is dimensioned by it, and a constant renamed is it for the
+  old name and the new info `added-constant` for the new one.  A changed value is
+  `changed-interface` at the constant, and an object it dimensions says its own shape as well, now
+  with the size each constant gives, `[N=8] != [N=4]`, where it said `[N] != [N]` of two sizes of
+  one name.  A raster whose event or cycle changed is `changed-storage` at the raster, a warning and
+  so an error under `--strict`, where it was no finding; a raster that came or went still says
+  nothing.  Constants are compared only when both dictionaries are format 4 or newer, since an older
+  one recorded none, and sections are still not compared.  Migrating costs a project that changes a
+  constant between two deliveries a relaxation of `changed-interface` or `removed-constant`, or a
+  new baseline.
+
+* **A rename, or a narrowing by condition, of an object a component reads is an error under an id of
+  its own.**  Both were warnings, `renamed-object` and `changed-condition`, and a delivery that
+  renamed an object a component reads, or added a condition to it, "could replace" the baseline: a
+  reader built against the old headers looks for a spelling that is gone, or for an object absent
+  from a build where the new condition is false.  The rename of a read object is now
+  `renamed-read-object` and a condition added to a read object, or one replaced by another, is
+  `narrowed-condition`, both errors that name the readers; a structured variable's rename is said
+  under each leaf's path, and one that has no leaf at the variable.  The same changes on an object
+  nobody reads, and a condition going away, keep `renamed-object` and `changed-condition`, which
+  stay warnings.  A check has one severity, so a project that relaxed `-W renamed-object=ignore` or
+  `-W changed-condition=ignore` to accept such a delivery finds that no longer reaches a read
+  object, and has to name `-W renamed-read-object=...` or `-W narrowed-condition=...` for that
+  delivery.  The `--renames` file lists the same pairs as before.
+
+* **The limits of a measurement a component reads are graded by what its readers meet.**  A reader
+  may hold a lookup or a clamp sized for the range the producer stated, so widening that range was
+  silent and narrowing it a warning that said the opposite of what mattered.  Widening the limits of
+  a measurement somebody reads is now the warning `widened-limits`, and narrowing them the info
+  `narrowed-read-limits`, which stops nothing, since a reader still gets values inside the range it
+  was written for; a range that moved both ways is a widening.  Calibration data, and a measurement
+  nobody reads, keep `narrowed-limits` and a silent widening, and a measurement of a structured
+  variable takes the variable's kind and readers.  The tolerance and the rule that limits are not
+  told beside a changed interface are as they were.  A project that relaxed `-W
+  narrowed-limits=ignore` for a measurement a component reads no longer has it reach it, and a
+  `--strict` run now stops on a widened measurement; the worked example of the comparing page prints
+  a `widened-limits` of `SupplyVoltage` and a `narrowed-read-limits` of `ValveDuty` where it printed
+  one `narrowed-limits`, five findings for its five changes.
+
+* **An output a component drops stops a comparison, an input it stops reading does not, and a
+  component is read the same way by every command.**  A baseline that is one component file is a
+  component read alone, so who read its objects is not known.  An output of it that is gone is now
+  `removed-object`, an error whose message does not claim to know a reader, where it was the warning
+  `removed-unused-object`; an object it declares `local` keeps that warning; and an input it stopped
+  reading is the new info `removed-input`, where it was a `removed-object` error stopping a
+  component that reads less.  `ddd compare` and the Compare tab now read such a baseline under the
+  floor `ddd check --standalone` reads a component under, as `check --baseline --standalone` did, so
+  an input nobody produces is no longer carried as an error of the baseline.  A component file given
+  as the candidate is read as a project's file, so a supplier comparing two versions of a component
+  with inputs uses `ddd check --baseline --standalone`, the command that takes the option.  An
+  archived `ddd dump --standalone` carries no mark of how it was read, and is graded as the
+  dictionary of a whole project, as before.  A project that relaxed `-W removed-object=...` to let
+  an input go can drop it, and one that relied on `removed-unused-object` for a dropped output names
+  `removed-object` now.
+
+* **A producer lost is `missing-producer`, said once, where the baseline had one.**  A dictionary
+  dumped from a project that failed is written all the same, and an object it holds with readers and
+  no producer compared as a `changed-owner` warning, so a delivery that had lost a producer "could
+  replace" one that had it.  Where the baseline's object had a producer and the candidate, still
+  read, has none, the comparison now says `missing-producer`, the id `ddd check` gives the fault, in
+  place of that pair's `changed-owner`: an error with a dumped candidate, and under `ddd check
+  --baseline --standalone` as well, where the floor silences the analysis for what a component read
+  alone was never shown but not for a producer the baseline had, so a component that turns an output
+  into an input exits 1 with or without `--strict`, as it exited 0 with a `changed-owner` warning.
+  An object with no producer on both sides is no change, since a dump of a component read alone
+  holds every input it reads so, and an input that arrived with none is `added-object` alone.  With
+  a description candidate the analysis says it, and `changed-owner` is no longer filed beside it.  A
+  project's own `-W missing-producer=ignore` silences it on every path, which is the migration for a
+  project that holds such objects, and a relaxation of `changed-owner` no longer reaches this pair.
+
+* **An initial value is compared as the bytes it stores, and one no double holds is refused.**  A
+  table was reduced level by level, so two tables that differ, such as a square map and its
+  transpose, could compare identical, and `-0.0` against `0.0`, which differ in the sign bit, was no
+  change.  A scalar now stands for the array it fills only when every element holds it, two tables
+  that differ are a change, a float's `-0.0` is not `0.0`, and the finding names the first index at
+  which the two part, the elements taken in the order C lays them out.  An object that states no
+  `init` stores zeros, so adding `0`, `[0, 0]` or `""` to it is no change, in either direction,
+  where it was a `changed-storage` warning and an error under `--strict`.  A non-zero number that no
+  double holds, such as `1e-400`, was read as `0` before anything looked at it, so `ddd check` was
+  clean over an `init` the rule calls `init-invalid`; it is now refused as `json-syntax`, naming it,
+  wherever DDD reads a json document, a description or a dumped dictionary, and `1e400` stays
+  refused as ever.  Migrating costs a `1e-400` written to mean zero, which is written `0`, and a
+  comparison that was clean over a changed table reports it.
+
+* **A structured variable's changes are told once, in order, and a variable with no leaf is compared
+  as an object is.**  A change of the variable's `kind` was one `changed-interface` per member, and
+  per member of every element of an array, for one edit; it is now one, at the variable.  A member's
+  own change is told at every path that reaches it, the paths, the removals, the additions and the
+  entries of `--renames` in the order `ddd list` gives them, `[2]` before `[10]`, where plain text
+  put `[10]` first.  A structure that holds only members of external types has no leaf, and its
+  variable could be removed, renamed or reused with no finding while every reader's header lost it:
+  its removal is now `removed-object`, or `removed-unused-object` where nobody read it, its rename
+  `renamed-read-object` or `renamed-object`, listed in `--renames` under the variable's own `id`,
+  another `id` under its name is `reused-name` with the removal and the addition an object gets, and
+  its arrival is `added-object`.  A variable that has leaves is not said a second time.  A script
+  that counted the findings of a changed `kind` or matched them by their paths finds fewer, and the
+  new errors are relaxed by the ids they carry.
+
+* **A broken baseline withholds nothing, a description baseline takes the project's relaxations, and
+  a file with no delivery in it is refused.**  A baseline that carried an error of its own made the
+  run stop before the candidate's findings and before the comparison, so the candidate's
+  `unused-output` was not printed and `--renames` was not written; the comparison is now made, the
+  candidate's findings are reported at their own severities, the renames are written, and the
+  verdict is still that it cannot replace, with a baseline that cannot be read at all leaving the
+  candidate's findings reported as well.  A baseline given as a description is analysed in its own
+  right, and now under the relaxations of the run's `-W`, an override that grades a check below its
+  default or `ignore`, a plugin's check only as `ignore`, so that a project that builds with `-W
+  missing-producer=ignore` can compare its branch against its trunk, as `ddd check` of either is
+  clean; promotions and `--strict` still do not reach it.  The Compare tab reads it under the
+  relaxations every build record of the project makes.  A json that states no `format`, no `project`
+  and no `component`, such as one holding only a `name`, was read as an empty dictionary and
+  compared as the removal of everything; it is refused as `schema` on either side of `ddd compare`
+  and `ddd check --baseline`, and in the tab.  A baseline error a project relaxes no longer appears
+  in its comparisons, and a script that matched the lone refusal of a broken baseline now finds the
+  rest of the report after it.
+
+* **The Compare tab's verdict counts the project's own errors, and `GET /api/compare` says how
+  many.**  `ddd compare` and `ddd check --baseline` have always refused a candidate whose own
+  project has errors, and the tab called such a project able to replace the baseline whenever the
+  comparison itself found nothing.  The verdict now counts them, under the strictest reading of the
+  build records that grade them, so one pair has one verdict whichever way it is asked, and the
+  reply gains `own_errors`, an integer that is `0` for a project with none and is required, so that
+  a client typed from the contract adds it, and one that reads the json ignores it.  The page itself
+  says "cannot replace" without the count until a later release draws it.  The tab also stamps a
+  baseline before it reads it and keeps the read only if every file it was made of carries the same
+  stamp afterwards, so a baseline saved during a read is read again instead of served stale, and a
+  description baseline that is one flat file is kept from its first read: measured on a description
+  of 20,000 declarations, the second ask took 0.92 s before and 0.14 s after.  A write that keeps a
+  file's time and size exactly is not told, as the session's own watch does not tell it.
+
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after
   a second of tries, and left a read-only stage beside it for each refusal; on Linux the rename

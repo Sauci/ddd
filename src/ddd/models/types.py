@@ -216,9 +216,10 @@ class Member(BaseModel):
 
     On a member that names a structure the block shapes every record below it: ``export: false``
     keeps the whole subtree out of every instance, and nothing deeper brings a leaf back;
-    ``format`` reaches each leaf below (not a string); ``display_identifier`` reaches each leaf
-    joined to the rest of its path below the member, ``J`` over ``a`` giving ``J.a``. A deeper
-    member's own ``format`` or ``display_identifier`` wins for its own subtree.
+    ``format`` reaches each leaf below (not a string); ``display_identifier`` stands for the
+    member's own segment of the path of each record below it, ``V.j.b`` with ``j`` displayed ``J``
+    being ``V.J.b``. A deeper member's own ``format`` wins for its own subtree; a leaf's own
+    ``display_identifier`` is written as stated.
     """
 
     def physical_limits(self) -> Limits:

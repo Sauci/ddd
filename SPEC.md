@@ -963,12 +963,17 @@ tool for a parameter. Of its `a2l` block, `export` decides for the whole object
 the member. The `a2l` block of a member that names a structure is honoured for every record
 below it: `export: false` keeps the whole subtree out of the A2L, in every instance of the
 type, and nothing deeper brings a leaf back, an inner `export: true` included; `format`
-reaches each leaf below; `display_identifier` reaches each leaf as itself joined to the rest
-of the leaf's path below the member, `J` over a leaf `a` giving `J.a`, so that no two records
-of one instance share one. Where a deeper member states its own `format` or
-`display_identifier`, it wins for its own subtree, and a `format` does not reach a string.
-Each display identifier so made is held as a name is (`a2l-keyword`, `a2l-unrepresentable`),
-at the member that states it. One stated on the declaration of a structured object is neither
+reaches each leaf below; a `display_identifier` on it stands for that member's own segment
+of the path of each record below it, so `V[1].j.b` with `j` displayed `J` is displayed
+`V[1].J.b`, and the identifiers of several members compose, `V.J[0].Inner.x` for `j` displayed
+`J` and `n` below it `Inner`. A leaf's own `display_identifier`, on a member that names no
+structure, is written as stated and is not composed into a path, so the elements of an array
+of structures share it. Where a deeper member states its own `format`, it wins for its own
+subtree, and a `format` does not reach a string. Each identifier a member states is held as
+a name is (`a2l-keyword`, and `a2l-unrepresentable` for a part past `MAX_PARTIAL_IDENT` and for
+a composed identifier past `MAX_IDENT`), at the member that states it. Two members displayed
+alike give records alike, and DDD does not warn of it, as it does not of two leaves so
+displayed. One stated on the declaration of a structured object is neither
 refused nor used: the dictionary's instance record carries it as the declaration wrote it
 ([section 5.3](#53-data-dictionary)), and the A2L, whose records are the members, writes it
 nowhere.

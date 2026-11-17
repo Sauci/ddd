@@ -944,8 +944,6 @@ class TestAMemberNamingAStructure:
             assert leaves[f"V[{index}].k"].a2l.exported is True
 
     def test_the_dump_states_the_subtree_not_exported(self, tree: Path) -> None:
-        import json as jsonlib
-
         from ddd.cli import EXIT_OK, main
 
         self.build(
@@ -958,7 +956,7 @@ class TestAMemberNamingAStructure:
         )
         out = tree / "dump.json"
         assert main(["dump", str(tree / "project.ddd.json"), "--output", str(out)]) == EXIT_OK
-        payload = jsonlib.loads(out.read_text(encoding="utf-8"))
+        payload = json.loads(out.read_text(encoding="utf-8"))
         leaf = next(leaf for leaf in payload["leaves"] if leaf["path"] == "V.j.a")
         assert leaf["a2l"]["export"] is False
 
@@ -1050,7 +1048,7 @@ class TestAMemberNamingAStructure:
         assert 'FORMAT "%6.1"' in self.record(content, "V.j.a")
         assert leaves["V.j.text"].a2l.format is None
 
-    def test_a_display_identifier_joins_the_rest_of_the_path_below_the_member(
+    def test_a_display_identifier_stands_for_its_members_own_segment_of_the_path(
         self, tree: Path
     ) -> None:
         content, leaves, bag = self.build(
@@ -1079,26 +1077,102 @@ class TestAMemberNamingAStructure:
                 {"name": "p", "member": "value", "typename": "N_t"},
             ),
             struct_type("N_t", value_member("x")),
+            dimensions=[2],
         )
         assert [d.render() for d in bag] == []
         wanted = {
-            "V.j[0].a": "OwnA",
-            "V.j[1].a": "OwnA",
-            "V.j[0].b": "J[0].b",
-            "V.j[1].b": "J[1].b",
-            "V.j[1].n.x": "Inner.x",
-            "V.j[1].p.x": "J[1].p.x",
+            "V[1].j[0].a": "OwnA",
+            "V[1].j[1].a": "OwnA",
+            "V[0].j[0].b": "V[0].J[0].b",
+            "V[1].j[1].b": "V[1].J[1].b",
+            "V[1].j[1].n.x": "V[1].J[1].Inner.x",
+            "V[0].j[0].n.x": "V[0].J[0].Inner.x",
+            "V[1].j[1].p.x": "V[1].J[1].p.x",
         }
         for path, text in wanted.items():
             assert f"DISPLAY_IDENTIFIER {text}\n" in self.record(content, path), path
             assert leaves[path].a2l.display_identifier == text, path
-        assert "DISPLAY_IDENTIFIER" not in self.record(content, "V.k")
-        element = [
+        assert "DISPLAY_IDENTIFIER" not in self.record(content, "V[1].k")
+        composed = [
             leaf.a2l.display_identifier
             for path, leaf in leaves.items()
-            if path.startswith("V.j[1]")
+            if not path.endswith((".k", ".a"))
         ]
-        assert len(element) == len(set(element))  # none of one element's records share
+        assert len(composed) == 2 * 2 * 3  # elements of V and of j, then b, n.x and p.x
+        assert len(composed) == len(set(composed))  # none of an instance's records share one
+
+    def test_a_deeper_display_identifier_composes_with_the_one_above(self, tree: Path) -> None:
+        _, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "dimensions": [2],
+                    "a2l": {"display_identifier": "J"},
+                },
+            ),
+            struct_type(
+                "Inner_t",
+                {
+                    "name": "n",
+                    "member": "value",
+                    "typename": "N_t",
+                    "a2l": {"display_identifier": "Inner"},
+                },
+            ),
+            struct_type("N_t", value_member("x")),
+        )
+        assert leaves["V.j[0].n.x"].a2l.display_identifier == "V.J[0].Inner.x"
+
+    def test_a_deeper_display_identifier_alone_keeps_the_path_above_as_it_is(
+        self, tree: Path
+    ) -> None:
+        _, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "dimensions": [2]},
+            ),
+            struct_type(
+                "Inner_t",
+                {
+                    "name": "n",
+                    "member": "value",
+                    "typename": "N_t",
+                    "a2l": {"display_identifier": "Inner"},
+                },
+            ),
+            struct_type("N_t", value_member("x")),
+        )
+        assert leaves["V.j[0].n.x"].a2l.display_identifier == "V.j[0].Inner.x"
+        assert leaves["V.j[1].n.x"].a2l.display_identifier == "V.j[1].Inner.x"
+
+    def test_siblings_displayed_alike_are_not_warned_of(self, tree: Path) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "Same"},
+                },
+                {
+                    "name": "m",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "Same"},
+                },
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        assert [d.render() for d in bag] == []
+        assert leaves["V.j.a"].a2l.display_identifier == leaves["V.m.a"].a2l.display_identifier
+        assert content.count("DISPLAY_IDENTIFIER V.Same.a") == 2
 
     def test_a_value_members_block_is_unchanged(self, tree: Path) -> None:
         content, _, _ = self.build(
@@ -1192,9 +1266,39 @@ class TestAMemberNamingAStructure:
         assert found[0].startswith(
             "t.ddd.json#types[10].members[0].a2l.display_identifier: "
             "warning[a2l-unrepresentable]: "
-            "the display identifier of member 'j' of structure 'O_t' is made of 1092 "
-            "characters with the path below the member, but an identifier of the a2l"
+            "the display identifier of member 'j' of structure 'O_t' puts the path of a record "
+            "at 1094 characters, but an identifier of the a2l"
         )
+
+    def test_the_composed_identifier_past_the_limit_is_held_at_the_innermost_member(
+        self, tree: Path
+    ) -> None:
+        names = [f"{letter}" * 120 for letter in "abcdefghij"]
+        entries = [struct_type("T0", value_member("v"))]
+        for number, name in enumerate(names, 1):
+            member: dict[str, Any] = {
+                "name": name,
+                "member": "value",
+                "typename": f"T{number - 1}",
+            }
+            if number == 1:
+                member["a2l"] = {"display_identifier": "Z"}
+            entries.append(struct_type(f"T{number}", member))
+        entries.append(
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "T10",
+                    "a2l": {"display_identifier": "J"},
+                },
+            )
+        )
+        _, _, bag = self.build(tree, *entries)
+        found = [d.render().rsplit("/", 1)[-1] for d in bag if "display identifier" in d.render()]
+        assert len(found) == 1
+        assert found[0].startswith("t.ddd.json#types[1].members[0].a2l.display_identifier: ")
 
     def test_a_display_identifier_a_leaf_overrides_is_not_held(self, tree: Path) -> None:
         _, _, bag = self.build(

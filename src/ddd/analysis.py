@@ -308,12 +308,11 @@ class _A2lScope:
 
     exported: bool = True
     format: str | None = None
-    display: str | None = None
-    """The display identifier in force, and:"""
-    display_prefix: str = ""
-    """the path of the member that states it, which the rest of a leaf's path is joined to."""
+    shown: str | None = None
+    """The path walked so far as the a2l displays it: each member naming a structure that states
+    a ``display_identifier`` stands in it by that identifier; none when no member above does."""
     display_source: int = -1
-    """and where that member sits in the chain the walk came down through."""
+    """Where the innermost member stating a display identifier sits in the chain."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -3325,7 +3324,7 @@ class _Analysis:
                 datatype, unit, conversion, limits = self._member_meaning(member)
                 carried = instance.a2l.exported and scope.exported and member.a2l.exported
                 if carried and member.bits is None:
-                    self._check_a2l_member(entry, position, member, chain, scope, here)
+                    self._check_a2l_member(entry, position, member, chain, scope)
                 out.append(
                     ResolvedLeaf(
                         path=here,
@@ -3354,12 +3353,12 @@ class _Analysis:
                         # carrying only its own member's opinion left the halves for the a2l
                         # backend to put back together - so everything else, ``ddd compare``
                         # included, read one half and believed it.
-                        a2l=self._leaf_a2l(instance, member, conversion, here, scope),
+                        a2l=self._leaf_a2l(instance, member, conversion, scope),
                     )
                 )
                 continue
             assert member.typename is not None  # it names the structure found above
-            below = self._scope_below(member, here, len(chain), scope)
+            below = self._scope_below(member, path, len(chain), scope)
             for suffix in _element_paths(self._numeric_shape(member.dimensions)):
                 self._flatten(
                     instance,
@@ -3368,25 +3367,30 @@ class _Analysis:
                     out,
                     reference,
                     (*chain, (entry, position, member)),
-                    below,
+                    below
+                    if below.shown is None
+                    else replace(below, shown=f"{below.shown}{suffix}"),
                 )
 
     @staticmethod
-    def _scope_below(member: Member, here: str, depth: int, scope: _A2lScope) -> _A2lScope:
-        """What a member naming a structure asks of the a2l for everything below it."""
+    def _scope_below(member: Member, path: str, depth: int, scope: _A2lScope) -> _A2lScope:
+        """What a member naming a structure asks of the a2l for everything below it.
+
+        ``path`` is the path the walk is at, above the member.
+        """
         block = member.a2l
         scope = replace(
             scope,
             exported=scope.exported and block.exported,
             format=block.format if block.format is not None else scope.format,
         )
-        if block.display_identifier is None:
+        stated = block.display_identifier
+        if stated is None and scope.shown is None:
             return scope
         return replace(
             scope,
-            display=block.display_identifier,
-            display_prefix=here,
-            display_source=depth,
+            shown=f"{scope.shown or path}.{stated or member.name}",
+            display_source=depth if stated is not None else scope.display_source,
         )
 
     @staticmethod
@@ -3394,20 +3398,20 @@ class _Analysis:
         instance: ResolvedInstance,
         member: Member,
         conversion: Conversion,
-        here: str,
         scope: _A2lScope,
     ) -> A2lObjectOptions:
         """The a2l block a leaf is published under: its member's, over what is above it.
 
-        A display identifier stated above the leaf is joined to the rest of the path below
-        the member that states it, ``J`` and ``a`` giving ``J.a``, so no two records of one
-        instance share a display identifier. A format is not carried to a string, which has
-        no decimals to display.
+        A display identifier stated by a member above the leaf stands for that member's own
+        segment of the path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``, and
+        the records of one instance stay as distinct as their paths. A leaf's own display
+        identifier is written as stated. A format is not carried to a string, which has no
+        decimals to display.
         """
         block = member.a2l
         display = block.display_identifier
-        if display is None and scope.display is not None:
-            display = scope.display + here[len(scope.display_prefix) :]
+        if display is None and scope.shown is not None:
+            display = f"{scope.shown}.{member.name}"
         shown = block.format
         if shown is None and not isinstance(conversion, StringConversion):
             shown = scope.format
@@ -3526,14 +3530,13 @@ class _Analysis:
         member: Member,
         chain: tuple[tuple[LoadedType, int, Member], ...],
         scope: _A2lScope,
-        path: str,
     ) -> None:
         """What the a2l writes of a member it carries, at the type file that declares it.
 
         The parts of the name above it, the members it is reached through, are held as well:
-        the record's name is built from them, and each is a part of an identifier. So is a
-        display identifier stated by one of them, which is the leaf's own when the leaf states
-        none: the one in force, at the member that states it.
+        the record's name is built from them, and each is a part of an identifier. So is each
+        display identifier stated by one of them, which stands in the leaf's own when the leaf
+        states none: held at the member that states it.
         """
         for above, above_position, nested in chain:
             where = above.location(f"members[{above_position}].name")
@@ -3550,8 +3553,8 @@ class _Analysis:
             self._a2l_keyword(
                 display, entry.location(f"members[{position}].a2l.display_identifier")
             )
-        if display is None and scope.display is not None:
-            self._check_a2l_display_above(chain, scope, path)
+        if display is None and scope.shown is not None:
+            self._check_a2l_display_above(chain, scope, f"{scope.shown}.{member.name}")
         about = f"member '{member.name}' of structure '{entry.name}'"
         self._a2l_text(
             f"description of {about}",
@@ -3576,26 +3579,37 @@ class _Analysis:
             )
 
     def _check_a2l_display_above(
-        self, chain: tuple[tuple[LoadedType, int, Member], ...], scope: _A2lScope, path: str
+        self,
+        chain: tuple[tuple[LoadedType, int, Member], ...],
+        scope: _A2lScope,
+        shown: str,
     ) -> None:
-        """A display identifier a member naming a structure states, as it reaches one leaf.
+        """The display identifiers members naming a structure state, as they reach one leaf.
 
-        Held at the member that states it: a keyword, the part it is on its own, and the whole
-        identifier the leaf is shown under, which is the display identifier and the rest of the
-        path below the member.
+        Each is held at the member that states it: a keyword, and the part it is on its own.
+        The whole identifier the leaf is shown under, which carries the path, is held to
+        ``MAX_IDENT`` at the innermost of them.
         """
-        assert scope.display is not None  # the caller found one in force
+        for above, position, stated in chain:
+            display = stated.a2l.display_identifier
+            if display is None:
+                continue
+            where = above.location(f"members[{position}].a2l.display_identifier")
+            self._a2l_keyword(display, where)
+            self._a2l_partial(
+                f"display identifier of member '{stated.name}' of structure '{above.name}'",
+                display,
+                self._numeric_shape(stated.dimensions),
+                where,
+            )
         above, position, stated = chain[scope.display_source]
         where = above.location(f"members[{position}].a2l.display_identifier")
-        self._a2l_keyword(scope.display, where)
-        about = f"display identifier of member '{stated.name}' of structure '{above.name}'"
-        self._a2l_partial(about, scope.display, self._numeric_shape(stated.dimensions), where)
-        made = len(scope.display) + len(path) - len(scope.display_prefix)
-        if made > _A2L_MAX_IDENT and self._a2l_first("display-ident", where):
+        if len(shown) > _A2L_MAX_IDENT and self._a2l_first("display-ident", where):
             self._bag.add(
                 "a2l-unrepresentable",
-                f"the {about} is made of {made} characters with the path below the member, "
-                f"but an identifier of the a2l of ASAP2 1.6.1 carries {_A2L_MAX_IDENT} "
+                f"the display identifier of member '{stated.name}' of structure "
+                f"'{above.name}' puts the path of a record at {len(shown)} characters, but "
+                f"an identifier of the a2l of ASAP2 1.6.1 carries {_A2L_MAX_IDENT} "
                 f"(MAX_IDENT)",
                 where,
             )

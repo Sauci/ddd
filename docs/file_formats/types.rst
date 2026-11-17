@@ -271,12 +271,16 @@ granularity the file ends up with - keeping one member out of the a2l, or giving
 display format, is a decision about that member alone. On a member that names a structure the
 block shapes every record below it: ``export: false`` keeps the whole subtree out of the a2l in
 every instance of the type, and nothing deeper brings a leaf back, an inner ``export: true``
-included; ``format`` reaches each leaf below it, but not a string; and ``display_identifier``
-reaches each leaf as itself joined to the rest of the leaf's path below the member, so ``J`` over
-a leaf ``a`` gives ``J.a`` and no two records of one instance share one. A deeper member that
-states its own ``format`` or ``display_identifier`` wins for its own subtree. Each display
-identifier made that way is held as a name is, at the member that states it: ``a2l-keyword`` for
-a keyword, and ``a2l-unrepresentable`` past ``MAX_PARTIAL_IDENT`` or ``MAX_IDENT``. A member
+included; ``format`` reaches each leaf below it, but not a string; and a ``display_identifier`` stands for
+that member's own segment of the path of each record below it, so ``V[1].j.b`` with ``j`` displayed
+``J`` is displayed ``V[1].J.b``, and the identifiers of several members compose:
+``V.J[0].Inner.x`` for ``j`` displayed ``J`` and ``n`` below it ``Inner``. A deeper member that states
+its own ``format`` wins for its own subtree. A leaf's own ``display_identifier``, on a member that
+names no structure, is written as stated and not composed into a path, so the elements of an array of
+structures share it. Each identifier a member states is held as a name is, at the member that states
+it: ``a2l-keyword`` for a keyword, and ``a2l-unrepresentable`` past ``MAX_PARTIAL_IDENT``, or, for the
+composed identifier, past ``MAX_IDENT``. Two members displayed alike give records alike, and DDD does
+not warn of it, as it does not of two leaves so displayed. A member
 under a string conversion, its
 own or its type's, is a ``value`` member of exactly one dimension, and states no unit, limits
 or format, as a definition would not.

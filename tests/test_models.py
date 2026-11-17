@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -26,6 +28,9 @@ from ddd.models import (
     format_shape,
     is_reserved_identifier,
 )
+from ddd.models.conversion import is_above, is_below
+
+FLT_MAX = 3.4028234663852886e38
 
 
 def definition(**kwargs: object) -> Measurement:
@@ -204,6 +209,72 @@ class TestLimits:
         ).physical_limits()
         assert limits.min == pytest.approx(-3276.8)
         assert limits.max == pytest.approx(3276.7)
+
+    def test_a_uint64_under_factor_1_holds_both_ends_of_its_raw_range(self) -> None:
+        """Twelve digits stated 1.84467440737e+19, 9.6e6 under what 2^64 - 1 counts read."""
+        limits = definition(datatype="uint64", conversion={"factor": 1}).physical_limits()
+        assert limits.min <= 0
+        assert Fraction(limits.max) >= 18446744073709551615
+
+    def test_a_sint64_under_factor_1_holds_both_ends_of_its_raw_range(self) -> None:
+        limits = definition(datatype="sint64", conversion={"factor": 1}).physical_limits()
+        assert Fraction(limits.min) <= -(2**63)
+        assert Fraction(limits.max) >= 2**63 - 1
+
+    def test_a_uint32_under_two_to_the_minus_ten_holds_its_top_count(self) -> None:
+        """4194303.99902 is below 4194303.9990234375, the physical value of 2^32 - 1 counts."""
+        limits = definition(datatype="uint32", conversion={"factor": 2.0**-10}).physical_limits()
+        assert limits.max >= 4194303.9990234375
+        assert limits.max == 4194303.9990234375
+
+    def test_a_sint32_in_q16_16_holds_its_top_count(self) -> None:
+        limits = definition(datatype="sint32", conversion={"factor": 2.0**-16}).physical_limits()
+        assert limits.max >= 32767.99998474121
+        assert limits.min <= -32768.0
+
+    def test_a_whole_number_is_never_made_a_float_by_the_rounding_of_a_reading(self) -> None:
+        """The largest uint64 count is exact as an int and wrong by one as a float."""
+        from ddd.models import round_physical
+
+        assert round_physical(18446744073709551615) == 18446744073709551615
+        limits = definition(datatype="uint64").physical_limits()
+        assert (limits.min, limits.max) == (0, 18446744073709551615)
+
+    def test_a_float32_under_the_identity_stops_at_flt_max(self) -> None:
+        limits = definition(datatype="float32", conversion={}).physical_limits()
+        assert (limits.min, limits.max) == (-FLT_MAX, FLT_MAX)
+        assert limits.max == 3.4028234663852886e38
+
+    def test_a_float64_under_the_identity_stops_at_dbl_max(self) -> None:
+        limits = definition(datatype="float64", conversion={}).physical_limits()
+        assert (limits.min, limits.max) == (-sys.float_info.max, sys.float_info.max)
+
+    def test_a_float64_under_factor_1_never_rounds_to_infinity(self) -> None:
+        limits = definition(datatype="float64", conversion={"factor": 1}).physical_limits()
+        assert limits.max == sys.float_info.max
+        assert limits.min == -sys.float_info.max
+
+    def test_a_float32_under_factor_1_does_not_pass_flt_max(self) -> None:
+        limits = definition(datatype="float32", conversion={"factor": 1}).physical_limits()
+        assert limits.max == FLT_MAX
+
+    def test_a_short_decimal_still_reads_as_it_was_written(self) -> None:
+        """The tail of the arithmetic is not outward rounding: 255 counts of 0.03 are 7.65."""
+        assert definition(conversion={"factor": 0.03}).physical_limits().max == 7.65
+        assert (
+            definition(datatype="sint16", conversion={"factor": 0.1}).physical_limits().max
+            == 3276.7
+        )
+
+    def test_the_outward_end_stays_within_the_tolerance_of_the_old_one(self) -> None:
+        """Baselines archived at twelve digits still compare clean (decision 8.3)."""
+        for datatype, factor in (("uint64", 1), ("uint32", 2.0**-10), ("sint32", 2.0**-16)):
+            high = (
+                definition(datatype=datatype, conversion={"factor": factor}).physical_limits().max
+            )
+            old = float(f"{high:.12g}")
+            assert not is_above(old, high)
+            assert not is_below(old, high)
 
     def test_negative_factor_swaps_the_limits(self) -> None:
         limits = definition(conversion={"factor": -1.0}).physical_limits()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -1353,3 +1354,33 @@ class TestAMemberNamingAStructure:
             struct_type("Inner_t", value_member("MAP")),
         )
         assert [d.render() for d in bag] == []
+
+
+class TestOneOrderForRecordsAndGroups:
+    """``SA[2]`` comes before ``SA[10]`` in the records and in the ``GROUP``: the dictionary's
+    order, in which an index is a number."""
+
+    def twelve(self, tree: Path) -> str:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "SA", typename="S_t", dimensions=[12])),
+            "t.ddd.json": types(struct_type("S_t", value_member("v"))),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        return next(file.content for file in rendered if file.path.name == "Device.a2l")
+
+    @staticmethod
+    def order(content: str, keyword: str) -> list[str]:
+        return re.findall(rf"{keyword} (SA\[\d+\]\.v)", content)
+
+    def test_the_records_run_in_index_order(self, tree: Path) -> None:
+        records = self.order(self.twelve(tree), "/begin MEASUREMENT")
+        assert records == [f"SA[{i}].v" for i in range(12)]
+
+    def test_the_group_lists_them_in_the_same_order(self, tree: Path) -> None:
+        content = self.twelve(tree)
+        group = content[content.index("/begin GROUP") :]
+        listed = re.findall(r"(SA\[\d+\]\.v)", group)
+        assert listed == [f"SA[{i}].v" for i in range(12)]

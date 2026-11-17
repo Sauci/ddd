@@ -547,10 +547,16 @@ whoever states them, and only two *stated* sets of limits can disagree
 (`definition-mismatch`). The resolved limits come from the producer when it states them,
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
-reference. A derived end is rounded to twelve significant digits, because a decimal factor
-has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 .. `7.65`, the number
-its own largest raw count reads as, rather than the `7.6499999999999995` the multiplication
-produces, and the A2L and the dumped dictionary state the rounded end. The relative tolerance
+reference. A derived end holds the physical value of its raw count, and is rounded outward where it
+is rounded at all. The tail of the arithmetic is taken off a short decimal, because a
+decimal factor has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 ..
+`7.65`, the number its own largest raw count reads as, rather than the `7.6499999999999995`
+the multiplication produces. An end whose digits run past twelve keeps them: a `uint64`
+under `{"factor": 1}` covers 0 .. `1.8446744073709552e+19`, and a `uint32` under 2^-10 up to
+`4194303.9990234375`, where twelve digits stated a number short of the top count. Under the
+identity the ends are the raw ends and are not rounded, so a `float32` stops at `FLT_MAX`,
+`3.4028234663852886e+38`, and a `float64` at its largest value. The A2L and the dumped
+dictionary state the end. The relative tolerance
 of `limits-out-of-range` ([section 4](#4-consistency-checks)) spans the difference, so limits
 copied out of a file an earlier version wrote are still on the range. An omitted `unit` is
 the empty unit and compares as such: a consumer stating none
@@ -1505,7 +1511,10 @@ Warnings:
   described by the A2L version DDD writes, or the A2L carries a string, an identifier or a
   part of one past what the format holds. It is a warning, and the file is written whole.
   An array of more than three dimensions is the first: the `MATRIX_DIM` of version 1.6.1
-  cannot carry it, and a 1.7 reader accepts the dimensions written out. The limits are those
+  cannot carry it, and a 1.7 reader accepts the dimensions written out. A size past 65,535
+  is the second: the `MATRIX_DIM` of an array, the `NUMBER` of a string and the
+  `MaxAxisPoints` of an axis are a `uint` of two bytes in ASAP2 1.6.1, and the record is
+  written with the number whole; a curve or a map is named at its axis. The limits are those
   of ASAP2 1.6.1, table 5: a string, which is a description of an object, a member, a
   component or the project (written on `PROJECT`, `HEADER` and `MODULE`), a unit - 237 characters
   at most under an identity conversion, whose method describes itself as `physical value in`
@@ -1583,6 +1592,11 @@ Information:
   the loader knows. The A2L states them as they are, which is right for a project that adds
   its load base when it reads the file and wrong for one that does not; the finding is
   located at the image, and says so in a note.
+- `byte-order-defaulted`: the A2L is written with neither `--byte-order` nor `--image`, so
+  `MSB_LAST` is a default and not a choice, which a big endian target that forgot the option
+  would not notice. The finding says what the run assumed and how to state the other
+  (`--byte-order big`, `BYTE_ORDER` of `ddd_generate` in cmake). An image states its own, and
+  a run writing no A2L has none to default.
 - `condition-left-out`: an object the A2L would carry states a condition, and the build
   does not hold it: the image defines no variable of its name, nor holds a symbol of it,
   or the address map with entries names neither the object nor any of its members. The A2L
@@ -1960,10 +1974,12 @@ the same project generates the same bytes on any machine. A component's own head
 the author's declaration order within each scope, and an object no component owns - one of
 those that arise where `missing-producer` is relaxed - is grouped under `<unresolved>` in
 the definition file rather than under a component. Names sort by code point, an
-upper case name before every lower case one and `cell[10]` before `cell[2]`, which is a
-spelling rule rather than a locale's, and the paths a wildcard include matched sort the same
-way, by the code point of their POSIX spelling: nothing in a generated file is ordered by
-what the platform running the tool thinks of a name. Whether two paths are the *same* file
+upper case name before every lower case one, which is a spelling rule rather than a
+locale's, and the paths a wildcard include matched sort the same way, by the code point of
+their POSIX spelling: nothing in a generated file is ordered by what the platform running
+the tool thinks of a name. The one exception is an index within a member path, which counts
+as a number: the members of an array of structures run `cell[2]` before `cell[10]`, in the
+a2l's records and in its `GROUP` alike, and in the dictionary and `ddd list`. Whether two paths are the *same* file
 still follows the platform ([section 3.1](#31-project-description)), because that is a
 property of the file system rather than of the output.
 Files are written UTF-8 with LF line endings and no byte order mark - the A2L of
@@ -2037,14 +2053,17 @@ reaches a tool as `Â°C` or stops its parser; no other artefact carries one
 ([section 5.1](#51-c-code)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
 generator with its version; the `MODULE` carries a `MOD_COMMON` stating the
-byte order and fixed alignments (1/2/4/8, floats 4/8) and, when the project declares
+byte order and the alignments (1/2/4/8, floats 4/8 by default; with `--image`, the
+64 bit ones are the image's machine's, 4 on i386, where the tool holds the machine's ABI, and
+the defaults stand for a machine it does not) and, when the project declares
 constants ([section 3.9](#39-constant-vocabulary)), a `MOD_PAR` stating one
 `SYSTEM_CONSTANT` per declared constant in name order. Every record spells its sizes as
 resolved numbers, because the format accepts no symbol where a `MATRIX_DIM` expects a
 count. The byte order is the build's to
 state (`ddd generate a2l --byte-order little|big`, default little, emitted as
 `MSB_LAST`/`MSB_FIRST`): it is a property of the target the description files cannot know,
-and a tool reading multi byte values under the wrong one misreads every value.
+and a tool reading multi byte values under the wrong one misreads every value, so a run that
+gave neither the option nor an image reports the default (`byte-order-defaulted`).
 
 Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 `RL_AXIS_<TYPE>` per datatype and storage category, or, for one whose objects resolve

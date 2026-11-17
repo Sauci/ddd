@@ -69,6 +69,11 @@ class A2lOptions:
     """Everything the a2l backend lets a project decide."""
 
     byte_order: ByteOrder = ByteOrder.LITTLE
+    alignment_cap: int | None = None
+    """The largest alignment in bytes a scalar has in the ABI of the image the run read, which
+    is what ``ALIGNMENT_INT64`` and ``ALIGNMENT_FLOAT64_IEEE`` cannot pass: 4 on i386, where a
+    64 bit scalar is aligned to 4. ``None`` where the run had no image, or one of a machine the
+    tool holds no table for; the fixed values stand then."""
     version: str = "1 61"
     addresses: dict[str, int] = field(default_factory=dict)
     """Symbol to address map; a symbol that is missing gets address 0."""
@@ -95,6 +100,12 @@ class A2lOptions:
     """What the project pastes at the head of the ``MODULE``: the ``A2ML`` its ``IF_DATA`` are
     written in, a module level ``IF_DATA``, and in a project that declares no named constant
     the ``MOD_PAR`` carrying ``EPK``, ``ADDR_EPK`` and ``MEMORY_SEGMENT``. ddd models none of it."""
+
+    @property
+    def wide_alignment(self) -> int:
+        """``ALIGNMENT_INT64`` and ``ALIGNMENT_FLOAT64_IEEE``: 8, unless the image's ABI aligns
+        a 64 bit scalar to less. The narrower ones are no wider than any ABI the tool holds."""
+        return 8 if self.alignment_cap is None else min(8, self.alignment_cap)
 
     def filename(self, project: str) -> str:
         return f"{project}.a2l"

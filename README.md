@@ -579,11 +579,12 @@ carries the same three as `overridable`, `needs_every_component` and `comparison
 | warning | `limits-out-of-range` | limits exceed what the datatype can represent |
 | warning | `enum-duplicate-value` | two enumerators share a value |
 | warning | `name-similar` | two variables differ only in upper/lower case |
-| warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has, or the a2l carries a string past 255 characters, an identifier past 1024 or a part of one past 128 (an array index counted within it) |
+| warning | `a2l-unrepresentable` | an object needs more dimensions than the generated a2l version has, or a size past 65,535 for a `MATRIX_DIM`, `NUMBER` or `MaxAxisPoints`, or the a2l carries a string past 255 characters, an identifier past 1024 or a part of one past 128 (an array index counted within it) |
 | warning | `reference-left-out` | a curve or map is left out of the a2l with its axis, which the build left out, while the build holds it |
 | warning | `point-counts-mismatch` | a curve or map and one of its axes store their point counts differently |
 | warning | `address-missing` | an object in the a2l gets no address from the address map or the image the run was given |
 | warning | `elf-mismatch` | the image the a2l takes its addresses from holds a variable with another size, encoding, qualifiers or shape than its description states, or describes it in two ways |
+| info | `byte-order-defaulted` | the a2l is written with neither `--byte-order` nor `--image`, so its byte order is a default rather than a choice |
 | info | `image-load-relative` | the image the a2l takes its addresses from is position independent, so they are offsets from where it loads |
 | info | `condition-left-out` | the build holds nothing of an object stating a condition (the image defines neither a variable nor a symbol of its name, the map names none of it), and the a2l leaves it out |
 | info | `empty-component` | a component declares no variable |

@@ -139,6 +139,8 @@ templates produce the following:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -475,6 +477,8 @@ again. Regenerating a project that has not changed therefore reports:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    unchanged   build/gen/ddd_globals.c
    unchanged   build/gen/ddd_globals.h
    unchanged   build/gen/ddd_types.h

@@ -21,9 +21,9 @@ ASAP2_VERSION {{ model.version }}
       ALIGNMENT_BYTE 1
       ALIGNMENT_WORD 2
       ALIGNMENT_LONG 4
-      ALIGNMENT_INT64 8
+      ALIGNMENT_INT64 {{ model.wide_alignment }}
       ALIGNMENT_FLOAT32_IEEE 4
-      ALIGNMENT_FLOAT64_IEEE 8
+      ALIGNMENT_FLOAT64_IEEE {{ model.wide_alignment }}
     /end MOD_COMMON
 {% if model.system_constants %}
 

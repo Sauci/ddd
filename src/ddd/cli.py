@@ -1342,6 +1342,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         left_out: frozenset[str] = frozenset()
         byte_order: str | None = getattr(args, "byte_order", None)
         image_path: Path | None = getattr(args, "image", None)
+        alignment: int | None = None
         if image_path is not None:
             # Only a run writing the a2l gets here with an image: _selected refused it to the
             # others, as it refuses them the map. The symbols are the a2l's, as for a map.
@@ -1356,6 +1357,13 @@ def _command_generate(args: argparse.Namespace) -> int:
                 )
                 raise ValueError(msg)
             byte_order = image.byte_order
+            if image.machine is not None:
+                from ddd.toolbox.mapping import alignment_cap
+
+                # The ABI the image was built for says how a 64 bit scalar is aligned; the
+                # table is the one the image's structures are weighed with (``ddd tool
+                # from-elf``), and a machine it holds none for keeps the fixed values.
+                alignment = alignment_cap(image.machine, image.flags)
             if image.load_relative:
                 bag.add(
                     "image-load-relative",
@@ -1417,6 +1425,17 @@ def _command_generate(args: argparse.Namespace) -> int:
                 bag,
             )
             _check_address_coverage(reaching, addresses, args.address_map, bag)
+        if args.render_a2l and byte_order is None:
+            # Neither the option nor an image said it: the a2l states little endian because
+            # something has to be stated, and a big endian target that forgot to say so would
+            # otherwise get a file whose every multi byte value a tool reads swapped.
+            bag.add(
+                "byte-order-defaulted",
+                f"no --byte-order and no --image was given, so the a2l states "
+                f"{ByteOrder(BYTE_ORDERS[0]).a2l}, {BYTE_ORDERS[0]} endian, as a default; a big "
+                f"endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in "
+                f"cmake), and an image states its own",
+            )
         if bag.has_errors and not args.force:
             _report(bag, args.format)
             return EXIT_FINDINGS
@@ -1429,6 +1448,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                 A2lBackend(
                     A2lOptions(
                         byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
+                        alignment_cap=alignment,
                         addresses=addresses,
                         links=links,
                         left_out=left_out,

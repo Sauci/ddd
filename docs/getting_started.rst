@@ -339,6 +339,8 @@ given with ``-o``, which is normally somewhere in the build tree rather than in 
 .. code-block:: text
 
    $ ddd generate all thermostat.ddd.json -o gen -t templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       gen/ddd_globals.c (created)
    wrote       gen/ddd_globals.h (created)
    wrote       gen/ddd_types.h (created)
@@ -351,6 +353,8 @@ Run it a second time without touching the description files and nothing is writt
 .. code-block:: text
 
    $ ddd generate all thermostat.ddd.json -o gen -t templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    unchanged   gen/ddd_globals.c
    unchanged   gen/ddd_globals.h
    unchanged   gen/ddd_types.h

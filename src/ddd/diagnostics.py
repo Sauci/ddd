@@ -229,6 +229,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("image-load-relative", Severity.INFO,
                "the image the a2l takes its addresses from is position independent, so they are "
                "offsets from where it loads"),
+        _check("byte-order-defaulted", Severity.INFO,
+               "the a2l is written with neither --byte-order nor an image, so its byte order is "
+               "a default rather than a choice"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
         _check("empty-vocabulary", Severity.INFO,
                "a types, units, constants, sections or rasters file declares nothing"),

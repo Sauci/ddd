@@ -22,7 +22,7 @@ with ``--force``:
 
    $ ddd generate all examples/inconsistent/project.ddd.json -o build/gen -t examples/templates
    ...
-   4 errors, 1 warning
+   4 errors, 1 warning, 1 info
    $ echo $?
    1
 
@@ -671,7 +671,10 @@ it is either a smell or a decision somebody should have taken consciously.
      - an object the a2l carries cannot be fully described by the version DDD writes, or the a2l
        carries a string, an identifier or a part of one past what the format holds. An array of
        more than three dimensions is the first: the ``MATRIX_DIM`` of ASAP2 1.6.1 cannot carry
-       it, and the extra dimensions are written out and only a 1.7 reader understands them.
+       it, and the extra dimensions are written out and only a 1.7 reader understands them. A
+       size past 65,535 is the second: the ``MATRIX_DIM`` of an array, the ``NUMBER`` of a string
+       and the ``MaxAxisPoints`` of an axis are a ``uint`` of two bytes, and the record is written
+       with the number whole; a curve or a map is named at its axis.
        The limits are those of table 5 of ASAP2 1.6.1: a string, which is a description of an
        object, a member, a component or the project (written on ``PROJECT``, ``HEADER`` and
        ``MODULE``), a unit (237 characters at most under an identity conversion, whose
@@ -738,6 +741,12 @@ Information
    * - Check
      - Default
      - Fires when
+   * - ``byte-order-defaulted``
+     - info
+     - the a2l is written with neither ``--byte-order`` nor ``--image``, so ``MSB_LAST`` is a
+       default and not a choice. The finding says what the run assumed and how to state the other
+       one: ``--byte-order big``, or ``BYTE_ORDER`` of ``ddd_generate`` in cmake. An image states
+       its own byte order.
    * - ``image-load-relative``
      - info
      - the image ``--image`` was given is position independent (``ET_DYN``): the addresses the a2l

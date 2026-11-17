@@ -28,6 +28,8 @@ produce, which is what every transcript below hands to ``--template-dir``:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -516,6 +518,8 @@ exit code is unaffected:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    unchanged   build/gen/ddd_globals.c
    unchanged   build/gen/ddd_globals.h
    unchanged   build/gen/ddd_types.h
@@ -561,6 +565,8 @@ than the status. Here the output directory did not exist yet, which is why every
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --dry-run
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    would write build/gen/ddd_globals.c (created)
    would write build/gen/ddd_globals.h (created)
    would write build/gen/ddd_types.h (created)
@@ -684,9 +690,14 @@ what they are reading.
 The whole project becomes a single ``MODULE`` named after the project, which is the right
 granularity here: a module is what a calibration tool connects to, and the components of the
 image are one target, not several. ``BYTE_ORDER`` follows ``--byte-order``, which writes
-``MSB_LAST`` for ``little`` (the default) and ``MSB_FIRST`` for ``big``; the alignment values
-are the natural alignment of each width, which is what a compiler targeting a modern core
-does unless it is told to pack. The a2l is written by the ``a2l`` and ``all`` artefacts, and
+``MSB_LAST`` for ``little`` (the default) and ``MSB_FIRST`` for ``big``; a run that gives
+neither the option nor an image says at ``info``, as ``byte-order-defaulted``, that it
+assumed little endian (cmake's ``BYTE_ORDER`` is the same choice). The alignment values are
+the natural alignment of each width by default, which is what a compiler targeting a modern
+core does unless it is told to pack. With ``--image`` the 64 bit ones come from the image's
+machine: ``ALIGNMENT_INT64`` and ``ALIGNMENT_FLOAT64_IEEE`` are 4 for an i386 image, which
+aligns a 64 bit scalar to 4. For a machine and ABI the tool holds no alignment rule for, the
+defaults stand. The a2l is written by the ``a2l`` and ``all`` artefacts, and
 it is named after the project, so ``DemoDevice`` produces ``DemoDevice.a2l``.
 
 A project that declares a :doc:`constant vocabulary <file_formats/constants>` gets a

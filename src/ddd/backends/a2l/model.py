@@ -31,6 +31,7 @@ from dataclasses import dataclass
 
 from ddd.backends.a2l.options import A2lOptions
 from ddd.backends.a2l.types import A2L_TYPE
+from ddd.diagnostics import index_order
 from ddd.ir import DataDictionary, ResolvedComponent, ResolvedLeaf, ResolvedObject
 from ddd.models import (
     IDENTIFIER_MAX_LENGTH,
@@ -207,6 +208,8 @@ class A2lModel:
     generator: str
     version: str
     byte_order: str
+    wide_alignment: int
+    """``ALIGNMENT_INT64`` and ``ALIGNMENT_FLOAT64_IEEE``."""
     has_address_source: bool
     """Whether the run had a source of addresses (:attr:`A2lOptions.has_address_source`)."""
 
@@ -416,6 +419,7 @@ class _A2lModelBuilder:
             generator=generator,
             version=self._options.version,
             byte_order=self._options.byte_order.a2l,
+            wide_alignment=self._options.wide_alignment,
             has_address_source=self._options.has_address_source,
             module_fragment=(
                 self._options.module_fragment.text.removesuffix("\n")
@@ -622,12 +626,13 @@ class _A2lModelBuilder:
         measurements = [n for n in names if by_name[n].kind is ObjectKind.MEASUREMENT]
         characteristics = [n for n in names if by_name[n].kind is not ObjectKind.MEASUREMENT]
         # The members of the structured variables this component declares, read out of the
-        # index and put back into the order the dictionary carries them in - which is by path,
-        # and is the order the file had while this walked every leaf of the project instead.
+        # index and put back into the order the dictionary carries them in: by path, an index
+        # counted as a number (:func:`ddd.diagnostics.index_order`), so ``SA[2]`` comes before
+        # ``SA[10]`` here as it does among the records.
         index = self._carried_by_instance()
         carried = sorted(
             (leaf for name in declared for leaf in index.get(name, ())),
-            key=lambda leaf: leaf.path,
+            key=lambda leaf: index_order(leaf.path),
         )
         for leaf in carried:
             target = measurements if leaf.kind is ObjectKind.MEASUREMENT else characteristics

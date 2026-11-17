@@ -9,7 +9,7 @@ their tag: inheritance would put a ``kind`` field where each variant needs its o
 from __future__ import annotations
 
 from collections.abc import Iterable
-from math import isclose, isfinite
+from math import isclose, isfinite, ulp
 from typing import Annotated, Any, Final, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
@@ -395,6 +395,23 @@ def is_above(value: float, limit: float) -> bool:
     return value > limit and not isclose(value, limit, rel_tol=RELATIVE_TOLERANCE, abs_tol=0.0)
 
 
+def _derived_end(value: float) -> float:
+    """One end of a derived range: the number its raw count reads as, never a number short of it.
+
+    Twelve digits take the tail of the arithmetic off an end - 255 counts of 0.03 are 7.65, and
+    the tail is within a few units in the last place of that. An end whose true digits run past
+    twelve is not a tail: the largest ``uint64`` count under a factor of 1 is 18446744073709551616
+    as a float, and twelve digits state it 9.6e6 short, so a tool holding data to the range it
+    reads refuses the description's own largest value. Such an end is kept as the float it is,
+    which the file writes in the shortest form that reads back as itself and which never passes
+    the largest value the type holds, as a rounding up of ``FLT_MAX`` or ``DBL_MAX`` would.
+    """
+    if isinstance(value, int) or not isfinite(value):
+        return value
+    nearest = float(f"{value:.{SIGNIFICANT_DIGITS}g}")
+    return nearest if abs(value - nearest) <= 4 * ulp(value) else value
+
+
 def physical_range(conversion: Conversion, raw_min: float, raw_max: float) -> tuple[float, float]:
     """The physical range a raw range covers, in the order a reader expects.
 
@@ -402,18 +419,18 @@ def physical_range(conversion: Conversion, raw_min: float, raw_max: float) -> tu
     bitfield's ends come from its width, and offering a two bit field over the whole range of
     the ``uint16`` carrying it would be an invitation to enter a value it cannot hold.
 
-    Both ends are rounded the way :func:`raw_reading` rounds a reading, and for the same
-    reason: the range is written into the A2L and into the dumped dictionary, where a
-    calibration tool enforces it and an engineer reads it. Unrounded, a ``uint8`` under
-    ``{"factor": 0.03}`` stated an upper limit of ``7.6499999999999995`` - below the physical
-    value of its own largest raw count - and a tool holding data to the limits it reads
-    refused the value the description implies.
+    The range is written into the A2L and into the dumped dictionary, where a calibration tool
+    enforces it and an engineer reads it, so it holds every raw count's physical value
+    (decision 8.3): the tail of the arithmetic comes off a short decimal, as it always did -
+    ``uint8`` under ``{"factor": 0.03}`` states ``7.65``, not ``7.6499999999999995`` - and an
+    end that really has more digits keeps them (:func:`_derived_end`). The identity states the
+    raw ends themselves, which are kept as they are: ``float32`` stops at ``FLT_MAX``.
     """
     if isinstance(conversion, EnumConversion):
         values = conversion.values
         return float(min(values)), float(max(values))
-    low = round_physical(conversion.to_physical(raw_min))
-    high = round_physical(conversion.to_physical(raw_max))
+    low = _derived_end(conversion.to_physical(raw_min))
+    high = _derived_end(conversion.to_physical(raw_max))
     return (low, high) if low <= high else (high, low)
 
 

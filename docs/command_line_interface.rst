@@ -32,7 +32,7 @@ of the document the command prints, next to whatever else it has to report:
 
 .. code-block:: text
 
-   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --format json
+   $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates --byte-order little --format json
    {
      "diagnostics": [],
      "summary": {

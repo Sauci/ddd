@@ -1674,6 +1674,8 @@ class TestGenerate:
                 str(output),
                 "-t",
                 str(TEMPLATES),
+                "--byte-order",
+                "little",
                 "--format",
                 "json",
             ]
@@ -5688,6 +5690,53 @@ LOAD_RELATIVE_NOTE = LOAD_RELATIVE_FINDING + "1 info\n"
 """The whole of it where it is all the run says."""
 
 
+BYTE_ORDER_DEFAULTED = (
+    "info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states "
+    "MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the "
+    "BYTE_ORDER of ddd_generate in cmake), and an image states its own\n"
+)
+
+
+class TestADefaultedByteOrder:
+    """No ``--byte-order`` and no ``--image``: the byte order is not a choice, and is said so."""
+
+    def arguments(self, tmp_path: Path, *more: str) -> list[str]:
+        return ["generate", "a2l", str(ADDRESS_PROJECT), "-o", str(tmp_path / "gen"), *more]
+
+    def test_the_default_is_reported_at_info_and_stops_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        assert main(self.arguments(tmp_path, "--strict")) == EXIT_OK
+        err = capsys.readouterr().err
+        assert BYTE_ORDER_DEFAULTED in err
+        assert "      BYTE_ORDER MSB_LAST\n" in a2l.read_text(encoding="utf-8")
+
+    def test_a_stated_byte_order_is_not_a_default(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.arguments(tmp_path, "--byte-order", "little")) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+    def test_an_image_states_it(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        image = ADDRESS_FIXTURES / "armv7m.elf"
+        assert main(self.arguments(tmp_path, "--image", str(image))) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+    def test_a_run_writing_no_a2l_has_no_byte_order_to_default(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "c", str(ADDRESS_PROJECT), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "-t", str(TEMPLATES)]) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+    def test_it_can_be_silenced_like_any_info(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.arguments(tmp_path, "-W", "byte-order-defaulted=ignore")) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+
 class TestGenerateFromAnImage:
     """``ddd generate a2l --image``: every address the a2l carries, out of the linked image."""
 
@@ -5758,6 +5807,39 @@ class TestGenerateFromAnImage:
         assert [path for path in expected["bitfields"] if path in text] == []
         order = {"little": "MSB_LAST", "big": "MSB_FIRST"}[expected["byte_order"]]
         assert f"      BYTE_ORDER {order}\n" in text
+
+    @pytest.mark.parametrize(
+        ("row", "wide"), [("i686", 4), ("x86_64", 8), ("armv7m", 8), ("powerpc", 8)]
+    )
+    def test_the_alignments_are_the_images_machines_where_it_has_a_table_for_it(
+        self, tmp_path: Path, row: str, wide: int
+    ) -> None:
+        """A 64 bit scalar is aligned to 4 on i386, where the file used to state 8 for a record
+        the image places at an address 4 modulo 8."""
+        image = ADDRESS_FIXTURES / f"{row}.elf"
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert (
+            "      ALIGNMENT_BYTE 1\n      ALIGNMENT_WORD 2\n      ALIGNMENT_LONG 4\n"
+            f"      ALIGNMENT_INT64 {wide}\n      ALIGNMENT_FLOAT32_IEEE 4\n"
+            f"      ALIGNMENT_FLOAT64_IEEE {wide}\n"
+        ) in text
+
+    def test_an_image_of_a_machine_without_a_table_keeps_the_fixed_alignments(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("ddd.toolbox.mapping.alignment_cap", lambda machine, flags: None)
+        image = ADDRESS_FIXTURES / "i686.elf"
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert "ALIGNMENT_INT64 8\n" in text
+        assert "ALIGNMENT_FLOAT64_IEEE 8\n" in text
+
+    def test_a_run_without_an_image_states_the_fixed_alignments(self, tmp_path: Path) -> None:
+        assert main([*self.arguments(tmp_path), "--byte-order", "little"]) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert "ALIGNMENT_INT64 8\n" in text
+        assert "ALIGNMENT_FLOAT64_IEEE 8\n" in text
 
     def test_generate_all_reads_the_image_as_generate_a2l_does(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

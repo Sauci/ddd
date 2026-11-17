@@ -89,6 +89,9 @@ from ddd.plugins import resolve_blocks, run_check_hooks
 
 _A2L_MAX_DIMENSIONS = 3
 """Dimensions ``MATRIX_DIM`` can carry in the a2l version DDD writes (ASAP2 1.6.1)."""
+_A2L_MAX_COUNT = 65535
+"""The largest number of elements ``MATRIX_DIM``, ``NUMBER`` and ``MaxAxisPoints`` can state: each
+is a ``uint`` in ASAP2 1.6.1 (table 5), two bytes."""
 _A2L_MAX_STRING = 255
 """``MAX_STRING`` of ASAP2 1.6.1, table 5: the longest ``string``, a ``LongIdentifier`` and a
 ``SYMBOL_LINK``'s symbol name included."""
@@ -3285,6 +3288,13 @@ class _Analysis:
                     f"written out and only a 1.7 reader understands them",
                     reference.location("definition"),
                 )
+            if carried:
+                self._a2l_count(
+                    leaf.path,
+                    leaf.shape,
+                    reference.location("definition"),
+                    string=isinstance(leaf.conversion, StringConversion),
+                )
         return instance, leaves
 
     def _flatten(
@@ -3452,6 +3462,34 @@ class _Analysis:
                 f"carries {_A2L_MAX_STRING} (MAX_STRING); it is written whole{written}",
                 location,
             )
+
+    def _a2l_count(
+        self,
+        name: str,
+        shape: Shape,
+        location: Location,
+        *,
+        axis: bool = False,
+        string: bool = False,
+    ) -> None:
+        """``a2l-unrepresentable``: a size past what a ``uint`` of two bytes holds.
+
+        The field is the one the a2l writes the size in: ``MaxAxisPoints`` for an axis,
+        ``NUMBER`` for a string, ``MATRIX_DIM`` for anything else. A curve or a map is not
+        weighed here: its points are its axes', and the axis states the size. The largest
+        dimension is the one named, once for the object, and the number is given whole.
+        """
+        largest = max(shape, default=0)
+        if largest <= _A2L_MAX_COUNT:
+            return
+        field = "MaxAxisPoints" if axis else ("NUMBER" if string else "MATRIX_DIM")
+        self._bag.add(
+            "a2l-unrepresentable",
+            f"'{name}' has a dimension of {largest} elements, but the {field} of ASAP2 1.6.1 "
+            f"is a uint of two bytes and carries at most {_A2L_MAX_COUNT}; the size is "
+            f"written whole",
+            location,
+        )
 
     def _a2l_unit(
         self, what: str, unit: str, conversion: Conversion | None, location: Location
@@ -3716,6 +3754,14 @@ class _Analysis:
 
         if reaches_a2l:
             self._check_a2l_object(name, definition, reference)
+            if definition.kind not in (ObjectKind.CURVE, ObjectKind.MAP):
+                self._a2l_count(
+                    name,
+                    shape,
+                    reference.location("definition"),
+                    axis=definition.kind is ObjectKind.AXIS,
+                    string=isinstance(definition.conversion, StringConversion),
+                )
 
         return Variable(
             name=name,

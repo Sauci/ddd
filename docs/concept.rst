@@ -454,6 +454,8 @@ and one header per component:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/gen -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/gen/ddd_globals.c (created)
    wrote       build/gen/ddd_globals.h (created)
    wrote       build/gen/ddd_types.h (created)
@@ -480,8 +482,9 @@ object, with the addresses written in decimal or hexadecimal:
 
    $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
    build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 12 others; they reach the a2l at address 0
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
    build/addresses.json: info[condition-left-out]: the address map has no entry for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
-   1 warning, 1 info
+   1 warning, 2 infos
    wrote       build/gen/DemoDevice.a2l (updated)
 
 The ``a2l`` artefact is what makes the second run one that *cannot* touch the c sources: it

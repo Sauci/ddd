@@ -206,9 +206,10 @@ them together with everything else.
    * - error
      - ``changed-interface``
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
-       counts changed, or the layout a released structure fixed: a bitfield's width, the
-       members of a structured variable in order with what each holds, nested and external
-       ones included, or the type it names
+       counts changed, or the layout a released structure fixed: a bitfield's width, the type
+       a structured variable names, or the members of that structure in order, each with what
+       it holds and its dimensions, nested and external ones included, save a member added at
+       the end of it when the variable is no array
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object
@@ -274,8 +275,8 @@ deliveries share still compares identical to the byte - same path, same datatype
 conversion, same limits - and so may a nested structure that grew or was rearranged, a nested
 array that changed size, or an external member of another type or dimension. Each is
 reported once, at every variable whose layout it changed, naming the structure and where the
-two layouts part; a structure no variable is changes nothing anybody reads, and is not
-compared. One change alone keeps every member where a reader of the previous delivery looks
+two layouts part; a structure in no variable's layout changes nothing anybody reads, and is
+not compared. One change alone keeps every member where a reader of the previous delivery looks
 for it: a member added after every member of the structure of a single variable, which is
 the addition of its leaves and no more. Added to the structure of an array of structures, it
 moves every element after the first, and added to a structure nested in another, it is that

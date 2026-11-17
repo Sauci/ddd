@@ -727,9 +727,9 @@ class _Layouts:
     structures are laid out in the order the dictionary lists them, which is dependency order, so
     the layout of a nested structure is known before the structure holding it is laid out. One
     that is not known by then - a name no entry declares, or a structure on a cycle, which a dump
-    written under ``--force`` lists although no variable can be one - holds no members, since the
-    document says nothing of what it holds; so does the structure of a variable that its
-    dictionary, edited by hand, does not list at all.
+    written under ``--force`` lists although no variable's layout can hold one - holds no
+    members, since the document says nothing of what it holds; so does the structure of a
+    variable that its dictionary, edited by hand, does not list at all.
     """
 
     def __init__(self, baseline: DataDictionary, candidate: DataDictionary) -> None:
@@ -1185,8 +1185,8 @@ def _compare_instances(
     in the same finding as the type, once, at the variable whose readers find their members
     somewhere else - not at the structure, because whether an edit of a structure moved
     anything is the variable's question: a member added at its end moves every element after
-    the first of an array of it and nothing of a single one. A structure no variable is has no
-    reader to move anything for.
+    the first of an array of it and nothing of a single one. A structure in no variable's
+    layout has no reader to move anything for.
 
     What every member carries because the variable does: ``volatile``, ``section``,
     ``raster``, the producer and the condition. One flip of the variable's ``volatile`` was

@@ -339,8 +339,10 @@ Member order is significant
 The members are laid out in the order the file lists them, because that is the order the
 generated c declares them in and therefore the order the compiler lays out. Reordering the
 members of a structure that has already been delivered moves every address after the change,
-and nothing in the description changes value or name, so the diff of the json is the only place
-the move is visible before the next build measures it.
+and nothing in the description changes value or name, so before the next build measures the
+move it shows in the diff of the json and in ``ddd compare`` against the delivered dictionary,
+which reports it at each variable whose layout holds the structure
+(:doc:`../comparing_deliveries`).
 
 Where the members sit is not stated here
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

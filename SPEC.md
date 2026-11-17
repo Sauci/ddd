@@ -1738,10 +1738,10 @@ compile:
   compares identical to the byte - a member inserted, removed, renamed or reordered, a
   nested structure grown or rearranged, a nested array resized, an external member retyped
   or resized - and is reported once, at each variable whose layout it changes, naming the
-  variable's structure and where the two layouts part; a structure no variable is changes
-  nothing a reader reads. The one exception is a member added after every member of the
-  structure of a single variable, which moves nothing a reader of the baseline reads and is
-  the addition of the leaves it contributes; added to the structure of an array of
+  variable's structure and where the two layouts part; a structure in no variable's layout
+  changes nothing a reader reads. The one exception is a member added after every member of
+  the structure of a single variable, which moves nothing a reader of the baseline reads and
+  is the addition of the leaves it contributes; added to the structure of an array of
   structures, it moves every element after the first, and added to a nested structure, it is
   a nested structure grown. A structured variable's `type` is what every consumer's header
   declares, so renaming the structure changes the interface even when its members are
@@ -1839,8 +1839,8 @@ path below the instance. Renaming the instance therefore keeps every member pair
 reported as a `renamed-object` under its path, which is what a migration tool needs, while
 renaming a member of the *type* changes the path and is reported as a removal and an
 addition, exactly as an object without an `id` is, and as the changed layout of each
-variable of the type. The gap is known; closing it would mean an identity on a type's
-member.
+variable whose layout holds the type. The gap is known; closing it would mean an identity
+on a type's member.
 
 A structured object **shall** be compared as the variable it is and not only through its
 members. The variable answers for what no member carries - its `type` and its layout - and

@@ -827,12 +827,12 @@ registry can be read in one place.
      - an object of the baseline is gone and a component read it.
    * - ``changed-interface``
      - error
-     - the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
-       where a table keeps its point counts, or the layout a released structure fixed for
-       its consumers: the width of a bitfield, the order of the members, or the type a
-       structured variable names. Scaling compares an
-       enum by its name and its ordered enumerators, whose descriptions are documentation
-       and are not compared.
+     - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
+       counts changed, or the layout a released structure fixed: a bitfield's width, the type
+       a structured variable names, or the members of that structure in order, each with what
+       it holds and its dimensions, nested and external ones included, save a member added at
+       the end of it when the variable is no array. Scaling compares an enum by its name and
+       its ordered enumerators, whose descriptions are documentation and are not compared.
    * - ``reused-name``
      - error
      - a name of the baseline now belongs to a different object: the object that carried it

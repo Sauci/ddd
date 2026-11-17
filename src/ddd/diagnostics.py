@@ -253,7 +253,11 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                comparison=True),
         _check("changed-interface", Severity.ERROR,
                "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps "
-               "its point counts changed",
+               "its point counts changed, or the layout a released structure fixed: a "
+               "bitfield's width, the type a structured variable names, or the members of that "
+               "structure in order, each with what it holds and its dimensions, nested and "
+               "external ones included, save a member added at the end of it when the variable "
+               "is no array",
                comparison=True),
         _check("reused-name", Severity.ERROR,
                "a name of the baseline now belongs to a different object",

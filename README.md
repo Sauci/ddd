@@ -626,7 +626,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | severity | check | reported when |
 | --- | --- | --- |
 | error | `removed-object` | an object is gone and a component read it |
-| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point counts changed, or the layout a released structure fixed for its consumers: a bitfield's width, the order of the members, or the type a structured variable names |
+| error | `changed-interface` | kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point counts changed, or the layout a released structure fixed: a bitfield's width, the type a structured variable names, or the members of that structure in order, each with what it holds and its dimensions, nested and external ones included, save a member added at the end of it when the variable is no array |
 | error | `reused-name` | a name of the baseline now names a different object |
 | warning | `renamed-object` | an object of the baseline is offered under a different name; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |

@@ -317,6 +317,32 @@ class TestTheCheckReference:
         without joining it, so the tool and the pages disagreed on what the check covers."""
         assert "raster" in CHECKS["changed-storage"].description
 
+    CHANGED_INTERFACE = (
+        "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point "
+        "counts changed, or the layout a released structure fixed: a bitfield's width, the type a "
+        "structured variable names, or the members of that structure in order, each with what it "
+        "holds and its dimensions, nested and external ones included, save a member added at the "
+        "end of it when the variable is no array"
+    )
+
+    def test_the_registry_and_the_three_tables_say_one_wording_of_changed_interface(
+        self,
+    ) -> None:
+        """What the check fires for, as ``ddd checks`` prints it and as the README, the check
+        reference and the comparison page each tabulate it. The layout grew from the order of
+        the members to every member and what it holds, and a table still naming the order alone
+        told its reader that an inserted member, or an external one of another type, does not
+        fire."""
+        description = CHECKS["changed-interface"].description
+        assert description == self.CHANGED_INTERFACE
+        tables = {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        }
+        for name, text in tables.items():
+            assert description in flattened(text), name
+
     def test_the_registry_describes_address_missing_as_the_pages_do(self) -> None:
         """``ddd checks`` prints the registry's one-liner, and since ``--image`` the check is
         about a symbol the image does not place as much as one the map leaves out: a line naming
@@ -5409,7 +5435,7 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "or reordered, a nested structure grown or rearranged, a nested array resized, an "
             "external member retyped or resized - and is reported once, at each variable whose "
             "layout it changes, naming the variable's structure and where the two layouts part; "
-            "a structure no variable is changes nothing a reader reads.",
+            "a structure in no variable's layout changes nothing a reader reads.",
             "The one exception is a member added after every member of the structure of a single "
             "variable, which moves nothing a reader of the baseline reads and is the addition of "
             "the leaves it contributes; added to the structure of an array of structures, it "
@@ -5428,12 +5454,20 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
         assert "a member that arrived or left is already the addition" not in self.SPEC_TEXT
         assert "A reordering is reported once, at the structure" not in self.SPEC_TEXT
 
+    def test_the_spec_says_a_nested_structure_is_in_the_layout_of_the_variables_holding_it(
+        self,
+    ) -> None:
+        """A structure only ever nested is no variable's type, and is still compared, in the
+        layout of every variable that holds it."""
+        assert "a structure no variable is" not in self.SPEC_TEXT
+        assert "each variable of the type" not in self.SPEC_TEXT
+
     def test_the_spec_says_the_variable_answers_for_its_layout(self) -> None:
         for sentence in (
             "The variable answers for what no member carries - its `type` and its layout - and "
             "for what every member carries only because the variable states it:",
             "exactly as an object without an `id` is, and as the changed layout of each variable "
-            "of the type.",
+            "whose layout holds the type.",
             "a baseline at format 3 or older states no `dimensions`, so shapes compare by value "
             "alone, those of a structure's members included;",
         ):
@@ -5449,9 +5483,6 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
 
     def test_the_comparison_page_says_what_the_layout_is_and_where_it_is_said(self) -> None:
         for sentence in (
-            "or the layout a released structure fixed: a bitfield's width, the members of a "
-            "structured variable in order with what each holds, nested and external ones "
-            "included, or the type it names",
             "The layout of a :doc:`structure <file_formats/types>` is interface as well, because "
             "a reader may be a binary compiled against the previous delivery's headers, which "
             "takes each member out of the offset those headers gave it.",
@@ -5466,8 +5497,8 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "was rearranged, a nested array that changed size, or an external member of another "
             "type or dimension.",
             "Each is reported once, at every variable whose layout it changed, naming the "
-            "structure and where the two layouts part; a structure no variable is changes "
-            "nothing anybody reads, and is not compared.",
+            "structure and where the two layouts part; a structure in no variable's layout "
+            "changes nothing anybody reads, and is not compared.",
             "One change alone keeps every member where a reader of the previous delivery looks "
             "for it: a member added after every member of the structure of a single variable, "
             "which is the addition of its leaves and no more.",
@@ -5479,6 +5510,7 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
         ):
             assert sentence in self.PAGE, sentence
         assert "A reordering is reported once, at the structure" not in self.PAGE
+        assert "a structure no variable is" not in self.PAGE
 
     def test_the_promise_of_a_clean_comparison_says_how_far_its_layout_reaches(self) -> None:
         assert (
@@ -5495,3 +5527,12 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "holds it."
         ) in self.TYPES
         assert "or in a delivery comparison, because" not in self.TYPES
+
+    def test_the_types_page_says_a_comparison_reports_a_reordering(self) -> None:
+        assert (
+            "and nothing in the description changes value or name, so before the next build "
+            "measures the move it shows in the diff of the json and in ``ddd compare`` against "
+            "the delivered dictionary, which reports it at each variable whose layout holds the "
+            "structure (:doc:`../comparing_deliveries`)."
+        ) in self.TYPES
+        assert "the diff of the json is the only place the move is visible" not in self.TYPES

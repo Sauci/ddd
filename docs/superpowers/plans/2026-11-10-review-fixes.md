@@ -1633,6 +1633,45 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   the comparison of each linked variable's type with its declaration, which `elf-mismatch` now
   makes. Branch 15 lists `SPEC.md`.
 
+**Branch 5:**
+- **`EPK` beside named constants** (task 2, `1:I8`; R77): a project that declares named constants
+  gets the `MOD_PAR` DDD writes for them, and a fragment holding a `MOD_PAR` of its own is refused,
+  so such a project cannot carry `EPK`, `ADDR_EPK` or a `MEMORY_SEGMENT` through the fragment.
+  Carrying them needs a hook of its own beside the fragment, or the constants merged into a
+  `MOD_PAR` the fragment brings. No branch after this one lists `backends/a2l/*`, so this is for
+  the maintainer.
+- **What a settle preview says** (task 6, `1:I2`; R81): the preview of a settle, which the page
+  draws in its own words, says nothing of the readers' code, where the quick fix's title, which
+  the server writes, does; and the stories still show the fix by its old title, with the
+  references drawn from them. Branch 11 lists `screens/*` and `components/*`.
+- **The editor's quick-fix titles** (task 6; R81): the language server's quick fixes for a
+  `definition-mismatch` carry no sentence on the readers' code; branch 9 lists
+  `src/ddd/lsp/*.py`.
+- **Whether the keyword list is the standard's** (task 4, `1:I10`; R79): the list is written from
+  the grammar without the standard's text. The final wave left two candidates it could not settle
+  from memory, `DEFAULT_VALUE_NUMERIC` and `NOT_IN_ECU`, and took `INPUT_QUANTITY` out as the name
+  of a parameter; the words the grammar fixes as a parameter's value, `NO_COMPU_METHOD` and
+  `NO_INPUT_QUANTITY`, which DDD writes, are not on the list either. Checking it takes the
+  standard, so it is the maintainer's; the list lives in `models/*`, which branch 13 lists.
+- **What the a2l checks cannot see** (tasks 4 and 8): `a2l-keyword` and `a2l-unrepresentable` are
+  judged from the descriptions before a run reads its image or its map, so an object the run
+  drops because its build holds none of it still draws them, and `-W` relaxes them for that run,
+  as SPEC 4, the check reference and the changelog say. A filter aware of the run would touch
+  `analysis.py`, which branch 13 lists, and `cli.py`, which branch 12 lists.
+- **The reading of C11 7.1.3** (task 6): SPEC 4, the check reference, the README and the FAQ say
+  that C reserves any name holding a double underscore, which C++ does; C reserves a name that
+  begins with two underscores, or with one and a capital. `reserved-identifier`'s refusal of a
+  double underscore anywhere stands as a rule of the project's own; its stated reason does not.
+  Branch 15 lists `SPEC.md` and `docs/*.rst`, and branch 13 lists `consistency_checks.rst` too.
+- **A string's escapes against `MAX_STRING`** (task 4): `a2l_string` doubles a backslash and a
+  quote, so a description of 255 characters of quotes is a literal of 510, while the check counts
+  the text as written. The maintainer decides which length the standard counts; no branch after
+  this one lists `backends/a2l/*`.
+- **The `SYMBOL_LINK` of a member, written from a map** (task 3, `1:I9`; R78): with an address map,
+  as before the link, a member's record names its path at offset 0, which a patcher resolving
+  symbols through the map cannot answer. Stating the offset would take the image's layout, which a
+  map does not give: for the maintainer, should a patcher that reads debug information be tried.
+
 ## Rulings taken
 
 Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so on.
@@ -1983,6 +2022,78 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 - **R72.** What the whole-branch review set aside stays so, an image with debug information and
   no symbol table placing nothing among it, which the pull request states (*Left open*, branch
   4).
+
+**Branch 5:**
+- **R73.** Branch 5 runs a D0 first, the residuals branch 4's re-review left and its row of the
+  progress log, then a D1, the item of branch 4's *Left open* the branch owns (a measurement only
+  a left-out axis pulled in), then tasks 1 to 10 in order, then its changelog as D2 (R4), then the
+  whole-branch review and one final wave, as branches 2 to 4 did (R27, R42, R61). D0 drops the
+  compose service from the build page's sentence on the example build's output rather than build
+  the shared image again, which the documentation and every compose service use.
+- **R74.** Task 1 also has `elf-mismatch` name a consumer's declaration that adds `const`, which
+  reverses R71's allowance of an added `const` while `--const-inputs` gave an input one: decision
+  M2 removes the option because such a pair of declarations is undefined (C11 6.2.7p2 and
+  6.7.3p10), and a check letting it through would bless by hand what the release stops
+  generating. Task 1 rewords every sentence citing the option as the reason, in files that are
+  branch 4's, and the `constinputs` fixture becomes the red case; a hand-written header adding
+  `const` meets a new warning, which stops a `STRICT` build.
+- **R75.** Task 1 removes the template api's `.const` and `declaration(const=...)` with the option
+  they served, a template still using either refused in a sentence naming the removal, so
+  `8:M9`, which task 9 names, is closed by task 1; the address fixtures' builder writes the
+  `constinputs` declaration by hand. Every use of either piece that changed what a template wrote
+  wrote task 1's undefined pair, so a removal that says so serves better than a `.const` kept
+  false.
+- **R76.** The refusals of task 1 name 0.12.0, the release `## Unreleased` becomes: the task asks
+  for the release that removed the option, and a release before 1.0 that removes one is a minor.
+- **R77.** Task 2 pastes the fragment unchanged at the head of `MODULE`, before `MOD_COMMON`, so an
+  `A2ML` it holds comes before every `IF_DATA`, and refuses a fragment holding a `MOD_PAR` in a
+  project that declares named constants, for which DDD writes one of its own, ASAP2 allowing one:
+  the task names one hook, and DDD neither merges nor parses what it pastes (*Left open*, branch 5).
+- **R78.** Task 3 leaves a member's `SYMBOL_LINK` naming its path at offset 0 where the a2l is
+  written from an address map, as before the link, and the pages say no map can answer it: a map
+  gives a symbol's address and nothing of a member's offset, which only the image's layout states
+  (*Left open*, branch 5).
+- **R79.** Task 4's list of ASAP2 keywords is a module of the project's own, written from the
+  format's keywords and the values its grammar fixes, since the standard's text is not in the
+  repository and nothing may be downloaded; it holds every word DDD's template and writer spell
+  outside `IF_DATA`, whose words are the XCP metalanguage's, and every name a project gives that
+  reaches the a2l is held to it, each part of a path too, never a fragment's text, as table 5
+  counts an identifier's limits per part. The final wave adds `RIP_ADDR_W` and
+  `DEF_CHARACTERISTIC` and takes out `INPUT_QUANTITY`, the name of a parameter of `AXIS_PTS` and
+  `AXIS_DESCR` (*Left open*, branch 5).
+- **R80.** Task 5 completed only once CI's Windows legs passed its `--gc-sections` test, whose PE
+  half was not run here: the first run's legs found MinGW's gcc keeping two objects of a link with
+  the macro empty, so the test holds of PE only that the macro keeps no more than the empty one,
+  and CI 44026810354's Windows legs passed it.
+- **R81.** Task 6's "each reconcile preview" is read as the previews whose words the server
+  writes: the quick fix's title says the readers' code is not touched. The settle preview the page
+  draws in its own words goes to branch 11, which lists `screens/*`, and the editor's quick-fix
+  titles to branch 9, whose Files list names `src/ddd/lsp/*.py`: branch 5 lists neither, and a
+  sentence in the page would make it a pull request of the interface, with journeys and
+  references (*Left open*, branch 5).
+- **R82.** Task 7's display identifier on a member naming a structure stands for that member's own
+  segment of each record's path below it, `V[1].j.b` with `j` displayed `J` being `V[1].J.b`, so
+  records stay as distinct as their paths and several members' identifiers compose; a leaf's own
+  is written as stated, which the elements of an array of structures share, as the pages say. Its
+  first form, the path below the member alone, told two elements of one variable apart by
+  nothing. `export: false` there drops the subtree, and `format` reaches every leaf below, the
+  innermost member's winning.
+- **R83.** Task 8 treats a size past 65,535 for `MATRIX_DIM`, `NUMBER` or `MaxAxisPoints` as an
+  object past `MATRIX_DIM`'s dimensions is treated, where its text has it refused as `event` is:
+  the record is written with its number whole and `a2l-unrepresentable` warns, which stops a
+  `--strict` or `STRICT` build. An event always reaches the a2l, while an array of 70,000 need not;
+  the commit's subject says "refuse", which the pull request does not repeat.
+- **R84.** Decision 8.3 has a derived limit round outward, and task 8's do not all: an end within
+  four units in the last place of its twelve digit decimal is written as that decimal, which may
+  lie up to those four units inward of the product, since `is_above`'s tolerance treats the two
+  as equal and the pinned `7.65` has to read as written; any other end is the number itself.
+  `TAIL_ULPS` names the tail. A tool comparing without a tolerance finds the top raw count a few
+  units outside such a limit.
+- **R85.** The final wave builds each enum's views once, as the review of the whole branch asked,
+  and shares the tuple of the enum's entry in `model.enums` with every object it converts, so an
+  object whose own copy of the enum documents less states the copy the types header declares,
+  where it stated its own; the conversions page already says that the better documented spelling
+  is the one reaching the generated code.
 
 ## Progress log
 

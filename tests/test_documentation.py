@@ -344,6 +344,26 @@ class TestTheCheckReference:
         for name, text in tables.items():
             assert description in flattened(text), name
 
+    def test_the_pages_agree_that_a_precompiled_reader_is_left_wrong(self) -> None:
+        """Between two deliveries a reader may be a binary compiled against the baseline, so
+        the comparison page no longer says that every consumer is recompiled and nobody is left
+        wrong; and the rename's pair runs the other way from the removal's, for a reason each
+        page gives once: a relaxation of ``renamed-object`` must not reach a read object's
+        rename."""
+        page = flattened(COMPARING_DELIVERIES)
+        assert "so nobody is left wrong" not in page
+        assert (
+            "a reader may be a binary compiled against the previous headers and never regenerated"
+            in page
+        )
+        why = "keeps the plain id for the unread rename"
+        assert why in page and why in flattened(SPEC)
+        assert "reported as a `renamed-object`, or a `renamed-read-object`" in flattened(SPEC)
+        said = "volatile turned on for an object a component reads is changed-interface instead"
+        assert said in CHECKS["changed-storage"].description
+        assert said in flattened(README)
+        assert said in page
+
     def test_every_page_grades_a_rename_by_whether_somebody_reads_the_object(self) -> None:
         """A reader may be a binary compiled against the previous headers, so a rename of an
         object a component reads is an error under an id of its own and the warning stays for
@@ -5419,9 +5439,10 @@ class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:
         self,
     ) -> None:
         assert (
-            "A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object`` "
-            "and nothing more for the display identifiers a member composes, ``V.J.b`` becoming "
-            "``W.J.b``, since the instance's name at their head is the rename told again; an "
+            "A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object``, "
+            "or ``renamed-read-object`` where a component reads the variable, and nothing more "
+            "for the display identifiers a member composes, ``V.J.b`` becoming ``W.J.b``, "
+            "since the instance's name at their head is the rename told again; an "
             "identifier that changed in any other way, or one a leaf's own member states, is "
             "still ``changed-a2l``"
         ) in self.PAGE
@@ -5429,8 +5450,8 @@ class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:
     def test_the_spec_says_it_of_changed_a2l(self) -> None:
         assert (
             "The instance's name at the head of a composed `display_identifier` is not a change "
-            "of it, a rename of the variable being the leaf's `renamed-object`; one a leaf's own "
-            "member states has no such head"
+            "of it, a rename of the variable being the leaf's `renamed-object` or "
+            "`renamed-read-object`; one a leaf's own member states has no such head"
         ) in self.SPEC_TEXT
 
 

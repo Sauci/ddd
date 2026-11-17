@@ -272,7 +272,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                comparison=True),
         _check("changed-storage", Severity.WARNING,
                "the initial value, volatility, memory section or measurement raster of an "
-               "object changed",
+               "object changed; volatile turned on for an object a component reads is "
+               "changed-interface instead",
                comparison=True),
         _check("narrowed-limits", Severity.WARNING,
                "the physical limits of an object got tighter, so calibrated data may not fit",

@@ -631,7 +631,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `reused-name` | a name of the baseline now names a different object |
 | warning | `renamed-object` | an object of the baseline is offered under a different name and no component read it; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
-| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in. An initial value compares as the bytes it produces, and on a structured variable the three are the variable's own and reported at it once |
+| warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; volatile turned on for an object a component reads is changed-interface instead; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in. An initial value compares as the bytes it produces, and on a structured variable the three are the variable's own and reported at it once |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed |

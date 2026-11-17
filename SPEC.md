@@ -1757,7 +1757,9 @@ compile:
   ([section 3.3](#33-data-object-definition)), and reported with the readers named; a
   structured variable's rename is said under each leaf's path, each leaf answering for the
   readers of its variable. A check has one severity, so a project's `-W renamed-object`
-  relaxes only the warning below and does not reach this error.
+  relaxes only the warning below and does not reach this error; that is why the rename's pair
+  of ids runs the other way from the removals', and `renamed-object` keeps the plain id for the
+  unread rename.
 - `reused-name`: a name of the baseline now names a different object. Three things prove it,
   and a rename proves it from either end. Two ids stated under one name that differ prove it
   outright. So does the baseline's object under that name having already been paired, by `id`,
@@ -1817,7 +1819,7 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 - `changed-a2l`: the resolved A2L presentation changed, that is the export (compared as
   resolved, [section 3.3.1](#331-one-object-several-declarations)), `format` or
   `display_identifier`. The instance's name at the head of a composed `display_identifier`
-  is not a change of it, a rename of the variable being the leaf's `renamed-object`; one a
+  is not a change of it, a rename of the variable being the leaf's `renamed-object` or `renamed-read-object`; one a
   leaf's own member states has no such head. A changed unit is `changed-interface`, and
   descriptions, of objects and of enumerators alike, are not compared.
 - `project-mismatch`: the two dictionaries name different projects, so the baseline is
@@ -1850,7 +1852,7 @@ project which never adopts `id` at all.
 A member of a structured object ([section 3.7](#37-type-description)) has no declaration
 of its own to carry an `id`: it is paired by the `id` of its instance together with its
 path below the instance. Renaming the instance therefore keeps every member paired, each
-reported as a `renamed-object` under its path, which is what a migration tool needs, while
+reported as a `renamed-object`, or a `renamed-read-object` where a component reads it, under its path, which is what a migration tool needs, while
 renaming a member of the *type* changes the path and is reported as a removal and an
 addition, exactly as an object without an `id` is, and as the changed layout of each
 variable whose layout holds the type. The gap is known; closing it would mean an identity

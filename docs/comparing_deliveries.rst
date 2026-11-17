@@ -175,12 +175,14 @@ by the old spelling is migrated with.
 The comparison itself reports ``renamed-object`` for each pair it finds this way, or
 ``renamed-read-object``, an error, for a pair whose object a component reads, and the
 ordinary interface comparison still runs across the pair, so a rename that also changed the
-object is no longer invisible. And where a spelling freed by a rename has been claimed by a
+object is no longer invisible. The rename's pair of ids runs the other way from the removals':
+``renamed-object`` keeps the plain id for the unread rename, since a relaxation of it that a
+project already gives must not reach the rename of an object a component reads. And where a spelling freed by a rename has been claimed by a
 different object in the same delivery, it reports ``reused-name`` instead - the failure that
 binds an old dataset to new storage without anything about the delivery looking broken.
 
-A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object`` and nothing
-more for the display identifiers a member composes, ``V.J.b`` becoming ``W.J.b``, since the
+A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object``, or
+``renamed-read-object`` where a component reads the variable, and nothing more for the display identifiers a member composes, ``V.J.b`` becoming ``W.J.b``, since the
 instance's name at their head is the rename told again; an identifier that changed in any other
 way, or one a leaf's own member states, is still ``changed-a2l``.
 
@@ -230,7 +232,8 @@ them together with everything else.
    * - warning
      - ``changed-storage``
      - the initial value, volatility, memory section or measurement raster of an object
-       changed
+       changed; volatile turned on for an object a component reads is changed-interface
+       instead
    * - warning
      - ``narrowed-limits``
      - the physical limits of an object got tighter, so calibrated data may not fit
@@ -328,9 +331,10 @@ move labels around in a calibration tool without touching the software.
 and a disagreement is a ``definition-mismatch`` error - see :doc:`consistency_checks`. The
 difference is who is left describing the object wrongly. Inside one project two components are
 compiled together against one address, so one of them is compiled against an assumption that
-does not hold. Between two deliveries there is only one answer at a time and every consumer is
-regenerated and recompiled against it, so nobody is left wrong; what changed is how the object
-behaves. On a calibration object, ``volatile`` losing
+does not hold. Between two deliveries there is only one answer at a time, but a reader may be a binary
+compiled against the previous headers and never regenerated, which is why turning
+``volatile`` on is an error for an object a component reads, as above; what changed for an
+object nobody reads is how it behaves. On a calibration object, ``volatile`` losing
 its ``true`` is more than a change of behaviour in the abstract: the compiler is then entitled
 to fold the value it was built with into the code that reads it, so the parameter keeps its
 address and its a2l entry but stops being tunable while the software runs.

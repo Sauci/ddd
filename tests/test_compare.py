@@ -755,7 +755,7 @@ LAYOUTS_THAT_MOVED = [
         [WITH_H],
         [rec_t(value_member("speed"), value_member("h", typename="Hb_t"), value_member("torque"))],
         None,
-        "member Rec_t.h: Hb_t != Ha_t",
+        "member Rec_t.h: Hb_t from hb.h != Ha_t from ha.h",
         0,
         id="an external member of another type",
     ),
@@ -777,7 +777,7 @@ LAYOUTS_THAT_MOVED = [
             )
         ],
         None,
-        "member Rec_t.h: Ha_t[4] != Ha_t",
+        "member Rec_t.h: Ha_t[4] from ha.h != Ha_t from ha.h",
         0,
         id="an external member given a dimension",
     ),
@@ -819,6 +819,7 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
         typename: str = "Rec_t",
         dimensions: list[int | str] | None = None,
         constants: dict[str, int] | None = None,
+        externals: tuple[dict[str, Any], ...] | None = None,
     ) -> DataDictionary:
         """``Rec``, written by ``A`` and read by ``B``, beside these structures and constants."""
         shape = {} if dimensions is None else {"dimensions": dimensions}
@@ -831,7 +832,7 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
                     "P", *named, f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
                 ),
                 f"{name}-c.ddd.json": {"constants": declared},
-                f"{name}-t.ddd.json": types(*self.EXTERNAL, *structures),
+                f"{name}-t.ddd.json": types(*(externals or self.EXTERNAL), *structures),
                 f"{name}-a.ddd.json": component(
                     "A", declare("output", "Rec", typename=typename, **shape)
                 ),
@@ -987,7 +988,7 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
             constants={"N_CELLS": 4},
         )
         bag = verdict(old, new)
-        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert checks(bag) == ["changed-interface", "added-constant"], messages(bag)
         assert "(member Rec_t.cell: structure[N_CELLS=4] != structure[4])" in messages(bag)
 
     def test_a_size_changed_behind_one_spelling_is_read_at_its_value(self, tree: Path) -> None:
@@ -995,8 +996,9 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
         old = self.delivery(tree, "old", IN_V, cell, constants={"N": 2})
         new = self.delivery(tree, "new", IN_V, cell, constants={"N": 3})
         bag = verdict(old, new)
-        assert checks(bag) == ["changed-interface", "added-object"], messages(bag)
+        assert checks(bag) == ["changed-interface"] * 2 + ["added-object"], messages(bag)
         assert "(member Rec_t.cell: structure[N=3] != structure[N=2])" in messages(bag)
+        assert "constant 'N' is not the same any more (value: 3 != 2)" in messages(bag)
 
     def test_against_a_baseline_without_spellings_only_the_sizes_count(self, tree: Path) -> None:
         """A dictionary of format 3 or older records no spelling of a dimension, so against one
@@ -1042,8 +1044,35 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
         bag = verdict(old, new)
         assert checks(bag) == ["changed-interface", "removed-object"], messages(bag)
         assert (
-            "'Rec' is not the same object any more (member Rec_t.h: Ha_t != value), read by B"
+            "'Rec' is not the same object any more "
+            "(member Rec_t.h: Ha_t from ha.h != value), read by B"
         ) in messages(bag)
+
+    def test_an_external_member_whose_header_was_renamed_is_one_changed_interface(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The generated header includes the file that defines the external type, so a reader
+        compiled against the baseline's headers is built against another definition. It is
+        the variable's one finding, and the member's name and shape are what they were."""
+        old = self.delivery(tree, "old", WITH_H)
+        new = self.delivery(
+            tree,
+            "new",
+            WITH_H,
+            externals=(
+                {"type": "external", "name": "Ha_t", "header": "<other.h>"},
+                self.EXTERNAL[1],
+            ),
+        )
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert (
+            "'Rec' is not the same object any more "
+            "(member Rec_t.h: Ha_t from <other.h> != Ha_t from ha.h), read by B"
+        ) in messages(bag)
+        for code, report in self.verdicts(tree, capsys):
+            assert code == EXIT_FINDINGS, report
+            assert "cannot replace" in report
 
     def test_a_structure_the_dictionary_does_not_lay_out_holds_nothing(self, tree: Path) -> None:
         """A dump written under ``--force`` lists every structure declared, so it may hold one
@@ -3477,3 +3506,168 @@ class TestWhatAComponentReadAloneKeepsToItself:
         bag = self.grade(tree, "input", structured=True)
         assert set(checks(bag)) == {"removed-input"}, messages(bag)
         assert not bag.has_errors
+
+
+class TestConstantsAndRastersAreComparedAsEntries:
+    """The vocabularies an object reaches the outputs through.
+
+    Every constant reaches the generated header as a macro and the a2l as a
+    ``SYSTEM_CONSTANT``, and every raster is an ``EVENT`` the ``IF_DATA`` of each object that
+    names it points at. A constant no object is dimensioned by, or a raster renumbered, changed
+    nothing the objects compare on, so the delivery replaced its predecessor under ``--strict``
+    while its outputs differed.
+    """
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        *,
+        gain: int | float | None = 2,
+        cells: int = 4,
+        event: int = 1,
+        cycle: str = "10ms",
+        extra_raster: bool = False,
+    ) -> DataDictionary:
+        """``Arr`` sized by the constant ``N``, ``X`` measured in the raster ``10ms``, and a
+        ``GAIN`` that no object uses."""
+        constants = [{"name": "N", "value": cells}]
+        if gain is not None:
+            constants.append({"name": "GAIN", "value": gain})
+        rasters = [
+            {"raster": "1ms", "event": 0, "cycle": "1ms"},
+            {"raster": "10ms", "event": event, "cycle": cycle},
+        ]
+        if extra_raster:
+            rasters.append({"raster": "100ms", "event": 5, "cycle": "100ms"})
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project(
+                    "P", f"{name}-c.ddd.json", f"{name}-r.ddd.json", f"{name}-a.ddd.json"
+                ),
+                f"{name}-c.ddd.json": {"constants": constants},
+                f"{name}-r.ddd.json": {"rasters": rasters},
+                f"{name}-a.ddd.json": component(
+                    "A",
+                    declare("local", "Arr", dimensions=["N"]),
+                    declare("local", "X", raster="10ms"),
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def strict(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> tuple[tuple[int, str], tuple[int, str]]:
+        """Both sides as descriptions, and the baseline as a dump, each under ``--strict``."""
+        described = ruling(tree, capsys, "--strict")
+        assert main(["dump", str(tree / "old.ddd.json"), "-o", str(tree / "old.json")]) == EXIT_OK
+        capsys.readouterr()
+        code = main(["compare", str(tree / "old.json"), str(tree / "new.ddd.json"), "--strict"])
+        return described, (code, capsys.readouterr().err)
+
+    def cannot_replace(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        for code, report in self.strict(tree, capsys):
+            assert code == EXIT_FINDINGS, report
+            assert "cannot replace" in report
+
+    def can_replace(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        for code, report in self.strict(tree, capsys):
+            assert code == EXIT_OK, report
+            assert "can replace" in report and "cannot replace" not in report
+
+    def test_two_identical_deliveries_compare_clean(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new")
+        assert checks(verdict(old, new)) == []
+        self.can_replace(tree, capsys)
+
+    def test_a_constant_no_object_uses_changing_its_value_is_a_changed_interface(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Every reader's header holds the macro, whatever the objects hold."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", gain=3)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert "constant 'GAIN' is not the same any more (value: 3 != 2)" in messages(bag)
+        self.cannot_replace(tree, capsys)
+
+    def test_a_constant_gone_is_an_error_of_its_own(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A reader that uses the macro no longer builds."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", gain=None)
+        bag = verdict(old, new)
+        assert checks(bag) == ["removed-constant"], messages(bag)
+        assert "constant 'GAIN' is gone; a reader that uses it no longer builds" in messages(bag)
+        self.cannot_replace(tree, capsys)
+
+    def test_a_constant_added_is_information(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", gain=None)
+        new = self.delivery(tree, "new")
+        bag = verdict(old, new)
+        assert checks(bag) == ["added-constant"], messages(bag)
+        assert "constant 'GAIN' is new in P (2)" in messages(bag)
+        self.can_replace(tree, capsys)
+
+    def test_a_constant_that_dimensions_an_object_is_said_at_both(self, tree: Path) -> None:
+        """The macro and the size are two facts, and the object's shape is still said at the
+        object, as the layout says it at each variable."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", cells=5)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"] * 2, messages(bag)
+        assert "constant 'N' is not the same any more (value: 5 != 4)" in messages(bag)
+        assert "'Arr' is not the same object any more (shape: [N] != [N])" in messages(bag)
+
+    def test_a_raster_given_another_event_is_a_changed_storage(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Every ``IF_DATA`` that names it carries the event."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", event=7)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        assert "raster '10ms' is not the same any more (event: 7 != 1)" in messages(bag)
+        self.cannot_replace(tree, capsys)
+
+    def test_a_raster_given_another_cycle_is_a_changed_storage(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", cycle="20ms")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"], messages(bag)
+        assert "raster '10ms' is not the same any more (cycle: '20ms' != '10ms')" in messages(bag)
+        self.cannot_replace(tree, capsys)
+
+    def test_a_raster_respelled_with_the_same_period_is_no_change(self, tree: Path) -> None:
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", cycle="10000us")
+        assert checks(verdict(old, new)) == []
+
+    def test_a_raster_no_object_names_coming_or_going_says_nothing(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An object that names a raster says its own change, and one that names none has
+        nothing the raster reaches."""
+        bare = self.delivery(tree, "old")
+        more = self.delivery(tree, "new", extra_raster=True)
+        assert checks(verdict(bare, more)) == []
+        assert checks(verdict(more, bare)) == []
+        self.can_replace(tree, capsys)
+
+    def test_a_baseline_of_format_3_recorded_no_constants_to_compare(self, tree: Path) -> None:
+        """Against a dump that predates the vocabulary every constant of the candidate would
+        arrive, and none could have changed or gone."""
+        old = without_spellings(self.delivery(tree, "old", gain=None))
+        new = self.delivery(tree, "new", gain=3)
+        assert checks(verdict(old, new)) == []
+        assert checks(verdict(old, new.model_copy(update={"constants": ()}))) == []

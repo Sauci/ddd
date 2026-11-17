@@ -210,10 +210,11 @@ them together with everything else.
    * - error
      - ``changed-interface``
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
-       counts changed, or the layout a released structure fixed: a bitfield's width, the type
-       a structured variable names, or the members of that structure in order, each with what
-       it holds and its dimensions, nested and external ones included, save a member added at
-       the end of it when the variable is no array, or volatile turned on for an object a
+       counts changed, or the value of a constant, or the layout a released structure fixed: a
+       bitfield's width, the type a structured variable names, or the members of that structure
+       in order, each with what it holds and its dimensions, nested and external ones included,
+       an external one by its header too, save a member added at the end of it when the variable
+       is no array, or volatile turned on for an object a
        component reads
    * - error
      - ``renamed-read-object``
@@ -232,13 +233,17 @@ them together with everything else.
      - ``renamed-object``
      - an object of the baseline is offered under a different name and no component read it;
        its ``id`` says so
+   * - error
+     - ``removed-constant``
+     - a constant of the baseline is gone, so a reader that uses its macro no longer builds
    * - warning
      - ``removed-unused-object``
      - an object of the baseline is gone; no component read it
    * - warning
      - ``changed-storage``
-     - the initial value, volatility, memory section or measurement raster of an object
-       changed; volatile turned on for an object a component reads is changed-interface
+     - the initial value, volatility, memory section or measurement raster of an object changed,
+       or the event or cycle of a raster; volatile turned on for an object a component reads is
+       changed-interface
        instead
    * - warning
      - ``narrowed-limits``
@@ -270,6 +275,9 @@ them together with everything else.
      - ``added-object``
      - the candidate declares an object the baseline did not
    * - info
+     - ``added-constant``
+     - the candidate declares a constant the baseline did not
+   * - info
      - ``narrowed-read-limits``
      - the physical limits of a measurement a component reads got tighter: a reader still gets
        values inside the range it was written for
@@ -300,12 +308,12 @@ of the offset those headers gave it. A bitfield narrowed from three bits to two 
 value every reader takes out of the word, and widened it moves every member after it. A
 structured variable's layout is read from the dictionary's ``types``: the members of its
 structure in order, a nested structure expanded into its own members whatever it is called,
-an external member by its type's name and its dimensions, and every dimension by its spelling
-and its value. A member inserted, removed, renamed or swapped with another leaves such a
+an external member by its type's name, its header and its dimensions, and every dimension by
+its spelling and its value. A member inserted, removed, renamed or swapped with another leaves such a
 reader reading a member other than the one it was built to read, while every member the two
 deliveries share still compares identical to the byte - same path, same datatype, same
 conversion, same limits - and so may a nested structure that grew or was rearranged, a nested
-array that changed size, or an external member of another type or dimension. Each is
+array that changed size, or an external member of another type, header or dimension. Each is
 reported once, at every variable whose layout it changed, naming the structure and where the
 two layouts part; a structure in no variable's layout changes nothing anybody reads, and is
 not compared. One change alone keeps every member where a reader of the previous delivery looks
@@ -317,6 +325,26 @@ variable, not only through its members: its ``type`` is what every consumer's he
 declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a changed
 interface, while a structure nested in it is reached through the member that holds it, so
 renaming that one with its layout kept changes nothing.
+
+The vocabularies an object reaches the outputs through are compared as entries too, by name,
+because a change in one of them changes what a reader or a measuring tool is given while every
+object still compares identical to the byte. Every constant reaches the generated header as a
+macro and the a2l as a ``SYSTEM_CONSTANT``, whether or not an object is dimensioned by it, so a
+constant whose value changed is ``changed-interface``, said at the constant; a gain used by no
+object is the case that was silent. An object the constant dimensions says its own shape at the
+object as well, because the macro and the size are two facts and neither stands for the other. A
+constant that is gone is ``removed-constant``, an error, because a reader that uses the macro no
+longer builds, and a constant that arrived is ``added-constant``, an information, as an object
+that arrived is. A baseline archived before dictionary format 4 recorded no constants, so
+against one none is compared. A raster whose event number or cycle changed is ``changed-storage``, said at the
+raster: every ``IF_DATA`` that names it carries the event, and it is the event a measuring tool
+receives the value in. The cycle compares as the period it resolves to, so ``10ms`` respelled
+``10000us`` is no change. A raster that came or went says nothing, because an object that names it
+says its own change of raster. The header of an external type is part of the layout above: the
+generated header includes it, so a member of the same type from another header is another
+definition to a reader compiled against the first, and it is the variable's one
+``changed-interface``. The sections a project declares are not yet compared, because the data
+dictionary does not carry them; a change of a section's access or alignment waits for it to.
 
 A reader may be a binary compiled against the previous headers, and two edits cost it more
 than they cost the people who keep an object nobody reads. Turning ``volatile`` on is a
@@ -340,8 +368,8 @@ the readers. A condition going away puts the object in every build and stays
 ``changed-condition``, a warning, as does any change of a condition on an object nobody reads.
 ``-W changed-condition=ignore`` relaxes the warning only, and does not reach this error.
 
-``changed-storage`` covers the four properties that change how an object behaves rather than
-what it means: the initial value, ``volatile``, the memory ``section`` and the measurement
+``changed-storage`` covers the four properties of an object that change how it behaves rather than
+what it means, and the event and cycle of a raster: the initial value, ``volatile``, the memory ``section`` and the measurement
 ``raster``; a variable that moved from the 100 ms event to the 1 ms one changes the a2l a
 calibration engineer works with while invalidating nobody's code. An initial value compares
 as the bytes it produces and not as it was spelled - DDD offers ``7`` on a ``uint8[4]`` and

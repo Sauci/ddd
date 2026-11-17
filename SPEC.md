@@ -1729,7 +1729,7 @@ compile:
   read alone, whose readers the run was not shown.
 - `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
   where a table keeps its point counts, the width of a bitfield, the `type` a structured
-  variable names or the layout of a structured variable changed. Scaling is the conversion,
+  variable names, the layout of a structured variable or the value of a constant changed. Scaling is the conversion,
   compared by its kind and by its parameters, and an enum by its name together with its
   enumerators in order; a description,
   of an object or of an enumerator, is documentation and is never compared. An enum inside a
@@ -1745,15 +1745,15 @@ compile:
   after it. The layout is read from the dictionary's `types`
   ([section 5.3](#53-data-dictionary)): the members of the variable's structure in order,
   each by its name and by what it holds, a nested structure expanded into its own members
-  whatever it is called, an external member by its type's name and its `dimensions`, and
-  each dimension of a nested or an external member by its spelling and by its value, a
+  whatever it is called, an external member by its type's name, its header and its
+  `dimensions`, and each dimension of a nested or an external member by its spelling and by its value, a
   constant's being the value the dictionary's `constants` give it. A member holding a value
   answers for its datatype, its width and its `dimensions` at its leaf, which compares them.
   Any other difference of the layout may leave a reader of the baseline reading a member, or
   an element, other than the one it was built to read, while each leaf the two share still
   compares identical to the byte - a member inserted, removed, renamed or reordered, a
-  nested structure grown or rearranged, a nested array resized, an external member retyped
-  or resized - and is reported once, at each variable whose layout it changes, naming the
+  nested structure grown or rearranged, a nested array resized, an external member retyped,
+  given another header or resized - and is reported once, at each variable whose layout it changes, naming the
   variable's structure and where the two layouts part; a structure in no variable's layout
   changes nothing a reader reads. The one exception is a member added after every member of
   the structure of a single variable, which moves nothing a reader of the baseline reads and
@@ -1766,7 +1766,14 @@ compile:
   to true, is a change of interface for an object a component reads, and is reported here
   once, at the variable for a structured one, and not again as `changed-storage`: a reader
   compiled against the baseline's headers reaches the object through an lvalue that is not
-  volatile, which C leaves undefined.
+  volatile, which C leaves undefined. A constant is compared as an entry, by its name, on its
+  value: every constant reaches the generated header as a macro and the A2L as a
+  `SYSTEM_CONSTANT`, whether or not an object is dimensioned by it, so a changed value is a
+  changed interface, said at the constant. An object it dimensions says its own shape at the
+  object as well, because the macro and the size are two facts and neither stands for the
+  other. The description of a constant is documentation and is never compared, and a baseline of
+  format 3 or older, which recorded no constants, has none to compare them with. The header of
+  an external member is part of the layout above, and is said once, at the variable.
 - `renamed-read-object`: an object of the baseline is offered under a different name and a
   component read it. A reader may be a binary compiled against the baseline's headers, and it
   looks for a spelling that is gone. It is found as `renamed-object` is, by the `id`
@@ -1815,9 +1822,14 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   reads: every consumer names the object it reads, so a rename that left one behind already
   failed `ddd check`; what breaks is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
   documents keyed by the old spelling.
+- `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
+  longer builds, so it is an error whether or not an object is dimensioned by it.
 - `removed-unused-object`: an object is gone that no component read.
 - `changed-storage`: the initial value, the volatility, the section or the measurement
-  raster ([section 3.10](#310-measurement-rasters)) changed; `volatile` turned on for an
+  raster ([section 3.10](#310-measurement-rasters)) of an object changed, or the event or the
+  cycle of a raster, which are compared as entries by name and said at the raster, the cycle
+  by the period it resolves to and not by its spelling; a raster that came or went is not
+  said, because an object that names it says its own change of raster; `volatile` turned on for an
   object a component reads is `changed-interface` instead, and turned off it is this check
   whoever reads. On a calibration object the
   volatility also decides whether a tool can still change the value in a running target,
@@ -1876,6 +1888,8 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 Information:
 
 - `added-object`: the candidate declares an object the baseline did not.
+- `added-constant`: the candidate declares a constant the baseline did not, which no reader
+  of the baseline can be disturbed by.
 - `removed-input`: an input of a baseline that is a component read alone is gone: the
   component stops reading it, which harms nobody. Reported only for a component file, and
   with one severity whatever else the run grades.
@@ -2311,8 +2325,11 @@ its indices. It is the one display identifier of the document that may hold more
 identifier, and it is held to no length. `types` lists the structures in dependency order
 with their members, which a delivery comparison reads the layout of a structured variable
 from, a dimension spelled by a constant being read at the value `constants` gives it
-([section 4.1](#41-comparing-two-deliveries)); `enums` the enum conversions, one per name,
-the best documented variant; `constants` and `rasters` the declared entries. Nothing in the
+([section 4.1](#41-comparing-two-deliveries)), an external member by its header as well;
+`enums` the enum conversions, one per name, the best documented variant; `constants` and
+`rasters` the declared entries, which a delivery comparison compares by name. The sections a
+project declares are not carried, so a change of a section's access or alignment is not
+compared until the dictionary carries them. Nothing in the
 document depends on the machine that wrote it.
 
 ## 6 Address information

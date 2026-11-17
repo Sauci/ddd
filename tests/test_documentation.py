@@ -320,11 +320,11 @@ class TestTheCheckReference:
 
     CHANGED_INTERFACE = (
         "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point "
-        "counts changed, or the layout a released structure fixed: a bitfield's width, the type a "
-        "structured variable names, or the members of that structure in order, each with what it "
-        "holds and its dimensions, nested and external ones included, save a member added at the "
-        "end of it when the variable is no array, or volatile turned on for an object a "
-        "component reads"
+        "counts changed, or the value of a constant, or the layout a released structure fixed: a "
+        "bitfield's width, the type a structured variable names, or the members of that "
+        "structure in order, each with what it holds and its dimensions, nested and external "
+        "ones included, an external one by its header too, save a member added at the end of it "
+        "when the variable is no array, or volatile turned on for an object a component reads"
     )
 
     def test_the_registry_and_the_three_tables_say_one_wording_of_changed_interface(
@@ -432,6 +432,42 @@ class TestTheCheckReference:
         )
         assert "a condition added to an object a component reads" in flattened(SPEC)
         assert "no longer link there" in flattened(COMPARING_DELIVERIES)
+
+    def test_every_page_compares_constants_and_rasters_as_entries(self) -> None:
+        """A constant reaches every reader as a macro and the a2l as a ``SYSTEM_CONSTANT``, and a
+        raster is the event every ``IF_DATA`` that names it carries: a changed value is an
+        interface, a changed event or cycle is storage, a constant gone is an error under an id
+        of its own and one that came is an information. The registry and each page say so."""
+        assert CHECKS["removed-constant"].default_severity is Severity.ERROR
+        assert CHECKS["added-constant"].default_severity is Severity.INFO
+        assert CHECKS["removed-constant"].comparison and CHECKS["added-constant"].comparison
+        assert "or the value of a constant" in CHECKS["changed-interface"].description
+        assert "or the event or cycle of a raster" in CHECKS["changed-storage"].description
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert "removed-constant" in flat, name
+            assert "added-constant" in flat, name
+            assert "the value of a constant" in flat, name
+            assert "event or cycle of a raster" in flat or "event or the cycle of a raster" in flat
+        page = flattened(COMPARING_DELIVERIES)
+        assert "a gain used by no object is the case that was silent" in page
+        assert "the macro and the size are two facts and neither stands for the other" in page
+        assert "A raster that came or went says nothing" in page
+        assert "recorded no constants, so against one none is compared" in page
+        assert "which recorded no constants, has none to compare them with" in flattened(SPEC)
+        assert "``10ms`` respelled ``10000us`` is no change" in page
+        assert "is the variable's one ``changed-interface``" in page
+        assert "a change of a section's access or alignment waits for it to" in page
+        spec = flattened(SPEC)
+        assert "the macro and the size are two facts and neither stands for the other" in spec
+        assert "an external member by its type's name, its header and its `dimensions`" in spec
+        assert "not compared until the dictionary carries them" in spec
+        assert "a raster that came or went is not said" in spec
 
     def test_the_registry_describes_address_missing_as_the_pages_do(self) -> None:
         """``ddd checks`` prints the registry's one-liner, and since ``--image`` the check is
@@ -5553,8 +5589,8 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
 
     def test_the_spec_says_what_the_layout_is_and_where_it_is_said(self) -> None:
         for sentence in (
-            "the width of a bitfield, the `type` a structured variable names or the layout of a "
-            "structured variable changed.",
+            "the width of a bitfield, the `type` a structured variable names, the layout of a "
+            "structured variable or the value of a constant changed.",
             "A bitfield's width and the layout of a structured variable are what a released "
             "structure fixed for its consumers ([section 3.7](#37-type-description)), and a "
             "consumer may be a binary compiled against the baseline's headers: narrowing a field "
@@ -5564,7 +5600,8 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "([section 5.3](#53-data-dictionary)): the members of the variable's structure in "
             "order, each by its name and by what it holds, a nested structure expanded into its "
             "own members whatever it is called, an "
-            "external member by its type's name and its `dimensions`, and each dimension of a "
+            "external member by its type's name, its header and its `dimensions`, and each "
+            "dimension of a "
             "nested or an external member by its spelling and by its value, a constant's being "
             "the value the dictionary's `constants` give it.",
             "A member holding a value answers for its datatype, its width and its `dimensions` at "
@@ -5573,8 +5610,9 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "member, or an element, other than the one it was built to read, while each leaf the "
             "two share still compares identical to the byte - a member inserted, removed, renamed "
             "or reordered, a nested structure grown or rearranged, a nested array resized, an "
-            "external member retyped or resized - and is reported once, at each variable whose "
-            "layout it changes, naming the variable's structure and where the two layouts part; "
+            "external member retyped, given another header or resized - and is reported once, at "
+            "each variable whose layout it changes, naming the variable's structure and where the "
+            "two layouts part; "
             "a structure in no variable's layout changes nothing a reader reads.",
             "The one exception is a member added after every member of the structure of a single "
             "variable, which moves nothing a reader of the baseline reads and is the addition of "
@@ -5618,7 +5656,8 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "`types` lists the structures in dependency order with their members, which a "
             "delivery comparison reads the layout of a structured variable from, a dimension "
             "spelled by a constant being read at the value `constants` gives it "
-            "([section 4.1](#41-comparing-two-deliveries));"
+            "([section 4.1](#41-comparing-two-deliveries)), an external member by its header as "
+            "well;"
         ) in self.SPEC_TEXT
 
     def test_the_comparison_page_says_what_the_layout_is_and_where_it_is_said(self) -> None:
@@ -5628,14 +5667,14 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "takes each member out of the offset those headers gave it.",
             "A structured variable's layout is read from the dictionary's ``types``: the members "
             "of its structure in order, a nested structure expanded into its own members "
-            "whatever it is called, an external member by its type's name and its dimensions, "
-            "and every dimension by its spelling and its value.",
+            "whatever it is called, an external member by its type's name, its header and its "
+            "dimensions, and every dimension by its spelling and its value.",
             "A member inserted, removed, renamed or swapped with another leaves such a reader "
             "reading a member other than the one it was built to read, while every member the "
             "two deliveries share still compares identical to the byte - same path, same "
             "datatype, same conversion, same limits - and so may a nested structure that grew or "
             "was rearranged, a nested array that changed size, or an external member of another "
-            "type or dimension.",
+            "type, header or dimension.",
             "Each is reported once, at every variable whose layout it changed, naming the "
             "structure and where the two layouts part; a structure in no variable's layout "
             "changes nothing anybody reads, and is not compared.",
@@ -5663,8 +5702,8 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
         assert (
             "it does not appear in ``ddd list`` or in the dictionary's ``leaves``, because there "
             "is no datatype, unit or range to compare; a delivery comparison holds it by its "
-            "type's name and its dimensions alone, as part of the layout of each variable that "
-            "holds it."
+            "type's name, its header and its dimensions alone, as part of the layout of each "
+            "variable that holds it."
         ) in self.TYPES
         assert "or in a delivery comparison, because" not in self.TYPES
 

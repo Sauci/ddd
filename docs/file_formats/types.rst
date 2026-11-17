@@ -429,8 +429,8 @@ such a member gets **no section-alignment estimate**, because the strictest of t
 members would be an estimate of part of the structure dressed up as the whole. And the member
 contributes **no leaf**: it does not appear in ``ddd list`` or in the dictionary's
 ``leaves``, because there is no datatype, unit or range to compare; a delivery comparison
-holds it by its type's name and its dimensions alone, as part of the layout of each variable
-that holds it. The dictionary still records the member itself, name, external type and header
+holds it by its type's name, its header and its dimensions alone, as part of the layout of each
+variable that holds it. The dictionary still records the member itself, name, external type and header
 included, so a generator consuming the dump never has to resolve the name a second time.
 
 A variable of a declared type

@@ -38,8 +38,10 @@ from ddd.ir import (
     ResolvedLeaf,
     ResolvedMember,
     ResolvedObject,
+    ResolvedRaster,
 )
 from ddd.models import (
+    ConstantDeclaration,
     Conversion,
     EnumConversion,
     ObjectKind,
@@ -659,6 +661,8 @@ def compare(
         )
 
     _compare_instances(baseline, candidate, bag, location)
+    _compare_constants(baseline, candidate, bag, location)
+    _compare_rasters(baseline, candidate, bag, location)
 
     was = baseline.comparable
     now = candidate.comparable
@@ -751,12 +755,15 @@ class _Held(NamedTuple):
     the id :class:`_Layouts` gave the layout of the structure a nested member is, so that the
     structure's name drops out; or the name of an external type, the one thing DDD knows of
     storage it cannot see into. ``shape`` is the dimensions of a nested or an external member,
-    which no leaf carries.
+    which no leaf carries, and ``header`` is the header defining an external type, which the
+    generated header includes: a member of the same type from another header is another
+    definition to a reader compiled against the first.
     """
 
     name: str
     holds: int | str | None
     shape: tuple[_Dimension, ...] = ()
+    header: str | None = None
 
 
 type _Layout = tuple[_Held, ...]
@@ -843,7 +850,7 @@ def _held(
     )
     if not spelled:
         shape = tuple((size, size) for _, size in shape)
-    return _Held(member.name, holds, shape)
+    return _Held(member.name, holds, shape, member.header)
 
 
 def _where_layouts_part(
@@ -875,7 +882,7 @@ def _spell_names(layout: _Layout) -> str:
 
 
 def _spell_held(held: _Held) -> str:
-    """``value``, ``structure[3]`` or ``Ha_t[4]``: what a member holds, and its dimensions.
+    """``value``, ``structure[3]`` or ``Ha_t[4] from ha.h``: what a member holds, its shape, header.
 
     A dimension a constant names is spelled with the size it gives, ``N=3``, because the
     spelling alone would read the same on both sides of a size that changed behind it.
@@ -883,12 +890,13 @@ def _spell_held(held: _Held) -> str:
     if held.holds is None:
         return "value"
     what = "structure" if isinstance(held.holds, int) else held.holds
-    return what + format_shape(
+    spelled = what + format_shape(
         tuple(
             f"{spelling}={size}" if isinstance(spelling, str) else f"{spelling}"
             for spelling, size in held.shape
         )
     )
+    return spelled if held.header is None else f"{spelled} from {held.header}"
 
 
 _MOST_CANDIDATES = 8
@@ -1352,6 +1360,106 @@ def _compare_instances(
             )
 
         _compare_declaration(old, new, bag, location)
+
+
+_CONSTANT_FIELDS: tuple[ComparedField[ConstantDeclaration], ...] = (
+    ComparedField("value", lambda c: c.value, lambda c: format_number(c.value)),
+)
+"""What a constant is compared on: its value, which is the whole of what it states to a reader.
+
+The description is a note for a human and reaches no output a reader is compiled against.
+"""
+
+_RASTER_FIELDS: tuple[ComparedField[ResolvedRaster], ...] = (
+    ComparedField("event", lambda r: r.event, lambda r: str(r.event)),
+    ComparedField(
+        "cycle",
+        lambda r: r.cycle_ns,
+        lambda r: "none" if r.cycle is None else f"'{r.cycle}'",
+    ),
+)
+"""What a raster is compared on: the event number and the period.
+
+The period is compared as the nanoseconds it resolves to, so ``10ms`` respelled ``0.01s`` is no
+change, and spelled as the project wrote it. The description is the long name of the ``EVENT``
+and a note for a human.
+"""
+
+
+def _compare_constants(
+    baseline: DataDictionary,
+    candidate: DataDictionary,
+    bag: DiagnosticBag,
+    location: Location | None,
+) -> None:
+    """Compare the constants as entries, by name, at the constant.
+
+    A constant reaches every reader as a macro of the generated header and the a2l as a
+    ``SYSTEM_CONSTANT``, whether or not an object is dimensioned by it, so a constant that
+    changed is a changed interface where its readers are not shown. An object it dimensions
+    says its own shape at the object, and neither fact stands for the other: the macro is one,
+    the size another.
+
+    A constant gone is its own id, an error, because a reader that uses the macro no longer
+    builds; a constant that arrived is information, as an object that arrived is.
+
+    A dictionary of format 3 or older recorded no constants, so against one every constant of
+    the candidate would arrive and none could have changed: nothing is compared, as shapes are
+    compared by value alone against such a baseline.
+    """
+    if min(baseline.format, candidate.format) < _FORMAT_SPELLING_DIMENSIONS:
+        return
+    was = {constant.name: constant for constant in baseline.constants}
+    now = {constant.name: constant for constant in candidate.constants}
+    for name in sorted(was.keys() & now.keys()):
+        changed = differing(_CONSTANT_FIELDS, was[name], now[name])
+        if changed:
+            bag.add(
+                "changed-interface",
+                f"constant '{name}' is not the same any more "
+                f"({spell_out(changed, was[name], now[name])})",
+                location,
+            )
+    for name in sorted(was.keys() - now.keys()):
+        bag.add(
+            "removed-constant",
+            f"constant '{name}' is gone; a reader that uses it no longer builds",
+            location,
+        )
+    for name in sorted(now.keys() - was.keys()):
+        bag.add(
+            "added-constant",
+            f"constant '{name}' is new in {candidate.name} ({format_number(now[name].value)})",
+            location,
+        )
+
+
+def _compare_rasters(
+    baseline: DataDictionary,
+    candidate: DataDictionary,
+    bag: DiagnosticBag,
+    location: Location | None,
+) -> None:
+    """Compare the rasters as entries, by name, at the raster.
+
+    The event is what the ``IF_DATA`` of every object that names the raster carries, and the
+    cycle is how often the event fires: both are which event a measuring tool receives a value
+    in, which is what ``changed-storage`` says of an object's raster.
+
+    A raster that came or went is not said here. An object that names it says its own change
+    of raster, and a raster nothing names reaches no output.
+    """
+    was = {raster.raster: raster for raster in baseline.rasters}
+    now = {raster.raster: raster for raster in candidate.rasters}
+    for name in sorted(was.keys() & now.keys()):
+        changed = differing(_RASTER_FIELDS, was[name], now[name])
+        if changed:
+            bag.add(
+                "changed-storage",
+                f"raster '{name}' is not the same any more "
+                f"({spell_out(changed, was[name], now[name])})",
+                location,
+            )
 
 
 def _condition_consequence(old: _Joined, new: _Joined) -> str:

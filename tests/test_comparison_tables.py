@@ -30,8 +30,17 @@ from typing import Any
 import pytest
 
 from ddd import analysis, compare
-from ddd.ir import ResolvedInstance, ResolvedLeaf, ResolvedObject
-from ddd.models import Axis, Curve, DataObject, Map, Measurement, Parameter, ValueBlock
+from ddd.ir import ResolvedInstance, ResolvedLeaf, ResolvedObject, ResolvedRaster
+from ddd.models import (
+    Axis,
+    ConstantDeclaration,
+    Curve,
+    DataObject,
+    Map,
+    Measurement,
+    Parameter,
+    ValueBlock,
+)
 
 OBJECT_KINDS = (Measurement, Parameter, ValueBlock, Axis, Curve, Map)
 
@@ -303,6 +312,34 @@ class TestEveryModelFieldIsAccountedFor:
                 f"on a structured variable and 'ddd compare' would report the candidate a "
                 f"valid replacement. Add it to an instance table in ddd/compare.py, or to "
                 f"_NOT_COMPARED_INSTANCE here."
+            )
+
+    def test_every_field_of_a_constant(self) -> None:
+        """A constant is compared as an entry, by its name, on its value; its description is a
+        note for a human that reaches no output a reader is compiled against."""
+        compared = table_names(compare._CONSTANT_FIELDS)
+        key_or_note = {"name": "the key the entries are paired by", "description": "a note"}
+        for name in ConstantDeclaration.model_fields:
+            assert name in compared or name in key_or_note, (
+                f"ConstantDeclaration.{name} is compared by nothing: a delivery could change it "
+                f"and 'ddd compare' would report the candidate a valid replacement. Add it to "
+                f"_CONSTANT_FIELDS in ddd/compare.py, or say here why it is not."
+            )
+
+    def test_every_field_of_a_raster(self) -> None:
+        """A raster is compared as an entry, by its name, on its event and its period, which the
+        dictionary carries twice: as written and as nanoseconds, the second being compared."""
+        compared = table_names(compare._RASTER_FIELDS)
+        accounted = {
+            "raster": "the key",
+            "cycle_ns": "compared as the cycle",
+            "description": "a note",
+        }
+        for name in ResolvedRaster.model_fields:
+            assert name in compared or name in accounted, (
+                f"ResolvedRaster.{name} is compared by nothing: a delivery could change it and "
+                f"'ddd compare' would report the candidate a valid replacement. Add it to "
+                f"_RASTER_FIELDS in ddd/compare.py, or say here why it is not."
             )
 
     @pytest.mark.parametrize("field", sorted(DERIVED_AS))

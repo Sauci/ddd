@@ -263,11 +263,16 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                comparison=True),
         _check("changed-interface", Severity.ERROR,
                "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps "
-               "its point counts changed, or the layout a released structure fixed: a "
-               "bitfield's width, the type a structured variable names, or the members of that "
-               "structure in order, each with what it holds and its dimensions, nested and "
-               "external ones included, save a member added at the end of it when the variable "
-               "is no array, or volatile turned on for an object a component reads",
+               "its point counts changed, or the value of a constant, or the layout a released "
+               "structure fixed: a bitfield's width, the type a structured variable names, or "
+               "the members of that structure in order, each with what it holds and its "
+               "dimensions, nested and external ones included, an external one by its header "
+               "too, save a member added at the end of it when the variable is no array, or "
+               "volatile turned on for an object a component reads",
+               comparison=True),
+        _check("removed-constant", Severity.ERROR,
+               "a constant of the baseline is gone, so a reader that uses its macro no longer "
+               "builds",
                comparison=True),
         _check("reused-name", Severity.ERROR,
                "a name of the baseline now belongs to a different object",
@@ -277,8 +282,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                comparison=True),
         _check("changed-storage", Severity.WARNING,
                "the initial value, volatility, memory section or measurement raster of an "
-               "object changed; volatile turned on for an object a component reads is "
-               "changed-interface instead",
+               "object changed, or the event or cycle of a raster; volatile turned on for an "
+               "object a component reads is changed-interface instead",
                comparison=True),
         _check("narrowed-limits", Severity.WARNING,
                "the physical limits of an object got tighter, so calibrated data may not fit; "
@@ -314,6 +319,9 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "plugin's comparison rules did not run",
                comparison=True),
         _check("added-object", Severity.INFO, "the candidate declares an object the baseline "
+               "did not",
+               comparison=True),
+        _check("added-constant", Severity.INFO, "the candidate declares a constant the baseline "
                "did not",
                comparison=True),
     )

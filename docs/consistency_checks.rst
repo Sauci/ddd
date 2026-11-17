@@ -830,10 +830,11 @@ registry can be read in one place.
    * - ``changed-interface``
      - error
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
-       counts changed, or the layout a released structure fixed: a bitfield's width, the type
-       a structured variable names, or the members of that structure in order, each with what
-       it holds and its dimensions, nested and external ones included, save a member added at
-       the end of it when the variable is no array, or volatile turned on for an object a
+       counts changed, or the value of a constant, or the layout a released structure fixed: a
+       bitfield's width, the type a structured variable names, or the members of that structure
+       in order, each with what it holds and its dimensions, nested and external ones included,
+       an external one by its header too, save a member added at the end of it when the variable
+       is no array, or volatile turned on for an object a
        component reads. Turned on, ``volatile`` is the interface of an object a reader was
        compiled against: a reader built without the qualifier reaches it through an lvalue that
        is not volatile, which C leaves undefined, and the finding is not repeated as
@@ -863,6 +864,11 @@ registry can be read in one place.
      - an object of the baseline is offered under a different name and no component read it;
        its ``id`` is what says so. The interface comparison still runs across the pair, and ``--renames`` writes the
        old and the new spelling out, for migrating datasets and recordings.
+   * - ``removed-constant``
+     - error
+     - a constant of the baseline is gone, so a reader that uses its macro no longer builds. It
+       is an error whether or not an object is dimensioned by it, because a macro is what a
+       reader compiled against the baseline's headers names.
    * - ``removed-unused-object``
      - warning
      - an object of the baseline is gone that no component read - a calibration dataset or an
@@ -870,7 +876,7 @@ registry can be read in one place.
    * - ``changed-storage``
      - warning
      - the initial value, the volatility, the memory section or the measurement raster of an
-       object changed. A
+       object changed, or the event or the cycle of a raster. A
        calibration object whose ``volatile`` went from ``true`` to ``false`` is the case worth
        reading twice: it keeps its address and a tool can still write to it, but the compiler
        is now entitled to fold the initial value into the code that reads it, so tuning it
@@ -917,6 +923,10 @@ registry can be read in one place.
    * - ``added-object``
      - info
      - the candidate declares an object the baseline did not.
+   * - ``added-constant``
+     - info
+     - the candidate declares a constant the baseline did not, which no reader of the baseline
+       can be disturbed by.
    * - ``narrowed-read-limits``
      - info
      - the physical limits of a measurement a component reads got tighter: a reader still gets

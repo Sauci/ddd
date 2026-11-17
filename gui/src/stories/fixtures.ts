@@ -2427,6 +2427,7 @@ const BASELINE_DUPLICATE_ID: Finding = {
 export const CAN_REPLACE: CompareReply = {
   revision: 7,
   verdict: true,
+  own_errors: 0,
   findings: [],
   baseline_findings: [],
   renames: [],
@@ -2437,6 +2438,7 @@ export const CAN_REPLACE: CompareReply = {
 export const CANNOT_REPLACE: CompareReply = {
   revision: 7,
   verdict: false,
+  own_errors: 0,
   findings: [CHANGED_INTERFACE, REMOVED_OBJECT, RENAMED_OBJECT],
   baseline_findings: [BASELINE_DUPLICATE_ID],
   renames: [RENAME_ROW],

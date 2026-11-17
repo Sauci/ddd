@@ -1691,7 +1691,8 @@ readers its dictionary records are the component's own and nobody else's, becaus
 was not shown the rest. An output gone from it is therefore `removed-object` with a message that does
 not claim to know who read it, where "no component read it" is a claim about components the run never saw, and
 an input the component stopped reading is `removed-input`, an information, because a
-component that reads less harms nobody. `ddd check --standalone --baseline` and `ddd compare`
+component that reads less harms nobody. An object it declares `local` keeps its grade,
+`removed-unused-object`, because no other component can read it. `ddd check --standalone --baseline` and `ddd compare`
 take it from the file. An archived dictionary carries no mark of how it was read, `ddd dump
 --standalone` included: the mark is a change of the format, and is deferred, so a comparison
 against such a dump is graded as one of a whole project is, whose readers the dump records as

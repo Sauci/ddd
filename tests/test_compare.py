@@ -3256,7 +3256,8 @@ class TestAComponentFileReadAloneIsGradedByWhatOneFileCanKnow:
         alone = DiagnosticBag(SeverityPolicy.from_strings(()))
         compare(old, new, alone, baseline_alone=True)
         assert checks(alone) == ["removed-object"], messages(alone)
-        assert checks(whole) != checks(alone)
+        assert checks(whole) == ["removed-unused-object"], messages(whole)
+        assert "Pressure" in messages(whole)
 
     @staticmethod
     def resolved(tree: Path, name: str, document: dict[str, Any]) -> DataDictionary:
@@ -3265,3 +3266,61 @@ class TestAComponentFileReadAloneIsGradedByWhatOneFileCanKnow:
         workspace = load_workspace(tree / f"{name}.ddd.json", bag)
         assert workspace is not None, messages(bag)
         return analyze(workspace, bag)
+
+
+class TestWhatAComponentReadAloneKeepsToItself:
+    """Nobody outside a component can read what it declares ``local``, so a baseline read alone
+    does know its readers, and a private object that is gone keeps the grade it always had.
+
+    Held for a structured variable as well, whose members answer for the scope of the variable.
+    """
+
+    PAIR: ClassVar[dict[str, Any]] = {
+        "t.ddd.json": types(struct_type("Pair_t", value_member("x"), value_member("y")))
+    }
+
+    def delivery(self, tree: Path, name: str, scope: str | None, *, structured: bool) -> Any:
+        typed: dict[str, Any] = {"typename": "Pair_t"} if structured else {}
+        kept = declare("output", "Kept")
+        files = {
+            f"{name}.ddd.json": project("P", f"{name}-t.ddd.json", f"{name}-a.ddd.json"),
+            f"{name}-t.ddd.json": self.PAIR["t.ddd.json"],
+            f"{name}-a.ddd.json": component(
+                "A", kept, *([declare(scope, "Gone", **typed)] if scope else [])
+            ),
+        }
+        write_tree(tree, files)
+        return resolve(tree, f"{name}.ddd.json")
+
+    def grade(self, tree: Path, scope: str, *, structured: bool) -> DiagnosticBag:
+        old = self.delivery(tree, "old", scope, structured=structured)
+        new = self.delivery(tree, "new", None, structured=structured)
+        bag = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, bag, baseline_alone=True)
+        return bag
+
+    def test_a_local_object_gone_keeps_its_warning(self, tree: Path) -> None:
+        bag = self.grade(tree, "local", structured=False)
+        assert checks(bag) == ["removed-unused-object"], messages(bag)
+        assert not bag.has_errors
+
+    def test_a_local_structured_variable_gone_keeps_its_warning_under_every_member(
+        self, tree: Path
+    ) -> None:
+        bag = self.grade(tree, "local", structured=True)
+        assert set(checks(bag)) == {"removed-unused-object"}, messages(bag)
+        assert not bag.has_errors
+
+    def test_an_output_structured_variable_gone_is_an_error_under_every_member(
+        self, tree: Path
+    ) -> None:
+        bag = self.grade(tree, "output", structured=True)
+        assert set(checks(bag)) == {"removed-object"}, messages(bag)
+        assert all("who read it is not known" in found.message for found in bag)
+
+    def test_an_input_structured_variable_gone_is_information_under_every_member(
+        self, tree: Path
+    ) -> None:
+        bag = self.grade(tree, "input", structured=True)
+        assert set(checks(bag)) == {"removed-input"}, messages(bag)
+        assert not bag.has_errors

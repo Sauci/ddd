@@ -5718,6 +5718,15 @@ class TestAComponentFileReadAloneIsComparedByWhatOneFileCanKnow:
             assert "carries no mark of how it was read" in flat, name
             assert "the mark is a change of the format" in flat, name
 
+    def test_the_specification_and_the_comparison_page_keep_a_local_object_its_grade(self) -> None:
+        for name, text in {
+            "SPEC.md": SPEC,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        }.items():
+            flat = flattened(text)
+            assert "keeps its grade" in flat, name
+            assert "because no other component can read it" in flat, name
+
     def test_the_comparison_page_says_which_callers_know_a_component_file(self) -> None:
         flat = flattened(COMPARING_DELIVERIES)
         assert (

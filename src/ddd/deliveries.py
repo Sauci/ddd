@@ -119,9 +119,9 @@ class Resolved:
 
     What a dictionary cannot say of itself, and what ``compare`` has to be told: the readers it
     records for an object are the component's own and nobody else's, because the run was not
-    shown the rest. A project description is whole, and so is an archived dump - the mark a
-    ``dump --standalone`` would need to say otherwise is a change of the format, and a dump is
-    compared as it always was."""
+    shown the rest. A project description is whole. An archived dump is graded as whole too,
+    though a ``dump --standalone`` of a component is partial: it carries no mark saying so, the
+    mark is a change of the format, and a dump is compared as it always was."""
 
 
 def read_dictionary(

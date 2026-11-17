@@ -745,7 +745,8 @@ the component's own and nobody else's, because the run was not shown the rest. S
 gate grades a removal by what one file can know. An output the component stopped offering is
 ``removed-object``, an error, with a message that does not claim to know who read it: "no
 component read it" is a claim about components the run never saw. An input the component stopped reading is
-``removed-input``, an information, because a component that reads less harms nobody.
+``removed-input``, an information, because a component that reads less harms nobody. An object it declares ``local`` keeps its
+grade, ``removed-unused-object``, because no other component can read it.
 ``ddd check --standalone --baseline`` and ``ddd compare`` take it from the file. A dictionary
 archived by ``ddd dump --standalone`` carries no mark of how it was read, and the mark is a
 change of the format, so it is deferred: a comparison against such a dump is graded as one of

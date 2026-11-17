@@ -1034,7 +1034,10 @@ def _report_removal(
 ) -> None:
     bucket = candidates.get(_bucket_key(old, of_a_leaf=isinstance(old, ResolvedLeaf)), ())
     notes = _lost_identity_note(old, bucket, was, now)
-    if baseline_alone and old.owner is None:
+    # A ``local`` object is private to the component, so its readers are known even where
+    # the rest of the project is not: it keeps the grade a whole comparison gives it.
+    read_alone = baseline_alone and not old.local
+    if read_alone and old.owner is None:
         # What a component read alone does not produce is an input, and its readers are the
         # component itself: it stops reading something, which harms nobody downstream.
         bag.add(
@@ -1044,7 +1047,7 @@ def _report_removal(
             location,
             notes=notes,
         )
-    elif baseline_alone:
+    elif read_alone:
         # What a component read alone produces is an output, and who reads it is exactly what
         # this run was not shown: "no component read it" is a claim about the rest.
         bag.add(

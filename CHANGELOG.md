@@ -483,13 +483,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `CONST_INPUTS`, each in a sentence saying the option was removed in 0.12.0 and why; nothing is
   written.  A template's `.const` on a header entry, and `declaration(const=...)` on an object, are
   removed from the names a template renders from and refused at generation in a sentence naming the
-  same release; `DeclarationView` loses its `const` field, so code that builds one by position
-  breaks, and the `compile-const` service of `docker-compose.yml` is gone.  Migrating costs the
-  deletion of the option or the keyword and of any template line using either, and nothing replaces
-  them: `entry.line` is the declaration, and `declaration()` takes no argument.  `elf-mismatch` now
-  also names a consumer's declaration that adds `const`, where the compiler records the qualifier,
-  so a `STRICT` build whose hand-written header did that stops, until the header is fixed or `-W
-  elf-mismatch=ignore` lets it through.
+  same release; `DeclarationView` loses its `const` field, and `COptions` its `const_inputs`, so
+  code that builds either by position or by that keyword breaks, and the `compile-const` service of
+  `docker-compose.yml` is gone.  Migrating costs the deletion of the option or the keyword and of
+  any template line using either, and nothing replaces them: `entry.line` is the declaration, and
+  `declaration()` refuses a `const=` and says why.  `elf-mismatch` now also names a consumer's
+  declaration that adds `const`, where the compiler records the qualifier, so a `STRICT` build whose
+  hand-written header did that stops, until the header is fixed or `-W elf-mismatch=ignore` lets it
+  through.
 
 * **`ddd generate a2l --a2l-module-fragment FILE` puts a project's own text at the head of the
   `MODULE`.**  DDD models none of what describes the target rather than the data: the `A2ML`
@@ -522,18 +523,21 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `ROOT` or `MODULE` was written to an a2l that a tool reading it refuses or misparses, and DDD said
   nothing.  The new check `a2l-keyword`, an error, names every name that reaches the a2l and is one
   of the keywords or enumeration values of ASAP2 1.6.1, by an exact, case sensitive match, so `map`
-  is fine; it holds a name only where the a2l writes it, so an object or a member that states
-  `export: false` for the a2l is not held.  `a2l-unrepresentable`, a warning, now also names a
-  description or a unit past 255 characters, the longest path of a structure variable's records past
-  255 characters, which a string of the a2l carries, or past 1024, which an identifier does, and a
-  part of a name past 128 characters with its array index counted; a unit under an identity
-  conversion is held to 237 characters, since the method's description repeats it after 18 more.
-  The file is written whole all the same, and the finding names which of the limits it passes.
-  Migrating costs a rename for the error, which stops `ddd check`, `ddd generate` and a build that
-  passed, and `-W a2l-keyword=ignore` relaxes it for a name the target's tool accepts; the warning
-  stops a `--strict` or `STRICT` build, and `-W a2l-unrepresentable=ignore` lets it through.  The
-  list of keywords is DDD's own, written without a copy of the standard to check it against, so a
-  word may be missing from it or held that the standard does not hold.
+  is fine; it holds a name only where the a2l is meant to write it, so an object or a member that
+  states `export: false` for the a2l is not held; but the check cannot see which objects a run
+  leaves out of the a2l (`condition-left-out`, or the symbols a build compiled out), so a name only
+  such a run drops still draws the error, and `-W a2l-keyword=ignore` relaxes it for that run.
+  `a2l-unrepresentable`, a warning, now also names a description or a unit past 255 characters, the
+  longest path of a structure variable's records past 255 characters, which a string of the a2l
+  carries, or past 1024, which an identifier does, and a part of a name past 128 characters with its
+  array index counted; a unit under an identity conversion is held to 237 characters, since the
+  method's description repeats it after 18 more. The file is written whole all the same, and the
+  finding names which of the limits it passes. Migrating costs a rename for the error, which stops
+  `ddd check`, `ddd generate` and a build that passed, and `-W a2l-keyword=ignore` relaxes it for a
+  name the target's tool accepts; the warning stops a `--strict` or `STRICT` build, and `-W
+  a2l-unrepresentable=ignore` lets it through.  The list of keywords is DDD's own, written without a
+  copy of the standard to check it against, so a word may be missing from it or held that the
+  standard does not hold.
 
 * **A size past 65,535 is named, once, where it is declared.**  An array or a string of more than
   65,535 elements, or a curve or map axis of more than 65,535 points, was written to the a2l's
@@ -630,16 +634,18 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   order.
 
 * **The a2l's records, groups and methods are named and ordered the same way on every run.**  A
-  `GROUP` listed the elements of an array of structures by their path as text, so `SA[10].v` came
-  before `SA[1].v`, while the records were in the dictionary's order; both now list them in one
-  order, in which an index counts as a number.  The compu method name with no suffix, `CM_LIN_V` for
-  a unit `V`, went to the first object the dictionary met that used it, and `CM_LIN_V_2` to the
-  second; it now goes to the first record the file writes, measurements first, then axes, then
-  curves and maps, a member's after a plain object's.  A project that has two conversions in one
-  unit, and whose first holder changed, sees the two names swap between the records, which a tool
-  that addresses a method by its name sees.  And the naming of the methods took time quadratic in
-  their count: measured by timing that naming alone on a project of 2,000 objects, 0.20 s became
-  0.01 s, and on 16,000, 13.00 s became 0.07 s; the names it gives are the same.
+  `GROUP` listed the elements of an array of structures sorted by their path as text, so `SA[10].v`
+  came before `SA[1].v`, while the records were already in the dictionary's order, an index counted
+  as a number; the `GROUP` now lists them in that order too, so only the order of a `GROUP`'s
+  members changes.  The compu method name with no suffix, `CM_LIN_V` for a unit `V`, went to the
+  first object the dictionary met that used it, and `CM_LIN_V_2` to the second; it now goes to the
+  first record the file writes, measurements first, then axes, then curves and maps, a member's
+  after a plain object's.  A project that has two conversions in one unit, and whose first holder
+  changed, sees the two names swap between the records, which a tool that addresses a method by its
+  name sees.  And the naming of the methods took time quadratic in their count: measured by timing
+  that naming alone, over objects that each had a factor of their own in one unit, so each needed a
+  method and a name of its own, 2,000 objects took 0.20 s before and 0.01 s after, and 16,000 took
+  13.00 s before and 0.07 s after; the names it gives are the same.
 
 * **Every component has an include guard of its own, and a description that ends in a trigraph does
   not break the build.**  Two components `Valve` and `Valve_`, or `Valve` and `_valve`, were given
@@ -650,8 +656,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `DDD_GLOBALS_H` as they were.  A description that ends in the opening of a trigraph, `??/` among
   them, left one in the generated comment, and a build with `-Werror=trigraphs` stopped on it; the
   two question marks of any of the nine are now separated, `? ?`.  Migrating costs a hand written
-  reference to a guard that moved, such as an `#ifdef` on it; `guard()` in a template follows the
-  same rule.
+  reference to a guard that moved, such as an `#ifdef` on it; `header.guard` in the example
+  component template follows the rule, but `model.guard()` is unchanged, so a template that builds a
+  component's guard with it keeps the old collision.
 
 * **`address-missing` no longer names a measurement that only a left-out axis pulled in.**  An
   `export: false` measurement that only a curve's or map's axis, left out of the a2l by a build that

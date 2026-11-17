@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from fractions import Fraction
+from math import ulp
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -27,8 +28,10 @@ from ddd.models import (
     definition_problem,
     format_shape,
     is_reserved_identifier,
+    physical_range,
+    round_physical,
 )
-from ddd.models.conversion import is_above, is_below
+from ddd.models.conversion import TAIL_ULPS, is_above, is_below
 
 FLT_MAX = 3.4028234663852886e38
 
@@ -234,8 +237,6 @@ class TestLimits:
 
     def test_a_whole_number_is_never_made_a_float_by_the_rounding_of_a_reading(self) -> None:
         """The largest uint64 count is exact as an int and wrong by one as a float."""
-        from ddd.models import round_physical
-
         assert round_physical(18446744073709551615) == 18446744073709551615
         limits = definition(datatype="uint64").physical_limits()
         assert (limits.min, limits.max) == (0, 18446744073709551615)
@@ -265,6 +266,19 @@ class TestLimits:
             definition(datatype="sint16", conversion={"factor": 0.1}).physical_limits().max
             == 3276.7
         )
+
+    def test_a_short_decimal_may_sit_inward_of_the_float_by_the_tail_alone(self) -> None:
+        """32767 counts of 0.1 compute 3276.7000000000003 and state 3276.7: inward, and by no
+        more than the tail of the arithmetic (TAIL_ULPS units in the last place)."""
+        product = 32767 * 0.1
+        stated = definition(datatype="sint16", conversion={"factor": 0.1}).physical_limits().max
+        assert stated == 3276.7
+        assert 0 < product - stated <= TAIL_ULPS * ulp(product)
+
+    def test_an_end_further_than_the_tail_from_its_short_decimal_is_kept(self) -> None:
+        """1000000000000003 is 24 units in the last place from 1e15: digits, not a tail."""
+        low, high = physical_range(LinearConversion(factor=1.0), 0, 1000000000000003)
+        assert (low, high) == (0, 1000000000000003.0)
 
     def test_the_outward_end_stays_within_the_tolerance_of_the_old_one(self) -> None:
         """Baselines archived at twelve digits still compare clean (decision 8.3)."""

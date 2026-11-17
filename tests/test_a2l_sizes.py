@@ -17,6 +17,7 @@ from conftest import (
     declare,
     messages,
     project,
+    render_files,
     run_analysis,
     struct_type,
     types,
@@ -48,6 +49,18 @@ class TestAnArray:
         assert "MATRIX_DIM" in rendered
         assert "65535" in rendered
 
+    def test_the_record_is_still_written_with_its_number(self, tree: Path) -> None:
+        """The finding says the size is written whole; the file must hold it."""
+        files = {
+            "project.ddd.json": project("P", "a.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "V", dimensions=[OVER])),
+        }
+        dictionary, _ = run_analysis(tree, files)
+        assert dictionary is not None
+        rendered = render_files(dictionary, tree / "gen")
+        text = next(file.content for file in rendered if file.path.name == "P.a2l")
+        assert "MATRIX_DIM 65536 1 1" in text
+
     def test_one_finding_for_one_object_whatever_its_dimensions(self, tree: Path) -> None:
         bag = one(tree, declare("local", "V", dimensions=[OVER, 2]))
         assert checks(bag) == ["a2l-unrepresentable"]
@@ -68,15 +81,54 @@ class TestAnArray:
         assert checks(bag) == ["a2l-unrepresentable"]
         assert "NUMBER" in messages(bag)
 
-    def test_a_member_of_a_structure_is_named_at_its_own_path(self, tree: Path) -> None:
+    def structure_files(self, *, instances: int | None, size: int = OVER) -> dict[str, Any]:
+        dimensions = {} if instances is None else {"dimensions": [instances]}
+        return {
+            "project.ddd.json": project("P", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "X", typename="S_t", **dimensions)),
+            "t.ddd.json": types(struct_type("S_t", value_member("v", dimensions=[size]))),
+        }
+
+    def test_a_member_is_named_once_at_the_type_that_states_its_size(self, tree: Path) -> None:
+        """A member's size is its type's, so the cause is the type file's."""
+        bag = run_analysis(tree, self.structure_files(instances=None))[1]
+        assert checks(bag) == ["a2l-unrepresentable"]
+        rendered = messages(bag)
+        assert "t.ddd.json#types[0].members[0].dimensions" in rendered
+        assert "member 'v' of structure 'S_t' has a dimension of 65536 elements" in rendered
+        assert "MATRIX_DIM" in rendered
+
+    def test_an_array_of_structures_names_its_member_once(self, tree: Path) -> None:
+        """Three elements are three records of the member, and one cause."""
+        bag = run_analysis(tree, self.structure_files(instances=3))[1]
+        assert checks(bag) == ["a2l-unrepresentable"]
+
+    def test_two_instances_of_one_type_name_its_member_once(self, tree: Path) -> None:
+        files = self.structure_files(instances=None)
+        files["a.ddd.json"] = component(
+            "A", declare("local", "X", typename="S_t"), declare("local", "Y", typename="S_t")
+        )
+        assert checks(run_analysis(tree, files)[1]) == ["a2l-unrepresentable"]
+
+    def test_a_string_member_is_named_by_its_number_field(self, tree: Path) -> None:
         files = {
             "project.ddd.json": project("P", "a.ddd.json", "t.ddd.json"),
             "a.ddd.json": component("A", declare("local", "X", typename="S_t")),
-            "t.ddd.json": types(struct_type("S_t", value_member("v", dimensions=[OVER]))),
+            "t.ddd.json": types(
+                TEXT_TYPE,
+                struct_type("S_t", value_member("v", typename="Text_t", dimensions=[OVER])),
+            ),
         }
         bag = run_analysis(tree, files)[1]
         assert checks(bag) == ["a2l-unrepresentable"]
-        assert "'X.v' has a dimension of 65536 elements" in messages(bag)
+        assert "the NUMBER of ASAP2" in messages(bag)
+
+    def test_a_member_is_still_written_with_its_number(self, tree: Path) -> None:
+        dictionary, _ = run_analysis(tree, self.structure_files(instances=None))
+        assert dictionary is not None
+        rendered = render_files(dictionary, tree / "gen")
+        text = next(file.content for file in rendered if file.path.name == "P.a2l")
+        assert "MATRIX_DIM 65536 1 1" in text
 
     def test_a_member_at_the_limit_is_clean(self, tree: Path) -> None:
         files = {

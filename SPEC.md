@@ -547,20 +547,22 @@ whoever states them, and only two *stated* sets of limits can disagree
 (`definition-mismatch`). The resolved limits come from the producer when it states them,
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
-reference. A derived end holds the physical value of its raw count, and is rounded outward where it
-is rounded at all. The tail of the arithmetic is taken off a short decimal, because a
+reference. A derived end holds the physical value of its raw count, and is rounded outward
+where it is rounded at all. The tail of the arithmetic is taken off a short decimal, because a
 decimal factor has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 ..
 `7.65`, the number its own largest raw count reads as, rather than the `7.6499999999999995`
-the multiplication produces. An end whose digits run past twelve keeps them: a `uint64`
-under `{"factor": 1}` covers 0 .. `1.8446744073709552e+19`, and a `uint32` under 2^-10 up to
-`4194303.9990234375`, where twelve digits stated a number short of the top count. Under the
-identity the ends are the raw ends and are not rounded, so a `float32` stops at `FLT_MAX`,
-`3.4028234663852886e+38`, and a `float64` at its largest value. The A2L and the dumped
-dictionary state the end. The relative tolerance
-of `limits-out-of-range` ([section 4](#4-consistency-checks)) spans the difference, so limits
-copied out of a file an earlier version wrote are still on the range. An omitted `unit` is
-the empty unit and compares as such: a consumer stating none
-against a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
+the multiplication produces. That may take the end inward of the float, by at most four units
+in its last place: `sint16` under `{"factor": 0.1}` states `3276.7` where the product is
+`3276.7000000000003`, which the tolerance below treats as the same number. An end whose
+digits run past twelve keeps them: a `uint64` under `{"factor": 1}` covers 0 ..
+`1.8446744073709552e+19`, and a `uint32` under 2^-10 up to `4194303.9990234375`, where twelve
+digits stated a number short of the top count. Under the identity the ends are the raw ends
+and are not rounded, so a `float32` stops at `FLT_MAX`, `3.4028234663852886e+38`, and a
+`float64` at its largest value. The A2L and the dumped dictionary state the end. The
+relative tolerance of `limits-out-of-range` ([section 4](#4-consistency-checks)) spans the
+difference, so limits copied out of a file an earlier version wrote are still on the range.
+An omitted `unit` is the empty unit and compares as such: a consumer stating none against
+a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
 it fixes - the `datatype`, `unit`, `conversion` and `limits` of the scalar type - so a
 declaration naming `Speed_t` and one spelling `uint16` with the same unit, conversion and
 limits agree, because a scalar type reaches no generated header: the datatype it fixes
@@ -1514,8 +1516,9 @@ Warnings:
   cannot carry it, and a 1.7 reader accepts the dimensions written out. A size past 65,535
   is the second: the `MATRIX_DIM` of an array, the `NUMBER` of a string and the
   `MaxAxisPoints` of an axis are a `uint` of two bytes in ASAP2 1.6.1, and the record is
-  written with the number whole; a curve or a map is named at its axis. The limits are those
-  of ASAP2 1.6.1, table 5: a string, which is a description of an object, a member, a
+  written with the number whole; a curve or a map is named at its axis, and a member of a
+  structure at its type, once. The limits are those of ASAP2 1.6.1, table 5: a string,
+  which is a description of an object, a member, a
   component or the project (written on `PROJECT`, `HEADER` and `MODULE`), a unit - 237 characters
   at most under an identity conversion, whose method describes itself as `physical value in`
   and the unit - and the
@@ -1979,9 +1982,9 @@ locale's, and the paths a wildcard include matched sort the same way, by the cod
 their POSIX spelling: nothing in a generated file is ordered by what the platform running
 the tool thinks of a name. The one exception is an index within a member path, which counts
 as a number: the members of an array of structures run `cell[2]` before `cell[10]`, in the
-a2l's records and in its `GROUP` alike, and in the dictionary and `ddd list`. Whether two paths are the *same* file
-still follows the platform ([section 3.1](#31-project-description)), because that is a
-property of the file system rather than of the output.
+a2l's records and in its `GROUP` alike, and in the dictionary and `ddd list`. Whether two
+paths are the *same* file still follows the platform ([section 3.1](#31-project-description)),
+because that is a property of the file system rather than of the output.
 Files are written UTF-8 with LF line endings and no byte order mark - the A2L of
 [section 5.2](#52-a2l) is the one artefact that carries one, because its own format has no
 other way of stating an encoding - and a rendered file whose content has not changed is left

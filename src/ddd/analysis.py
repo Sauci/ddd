@@ -3288,13 +3288,6 @@ class _Analysis:
                     f"written out and only a 1.7 reader understands them",
                     reference.location("definition"),
                 )
-            if carried:
-                self._a2l_count(
-                    leaf.path,
-                    leaf.shape,
-                    reference.location("definition"),
-                    string=isinstance(leaf.conversion, StringConversion),
-                )
         return instance, leaves
 
     def _flatten(
@@ -3477,15 +3470,17 @@ class _Analysis:
         The field is the one the a2l writes the size in: ``MaxAxisPoints`` for an axis,
         ``NUMBER`` for a string, ``MATRIX_DIM`` for anything else. A curve or a map is not
         weighed here: its points are its axes', and the axis states the size. The largest
-        dimension is the one named, once for the object, and the number is given whole.
+        dimension is the one named, once for the object, and the number is given whole. A
+        member's size is its type's, so it is named once at the type file, however many
+        instances and elements reach it.
         """
         largest = max(shape, default=0)
-        if largest <= _A2L_MAX_COUNT:
+        if largest <= _A2L_MAX_COUNT or not self._a2l_first("count", name, location):
             return
         field = "MaxAxisPoints" if axis else ("NUMBER" if string else "MATRIX_DIM")
         self._bag.add(
             "a2l-unrepresentable",
-            f"'{name}' has a dimension of {largest} elements, but the {field} of ASAP2 1.6.1 "
+            f"{name} has a dimension of {largest} elements, but the {field} of ASAP2 1.6.1 "
             f"is a uint of two bytes and carries at most {_A2L_MAX_COUNT}; the size is "
             f"written whole",
             location,
@@ -3600,6 +3595,13 @@ class _Analysis:
             entry.location(f"members[{position}].description"),
         )
         declared = self._declared_of(member)
+        conversion = declared.conversion if isinstance(declared, ScalarType) else member.conversion
+        self._a2l_count(
+            about,
+            self._numeric_shape(member.dimensions),
+            entry.location(f"members[{position}].dimensions"),
+            string=isinstance(conversion, StringConversion),
+        )
         if isinstance(declared, ScalarType):
             self._a2l_unit(
                 f"unit of type '{declared.name}'",
@@ -3756,7 +3758,7 @@ class _Analysis:
             self._check_a2l_object(name, definition, reference)
             if definition.kind not in (ObjectKind.CURVE, ObjectKind.MAP):
                 self._a2l_count(
-                    name,
+                    f"'{name}'",
                     shape,
                     reference.location("definition"),
                     axis=definition.kind is ObjectKind.AXIS,

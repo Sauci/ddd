@@ -395,21 +395,30 @@ def is_above(value: float, limit: float) -> bool:
     return value > limit and not isclose(value, limit, rel_tol=RELATIVE_TOLERANCE, abs_tol=0.0)
 
 
+TAIL_ULPS: Final = 4
+"""How many units in the last place the tail of the arithmetic can come to: a factor that is not
+exact, a product and a sum each round, and none of the three adds more than one or two."""
+
+
 def _derived_end(value: float) -> float:
-    """One end of a derived range: the number its raw count reads as, never a number short of it.
+    """One end of a derived range: the number its raw count reads as, or its short decimal.
 
     Twelve digits take the tail of the arithmetic off an end - 255 counts of 0.03 are 7.65, and
-    the tail is within a few units in the last place of that. An end whose true digits run past
-    twelve is not a tail: the largest ``uint64`` count under a factor of 1 is 18446744073709551616
-    as a float, and twelve digits state it 9.6e6 short, so a tool holding data to the range it
-    reads refuses the description's own largest value. Such an end is kept as the float it is,
-    which the file writes in the shortest form that reads back as itself and which never passes
-    the largest value the type holds, as a rounding up of ``FLT_MAX`` or ``DBL_MAX`` would.
+    the tail is within :data:`TAIL_ULPS` units in the last place of that. That reading is kept
+    as the short decimal it is, so the end may be taken *inward* of the float by up to that
+    many units: 32767 counts of 0.1 state ``3276.7`` where the product is
+    ``3276.7000000000003``. It is the tolerance :func:`is_above` already grants, and the number
+    anybody who wrote the factor expects. An end whose true digits run past twelve is not a
+    tail: the largest ``uint64`` count under a factor of 1 is 18446744073709551616 as a float,
+    and twelve digits state it 9.6e6 short, so a tool holding data to the range it reads
+    refuses the description's own largest value. Such an end is kept as the float it is, which
+    the file writes in the shortest form that reads back as itself and which never passes the
+    largest value the type holds, as a rounding up of ``FLT_MAX`` or ``DBL_MAX`` would.
     """
     if isinstance(value, int) or not isfinite(value):
         return value
     nearest = float(f"{value:.{SIGNIFICANT_DIGITS}g}")
-    return nearest if abs(value - nearest) <= 4 * ulp(value) else value
+    return nearest if abs(value - nearest) <= TAIL_ULPS * ulp(value) else value
 
 
 def physical_range(conversion: Conversion, raw_min: float, raw_max: float) -> tuple[float, float]:

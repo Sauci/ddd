@@ -674,7 +674,7 @@ it is either a smell or a decision somebody should have taken consciously.
        it, and the extra dimensions are written out and only a 1.7 reader understands them. A
        size past 65,535 is the second: the ``MATRIX_DIM`` of an array, the ``NUMBER`` of a string
        and the ``MaxAxisPoints`` of an axis are a ``uint`` of two bytes, and the record is written
-       with the number whole; a curve or a map is named at its axis.
+       with the number whole; a curve or a map is named at its axis, and a member of a structure at its type, once.
        The limits are those of table 5 of ASAP2 1.6.1: a string, which is a description of an
        object, a member, a component or the project (written on ``PROJECT``, ``HEADER`` and
        ``MODULE``), a unit (237 characters at most under an identity conversion, whose

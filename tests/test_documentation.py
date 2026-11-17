@@ -313,6 +313,87 @@ class TestTheCheckReference:
         )
         assert check in rows, f"the comparison table lists {sorted(rows)}"
 
+    def test_the_spec_lists_each_comparison_id_under_a_heading_of_its_severity(self) -> None:
+        """SPEC 4.1 grades by list: errors, warnings, information. A bullet under another
+        severity's heading tells its reader the wrong grade, and no other test reads where
+        a bullet sits."""
+        section = SPEC.split("### 4.1 Comparing two deliveries")[1].split("\n### ")[0]
+        headings = {"Errors,": Severity.ERROR, "Warnings,": Severity.WARNING}
+        current: Severity | None = None
+        seen: dict[str, set[Severity | None]] = {}
+        for line in section.splitlines():
+            if line.startswith("Information:"):
+                current = Severity.INFO
+            elif line.startswith(tuple(headings)):
+                current = headings[line.split()[0]]
+            elif (found := re.match(r"- `([a-z0-9-]+)`:", line)) and (
+                found.group(1) in CHECKS and CHECKS[found.group(1)].comparison
+            ):
+                seen.setdefault(found.group(1), set()).add(current)
+        assert seen, "no comparison id found in section 4.1"
+        wrong = {
+            name: (under, CHECKS[name].default_severity)
+            for name, under in seen.items()
+            if under != {CHECKS[name].default_severity}
+        }
+        assert not wrong, f"listed under a heading of another severity (under, registry): {wrong}"
+
+    @pytest.mark.parametrize(
+        "check", sorted(name for name, info in CHECKS.items() if info.comparison)
+    )
+    def test_the_comparison_table_grades_each_id_as_the_registry_does(self, check: str) -> None:
+        """Both tables of the pages state the severity beside the id, and errors come first."""
+        rows = {
+            name: severity
+            for severity, name in re.findall(
+                r"\* - (error|warning|info)\n\s+- ``([a-z0-9-]+)``", COMPARING_DELIVERIES
+            )
+        }
+        assert rows[check] == CHECKS[check].default_severity.value
+        checks_page = dict(
+            re.findall(r"\* - ``([a-z0-9-]+)``\n\s+- (error|warning|info)\n", CONSISTENCY_CHECKS)
+        )
+        assert checks_page[check] == CHECKS[check].default_severity.value
+
+    def test_the_comparison_tables_list_errors_before_warnings_before_information(self) -> None:
+        order = {"error": 0, "warning": 1, "info": 2}
+        for severities in (
+            re.findall(r"\* - (error|warning|info)\n\s+- ``[a-z0-9-]+``", COMPARING_DELIVERIES),
+            [
+                severity
+                for name, severity in re.findall(
+                    r"\* - ``([a-z0-9-]+)``\n\s+- (error|warning|info)\n", CONSISTENCY_CHECKS
+                )
+                if name in CHECKS and CHECKS[name].comparison
+            ],
+        ):
+            ranks = [order[severity] for severity in severities]
+            assert ranks == sorted(ranks)
+
+    def test_changed_storage_says_the_raster_in_one_wording_everywhere(self) -> None:
+        wording = "or the event or cycle of a raster"
+        assert wording in CHECKS["changed-storage"].description
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert wording in flat, name
+            assert "event or the cycle of a raster" not in flat, name
+
+    def test_the_comparison_page_says_a_renamed_constant_is_two_findings(self) -> None:
+        page = flattened(COMPARING_DELIVERIES)
+        assert (
+            "A constant that was renamed is two findings, ``removed-constant`` for the old name "
+            "and ``added-constant`` for the new one"
+        ) in page
+        assert (
+            "has no `id`, so one renamed is this finding for the old name and `added-constant` "
+            "for the new one"
+        ) in flattened(SPEC)
+
     def test_the_registry_describes_changed_storage_as_the_pages_do(self) -> None:
         """``ddd checks`` prints the registry's one-liner; the raster joined the comparison
         without joining it, so the tool and the pages disagreed on what the check covers."""

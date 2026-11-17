@@ -229,13 +229,13 @@ them together with everything else.
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object
+   * - error
+     - ``removed-constant``
+     - a constant of the baseline is gone, so a reader that uses its macro no longer builds
    * - warning
      - ``renamed-object``
      - an object of the baseline is offered under a different name and no component read it;
        its ``id`` says so
-   * - error
-     - ``removed-constant``
-     - a constant of the baseline is gone, so a reader that uses its macro no longer builds
    * - warning
      - ``removed-unused-object``
      - an object of the baseline is gone; no component read it
@@ -335,8 +335,9 @@ object is the case that was silent. An object the constant dimensions says its o
 object as well, because the macro and the size are two facts and neither stands for the other. A
 constant that is gone is ``removed-constant``, an error, because a reader that uses the macro no
 longer builds, and a constant that arrived is ``added-constant``, an information, as an object
-that arrived is. A baseline archived before dictionary format 4 recorded no constants, so
-against one none is compared. A raster whose event number or cycle changed is ``changed-storage``, said at the
+that arrived is. A constant that was renamed is two findings, ``removed-constant`` for the old name
+and ``added-constant`` for the new one, because a constant has no ``id`` to pair a rename by. A baseline archived before dictionary format 4 recorded no
+constants, so against one none is compared. A raster whose event number or cycle changed is ``changed-storage``, said at the
 raster: every ``IF_DATA`` that names it carries the event, and it is the event a measuring tool
 receives the value in. The cycle compares as the period it resolves to, so ``10ms`` respelled
 ``10000us`` is no change. A raster that came or went says nothing, because an object that names it

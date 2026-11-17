@@ -1809,6 +1809,10 @@ compile:
   carries a note saying so, and when the object now under the name arrived there by a rename,
   a note names what the baseline called it; a swap carries both. A project that reuses names
   deliberately relaxes the check with `-W reused-name=warning`.
+- `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
+  longer builds, so it is an error whether or not an object is dimensioned by it. A constant
+  has no `id`, so one renamed is this finding for the old name and `added-constant` for the
+  new one.
 
 Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 
@@ -1822,12 +1826,10 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   reads: every consumer names the object it reads, so a rename that left one behind already
   failed `ddd check`; what breaks is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
   documents keyed by the old spelling.
-- `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
-  longer builds, so it is an error whether or not an object is dimensioned by it.
 - `removed-unused-object`: an object is gone that no component read.
 - `changed-storage`: the initial value, the volatility, the section or the measurement
-  raster ([section 3.10](#310-measurement-rasters)) of an object changed, or the event or the
-  cycle of a raster, which are compared as entries by name and said at the raster, the cycle
+  raster ([section 3.10](#310-measurement-rasters)) of an object changed, or the event or cycle
+  of a raster, which are compared as entries by name and said at the raster, the cycle
   by the period it resolves to and not by its spelling; a raster that came or went is not
   said, because an object that names it says its own change of raster; `volatile` turned on for an
   object a component reads is `changed-interface` instead, and turned off it is this check
@@ -1856,9 +1858,6 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 - `widened-limits`: the physical limits of a measurement somebody reads got wider, so a
   reader sized for the range of the baseline may meet a value it was not written for. The
   ends are weighed as `narrowed-limits` weighs them.
-- `narrowed-read-limits`: the physical limits of a measurement somebody reads got tighter,
-  which is an information, because a reader still gets values inside the range it was
-  written for.
 - `changed-owner`: another component produces the object now.
 - `changed-condition`: the preprocessor condition changed, namely the producer's, which is
   the one the dictionary records on the object
@@ -1890,6 +1889,9 @@ Information:
 - `added-object`: the candidate declares an object the baseline did not.
 - `added-constant`: the candidate declares a constant the baseline did not, which no reader
   of the baseline can be disturbed by.
+- `narrowed-read-limits`: the physical limits of a measurement somebody reads got tighter,
+  which is an information, because a reader still gets values inside the range it was
+  written for.
 - `removed-input`: an input of a baseline that is a component read alone is gone: the
   component stops reading it, which harms nobody. Reported only for a component file, and
   with one severity whatever else the run grades.

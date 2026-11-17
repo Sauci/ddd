@@ -3524,6 +3524,7 @@ class TestConstantsAndRastersAreComparedAsEntries:
         name: str,
         *,
         gain: int | float | None = 2,
+        gain_name: str = "GAIN",
         cells: int = 4,
         event: int = 1,
         cycle: str = "10ms",
@@ -3533,7 +3534,7 @@ class TestConstantsAndRastersAreComparedAsEntries:
         ``GAIN`` that no object uses."""
         constants = [{"name": "N", "value": cells}]
         if gain is not None:
-            constants.append({"name": "GAIN", "value": gain})
+            constants.append({"name": gain_name, "value": gain})
         rasters = [
             {"raster": "1ms", "event": 0, "cycle": "1ms"},
             {"raster": "10ms", "event": event, "cycle": cycle},
@@ -3605,6 +3606,19 @@ class TestConstantsAndRastersAreComparedAsEntries:
         bag = verdict(old, new)
         assert checks(bag) == ["removed-constant"], messages(bag)
         assert "constant 'GAIN' is gone; a reader that uses it no longer builds" in messages(bag)
+        self.cannot_replace(tree, capsys)
+
+    def test_a_constant_renamed_is_one_removal_and_one_addition(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A constant has no id to pair a rename by, so the old name is gone and the new one
+        arrived; the removal is the error, since a reader names the old macro."""
+        old = self.delivery(tree, "old")
+        new = self.delivery(tree, "new", gain_name="AMPLIFICATION")
+        bag = verdict(old, new)
+        assert sorted(checks(bag)) == ["added-constant", "removed-constant"], messages(bag)
+        assert "constant 'GAIN' is gone" in messages(bag)
+        assert "constant 'AMPLIFICATION' is new in P (2)" in messages(bag)
         self.cannot_replace(tree, capsys)
 
     def test_a_constant_added_is_information(

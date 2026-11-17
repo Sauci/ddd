@@ -859,16 +859,16 @@ registry can be read in one place.
      - a name of the baseline now belongs to a different object: the object that carried it
        was renamed or removed, and a new one took the spelling. Nothing about the delivery
        looks broken, and a dataset or a recording keyed by the name binds to the wrong storage.
-   * - ``renamed-object``
-     - warning
-     - an object of the baseline is offered under a different name and no component read it;
-       its ``id`` is what says so. The interface comparison still runs across the pair, and ``--renames`` writes the
-       old and the new spelling out, for migrating datasets and recordings.
    * - ``removed-constant``
      - error
      - a constant of the baseline is gone, so a reader that uses its macro no longer builds. It
        is an error whether or not an object is dimensioned by it, because a macro is what a
        reader compiled against the baseline's headers names.
+   * - ``renamed-object``
+     - warning
+     - an object of the baseline is offered under a different name and no component read it;
+       its ``id`` is what says so. The interface comparison still runs across the pair, and ``--renames`` writes the
+       old and the new spelling out, for migrating datasets and recordings.
    * - ``removed-unused-object``
      - warning
      - an object of the baseline is gone that no component read - a calibration dataset or an
@@ -876,7 +876,7 @@ registry can be read in one place.
    * - ``changed-storage``
      - warning
      - the initial value, the volatility, the memory section or the measurement raster of an
-       object changed, or the event or the cycle of a raster. A
+       object changed, or the event or cycle of a raster. A
        calibration object whose ``volatile`` went from ``true`` to ``false`` is the case worth
        reading twice: it keeps its address and a tool can still write to it, but the compiler
        is now entitled to fold the initial value into the code that reads it, so tuning it

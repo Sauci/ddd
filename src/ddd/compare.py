@@ -992,7 +992,7 @@ def _compare_object(
 
     # Compared as it will actually be rather than as it was written: a baseline that
     # simply omits the block is not asking for the object to be dropped from the a2l.
-    if old.a2l.effective != new.a2l.effective:
+    if _a2l_before(old, new) != new.a2l.effective:
         bag.add(
             "changed-a2l",
             f"'{old.name}': the a2l entry changed ({_a2l_difference(old, new)})",
@@ -1099,6 +1099,29 @@ def _condition_consequence(old: _Joined, new: _Joined) -> str:
 _A2L_PROPERTIES = ("export", "format", "display_identifier")
 
 
+def _a2l_before(old: Comparable, new: Comparable) -> tuple[bool, str | None, str | None]:
+    """The baseline's a2l entry, read as the candidate's instance would have it.
+
+    A display identifier a member above a leaf composes starts with the instance's own name,
+    ``V.J.b`` or ``V[1].J.b``, so renaming an instance the id keeps changes the head of every
+    leaf below it: the leaf's ``renamed-object`` told a second time, which is a consequence
+    told beside its cause. Read with the new name at its head, the identifier differs only
+    where something else changed it. A leaf's own stated identifier is one plain identifier
+    with no instance name in it, which has no such head, and is compared as it stands.
+    """
+    exported, format_, shown = old.a2l.effective
+    if (
+        shown is not None
+        and isinstance(old, ResolvedLeaf)
+        and isinstance(new, ResolvedLeaf)
+        and old.instance != new.instance
+    ):
+        rest = shown.removeprefix(old.instance)
+        if rest != shown and rest[:1] in (".", "["):
+            shown = new.instance + rest
+    return exported, format_, shown
+
+
 def _a2l_difference(old: Comparable, new: Comparable) -> str:
     """Name only the a2l properties that actually differ.
 
@@ -1109,10 +1132,15 @@ def _a2l_difference(old: Comparable, new: Comparable) -> str:
     """
     # Named as they are written in the file, compared as they will act: an ``export`` that
     # went from unstated to ``true`` changed nothing and has no business in the message.
+    # Weighed as :func:`_a2l_before` reads the baseline, and shown as the baseline wrote it.
     return ", ".join(
-        f"{name}: {_a2l_value(before)} -> {_a2l_value(after)}"
-        for name, before, after in zip(
-            _A2L_PROPERTIES, old.a2l.effective, new.a2l.effective, strict=True
+        f"{name}: {_a2l_value(was)} -> {_a2l_value(after)}"
+        for name, was, before, after in zip(
+            _A2L_PROPERTIES,
+            old.a2l.effective,
+            _a2l_before(old, new),
+            new.a2l.effective,
+            strict=True,
         )
         if before != after
     )

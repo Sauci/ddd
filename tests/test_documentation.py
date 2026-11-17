@@ -5050,9 +5050,10 @@ class TestEveryShownRunThatDefaultsTheByteOrderSaysSo:
 
 
 class TestWhatTheA2lChecksCannotSee:
-    """``a2l-keyword`` and ``a2l-unrepresentable`` are judged from the descriptions alone: an
-    object stating ``export: false`` for the a2l is not held, and since neither check reads the
-    image or the map, an object a run drops because its build holds none of it still is."""
+    """``a2l-keyword`` and ``a2l-unrepresentable`` are judged from the descriptions alone: they
+    skip what the a2l keeps out and hold what the closure over references brings in, and since
+    neither check reads the image or the map, an object a run drops because its build holds
+    none of it is held too."""
 
     SPEC_TEXT = flattened(SPEC)
     CHECKS_TEXT = flattened(CONSISTENCY_CHECKS)
@@ -5065,28 +5066,42 @@ class TestWhatTheA2lChecksCannotSee:
     @pytest.mark.parametrize(
         ("text", "tick"), [("SPEC_TEXT", "`"), ("CHECKS_TEXT", "``")], ids=["SPEC", "checks"]
     )
-    def test_the_keyword_check_is_said_to_hold_a_name_only_a_run_leaves_out(
+    def test_the_keyword_check_skips_what_the_a2l_keeps_out_and_holds_what_the_closure_brings_in(
         self, text: str, tick: str
     ) -> None:
         page = getattr(self, text)
+        a2l = self.a2l(tick)
         assert (
-            f"judged from the descriptions alone: an object or a member that states "
-            f"{tick}export: false{tick} for the {self.a2l(tick)} is not held, but the check reads "
-            f"neither the image nor the map, so an object a run drops because its build holds "
-            f"none of it ({tick}condition-left-out{tick}) still draws the error, and "
+            f"judged from the descriptions alone. It skips what the {a2l} keeps out and holds "
+            f"what the closure over references brings in: an object or a member that states "
+            f"{tick}export: false{tick} for the {a2l} is skipped, unless an exported object "
+            f"names it, an axis under an exported curve or a measurement an exported axis names "
+            f"as its {tick}input{tick}, and is held then. It reads neither the image nor the "
+            f"map, so an object a run drops because its build holds none of it "
+            f"({tick}condition-left-out{tick}) still draws the error, and "
             f"{tick}-W a2l-keyword=ignore{tick} relaxes it for that run"
         ) in page
+        assert f"for the {a2l} is not held, but the check reads" not in page
         assert "An object or a member the a2l leaves out is not held" not in page
         assert "member, the A2L leaves out is not held" not in page
 
     @pytest.mark.parametrize(
         ("text", "tick"), [("SPEC_TEXT", "`"), ("CHECKS_TEXT", "``")], ids=["SPEC", "checks"]
     )
-    def test_the_limits_check_is_said_to_hold_an_object_only_a_run_leaves_out(
+    def test_the_limits_check_skips_what_the_a2l_keeps_out_and_holds_what_the_closure_brings_in(
         self, text: str, tick: str
     ) -> None:
         page = getattr(self, text)
-        assert f"fires for what the descriptions send to the {self.a2l(tick)}" in page
+        a2l = self.a2l(tick)
+        assert f"fires for what the descriptions send to the {a2l}" in page
+        assert (
+            f"it skips what the {a2l} keeps out and holds what the closure over references "
+            f"brings in, so an object kept out of the {a2l} on its own, or a member, is "
+            f"skipped unless an exported object names it, an axis under an exported curve or a "
+            f"measurement an exported axis names as its {tick}input{tick}"
+        ) in page
+        assert "is not held. Judged from the descriptions alone" not in page
+        assert f"for the {a2l} is not held. Judged" not in page
         assert (
             f"neither the image nor the map, so an object a run drops because its build holds "
             f"none of it ({tick}condition-left-out{tick}) is"
@@ -5099,6 +5114,18 @@ class TestWhatTheA2lChecksCannotSee:
         assert "It fires for what the file carries" not in page
 
     def test_the_release_note_says_it_of_both_checks(self) -> None:
+        assert (
+            "it skips what the a2l keeps out and holds what the closure over references brings "
+            "in, so an object or a member that states `export: false` for the a2l is skipped "
+            "unless an exported object names it, an axis under an exported curve or a "
+            "measurement an exported axis names as its `input`; but the check cannot see"
+        ) in self.RELEASE
+        assert (
+            "Like the keyword check, it skips what the a2l keeps out and holds what the closure "
+            "over references brings in."
+        ) in self.RELEASE
+        assert "it holds a name only where the a2l is meant to write it" not in self.RELEASE
+        assert "for the a2l is not held; but" not in self.RELEASE
         assert "so a name only such a run drops still draws the error" in self.RELEASE
         assert (
             "It cannot see a run's left-out objects either, so an object only such a run drops "
@@ -5135,8 +5162,15 @@ class TestTheRuleOfADerivedEnd:
 
     def test_spec_no_longer_says_an_end_is_rounded_outward(self) -> None:
         assert (
-            "where it is rounded it moves inward of the computed product by no more than the "
-            "arithmetic's tail of four units in the last place"
+            "where it is rounded it lies within the arithmetic's tail of four units in the last "
+            "place of the computed product, on whichever side of it the end falls"
+        ) in self.SPEC_TEXT
+        assert "it moves inward of the computed product" not in self.SPEC_TEXT
+        assert "That may take the end inward of the float" not in self.SPEC_TEXT
+        assert (
+            "That may take the end to either side of the float, by at most four units in its "
+            "last place: `7.65` is outward of the `7.6499999999999995` it replaces, and `sint16` "
+            'under `{"factor": 0.1}` states `3276.7`, inward of the product `3276.7000000000003`'
         ) in self.SPEC_TEXT
         assert "is rounded outward where it is rounded at all" not in self.SPEC_TEXT
 
@@ -5231,18 +5265,43 @@ class TestWhatTheReleaseNoteSaysOfBranchFive:
         from ddd.backends.a2l.options import A2lOptions
 
         names = [field.name for field in dataclasses.fields(A2lOptions)]
-        assert {"module_fragment", "links", "alignment_cap"} <= set(names)
+        assert names == [
+            "byte_order",
+            "alignment_cap",
+            "version",
+            "addresses",
+            "links",
+            "has_address_source",
+            "left_out",
+            "module_fragment",
+        ]
         assert (
-            "gains three fields in this release: `module_fragment`, `links`, which a member's "
-            "`SYMBOL_LINK` below is written from, and `alignment_cap`, which `MOD_COMMON`'s "
-            "alignments below are"
+            "gains five fields in this release: `module_fragment`, `links`, which a member's "
+            "`SYMBOL_LINK` below is written from, `alignment_cap`, which `MOD_COMMON`'s "
+            "alignments below are, `left_out`, named above, and `has_address_source`, which "
+            "says whether the run had a source of addresses"
         ) in self.TEXT
-        assert names.index("alignment_cap") == 1
-        assert names.index("links") == names.index("addresses") + 1
+        assert "gains three fields in this release" not in self.TEXT
         assert (
-            "`alignment_cap` stands second, after `byte_order`, and `links` after `addresses`"
-            in (self.TEXT)
-        )
+            "`A2lOptions` also gains `has_address_source`, for the comment under `ASAP2_VERSION`"
+        ) in self.TEXT
+
+    def test_the_positions_the_a2l_options_took_in_0_11_0_bind_otherwise(self) -> None:
+        from ddd.backends.a2l.options import A2lOptions, ByteOrder
+
+        shifted = A2lOptions(ByteOrder.BIG, "1 61", {"X": 1}, {"Y": ("X", 4)})  # type: ignore[arg-type]
+        assert shifted.alignment_cap == "1 61"
+        assert shifted.version == {"X": 1}
+        assert shifted.addresses == {"Y": ("X", 4)}
+        assert (
+            "`alignment_cap` stands second, after `byte_order`, and `links`, `has_address_source`, "
+            "`left_out` and `module_fragment` after `addresses`, so code that builds the options "
+            'by position meets them there: in `A2lOptions(ByteOrder.BIG, "1 61")` the version '
+            "0.11.0 took second is taken for `alignment_cap`, in a third position the addresses "
+            "0.11.0 took there are taken for `version`, and in a fourth, which 0.11.0 refused, "
+            "they are the `addresses`"
+        ) in self.TEXT
+        assert "is taken for `alignment_cap`." not in self.TEXT
 
 
 class TestWhatThePagesSayOfFormat10:
@@ -5289,3 +5348,29 @@ class TestWhatThePagesSayOfFormat10:
             "reads back unchanged, and 0.11.0, which reads up to format 9, refuses a format 10 one "
             "as the dictionary of a newer DDD"
         ) in text
+
+
+class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:
+    """A rename of a structured variable is each leaf's ``renamed-object`` and no
+    ``changed-a2l`` for the instance's name at the head of a composed display identifier."""
+
+    PAGE = flattened(PAGES["docs/comparing_deliveries.rst"])
+    SPEC_TEXT = flattened(SPEC)
+
+    def test_the_page_says_the_head_of_a_composed_identifier_is_not_a_second_finding(
+        self,
+    ) -> None:
+        assert (
+            "A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object`` "
+            "and nothing more for the display identifiers a member composes, ``V.J.b`` becoming "
+            "``W.J.b``, since the instance's name at their head is the rename told again; an "
+            "identifier that changed in any other way, or one a leaf's own member states, is "
+            "still ``changed-a2l``"
+        ) in self.PAGE
+
+    def test_the_spec_says_it_of_changed_a2l(self) -> None:
+        assert (
+            "The instance's name at the head of a composed `display_identifier` is not a change "
+            "of it, a rename of the variable being the leaf's `renamed-object`; one a leaf's own "
+            "member states has no such head"
+        ) in self.SPEC_TEXT

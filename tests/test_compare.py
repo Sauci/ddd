@@ -9,7 +9,17 @@ from typing import Any, ClassVar
 
 import pytest
 
-from conftest import DEMO, checks, component, declare, messages, project, write_tree
+from conftest import (
+    DEMO,
+    checks,
+    component,
+    declare,
+    messages,
+    project,
+    struct_type,
+    types,
+    write_tree,
+)
 from ddd.analysis import analyze
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, _build_parser, main
 from ddd.compare import _MOST_CANDIDATES, compare
@@ -2150,3 +2160,111 @@ class TestRenamesOfStructuredVariables:
         rows = json.loads(renamed.read_text(encoding="utf-8"))
         assert [row["to"] for row in rows] == ["New.x", "New.y"]
         assert [row["id"] for row in rows] == ["abcdefghjkmn.x", "abcdefghjkmn.y"]
+
+
+class TestARenamedInstanceKeepsItsComposedDisplayIdentifier:
+    """A member's display identifier stands for its own segment of each leaf's path, so the
+    identifier a leaf is shown under starts with the instance's own name: ``V.J.b``, or
+    ``V[1].J.b`` in an array. Renaming an instance the id keeps changes that head on every
+    leaf, which is the leaf's ``renamed-object`` told a second time as ``changed-a2l``, as a
+    narrowing of limits is not told beside the interface change that caused it."""
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        instance: str,
+        *,
+        shown: str = "J",
+        own: str | None = None,
+        **declaration: Any,
+    ) -> DataDictionary:
+        own_block = {"a2l": {"display_identifier": own}} if own else {}
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", "t.ddd.json", f"{name}-a.ddd.json"),
+                "t.ddd.json": types(
+                    struct_type(
+                        "In_t",
+                        {"name": "b", "member": "value", "datatype": "uint8", "conversion": {}},
+                        {"name": "c", "member": "value", "datatype": "uint8", "conversion": {}},
+                    ),
+                    struct_type(
+                        "Out_t",
+                        {
+                            "name": "v",
+                            "member": "value",
+                            "datatype": "uint8",
+                            "conversion": {},
+                            **own_block,
+                        },
+                        {
+                            "name": "j",
+                            "member": "value",
+                            "typename": "In_t",
+                            "a2l": {"display_identifier": shown},
+                        },
+                    ),
+                ),
+                f"{name}-a.ddd.json": component(
+                    "A",
+                    declare("local", instance, typename="Out_t", id="abcdefghjkmn", **declaration),
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def test_the_rename_alone_is_each_leafs_renamed_object_and_nothing_more(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", "V")
+        new = self.delivery(tree, "new", "W")
+        shown = {leaf.path: leaf.a2l.display_identifier for leaf in new.leaves}
+        assert shown == {"W.v": None, "W.j.b": "W.J.b", "W.j.c": "W.J.c"}
+        bag = verdict(old, new)
+        assert checks(bag) == ["renamed-object"] * 3, messages(bag)
+
+    def test_an_element_of_an_array_of_structures_is_read_the_same_way(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", "V", dimensions=[2])
+        new = self.delivery(tree, "new", "W", dimensions=[2])
+        assert "W[1].J.b" in [leaf.a2l.display_identifier for leaf in new.leaves]
+        bag = verdict(old, new)
+        assert checks(bag) == ["renamed-object"] * 6, messages(bag)
+
+    def test_a_display_identifier_that_changed_besides_the_head_is_still_a_change(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", "V")
+        new = self.delivery(tree, "new", "W", shown="K")
+        bag = verdict(old, new)
+        assert sorted(checks(bag)) == ["changed-a2l"] * 2 + ["renamed-object"] * 3, messages(bag)
+        assert "display_identifier: 'V.J.b' -> 'W.K.b'" in messages(bag)
+
+    def test_the_same_change_without_a_rename_is_a_change(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", "V")
+        new = self.delivery(tree, "new", "V", shown="K")
+        assert checks(verdict(old, new)) == ["changed-a2l"] * 2
+
+    def test_a_leafs_own_identifier_carries_no_instance_name(self, tree: Path) -> None:
+        """One stated on the leaf's own member is written as stated, so a rename leaves it as
+        it was, and a change of it, one that merely spells the new instance's name included,
+        is a change."""
+        old = self.delivery(tree, "old", "V", own="V")
+        same = self.delivery(tree, "same", "W", own="V")
+        assert checks(verdict(old, same)) == ["renamed-object"] * 3
+        spelled = self.delivery(tree, "spelled", "W", own="W")
+        bag = verdict(old, spelled)
+        assert sorted(checks(bag)) == ["changed-a2l"] + ["renamed-object"] * 3, messages(bag)
+        assert "display_identifier: 'V' -> 'W'" in messages(bag)
+
+    def test_a_plain_object_has_no_instance_name_to_read_at_its_head(self, tree: Path) -> None:
+        old = one_component(tree, "old", declare("local", "X", a2l={"display_identifier": "Shown"}))
+        same = one_component(
+            tree, "same", declare("local", "X", a2l={"display_identifier": "Shown"})
+        )
+        other = one_component(
+            tree, "other", declare("local", "X", a2l={"display_identifier": "Other"})
+        )
+        assert checks(verdict(old, same)) == []
+        assert checks(verdict(old, other)) == ["changed-a2l"]

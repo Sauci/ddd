@@ -1532,21 +1532,24 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   byte order mark may name no component, if the json reader of those releases refuses the mark,
   which no run has shown either way: its header would then go undeclared, a change of it reaching
   its readers a build late under Ninja, and a root starting with one would be refused as not
-  json, as 0.11.0 refused it. No branch's task runs a floor; branch 5 lists `cmake/Ddd.cmake`.
+  json, as 0.11.0 refused it. No branch's task runs a floor. Branch 5 listed `cmake/Ddd.cmake` and
+  took none of it, and no later branch lists it, so it is the maintainer's.
 - **A component's file turned into a project after the configure** (task 5, `9:I3`):
   `ddd_add_component()` refuses a project file when the build is configured, and a registered
   file is no dependency of the configure, so a component's file rewritten as a project is
   refused only at the next configure. Until then the generation collects it as any registered
-  file, and an edit of what it includes builds to `no work to do`. Branch 5 lists
-  `cmake/Ddd.cmake`.
+  file, and an edit of what it includes builds to `no work to do`. Branch 5 listed
+  `cmake/Ddd.cmake` and took none of it, and no later branch lists it, so it is the maintainer's.
 - **A generated file deleted by hand under make** (task 7, `9:M6`): it is not written again until
   the step runs for another reason - an edit, a clean - or its stamp is deleted, and every build
   reading it stops on it until then, as the build page and SPEC 7.1 have it; ninja makes a
-  declared file that is missing. Branch 5 lists `cmake/Ddd.cmake`.
+  declared file that is missing. Branch 5 listed `cmake/Ddd.cmake` and took none of it, and no later
+  branch lists it, so it is the maintainer's.
 - **The a2l options' flag for an address source** (task 2): `A2lOptions.has_address_source` is
   false unless given, whatever addresses the options carry, so an a2l written through options
   that carry addresses and leave the flag out says it has no address source; the one place in the
-  tool building the options sets the flag. Branch 5 lists `backends/a2l/*`.
+  tool building the options sets the flag. Branch 5 listed `backends/a2l/*` and took none of it, and
+  no later branch lists it, so it is the maintainer's.
 - **`STRICT` passes an empty map read after the link** (task 2): a map with no entries raises no
   `address-missing`, so an a2l whose every address is 0 passes `STRICT`, saying so in its comment.
   Whether `STRICT` should fail it is a change of a check, the maintainer's to decide, in the pull
@@ -1651,8 +1654,9 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   the grammar without the standard's text. The final wave left two candidates it could not settle
   from memory, `DEFAULT_VALUE_NUMERIC` and `NOT_IN_ECU`, and took `INPUT_QUANTITY` out as the name
   of a parameter; the words the grammar fixes as a parameter's value, `NO_COMPU_METHOD` and
-  `NO_INPUT_QUANTITY`, which DDD writes, are not on the list either. Checking it takes the
-  standard, so it is the maintainer's; the list lives in `models/*`, which branch 13 lists.
+  `NO_INPUT_QUANTITY`, which DDD writes, are not on the list either. ASAP2 1.7's `OVERWRITE` block is recalled, from memory, to hold
+  `INPUT_QUANTITY` and `CONVERSION` as keywords; that matters to the list once DDD writes version
+  1.7, as SPEC 5.2 plans. Checking it takes the standard, so it is the maintainer's; the list lives in `models/*`, which branch 13 lists.
 - **What the a2l checks cannot see** (tasks 4 and 8): `a2l-keyword` and `a2l-unrepresentable` are
   judged from the descriptions before a run reads its image or its map, so an object the run
   drops because its build holds none of it still draws them, and `-W` relaxes them for that run,
@@ -2114,6 +2118,7 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 | 2, `fix/build-integration` | #85 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
 | 3, `fix/gui-values` | #86 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `3:C1` and `15:C1`, what the page writes when a person types, picks or pastes a value; the re-review's residuals carried into branch 4's D0 |
 | 4, `fix/elf-and-addresses` | #88 | not merged | Its Critical (`11:C1`) and what the branch covers: what is read from a linked image, and where an address comes from; the re-review's residuals carried into branch 5's D0; task 6a's four Importants, 8b and 6b stay with the maintainer after two safety stops |
+| 5, `fix/generated-artefacts` | #89 | not merged | Its Critical (`1:C1`) and what the branch covers: what the C and a2l writers produce, and the option that made the C undefined; the re-review's residuals carried into branch 6's D0; branch 2's four *Left open* entries that named its Files list are now the maintainer's, it having taken none of them |
 
 ## Self-review
 

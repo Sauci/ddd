@@ -495,11 +495,14 @@ or an a2l file that does not do what the description says - or that does not com
        ``MODULE`` are among them, and the standard keeps identifiers off its index. The match is
        exact and case sensitive, so ``map`` is a name. It holds the project, a component that
        gets a group, an object the a2l carries, each member of a path and a
-       ``display_identifier``, judged from the descriptions alone: an object or a member that
-       states ``export: false`` for the a2l is not held, but the check reads neither the image
-       nor the map, so an object a run drops because its build holds none of it
-       (``condition-left-out``) still draws the error, and ``-W a2l-keyword=ignore`` relaxes it
-       for that run. A member is the finding of the file that declares its structure, once. It
+       ``display_identifier``, judged from the descriptions alone. It skips what the a2l keeps
+       out and holds what the closure over references brings in: an object or a member that
+       states ``export: false`` for the a2l is skipped, unless an exported object names it, an
+       axis under an exported curve or a measurement an exported axis names as its ``input``,
+       and is held then. It reads neither the image nor the map, so an object a run drops
+       because its build holds none of it (``condition-left-out``) still draws the error, and
+       ``-W a2l-keyword=ignore`` relaxes it for that run. A member is the finding of the file
+       that declares its structure, once. It
        is separate from ``reserved-identifier``, which is about c: a name can be fine for the
        compiler and forbidden by the a2l.
    * - ``name-collision``
@@ -690,10 +693,11 @@ it is either a smell or a decision somebody should have taken consciously.
        (``MAX_IDENT``); and a part of that name is at most 128 (``MAX_PARTIAL_IDENT``), an
        array index counted within it, so an array of structures named with the full 128
        characters passes it. The file is written whole. A string or the name of a member is the finding of the
-       file that states it, once. It fires for what the descriptions send to the a2l rather
-       than for what asked to be exported, the closure over references included, so an object
-       kept out of the a2l on its own is still reported where an exported axis names it as its
-       ``input``. It reads neither the image nor the map, so an object a run drops because its
+       file that states it, once. It fires for what the descriptions send to the a2l: it skips what
+       the a2l keeps out and holds what the closure over references brings in, so an object kept
+       out of the a2l on its own, or a member, is skipped unless an exported object names it, an
+       axis under an exported curve or a measurement an exported axis names as its ``input``. It
+       reads neither the image nor the map, so an object a run drops because its
        build holds none of it (``condition-left-out``) is reported all the same, and stops a
        ``--strict`` run; ``-W a2l-unrepresentable=ignore`` relaxes it for that run.
    * - ``point-counts-mismatch``

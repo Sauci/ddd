@@ -178,6 +178,11 @@ object is no longer invisible. And where a spelling freed by a rename has been c
 different object in the same delivery, it reports ``reused-name`` instead - the failure that
 binds an old dataset to new storage without anything about the delivery looking broken.
 
+A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object`` and nothing
+more for the display identifiers a member composes, ``V.J.b`` becoming ``W.J.b``, since the
+instance's name at their head is the rename told again; an identifier that changed in any other
+way, or one a leaf's own member states, is still ``changed-a2l``.
+
 The comparison checks
 ---------------------
 

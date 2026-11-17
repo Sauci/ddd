@@ -115,7 +115,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `POST_BUILD` command of the image reading `DDD_A2L` reads the a2l of the build before.  Under
   `STRICT`, a map that leaves out a member of a structure now stops the first build, where it
   stopped the second.  An a2l written with no address source now says so in a comment under
-  `ASAP2_VERSION`, so a step comparing a2l files byte for byte sees that line where it applies.  A
+  `ASAP2_VERSION`, so a step comparing a2l files byte for byte sees that line where it applies.
+  `A2lOptions` also gains `has_address_source`, for the comment under `ASAP2_VERSION`.  A
   file named by `DEPENDS` still reruns the generation before the link, and no longer the a2l written
   after it.
 
@@ -505,12 +506,15 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   fragment holding a `MOD_PAR` in a project that declares named constants, which DDD writes a
   `MOD_PAR` for, are usage errors, exit `2`.  Where a project declares none, the fragment's
   `MOD_PAR` is the module's, so an `EPK` can only be carried through the fragment there.  Nothing is
-  migrated for the option, which is new.  `A2lOptions`, public through `ddd.backends`, gains three
+  migrated for the option, which is new.  `A2lOptions`, public through `ddd.backends`, gains five
   fields in this release: `module_fragment`, `links`, which a member's `SYMBOL_LINK` below is
-  written from, and `alignment_cap`, which `MOD_COMMON`'s alignments below are.  `alignment_cap`
-  stands second, after `byte_order`, and `links` after `addresses`, so code that builds the options
-  by position meets them there: in `A2lOptions(ByteOrder.BIG, "1 61")` the version 0.11.0 took
-  second is taken for `alignment_cap`.
+  written from, `alignment_cap`, which `MOD_COMMON`'s alignments below are, `left_out`, named
+  above, and `has_address_source`, which says whether the run had a source of addresses.
+  `alignment_cap` stands second, after `byte_order`, and `links`, `has_address_source`, `left_out`
+  and `module_fragment` after `addresses`, so code that builds the options by position meets them
+  there: in `A2lOptions(ByteOrder.BIG, "1 61")` the version 0.11.0 took second is taken for
+  `alignment_cap`, in a third position the addresses 0.11.0 took there are taken for `version`, and
+  in a fourth, which 0.11.0 refused, they are the `addresses`.
 
 * **A member's `SYMBOL_LINK` is where a linker map can find it.**  With `ddd generate a2l --image`,
   the record of a structure member, at any depth and in an element of an array of structures, said
@@ -528,8 +532,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `ROOT` or `MODULE` was written to an a2l that a tool reading it refuses or misparses, and DDD said
   nothing.  The new check `a2l-keyword`, an error, names every name that reaches the a2l and is one
   of the keywords or enumeration values of ASAP2 1.6.1, by an exact, case sensitive match, so `map`
-  is fine; it holds a name only where the a2l is meant to write it, so an object or a member that
-  states `export: false` for the a2l is not held; but the check cannot see which objects a run
+  is fine; it skips what the a2l keeps out and holds what the closure over references brings in, so
+  an object or a member that states `export: false` for the a2l is skipped unless an exported object
+  names it, an axis under an exported curve or a measurement an exported axis names as its `input`;
+  but the check cannot see which objects a run
   leaves out of the a2l (`condition-left-out`, or the symbols a build compiled out), so a name only
   such a run drops still draws the error, and `-W a2l-keyword=ignore` relaxes it for that run.
   `a2l-unrepresentable`, a warning, now also names a description or a unit past 255 characters, the
@@ -537,7 +543,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   carries, or past 1024, which an identifier does, and a part of a name past 128 characters with its
   array index counted; a unit under an identity conversion is held to 237 characters, since the
   method's description repeats it after 18 more. The file is written whole all the same, and the
-  finding names which of the limits it passes. It cannot see a run's left-out objects either, so an
+  finding names which of the limits it passes. Like the keyword check, it skips what the a2l keeps
+  out and holds what the closure over references brings in. It cannot see a run's left-out objects either, so an
   object only such a run drops is still named, and `-W a2l-unrepresentable=ignore` relaxes it for
   that run. Migrating costs a rename for the error, which stops
   `ddd check`, `ddd generate` and a build that passed, and `-W a2l-keyword=ignore` relaxes it for a

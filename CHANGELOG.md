@@ -617,7 +617,11 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   gives them its format and display identifier, and another, over two, leaves them out with
   `export: false`.
   It is a warning, so `ddd check --baseline --strict` of a project unchanged since passes with
-  0.11.0 and exits 1 after the upgrade, its four warnings made errors.
+  0.11.0 and exits 1 after the upgrade, its four warnings made errors; dumping the baseline again
+  with this version clears them.  The dumped dictionary is format 10, for the display identifier a
+  leaf takes from a member above it, a path of identifiers where format 9 held one; a format 9
+  dictionary reads back unchanged, and 0.11.0, which reads up to format 9, refuses a format 10 one
+  as the dictionary of a newer DDD.
 
 * **A derived limit no longer stops short of the largest raw value, and never passes the largest a
   float holds.**  A limit written from a datatype and a conversion was rounded to twelve significant

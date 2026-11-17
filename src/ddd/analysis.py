@@ -41,7 +41,6 @@ from ddd.models import (
     IDENTITY_METHOD_PREFIX,
     MAX_ELEMENTS,
     MEMBER_OBJECT_KINDS,
-    A2lObjectOptions,
     Axis,
     Conversion,
     Curve,
@@ -51,6 +50,7 @@ from ddd.models import (
     EnumConversion,
     ExternalType,
     IdentityConversion,
+    LeafA2lOptions,
     Limits,
     Map,
     Member,
@@ -3406,7 +3406,7 @@ class _Analysis:
         member: Member,
         conversion: Conversion,
         scope: _A2lScope,
-    ) -> A2lObjectOptions:
+    ) -> LeafA2lOptions:
         """The a2l block a leaf is published under: its member's, over what is above it.
 
         A display identifier stated by a member above the leaf stands for that member's own
@@ -3414,6 +3414,9 @@ class _Analysis:
         the records of one instance stay as distinct as their paths. A leaf's own display
         identifier is written as stated. A format is not carried to a string, which has no
         decimals to display.
+
+        Built through the leaf's own model, and validated as it is built: a copy of the
+        member's block validated nothing, and the dump wrote a path its reader refused.
         """
         block = member.a2l
         display = block.display_identifier
@@ -3422,12 +3425,10 @@ class _Analysis:
         shown = block.format
         if shown is None and not isinstance(conversion, StringConversion):
             shown = scope.format
-        return block.model_copy(
-            update={
-                "export": instance.a2l.exported and scope.exported and block.exported,
-                "format": shown,
-                "display_identifier": display,
-            }
+        return LeafA2lOptions(
+            export=instance.a2l.exported and scope.exported and block.exported,
+            format=shown,
+            display_identifier=display,
         )
 
     def _a2l_first(self, *key: object) -> bool:

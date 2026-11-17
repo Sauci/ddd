@@ -5243,3 +5243,49 @@ class TestWhatTheReleaseNoteSaysOfBranchFive:
             "`alignment_cap` stands second, after `byte_order`, and `links` after `addresses`"
             in (self.TEXT)
         )
+
+
+class TestWhatThePagesSayOfFormat10:
+    """A leaf's display identifier is a path in the dumped dictionary, which format 10 lets it be;
+    the pages that state the format the tool writes state the one it writes."""
+
+    SPEC_TEXT = flattened(SPEC)
+    DICTIONARY = flattened(PAGES["docs/data_dictionary.rst"])
+
+    def test_spec_and_the_dictionary_page_state_the_format_the_tool_writes(self) -> None:
+        from ddd.ir import DICTIONARY_FORMAT
+
+        written = str(DICTIONARY_FORMAT)
+        assert re.findall(r"Its `format` is `(\d+)`", self.SPEC_TEXT) == [written]
+        assert re.findall(r"its own format \(`format`, today `(\d+)`\)", self.SPEC_TEXT) == [
+            written
+        ]
+        assert re.findall(r"currently ``(\d+)``", self.DICTIONARY) == [written]
+
+    def test_a_leafs_display_identifier_is_said_to_be_a_path(self) -> None:
+        assert (
+            "and its `display_identifier` the member's own, or the path that the members above "
+            "it compose ([section 3.7](#37-type-description)), as `V[1].J.b`: identifiers joined "
+            "by dots, each with its indices"
+        ) in self.SPEC_TEXT
+        assert "are the member's own. `types` lists the" not in self.SPEC_TEXT
+        assert (
+            "Format 10 lets a leaf's ``display_identifier`` be a path of identifiers, "
+            "``V[1].J.b``, which a member naming a structure composes for every leaf below it; a "
+            "format 9 dictionary holds at most one identifier there, and reads back unchanged"
+        ) in self.DICTIONARY
+
+    def test_the_release_note_says_a_baseline_dumped_again_clears_and_what_0_11_0_reads(
+        self,
+    ) -> None:
+        text = flattened(UNRELEASED)
+        assert (
+            "its four warnings made errors; dumping the baseline again with this version clears"
+            in (text)
+        )
+        assert (
+            "The dumped dictionary is format 10, for the display identifier a leaf takes from a "
+            "member above it, a path of identifiers where format 9 held one; a format 9 dictionary "
+            "reads back unchanged, and 0.11.0, which reads up to format 9, refuses a format 10 one "
+            "as the dictionary of a newer DDD"
+        ) in text

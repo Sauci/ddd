@@ -35,7 +35,7 @@ implementation:
 
    $ ddd dump examples/demo/demo.ddd.json
    {
-     "format": 9,
+     "format": 10,
      "name": "DemoDevice",
      "description": "Demonstration project showing every kind of data object",
      "source": "demo.ddd.json",
@@ -226,8 +226,10 @@ The format field
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The ``format`` field stamps the shape of the document
-- currently ``9`` - and changes only when that shape changes, not with every release of the
-tool.
+- currently ``10`` - and changes only when that shape changes, not with every release of the
+tool. Format 10 lets a leaf's ``display_identifier`` be a path of identifiers, ``V[1].J.b``,
+which a member naming a structure composes for every leaf below it; a format 9 dictionary
+holds at most one identifier there, and reads back unchanged.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses
@@ -236,7 +238,7 @@ one that is newer:
 .. code-block:: text
 
    $ ddd compare baseline.json demo.ddd.json
-   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 10, and this DDD understands up to 9; use a newer DDD to read it
+   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 11, and this DDD understands up to 10; use a newer DDD to read it
    1 error
 
 Refusing is the only safe answer: reading the file anyway would compare a delivery against
@@ -285,7 +287,7 @@ elided here for space):
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 9,
+         "default": 10,
          "minimum": 1,
          "title": "Format",
          "type": "integer"

@@ -41,6 +41,7 @@ from ddd.models.objects import (
     A2lObjectOptions,
     Dimension,
     InitValue,
+    LeafA2lOptions,
     Limits,
     ObjectKind,
     PointCounts,
@@ -590,8 +591,9 @@ class ResolvedLeaf(_Frozen):
     local: bool = False
     """Owned exclusively by ``owner``."""
 
-    a2l: A2lObjectOptions = A2lObjectOptions()
-    """The member's own a2l options; a member may be kept out of the file on its own."""
+    a2l: LeafA2lOptions = LeafA2lOptions()
+    """The member's a2l options resolved over the variable and the members above it; a member
+    may be kept out of the file on its own."""
 
     @property
     def name(self) -> str:
@@ -642,7 +644,7 @@ rescaled. They differ only in what they are called, and a leaf answers to its pa
 """
 
 
-DICTIONARY_FORMAT = 9
+DICTIONARY_FORMAT = 10
 """Version of the dictionary format itself.
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
@@ -656,6 +658,10 @@ dictionary carries none of them, and reads back unchanged.
 
 Format 9 added ``point_counts`` to every object. A format 8 dictionary carries none, and reads
 back with ``none`` everywhere, which is the layout it described.
+
+Format 10 widened a leaf's ``display_identifier`` from one plain identifier to a path of them,
+``V[1].J.b``, which a member naming a structure composes for the leaves below it. A format 9
+dictionary carries at most a plain identifier there, and reads back unchanged.
 """
 
 

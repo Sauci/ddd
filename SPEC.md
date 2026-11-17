@@ -2177,7 +2177,7 @@ Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, a mo
 ### 5.3 Data dictionary
 
 `ddd dump` publishes the resolved project as one JSON document, the contract between the
-checking front end and every backend, DDD's own and a project's. Its `format` is `9`: a
+checking front end and every backend, DDD's own and a project's. Its `format` is `10`: a
 whole number of at least 1, written as a number and not as text, of which a reader
 **shall** refuse a higher one and reads a lower one with the defaults of that format
 ([section 4.1](#41-comparing-two-deliveries)). A dictionary is read under the JSON rules a
@@ -2212,9 +2212,13 @@ for every other kind) and `a2l` with `export` resolved to a boolean. An instance
 `owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
 `bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
-`a2l`, whose `export` is the instance's and the member's folded into one - true only where
-both are, so keeping a structure out of the A2L keeps every member of it out - while its
-`format` and `display_identifier` are the member's own. `types` lists the
+`a2l`, whose `export` is the instance's and the members' folded into one - true only where
+all are, so keeping a structure out of the A2L keeps every member of it out - while its
+`format` is the innermost one stated on the way down, none reaching a string, and its
+`display_identifier` the member's own, or the path that the members above it compose
+([section 3.7](#37-type-description)), as `V[1].J.b`: identifiers joined by dots, each with
+its indices. It is the one display identifier of the document that may hold more than one
+identifier, and it is held to no length. `types` lists the
 structures in dependency order with their members; `enums` the enum conversions, one per
 name, the best documented variant; `constants` and `rasters` the declared entries. Nothing
 in the document depends on the machine that wrote it.
@@ -2501,7 +2505,7 @@ names the artefact and is a usage error.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
-its own format (`format`, today `8`), raised only when the document's shape changes, so
+its own format (`format`, today `10`), raised only when the document's shape changes, so
 that an archived delivery says which shape it carries, which is what the build record's
 `format` does for it ([section 3.6](#36-build-record)). A reader handed a dictionary whose
 `format` is newer than the one it implements refuses it (`schema`), located at the file;

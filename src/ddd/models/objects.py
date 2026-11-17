@@ -294,6 +294,33 @@ class A2lObjectOptions(_Frozen):
         return (self.exported, self.format, self.display_identifier)
 
 
+A2L_PATH_PATTERN = (
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\])*(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\])*)*$"
+)
+"""Identifiers joined by dots, each with the indices of its element: ``V[1].J.b``, as a leaf's
+own path is written. One plain identifier is such a path too."""
+
+
+class LeafA2lOptions(A2lObjectOptions):
+    """The ``a2l`` block a leaf is published under, which the analysis resolves.
+
+    The block a member states, with ``export`` folded over the variable and every member above
+    the leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a
+    member above the leaf states one: that member's identifier stands for its own segment of
+    the leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a
+    project writes keeps one plain identifier; this one is written by the analysis alone.
+    """
+
+    display_identifier: Annotated[str, StringConstraints(pattern=A2L_PATH_PATTERN)] | None = None
+    """The name the calibration tool shows the leaf under: the member's own identifier, or the
+    path a member above composes; nothing where neither states one.
+
+    Not held to a length. The a2l's checks hold what reaches the file, and a leaf of a variable
+    kept out of it is composed all the same, so a dictionary can carry a path past
+    ``MAX_IDENT`` or a part past ``MAX_PARTIAL_IDENT`` that nothing reported, and has to read
+    back."""
+
+
 MEANING_KEYS: Final = ("unit", "conversion", "limits")
 """What says how a raw number is read: the keys a scalar type exists to fix once.
 

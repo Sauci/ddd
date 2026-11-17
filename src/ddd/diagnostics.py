@@ -254,7 +254,12 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "it, so a reader compiled against the baseline looks for a spelling that is gone",
                comparison=True),
         _check("removed-object", Severity.ERROR,
-               "an object of the baseline is gone and somebody read it",
+               "an object of the baseline is gone and somebody read it, or an output of a "
+               "component read alone, whose readers the run was not shown",
+               comparison=True),
+        _check("removed-input", Severity.INFO,
+               "an input of a component read alone is gone: the component stops reading it, "
+               "which harms nobody",
                comparison=True),
         _check("changed-interface", Severity.ERROR,
                "kind, datatype, unit, scaling, shape, axes, locality or where a table keeps "

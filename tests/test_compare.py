@@ -3052,3 +3052,216 @@ class TestNarrowingAnObjectSomebodyReadsByAConditionCannotReplace:
         bag = verdict(old, new, "changed-condition=ignore")
         assert checks(bag) == ["narrowed-condition"], messages(bag)
         assert bag.has_errors
+
+
+class TestAComponentFileReadAloneIsGradedByWhatOneFileCanKnow:
+    """A supplier's gate compares one component with its predecessor, and that run was not shown
+    who reads what: the readers of a component alone are, by construction, itself.
+
+    So an output gone cannot be said to have been read by nobody - that is what the run was not
+    shown - and an input dropped harms nobody, a component that stops reading something being
+    no reason to hold the delivery back.
+    """
+
+    @staticmethod
+    def sensor(*declarations: dict[str, Any]) -> dict[str, Any]:
+        return component("Sensor", *declarations)
+
+    PRESSURE = declare("output", "Pressure")
+    CLOCK = declare("input", "Clock")
+    TEMPERATURE = declare("output", "Temperature")
+
+    def run(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], command: str, *arguments: str
+    ) -> tuple[int, list[dict[str, Any]]]:
+        capsys.readouterr()
+        code = main([command, *arguments, "--format", "json", "-W", "missing-id=ignore"])
+        payload = json.loads(capsys.readouterr().out)
+        return code, payload["diagnostics"]
+
+    def gate(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], baseline: dict[str, Any], new: Any
+    ) -> tuple[int, list[dict[str, Any]]]:
+        write_tree(tree, {"base.ddd.json": baseline, "s.ddd.json": new})
+        return self.run(
+            tree,
+            capsys,
+            "check",
+            str(tree / "s.ddd.json"),
+            "--standalone",
+            "--baseline",
+            str(tree / "base.ddd.json"),
+        )
+
+    def test_an_output_gone_is_an_error_that_does_not_claim_to_know_the_readers(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, found = self.gate(
+            tree,
+            capsys,
+            self.sensor(self.PRESSURE, self.CLOCK),
+            self.sensor(self.CLOCK),
+        )
+        assert code == EXIT_FINDINGS
+        removed = [entry for entry in found if entry["check"].startswith("removed")]
+        assert [(entry["check"], entry["severity"]) for entry in removed] == [
+            ("removed-object", "error")
+        ], found
+        assert removed[0]["message"] == (
+            "'Pressure' is gone; the baseline is one component read alone, so who read it is "
+            "not known"
+        )
+
+    def test_an_input_dropped_harms_nobody(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, found = self.gate(
+            tree,
+            capsys,
+            self.sensor(self.PRESSURE, self.CLOCK),
+            self.sensor(self.PRESSURE),
+        )
+        assert code == EXIT_OK
+        removed = [entry for entry in found if entry["check"].startswith("removed")]
+        assert [(entry["check"], entry["severity"]) for entry in removed] == [
+            ("removed-input", "info")
+        ], found
+        assert removed[0]["message"] == (
+            "'Clock' is no longer read by Sensor; the component stops reading it, which "
+            "harms nobody"
+        )
+
+    def test_an_input_dropped_stays_an_info_under_strict(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tree,
+            {
+                "base.ddd.json": self.sensor(self.PRESSURE, self.CLOCK),
+                "s.ddd.json": self.sensor(self.PRESSURE),
+            },
+        )
+        code, _ = self.run(
+            tree,
+            capsys,
+            "check",
+            str(tree / "s.ddd.json"),
+            "--standalone",
+            "--strict",
+            "--baseline",
+            str(tree / "base.ddd.json"),
+        )
+        assert code == EXIT_OK
+
+    def test_the_same_output_gone_from_a_whole_project_names_its_reader(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "r.ddd.json"),
+                "a.ddd.json": self.sensor(self.PRESSURE),
+                "r.ddd.json": component("R", declare("input", "Pressure")),
+            },
+        )
+        assert main(["dump", str(tree / "p.ddd.json"), "-o", str(tree / "base.json")]) == EXIT_OK
+        write_tree(
+            tree,
+            {
+                "a.ddd.json": self.sensor(declare("output", "Other")),
+                "r.ddd.json": component("R", declare("input", "Other")),
+            },
+        )
+        code, found = self.run(
+            tree, capsys, "compare", str(tree / "base.json"), str(tree / "p.ddd.json")
+        )
+        assert code == EXIT_FINDINGS
+        removed = [entry for entry in found if entry["check"].startswith("removed")]
+        assert [(entry["check"], entry["message"]) for entry in removed] == [
+            ("removed-object", "'Pressure' is gone, but was read by R")
+        ], found
+
+    def test_compare_grades_a_component_file_on_the_baseline_side_the_same_way(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both are component files, which ``ddd compare`` reads without ``--standalone``, so
+        neither has an input: nothing it reads is left without a producer."""
+        write_tree(
+            tree,
+            {
+                "base.ddd.json": self.sensor(self.PRESSURE, self.TEMPERATURE),
+                "new.ddd.json": self.sensor(self.TEMPERATURE),
+            },
+        )
+        code, found = self.run(
+            tree, capsys, "compare", str(tree / "base.ddd.json"), str(tree / "new.ddd.json")
+        )
+        assert code == EXIT_FINDINGS
+        removed = [entry for entry in found if entry["check"].startswith("removed")]
+        assert [(entry["check"], entry["severity"]) for entry in removed] == [
+            ("removed-object", "error")
+        ], found
+        assert "who read it is not known" in removed[0]["message"]
+
+    def test_a_component_file_against_a_whole_project_is_graded_by_scope_too(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The baseline is the component read alone, the candidate the project that took it in:
+        the output the project no longer offers is an error whose readers nobody knows."""
+        write_tree(
+            tree,
+            {
+                "base.ddd.json": self.sensor(self.PRESSURE, self.TEMPERATURE),
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": self.sensor(self.TEMPERATURE),
+            },
+        )
+        code, found = self.run(
+            tree, capsys, "compare", str(tree / "base.ddd.json"), str(tree / "p.ddd.json")
+        )
+        assert code == EXIT_FINDINGS
+        removed = [entry for entry in found if entry["check"].startswith("removed")]
+        assert [entry["check"] for entry in removed] == ["removed-object"], found
+        assert "who read it is not known" in removed[0]["message"]
+
+    def test_a_whole_project_against_a_component_file_keeps_the_readers_it_knows(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The baseline here is a whole project, so its readers are known and are named; only a
+        baseline read alone does not know them."""
+        write_tree(
+            tree,
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "r.ddd.json"),
+                "a.ddd.json": self.sensor(self.PRESSURE),
+                "r.ddd.json": component("R", declare("input", "Pressure")),
+                "s.ddd.json": self.sensor(declare("output", "Other")),
+            },
+        )
+        code, found = self.run(
+            tree, capsys, "compare", str(tree / "p.ddd.json"), str(tree / "s.ddd.json")
+        )
+        assert code == EXIT_FINDINGS
+        removed = [entry for entry in found if entry["check"].startswith("removed")]
+        assert [entry["message"] for entry in removed] == [
+            "'Pressure' is gone, but was read by R"
+        ], found
+
+    def test_compare_takes_the_baseline_as_read_alone_from_its_caller(self, tree: Path) -> None:
+        """The dictionary carries no mark of how it was read, so the caller says."""
+        old = self.resolved(tree, "old", self.sensor(self.PRESSURE, self.CLOCK))
+        new = self.resolved(tree, "new", self.sensor(self.CLOCK))
+        whole = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, whole)
+        alone = DiagnosticBag(SeverityPolicy.from_strings(()))
+        compare(old, new, alone, baseline_alone=True)
+        assert checks(alone) == ["removed-object"], messages(alone)
+        assert checks(whole) != checks(alone)
+
+    @staticmethod
+    def resolved(tree: Path, name: str, document: dict[str, Any]) -> DataDictionary:
+        write_tree(tree, {f"{name}.ddd.json": document})
+        bag = DiagnosticBag()
+        workspace = load_workspace(tree / f"{name}.ddd.json", bag)
+        assert workspace is not None, messages(bag)
+        return analyze(workspace, bag)

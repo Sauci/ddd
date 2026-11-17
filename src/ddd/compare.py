@@ -627,6 +627,7 @@ def compare(
     bag: DiagnosticBag,
     *,
     location: Location | None = None,
+    baseline_alone: bool = False,
 ) -> list[tuple[Comparable, Comparable]]:
     """Report how far ``candidate`` can stand in for ``baseline``, and hand back the pairing.
 
@@ -636,6 +637,13 @@ def compare(
 
     The comparison is directional: everything the baseline offered has to still be there and
     still mean the same thing, while anything the candidate adds is its own business.
+
+    ``baseline_alone`` is the caller saying the baseline is a component file read on its own,
+    which the dictionary cannot say of itself. The readers it records are then the component's
+    own and nobody else's, because the run was not shown the rest: an output gone is
+    ``removed-object`` without a claim about who read it, and an input the component stopped
+    reading is ``removed-input``, an information. A candidate read alone needs no such flag -
+    the readers a whole baseline records are known, and are the ones named.
     """
     if baseline.name != candidate.name:
         # Two deliveries of one project share its name, so a mismatch usually means the
@@ -699,7 +707,7 @@ def compare(
 
     candidates = _by_discriminators(added)
     for old in removed:
-        _report_removal(old, bag, location, candidates, was, now)
+        _report_removal(old, bag, location, candidates, was, now, baseline_alone=baseline_alone)
 
     for new in added:
         bag.add(
@@ -1021,10 +1029,32 @@ def _report_removal(
     candidates: Mapping[tuple[object, ...], Sequence[Comparable]],
     was: Mapping[str, Comparable],
     now: Mapping[str, Comparable],
+    *,
+    baseline_alone: bool = False,
 ) -> None:
     bucket = candidates.get(_bucket_key(old, of_a_leaf=isinstance(old, ResolvedLeaf)), ())
     notes = _lost_identity_note(old, bucket, was, now)
-    if old.consumers:
+    if baseline_alone and old.owner is None:
+        # What a component read alone does not produce is an input, and its readers are the
+        # component itself: it stops reading something, which harms nobody downstream.
+        bag.add(
+            "removed-input",
+            f"'{old.name}' is no longer read by {', '.join(old.consumers)}; the component "
+            f"stops reading it, which harms nobody",
+            location,
+            notes=notes,
+        )
+    elif baseline_alone:
+        # What a component read alone produces is an output, and who reads it is exactly what
+        # this run was not shown: "no component read it" is a claim about the rest.
+        bag.add(
+            "removed-object",
+            f"'{old.name}' is gone; the baseline is one component read alone, so who read it "
+            f"is not known",
+            location,
+            notes=notes,
+        )
+    elif old.consumers:
         bag.add(
             "removed-object",
             f"'{old.name}' is gone, but was read by {', '.join(old.consumers)}",

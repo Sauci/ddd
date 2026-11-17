@@ -62,6 +62,7 @@ DOCS_URL = "https://sauci.github.io/ddd/"
 CONSISTENCY_CHECKS = (ROOT / "docs" / "consistency_checks.rst").read_text(encoding="utf-8")
 COMPARING_DELIVERIES = (ROOT / "docs" / "comparing_deliveries.rst").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+COMMAND_LINE_INTERFACE = (ROOT / "docs" / "command_line_interface.rst").read_text(encoding="utf-8")
 PAGES = {
     page.relative_to(ROOT).as_posix(): page.read_text(encoding="utf-8")
     for page in sorted((ROOT / "docs").rglob("*.rst"))
@@ -5675,3 +5676,59 @@ class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
             "structure (:doc:`../comparing_deliveries`)."
         ) in self.TYPES
         assert "the diff of the json is the only place the move is visible" not in self.TYPES
+
+
+class TestAComponentFileReadAloneIsComparedByWhatOneFileCanKnow:
+    """A supplier's gate compares one component file with its predecessor, and the readers its
+    dictionary records are the component's own, so the run cannot say that nobody read an output
+    it lost, and an input it stopped reading harms nobody. ``removed-input`` is the information
+    that says so, and a dump of a component carries no mark of how it was read."""
+
+    def test_the_registry_grades_a_dropped_input_as_an_information(self) -> None:
+        assert CHECKS["removed-input"].default_severity is Severity.INFO
+        assert CHECKS["removed-input"].comparison
+
+    def test_every_page_lists_the_dropped_input(self) -> None:
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            assert "removed-input" in flattened(text), name
+
+    def test_every_page_says_an_output_of_a_component_read_alone_is_gone_with_its_readers_unknown(
+        self,
+    ) -> None:
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            assert "an output of a component read alone" in flattened(text), name
+            assert "whose readers the run was not shown" in flattened(text), name
+
+    def test_the_specification_and_the_comparison_page_say_what_a_dump_costs(self) -> None:
+        for name, text in {
+            "SPEC.md": SPEC,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        }.items():
+            flat = flattened(text)
+            assert "carries no mark of how it was read" in flat, name
+            assert "the mark is a change of the format" in flat, name
+
+    def test_the_comparison_page_says_which_callers_know_a_component_file(self) -> None:
+        flat = flattened(COMPARING_DELIVERIES)
+        assert (
+            "``ddd check --standalone --baseline`` and ``ddd compare`` take it from the file"
+            in (flat)
+        )
+        assert "An input the component stopped reading is ``removed-input``" in flat
+
+    def test_the_command_line_page_does_not_promise_a_supplier_more_than_the_gate_holds(
+        self,
+    ) -> None:
+        flat = flattened(COMMAND_LINE_INTERFACE)
+        assert "an output a component drops fails that gate" in flat
+        assert "an input it stops reading does not" in flat

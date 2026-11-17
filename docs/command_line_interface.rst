@@ -785,11 +785,15 @@ The commands
 ``FILE`` is a project description or a single component description in every command that
 takes one. A component checks, lists and dumps on its own - with ``--standalone`` holding
 back the checks that need the rest of the project - which is what lets a supplier verify a
-component long before an integrator ever sees it. ``ddd generate`` takes no ``--standalone``:
-generating from a component is generating the c and the a2l of a project of one, and the
-inputs nobody produces there are errors that stop the run. A supplier who wants the files
-anyway asks for them with ``--force``, or silences the checks it has decided about with
-``-W``.
+component long before an integrator ever sees it. With ``--baseline`` the gate compares that
+component with its predecessor, and what it can know is what one file shows: an output a
+component drops fails that gate, whoever reads it, and an input it stops reading does not.
+That holds when the baseline is the component file itself; an archived dump of a component
+carries no mark of how it was read, and :doc:`comparing_deliveries` says what that costs.
+``ddd generate`` takes no ``--standalone``: generating from a component is generating the c
+and the a2l of a project of one, and the inputs nobody produces there are errors that stop
+the run. A supplier who wants the files anyway asks for them with ``--force``, or silences
+the checks it has decided about with ``-W``.
 
 The ``-t`` of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD's own.

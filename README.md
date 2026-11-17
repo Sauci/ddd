@@ -625,7 +625,7 @@ for the baseline - and graded, because the changes are not equally bad:
 
 | severity | check | reported when |
 | --- | --- | --- |
-| error | `removed-object` | an object is gone and a component read it |
+| error | `removed-object` | an object is gone and a component read it, or an output of a component read alone, whose readers the run was not shown |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point counts changed, or the layout a released structure fixed: a bitfield's width, the type a structured variable names, or the members of that structure in order, each with what it holds and its dimensions, nested and external ones included, save a member added at the end of it when the variable is no array, or volatile turned on for an object a component reads |
 | error | `renamed-read-object` | an object of the baseline is offered under a different name and a component read it, so a reader compiled against the baseline looks for a spelling that is gone; its `id` is what says so. A `-W renamed-object` relaxation does not reach it |
 | error | `narrowed-condition` | the preprocessor condition of an object a component reads was added or replaced, so a reader compiled against the baseline does not link in a build where the new condition is false. A `-W changed-condition` relaxation does not reach it |
@@ -640,6 +640,7 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
 | warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |
 | info | `added-object` | the candidate declares something new |
+| info | `removed-input` | an input of a component read alone is gone: the component stops reading it, which harms nobody |
 
 [examples/pressure](https://github.com/Sauci/ddd/tree/master/examples/pressure) ships the three deliveries of the documentation's worked
 example - the release that went out, a working tree with five changes to it and an older tree -

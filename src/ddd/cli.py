@@ -895,7 +895,13 @@ def _command_check(args: argparse.Namespace) -> int:
             _verify_overrides(bag, () if baseline is None else baseline.plugins)
             if resolved is not None and baseline is not None:
                 location = where(args.project)
-                compare(baseline.dictionary, resolved.dictionary, bag, location=location)
+                compare(
+                    baseline.dictionary,
+                    resolved.dictionary,
+                    bag,
+                    location=location,
+                    baseline_alone=baseline.alone,
+                )
                 run_compare_hooks(
                     resolved.plugins,
                     baseline.dictionary,
@@ -948,7 +954,13 @@ def _command_compare(args: argparse.Namespace) -> int:
         _verify_overrides(bag, baseline.plugins)
 
         location = where(args.candidate)
-        paired = compare(baseline.dictionary, candidate.dictionary, bag, location=location)
+        paired = compare(
+            baseline.dictionary,
+            candidate.dictionary,
+            bag,
+            location=location,
+            baseline_alone=baseline.alone,
+        )
         run_compare_hooks(
             plugins,
             baseline.dictionary,

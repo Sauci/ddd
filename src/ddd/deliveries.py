@@ -114,6 +114,15 @@ class Resolved:
     staleness makes a reading of this side stale, which is how :mod:`ddd.gui.compare` decides
     a cached baseline has to be read again."""
 
+    alone: bool = False
+    """Whether this side is one component file, read without a project around it.
+
+    What a dictionary cannot say of itself, and what ``compare`` has to be told: the readers it
+    records for an object are the component's own and nobody else's, because the run was not
+    shown the rest. A project description is whole, and so is an archived dump - the mark a
+    ``dump --standalone`` would need to say otherwise is a change of the format, and a dump is
+    compared as it always was."""
+
 
 def read_dictionary(
     path: Path, bag: DiagnosticBag, reading: Reading | None = None
@@ -143,6 +152,7 @@ def read_dictionary(
             workspace.locate,
             True,
             workspace.sources(),
+            alone=not workspace.projects,
         )
     # Handed the document this already read rather than leaving the reader to read it again:
     # a dumped dictionary is the file a build archives whole, and the 45 MB one of a thousand

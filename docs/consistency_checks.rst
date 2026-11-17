@@ -824,7 +824,9 @@ registry can be read in one place.
      - Fires when
    * - ``removed-object``
      - error
-     - an object of the baseline is gone and a component read it.
+     - an object of the baseline is gone and a component read it, or an output of a component
+       read alone, whose readers the run was not shown: the readers of a component file read
+       alone are the component itself, so the message does not claim that nobody read it.
    * - ``changed-interface``
      - error
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
@@ -907,6 +909,11 @@ registry can be read in one place.
    * - ``added-object``
      - info
      - the candidate declares an object the baseline did not.
+   * - ``removed-input``
+     - info
+     - an input of a component read alone is gone: the component stops reading it, which harms
+       nobody. Only for a baseline that is a component file, whose dictionary records no
+       reader but the component itself.
 
 The producing component wins
 ----------------------------

@@ -1686,7 +1686,16 @@ being its own; only its error findings are carried into the report, each prefixe
 "in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
 is visible without drowning the comparison and without this run's policy relaxing it away.
 What does reach it is `--standalone`, which states how the file was handed over rather than
-how strictly the run grades. A candidate given as a
+how strictly the run grades. A baseline that is a component file is a component read alone, and the
+readers its dictionary records are the component's own and nobody else's, because the run
+was not shown the rest. An output gone from it is therefore `removed-object` with a message that does
+not claim to know who read it, where "no component read it" is a claim about components the run never saw, and
+an input the component stopped reading is `removed-input`, an information, because a
+component that reads less harms nobody. `ddd check --standalone --baseline` and `ddd compare`
+take it from the file. An archived dictionary carries no mark of how it was read, `ddd dump
+--standalone` included: the mark is a change of the format, and is deferred, so a comparison
+against such a dump is graded as one of a whole project is, whose readers the dump records as
+they were. A candidate given as a
 description is analysed too, and all of its findings are reported at their own severities.
 The verdict is that the candidate can replace the baseline exactly when no finding of the
 run is reported as an error - the candidate's own, the baseline's carried ones and the
@@ -1715,7 +1724,8 @@ A change **shall** be graded by what it costs the consumers.
 Errors, because the consumers of the object become wrong, whether or not they still
 compile:
 
-- `removed-object`: an object is gone that a component read.
+- `removed-object`: an object is gone that a component read, or an output of a component
+  read alone, whose readers the run was not shown.
 - `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
   where a table keeps its point counts, the width of a bitfield, the `type` a structured
   variable names or the layout of a structured variable changed. Scaling is the conversion,
@@ -1859,8 +1869,11 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 Information:
 
 - `added-object`: the candidate declares an object the baseline did not.
+- `removed-input`: an input of a baseline that is a component read alone is gone: the
+  component stops reading it, which harms nobody. Reported only for a component file, and
+  with one severity whatever else the run grades.
 
-A `removed-object` or `removed-unused-object` finding carries a note when exactly one
+A `removed-object`, `removed-input` or `removed-unused-object` finding carries a note when exactly one
 addition in the candidate is identical to it in interface, storage and references, and
 under a different name: `'X' was added with an identical interface; if that was a rename, the
 id did not travel with it`. It asserts nothing and pairs nothing - the two may simply be

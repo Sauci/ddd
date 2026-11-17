@@ -205,7 +205,8 @@ them together with everything else.
      - reported when
    * - error
      - ``removed-object``
-     - an object of the baseline is gone and somebody read it
+     - an object of the baseline is gone and somebody read it, or an output of a component
+       read alone, whose readers the run was not shown
    * - error
      - ``changed-interface``
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
@@ -262,6 +263,10 @@ them together with everything else.
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not
+   * - info
+     - ``removed-input``
+     - an input of a component read alone is gone: the component stops reading it, which harms
+       nobody
 
 ``changed-interface`` is one check rather than a dozen because the properties it covers -
 kind, datatype, unit, conversion, shape, the axes an object refers to, whether it is
@@ -734,6 +739,18 @@ to the baseline as well it promoted the ``ValveDuty`` above into an error about 
 that went out long ago, carried it over and refused a verdict. ``--standalone`` does reach it,
 because that states how the file was handed over - a component read on its own - and the
 baseline was handed over the same way.
+
+A baseline that is a component file is read alone, and the readers its dictionary records are
+the component's own and nobody else's, because the run was not shown the rest. So a supplier's
+gate grades a removal by what one file can know. An output the component stopped offering is
+``removed-object``, an error, with a message that does not claim to know who read it: "no
+component read it" is a claim about components the run never saw. An input the component stopped reading is
+``removed-input``, an information, because a component that reads less harms nobody.
+``ddd check --standalone --baseline`` and ``ddd compare`` take it from the file. A dictionary
+archived by ``ddd dump --standalone`` carries no mark of how it was read, and the mark is a
+change of the format, so it is deferred: a comparison against such a dump is graded as one of
+a whole project is, which costs the supplier's gate its scope until the baseline is the
+component file itself.
 
 Its errors are another matter. A baseline that could not be read, as in the missing-file
 example above, or whose own components disagree has no dictionary that can be trusted, so

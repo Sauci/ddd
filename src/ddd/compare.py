@@ -1162,10 +1162,14 @@ def _compare_declaration(
 ) -> None:
     """Who produces the thing, and under which condition: two findings of their own.
 
-    Graded apart from the interface and the storage - ``changed-owner`` and
-    ``changed-condition`` - and phrased by hand, which is why neither is a table entry. Shared
-    between a plain object and a structured variable because a structure's members carry the
-    producer and the condition of the variable and have nothing to add to either.
+    Graded apart from the interface and the storage - ``changed-owner`` and the condition's
+    two ids - and phrased by hand, which is why none is a table entry. Shared between a plain
+    object and a structured variable because a structure's members carry the producer and the
+    condition of the variable and have nothing to add to either.
+
+    A condition that narrows what somebody reads is ``narrowed-condition``, an error, and any
+    other change of one is ``changed-condition``, a warning: an id carries one severity, so
+    the grade that depends on the readers is carried by the id.
     """
     if old.owner != new.owner:
         bag.add(
@@ -1176,8 +1180,9 @@ def _compare_declaration(
         )
 
     if old.condition != new.condition:
+        narrowed = new.condition is not None and bool(old.consumers)
         bag.add(
-            "changed-condition",
+            "narrowed-condition" if narrowed else "changed-condition",
             f"'{old.name}': condition {describe_condition(old.condition)} became "
             f"{describe_condition(new.condition)}, so {_condition_consequence(old, new)}",
             location,
@@ -1253,15 +1258,21 @@ def _condition_consequence(old: _Joined, new: _Joined) -> str:
     """What the change of a condition costs, which depends on its direction.
 
     Wrapping an object that was always there is the damaging direction and has to say so:
-    every build where the new condition is false loses the object, its consumers stop
-    linking and a calibration dataset loses the label. The message used to describe every
-    direction as a widening, which read as reassurance exactly when it was least warranted.
+    every build where the new condition is false loses the object and a calibration dataset
+    loses the label. The message used to describe every direction as a widening, which read
+    as reassurance exactly when it was least warranted. Where somebody reads the object, the
+    readers are named, because their builds are the ones that no longer link.
     """
-    if old.condition is None:
-        return "it is now absent from every build where that condition is false"
+    readers = (
+        f"; read by {', '.join(old.consumers)}, whose builds do not link there"
+        if old.consumers
+        else ""
+    )
     if new.condition is None:
         return "it is now present in every build"
-    return "the builds it is present in have changed"
+    if old.condition is None:
+        return f"it is now absent from every build where that condition is false{readers}"
+    return f"the builds it is present in have changed{readers}"
 
 
 _A2L_PROPERTIES = ("export", "format", "display_identifier")

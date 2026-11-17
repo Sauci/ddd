@@ -395,6 +395,43 @@ class TestTheCheckReference:
             flattened(COMPARING_DELIVERIES)
         )
 
+    def test_every_page_grades_a_narrowed_condition_by_whether_somebody_reads_the_object(
+        self,
+    ) -> None:
+        """Wrapping an object a component reads in a condition takes it from every build where
+        that is false, and a reader compiled against the baseline stops linking there: an error
+        under an id of its own, so that ``changed-condition`` keeps its warning for a condition
+        going away and for an object nobody reads, and a relaxation of it does not reach the
+        error. The registry and each page say so."""
+        assert CHECKS["narrowed-condition"].default_severity is Severity.ERROR
+        assert CHECKS["changed-condition"].default_severity is Severity.WARNING
+        assert CHECKS["changed-condition"].description.endswith("narrowed-condition instead")
+        for name, text in {
+            "README.md": README,
+            "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+            "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+            "SPEC.md": SPEC,
+        }.items():
+            flat = flattened(text)
+            assert "narrowed-condition" in flat, name
+            assert "changed-condition" in flat, name
+        assert "`-W changed-condition` relaxes only the warning below and does not reach this" in (
+            flattened(SPEC)
+        )
+        assert "and `narrowed-condition` where a component reads it" in flattened(SPEC)
+        assert "``-W changed-condition=ignore`` relaxes the warning only, and does not reach" in (
+            flattened(COMPARING_DELIVERIES)
+        )
+        assert "is narrowed-condition instead" in flattened(README)
+        for text in (CONSISTENCY_CHECKS, COMPARING_DELIVERIES):
+            assert "component reads is ``narrowed-condition`` instead" in flattened(text)
+        assert "A `-W changed-condition` relaxation does not reach it" in flattened(README)
+        assert "A ``-W changed-condition`` relaxation does not reach it" in flattened(
+            CONSISTENCY_CHECKS
+        )
+        assert "a condition added to an object a component reads" in flattened(SPEC)
+        assert "no longer link there" in flattened(COMPARING_DELIVERIES)
+
     def test_the_registry_describes_address_missing_as_the_pages_do(self) -> None:
         """``ddd checks`` prints the registry's one-liner, and since ``--image`` the check is
         about a symbol the image does not place as much as one the map leaves out: a line naming

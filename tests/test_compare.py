@@ -2797,3 +2797,117 @@ class TestWhatAReaderPrecompiledAgainstTheBaselineCannotAbsorb:
         bag = verdict(old, new)
         assert checks(bag) == ["renamed-read-object"] * 2, messages(bag)
         assert "'Old.x' is now called 'New.x', read by B" in messages(bag)
+
+
+class TestNarrowingAnObjectSomebodyReadsByAConditionCannotReplace:
+    """Wrapping a read object in a condition takes it from every build where that is false.
+
+    A reader compiled against the baseline looks for the object in every build, and in one
+    where the condition is false it links against nothing. So narrowing an object a component
+    reads - from no condition to one, or from one to another, which DDD cannot weigh and takes
+    as the builds it is present in changing - is a ``narrowed-condition``, an error. A
+    condition going away, and any change of one on an object nobody reads, stay the
+    ``changed-condition`` warning: an id carries one severity, so the grade that depends on
+    readers is carried by the id the finding goes under.
+    """
+
+    ID: ClassVar[str] = "w3n8c5hq2d6y"
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        *,
+        read: bool,
+        condition: str | None = None,
+        variable: str = "Speed",
+        structured: bool = False,
+    ) -> DataDictionary:
+        typed: dict[str, Any] = {"typename": "Pair_t"} if structured else {}
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project(
+                    "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
+                ),
+                f"{name}-t.ddd.json": types(
+                    struct_type("Pair_t", value_member("x"), value_member("y"))
+                ),
+                f"{name}-a.ddd.json": component(
+                    "A",
+                    declare("output", variable, condition=condition, id=self.ID, **typed),
+                ),
+                f"{name}-b.ddd.json": component(
+                    "B",
+                    *([declare("input", variable, condition=condition, **typed)] if read else []),
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def against_a_dump(self, tree: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
+        assert main(["dump", str(tree / "old.ddd.json"), "-o", str(tree / "old.json")]) == EXIT_OK
+        capsys.readouterr()
+        code = main(["compare", str(tree / "old.json"), str(tree / "new.ddd.json")])
+        return code, capsys.readouterr().err
+
+    def test_a_read_object_gaining_a_condition_is_an_error_naming_the_readers(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", read=True)
+        new = self.delivery(tree, "new", read=True, condition="defined(FEATURE_X)")
+        bag = verdict(old, new)
+        assert checks(bag) == ["narrowed-condition"], messages(bag)
+        assert bag.has_errors
+        text = messages(bag)
+        assert "'Speed': condition none became 'defined(FEATURE_X)'" in text
+        assert "read by B" in text
+        assert "read by B, whose builds do not link there" in text
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+        code, report = self.against_a_dump(tree, capsys)
+        assert code == EXIT_FINDINGS
+        assert "narrowed-condition" in report
+        assert "cannot replace" in report
+
+    def test_one_condition_for_another_under_a_reader_is_an_error(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=True, condition="defined(A)")
+        new = self.delivery(tree, "new", read=True, condition="defined(B)")
+        bag = verdict(old, new)
+        assert checks(bag) == ["narrowed-condition"], messages(bag)
+        assert bag.has_errors
+        assert "read by B" in messages(bag)
+
+    def test_a_condition_going_away_under_a_reader_is_a_warning(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=True, condition="defined(A)")
+        new = self.delivery(tree, "new", read=True)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-condition"], messages(bag)
+        assert "now present in every build" in messages(bag)
+        assert not bag.has_errors
+
+    def test_the_same_narrowing_on_an_object_nobody_reads_is_a_warning(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=False)
+        new = self.delivery(tree, "new", read=False, condition="defined(FEATURE_X)")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-condition"], messages(bag)
+        assert "absent from every build" in messages(bag)
+        assert not bag.has_errors
+
+    def test_a_structured_variable_narrowed_under_a_reader_is_one_error(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=True, structured=True, variable="Rec")
+        new = self.delivery(
+            tree, "new", read=True, structured=True, variable="Rec", condition="defined(X)"
+        )
+        bag = verdict(old, new)
+        assert checks(bag) == ["narrowed-condition"], messages(bag)
+        assert "'Rec': condition none became 'defined(X)'" in messages(bag)
+        assert "read by B" in messages(bag)
+
+    def test_relaxing_the_warning_leaves_the_error_standing(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", read=True)
+        new = self.delivery(tree, "new", read=True, condition="defined(FEATURE_X)")
+        bag = verdict(old, new, "changed-condition=ignore")
+        assert checks(bag) == ["narrowed-condition"], messages(bag)
+        assert bag.has_errors

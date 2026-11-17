@@ -1760,6 +1760,14 @@ compile:
   relaxes only the warning below and does not reach this error; that is why the rename's pair
   of ids runs the other way from the removals', and `renamed-object` keeps the plain id for the
   unread rename.
+- `narrowed-condition`: a condition added to an object a component reads, or one replaced by
+  another, so the builds the object is present in changed. A reader may be a binary compiled
+  against the baseline's headers, and in a build where the new condition is false it looks
+  for an object that is not there and does not link. DDD cannot weigh one condition against
+  another, so it takes a replacement as the builds changing, and it names the readers. A
+  check has one severity, so a project's `-W changed-condition` relaxes only the warning
+  below and does not reach this error; the same narrowing of an object nobody reads, and a
+  condition going away, stay `changed-condition`.
 - `reused-name`: a name of the baseline now names a different object. Three things prove it,
   and a rename proves it from either end. Two ids stated under one name that differ prove it
   outright. So does the baseline's object under that name having already been paired, by `id`,
@@ -1815,7 +1823,10 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 - `changed-owner`: another component produces the object now.
 - `changed-condition`: the preprocessor condition changed, namely the producer's, which is
   the one the dictionary records on the object
-  ([section 3.3.1](#331-one-object-several-declarations)).
+  ([section 3.3.1](#331-one-object-several-declarations)). A condition going away is this
+  check whoever reads the object, because the object is then in every build; one added or
+  replaced is this check only for an object nobody reads, and `narrowed-condition` where a
+  component reads it.
 - `changed-a2l`: the resolved A2L presentation changed, that is the export (compared as
   resolved, [section 3.3.1](#331-one-object-several-declarations)), `format` or
   `display_identifier`. The instance's name at the head of a composed `display_identifier`

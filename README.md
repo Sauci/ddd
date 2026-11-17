@@ -628,13 +628,14 @@ for the baseline - and graded, because the changes are not equally bad:
 | error | `removed-object` | an object is gone and a component read it |
 | error | `changed-interface` | kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point counts changed, or the layout a released structure fixed: a bitfield's width, the type a structured variable names, or the members of that structure in order, each with what it holds and its dimensions, nested and external ones included, save a member added at the end of it when the variable is no array, or volatile turned on for an object a component reads |
 | error | `renamed-read-object` | an object of the baseline is offered under a different name and a component read it, so a reader compiled against the baseline looks for a spelling that is gone; its `id` is what says so. A `-W renamed-object` relaxation does not reach it |
+| error | `narrowed-condition` | the preprocessor condition of an object a component reads was added or replaced, so a reader compiled against the baseline does not link in a build where the new condition is false. A `-W changed-condition` relaxation does not reach it |
 | error | `reused-name` | a name of the baseline now names a different object |
 | warning | `renamed-object` | an object of the baseline is offered under a different name and no component read it; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
 | warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; volatile turned on for an object a component reads is changed-interface instead; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in. An initial value compares as the bytes it produces, and on a structured variable the three are the variable's own and reported at it once |
 | warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
 | warning | `changed-owner` | another component produces it now |
-| warning | `changed-condition` | the preprocessor condition changed |
+| warning | `changed-condition` | the preprocessor condition changed; one added or replaced on an object a component reads is narrowed-condition instead |
 | warning | `changed-a2l` | the a2l entry changed |
 | warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
 | warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |

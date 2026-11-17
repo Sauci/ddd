@@ -281,8 +281,14 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("changed-owner", Severity.WARNING,
                "another component produces the object now",
                comparison=True),
+        _check("narrowed-condition", Severity.ERROR,
+               "the preprocessor condition of an object somebody reads was added or replaced, "
+               "so a reader compiled against the baseline does not link in a build where the "
+               "new condition is false",
+               comparison=True),
         _check("changed-condition", Severity.WARNING,
-               "the preprocessor condition of an object changed",
+               "the preprocessor condition of an object changed; one added or replaced on an "
+               "object somebody reads is narrowed-condition instead",
                comparison=True),
         _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed",
                comparison=True),

@@ -220,6 +220,11 @@ them together with everything else.
        a reader compiled against the baseline looks for a spelling that is gone; its ``id``
        says so. A ``-W renamed-object`` relaxation does not reach it
    * - error
+     - ``narrowed-condition``
+     - the preprocessor condition of an object a component reads was added or replaced, so a
+       reader compiled against the baseline does not link in a build where the new condition is
+       false; a ``-W changed-condition`` relaxation does not reach it
+   * - error
      - ``reused-name``
      - a name of the baseline now names a different object
    * - warning
@@ -242,7 +247,8 @@ them together with everything else.
      - another component produces the object now
    * - warning
      - ``changed-condition``
-     - the preprocessor condition of an object changed
+     - the preprocessor condition of an object changed; one added or replaced on an object a
+       component reads is ``narrowed-condition`` instead
    * - warning
      - ``changed-a2l``
      - the a2l entry of an object changed
@@ -309,6 +315,15 @@ object nobody reads stay ``changed-storage`` and ``renamed-object``, warnings, a
 said under each leaf's path, since a dataset is keyed by it, and each leaf answers for the
 readers of its variable. ``-W renamed-object=ignore`` relaxes the warning only: an id carries
 one severity, so the error stands under its own.
+
+Wrapping an object a component reads in a condition costs its readers the same. Where the
+condition is false the object is neither declared nor defined, so the builds of a reader compiled
+against the baseline, which looks for it in every build, no longer link there. Adding a
+condition to such an object, or replacing one with another - which DDD cannot weigh, and takes
+as the builds the object is present in changing - is ``narrowed-condition``, an error, naming
+the readers. A condition going away puts the object in every build and stays
+``changed-condition``, a warning, as does any change of a condition on an object nobody reads.
+``-W changed-condition=ignore`` relaxes the warning only, and does not reach this error.
 
 ``changed-storage`` covers the four properties that change how an object behaves rather than
 what it means: the initial value, ``volatile``, the memory ``section`` and the measurement

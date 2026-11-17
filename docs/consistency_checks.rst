@@ -844,6 +844,13 @@ registry can be read in one place.
        spelling that is gone. A structured variable's rename is said under each leaf's path,
        and each leaf answers for its variable's readers. ``-W renamed-object`` relaxes the
        warning an unread object's rename is, and does not reach this error.
+   * - ``narrowed-condition``
+     - error
+     - the preprocessor condition of an object a component reads was added or replaced, so a
+       reader compiled against the baseline does not link in a build where the new condition is
+       false. DDD cannot weigh one condition against another and takes a replacement as the
+       builds the object is present in changing. A ``-W changed-condition`` relaxation does not
+       reach it.
    * - ``reused-name``
      - error
      - a name of the baseline now belongs to a different object: the object that carried it
@@ -882,7 +889,8 @@ registry can be read in one place.
      - another component produces the object now.
    * - ``changed-condition``
      - warning
-     - the preprocessor condition of an object changed.
+     - the preprocessor condition of an object changed; one added or replaced on an object a
+       component reads is ``narrowed-condition`` instead.
    * - ``changed-a2l``
      - warning
      - the a2l entry of an object changed.

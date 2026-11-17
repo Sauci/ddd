@@ -27,9 +27,17 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from ddd.diagnostics import DiagnosticBag, Location
-from ddd.ir import Comparable, DataDictionary, ResolvedInstance, ResolvedLeaf, ResolvedObject
+from ddd.ir import (
+    Comparable,
+    DataDictionary,
+    ResolvedInstance,
+    ResolvedLeaf,
+    ResolvedMember,
+    ResolvedObject,
+)
 from ddd.models import (
     Conversion,
     EnumConversion,
@@ -595,7 +603,6 @@ def compare(
             location,
         )
 
-    _compare_layouts(baseline, candidate, bag, location)
     _compare_instances(baseline, candidate, bag, location)
 
     was = baseline.comparable
@@ -659,45 +666,174 @@ def compare(
     return paired
 
 
-def _compare_layouts(
-    baseline: DataDictionary,
-    candidate: DataDictionary,
-    bag: DiagnosticBag,
-    location: Location | None,
-) -> None:
-    """Report a structure whose members were reordered, which its leaves cannot say.
+_FORMAT_SPELLING_DIMENSIONS = 4
+"""The first dictionary format that records how a dimension is spelled.
 
-    Reordering the members of a released structure moves every address after the first change
-    - which is what the ``Member`` docstring published in two schemas has always promised a
-    comparison reports - and yet every leaf of the reordered type is untouched: same path,
-    same datatype, same conversion, same limits. A comparison that walks only the leaves
-    therefore says nothing at all, and the delivery that silently moved every offset of every
-    variable of that type "can replace" its predecessor.
+An object, an instance and a leaf say it themselves, carrying ``dimensions`` beside ``shape``
+or not. A member of a structure carries its dimensions and nothing beside them, so whether its
+dictionary recorded spellings at all is said by the document, through its ``format``.
+"""
 
-    Reported at the structure rather than at a leaf or at a variable, because the order is a
-    property of the type: the edit was one edit, one line moved in one types file, while a
-    project with three variables of a six member structure would otherwise print the same
-    sentence three or eighteen times and leave the reader to work out that it is one thing.
+type _Dimension = tuple[int | float | str | None, int | float | None]
+"""One dimension as a layout holds it: its spelling and the size it gives.
 
-    Only the members both sides declare are lined up. A member that arrived or left is
-    already an addition or a removal of the leaf it contributes, in a finding that names the
-    path; what this adds is the part no such finding carries - that the members which stayed
-    are not where they were.
+A constant's size is the value the dictionary's ``constants`` give it, and nothing where they
+declare none, which only a dump written past ``unknown-constant``, or edited by hand, holds.
+Against a baseline that records no spellings both halves are the size, so that only the size
+can differ.
+"""
+
+_NO_MEMBERS = 0
+"""The id of the layout holding no members, given to every structure the dictionary does not
+lay out (see :class:`_Layouts`)."""
+
+
+class _Held(NamedTuple):
+    """One member as the layout of its structure holds it: what decides where those after it are.
+
+    ``holds`` is ``None`` for a member holding a value, whose datatype, width in bits and
+    dimensions are its leaf's, compared there and told there as the leaf's changed interface;
+    the id :class:`_Layouts` gave the layout of the structure a nested member is, so that the
+    structure's name drops out; or the name of an external type, the one thing DDD knows of
+    storage it cannot see into. ``shape`` is the dimensions of a nested or an external member,
+    which no leaf carries.
     """
-    was = {entry.name: entry.members for entry in baseline.types}
-    now = {entry.name: entry.members for entry in candidate.types}
-    for name in sorted(was.keys() & now.keys()):
-        shared = {member.name for member in was[name]} & {member.name for member in now[name]}
-        before = [member.name for member in was[name] if member.name in shared]
-        after = [member.name for member in now[name] if member.name in shared]
-        if before != after:
-            bag.add(
-                "changed-interface",
-                f"'{name}' is not the same structure any more (members: {', '.join(after)} "
-                f"!= {', '.join(before)}); reordering moves every address after the first "
-                f"change, so every variable of it holds its members somewhere else",
-                location,
+
+    name: str
+    holds: int | str | None
+    shape: tuple[_Dimension, ...] = ()
+
+
+type _Layout = tuple[_Held, ...]
+"""The members of one structure, in the order the compiler lays them out."""
+
+
+class _Layouts:
+    """The layout of every structure of both sides of one comparison, each one held once.
+
+    A structured variable is read by a reader that may be a binary compiled against the
+    baseline's headers, and such a reader takes each member out of the offset that header gave
+    it. Every leaf of a variable can compare identical to the byte while those offsets moved: a
+    member inserted ahead of the others, or removed, or reordered, a nested structure that grew
+    or was rearranged, a nested array that changed size, an external member of another type or
+    shape - and, in an array of structures, a member added at the end, which moves every element
+    after the first. What a leaf cannot say is said here, once, at the variable whose members a
+    reader of the baseline finds somewhere else.
+
+    Each layout gets one id, shared by both sides, and a structure nested in another is held by
+    the id of its layout rather than by its name. So two variables compare by one integer each,
+    a nested structure renamed with its members kept is the same layout, and nothing is expanded,
+    which a structure nesting another twice at each of its levels would make exponential. The
+    structures are laid out in the order the dictionary lists them, which is dependency order, so
+    the layout of a nested structure is known before the structure holding it is laid out. One
+    that is not known by then - a name no entry declares, or a structure on a cycle, which a dump
+    written under ``--force`` lists although no variable can be one - holds no members, since the
+    document says nothing of what it holds; so does the structure of a variable that its
+    dictionary, edited by hand, does not list at all.
+    """
+
+    def __init__(self, baseline: DataDictionary, candidate: DataDictionary) -> None:
+        self._ids: dict[_Layout, int] = {(): _NO_MEMBERS}
+        self.layouts: dict[int, _Layout] = {_NO_MEMBERS: ()}
+        spelled = min(baseline.format, candidate.format) >= _FORMAT_SPELLING_DIMENSIONS
+        self.was = self._lay_out(baseline, spelled=spelled)
+        self.now = self._lay_out(candidate, spelled=spelled)
+
+    def _lay_out(self, dictionary: DataDictionary, *, spelled: bool) -> dict[str, int]:
+        """The id of every structure of one side, by name."""
+        sizes = {constant.name: constant.value for constant in dictionary.constants}
+        laid: dict[str, int] = {}
+        for structure in dictionary.types:
+            layout = tuple(
+                _held(member, laid, sizes, spelled=spelled) for member in structure.members
             )
+            laid[structure.name] = self._ids.setdefault(layout, len(self._ids))
+            self.layouts[laid[structure.name]] = layout
+        return laid
+
+    def moved(self, old: ResolvedInstance, new: ResolvedInstance) -> str | None:
+        """Where the layout of a variable parts from its baseline's, or nothing when it holds.
+
+        A member added after every member of the structure of a single variable moves nothing a
+        reader of the baseline reads, which is the one change of a layout that leaves it whole:
+        the member is the addition of its leaves, if it has any, and no more. Added to the
+        structure of an array, it moves every element after the first, and added to a structure
+        nested in another it moves what follows, so neither is an addition alone.
+        """
+        was, now = self.was.get(old.type, _NO_MEMBERS), self.now.get(new.type, _NO_MEMBERS)
+        before, after = self.layouts[was], self.layouts[now]
+        if was == now or (not old.shape and after[: len(before)] == before):
+            return None
+        return _where_layouts_part(before, after, self.layouts, new.type)
+
+
+def _held(
+    member: ResolvedMember,
+    laid: Mapping[str, int],
+    sizes: Mapping[str, int | float],
+    *,
+    spelled: bool,
+) -> _Held:
+    """One member as its structure's layout holds it, against the structures laid out so far."""
+    holds: int | str
+    if member.external is not None:
+        holds = member.external
+    elif member.type is not None:
+        holds = laid.get(member.type, _NO_MEMBERS)
+    else:
+        return _Held(member.name, None)
+    shape: tuple[_Dimension, ...] = tuple(
+        (spelling, sizes.get(spelling) if isinstance(spelling, str) else spelling)
+        for spelling in member.dimensions
+    )
+    if not spelled:
+        shape = tuple((size, size) for _, size in shape)
+    return _Held(member.name, holds, shape)
+
+
+def _where_layouts_part(
+    before: _Layout, after: _Layout, layouts: Mapping[int, _Layout], at: str
+) -> str:
+    """Where two layouts that differ first part, as a finding spells it, candidate first.
+
+    The members of the structure they part in, where those differ in name or in order, and
+    otherwise the first member they part at - followed down into a structure nested on both
+    sides at one shape, where the difference is inside it. ``at`` names the structure the walk
+    is in, from the candidate's structure down: ``Rec_t``, then ``Rec_t.inner``.
+    """
+    while _names(before) == _names(after):
+        old, new = next(pair for pair in zip(before, after, strict=True) if pair[0] != pair[1])
+        at = f"{at}.{old.name}"
+        if isinstance(old.holds, int) and isinstance(new.holds, int) and old.shape == new.shape:
+            before, after = layouts[old.holds], layouts[new.holds]
+            continue
+        return f"member {at}: {_spell_held(new)} != {_spell_held(old)}"
+    return f"members of {at}: {_spell_names(after)} != {_spell_names(before)}"
+
+
+def _names(layout: _Layout) -> tuple[str, ...]:
+    return tuple(held.name for held in layout)
+
+
+def _spell_names(layout: _Layout) -> str:
+    return ", ".join(_names(layout)) or "none"
+
+
+def _spell_held(held: _Held) -> str:
+    """``value``, ``structure[3]`` or ``Ha_t[4]``: what a member holds, and its dimensions.
+
+    A dimension a constant names is spelled with the size it gives, ``N=3``, because the
+    spelling alone would read the same on both sides of a size that changed behind it.
+    """
+    if held.holds is None:
+        return "value"
+    what = "structure" if isinstance(held.holds, int) else held.holds
+    return what + format_shape(
+        tuple(
+            f"{spelling}={size}" if isinstance(spelling, str) else f"{spelling}"
+            for spelling, size in held.shape
+        )
+    )
 
 
 _MOST_CANDIDATES = 8
@@ -1037,12 +1173,20 @@ def _compare_instances(
 
     ``DataDictionary.comparable`` offers the plain objects and the leaves and never the
     instances, so a structured variable used to be compared only through its members - and
-    two things fell between the two.
+    three things fell between the two.
 
     What no member carries at all: the ``type``. Renaming ``Sensor_t`` to ``Sensor2_t`` with
     the members untouched changes what every consumer's header declares - ``extern Sensor2_t
     Inlet`` - which the in-project table already calls ``definition-mismatch``, while every
     leaf compares clean to the byte and the comparison said nothing whatsoever.
+
+    What no member can say: where the members are. That is the variable's layout, and
+    :class:`_Layouts` reads it out of the dictionary's ``types``; a layout that moved is said
+    in the same finding as the type, once, at the variable whose readers find their members
+    somewhere else - not at the structure, because whether an edit of a structure moved
+    anything is the variable's question: a member added at its end moves every element after
+    the first of an array of it and nothing of a single one. A structure no variable is has no
+    reader to move anything for.
 
     What every member carries because the variable does: ``volatile``, ``section``,
     ``raster``, the producer and the condition. One flip of the variable's ``volatile`` was
@@ -1058,15 +1202,18 @@ def _compare_instances(
     """
     was = {entry.name: entry for entry in baseline.instances}
     now = {entry.name: entry for entry in candidate.instances}
+    layouts = _Layouts(baseline, candidate)
     paired, _removed, _added = _pair(was, now)
     for old, new in paired:
         interface = differing(_instance_interface_fields(old, new), old, new)
-        if interface:
+        moved = layouts.moved(old, new)
+        if interface or moved is not None:
             readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
+            spelled = spell_out(interface, old, new) if interface else ""
+            both = ", ".join(part for part in (spelled, moved or "") if part)
             bag.add(
                 "changed-interface",
-                f"'{old.name}' is not the same object any more "
-                f"({spell_out(interface, old, new)}){readers}",
+                f"'{old.name}' is not the same object any more ({both}){readers}",
                 location,
             )
 

@@ -5374,3 +5374,124 @@ class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:
             "of it, a rename of the variable being the leaf's `renamed-object`; one a leaf's own "
             "member states has no such head"
         ) in self.SPEC_TEXT
+
+
+class TestWhatThePagesSayOfTheLayoutOfAStructuredVariable:
+    """A structured variable's layout is interface, read from the dictionary's ``types`` and said
+    once at the variable; a member added after every member of the structure of a single
+    variable is the one change that keeps every member where a reader of the baseline looks."""
+
+    SPEC_TEXT = flattened(SPEC)
+    PAGE = flattened(PAGES["docs/comparing_deliveries.rst"])
+    TYPES = flattened(PAGES["docs/file_formats/types.rst"])
+
+    def test_the_spec_says_what_the_layout_is_and_where_it_is_said(self) -> None:
+        for sentence in (
+            "the width of a bitfield, the `type` a structured variable names or the layout of a "
+            "structured variable changed.",
+            "A bitfield's width and the layout of a structured variable are what a released "
+            "structure fixed for its consumers ([section 3.7](#37-type-description)), and a "
+            "consumer may be a binary compiled against the baseline's headers: narrowing a field "
+            "changes the value every reader takes out of the word, and widening one moves every "
+            "member after it.",
+            "The layout is read from the dictionary's `types` "
+            "([section 5.3](#53-data-dictionary)): the members of the variable's structure in "
+            "order, each by its name and by what it holds, a nested structure expanded into its "
+            "own members whatever it is called, an "
+            "external member by its type's name and its `dimensions`, and each dimension of a "
+            "nested or an external member by its spelling and by its value, a constant's being "
+            "the value the dictionary's `constants` give it.",
+            "A member holding a value answers for its datatype, its width and its `dimensions` at "
+            "its leaf, which compares them.",
+            "Any other difference of the layout may leave a reader of the baseline reading a "
+            "member, or an element, other than the one it was built to read, while each leaf the "
+            "two share still compares identical to the byte - a member inserted, removed, renamed "
+            "or reordered, a nested structure grown or rearranged, a nested array resized, an "
+            "external member retyped or resized - and is reported once, at each variable whose "
+            "layout it changes, naming the variable's structure and where the two layouts part; "
+            "a structure no variable is changes nothing a reader reads.",
+            "The one exception is a member added after every member of the structure of a single "
+            "variable, which moves nothing a reader of the baseline reads and is the addition of "
+            "the leaves it contributes; added to the structure of an array of structures, it "
+            "moves every element after the first, and added to a nested structure, it is a "
+            "nested structure grown.",
+            "A structured variable's `type` is what every consumer's header declares, so renaming "
+            "the structure changes the interface even when its members are untouched, while a "
+            "structure nested in it is reached through the member that holds it, so renaming "
+            "that one with its layout kept changes nothing.",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_spec_no_longer_leaves_an_arrival_to_its_leaf_or_a_move_to_the_structure(
+        self,
+    ) -> None:
+        assert "a member that arrived or left is already the addition" not in self.SPEC_TEXT
+        assert "A reordering is reported once, at the structure" not in self.SPEC_TEXT
+
+    def test_the_spec_says_the_variable_answers_for_its_layout(self) -> None:
+        for sentence in (
+            "The variable answers for what no member carries - its `type` and its layout - and "
+            "for what every member carries only because the variable states it:",
+            "exactly as an object without an `id` is, and as the changed layout of each variable "
+            "of the type.",
+            "a baseline at format 3 or older states no `dimensions`, so shapes compare by value "
+            "alone, those of a structure's members included;",
+        ):
+            assert sentence in self.SPEC_TEXT, sentence
+
+    def test_the_spec_says_where_the_dictionary_carries_the_layout(self) -> None:
+        assert (
+            "`types` lists the structures in dependency order with their members, which a "
+            "delivery comparison reads the layout of a structured variable from, a dimension "
+            "spelled by a constant being read at the value `constants` gives it "
+            "([section 4.1](#41-comparing-two-deliveries));"
+        ) in self.SPEC_TEXT
+
+    def test_the_comparison_page_says_what_the_layout_is_and_where_it_is_said(self) -> None:
+        for sentence in (
+            "or the layout a released structure fixed: a bitfield's width, the members of a "
+            "structured variable in order with what each holds, nested and external ones "
+            "included, or the type it names",
+            "The layout of a :doc:`structure <file_formats/types>` is interface as well, because "
+            "a reader may be a binary compiled against the previous delivery's headers, which "
+            "takes each member out of the offset those headers gave it.",
+            "A structured variable's layout is read from the dictionary's ``types``: the members "
+            "of its structure in order, a nested structure expanded into its own members "
+            "whatever it is called, an external member by its type's name and its dimensions, "
+            "and every dimension by its spelling and its value.",
+            "A member inserted, removed, renamed or swapped with another leaves such a reader "
+            "reading a member other than the one it was built to read, while every member the "
+            "two deliveries share still compares identical to the byte - same path, same "
+            "datatype, same conversion, same limits - and so may a nested structure that grew or "
+            "was rearranged, a nested array that changed size, or an external member of another "
+            "type or dimension.",
+            "Each is reported once, at every variable whose layout it changed, naming the "
+            "structure and where the two layouts part; a structure no variable is changes "
+            "nothing anybody reads, and is not compared.",
+            "One change alone keeps every member where a reader of the previous delivery looks "
+            "for it: a member added after every member of the structure of a single variable, "
+            "which is the addition of its leaves and no more.",
+            "Added to the structure of an array of structures, it moves every element after the "
+            "first, and added to a structure nested in another, it is that structure grown, so "
+            "neither is an addition alone.",
+            "while a structure nested in it is reached through the member that holds it, so "
+            "renaming that one with its layout kept changes nothing.",
+        ):
+            assert sentence in self.PAGE, sentence
+        assert "A reordering is reported once, at the structure" not in self.PAGE
+
+    def test_the_promise_of_a_clean_comparison_says_how_far_its_layout_reaches(self) -> None:
+        assert (
+            "still addresses the same objects, with the same layout, the same scaling and the "
+            "same meaning. The layout is the one the dictionary describes: what an external type "
+            "holds is its own header's, which no dictionary records."
+        ) in self.PAGE
+
+    def test_the_types_page_says_a_comparison_holds_an_external_member(self) -> None:
+        assert (
+            "it does not appear in ``ddd list`` or in the dictionary's ``leaves``, because there "
+            "is no datatype, unit or range to compare; a delivery comparison holds it by its "
+            "type's name and its dimensions alone, as part of the layout of each variable that "
+            "holds it."
+        ) in self.TYPES
+        assert "or in a delivery comparison, because" not in self.TYPES

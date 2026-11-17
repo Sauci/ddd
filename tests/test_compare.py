@@ -18,6 +18,7 @@ from conftest import (
     project,
     struct_type,
     types,
+    value_member,
     write_tree,
 )
 from ddd.analysis import analyze
@@ -83,6 +84,16 @@ def ruling(base: Path, capsys: pytest.CaptureFixture[str], *arguments: str) -> t
     capsys.readouterr()
     code = main(["compare", str(base / "old.ddd.json"), str(base / "new.ddd.json"), *arguments])
     return code, capsys.readouterr().err
+
+
+def without_spellings(dictionary: DataDictionary) -> DataDictionary:
+    """The dictionary as a format 3 dump carried it: no dimension spellings anywhere."""
+    stripped = json.loads(dictionary.model_dump_json())
+    stripped["format"] = 3
+    for group in ("objects", "instances", "leaves"):
+        for entry in stripped[group]:
+            del entry["dimensions"]
+    return DataDictionary.model_validate(stripped)
 
 
 class TestBreakingChanges:
@@ -539,15 +550,6 @@ class TestAStructuredVariableIsComparedAsAVariable:
             messages(bag)
         )
 
-    def archived(self, dictionary: DataDictionary) -> DataDictionary:
-        """The dictionary as a format 3 dump carried it: no dimension spellings anywhere."""
-        stripped = json.loads(dictionary.model_dump_json())
-        stripped["format"] = 3
-        for group in ("objects", "instances", "leaves"):
-            for entry in stripped[group]:
-                del entry["dimensions"]
-        return DataDictionary.model_validate(stripped)
-
     def test_an_older_baseline_compares_the_array_dimension_by_value(self, tree: Path) -> None:
         """An array of structures defers exactly as an array of plain objects does.
 
@@ -559,14 +561,14 @@ class TestAStructuredVariableIsComparedAsAVariable:
         write_tree(tree, {"new-c.ddd.json": {"constants": [{"name": "N", "value": 2}]}})
         new = self.delivery(tree, "new", dimensions=["N"], constants="new-c.ddd.json")
         assert new.instances[0].spelled_shape == ("N",)
-        assert checks(verdict(self.archived(old), new)) == []
+        assert checks(verdict(without_spellings(old), new)) == []
 
     def test_a_resized_array_against_an_older_baseline_still_reports(self, tree: Path) -> None:
         """The deference is about the spelling only; another size is a changed interface."""
         old = self.delivery(tree, "old", dimensions=[2])
         write_tree(tree, {"new-c.ddd.json": {"constants": [{"name": "N", "value": 3}]}})
         new = self.delivery(tree, "new", dimensions=["N"], constants="new-c.ddd.json")
-        bag = verdict(self.archived(old), new)
+        bag = verdict(without_spellings(old), new)
         assert "changed-interface" in checks(bag)
         assert "'Inlet' is not the same object any more (shape: [N] != [2])" in messages(bag)
 
@@ -645,16 +647,18 @@ class TestTheLayoutOfAStructureIsInterface:
         assert code == EXIT_FINDINGS
         assert "cannot replace" in report
 
-    def test_two_members_swapped_are_reported_once_at_the_structure(
+    def test_two_members_swapped_are_reported_once_at_the_variable(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Nothing about either leaf changed, and every offset of every variable moved."""
+        """Nothing about either leaf changed, and every offset of the variable moved."""
         first, second = self.member("a", datatype="uint8"), self.member("b")
         old = self.delivery(tree, "old", first, second)
         new = self.delivery(tree, "new", second, first)
         bag = verdict(old, new)
         assert checks(bag) == ["changed-interface"]
-        assert "'S_t' is not the same structure any more (members: b, a != a, b)" in messages(bag)
+        assert "'Inst' is not the same object any more (members of S_t: b, a != a, b)" in (
+            messages(bag)
+        )
         code, report = ruling(tree, capsys)
         assert code == EXIT_FINDINGS
         assert "cannot replace" in report
@@ -677,6 +681,393 @@ class TestTheLayoutOfAStructureIsInterface:
         old = self.delivery(tree, "old", *members)
         new = self.delivery(tree, "new", *members)
         assert checks(verdict(old, new)) == []
+
+
+def members_named(*names: str) -> list[dict[str, Any]]:
+    """A ``value`` member of each name, all of one datatype, so that only their names and their
+    order tell them apart."""
+    return [value_member(name) for name in names]
+
+
+def rec_t(*members: dict[str, Any]) -> dict[str, Any]:
+    """``Rec_t``, the structure the variable ``Rec`` of a delivery below is."""
+    return struct_type("Rec_t", *members)
+
+
+IN_V = struct_type("In_t", *members_named("v"))
+"""A structure of one member, for nesting."""
+
+WITH_H = rec_t(value_member("speed"), value_member("h", typename="Ha_t"), value_member("torque"))
+"""``Rec_t`` with an external member between two that hold values."""
+
+LAYOUTS_THAT_MOVED = [
+    pytest.param(
+        [rec_t(*members_named("a", "b"))],
+        [rec_t(*members_named("a", "b", "c"))],
+        [2],
+        "members of Rec_t: a, b, c != a, b",
+        2,
+        id="the structure of an array gained a member at its end",
+    ),
+    pytest.param(
+        [IN_V, rec_t(value_member("inner", typename="In_t"), value_member("tail"))],
+        [
+            struct_type("In_t", *members_named("v", "w")),
+            rec_t(value_member("inner", typename="In_t"), value_member("tail")),
+        ],
+        None,
+        "members of Rec_t.inner: v, w != v",
+        1,
+        id="a nested structure gained a member",
+    ),
+    pytest.param(
+        [IN_V, rec_t(value_member("cell", typename="In_t", dimensions=[2]), value_member("tail"))],
+        [IN_V, rec_t(value_member("cell", typename="In_t", dimensions=[3]), value_member("tail"))],
+        None,
+        "member Rec_t.cell: structure[3] != structure[2]",
+        1,
+        id="a nested array of structures grew",
+    ),
+    pytest.param(
+        [
+            struct_type("In_t", *members_named("v", "w")),
+            rec_t(value_member("inner", typename="In_t"), value_member("tail")),
+        ],
+        [
+            struct_type("In2_t", *members_named("w", "v")),
+            rec_t(value_member("inner", typename="In2_t"), value_member("tail")),
+        ],
+        None,
+        "members of Rec_t.inner: w, v != v, w",
+        0,
+        id="a nested structure renamed and its members swapped",
+    ),
+    pytest.param(
+        [rec_t(*members_named("speed", "torque"))],
+        [rec_t(*members_named("status", "speed", "torque"))],
+        None,
+        "members of Rec_t: status, speed, torque != speed, torque",
+        1,
+        id="a member inserted ahead of the others",
+    ),
+    pytest.param(
+        [WITH_H],
+        [rec_t(value_member("speed"), value_member("h", typename="Hb_t"), value_member("torque"))],
+        None,
+        "member Rec_t.h: Hb_t != Ha_t",
+        0,
+        id="an external member of another type",
+    ),
+    pytest.param(
+        [WITH_H],
+        [rec_t(*members_named("speed", "torque"))],
+        None,
+        "members of Rec_t: speed, torque != speed, h, torque",
+        0,
+        id="an external member removed",
+    ),
+    pytest.param(
+        [WITH_H],
+        [
+            rec_t(
+                value_member("speed"),
+                value_member("h", typename="Ha_t", dimensions=[4]),
+                value_member("torque"),
+            )
+        ],
+        None,
+        "member Rec_t.h: Ha_t[4] != Ha_t",
+        0,
+        id="an external member given a dimension",
+    ),
+]
+"""Each structure before and after, the dimensions of the variable, where the two layouts part
+as the finding spells it, and how many leaves the candidate adds."""
+
+
+class TestTheLayoutOfAStructuredVariableIsInterface:
+    """What a reader compiled against the baseline finds where it looks in a structured variable.
+
+    The comparison used to line up only the members that a structure of the same name declared
+    on both sides, and left everything else to the leaves: a member inserted ahead of the others
+    was the addition of its leaf, an ``info``, and an external member, which contributes no leaf,
+    was compared by nothing at all. Either moves every member after it. So does a structure
+    nested in the variable that grew or was rearranged, a nested array of structures that grew,
+    and a member added at the end of the structure of an array, which moves every element after
+    the first - while every leaf still compares identical to the byte, and the delivery replaced
+    its predecessor under ``--strict``.
+
+    A structured variable now has one layout, read from the dictionary's ``types``: the members
+    of its structure in order, a nested structure expanded into its own whatever it is called,
+    an external member by its type's name and its dimensions, and a dimension by its spelling and
+    its value. A difference is a changed interface of the variable, said once there. A member
+    added after every member of the structure of a single variable moves nothing such a reader
+    reads, and stays the addition of its leaves.
+    """
+
+    EXTERNAL: ClassVar[tuple[dict[str, Any], ...]] = (
+        {"type": "external", "name": "Ha_t", "header": "ha.h"},
+        {"type": "external", "name": "Hb_t", "header": "hb.h"},
+    )
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        *structures: dict[str, Any],
+        typename: str = "Rec_t",
+        dimensions: list[int | str] | None = None,
+        constants: dict[str, int] | None = None,
+    ) -> DataDictionary:
+        """``Rec``, written by ``A`` and read by ``B``, beside these structures and constants."""
+        shape = {} if dimensions is None else {"dimensions": dimensions}
+        named = [] if constants is None else [f"{name}-c.ddd.json"]
+        declared = [{"name": key, "value": value} for key, value in (constants or {}).items()]
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project(
+                    "P", *named, f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
+                ),
+                f"{name}-c.ddd.json": {"constants": declared},
+                f"{name}-t.ddd.json": types(*self.EXTERNAL, *structures),
+                f"{name}-a.ddd.json": component(
+                    "A", declare("output", "Rec", typename=typename, **shape)
+                ),
+                f"{name}-b.ddd.json": component(
+                    "B", declare("input", "Rec", typename=typename, **shape)
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def against_a_dump(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], *arguments: str
+    ) -> tuple[int, str]:
+        """``ddd compare`` with the baseline archived first, the way a release keeps it."""
+        assert main(["dump", str(tree / "old.ddd.json"), "-o", str(tree / "old.json")]) == EXIT_OK
+        capsys.readouterr()
+        code = main(["compare", str(tree / "old.json"), str(tree / "new.ddd.json"), *arguments])
+        return code, capsys.readouterr().err
+
+    def verdicts(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> tuple[tuple[int, str], tuple[int, str]]:
+        """Both sides as descriptions, and the baseline as a dump, each under ``--strict``."""
+        return ruling(tree, capsys, "--strict"), self.against_a_dump(tree, capsys, "--strict")
+
+    @pytest.mark.parametrize(
+        ("before", "after", "dimensions", "spelled", "additions"), LAYOUTS_THAT_MOVED
+    )
+    def test_a_layout_that_moved_cannot_replace_its_predecessor(
+        self,
+        tree: Path,
+        capsys: pytest.CaptureFixture[str],
+        before: list[dict[str, Any]],
+        after: list[dict[str, Any]],
+        dimensions: list[int | str] | None,
+        spelled: str,
+        additions: int,
+    ) -> None:
+        """Each leaf the two share compares identical to the byte, and a reader of the baseline
+        reads another member, or another element, than the one it was built to read."""
+        old = self.delivery(tree, "old", *before, dimensions=dimensions)
+        new = self.delivery(tree, "new", *after, dimensions=dimensions)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"] + ["added-object"] * additions, messages(bag)
+        assert f"'Rec' is not the same object any more ({spelled}), read by B" in messages(bag)
+        for code, report in self.verdicts(tree, capsys):
+            assert code == EXIT_FINDINGS, report
+            assert "cannot replace" in report
+
+    def test_a_member_appended_to_a_single_structure_is_its_addition_alone(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Every member a reader of the baseline reads is where it was, so this alone of the
+        layout's changes replaces its predecessor; under an array it moved every element after
+        the first, which the first case above holds."""
+        old = self.delivery(tree, "old", rec_t(*members_named("a", "b")))
+        new = self.delivery(tree, "new", rec_t(*members_named("a", "b", "c")))
+        bag = verdict(old, new)
+        assert checks(bag) == ["added-object"], messages(bag)
+        assert "'Rec.c' is new" in messages(bag)
+        for code, report in self.verdicts(tree, capsys):
+            assert code == EXIT_OK, report
+            assert "can replace" in report and "cannot replace" not in report
+
+    def test_a_nested_structure_renamed_with_its_layout_kept_is_no_change(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A reader reaches a nested structure through the member that holds it, so the name it
+        has moves nothing that reader reads; the structure the variable itself names is what
+        every consumer's header declares it as, and that one stays an interface."""
+        held = members_named("v", "w")
+        holder = rec_t(value_member("inner", typename="In_t"), value_member("tail"))
+        renamed = rec_t(value_member("inner", typename="In2_t"), value_member("tail"))
+        old = self.delivery(tree, "old", struct_type("In_t", *held), holder)
+        new = self.delivery(tree, "new", struct_type("In2_t", *held), renamed)
+        assert checks(verdict(old, new)) == []
+        for code, report in self.verdicts(tree, capsys):
+            assert code == EXIT_OK, report
+            assert "can replace" in report and "cannot replace" not in report
+
+    def test_the_variables_own_structure_renamed_and_rearranged_is_one_finding(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", rec_t(*members_named("a", "b")))
+        new = self.delivery(
+            tree, "new", struct_type("Rec2_t", *members_named("b", "a")), typename="Rec2_t"
+        )
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert (
+            "'Rec' is not the same object any more (type: 'Rec2_t' != 'Rec_t', members of "
+            "Rec2_t: b, a != a, b), read by B"
+        ) in messages(bag)
+
+    def test_one_edit_of_a_structure_is_said_at_each_variable_it_moved(self, tree: Path) -> None:
+        """At the variable, where its readers look, and never a second time at the structure.
+        The same edit moves an array of the structure and not a single one of it, so whether it
+        moved anything is the variable's question."""
+        for name, order in (("old", ("a", "b")), ("new", ("b", "a")), ("grown", ("a", "b", "c"))):
+            write_tree(
+                tree,
+                {
+                    f"{name}.ddd.json": project("P", f"{name}-t.ddd.json", f"{name}-a.ddd.json"),
+                    f"{name}-t.ddd.json": types(struct_type("S_t", *members_named(*order))),
+                    f"{name}-a.ddd.json": component(
+                        "A",
+                        declare("local", "Many", typename="S_t", dimensions=[2]),
+                        declare("local", "Single", typename="S_t"),
+                    ),
+                },
+            )
+        old = resolve(tree, "old.ddd.json")
+        bag = verdict(old, resolve(tree, "new.ddd.json"))
+        assert checks(bag) == ["changed-interface"] * 2, messages(bag)
+        for variable in ("Many", "Single"):
+            spelled = f"'{variable}' is not the same object any more (members of S_t: b, a != a, b)"
+            assert spelled in messages(bag)
+        bag = verdict(old, resolve(tree, "grown.ddd.json"))
+        assert checks(bag) == ["changed-interface"] + ["added-object"] * 3, messages(bag)
+        assert "'Many' is not the same object any more (members of S_t: a, b, c != a, b)" in (
+            messages(bag)
+        )
+
+    def test_a_structure_no_variable_declares_has_no_layout_to_compare(self, tree: Path) -> None:
+        """Reordered or removed, it moved nothing anybody reads."""
+        rec = rec_t(*members_named("a"))
+        old = self.delivery(tree, "old", rec, struct_type("Lone_t", *members_named("x", "y")))
+        reordered = self.delivery(tree, "new", rec, struct_type("Lone_t", *members_named("y", "x")))
+        removed = self.delivery(tree, "gone", rec)
+        assert checks(verdict(old, reordered)) == []
+        assert checks(verdict(old, removed)) == []
+
+    def test_a_nested_array_respelled_with_an_equal_size_is_a_changed_interface(
+        self, tree: Path
+    ) -> None:
+        """The generated structure declares the member by the spelling, as it does an array
+        that holds values, so a nested array's dimension compares as its spelling and its
+        value, exactly as every other dimension does."""
+        old = self.delivery(
+            tree,
+            "old",
+            IN_V,
+            rec_t(value_member("cell", typename="In_t", dimensions=[4]), value_member("tail")),
+        )
+        new = self.delivery(
+            tree,
+            "new",
+            IN_V,
+            rec_t(
+                value_member("cell", typename="In_t", dimensions=["N_CELLS"]),
+                value_member("tail"),
+            ),
+            constants={"N_CELLS": 4},
+        )
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert "(member Rec_t.cell: structure[N_CELLS=4] != structure[4])" in messages(bag)
+
+    def test_a_size_changed_behind_one_spelling_is_read_at_its_value(self, tree: Path) -> None:
+        cell = rec_t(value_member("cell", typename="In_t", dimensions=["N"]), value_member("tail"))
+        old = self.delivery(tree, "old", IN_V, cell, constants={"N": 2})
+        new = self.delivery(tree, "new", IN_V, cell, constants={"N": 3})
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface", "added-object"], messages(bag)
+        assert "(member Rec_t.cell: structure[N=3] != structure[N=2])" in messages(bag)
+
+    def test_against_a_baseline_without_spellings_only_the_sizes_count(self, tree: Path) -> None:
+        """A dictionary of format 3 or older records no spelling of a dimension, so against one
+        a nested array compares by its size, as every other dimension does."""
+        old = self.delivery(
+            tree,
+            "old",
+            IN_V,
+            rec_t(value_member("cell", typename="In_t", dimensions=[4]), value_member("tail")),
+        )
+        named = rec_t(
+            value_member("cell", typename="In_t", dimensions=["N_CELLS"]), value_member("tail")
+        )
+        same = self.delivery(tree, "same", IN_V, named, constants={"N_CELLS": 4})
+        grown = self.delivery(tree, "grown", IN_V, named, constants={"N_CELLS": 5})
+        assert checks(verdict(without_spellings(old), same)) == []
+        bag = verdict(without_spellings(old), grown)
+        assert checks(bag) == ["changed-interface", "added-object"], messages(bag)
+        assert "(member Rec_t.cell: structure[5] != structure[4])" in messages(bag)
+
+    def test_a_member_of_another_datatype_is_told_once_at_its_leaf(self, tree: Path) -> None:
+        """Widened, it moves every member after it, as a wider bitfield does; its leaf says so,
+        and the variable does not say it a second time."""
+        old = self.delivery(tree, "old", rec_t(value_member("a", "uint8"), value_member("b")))
+        new = self.delivery(tree, "new", rec_t(value_member("a", "uint16"), value_member("b")))
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+        assert (
+            "'Rec.a' is not the same object any more (datatype: uint16 != uint8), read by B"
+        ) in messages(bag)
+
+    def test_a_member_turned_from_a_value_into_an_external_type_moved_the_layout(
+        self, tree: Path
+    ) -> None:
+        """Its leaf is gone, which is a finding of its own, and what follows it may be somewhere
+        else, which no leaf says."""
+        old = self.delivery(
+            tree,
+            "old",
+            rec_t(value_member("speed"), value_member("h", "uint32"), value_member("torque")),
+        )
+        new = self.delivery(tree, "new", WITH_H)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface", "removed-object"], messages(bag)
+        assert (
+            "'Rec' is not the same object any more (member Rec_t.h: Ha_t != value), read by B"
+        ) in messages(bag)
+
+    def test_a_structure_the_dictionary_does_not_lay_out_holds_nothing(self, tree: Path) -> None:
+        """A dump written under ``--force`` lists every structure declared, so it may hold one
+        naming a type nobody declares and two that nest each other, none of which a variable can
+        be; one edited by hand may leave out the very structure its variable is, on either side.
+        Each is read as holding no members rather than ending the comparison in a traceback."""
+        unusable = (
+            struct_type("Lost_t", value_member("x", typename="Missing_t")),
+            struct_type("Loop_t", value_member("y", typename="Back_t")),
+            struct_type("Back_t", value_member("z", typename="Loop_t")),
+        )
+        rec = rec_t(*members_named("a"))
+        old = self.delivery(tree, "old", rec, *unusable, dimensions=[2])
+        new = self.delivery(tree, "new", rec, *unusable, dimensions=[2])
+        assert {"Lost_t", "Loop_t", "Back_t"} <= {structure.name for structure in new.types}
+        assert checks(verdict(old, new)) == []
+        for baseline, candidate, spelled in (
+            (old, new.model_copy(update={"types": ()}), "none != a"),
+            (old.model_copy(update={"types": ()}), new, "a != none"),
+        ):
+            bag = verdict(baseline, candidate)
+            assert checks(bag) == ["changed-interface"], messages(bag)
+            assert (
+                f"'Rec' is not the same object any more (members of Rec_t: {spelled}), read by B"
+            ) in messages(bag)
 
 
 class TestDerivedLimitsCarryTheAnalysisTolerance:

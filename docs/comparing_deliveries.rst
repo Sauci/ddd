@@ -207,7 +207,8 @@ them together with everything else.
      - ``changed-interface``
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
        counts changed, or the layout a released structure fixed: a bitfield's width, the
-       order of the members, or the type a structured variable names
+       members of a structured variable in order with what each holds, nested and external
+       ones included, or the type it names
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object
@@ -260,17 +261,29 @@ stands. A baseline archived before dictionary format 4 recorded no spellings at 
 against such a baseline only the values are compared: adopting a constant for a size that
 stands reads clean, and a changed size still does not.
 
-The layout of a :doc:`structure <file_formats/types>` is interface as well. A bitfield
-narrowed from three bits to two changes the value every reader takes out of the word, and
-widened it moves every member after it; two members swapped move every address after the
-first of them while each member still compares identical to the byte - same path, same
-datatype, same conversion, same limits - so a comparison that walked only the members said
-nothing whatsoever about a delivery that had moved every offset of every variable of that
-type. A reordering is reported once, at the structure, because the edit is one line of one
-types file however many variables of it the project declares. And a structured variable is
-compared as a variable, not only through its members: its ``type`` is what every consumer's
-header declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a
-changed interface.
+The layout of a :doc:`structure <file_formats/types>` is interface as well, because a reader
+may be a binary compiled against the previous delivery's headers, which takes each member out
+of the offset those headers gave it. A bitfield narrowed from three bits to two changes the
+value every reader takes out of the word, and widened it moves every member after it. A
+structured variable's layout is read from the dictionary's ``types``: the members of its
+structure in order, a nested structure expanded into its own members whatever it is called,
+an external member by its type's name and its dimensions, and every dimension by its spelling
+and its value. A member inserted, removed, renamed or swapped with another leaves such a
+reader reading a member other than the one it was built to read, while every member the two
+deliveries share still compares identical to the byte - same path, same datatype, same
+conversion, same limits - and so may a nested structure that grew or was rearranged, a nested
+array that changed size, or an external member of another type or dimension. Each is
+reported once, at every variable whose layout it changed, naming the structure and where the
+two layouts part; a structure no variable is changes nothing anybody reads, and is not
+compared. One change alone keeps every member where a reader of the previous delivery looks
+for it: a member added after every member of the structure of a single variable, which is
+the addition of its leaves and no more. Added to the structure of an array of structures, it
+moves every element after the first, and added to a structure nested in another, it is that
+structure grown, so neither is an addition alone. And a structured variable is compared as a
+variable, not only through its members: its ``type`` is what every consumer's header
+declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a changed
+interface, while a structure nested in it is reached through the member that holds it, so
+renaming that one with its layout kept changes nothing.
 
 ``changed-storage`` covers the four properties that change how an object behaves rather than
 what it means: the initial value, ``volatile``, the memory ``section`` and the measurement
@@ -723,4 +736,6 @@ than a memory. Everything else about the comparison follows from that one habit.
    describes data rather than code. A delivery whose comparison is clean can still behave
    differently, because its algorithms changed; what a clean comparison guarantees is that
    everything built, calibrated and measured against the previous delivery still addresses the
-   same objects, with the same layout, the same scaling and the same meaning.
+   same objects, with the same layout, the same scaling and the same meaning. The layout is the
+   one the dictionary describes: what an external type holds is its own header's, which no
+   dictionary records.

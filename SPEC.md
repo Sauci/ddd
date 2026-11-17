@@ -1713,7 +1713,7 @@ compile:
 - `removed-object`: an object is gone that a component read.
 - `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
   where a table keeps its point counts, the width of a bitfield, the `type` a structured
-  variable names or the order of a structure's members changed. Scaling is the conversion,
+  variable names or the layout of a structured variable changed. Scaling is the conversion,
   compared by its kind and by its parameters, and an enum by its name together with its
   enumerators in order; a description,
   of an object or of an enumerator, is documentation and is never compared. An enum inside a
@@ -1722,16 +1722,31 @@ compile:
   comparison of two deliveries has no such finding to leave them to, so it compares them
   itself. Locality is whether the object is local to its component
   ([section 2.1](#21-scope)); a local object becoming shared, or the reverse, changes who
-  **may** use it. A bitfield's width and the order of the members are the layout a released
-  structure fixed for its consumers ([section 3.7](#37-type-description)): narrowing a field
-  changes the value every reader takes out of the word, widening one moves every member after
-  it, and reordering two of them moves every address after the first change while every
-  member still compares identical to the byte. A reordering is reported once, at the
-  structure, because the edit is one line of one type description however many variables of
-  it a project declares; only the members both sides declare are lined up, since a member
-  that arrived or left is already the addition or the removal of the leaf it contributes. A
-  structured variable's `type` is what every consumer's header declares, so renaming the
-  structure changes the interface even when its members are untouched.
+  **may** use it. A bitfield's width and the layout of a structured variable are what a
+  released structure fixed for its consumers ([section 3.7](#37-type-description)), and a
+  consumer may be a binary compiled against the baseline's headers: narrowing a field
+  changes the value every reader takes out of the word, and widening one moves every member
+  after it. The layout is read from the dictionary's `types`
+  ([section 5.3](#53-data-dictionary)): the members of the variable's structure in order,
+  each by its name and by what it holds, a nested structure expanded into its own members
+  whatever it is called, an external member by its type's name and its `dimensions`, and
+  each dimension of a nested or an external member by its spelling and by its value, a
+  constant's being the value the dictionary's `constants` give it. A member holding a value
+  answers for its datatype, its width and its `dimensions` at its leaf, which compares them.
+  Any other difference of the layout may leave a reader of the baseline reading a member, or
+  an element, other than the one it was built to read, while each leaf the two share still
+  compares identical to the byte - a member inserted, removed, renamed or reordered, a
+  nested structure grown or rearranged, a nested array resized, an external member retyped
+  or resized - and is reported once, at each variable whose layout it changes, naming the
+  variable's structure and where the two layouts part; a structure no variable is changes
+  nothing a reader reads. The one exception is a member added after every member of the
+  structure of a single variable, which moves nothing a reader of the baseline reads and is
+  the addition of the leaves it contributes; added to the structure of an array of
+  structures, it moves every element after the first, and added to a nested structure, it is
+  a nested structure grown. A structured variable's `type` is what every consumer's header
+  declares, so renaming the structure changes the interface even when its members are
+  untouched, while a structure nested in it is reached through the member that holds it, so
+  renaming that one with its layout kept changes nothing.
 - `reused-name`: a name of the baseline now names a different object. Three things prove it,
   and a rename proves it from either end. Two ids stated under one name that differ prove it
   outright. So does the baseline's object under that name having already been paired, by `id`,
@@ -1823,19 +1838,20 @@ of its own to carry an `id`: it is paired by the `id` of its instance together w
 path below the instance. Renaming the instance therefore keeps every member paired, each
 reported as a `renamed-object` under its path, which is what a migration tool needs, while
 renaming a member of the *type* changes the path and is reported as a removal and an
-addition, exactly as an object without an `id` is. The gap is known; closing it would mean
-an identity on a type's member.
+addition, exactly as an object without an `id` is, and as the changed layout of each
+variable of the type. The gap is known; closing it would mean an identity on a type's
+member.
 
 A structured object **shall** be compared as the variable it is and not only through its
-members. The variable answers for what no member carries - its `type` - and for what every
-member carries only because the variable states it: its array shape and its locality as
-interface, and its volatility, its section, its raster, its producer and its condition as
-storage and as their own findings. Each of those is therefore reported once, at the
-variable, where the declaration that states it is. Reported under the members instead, one
-edit on one declaration was one finding per member of the structure, and one per member of
-every element of an array of them, each naming a path for a change that is on one line.
-What is left at a member is what the member itself states: its datatype, its meaning, its
-shape, its width in bits and the A2L entry it asks for.
+members. The variable answers for what no member carries - its `type` and its layout - and
+for what every member carries only because the variable states it: its array shape and its
+locality as interface, and its volatility, its section, its raster, its producer and its
+condition as storage and as their own findings. Each of those is therefore reported once,
+at the variable, where the declaration that states it is. Reported under the members
+instead, one edit on one declaration was one finding per member of the structure, and one
+per member of every element of an array of them, each naming a path for a change that is on
+one line. What is left at a member is what the member itself states: its datatype, its
+meaning, its shape, its width in bits and the A2L entry it asks for.
 
 Widening a limit **shall** be silent, because every value the baseline allowed still fits.
 Limits that got tighter **shall not** be reported on an object whose interface changed as
@@ -1845,10 +1861,11 @@ interface change, which nothing can decide; an independent narrowing of the same
 therefore also held back until the interface change is resolved.
 
 A dictionary of an older format is read with the defaults of that format: a baseline at
-format 3 or older states no `dimensions`, so shapes compare by value alone; one at format 6
-or older records no `plugins`, so `missing-plugin` cannot fire for it. Adopting a scalar
-type is not a change of interface, because the dictionary records the datatype a type
-resolves to ([section 5.3](#53-data-dictionary)).
+format 3 or older states no `dimensions`, so shapes compare by value alone, those of a
+structure's members included; one at format 6 or older records no `plugins`, so
+`missing-plugin` cannot fire for it. Adopting a scalar type is not a change of interface,
+because the dictionary records the datatype a type resolves to
+([section 5.3](#53-data-dictionary)).
 
 ## 5 Generated artefacts
 
@@ -2226,10 +2243,12 @@ all are, so keeping a structure out of the A2L keeps every member of it out - wh
 `display_identifier` the member's own, or the path that the members above it compose
 ([section 3.7](#37-type-description)), as `V[1].J.b`: identifiers joined by dots, each with
 its indices. It is the one display identifier of the document that may hold more than one
-identifier, and it is held to no length. `types` lists the
-structures in dependency order with their members; `enums` the enum conversions, one per
-name, the best documented variant; `constants` and `rasters` the declared entries. Nothing
-in the document depends on the machine that wrote it.
+identifier, and it is held to no length. `types` lists the structures in dependency order
+with their members, which a delivery comparison reads the layout of a structured variable
+from, a dimension spelled by a constant being read at the value `constants` gives it
+([section 4.1](#41-comparing-two-deliveries)); `enums` the enum conversions, one per name,
+the best documented variant; `constants` and `rasters` the declared entries. Nothing in the
+document depends on the machine that wrote it.
 
 ## 6 Address information
 

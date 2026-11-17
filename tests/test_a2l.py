@@ -529,6 +529,112 @@ class TestSharedCompuMethods:
         assert all(len(token) <= 128 for token in identifiers)
 
 
+class TestTheUnsuffixedMethodNameGoesToTheFirstRecord:
+    """Two linear conversions in one unit get ``CM_LIN_V`` and ``CM_LIN_V_2``, and the first
+    name goes to the object whose record the file writes first: the measurements, then the
+    axes, then the curves and maps, each in the dictionary's order."""
+
+    @staticmethod
+    def method_of(content: str, kind: str, name: str) -> str:
+        block = content.split(f"/begin {kind} {name} ", 1)[1].split(f"/end {kind}", 1)[0]
+        found = re.search(r"\bCM_\w+\b", block)
+        assert found, block
+        return found.group(0)
+
+    @staticmethod
+    def declarations() -> list[dict[str, Any]]:
+        return [
+            declare("local", "C_meas", "uint16", unit="V", conversion={"factor": 0.5}),
+            declare(
+                "local",
+                "Z_axis",
+                "uint16",
+                kind="axis",
+                size=2,
+                unit="V",
+                conversion={"factor": 0.25},
+            ),
+            declare("local", "B_curve", "uint8", kind="curve", axis="Z_axis"),
+        ]
+
+    def test_a_measurement_keeps_the_plain_name_over_an_axis_a_curve_reaches(
+        self, tree: Path
+    ) -> None:
+        content = a2l(tree, *self.declarations())
+        assert self.method_of(content, "MEASUREMENT", "C_meas") == "CM_LIN_V"
+        assert self.method_of(content, "AXIS_PTS", "Z_axis") == "CM_LIN_V_2"
+
+    def test_an_axis_keeps_the_plain_name_when_no_measurement_asks(self, tree: Path) -> None:
+        content = a2l(tree, *self.declarations()[1:])
+        assert self.method_of(content, "AXIS_PTS", "Z_axis") == "CM_LIN_V"
+        assert "CM_LIN_V_2" not in content
+
+    def test_an_axis_comes_before_a_curve_with_a_conversion_of_its_own(self, tree: Path) -> None:
+        content = a2l(
+            tree,
+            declare(
+                "local",
+                "Z_axis",
+                "uint16",
+                kind="axis",
+                size=2,
+                unit="V",
+                conversion={"factor": 0.25},
+            ),
+            declare(
+                "local",
+                "A_curve",
+                "uint8",
+                kind="curve",
+                axis="Z_axis",
+                unit="V",
+                conversion={"factor": 0.5},
+            ),
+        )
+        assert self.method_of(content, "AXIS_PTS", "Z_axis") == "CM_LIN_V"
+        assert self.method_of(content, "CHARACTERISTIC", "A_curve") == "CM_LIN_V_2"
+
+    @staticmethod
+    def with_a_structure(tree: Path, kind: str) -> str:
+        """``A_inst`` sorts before ``Z_plain``, and its member's record follows the plain one."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "A_inst", typename="O_t", kind=kind),
+                declare(
+                    "local",
+                    "Z_plain",
+                    "uint16",
+                    kind=kind,
+                    unit="V",
+                    conversion={"factor": 0.25},
+                ),
+                description="d",
+            ),
+            "t.ddd.json": types(
+                struct_type(
+                    "O_t",
+                    value_member("v", "uint16", unit="V", conversion={"factor": 0.5}),
+                )
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        return next(file.content for file in rendered if file.path.name == "Device.a2l")
+
+    def test_a_structure_member_comes_after_the_plain_measurements(self, tree: Path) -> None:
+        content = self.with_a_structure(tree, "measurement")
+        assert self.method_of(content, "MEASUREMENT", "Z_plain") == "CM_LIN_V"
+        assert self.method_of(content, "MEASUREMENT", "A_inst.v") == "CM_LIN_V_2"
+
+    def test_a_structure_member_comes_after_the_plain_characteristics(self, tree: Path) -> None:
+        content = self.with_a_structure(tree, "parameter")
+        assert self.method_of(content, "CHARACTERISTIC", "Z_plain") == "CM_LIN_V"
+        assert self.method_of(content, "CHARACTERISTIC", "A_inst.v") == "CM_LIN_V_2"
+
+
 class TestForcedOutput:
     def test_a_curve_whose_axis_is_unknown_is_dropped_before_the_backend(self, tree: Path) -> None:
         """Dropped at analysis: a CURVE without its AXIS_DESCR would be an invalid file

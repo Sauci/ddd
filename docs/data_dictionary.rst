@@ -12,12 +12,13 @@ know something, that something is a field of the dictionary rather than a second
 performed in a template.
 
 That arrangement is worth having for two reasons. The first is that two backends cannot
-disagree about what a project contains: the shape a c array is declared with and the
-``MATRIX_DIM`` written into the a2l are read from one field, so they cannot drift apart -
-each backend only has to order the indices the way its own format wants them, c with the
-last index running fastest and ASAP2 with the first. The second is that the work of
-resolving a project is done once, in a place that reports findings, instead of once per
-output format in a place that can only crash.
+disagree about what a project contains: the number of elements of an array is worked out
+once, by the analysis, and each backend only has to order the indices the way its own format
+wants them, c with the last index running fastest and ASAP2 with the first. The two do not
+read one field: the a2l backend writes ``MATRIX_DIM`` from ``shape``, and the c backend writes
+the array from ``dimensions``, which names a declared constant where the description stated
+one. That they agree holds of the shipped backends and templates; nothing holds a template of a
+project's own that reads the other field to it.
 
 DDD publishes the dictionary rather than keeping it to itself. ``ddd dump`` writes it out as
 json, and ``ddd schema dictionary`` prints its json schema, so a generator DDD does not ship
@@ -71,8 +72,8 @@ backend sees it:
 
 The **limits are filled in.** ``limits`` is never absent. A declaration that states its
 physical limits keeps them; one that does not gets the full range its datatype and
-conversion imply, computed once. A backend writing ``LOWER_LIMIT`` and ``UPPER_LIMIT`` into
-an a2l therefore never has to decide what a missing limit means, and cannot decide it
+conversion imply, computed once. A backend writing the lower and the upper limit of a record
+into an a2l therefore never has to decide what a missing limit means, and cannot decide it
 differently from anybody else.
 
 The **shape is a tuple of dimensions**, empty for a scalar, and it is complete even when the

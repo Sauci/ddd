@@ -29,7 +29,12 @@ from conftest import (
 from ddd.backends.a2l.model import build_a2l_model
 from ddd.backends.a2l.options import A2lOptions
 from ddd.backends.base import GeneratedFile, make_environment, render_template
-from ddd.backends.c.literals import c_literal, guard_name
+from ddd.backends.c.literals import (
+    c_constant_literal,
+    c_literal,
+    guard_name,
+    sanitize_comment,
+)
 from ddd.diagnostics import (
     CHECKS,
     DiagnosticBag,
@@ -367,6 +372,49 @@ class TestBackendEdges:
 
     def test_a_prefix_starting_with_a_digit_still_yields_a_valid_guard(self) -> None:
         assert guard_name("2fast", "types") == "N2FAST_TYPES_H"
+
+    def test_a_guard_keeps_the_underscores_of_its_parts_and_never_starts_with_one(self) -> None:
+        assert guard_name("ddd", "component", "Valve_") == "DDD_COMPONENT_VALVE__H"
+        assert guard_name("ddd", "component", "_valve") == "DDD_COMPONENT__VALVE_H"
+        assert guard_name("_valve") == "VALVE_H"
+        assert guard_name("my-file.h", "a  b") == "MY_FILE_H_A_B_H"
+
+    @pytest.mark.parametrize(
+        ("text", "defused"),
+        [
+            ("a??/", "a? ?/"),
+            ("a???/", "a?? ?/"),
+            ("a????/", "a??? ?/"),
+            ("??-?", "? ?-?"),
+            ("??", "??"),
+            ("a ?? b", "a ?? b"),
+            ("??x", "??x"),
+        ],
+    )
+    def test_the_question_marks_of_a_trigraph_are_separated(self, text: str, defused: str) -> None:
+        assert sanitize_comment(text) == defused
+
+    @pytest.mark.parametrize(
+        ("value", "literal"),
+        [
+            (5, "5"),
+            (2147483647, "2147483647"),
+            (-2147483648, "-2147483648"),
+            (2147483648, "2147483648LL"),
+            (4294967295, "4294967295LL"),
+            (5000000000, "5000000000LL"),
+            (-2147483649, "-2147483649LL"),
+            (9223372036854775807, "9223372036854775807LL"),
+            (-9223372036854775808, "(-9223372036854775807LL - 1)"),
+            (18446744073709551615, "18446744073709551615ULL"),
+            (0.5, "0.5"),
+        ],
+    )
+    def test_a_constant_literal_is_chosen_by_range_alone(
+        self, value: int | float, literal: str
+    ) -> None:
+        """The values the templates page names, one by one."""
+        assert c_constant_literal(value) == literal
 
     def test_float_literals_are_never_mistaken_for_integers(self) -> None:
         assert c_literal(2, Datatype.FLOAT32) == "2.0F"

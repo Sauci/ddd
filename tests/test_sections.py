@@ -432,6 +432,21 @@ class TestPlacementReachesTheOutputs:
         assert group.name == ".fast_ram"
         assert [view.name for view in group.objects] == ["Wide", "Narrow"]
 
+    def test_a_placed_object_is_in_its_component_group_as_well(self, tree: Path) -> None:
+        """What the templates page says: a template that defined every object of both lists
+        would define a placed one twice, and an unplaced one only once."""
+        from ddd.backends import COptions
+        from ddd.backends.c.model import build_code_model
+
+        dictionary, _ = run_analysis(tree, self.project_files())
+        assert dictionary is not None
+        model = build_code_model(dictionary, COptions(), "test")
+        (group,) = model.sections
+        defined = [view.name for owner in model.groups for view in owner.variables]
+        assert {view.name for view in group.objects} <= set(defined)
+        assert "Unplaced" in defined
+        assert "Unplaced" not in {view.name for view in group.objects}
+
     def test_a_placed_structure_joins_its_section_group(self, tree: Path) -> None:
         from ddd.backends import COptions
         from ddd.backends.c.model import build_code_model

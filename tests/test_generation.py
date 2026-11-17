@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -732,3 +733,129 @@ class TestRetainingADefinitionAGarbageCollectingLinkWouldDrop:
                 "-o", directory / "out.s",
             )  # fmt: skip
         assert (source.parent / "out.s").read_bytes() == (without / "out.s").read_bytes()
+
+
+CI_C_FLAGS = [
+    "-std=c11",
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Werror",
+    "-Wconversion",
+    "-Wshadow",
+    "-Wcast-qual",
+    "-Wstrict-prototypes",
+]
+"""The warning set ``docker/compile.sh`` verifies the generated c with."""
+
+
+def compiled(directory: Path, source: str) -> subprocess.CompletedProcess[str]:
+    """Compile ``source`` as a translation unit beside the generated files, under the CI flags."""
+    gcc = shutil.which("gcc")
+    assert gcc, "no gcc on the path: the generated c is proved by compiling it"
+    unit = directory / "unit.c"
+    unit.write_text(source, encoding="utf-8")
+    return subprocess.run(
+        [gcc, *CI_C_FLAGS, f"-I{directory}", "-c", str(unit), "-o", os.devnull],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+class TestOneGuardForOneComponent:
+    """Two components must not open one include guard: a file including both headers finds the
+    second one preprocessed away, and ``compile.sh`` compiles each header alone."""
+
+    @staticmethod
+    def two(tree: Path, first: str, second: str) -> dict[str, str]:
+        return generate(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(first, declare("output", "FromFirst")),
+                "b.ddd.json": component(second, declare("output", "FromSecond")),
+            },
+        )
+
+    @staticmethod
+    def guard_of(header: str) -> str:
+        return header.split("#ifndef ", 1)[1].split("\n", 1)[0]
+
+    def test_a_trailing_underscore_is_part_of_the_guard(self, tree: Path) -> None:
+        files = self.two(tree, "Valve", "Valve_")
+        assert self.guard_of(files["Valve.h"]) == "DDD_COMPONENT_VALVE_H"
+        assert self.guard_of(files["Valve_.h"]) == "DDD_COMPONENT_VALVE__H"
+
+    def test_a_leading_underscore_is_part_of_the_guard(self, tree: Path) -> None:
+        files = self.two(tree, "valve", "_valve")
+        assert self.guard_of(files["valve.h"]) == "DDD_COMPONENT_VALVE_H"
+        assert self.guard_of(files["_valve.h"]) == "DDD_COMPONENT__VALVE_H"
+
+    def test_a_file_including_both_headers_compiles_under_the_ci_flags(self, tree: Path) -> None:
+        files = self.two(tree, "Valve", "Valve_")
+        directory = tree / "gen"
+        directory.mkdir()
+        for name, content in files.items():
+            (directory / name).write_text(content, encoding="utf-8")
+        done = compiled(
+            directory,
+            '#include "Valve.h"\n#include "Valve_.h"\n'
+            "unsigned char read_both(void) { return (unsigned char)(FromFirst + FromSecond); }\n",
+        )
+        assert done.returncode == 0, done.stderr
+
+    def test_a_name_with_no_edge_underscore_keeps_the_guard_it_had(self, tree: Path) -> None:
+        files = self.two(tree, "ValveHub", "Valve_Hub")
+        assert self.guard_of(files["ValveHub.h"]) == "DDD_COMPONENT_VALVEHUB_H"
+        assert self.guard_of(files["Valve_Hub.h"]) == "DDD_COMPONENT_VALVE_HUB_H"
+
+    def test_the_guards_stay_outside_what_c_reserves(self, tree: Path) -> None:
+        """No leading underscore, and no underscore followed by an uppercase letter at its
+        start: the prefix every component guard carries keeps the name off the edge."""
+        for name in ("valve", "_valve", "valve_", "_s_"):
+            files = self.two(tree / name, name, "Other")
+            guard = self.guard_of(files[f"{name}.h"])
+            assert re.fullmatch(r"[A-Z][A-Z0-9_]*", guard), guard
+
+    def test_the_shared_headers_keep_theirs(self, tree: Path) -> None:
+        files = self.two(tree, "Valve", "Valve_")
+        assert self.guard_of(files["ddd_types.h"]) == "DDD_TYPES_H"
+        assert self.guard_of(files["ddd_globals.h"]) == "DDD_GLOBALS_H"
+
+
+class TestADescriptionEndingInATrigraph:
+    """``??/`` is a backslash to a compiler that reads trigraphs, and at the end of a line it
+    splices the next one: ``-Wtrigraphs``, which the CI flags turn into an error, stops it.
+    The component's description ends a line in the component header and in the file of
+    definitions."""
+
+    @pytest.mark.parametrize("ending", ["=", "(", "/", ")", "'", "<", "!", ">", "-"])
+    def test_a_component_description_ending_in_any_trigraph_compiles_under_the_ci_flags(
+        self, tree: Path, ending: str
+    ) -> None:
+        description = f"Reads??{ending}"
+        files = generate(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("C", declare("output", "Value"), description=description),
+            },
+        )
+        directory = tree / "gen"
+        directory.mkdir()
+        for name, content in files.items():
+            (directory / name).write_text(content, encoding="utf-8")
+        for unit in (
+            '#include "C.h"\n',
+            '#include "ddd_globals.h"\n',
+            '#include "ddd_globals.c"\n',
+        ):
+            done = compiled(directory, unit)
+            assert done.returncode == 0, done.stderr
+        assert f"Reads? ?{ending}\n" in files["C.h"]
+        assert all(
+            description not in content
+            for name, content in files.items()
+            if name.endswith((".c", ".h"))
+        )

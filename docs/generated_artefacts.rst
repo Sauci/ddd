@@ -882,7 +882,11 @@ The generated names are derived from the conversion and the unit, so ``CM_LIN_HZ
 readable in a tool rather than being a serial number, and a unit that is not a valid
 identifier is transliterated - ``%`` becomes ``PCT``, ``m/s^2`` becomes ``M_PER_S2``. When two
 different conversions share a unit, the second one gets a numeric suffix; the demo carries
-both ``CM_LIN_PCT`` (factor 0.5) and ``CM_LIN_PCT_2`` (factor 0.1). The display format is the
+both ``CM_LIN_PCT`` (factor 0.5) and ``CM_LIN_PCT_2`` (factor 0.1). The unsuffixed name goes
+to the object whose record the file writes first: the measurements, then the axes, then the
+curves and maps, each in the dictionary's order, with the members of structures after the plain
+objects of their kind. A measurement that comes before an axis in the file therefore keeps the
+plain name, whatever the axis's curve is called. The display format is the
 third part of the key, because a method carries exactly one: it is derived from the datatype
 and the conversion - ``%8.0`` where every physical value is whole, ``%8.3`` otherwise - so an
 integer and a float object scaled the same way in the same unit get a method each, with the
@@ -892,7 +896,16 @@ The ``COEFFS`` line is the part that surprises everybody who reads an a2l for th
 A description says ``{"kind": "linear", "factor": 0.25, "offset": 0.0}``, which means
 ``physical = raw * factor + offset``, and yet the coefficients written out are
 ``0 1 0 0 0 0.25``. The reason is that ``RAT_FUNC`` describes the conversion in the *other*
-direction. Its six coefficients ``a b c d e f`` define
+direction.
+
+Writing ``RAT_FUNC`` for a linear conversion is a choice. The standard (ASAP2 1.6.1, the
+``COMPU_METHOD`` record) says to use the conversion type ``LINEAR`` for linear functions, and
+``COEFFS_LINEAR a b`` states ``physical = a * raw + b``, the description's own direction,
+which would leave nothing to explain here. DDD writes ``RAT_FUNC`` anyway and keeps
+doing so: it states a linear function exactly, a file written by an earlier version keeps the
+type of its methods, and the choice is not an option of the tool.
+
+Its six coefficients ``a b c d e f`` define
 
 .. code-block:: text
 

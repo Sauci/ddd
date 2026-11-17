@@ -204,14 +204,23 @@ The model
        an array dimensioned by a constant renders its ``array_suffix`` with the constant's
        *name*, which therefore has to be declared before the first array that uses it.
        ``.value`` is the number and nothing else, for a template that does its own
-       formatting; ``.literal`` is that value as a c literal of the narrowest type that
-       holds it, which is what to render where the value is simply to be emitted. The two
-       differ only at the ends of the 64 bit range, where there is no literal to write out
-       bare: ``-9223372036854775808`` renders as ``(-9223372036854775807LL - 1)``, because c
-       has no negative literal and the unary minus would be applied to a literal too large
-       for any signed type, and ``18446744073709551615`` renders as
-       ``18446744073709551615ULL``, because a compiler otherwise reads it as unsigned and
-       says so.
+       formatting; ``.literal`` is that value as a c literal, which is what to render where
+       the value is simply to be emitted. Which literal depends on the value's range alone,
+       and never on whether a narrower or an unsigned type would hold it:
+
+       * from ``-2147483648`` to ``2147483647`` it is written bare, ``5`` as ``5``. The most
+         negative of them is the unary minus applied to ``2147483648``, which c types as a
+         ``long`` or a ``long long`` and not as an ``int``;
+       * anywhere else up to the 64 bit signed ends it takes ``LL``: ``2147483648`` renders
+         as ``2147483648LL``, ``4294967295`` as ``4294967295LL`` although an ``unsigned int``
+         holds it, and ``-2147483649`` as ``-2147483649LL``;
+       * ``-9223372036854775808`` renders as ``(-9223372036854775807LL - 1)``, because c has
+         no negative literal and the unary minus would be applied to a literal too large for
+         any signed type;
+       * above ``9223372036854775807`` it takes ``ULL``, ``18446744073709551615`` as
+         ``18446744073709551615ULL``, because a compiler otherwise reads it as unsigned and
+         says so;
+       * a number with a fraction is a ``double`` literal, as it looks.
    * - ``model.enums``
      - One entry per enum conversion, each with ``.name`` and ``.enumerators``; an
        enumerator has ``.name``, ``.value`` and ``.description``.
@@ -232,9 +241,11 @@ The model
    * - ``model.sections``
      - The placed objects grouped per :doc:`linker section <file_formats/sections>`, one
        entry per section with ``.name`` and ``.objects``, strictest alignment first so that
-       data of one section packs without padding. Objects without a ``section`` are not
-       here - they stay in their component's group and the toolchain's default placement -
-       and the sequence is empty when the project places nothing.
+       data of one section packs without padding. A placed object is in its component's group
+       as well, so a template that walks ``model.groups`` and ``model.sections`` and defines
+       every object it meets defines it twice: take the definitions from ``model.groups`` and
+       the placement from here. An object without a ``section`` is in its group only, and the
+       sequence is empty when the project places nothing.
    * - ``model.headers``
      - One entry per component, in project order, whether or not the component declares
        anything. These are the interfaces, described below.
@@ -254,8 +265,13 @@ The model
        header after the standard includes, before the first structure that needs them.
    * - ``model.guard(*parts)``
      - A normalised include guard, e.g. ``model.guard("ddd", "globals")`` for
-       ``DDD_GLOBALS_H``: the parts are joined, upper cased, anything that is not a letter or
-       a digit becomes an underscore, a leading digit is prefixed, and ``_H`` is appended.
+       ``DDD_GLOBALS_H``: the parts are joined, upper cased, a run of anything that is not a
+       letter, a digit or an underscore becomes one underscore, a leading digit is prefixed,
+       and ``_H`` is appended. An underscore a part carries is kept, the ones at its edges
+       included, so that two components whose names differ only by one at an edge, such as
+       ``Valve`` and ``Valve_``, get two guards: ``DDD_COMPONENT_VALVE_H`` and
+       ``DDD_COMPONENT_VALVE__H``. An underscore opening the whole guard is dropped, which
+       c reserves.
        Offered rather than imposed - a template that has its own convention writes it out.
    * - ``model.options``
      - What the command line let the caller decide, which for the c backend is nothing:

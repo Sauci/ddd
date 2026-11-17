@@ -392,18 +392,27 @@ class _A2lModelBuilder:
         characteristics: list[CharacteristicView] = []
         axis_pts: list[AxisPtsView] = []
 
-        for entry in self._exported_objects():
+        # Built in the order the file writes its records - measurements, the axes, then the
+        # curves and maps, and the structure members after the plain objects of their kind -
+        # because the first record to reach a conversion names its method: in one pass over
+        # the dictionary, a curve ahead of a measurement in name order would give its axis's
+        # conversion the plain name before the measurement was met.
+        objects = tuple(self._exported_objects())
+        leaves = tuple(self._carried_leaves())
+        for entry in objects:
             if entry.kind is ObjectKind.MEASUREMENT:
                 measurements.append(self._measurement(entry))
-            elif entry.kind is ObjectKind.AXIS:
-                axis_pts.append(self._axis_pts(entry))
-            else:
-                characteristics.append(self._characteristic(entry))
-
-        for leaf in self._carried_leaves():
+        for leaf in leaves:
             if leaf.kind is ObjectKind.MEASUREMENT:
                 measurements.append(self._measurement(leaf))
-            else:
+        for entry in objects:
+            if entry.kind is ObjectKind.AXIS:
+                axis_pts.append(self._axis_pts(entry))
+        for entry in objects:
+            if entry.kind not in (ObjectKind.MEASUREMENT, ObjectKind.AXIS):
+                characteristics.append(self._characteristic(entry))
+        for leaf in leaves:
+            if leaf.kind is not ObjectKind.MEASUREMENT:
                 characteristics.append(self._leaf_characteristic(leaf))
 
         groups = [

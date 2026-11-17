@@ -2077,10 +2077,17 @@ Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 record refers to. The suffix is added when the generated name collides - two linear
 conversions in one unit, or one identity with a unit, or one linear conversion with whole
 `factor` and `offset`, used by an integer and by a float object - and the unsuffixed name
-goes to the method of the object that reaches the file first, the plain objects in name
-order before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
+goes to the method of the object whose record the file writes first: the measurements, then
+the axes, then the curves and maps, the plain objects of each kind in the dictionary's name
+order and the structure members after them. An axis a curve reaches is met as an axis, not
+as the curve's, so a measurement that comes earlier in the file keeps the plain name. An
+enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
 A linear conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so
-the stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and
+the stated slope is the inverse of `factor`. That is a choice: ASAP2 1.6.1 asks for
+`LINEAR` for a linear function, whose `COEFFS_LINEAR a b` would state physical as `a` times
+raw plus `b`, and DDD writes `RAT_FUNC` all the same: it states a linear function exactly, a file
+written by an earlier version keeps the type of its methods, and the choice is not an option
+of the tool. An identity with a unit is `IDENTICAL`, and
 one without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
 description files do not carry is emitted neutrally: resolution and accuracy of a
 `MEASUREMENT` and the `MaxDiff` of a `CHARACTERISTIC` and of an `AXIS_PTS` are 0. The

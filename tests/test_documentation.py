@@ -4401,3 +4401,77 @@ class TestWhatIsDetectedAndWhatIsNot:
         assert "#define Speed__FACTOR (0.1)" in self.TEMPLATES
         assert "#define Speed__OFFSET (-40.0)" in self.TEMPLATES
         assert "The example writes nothing for any other kind of conversion" in self.TEMPLATES
+
+
+class TestTheSmallSentencesOfTheTemplateAndArtefactsPages:
+    """What the pages say of the literals, the sections, the include guard, the linear
+    conversion and the compu method names, each held to the code that does it."""
+
+    TEMPLATES = flattened(PAGES["docs/templates.rst"])
+    ARTEFACTS = flattened(PAGES["docs/generated_artefacts.rst"])
+    DICTIONARY = flattened(PAGES["docs/data_dictionary.rst"])
+    SPEC_TEXT = flattened(SPEC)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            -2147483648,
+            2147483647,
+            2147483648,
+            4294967295,
+            -2147483649,
+            -9223372036854775808,
+            18446744073709551615,
+        ],
+    )
+    def test_the_templates_page_names_the_literal_each_value_renders_as(self, value: int) -> None:
+        from ddd.backends.c.literals import c_constant_literal
+
+        assert f"``{c_constant_literal(value)}``" in self.TEMPLATES
+
+    def test_the_templates_page_says_the_literal_depends_on_the_range_alone(self) -> None:
+        assert "depends on the value's range alone" in self.TEMPLATES
+        assert "although an ``unsigned int`` holds it" in self.TEMPLATES
+        assert "is the unary minus applied to ``2147483648``" in self.TEMPLATES
+
+    def test_the_templates_page_no_longer_calls_the_literal_the_narrowest_type(self) -> None:
+        assert "The two differ only at the ends" not in self.TEMPLATES
+        assert "narrowest type that holds it" not in self.TEMPLATES
+
+    def test_the_templates_page_says_a_placed_object_is_in_both_lists(self) -> None:
+        assert "A placed object is in its component's group as well" in self.TEMPLATES
+        assert "defines it twice" in self.TEMPLATES
+        assert "Objects without a ``section`` are not here" not in self.TEMPLATES
+
+    def test_the_templates_page_says_an_underscore_at_the_edge_of_a_name_stays_in_the_guard(
+        self,
+    ) -> None:
+        assert "An underscore a part carries is kept" in self.TEMPLATES
+        assert "``DDD_COMPONENT_VALVE__H``" in self.TEMPLATES
+
+    @pytest.mark.parametrize("text", ["SPEC_TEXT", "ARTEFACTS"])
+    def test_the_linear_conversion_is_said_to_be_a_choice_against_the_standard(
+        self, text: str
+    ) -> None:
+        page = getattr(self, text)
+        assert "``LINEAR``" in page.replace("`LINEAR`", "``LINEAR``")
+        assert "``RAT_FUNC``" in page.replace("`RAT_FUNC`", "``RAT_FUNC``")
+        assert "ASAP2 1.6.1" in page
+        assert "is not an option of the tool" in page
+        assert "a choice" in page
+
+    @pytest.mark.parametrize("text", ["SPEC_TEXT", "ARTEFACTS"])
+    def test_the_unsuffixed_name_is_said_to_go_to_the_first_record_of_the_file(
+        self, text: str
+    ) -> None:
+        page = getattr(self, text)
+        assert "whose record the file writes first" in page
+        assert "the measurements, then the axes, then the curves and maps" in page
+        assert "before the member paths" not in page
+
+    def test_the_dictionary_page_names_no_keyword_the_format_lacks(self) -> None:
+        assert "LOWER_LIMIT" not in self.DICTIONARY
+        assert "UPPER_LIMIT" not in self.DICTIONARY
+        assert "read from one field" not in self.DICTIONARY
+        assert "``MATRIX_DIM`` from ``shape``" in self.DICTIONARY
+        assert "writes the array from ``dimensions``" in self.DICTIONARY

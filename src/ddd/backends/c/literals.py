@@ -202,6 +202,10 @@ def _kind_detail(entry: ResolvedObject) -> str:
             return ""
 
 
+_TRIGRAPH = re.compile(r"\?\?(?=[=(/)'<!>-])")
+"""The first two characters of the nine trigraphs, the ones a description can end a line in."""
+
+
 def sanitize_comment(text: str) -> str:
     """Make text safe to put inside a ``/* ... */`` comment.
 
@@ -218,16 +222,37 @@ def sanitize_comment(text: str) -> str:
     alone re-forms the other out of what is left. Taking the opener first leaves no ``/``
     immediately before a ``*``, so the second pass can form no new opener, and it inserts a
     space before the ``/`` it writes, so it can form no new closer either.
+
+    The two question marks that open a trigraph are separated as well. ``??/`` is a
+    backslash to a compiler that reads trigraphs, and the templates end a line with a
+    description: the backslash splices the next line onto the comment, and ``-Wtrigraphs``,
+    which ``-Wall`` turns on and ``-Werror`` makes an error, stops the build before that. The
+    other eight forms change nothing inside a comment, and are separated the same way for a
+    compiler that warns of every one. Separating the question marks leaves no trigraph
+    behind however many of them come in a row.
     """
     collapsed = re.sub(r"\s+", " ", text).strip()
-    return collapsed.replace("/*", "/ *").replace("*/", "* /")
+    defused = collapsed.replace("/*", "/ *").replace("*/", "* /")
+    return _TRIGRAPH.sub("? ?", defused)
 
 
 def guard_name(*parts: str) -> str:
-    """Build an include guard such as ``DDD_SENSOR_HUB_H``."""
+    """Build an include guard such as ``DDD_SENSOR_HUB_H``.
+
+    The parts are joined by an underscore and upper cased, a run of anything that is not a
+    letter, a digit or an underscore becomes one underscore, and a leading digit is prefixed.
+    The underscores a part carries are kept as they are, the ones at its edges included:
+    stripped, ``Sensor`` and ``Sensor_`` open one guard and the second header is preprocessed
+    away in a file that includes both. A name the analysis accepts holds no double
+    underscore, so keeping them is what makes the guards of two names differ whenever the
+    names do (they differ in more than case, which ``name-collision`` refuses). A guard of a
+    name without an underscore at either edge is the one it always was.
+
+    Only the start of the whole guard is stripped of underscores, which c reserves there; a
+    component's guard begins with ``DDD_COMPONENT_`` and never needs it.
+    """
     joined = "_".join(part for part in parts if part)
-    upper = re.sub(r"[^0-9A-Za-z]+", "_", joined).upper()
-    upper = re.sub(r"__+", "_", upper).strip("_")
+    upper = re.sub(r"[^0-9A-Za-z_]+", "_", joined).upper().lstrip("_")
     if upper and upper[0].isdigit():
         upper = "N" + upper
     return f"{upper}_H"

@@ -266,12 +266,8 @@ The model
    * - ``model.guard(*parts)``
      - A normalised include guard, e.g. ``model.guard("ddd", "globals")`` for
        ``DDD_GLOBALS_H``: the parts are joined, upper cased, a run of anything that is not a
-       letter, a digit or an underscore becomes one underscore, a leading digit is prefixed,
-       and ``_H`` is appended. An underscore a part carries is kept, the ones at its edges
-       included, so that two components whose names differ only by one at an edge, such as
-       ``Valve`` and ``Valve_``, get two guards: ``DDD_COMPONENT_VALVE_H`` and
-       ``DDD_COMPONENT_VALVE__H``. An underscore opening the whole guard is dropped, which
-       c reserves.
+       letter or a digit becomes one underscore, the underscores at either end are dropped,
+       a leading digit is prefixed, and ``_H`` is appended.
        Offered rather than imposed - a template that has its own convention writes it out.
    * - ``model.options``
      - What the command line let the caller decide, which for the c backend is nothing:
@@ -409,6 +405,14 @@ nothing and lets the template say so rather than emit a header that is only a gu
 ``component`` in the middle is deliberate: without it a component named ``types`` would
 define ``DDD_TYPES_H`` before ``ddd_types.h`` was ever included, and the whole type header
 would preprocess away.
+
+A name with an underscore at an edge cannot take that form, which drops the underscore and would
+give ``Valve`` and ``Valve_`` one guard, so that a file including both finds the second header
+preprocessed away. Such a name has a prefix of its own, and the name without its edge
+underscores after it: ``DDD_COMPONENTS_TRAILING_VALVE_H`` for ``Valve_``,
+``DDD_COMPONENTS_LEADING_VALVE_H`` for ``_valve`` and ``DDD_COMPONENTS_BOTH_VALVE_H`` for
+``_valve_``. No guard holds a double underscore, which c reserves. Every other name keeps the
+guard it had.
 
 Each entry of the three lists is a declaration rather than a bare object, because the same
 variable is declared differently in different headers:

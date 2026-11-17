@@ -49,10 +49,12 @@ def c_constant_literal(value: int | float) -> str:
     """Render a declared constant as the c literal its value means.
 
     A constant carries no datatype - it is a named number, and what a shape or an expression
-    does with it is the project's business - so the literal is spelled for the narrowest type
-    that holds the value: an ``int`` where one holds it, and ``long long`` or ``unsigned long
-    long`` past that, which is what :func:`c_literal` already spells for an ``init``. Written
-    out bare instead, the two ends of the 64 bit range are not the numbers they read as:
+    does with it is the project's business - so the literal is spelled by the value's range
+    alone: bare from the smallest ``int`` to the largest, ``long long`` past that up to the 64
+    bit signed ends, and ``unsigned long long`` above them, which is what :func:`c_literal`
+    already spells for an ``init``. A value an ``unsigned int`` holds, ``4294967295``, is still
+    ``4294967295LL``. Written out
+    bare instead, the two ends of the 64 bit range are not the numbers they read as:
     ``18446744073709551615`` has no signed type to be and c takes it as unsigned with a
     diagnostic, and ``-9223372036854775808`` is a unary minus applied to that same literal.
     A number with a fraction is a ``double`` literal, which is what it looks like already.
@@ -240,19 +242,32 @@ def guard_name(*parts: str) -> str:
     """Build an include guard such as ``DDD_SENSOR_HUB_H``.
 
     The parts are joined by an underscore and upper cased, a run of anything that is not a
-    letter, a digit or an underscore becomes one underscore, and a leading digit is prefixed.
-    The underscores a part carries are kept as they are, the ones at its edges included:
-    stripped, ``Sensor`` and ``Sensor_`` open one guard and the second header is preprocessed
-    away in a file that includes both. A name the analysis accepts holds no double
-    underscore, so keeping them is what makes the guards of two names differ whenever the
-    names do (they differ in more than case, which ``name-collision`` refuses). A guard of a
-    name without an underscore at either edge is the one it always was.
-
-    Only the start of the whole guard is stripped of underscores, which c reserves there; a
-    component's guard begins with ``DDD_COMPONENT_`` and never needs it.
+    letter or a digit becomes one underscore, the underscores at either end are dropped, and
+    a leading digit is prefixed.
     """
     joined = "_".join(part for part in parts if part)
-    upper = re.sub(r"[^0-9A-Za-z_]+", "_", joined).upper().lstrip("_")
+    upper = re.sub(r"[^0-9A-Za-z]+", "_", joined).upper()
+    upper = re.sub(r"__+", "_", upper).strip("_")
     if upper and upper[0].isdigit():
         upper = "N" + upper
     return f"{upper}_H"
+
+
+def component_guard(name: str) -> str:
+    """The include guard of a component's header.
+
+    ``DDD_COMPONENT_<NAME>_H``, for every name without an underscore at an edge. Dropped by
+    :func:`guard_name`, such an underscore would give ``Valve`` and ``Valve_`` one guard, and a
+    file including both headers would find the second preprocessed away. Written into the
+    guard, it would make a double underscore, which c reserves and the analysis refuses in a
+    name. So a name with one takes a prefix no other name can: ``DDD_COMPONENTS_TRAILING_``,
+    ``DDD_COMPONENTS_LEADING_`` or ``DDD_COMPONENTS_BOTH_``, ahead of the name without its edge
+    underscores. The character after ``COMPONENT`` is what tells the two families apart, and
+    the analysis refuses names that differ only in case, so no two names share a guard.
+    """
+    bare = name.strip("_")
+    leading, trailing = name.startswith("_"), name.endswith("_")
+    if not (leading or trailing):
+        return guard_name("ddd", "component", name)
+    kind = "both" if leading and trailing else "leading" if leading else "trailing"
+    return guard_name("ddd", "components", kind, bare)

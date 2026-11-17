@@ -4446,8 +4446,15 @@ class TestTheSmallSentencesOfTheTemplateAndArtefactsPages:
     def test_the_templates_page_says_an_underscore_at_the_edge_of_a_name_stays_in_the_guard(
         self,
     ) -> None:
-        assert "An underscore a part carries is kept" in self.TEMPLATES
-        assert "``DDD_COMPONENT_VALVE__H``" in self.TEMPLATES
+        from ddd.backends.c.literals import component_guard, guard_name
+
+        for name in ("Valve_", "_valve", "_valve_"):
+            assert f"``{component_guard(name)}``" in self.TEMPLATES
+        assert "No guard holds a double underscore" in self.TEMPLATES
+        assert "``DDD_COMPONENT_VALVE__H``" not in self.TEMPLATES
+        assert guard_name("a-", "b") == "A_B_H"
+        assert "the underscores at either end are dropped" in self.TEMPLATES
+        assert "is kept, the ones at its edges" not in self.TEMPLATES
 
     @pytest.mark.parametrize("text", ["SPEC_TEXT", "ARTEFACTS"])
     def test_the_linear_conversion_is_said_to_be_a_choice_against_the_standard(
@@ -4458,6 +4465,8 @@ class TestTheSmallSentencesOfTheTemplateAndArtefactsPages:
         assert "``RAT_FUNC``" in page.replace("`RAT_FUNC`", "``RAT_FUNC``")
         assert "ASAP2 1.6.1" in page
         assert "is not an option of the tool" in page
+        assert "states a linear function exactly" not in page
+        assert "keeps the type of its methods" in page
         assert "a choice" in page
 
     @pytest.mark.parametrize("text", ["SPEC_TEXT", "ARTEFACTS"])
@@ -4466,7 +4475,7 @@ class TestTheSmallSentencesOfTheTemplateAndArtefactsPages:
     ) -> None:
         page = getattr(self, text)
         assert "whose record the file writes first" in page
-        assert "the measurements, then the axes, then the curves and maps" in page
+        assert "then the other calibration objects, curves and maps among them" in page
         assert "before the member paths" not in page
 
     def test_the_dictionary_page_names_no_keyword_the_format_lacks(self) -> None:

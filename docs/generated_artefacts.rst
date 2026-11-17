@@ -884,7 +884,7 @@ identifier is transliterated - ``%`` becomes ``PCT``, ``m/s^2`` becomes ``M_PER_
 different conversions share a unit, the second one gets a numeric suffix; the demo carries
 both ``CM_LIN_PCT`` (factor 0.5) and ``CM_LIN_PCT_2`` (factor 0.1). The unsuffixed name goes
 to the object whose record the file writes first: the measurements, then the axes, then the
-curves and maps, each in the dictionary's order, with the members of structures after the plain
+other calibration objects, curves and maps among them, each in the dictionary's order, with the members of structures after the plain
 objects of their kind. A measurement that comes before an axis in the file therefore keeps the
 plain name, whatever the axis's curve is called. The display format is the
 third part of the key, because a method carries exactly one: it is derived from the datatype
@@ -902,7 +902,7 @@ Writing ``RAT_FUNC`` for a linear conversion is a choice. The standard (ASAP2 1.
 ``COMPU_METHOD`` record) says to use the conversion type ``LINEAR`` for linear functions, and
 ``COEFFS_LINEAR a b`` states ``physical = a * raw + b``, the description's own direction,
 which would leave nothing to explain here. DDD writes ``RAT_FUNC`` anyway and keeps
-doing so: it states a linear function exactly, a file written by an earlier version keeps the
+doing so: a file written by an earlier version keeps the
 type of its methods, and the choice is not an option of the tool.
 
 Its six coefficients ``a b c d e f`` define

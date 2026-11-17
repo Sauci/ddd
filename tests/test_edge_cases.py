@@ -32,6 +32,7 @@ from ddd.backends.base import GeneratedFile, make_environment, render_template
 from ddd.backends.c.literals import (
     c_constant_literal,
     c_literal,
+    component_guard,
     guard_name,
     sanitize_comment,
 )
@@ -373,11 +374,18 @@ class TestBackendEdges:
     def test_a_prefix_starting_with_a_digit_still_yields_a_valid_guard(self) -> None:
         assert guard_name("2fast", "types") == "N2FAST_TYPES_H"
 
-    def test_a_guard_keeps_the_underscores_of_its_parts_and_never_starts_with_one(self) -> None:
-        assert guard_name("ddd", "component", "Valve_") == "DDD_COMPONENT_VALVE__H"
-        assert guard_name("ddd", "component", "_valve") == "DDD_COMPONENT__VALVE_H"
-        assert guard_name("_valve") == "VALVE_H"
+    def test_a_guard_collapses_runs_and_strips_underscores_as_it_always_did(self) -> None:
+        assert guard_name("a-", "b") == "A_B_H"
+        assert guard_name("_x_", "y") == "X_Y_H"
+        assert guard_name("a_", "_b") == "A_B_H"
         assert guard_name("my-file.h", "a  b") == "MY_FILE_H_A_B_H"
+
+    def test_a_component_guard_is_the_old_one_unless_a_name_has_an_edge_underscore(self) -> None:
+        assert component_guard("Valve") == guard_name("ddd", "component", "Valve")
+        assert component_guard("2fast") == "DDD_COMPONENT_2FAST_H"
+        assert component_guard("Valve_") == "DDD_COMPONENTS_TRAILING_VALVE_H"
+        assert component_guard("_valve") == "DDD_COMPONENTS_LEADING_VALVE_H"
+        assert component_guard("_valve_") == "DDD_COMPONENTS_BOTH_VALVE_H"
 
     @pytest.mark.parametrize(
         ("text", "defused"),
@@ -415,6 +423,15 @@ class TestBackendEdges:
     ) -> None:
         """The values the templates page names, one by one."""
         assert c_constant_literal(value) == literal
+
+    def test_no_docstring_calls_the_literal_the_narrowest_type(self) -> None:
+        from ddd.backends.c.model import ConstantView
+
+        for documented in (c_constant_literal, ConstantView.literal.fget):
+            assert documented is not None and documented.__doc__ is not None
+            text = " ".join(documented.__doc__.split())
+            assert "narrowest" not in text
+            assert "range alone" in text
 
     def test_float_literals_are_never_mistaken_for_integers(self) -> None:
         assert c_literal(2, Datatype.FLOAT32) == "2.0F"

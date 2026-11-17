@@ -26,6 +26,8 @@ from ddd.backends import (
     render,
     write,
 )
+from ddd.backends.c.literals import component_guard
+from ddd.models.reserved import is_reserved_identifier
 
 
 def generate(tree: Path, files: dict[str, Any], **options: Any) -> dict[str, str]:
@@ -782,15 +784,24 @@ class TestOneGuardForOneComponent:
     def guard_of(header: str) -> str:
         return header.split("#ifndef ", 1)[1].split("\n", 1)[0]
 
-    def test_a_trailing_underscore_is_part_of_the_guard(self, tree: Path) -> None:
+    def test_a_trailing_underscore_has_a_prefix_of_its_own(self, tree: Path) -> None:
         files = self.two(tree, "Valve", "Valve_")
         assert self.guard_of(files["Valve.h"]) == "DDD_COMPONENT_VALVE_H"
-        assert self.guard_of(files["Valve_.h"]) == "DDD_COMPONENT_VALVE__H"
+        assert self.guard_of(files["Valve_.h"]) == "DDD_COMPONENTS_TRAILING_VALVE_H"
 
-    def test_a_leading_underscore_is_part_of_the_guard(self, tree: Path) -> None:
+    def test_a_leading_underscore_has_a_prefix_of_its_own(self, tree: Path) -> None:
         files = self.two(tree, "valve", "_valve")
         assert self.guard_of(files["valve.h"]) == "DDD_COMPONENT_VALVE_H"
-        assert self.guard_of(files["_valve.h"]) == "DDD_COMPONENT__VALVE_H"
+        assert self.guard_of(files["_valve.h"]) == "DDD_COMPONENTS_LEADING_VALVE_H"
+
+    def test_both_edges_have_a_prefix_of_their_own(self, tree: Path) -> None:
+        files = self.two(tree, "_valve_", "valve")
+        assert self.guard_of(files["_valve_.h"]) == "DDD_COMPONENTS_BOTH_VALVE_H"
+
+    def test_no_two_of_these_names_share_a_guard(self, tree: Path) -> None:
+        names = ["v", "_v", "v_", "_v_", "v_w", "_v_w", "v_w_", "_v_w_", "leading_v", "both_v"]
+        guards = [component_guard(name) for name in names]
+        assert len(set(guards)) == len(names)
 
     def test_a_file_including_both_headers_compiles_under_the_ci_flags(self, tree: Path) -> None:
         files = self.two(tree, "Valve", "Valve_")
@@ -810,12 +821,13 @@ class TestOneGuardForOneComponent:
         assert self.guard_of(files["ValveHub.h"]) == "DDD_COMPONENT_VALVEHUB_H"
         assert self.guard_of(files["Valve_Hub.h"]) == "DDD_COMPONENT_VALVE_HUB_H"
 
-    def test_the_guards_stay_outside_what_c_reserves(self, tree: Path) -> None:
-        """No leading underscore, and no underscore followed by an uppercase letter at its
-        start: the prefix every component guard carries keeps the name off the edge."""
-        for name in ("valve", "_valve", "valve_", "_s_"):
+    def test_no_guard_is_a_reserved_identifier(self, tree: Path) -> None:
+        """The screen the analysis applies to a component's own name: a double underscore
+        anywhere, or an underscore and a capital at the start."""
+        for name in ("valve", "_valve", "valve_", "_v_", "v_w", "_v_w_"):
             files = self.two(tree / name, name, "Other")
             guard = self.guard_of(files[f"{name}.h"])
+            assert not is_reserved_identifier(guard), guard
             assert re.fullmatch(r"[A-Z][A-Z0-9_]*", guard), guard
 
     def test_the_shared_headers_keep_theirs(self, tree: Path) -> None:

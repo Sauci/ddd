@@ -9,6 +9,7 @@ from typing import Any
 from ddd.backends.c.literals import (
     c_constant_literal,
     c_type,
+    component_guard,
     doc_comment,
     guard_name,
     initializer_of,
@@ -330,7 +331,7 @@ class ConstantView:
 
     @property
     def literal(self) -> str:
-        """The value as a c literal of the narrowest type that holds it.
+        """The value as a c literal, chosen by its range alone.
 
         ``8`` and ``-40`` and ``1.5`` come back as themselves; the two ends of the 64 bit
         range do not, because bare they are not the values they read as. C has no negative
@@ -408,8 +409,9 @@ class CodeModel:
         """An include guard built out of ``parts``, e.g. ``model.guard('ddd', 'globals')``.
 
         Offered rather than imposed: a template that wants a guard of its own writes one, and
-        this only spares it the normalisation - upper casing, replacing what is not a letter
-        or a digit, and keeping a leading digit out of the macro name.
+        this only spares it the normalisation - upper casing, replacing a run of what is not a
+        letter or a digit with one underscore, dropping the underscores at either end, and
+        keeping a leading digit out of the macro name.
         """
         return guard_name(*parts)
 
@@ -749,7 +751,7 @@ def _header(component: ResolvedComponent, views: dict[str, ObjectView]) -> Compo
         # 'component' keeps this guard out of the space of the shared headers: without it a
         # component named 'types' would define DDD_TYPES_H before including ddd_types.h,
         # and the whole types header would preprocess away.
-        guard=guard_name("ddd", "component", component.name),
+        guard=component_guard(component.name),
         outputs=tuple(buckets[Scope.OUTPUT]),
         inputs=tuple(buckets[Scope.INPUT]),
         locals=tuple(buckets[Scope.LOCAL]),

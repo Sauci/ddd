@@ -3054,6 +3054,153 @@ class TestNarrowingAnObjectSomebodyReadsByAConditionCannotReplace:
         assert bag.has_errors
 
 
+class TestLimitsAreGradedByTheDirectionDataFlows:
+    """A measurement's limits are what the producer states for its readers.
+
+    Widening one is what can break a reader - a lookup indexed by the value, a clamp sized for
+    it - so on a measurement somebody reads it is ``widened-limits``, a warning, and narrowing
+    it is ``narrowed-read-limits``, an information: a reader still gets values
+    inside the range it was written for. Calibration data is written *into* the software, so
+    it keeps its grades: narrowing is ``narrowed-limits``, widening is silent. A measurement
+    nobody reads has no reader to promise anything to and keeps them as well. An id carries
+    one severity, so the grade that depends on the object is carried by the id.
+    """
+
+    ID: ClassVar[str] = "m4r7k2xv9c3q"
+    WIDE: ClassVar[dict[str, int]] = {"min": 0, "max": 60000}
+    NARROW: ClassVar[dict[str, int]] = {"min": 0, "max": 50}
+    BASE: ClassVar[dict[str, int]] = {"min": 0, "max": 100}
+
+    def delivery(
+        self,
+        tree: Path,
+        name: str,
+        limits: dict[str, int],
+        *,
+        read: bool = True,
+        kind: str = "measurement",
+        structured: bool = False,
+        datatype: str = "uint16",
+        conversion: dict[str, Any] | None = None,
+    ) -> DataDictionary:
+        """``A`` produces ``Speed`` and ``B`` reads it, omitting the limits as the FAQ advises."""
+        if structured:
+            shaped: dict[str, Any] = {"typename": "Pair_t"}
+            entries = types(
+                struct_type("Pair_t", value_member("x", limits=limits), value_member("y"))
+            )
+            producer = declare("output", "Speed", id=self.ID, **shaped)
+            reader = declare("input", "Speed", **shaped)
+        else:
+            entries = types()
+            changed: dict[str, Any] = {} if conversion is None else {"conversion": conversion}
+            producer = declare(
+                "output", "Speed", datatype, id=self.ID, kind=kind, limits=limits, **changed
+            )
+            reader = declare("input", "Speed", datatype, kind=kind, **changed)
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project(
+                    "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
+                ),
+                f"{name}-t.ddd.json": entries,
+                f"{name}-a.ddd.json": component("A", producer),
+                f"{name}-b.ddd.json": component("B", *([reader] if read else [])),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def against_a_dump(
+        self, tree: Path, capsys: pytest.CaptureFixture[str], *arguments: str
+    ) -> tuple[int, str]:
+        assert main(["dump", str(tree / "old.ddd.json"), "-o", str(tree / "old.json")]) == EXIT_OK
+        capsys.readouterr()
+        code = main(["compare", str(tree / "old.json"), str(tree / "new.ddd.json"), *arguments])
+        return code, capsys.readouterr().err
+
+    def test_a_read_measurement_widened_is_a_warning_that_stops_a_strict_run(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", self.BASE, structured=False)
+        new = self.delivery(tree, "new", self.WIDE)
+        bag = verdict(old, new)
+        assert checks(bag) == ["widened-limits"], messages(bag)
+        assert "'Speed': limits widened from [0, 100] to [0, 60000], read by B" in messages(bag)
+        assert not bag.has_errors
+        code, report = ruling(tree, capsys)
+        assert code == EXIT_OK
+        assert "can replace" in report
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_FINDINGS
+        assert "cannot replace" in report
+        code, report = self.against_a_dump(tree, capsys, "--strict")
+        assert code == EXIT_FINDINGS
+        assert "widened-limits" in report
+        assert "cannot replace" in report
+
+    def test_a_read_measurement_narrowed_is_an_information(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old = self.delivery(tree, "old", self.BASE)
+        new = self.delivery(tree, "new", self.NARROW)
+        bag = verdict(old, new)
+        assert checks(bag) == ["narrowed-read-limits"], messages(bag)
+        assert "'Speed': limits narrowed from [0, 100] to [0, 50], read by B" in messages(bag)
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_OK
+        assert "can replace" in report
+        code, report = self.against_a_dump(tree, capsys, "--strict")
+        assert code == EXIT_OK
+        assert "narrowed-read-limits" in report
+
+    def test_a_parameter_keeps_its_grades_whoever_reads_it(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", self.BASE, kind="parameter")
+        wider = self.delivery(tree, "new", self.WIDE, kind="parameter")
+        assert checks(verdict(old, wider)) == []
+        narrower = self.delivery(tree, "narrower", self.NARROW, kind="parameter")
+        bag = verdict(old, narrower)
+        assert checks(bag) == ["narrowed-limits"], messages(bag)
+        assert "limits tightened from [0, 100] to [0, 50]" in messages(bag)
+
+    def test_a_measurement_nobody_reads_keeps_its_grades(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", self.BASE, read=False)
+        wider = self.delivery(tree, "new", self.WIDE, read=False)
+        assert checks(verdict(old, wider)) == []
+        narrower = self.delivery(tree, "narrower", self.NARROW, read=False)
+        assert checks(verdict(old, narrower)) == ["narrowed-limits"]
+
+    def test_a_measurement_leaf_of_a_structure_somebody_reads_takes_the_grade(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", self.BASE, structured=True)
+        new = self.delivery(tree, "new", self.WIDE, structured=True)
+        bag = verdict(old, new)
+        assert checks(bag) == ["widened-limits"], messages(bag)
+        assert "widened from [0, 100] to [0, 60000]" in messages(bag)
+        narrower = self.delivery(tree, "narrower", self.NARROW, structured=True)
+        assert checks(verdict(old, narrower)) == ["narrowed-read-limits"]
+
+    def test_a_widening_beside_a_changed_interface_is_said_once(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", self.BASE, datatype="uint16")
+        new = self.delivery(tree, "new", self.WIDE, datatype="uint32")
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-interface"], messages(bag)
+
+    def test_a_derived_end_archived_with_float_noise_is_no_change(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", {"min": 0, "max": 3276.7000000000003})
+        new = self.delivery(tree, "new", {"min": 0, "max": 3276.7})
+        assert checks(verdict(old, new)) == []
+        assert checks(verdict(new, old)) == []
+
+    def test_a_range_moved_both_ways_is_a_widening(self, tree: Path) -> None:
+        """One end out and the other in: a reader can meet a value it was not sized for."""
+        old = self.delivery(tree, "old", {"min": 10, "max": 100})
+        new = self.delivery(tree, "new", {"min": 0, "max": 50})
+        bag = verdict(old, new)
+        assert checks(bag) == ["widened-limits"], messages(bag)
+
+
 class TestAComponentFileReadAloneIsGradedByWhatOneFileCanKnow:
     """A supplier's gate compares one component with its predecessor, and that run was not shown
     who reads what: the readers of a component alone are, by construction, itself.

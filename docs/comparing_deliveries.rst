@@ -242,7 +242,13 @@ them together with everything else.
        instead
    * - warning
      - ``narrowed-limits``
-     - the physical limits of an object got tighter, so calibrated data may not fit
+     - the physical limits of an object got tighter, so calibrated data may not fit; on a
+       measurement a component reads it is ``widened-limits`` or ``narrowed-read-limits``
+       instead
+   * - warning
+     - ``widened-limits``
+     - the physical limits of a measurement a component reads got wider, so a reader sized
+       for the baseline's range may meet a value it was not written for
    * - warning
      - ``changed-owner``
      - another component produces the object now
@@ -263,6 +269,10 @@ them together with everything else.
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not
+   * - info
+     - ``narrowed-read-limits``
+     - the physical limits of a measurement a component reads got tighter: a reader still gets
+       values inside the range it was written for
    * - info
      - ``removed-input``
      - an input of a component read alone is gone: the component stops reading it, which harms
@@ -527,19 +537,21 @@ Against the archived dictionary, the same five changes look rather different:
    $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits narrowed from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
-   2 errors, 1 warning, 1 info
+   2 errors, 1 warning, 2 infos
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
-Four findings for five changes. Widening ``PressureRaw`` is an error because every consumer
+Five findings for five changes. Widening ``PressureRaw`` is an error because every consumer
 was compiled against a two-byte object and a calibration tool reads two bytes at its address;
 removing ``TemperatureRaw`` is an error because the baseline records that ``Controller`` read
-it. Tightening ``ValveDuty`` is a warning, because the code is unaffected but a calibration
-dataset holding 90 % no longer fits inside the new range. Adding ``AmbientPressure`` is
-information, since nothing that worked against the baseline can be disturbed by an object it
-never knew about. And relaxing the limits of ``SupplyVoltage`` produces nothing at all, for
-the reason given two sections further down.
+it. Relaxing the limits of ``SupplyVoltage`` is a warning, because ``Actuator`` reads it and a
+reader sized for 16 V may meet a value it was not written for, for the reason given two
+sections further down. Tightening ``ValveDuty`` is only information, because ``Actuator``
+still gets values inside the range it was written for. Adding ``AmbientPressure`` is
+information as well, since nothing that worked against the baseline can be disturbed by an
+object it never knew about.
 
 The last line names the two **files**, not the two projects, because two deliveries of one
 project share its name and naming the projects would print the same word twice.
@@ -577,24 +589,26 @@ additionally reads a ``ValvePosition`` that nobody produces:
    examples/pressure/work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits narrowed from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'ValvePosition' is new in PressureLoop (measurement, produced by nobody)
-   3 errors, 1 warning, 2 infos
+   3 errors, 1 warning, 3 infos
 
 The consistency findings point at the declaration that caused them, down to the json pointer
 inside the file, while the comparison findings point at the project as a whole, because a
 difference between two dictionaries belongs to the delivery rather than to one line of one
 description file.
 
-Limits: widening is silent, narrowing is not
---------------------------------------------
+Limits: the direction of the change decides, and so does where the data flows
+-----------------------------------------------------------------------------
 
-Limits are the one property where the direction of the change decides the verdict, and that
-is why ``SupplyVoltage`` produced no finding above. Its range grew from 0 .. 16 V to
-0 .. 18 V, and every value the baseline permitted is still permitted, so there is nothing a
-consumer or a calibration dataset can trip over. Reporting it would train the reader to
-ignore the check.
+Limits are the one property where the direction of the change decides the verdict, and which
+direction is the dangerous one depends on which way the data flows. Calibration data - a
+parameter, a value block, a curve, a map or an axis - flows into the software, so widening its
+limits from 0 .. 16 V to 0 .. 18 V is silent: every value the baseline permitted is still
+permitted, so there is nothing a calibration dataset can trip over. Reporting it would train
+the reader to ignore the check.
 
 The opposite direction is a warning, because a value that used to be legal may not be any
 more. A calibration dataset written against the baseline can hold a value outside the new
@@ -604,8 +618,8 @@ about it, which is exactly why the tool must:
 
 .. code-block:: text
 
-   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # PressureRaw's limits narrowed to 0 .. 250 instead
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'PressureRaw': limits tightened from [0, 400] to [0, 250]
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # FilterGain's limits narrowed to 0 .. 0.5 instead
+   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'FilterGain': limits tightened from [0, 1] to [0, 0.5]
    1 warning
    pressure.ddd.json can replace PressureLoop-1.4.0.json
 
@@ -614,14 +628,25 @@ it is not by itself a reason to refuse the delivery. A project that wants it to 
 it into an error, either individually with ``-W narrowed-limits=error`` or for every warning
 at once with ``--strict``.
 
+A measurement somebody reads is the other way round. Its limits are what the producer states
+for its readers, and a reader may hold a lookup indexed by the value or a clamp sized for
+it. Widening them is therefore ``widened-limits``, a warning: a measurement that was
+0 .. 100 and is now 0 .. 60000 hands its readers values they were never written for, which
+neither the compiler nor the linker can see, and which ``--strict`` turns into "cannot
+replace". Narrowing them is ``narrowed-read-limits``, an information, because a reader still
+gets values inside the range it was written for. A range that moved both ways is a widening.
+A measurement nobody reads has no reader to promise anything to, and keeps the grades of
+calibration data.
+
 A symptom is not reported under its cause
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tighter limits are very often a *consequence* of something bigger, and reporting the
+A different range is very often a *consequence* of something bigger, and reporting the
 consequence next to the cause buries the cause. When the interface of an object has changed,
-the narrowing that follows from it is therefore not reported separately. The next section
-shows the same 400 to 250 narrowing as above, this time accompanied by a rescaled conversion,
-and the ``narrowed-limits`` warning is gone: there is one thing to fix, and once it is fixed
+the change of limits that follows from it is therefore not reported separately. The next section
+shows ``PressureRaw`` with its limits brought down from 400 to 250, this time accompanied by a
+rescaled conversion, and the ``narrowed-read-limits`` information that the limits alone would
+give is gone: there is one thing to fix, and once it is fixed
 the limits question can be asked again on its own terms.
 
 A rescaled conversion is an error
@@ -678,9 +703,10 @@ likely explanation is that the wrong file was picked up:
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    examples/pressure/work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits narrowed from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
-   2 errors, 2 warnings, 1 info
+   2 errors, 2 warnings, 2 infos
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
 The comparison is carried out anyway, and it is a warning rather than an error, because
@@ -775,18 +801,18 @@ the report is the whole of stdout and the verdict line is dropped, since a json 
 a job is about to parse must not have a sentence appended to it.
 
 Severities are tuned the same way as everywhere else, so a project that has decided a
-narrowing is acceptable but wants the new objects out of its build log can say so:
+widening is acceptable but wants the new objects out of its build log can say so:
 
 .. code-block:: text
 
-   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json -W narrowed-limits=ignore -W added-object=ignore
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json -W widened-limits=ignore -W narrowed-read-limits=ignore -W added-object=ignore
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    2 errors
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
 A pipeline that treats the comparison as a release gate rather than as a report runs it with
-``--strict``, which turns every warning into an error, so that a narrowed limit, a changed
+``--strict``, which turns every warning into an error, so that a widened measurement, a narrowed limit of calibration data, a changed
 owner or a moved a2l entry also has to be acknowledged before the delivery goes out.
 
 The remaining piece is discipline about the archive itself. The dump has to be produced from

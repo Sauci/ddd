@@ -882,10 +882,16 @@ registry can be read in one place.
    * - ``narrowed-limits``
      - warning
      - the physical limits of an object got tighter, so calibrated data may no longer fit.
-       Widening is silent, because every value the baseline allowed still fits. The ends are
-       compared with the relative tolerance of ``limits-out-of-range``: most limits are
-       derived, and a candidate that writes down the ones its datatype implies is not
-       narrowing the unrounded ends an older baseline carries.
+       Widening is silent, because every value the baseline allowed still fits; this is the
+       grade of calibration data and of a measurement nobody reads. The ends are compared with
+       the relative tolerance of ``limits-out-of-range``: most limits are derived, and a
+       candidate that writes down the ones its datatype implies is not narrowing the unrounded
+       ends an older baseline carries.
+   * - ``widened-limits``
+     - warning
+     - the physical limits of a measurement a component reads got wider, so a reader sized for
+       the range of the baseline may meet a value it was not written for. The ends are weighed
+       as ``narrowed-limits`` weighs them.
    * - ``changed-owner``
      - warning
      - another component produces the object now.
@@ -909,6 +915,10 @@ registry can be read in one place.
    * - ``added-object``
      - info
      - the candidate declares an object the baseline did not.
+   * - ``narrowed-read-limits``
+     - info
+     - the physical limits of a measurement a component reads got tighter: a reader still gets
+       values inside the range it was written for.
    * - ``removed-input``
      - info
      - an input of a component read alone is gone: the component stops reading it, which harms

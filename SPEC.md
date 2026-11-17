@@ -1836,11 +1836,17 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   JSON, cut short past a few elements when the array is long, with the first index at which
   they part named beside them.
 - `narrowed-limits`: the physical limits got tighter, so calibrated data may no longer
-  fit. The two ends are compared with the relative tolerance of `limits-out-of-range`
+  fit; it is the grade of calibration data and of a measurement nobody reads. The two ends are compared with the relative tolerance of `limits-out-of-range`
   ([section 4](#4-consistency-checks)), because most limits are derived and a derived end
   is the product of a float: a candidate that writes down the limits its datatype and
   conversion imply is not narrowing the range of a baseline archived before those ends
   were rounded ([section 3.3](#33-data-object-definition)).
+- `widened-limits`: the physical limits of a measurement somebody reads got wider, so a
+  reader sized for the range of the baseline may meet a value it was not written for. The
+  ends are weighed as `narrowed-limits` weighs them.
+- `narrowed-read-limits`: the physical limits of a measurement somebody reads got tighter,
+  which is an information, because a reader still gets values inside the range it was
+  written for.
 - `changed-owner`: another component produces the object now.
 - `changed-condition`: the preprocessor condition changed, namely the producer's, which is
   the one the dictionary records on the object
@@ -1904,12 +1910,20 @@ per member of every element of an array of them, each naming a path for a change
 one line. What is left at a member is what the member itself states: its datatype, its
 meaning, its shape, its width in bits and the A2L entry it asks for.
 
-Widening a limit **shall** be silent, because every value the baseline allowed still fits.
-Limits that got tighter **shall not** be reported on an object whose interface changed as
-well: the interface change is the finding to act on, and the narrowing would only bury it.
-This is deliberately coarser than reporting only a narrowing that is a consequence of the
-interface change, which nothing can decide; an independent narrowing of the same object is
-therefore also held back until the interface change is resolved.
+Limits **shall** be graded by the direction the data flows. Calibration data flows into the
+software, so widening its limits **shall** be silent, because every value the baseline
+allowed still fits, and narrowing them is `narrowed-limits`. The limits of a measurement
+somebody reads are what the producer states for its readers, which may hold a lookup indexed
+by the value or a clamp sized for it, so widening them **shall** be `widened-limits`, a
+warning, and narrowing them **shall** be `narrowed-read-limits`, an information, because a
+reader still gets values inside the range it was written for. A range that moved both ways
+is a widening. A measurement nobody reads has no reader to promise anything to, and keeps the
+grades of calibration data. Limits that changed **shall not** be reported on an object whose
+interface changed as well: the interface change is the finding to act on, and the limits
+would only bury it. This is deliberately coarser than reporting only a change of limits that
+is a consequence of the interface change, which nothing can decide; an independent change of
+the limits of the same object is therefore also held back until the interface change is
+resolved.
 
 A dictionary of an older format is read with the defaults of that format: a baseline at
 format 3 or older states no `dimensions`, so shapes compare by value alone, those of a

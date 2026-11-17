@@ -633,13 +633,15 @@ for the baseline - and graded, because the changes are not equally bad:
 | warning | `renamed-object` | an object of the baseline is offered under a different name and no component read it; its `id` is what says so |
 | warning | `removed-unused-object` | an object is gone that no component read |
 | warning | `changed-storage` | the initial value, `volatile`, the memory `section` or the measurement `raster` changed; volatile turned on for an object a component reads is changed-interface instead; on calibration data the volatility also decides whether a tool can still change the value in a running target, the section says which memory the object ends up in, and the raster which event a measuring tool receives it in. An initial value compares as the bytes it produces, and on a structured variable the three are the variable's own and reported at it once |
-| warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit |
+| warning | `narrowed-limits` | the limits got tighter, so calibrated data may no longer fit; on a measurement a component reads it is widened-limits or narrowed-read-limits instead |
+| warning | `widened-limits` | the limits of a measurement a component reads got wider, so a reader sized for the baseline's range may meet a value it was not written for |
 | warning | `changed-owner` | another component produces it now |
 | warning | `changed-condition` | the preprocessor condition changed; one added or replaced on an object a component reads is narrowed-condition instead |
 | warning | `changed-a2l` | the a2l entry changed |
 | warning | `project-mismatch` | the two sides name different projects, so the baseline may be the wrong file |
 | warning | `missing-plugin` | a compared dictionary records a plugin this run has not loaded, so that plugin's rules did not run |
 | info | `added-object` | the candidate declares something new |
+| info | `narrowed-read-limits` | the limits of a measurement a component reads got tighter: a reader still gets values inside the range it was written for |
 | info | `removed-input` | an input of a component read alone is gone: the component stops reading it, which harms nobody |
 
 [examples/pressure](https://github.com/Sauci/ddd/tree/master/examples/pressure) ships the three deliveries of the documentation's worked
@@ -649,9 +651,12 @@ can be tried from a checkout; the
 [documentation](https://sauci.github.io/ddd/latest/comparing_deliveries.html) walks through
 what it reports.
 
-Three details worth knowing. **Widening a limit is silent** - every value the baseline allowed
-still fits - while narrowing it is a warning; and when the interface already changed, the
-narrowed limits that follow from it are not reported separately, so the cause is not buried
+Three details worth knowing. **A limit is graded by the direction the data flows.** On calibration
+data widening is silent - every value the baseline allowed still fits - while narrowing it is a
+warning; on a measurement a component reads it is the other way round, because its limits are
+what it states for its readers, and widening it is a warning while narrowing it is an information.
+And when the interface already changed, the
+limits that follow from it are not reported separately, so the cause is not buried
 under its own symptom. A rescaled conversion is an **error**, because that is the failure
 which compiles, links, runs, and reports every value wrong by a constant factor. And
 `reused-name` is an error for the same reason - a calibration dataset or a recorded

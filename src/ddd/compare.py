@@ -42,6 +42,7 @@ from ddd.ir import (
 from ddd.models import (
     Conversion,
     EnumConversion,
+    ObjectKind,
     PointCounts,
     conversion_identity,
     format_number,
@@ -1199,9 +1200,17 @@ def _compare_object(
             location,
         )
 
-    # Limits are the one field where the direction decides: a wider range still accepts every
-    # value the baseline allowed, a narrower one can invalidate data that was calibrated.
-    # When the interface already changed - references included - tighter limits are a
+    # Limits are the one field where the direction decides, and which direction is the
+    # dangerous one depends on which way the data flows. Calibration data flows into the
+    # software: a wider range still accepts every value the baseline allowed, a narrower one
+    # can invalidate data that was calibrated. A measurement somebody reads flows out of it,
+    # and its limits are what the producer states for those readers - a table indexed by the
+    # value, a clamp sized for it - so there it is the wider range that can break
+    # them, and a narrower one only hands them values inside what they were written for.
+    # An id carries one severity, so the grade that depends on the object is carried by the
+    # id: ``widened-limits``, ``narrowed-read-limits`` and ``narrowed-limits``. A measurement
+    # nobody reads has no reader to promise anything to and is graded like calibration data.
+    # When the interface already changed - references included - a different range is a
     # consequence of it - reporting both would bury the cause under its own symptom.
     #
     # Weighed with the tolerance the analysis weighs a derived limit with, because most
@@ -1212,14 +1221,26 @@ def _compare_object(
     # tolerance keeps this check and ``limits-out-of-range`` agreeing about which two numbers
     # are the same number.
     narrowed = is_above(new.limits.min, old.limits.min) or is_below(new.limits.max, old.limits.max)
-    if narrowed and not interface and references is None:
-        bag.add(
-            "narrowed-limits",
-            f"'{old.name}': limits tightened from "
+    widened = is_below(new.limits.min, old.limits.min) or is_above(new.limits.max, old.limits.max)
+    if (narrowed or widened) and not interface and references is None:
+        was_read = old.kind is ObjectKind.MEASUREMENT and bool(old.consumers)
+        change = (
             f"[{format_number(old.limits.min)}, {format_number(old.limits.max)}] to "
-            f"[{format_number(new.limits.min)}, {format_number(new.limits.max)}]",
-            location,
+            f"[{format_number(new.limits.min)}, {format_number(new.limits.max)}]"
         )
+        readers = f", read by {', '.join(old.consumers)}"
+        if was_read and widened:
+            bag.add(
+                "widened-limits", f"'{old.name}': limits widened from {change}{readers}", location
+            )
+        elif was_read:
+            bag.add(
+                "narrowed-read-limits",
+                f"'{old.name}': limits narrowed from {change}{readers}",
+                location,
+            )
+        elif narrowed:
+            bag.add("narrowed-limits", f"'{old.name}': limits tightened from {change}", location)
 
     if not isinstance(old, ResolvedLeaf):
         # A member has no producer and no condition of its own: both are the variable's, and

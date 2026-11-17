@@ -24,7 +24,7 @@ import tomllib
 import zipfile
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, ClassVar, Literal, NamedTuple
 
 import dev_version
 import jsonschema
@@ -5741,3 +5741,89 @@ class TestAComponentFileReadAloneIsComparedByWhatOneFileCanKnow:
         flat = flattened(COMMAND_LINE_INTERFACE)
         assert "an output a component drops fails that gate" in flat
         assert "an input it stops reading does not" in flat
+
+
+class TestLimitsAreGradedByTheDirectionDataFlows:
+    """A measurement's limits are what the producer states for its readers, so on one somebody
+    reads it is the widening that can break them. ``widened-limits`` is the warning,
+    ``narrowed-read-limits`` the information, and calibration data keeps its grades."""
+
+    HOMES: ClassVar[dict[str, str]] = {
+        "README.md": README,
+        "docs/consistency_checks.rst": CONSISTENCY_CHECKS,
+        "docs/comparing_deliveries.rst": COMPARING_DELIVERIES,
+        "SPEC.md": SPEC,
+    }
+
+    def test_the_registry_grades_each_id_once(self) -> None:
+        assert CHECKS["widened-limits"].default_severity is Severity.WARNING
+        assert CHECKS["narrowed-read-limits"].default_severity is Severity.INFO
+        assert CHECKS["narrowed-limits"].default_severity is Severity.WARNING
+        for name in ("widened-limits", "narrowed-read-limits"):
+            assert CHECKS[name].comparison
+        assert CHECKS["narrowed-limits"].description.endswith(
+            "widened-limits or narrowed-read-limits instead"
+        )
+
+    def test_every_page_lists_both_ids(self) -> None:
+        for name, text in self.HOMES.items():
+            for check in ("widened-limits", "narrowed-read-limits"):
+                assert check in flattened(text), (name, check)
+
+    def test_the_specification_grades_limits_by_the_direction_the_data_flows(self) -> None:
+        flat = flattened(SPEC)
+        assert "Limits **shall** be graded by the direction the data flows" in flat
+        assert "so widening them **shall** be `widened-limits`, a warning" in flat
+        assert "narrowing them **shall** be `narrowed-read-limits`, an information" in flat
+        assert "A range that moved both ways is a widening." in flat
+        assert "A measurement nobody reads has no reader to promise anything to" in flat
+        assert "so widening its limits **shall** be silent" in flat
+        assert "Widening a limit **shall** be silent" not in flat
+
+    def test_the_comparison_page_says_a_widened_measurement_is_what_a_reader_can_trip_over(
+        self,
+    ) -> None:
+        flat = flattened(COMPARING_DELIVERIES)
+        assert "A measurement somebody reads is the other way round." in flat
+        assert "Widening them is therefore ``widened-limits``, a warning" in flat
+        assert "Narrowing them is ``narrowed-read-limits``, an information" in flat
+        assert 'turns into "cannot replace"' in flat
+        assert "there is nothing a calibration dataset can trip over" in flat
+        assert "nothing a consumer or a calibration dataset can trip over" not in flat
+
+    def test_the_check_reference_says_where_the_silence_holds(self) -> None:
+        flat = flattened(CONSISTENCY_CHECKS)
+        assert "this is the grade of calibration data and of a measurement nobody reads" in flat
+
+    def test_the_readme_and_the_faq_say_the_direction_depends_on_the_flow(self) -> None:
+        assert "**A limit is graded by the direction the data flows.**" in flattened(README)
+        assert "widening it is a warning while narrowing it is an information" in flattened(README)
+        faq = flattened(PAGES["docs/faq.rst"])
+        assert "``widened-limits`` is a warning on a measurement a component reads" in faq
+        assert "the other way round for a measurement a component reads" in faq
+
+    def test_the_worked_example_shows_what_the_command_prints(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The five changes of ``examples/pressure``, run as the page runs them."""
+        monkeypatch.chdir(ROOT)
+        capsys.readouterr()
+        main(
+            [
+                "compare",
+                "examples/pressure/release/pressure.ddd.json",
+                "examples/pressure/work/pressure.ddd.json",
+            ]
+        )
+        findings = [
+            line
+            for line in capsys.readouterr().err.splitlines()
+            if line.startswith("examples/pressure/work/pressure.ddd.json: ")
+        ]
+        assert len(findings) == 5
+        page = COMPARING_DELIVERIES
+        for line in findings:
+            assert f"   {line}\n" in page
+        assert "warning[widened-limits]: 'SupplyVoltage'" in findings[2]
+        assert "info[narrowed-read-limits]: 'ValveDuty'" in findings[3]
+        assert "Five findings for five changes." in flattened(page)

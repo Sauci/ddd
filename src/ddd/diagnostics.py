@@ -281,7 +281,16 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "changed-interface instead",
                comparison=True),
         _check("narrowed-limits", Severity.WARNING,
-               "the physical limits of an object got tighter, so calibrated data may not fit",
+               "the physical limits of an object got tighter, so calibrated data may not fit; "
+               "a measurement somebody reads is widened-limits or narrowed-read-limits instead",
+               comparison=True),
+        _check("widened-limits", Severity.WARNING,
+               "the physical limits of a measurement somebody reads got wider, so a reader "
+               "sized for the baseline's range may meet a value it was not written for",
+               comparison=True),
+        _check("narrowed-read-limits", Severity.INFO,
+               "the physical limits of a measurement somebody reads got tighter: a reader "
+               "still gets values inside the range it was written for",
                comparison=True),
         _check("changed-owner", Severity.WARNING,
                "another component produces the object now",

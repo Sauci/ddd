@@ -192,7 +192,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("storage-mismatch", Severity.WARNING,
                "components disagree on how the a2l presents the object; the producer wins"),
         _check("condition-mismatch", Severity.WARNING,
-               "declarations of one variable use different preprocessor conditions"),
+               "declarations of one variable, or an object and what it refers to, use different "
+               "preprocessor conditions"),
         _check("unused-output", Severity.WARNING, "an output variable is read by no component",
                needs_every_component=True),
         _check("enum-duplicate-value", Severity.WARNING,
@@ -201,15 +202,29 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "an object needs stricter alignment than its section guarantees"),
         _check("limits-out-of-range", Severity.WARNING,
                "the physical limits exceed what the datatype can represent"),
+        _check("elf-mismatch", Severity.WARNING,
+               "the image the a2l takes its addresses from holds a variable with another size, "
+               "encoding, qualifiers or shape than its description states, or describes it in "
+               "two ways"),
         _check("name-similar", Severity.WARNING,
                "two variables differ only in upper/lower case"),
         _check("a2l-unrepresentable", Severity.WARNING,
                "an object cannot be described by the a2l version that is generated"),
         _check("point-counts-mismatch", Severity.WARNING,
                "a curve or map and one of its axes store their point counts differently"),
+        _check("reference-left-out", Severity.WARNING,
+               "a curve or a map is left out of the a2l with its axis, which the build left out "
+               "while it holds the curve or the map"),
         _check("address-missing", Severity.WARNING,
                "an object reaching the a2l gets no address from the address map or the image the "
                "run was given"),
+        _check("condition-left-out", Severity.INFO,
+               "the build holds nothing of an object stating a condition, which the a2l leaves "
+               "out: the image defines no variable or symbol of its name, or the address map "
+               "names none of it"),
+        _check("image-load-relative", Severity.INFO,
+               "the image the a2l takes its addresses from is position independent, so they are "
+               "offsets from where it loads"),
         _check("empty-component", Severity.INFO, "a component declares no variable at all"),
         _check("empty-vocabulary", Severity.INFO,
                "a types, units, constants, sections or rasters file declares nothing"),

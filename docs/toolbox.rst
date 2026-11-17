@@ -13,12 +13,16 @@ compiled into an image. ``ddd tool from-elf`` reads a linked ELF image and its D
 information, and prints the DDD declaration of every C variable it is asked for - as far as
 the image states it, and checked by DDD itself before it is printed, the way
 ``ddd check --standalone`` checks a component. It needs an image built with debug information
-(``-g``); pyelftools, which reads it, is installed with DDD.
+(``-g``) and with its contents, the linked image itself: a debug-only companion, the file
+``objcopy --only-keep-debug`` splits off, has the DWARF and none of the contents of the image's
+sections, so no initial value can be read from it, and the tool refuses it. An image whose code
+alone has no contents in the file, a ``NOLOAD`` region, keeps its data and is read. A separate debug file is not read
+in place of an image. pyelftools, which reads the image, is installed with DDD.
 
 A variable is named as it is in C, or matched with a glob such as ``'Cal_*'``, and a
 ``static`` that several compilation units define is taken from one of them by naming its unit
-first, ``cal.c:Gain``. What the tool prints is the ``interface`` of a component, ready to paste
-into one; ``examples/firmware/firmware.elf`` is an image of the tests' fixture, built for a
+first, ``cal.c:Gain``. What the tool prints is the ``interface`` of a component, to paste
+into one once its author has stated what an image does not say, the conversions above all; ``examples/firmware/firmware.elf`` is an image of the tests' fixture, built for a
 Cortex-M4:
 
 .. code-block:: text
@@ -31,9 +35,6 @@ Cortex-M4:
          "name": "Cal_Gain",
          "kind": "parameter",
          "datatype": "uint16",
-         "conversion": {
-           "kind": "identity"
-         },
          "init": 300,
          "volatile": false
        }
@@ -58,7 +59,7 @@ Cortex-M4:
        }
      }
    ]
-   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
    1 info
    $ echo $?
    0
@@ -67,6 +68,36 @@ Cortex-M4:
 datatype is the one the image states, never the one its C spelling suggests elsewhere.
 ``--scope input`` prints the same entries as a consumer states them, without the initial value
 and the section; ``-o FILE`` writes them into a file instead of standard output.
+
+``Cal_Gain`` states no ``conversion``, and that is deliberate. Whether a raw value is the
+physical one is a claim about the data, not something a variable's type says, and DDD asks its
+author to state it (:doc:`faq`): pasted as it is, the entry is a ``schema`` error until it
+does. ``--identity-conversions`` writes the identity where you state it for every entry and
+member that is not an enum, so that it is one choice made for the whole run rather than a default
+the tool falls into:
+
+.. code-block:: text
+
+   $ ddd tool from-elf examples/firmware/firmware.elf Cal_Gain --identity-conversions
+   [
+     {
+       "scope": "output",
+       "definition": {
+         "name": "Cal_Gain",
+         "kind": "parameter",
+         "datatype": "uint16",
+         "conversion": {
+           "kind": "identity"
+         },
+         "init": 300,
+         "volatile": false
+       }
+     }
+   ]
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, which '--identity-conversions' writes on your word, since nothing in an image says that raw equals physical; the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   1 info
+   $ echo $?
+   0
 
 What an image states, and what it does not
 ------------------------------------------
@@ -85,19 +116,30 @@ What an image states, and what it does not
      - the encoding and size DWARF states: ``long``, plain ``char`` and an enum follow the
        target that built the image.
    * - ``conversion``
-     - the identity, or an ``enum`` conversion carrying the enumerators in declaration order,
-       named after the typedef closest to the enum, else its tag.
+     - an ``enum`` conversion carrying the enumerators in declaration order, named after the
+       typedef closest to the enum, else its tag; for anything else none, since an image does
+       not say that raw is physical, and ``--identity-conversions`` writes the identity where
+       you do. An enumerator
+       the image writes as a fixed-width constant is the unsigned value it holds, whatever the
+       sign of its enum and whether its form is narrower or wider than the enum. An
+       enumerator of a signed enum is negative only where its fixed-width constant is as
+       wide as the enum and its top bit is set: 200 and 40000 in a signed 32 bit enum stay
+       positive.
    * - ``dimensions``
      - the array's extents, in C order.
    * - ``init``
      - the image's own bytes, in its byte order; an array of one value as that value, a
-       ``float32`` in the fewest digits that read it back. None for a variable in a section
+       ``float32`` in the fewest digits that read it back, except FLT_MAX and its negative, written
+       as the double each is, since their shortest spelling lies past the range DDD holds a
+       ``float32`` to. None for a variable in a section
        without contents, whose bytes the image does not hold: ``.bss`` starts at zero, a
        ``.noinit`` section is not initialised at all, and ``section`` says which.
    * - ``section``
      - stated only where the variable's section is not one of the toolchain's defaults. It is
        the image's output section, which is the name the source used when the linker script
-       kept it, and the project has to declare it in a sections file.
+       kept it, and the project has to declare it in a sections file. It is the section the
+       variable's symbol names, which is what tells two sections a linker script overlays at
+       one address apart.
    * - ``volatile``
      - the qualifier.
    * - ``typename`` and ``types``
@@ -135,7 +177,7 @@ component file, with a ``types`` entry for every structure the variables reach:
      }
    }
    main.c:57: warning[elf-name-synthesized]: an anonymous structure is named 'Inlet_t_pair_t', after the first thing that reaches it; rename it if the source has a better name
-   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
    main.c:63: info[elf-boolean-bitfield]: 'Inlet_t.ready' is a _Bool bitfield, described as a uint8 one of the same width: DDD refuses a boolean bitfield
    1 warning, 2 infos
 
@@ -146,11 +188,13 @@ shared types file rather than pasting it into both.
 A structure is named by the typedef closest to it, else by its tag, and an anonymous one after
 the first thing that reaches it (``elf-name-synthesized``). Two structures of one name that
 differ - one per compilation unit, each unit's own - are ``elf-type-conflict``, and no
-variable reaching either is printed. A ``_Bool`` bitfield is described as a ``uint8`` one
-(``elf-boolean-bitfield``), since DDD refuses a boolean bitfield, and ``const`` or ``volatile``
-on a member is dropped (``elf-qualifier-dropped``): DDD qualifies whole objects. A structured
-object states no initial value, as DDD requires; values the image holds for one are dropped
-and said to be (``elf-init-dropped``).
+variable reaching either is printed. They differ when their members do, and also when they lay
+the same members out at other offsets or to another size: a name that one unit packs and
+another lays out as the target does is a conflict. A ``_Bool`` bitfield is described as a
+``uint8`` one (``elf-boolean-bitfield``), since DDD refuses a boolean bitfield, and ``const``
+or ``volatile`` on a member is dropped (``elf-qualifier-dropped``): DDD qualifies whole
+objects. A structured object states no initial value, as DDD requires; values the image holds
+for one are dropped and said to be (``elf-init-dropped``).
 
 The layout of a structure
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -158,11 +202,31 @@ The layout of a structure
 DDD states member order, datatypes and widths, never offsets, and the compiler lays out the
 structure it generates. Nothing in the a2l depends on that, but the structure DDD generates can
 lay out differently from the source's where the source asked for a layout its members do not
-imply - and DWARF records none of those requests directly. The tool warns about the two traces
-it can read: bits skipped where the next bitfield would have fit, which an unnamed or zero
-width bitfield leaves (``elf-bitfield-gap``), and an alignment the source states
-(``elf-alignment``). Packing - ``#pragma pack``, ``packed`` - is not detected: whether an
-offset is packed or merely the target's own alignment depends on the ABI.
+imply: packing (``#pragma pack``, ``packed``), an alignment, an unnamed bitfield or a zero
+width one. DWARF records only some of those requests directly (DWARF 5's alignment attribute
+records one, and ``elf-alignment`` reads it), and states what they did: where each member is,
+and how large the structure is.
+
+The tool lays each structure out as DDD's generated C would, every member at the next offset
+its alignment allows, a scalar's alignment held to what the image's target allows inside a
+structure (the header's ``e_machine`` and ``e_flags`` name it: a ``double`` is aligned to 4 on
+i386 and to 8 on the other machines the tool holds), and warns ``elf-layout`` where the image
+differs: the first member at another offset than the generated structure puts it at, or, where
+every member sits as generated, a size of its own. Packing, ``pack(2)``, a packed member, and
+an unnamed or zero width bitfield anywhere in the structure are all found this way, and so is
+an alignment the source states, which ``elf-alignment`` names as well. Bits skipped where the
+next bitfield would have fit are ``elf-bitfield-gap`` instead, and the structure is not warned
+a second time. A layout a build flag gives every structure (``-fpack-struct``,
+``-malign-double``) is warned too, although the generated C, built the same way, repeats it.
+A structure the target lays out by its own alignment is never warned.
+
+The machines the tool holds are x86-64, i386, 32-bit PowerPC, S/390, ARM under an EABI,
+AArch64 and RISC-V other than RV32E. An image of another machine or ABI - ARM built for the
+older ABIs (``-mabi=apcs-gnu``, ``atpcs``), RV32E - is not checked, and the run says so once
+(``elf-layout-unchecked``).
+
+A layout that a wire format or a non-volatile memory image depends on changes when the generated
+C replaces the source: read the offsets a warning names before relying on one.
 
 What the tool cannot describe
 -----------------------------
@@ -175,16 +239,37 @@ nothing, unless ``--force`` asks for what could be described:
    $ ddd tool from-elf examples/firmware/firmware.elf Type_Pointer Tls_Counter Cal_Gain
    main.c:106: error[elf-no-storage]: 'Tls_Counter' has no address in the image: it is thread-local, with an address of its own in every thread
    main.c:38: error[elf-type-unsupported]: 'Type_Pointer' is a pointer, which DDD cannot state
-   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: every conversion but an enum's is the identity, the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
+   examples/firmware/firmware.elf: info[elf-not-inferred]: an image states no unit, description, limits, scaling or id, so the output states none: it states no conversion for what is not an enum either, since raw equalling physical is a claim about the data that an image does not make, and 'ddd check' asks its author to state it ('--identity-conversions' writes the identity, where you state it); the limits are the ones DDD derives, and 'ddd id --assign' writes the ids
    2 errors, 1 info
    $ echo $?
    1
+
+The reader is for the C that gcc and clang write, and C++ is not described by it. Where a C++
+shape would be described wrongly the tool refuses it, each in a sentence of its own, and describes
+nothing it does not state: a structure with a base class, whose members the base holds as well,
+is ``elf-type-unsupported``, as is a structure with a static member where DWARF writes the
+static as a member, which DWARF 4 does, with no place in the object (at DWARF 5 gcc writes it
+apart, and the structure is described by its storage); and a variable of a namespace or a class, which gcc writes at
+the top of its unit beside the C variables, is ``elf-no-storage`` and no candidate by its short
+name, so that a DDD object of that name is not given the address of ``ns::name``.
+
+One name at one address is one variable, however many units describe it, and the tool says so
+where the descriptions disagree about it, ``elf-type-conflict``: a common symbol (``-fcommon``)
+declared at two sizes, an array declared with two lengths, a weak definition over a strong one of
+another type, and a description whose size is not the size its symbol states, as a unit built
+without ``-g`` leaves it. The variable is left out, since no one of the descriptions is right, and a unit prefix does not
+change that: the sizes are judged over every unit of the image that holds the name there.
+Where a linker script overlays two sections at one address, the variable's section is the one its
+symbol names; a variable that nothing places in either is ``elf-section-ambiguous``. A name two
+arguments reach by their two unit prefixes, as ``cal.c:Gain`` and ``io.c:Gain`` do, is refused as
+``elf-symbol-ambiguous``, naming both arguments: DDD names an object once.
 
 A finding about a variable is shown at its declaration in the C source, as the image recorded
 the path. An image that cannot be used at all - not ELF, without DWARF, a relocatable object
 rather than a linked image, one whose types sit in DWARF type units (``-fdebug-types-section``),
 one built with gcc's link-time optimisation (``-flto``), one whose debug information is
-compressed with zstd rather than zlib (``-gz=zlib``), or a damaged file - is a usage error,
+compressed with zstd rather than zlib (``-gz=zlib``), a debug-only companion, whose sections
+hold none of the program, or a damaged file - is a usage error,
 exit ``2``, and the message names the flag to build it with or without where one would do. So
 are a malformed argument and an ``-o`` naming the image, refused before the image is read.
 
@@ -206,25 +291,44 @@ under DDD's identifiers.
      - error
      - a name or a pattern matches no variable of the image's debug information; where the
        symbol table holds the name and no unit's debug information does, the unit defining it
-       was built without ``-g``
+       was built without ``-g``, or, in an image whose debug information is split into ``.dwo``
+       files (``-gsplit-dwarf``), is described in those, which the tool does not read
    * - ``elf-symbol-ambiguous``
      - error
      - several compilation units define the name, other than as one variable at one
        address; ``UNIT:NAME`` takes one. A tentative definition two units share
-       (``-fcommon``) is one variable
+       (``-fcommon``) is one variable. Two arguments that each take a variable of one name,
+       from two units, are refused too, naming both arguments
    * - ``elf-no-storage``
      - error
      - the variable has no address: only declared, folded into a constant or removed by the
        compiler, thread-local, at a location that is not a fixed address, discarded by the
-       linker - which leaves its address at 0, or at all ones, where no symbol of its name
-       sits - or at an address no section of the image holds
+       linker - which leaves its address at 0, at all ones or, with gold, at an offset into
+       the section it dropped, so that an external variable with no object symbol of its name
+       at its address counts as discarded, and so does a ``static`` with no local object symbol of its name
+       there where the image holds any, a link made with ``-Wl,-x`` dropping them all and
+       leaving the ``static`` to be read by its address alone - or at an address no section
+       of the image holds. A global the symbol table holds and no unit with debug information
+       defines, one written in assembly or built without ``-g``, is said to be defined where
+       the debug information does not describe it. A name each of several units leaves without
+       an address, as a header's ``static const`` each folded, is reported once, naming the
+       units, since a unit prefix would take none of them. A variable of a C++ namespace or
+       class, which no short name names, is refused here too
+   * - ``elf-section-ambiguous``
+     - error
+     - two sections of the image hold the variable's address, as a linker script that overlays
+       them makes it, and its symbol names neither, so its section and its initial value cannot
+       be stated
    * - ``elf-type-unsupported``
      - error
      - a type DDD cannot state - a pointer, a union, a ``long double`` wider than eight bytes,
-       a ``const`` array of structures - named at the member where it occurs
+       a ``const`` array of structures, a C++ structure with a base class or, at DWARF 4, a static
+       member - named at the member where it occurs; and a variable the debug information gives
+       no type, as ``-g1`` leaves every one
    * - ``elf-type-conflict``
      - error
-     - one name stands for two different structures or enums
+     - one name stands for two different structures or enums, or for one variable that two
+       units, or a unit and the symbol table, give two sizes
    * - ``elf-init-unsupported``
      - error
      - an initial value DDD has no spelling for, such as NaN, or one whose bytes run past
@@ -237,7 +341,13 @@ under DDD's identifiers.
      - bits skipped where the next bitfield would have fit
    * - ``elf-alignment``
      - warning
-     - an alignment the source states
+     - an alignment the source states, on a variable or a member, and a GNU vector, which the
+       target aligns as a whole, as a variable or a member; none where the producer writes
+       no alignment (``-gstrict-dwarf`` at DWARF 4 and before)
+   * - ``elf-layout``
+     - warning
+     - a member at another offset, or a structure of another size, than the structure DDD
+       generates has: packing, an alignment, an unnamed or a zero width bitfield
    * - ``elf-qualifier-dropped``
      - warning
      - ``const`` or ``volatile`` on a structure member
@@ -253,6 +363,10 @@ under DDD's identifiers.
    * - ``elf-boolean-bitfield``
      - info
      - a ``_Bool`` bitfield described as a ``uint8`` one
+   * - ``elf-layout-unchecked``
+     - info
+     - an image of a machine whose alignment rules the tool does not hold, so no structure of it
+       is checked for ``elf-layout``
    * - ``elf-not-inferred``
      - info
      - once per run: what an image never states

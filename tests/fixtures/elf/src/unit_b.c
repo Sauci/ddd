@@ -14,3 +14,9 @@ struct Clash_s {
 
 /* Appended: the other half of unit_a.c's common pair. */
 __attribute__((common)) uint32_t Common_Counter;
+
+/* Appended: laid out naturally, where unit_a.c packs the same name. */
+struct Pair_s {
+    uint8_t id;
+    uint32_t count;
+} Pair_B;

@@ -320,6 +320,7 @@ def build_backends(**options: Any) -> list[Backend]:
     emit_a2l = options.pop("emit_a2l", True)
     byte_order = options.pop("byte_order", ByteOrder.LITTLE)
     addresses = options.pop("addresses", None)
+    left_out = options.pop("left_out", frozenset())
     if options:
         msg = f"unknown backend option(s): {sorted(options)}"
         raise TypeError(msg)
@@ -331,6 +332,7 @@ def build_backends(**options: Any) -> list[Backend]:
                     byte_order=byte_order,
                     addresses=addresses or {},
                     has_address_source=bool(addresses),
+                    left_out=left_out,
                 )
             )
         )

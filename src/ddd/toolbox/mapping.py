@@ -59,6 +59,36 @@ _DATATYPES: Final = {
     ("float", 4): "float32",
     ("float", 8): "float64",
 }
+_NO_TYPE: Final = Unsupported("void")
+"""What the reader makes of a variable its debug information gives no type, as ``-g1`` leaves
+every variable: C's ``void``, which no variable is."""
+
+_UNTYPED: Final = (
+    "the image's debug information gives '{}' no type, as -g1 leaves it, so DDD cannot state it"
+)
+"""The sentence for such a variable, in the words the placement of ``--image`` gives a path into
+one."""
+_EM_ARM: Final = 40
+_EM_RISCV: Final = 243
+ALIGNMENT_CAPS: Final = {
+    # The largest alignment, in bytes, a scalar has inside a structure, by the ELF header's
+    # e_machine (alignment_cap narrows ARM and RISC-V by e_flags). A 64 bit integer or a
+    # double is the widest scalar DDD states, so the cap says whether it is aligned to its
+    # size. Each entry is the ABI document of the machine, and the fixtures hold it to the
+    # compiler: tests/test_elf.py compares it with the alignment of a uint64_t each toolchain
+    # measured.
+    3: 4,  # EM_386: System V i386 ABI supplement, fundamental types: a double and a long long
+    # are 8 bytes, aligned to 4.
+    20: 8,  # EM_PPC: the System V PowerPC ABI supplement (and the Linux ABI): a double and a
+    # long long are aligned to 8.
+    22: 8,  # EM_S390: the s390x ELF ABI supplement: a 64 bit scalar is aligned to 8.
+    40: 8,  # EM_ARM: AAPCS, fundamental data types: a double word is aligned to 8.
+    62: 8,  # EM_X86_64: System V x86-64 ABI, fundamental types: a long and a double are aligned
+    # to 8.
+    183: 8,  # EM_AARCH64: AAPCS64, fundamental data types: a double word is aligned to 8.
+    243: 8,  # EM_RISCV: the RISC-V psABI, data model: a long long and a double are aligned to
+    # their size.
+}
 _ENCODED_AS: Final = {
     DW_ATE_BOOLEAN: "a boolean",
     DW_ATE_COMPLEX_FLOAT: "a complex number",
@@ -178,7 +208,7 @@ class Mapper:
     def __init__(self, image: Image, bag: DiagnosticBag) -> None:
         self._image = image
         self._bag = bag
-        self._named: dict[str, list[tuple[dict[str, Any], Declared | None]]] = {}
+        self._named: dict[str, list[tuple[dict[str, Any], Declared | None, str]]] = {}
         self._structures: list[str] = []
         self._synthesized: dict[Struct | Enum, str] = {}
         self._described: dict[tuple[Struct, str], _Described] = {}
@@ -186,9 +216,18 @@ class Mapper:
 
     def typed(self, variable: Variable) -> Typed | None:
         """What DDD states of ``variable``'s type; None, reported, where it cannot be stated."""
+        typed = self._typed(variable)
+        if typed is not None:
+            self._aligned(variable)
+        return typed
+
+    def _typed(self, variable: Variable) -> Typed | None:
         shape = shape_of(variable.type)
         location = place(self._image, variable.declared_at)
         core = shape.core
+        if core == _NO_TYPE:
+            report(self._bag, "elf-type-unsupported", _UNTYPED.format(variable.name), location)
+            return None
         if isinstance(core, Unsupported):
             self._refuse(variable, Refusal(variable.name, core.what), location)
             return None
@@ -210,10 +249,81 @@ class Mapper:
             element_size=core.size,
         )
 
+    def _aligned(self, variable: Variable) -> None:
+        """Say where ``variable`` is aligned as the source or the target asks, which DDD cannot
+        state: an alignment the source states on it, else a GNU vector, which the target aligns
+        as a whole."""
+        location = place(self._image, variable.declared_at)
+        generated = self._generated(variable.type)
+        if variable.alignment is not None:
+            if variable.alignment == generated:
+                return
+            message = f"'{variable.name}' is aligned to {variable.alignment} bytes in C, "
+            if generated is None:
+                message += (
+                    "which DDD cannot state: the variable DDD generates is aligned as its type is"
+                )
+            else:
+                message += (
+                    f"where the variable DDD generates is aligned to {generated}: DDD cannot "
+                    f"state an alignment on a variable"
+                )
+            report(self._bag, "elf-alignment", message, location)
+            return
+        vector = self._vector(variable.type)
+        if vector is not None:
+            report(
+                self._bag,
+                "elf-alignment",
+                f"'{variable.name}' {self._lost(vector)} on a variable",
+                location,
+            )
+
+    def _vector(self, ctype: CType) -> Array | None:
+        """The GNU vector ``ctype`` is, or is an array or typedef of, where one is aligned by
+        more than its elements are."""
+        node = ctype
+        while True:
+            if isinstance(node, Qualified | Typedef):
+                node = node.inner
+            elif isinstance(node, Array):
+                if node.vector and (size_of(node) or 0) > (size_of(node.element) or 0):
+                    return node
+                node = node.element
+            else:
+                return None
+
+    def _lost(self, vector: Array) -> str:
+        """What a GNU vector's alignment is and what the generated array's is, ended by what
+        DDD cannot state."""
+        element = size_of(vector.element) or 0
+        generated = self._generated(vector.element)
+        alignment = f"aligned to {generated}" if generated else "aligned as its elements are"
+        return (
+            f"is a GNU vector of {size_of(vector)} bytes, which the target aligns as a whole, "
+            f"where the array of {element} byte elements DDD generates is {alignment}: DDD "
+            f"cannot state an alignment"
+        )
+
+    def _generated(self, ctype: CType) -> int | None:
+        """The alignment in bytes DDD's generated C gives ``ctype``; None where the target's
+        rules are not held, or the type is laid out in a way this tool does not model."""
+        machine = self._image.machine
+        cap = None if machine is None else alignment_cap(machine, self._image.flags)
+        if cap is None:
+            return None
+        core = shape_of(ctype).core
+        if isinstance(core, Struct):
+            natural = _natural(core, cap)
+            return None if natural is None else natural.alignment
+        # A refused type never gets here: typed() reports an alignment of what it mapped.
+        assert isinstance(core, Base | Enum)
+        return min(core.size, cap)
+
     def conflicts(self) -> dict[str, list[Declared | None]]:
         """Every name the image defines more than one way, with where each way is declared."""
         return {
-            name: [declared_at for _, declared_at in known]
+            name: [declared_at for _, declared_at, _ in known]
             for name, known in self._named.items()
             if len(known) > 1
         }
@@ -303,7 +413,10 @@ class Mapper:
             members.append(described_member)
             reaches.update(reached)
         self._register(
-            name, {"type": "struct", "name": name, "members": members}, struct.declared_at
+            name,
+            {"type": "struct", "name": name, "members": members},
+            struct.declared_at,
+            layout=_offsets(struct),
         )
         if name not in self._structures:
             self._structures.append(name)
@@ -392,6 +505,7 @@ class Mapper:
                 struct.declared_at,
             )
         end: int | None = 0
+        gapped = False
         for member in struct.members:
             label = f"{name}.{member.name}"
             if member.alignment is not None:
@@ -402,8 +516,14 @@ class Mapper:
                     f"state",
                     member.declared_at,
                 )
+            # After the stated alignment, which _once keeps where a member has both.
+            vector = self._vector(member.type)
+            if vector is not None:
+                lost = f"'{label}' {self._lost(vector)}"
+                self._once("elf-alignment", label, lost, member.declared_at)
             gap = _gap(end, member)
             if gap:
+                gapped = True
                 self._once(
                     "elf-bitfield-gap",
                     label,
@@ -413,6 +533,58 @@ class Mapper:
                     member.declared_at,
                 )
             end = _end(member)
+        if not gapped:
+            self._departure(name, struct)
+
+    def _departure(self, name: str, struct: Struct) -> None:
+        """Say where the structure the image describes is laid out as the structure DDD
+        generates would not be.
+
+        A gap before a bitfield is reported by :func:`_gap`, and is not stated again. An
+        alignment the source states is its own warning (``elf-alignment``) and departs from
+        the generated structure here as well, by its size or by the offsets it moves.
+        """
+        machine = self._image.machine
+        if machine is None:
+            return
+        flags = self._image.flags
+        cap = alignment_cap(machine, flags)
+        if cap is None:
+            self._once(
+                "elf-layout-unchecked",
+                "",
+                f"the layout of a structure is not checked against what DDD generates: the "
+                f"image is for a machine and ABI (e_machine {machine}, e_flags {flags:#x}) "
+                f"whose alignment rules this tool does not hold",
+                None,
+            )
+            return
+        natural = _natural(struct, cap)
+        if natural is None:
+            return
+        for member, offset in zip(struct.members, natural.offsets, strict=True):
+            if member.bit_offset is None or member.bit_offset == offset:
+                continue
+            unit, divisor = ("bit", 1) if member.bit_size is not None else ("byte", 8)
+            self._once(
+                "elf-layout",
+                f"{name}.{member.name}",
+                f"'{name}.{member.name}' is at {unit} {member.bit_offset // divisor} in C, where "
+                f"the structure DDD generates puts it at {unit} {offset // divisor}: the source "
+                f"packed the structure, or left room with an unnamed or zero width bitfield, "
+                f"which DDD cannot state",
+                member.declared_at or struct.declared_at,
+            )
+            return
+        if struct.size != natural.size:
+            self._once(
+                "elf-layout",
+                name,
+                f"'{name}' is {_bytes(struct.size)} in C, where the structure DDD generates is "
+                f"{natural.size}: the source packed, aligned or padded the structure, which DDD "
+                f"cannot state",
+                struct.declared_at,
+            )
 
     def _synthesize(self, key: Struct | Enum, name: str) -> str:
         known = self._synthesized.get(key)
@@ -430,12 +602,19 @@ class Mapper:
         return name
 
     def _register(
-        self, name: str, description: dict[str, Any], declared_at: Declared | None
+        self,
+        name: str,
+        description: dict[str, Any],
+        declared_at: Declared | None,
+        layout: str = "",
     ) -> None:
+        """Keep ``description`` under ``name`` unless it is one already kept: the description
+        is what DDD states, and ``layout`` is where the image put each member, which DDD does
+        not state and which still tells two structures of one name apart."""
         known = self._named.setdefault(name, [])
         text = json.dumps(description)
-        if all(json.dumps(other) != text for other, _ in known):
-            known.append((description, declared_at))
+        if all((json.dumps(other), seen) != (text, layout) for other, _, seen in known):
+            known.append((description, declared_at, layout))
 
     def _once(self, check: str, key: str, message: str, declared_at: Declared | None) -> None:
         if (check, key) in self._reported:
@@ -482,3 +661,84 @@ def _end(member: Member) -> int | None:
     # Every member's type is described by the time the layout is looked at.
     assert size is not None
     return member.bit_offset + 8 * size
+
+
+_EF_ARM_EABIMASK: Final = 0xFF000000
+_EF_RISCV_RVE: Final = 0x8
+
+
+def alignment_cap(machine: int, flags: int) -> int | None:
+    """The cap of the ABI an image of ``machine`` and ``e_flags`` was built for, or None where
+    the tool holds none.
+
+    ARM's table entry is AAPCS's: an image of the older ABIs (``-mabi=apcs-gnu``, ``atpcs``)
+    names no EABI version, aligns a 64 bit scalar to 4 and rounds a structure to 4 bytes. RV32E
+    is left out as well: compilers differ on its cap, and no fixture measures GCC's.
+    """
+    cap = ALIGNMENT_CAPS.get(machine)
+    if machine == _EM_ARM and not flags & _EF_ARM_EABIMASK:
+        return None
+    if machine == _EM_RISCV and flags & _EF_RISCV_RVE:
+        return None
+    return cap
+
+
+def _offsets(struct: Struct) -> str:
+    """Where the image puts each member, and the structure's size: what a description of the
+    structure leaves out and a second description of its name may still differ in."""
+    return json.dumps([struct.size, [member.bit_offset for member in struct.members]])
+
+
+@dataclass(frozen=True, slots=True)
+class _Natural:
+    """A structure as the generated C lays it out: each member's bit offset, the size in bytes
+    and the alignment in bytes."""
+
+    offsets: tuple[int, ...]
+    size: int
+    alignment: int
+
+
+def _natural(struct: Struct, cap: int) -> _Natural | None:
+    """Lay ``struct`` out member after member, each at the next place its alignment, held to
+    ``cap`` bytes, allows; None where the rule is not one this function knows.
+
+    A bitfield starts at the next free bit unless it would then cross a boundary of its
+    declared type's size, the rule :func:`_gap` states. One whose type is wider than ``cap`` is
+    where the ABIs differ, and is left unjudged.
+    """
+    end = 0
+    alignment = 1
+    offsets: list[int] = []
+    for member in struct.members:
+        core = shape_of(member.type).core
+        if member.bit_size is not None:
+            if not isinstance(core, Base | Enum) or core.size > cap:
+                return None
+            width = 8 * core.size
+            start = end
+            if start // width != (start + member.bit_size - 1) // width:
+                start = -(-start // width) * width
+            offsets.append(start)
+            end = start + member.bit_size
+            alignment = max(alignment, core.size)
+            continue
+        if isinstance(core, Struct):
+            inner = _natural(core, cap)
+            if inner is None:
+                return None
+            element, member_alignment = inner.size, inner.alignment
+        else:
+            # Every other core was refused before the layout of its structure was looked at.
+            assert isinstance(core, Base | Enum)
+            element, member_alignment = core.size, min(core.size, cap)
+        count = (size_of(member.type) or 0) // max(core.size, 1)
+        start = _round_up(-(-end // 8), member_alignment) * 8
+        offsets.append(start)
+        end = start + 8 * element * count
+        alignment = max(alignment, member_alignment)
+    return _Natural(tuple(offsets), _round_up(-(-end // 8), alignment), alignment)
+
+
+def _round_up(value: int, multiple: int) -> int:
+    return -(-value // multiple) * multiple

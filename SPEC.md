@@ -607,7 +607,11 @@ output. `condition` is per declaration as well but **should** agree, and
 guarded by legitimately different expressions occur in practice. Conditions are
 compared as text, stripped of surrounding whitespace: `A && B` and `B && A` are different
 conditions, because deciding their equivalence would require a preprocessor, and a
-declaration stating no condition disagrees with one stating some. The dictionary records
+declaration stating no condition disagrees with one stating some. A reference is held to
+the same agreement: an object that refers to another one, a curve or a map to its axes and
+an axis to its input, **should** state the condition the other one does, or a condition
+of its own over an unconditional one; `condition-mismatch` says so, naming both, when the
+object referred to states a condition the referrer does not state. The dictionary records
 the producer's condition on the object, and every declaration's own condition with its
 declaring component.
 
@@ -1454,7 +1458,14 @@ Warnings:
 - `section-alignment`: an object needs stricter alignment than its section guarantees. This
   is a warning rather than an error because the need is the description's estimate, and the
   compiler's word on the real layout is final.
-- `condition-mismatch`: declarations of one object use different preprocessor conditions.
+- `condition-mismatch`: declarations of one object use different preprocessor conditions,
+  or an object refers to another one whose condition it does not state: an unconditional
+  curve over a conditional axis, an axis over a conditional input, a curve under one
+  condition over an axis under another. A build without the condition holds the referrer
+  and not the object, so the A2L of that build, written by a run that finds the object
+  compiled out (`condition-left-out`), leaves the referrer out too, or writes an axis with
+  no input quantity. The one id serves both comparisons: `-W condition-mismatch=ignore`
+  silences both.
 - `unused-output`: an output is read by nobody.
 - `limits-out-of-range`: limits exceed what the datatype can represent under the
   conversion; for an enum that is the span of its enumerators. The comparison allows a
@@ -1471,8 +1482,16 @@ Warnings:
 - `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.
+- `reference-left-out`: a curve or a map is left out of the A2L because the axis it refers
+  to was (`condition-left-out`), the build holding the curve or the map all the same. It is
+  one finding per axis, naming the axis, its condition and what goes with it, a map over two
+  such axes named under each. It is a warning, so that a `--strict` build stops for it even
+  where `condition-mismatch`, which reports the cause at `ddd check`, is ignored.
 - `address-missing`: an object the A2L carries gets no address from the address map or the
-  image the run was given. It fires for a map only when the map has at least one entry:
+  image the run was given. An object that states a condition, and of which the build holds
+  nothing, is not carried: the A2L leaves it out, as `condition-left-out` says. One the build
+  holds, and the map or the image does not place, is `address-missing` whatever condition it
+  states. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction. That is the run
   a build makes before it has linked anything, and it is as well the step after the link
   when the map it reads has no entry, one the project's step extracted nothing into among
@@ -1488,8 +1507,59 @@ Warnings:
   one per reason, said once however many of the objects named share it, for the objects the
   finding names.
 
+- `elf-mismatch`: the image `--image` was given holds a variable it places otherwise than the
+  description states. Each variable the image places is compared on four things: the size of
+  one element, its encoding (a signed or an unsigned integer, a floating point number, a
+  boolean or an enumeration), its shape (a scalar, or the extent of each dimension, a table that
+  stores its point counts being the one run of them and its values) and the qualifiers the
+  generated C gives its kind, `const` on everything but a measurement and `volatile` where the
+  description says so. A type is compared by what it resolves to, typedefs and qualifiers seen
+  through: a `UWORD` defined as `uint16_t` agrees with a `uint16`, and a `uint32_t` behind a
+  `uint16` does not. A one byte unsigned integer agrees with a `boolean`, as AUTOSAR's does.
+  The member a path ends at is compared on its size, its encoding and its shape, its variable
+  carrying the qualifiers, and a structured variable on its qualifiers and its shape. It is
+  one finding per variable, naming each difference with what the description states and what
+  the image holds, located at the image, and a note gives the declaration the debug information
+  names. Where the units of the image describe one name at one address in two sizes, or a
+  description and the symbol table's size for it disagree, the finding says that instead, and
+  the variable is compared with none of them, since none is the one description. A variable the
+  image holds with no type (`-g1`) is not compared. A unit that declares the variable without
+  defining it, as a consumer does through a component header, is held to the qualifiers of
+  the kind as well, since a header that leaves out `volatile` lets that unit's compiler read
+  the variable once where the description says something else writes it: the finding names
+  the unit and the qualifier it lost. A declaration may add `const`, which `--const-inputs`
+  gives the inputs of a component on purpose; every other difference is judged as the
+  definition's is, and only the qualifiers are compared. The declarations are those the
+  image's debug information states, which gcc writes for a variable a unit reads and clang
+  leaves out, so the images of clang say nothing of them. It is a warning, so a `--strict` build
+  stops at it; the A2L is written from the description either way, and a calibration tool
+  reads the image by it.
+
 Information:
 
+- `image-load-relative`: the image `--image` was given is position independent (`ET_DYN`),
+  so the addresses the A2L takes from it are offsets from where the image loads, which only
+  the loader knows. The A2L states them as they are, which is right for a project that adds
+  its load base when it reads the file and wrong for one that does not; the finding is
+  located at the image, and says so in a note.
+- `condition-left-out`: an object the A2L would carry states a condition, and the build
+  does not hold it: the image defines no variable of its name, nor holds a symbol of it,
+  or the address map with entries names neither the object nor any of its members. The A2L
+  then has no record of it, as for a build without the feature. One finding per condition,
+  naming the objects it guards, located at the image or the map. A condition cannot be told
+  true or false from here, so what counts is absence, and every other reason an image gives
+  - the variable is only a `static`, its unit built without `-g`, it sits at several
+  addresses, its type lacks a member the declaration names, the linker discarded it and the
+  image still shows so, at an address of 0 or all ones or at one no symbol of its name holds -
+  is a defect in what the build holds and stays `address-missing`, as does an object that
+  states no condition. A unit GNU ld discards whole loses its debug information too
+  ([section 6](#6-address-information)), so a variable of it reads as absent and is left out
+  as one a condition compiled out is, the run having nothing to tell the two apart by. A
+  structured object is decided as one: left out only where none of its
+  members is placed, and kept, its unplaced members `address-missing`, where the build
+  holds some of it. A curve or a map over an axis left out cannot be described without it
+  and goes with it, which `reference-left-out` names as a warning; an axis whose input
+  was left out is written with `NO_INPUT_QUANTITY`.
 - `empty-component`: a component declares no data object at all.
 - `empty-vocabulary`: a types, units, constants, sections or rasters file declares nothing,
   its own list being empty. The file loads: emptying one is how a project goes from one entry
@@ -1949,7 +2019,13 @@ checks leave no such reference in a project DDD resolves itself
 another producer is not checked again, where a dangling name would make the module invalid.
 
 A record whose object is declared under a preprocessor condition is preceded by a comment
-naming that condition, because the format has no conditional construct of its own.
+naming that condition, because the format has no conditional construct of its own. When
+the run has an address source that shows the build does not hold the object, an image that
+defines no variable of its name and holds no symbol of it, or a map with entries that names
+neither it nor a member of it ([section 6](#6-address-information)), the record is left out
+of the file, which `condition-left-out` says at `info`. A curve or a map over an axis so left
+out goes with it, and since the build holds the curve or the map, `reference-left-out` names
+it at `warning` ([section 4](#4-consistency-checks)).
 
 A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A2L as one
 object per value-holding member, named by its C access path: an `Inlet` of the `Inlet_t`
@@ -2032,7 +2108,10 @@ example `Inlet.latest` or `Inlet[2].raw`, exactly as the A2L names it
 
 `--image FILE` reads a linked ELF image, `ET_EXEC` or `ET_DYN`, and its DWARF debug
 information, versions 2 to 5: the images the reader of `ddd tool from-elf` reads
-([section 7.3](#73-toolbox)), any other being a usage error in that reader's words. Each
+([section 7.3](#73-toolbox)), any other being a usage error in that reader's words. The
+addresses of an `ET_DYN` image, which a position independent link writes, are offsets from
+where it loads: the A2L states them as they are, and `image-load-relative` says so at
+`info`. Each
 symbol the A2L states an address for is placed on its own. An object is the image's
 variable of that name with external linkage: the units describing one variable at one
 address, as `-fcommon` makes them, describe one variable, and a `static` of the same name
@@ -2040,21 +2119,48 @@ never stands for it, every object a dictionary describes being a global. A membe
 along its access path, typedefs and qualifiers seen through before each step: `.name` adds
 the member's offset within its structure, and `[i]`, one per dimension, `i` times the size
 of what the index steps over, so that an array of several dimensions is indexed row-major,
-as C lays it out. The type a path ends at is not compared with the declaration. The A2L
+as C lays it out. The type a path ends at is held to the declaration afterwards, as
+`elf-mismatch` ([section 4](#4-consistency-checks)). An object
+is placed where the image's symbol table holds an object symbol of its name at the address
+its debug information gives it, and where a section of the image holds that address: a
+linker that discards a unit under `--gc-sections` leaves one of two things: gold keeps the
+debug information of the unit and leaves each variable at its offset in the section it
+dropped; GNU ld drops it, and the reader holds no variable of that name. Where the symbol
+table holds no symbol of the name at that address and no section need lie there, the object
+is not placed. The linkers this is tested with are GNU ld 2.44, gold 2.44 and lld 19,
+the ones the fixtures of the suite are linked by; an image another linker wrote is read as
+these are, and no further. The A2L
 takes the byte order the image states: a `--byte-order` that agrees is accepted, and one
 that contradicts the image is a usage error. A symbol the image does not place keeps
 address `0x00000000` and is reported by `address-missing`
-([section 4](#4-consistency-checks)), why it is not placed a note of the finding: the image
+([section 4](#4-consistency-checks)). Only where its object states a condition and the
+image defines no variable of that name, and holds no symbol of it, is the object taken for
+one the build left out of the A2L and reported by `condition-left-out` instead; every
+other reason below is a defect in what the build holds. Why a symbol is not placed is a
+note of the finding: the image
 holds no variable of that name, or only a `static` of it; the variable has no storage -
 only declared, folded into a constant, removed by the compiler or discarded by the linker,
-thread-local, or at no fixed address; the image's debug information only declares it while
-the symbol table holds it, the unit defining it built without `-g`; the name names globals
+thread-local, or at no fixed address; its symbol table holds no object of that name at the
+address the debug information gives, as a linker leaves a variable of a unit it discarded,
+or no section of the image holds that address; a variable of a C++ namespace or class, which DDD does not read; the image's debug information only declares it while
+the symbol table holds it, the unit defining it built without `-g`, or the debug information
+split into `.dwo` files (`-gsplit-dwarf`), which the reader does not read; the name names globals
 at several addresses; its type has no member of that name, the C code and the declaration
 disagreeing; a step indexes what is not an array, or names a member of what is not a
-structure; an index is out of range; where a step lies cannot be worked out from the image's
+structure; the variable has no type, which `-g1` leaves; an index is out of range; where a step lies cannot be worked out from the image's
 debug information; or a step names a bitfield, whose bits an address cannot describe. An
 address outside `0 .. 0xFFFFFFFF` for a symbol the A2L states an address for is a usage
 error naming the symbol and the image, and nothing is written.
+
+The image is also the place where the description is held to the C that was compiled, which the
+generator cannot promise of what a project's own templates or a hand edit write. Each variable
+placed is compared with its object on the size and the encoding of an element, its shape and
+the qualifiers its kind carries, and each member placed on its size, its encoding and its shape;
+a difference is `elf-mismatch`, a warning, naming the variable, what the description states and
+what the image holds ([section 4](#4-consistency-checks)). A unit's declaration of a variable
+it does not define, a consumer's `extern`, is held to the qualifiers of its kind the same way
+where the image's debug information records it, which gcc's does for a variable a unit reads
+and clang's does not. The A2L is written from the description whatever the image holds.
 
 `--address-map FILE` names one flat JSON object mapping each symbol to its address, for an
 image the build reads itself - one without debug information, say. A symbol **shall** be
@@ -2066,7 +2172,9 @@ unsigned 32 bit
 `ECU_ADDRESS`: a map that is not a JSON
 object, a value that is neither of those two spellings, or an address outside
 `0 .. 0xFFFFFFFF` **for a symbol the A2L states an address for**, is a usage error and
-nothing is written. The address of any other symbol is never formatted into anything and is
+nothing is written. So is a file that is not UTF-8 text, as one Windows PowerShell's `>`
+writes is UTF-16, one nested deeper than the reader takes, and a number of more digits than
+the interpreter converts (4300 by default): each names the file. The address of any other symbol is never formatted into anything and is
 therefore not held to that range: extracting every defined symbol of an image - which is what
 [section 7.1](#71-build-system-integration) describes - legitimately yields entries a 32 bit
 field could not hold, and refusing them would make the two-run flow impossible to complete on
@@ -2075,15 +2183,21 @@ byte order mark, as a description file may ([section 3](#3-file-formats)): it is
 a build step, and on Windows that is exactly where one comes from. A key the project does
 not know is ignored, and an object the map does not
 cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
-output legitimately omits the objects a condition compiled away, and `SYMBOL_LINK` lets a
-downstream tool resolve those it cares about.
+output legitimately omits some objects, and `SYMBOL_LINK` lets a downstream tool resolve
+those it cares about. An object that states a condition, of which the map names neither the
+object nor any member, is the exception: it is left out of the A2L, as it is for an image,
+because a map extracted from a linker output omits the objects a condition compiled away. A
+map that names the structure by its own name, as a symbol lister writes it, or some of its
+members, holds the object, and the members it lacks are `address-missing`.
 
 A map with entries, or an image, that leaves an object of the A2L uncovered is
-`address-missing` ([section 4](#4-consistency-checks)): a warning by default, an error under
-`--strict`, and a run that reports it as an error writes nothing rather than a file whose
-addresses it has just been told are incomplete, unless `--force` asks for the file anyway
-([section 7](#7-tool-interface)). A run given neither, or given a map with no entry, has no
-address source: every address of its A2L is `0x00000000`, and no `address-missing` reports
+`address-missing` ([section 4](#4-consistency-checks)), an object that states a condition among
+them wherever the build holds anything of it, one it holds nothing of being left out as above:
+a warning by default, an error under `--strict`, and a run that reports it as an error writes
+nothing rather than a file whose addresses it has just been told are incomplete, unless
+`--force` asks for the file anyway ([section 7](#7-tool-interface)). A run given neither, or
+given a map with no entry, has no address source: every address of its A2L is `0x00000000`,
+and no `address-missing` reports
 it, an empty map naming no object for the A2L to miss, and `--strict` does not fail it,
 so the file says so itself, on the line under `ASAP2_VERSION`:
 `/* written with no address source: every address below is 0x00000000 */`.
@@ -2373,11 +2487,10 @@ again in that build, while an edit of the plugin's own code that changes only wh
 and not its model, leaves the dictionary as it was and still reaches it a build late. Under a
 Makefile generator the build after either is right, and a clean leaves a plugin's files under
 either generator. With `PROJECT` each `includes` entry is also globbed with `CONFIGURE_DEPENDS`,
-those of the projects it
-includes among them, so that a file a wildcard starts or stops matching runs the configure
-step, and the list of the files the project is made of, which the configure step keeps in the
-build tree, as `<stem>_ddd_sources.txt` and rewrites only when it differs, is an input of the
-generation: the build after a file left a wildcard regenerates, and the one after has nothing
+those of the projects it includes among them, so that a file a wildcard starts or stops matching
+runs the configure step, and the list of the files the project is made of, which the configure step
+keeps in the build tree, as `<stem>_ddd_sources.txt` and rewrites only when it differs, is an input
+of the generation: the build after a file left a wildcard regenerates, and the one after has nothing
 to do. A relative entry is read from the directory of the file naming it whatever characters that
 directory has. A registered file that does not parse when the build is configured names no
 component and is a dependency of the configure step until it does. One that does not exist
@@ -2626,16 +2739,42 @@ it. Its one tool is `from-elf`.
 
 `ddd tool from-elf IMAGE SYMBOL...` reads a linked ELF image, `ET_EXEC` or `ET_DYN`, and its
 DWARF debug information, versions 2 to 5, and prints the declarations of the C variables named
-or matched, as json on standard output: a list of interface entries, or with `--component NAME`
+or matched (a separate debug file is out of scope: one whose program sections hold no
+contents is refused, and `--image` of `ddd generate` places the addresses it gives all the
+same), as json on standard output: a list of interface entries, or with `--component NAME`
 a component file whose `types` holds the structures the variables name. A `SYMBOL` is
 `[UNIT:]PATTERN`: a C identifier matched exactly, or a glob matched case sensitively, narrowed
 to the compilation unit whose name is `UNIT` or ends in `/UNIT`, `/` and `\` separating alike.
 A candidate is a variable at the top of a unit with a static address; the `static` locals of a
 function are not candidates. One name at one address is one variable, however many units
-describe it, as a tentative definition `-fcommon` merges is. A variable without an address -
+describe it, as a tentative definition `-fcommon` merges is; where they describe it with two
+sizes, or one description is of another size than the symbol table states for the name - a
+common symbol declared at two sizes, an array of two lengths, a weak definition over a strong one
+of another type - the variable is `elf-type-conflict`, naming both, and is not described. The
+reader is for the C that gcc and clang write, and C++ is refused rather than described
+wrongly, each in a sentence of its own: a structure with a base class (`elf-type-unsupported`),
+a structure with a static member, where DWARF writes the static as a member of the structure, as
+DWARF 4 does with no location (`elf-type-unsupported`; at DWARF 5 gcc writes it apart, and the
+structure is described by its storage), and a variable whose definition belongs to another
+scope, a namespace's or a class's, which gcc writes at the top of its unit with a reference to
+its declaration inside the scope, so that it is no candidate by its short name
+(`elf-no-storage`). A unit prefix chooses the unit and nothing more: the sizes are judged over
+every unit of the image that holds the name at that address. A variable without an address -
 only declared, folded or removed by the compiler, thread-local, at no fixed address, or
-discarded by the linker, which leaves its DWARF address at 0 or at all ones where no symbol of
-its name sits - is `elf-no-storage`.
+discarded by the linker, which leaves its DWARF address at 0, at all ones, or, under gold, at
+an offset into the section it dropped, so that an external variable with no object symbol of its name at its address is one the
+linker discarded whatever the address, and so is a `static` with no local object symbol of its
+name there where the image holds any, a link made with `-Wl,-x` dropping them all and leaving
+the `static` to be read by its address alone - or at an address no section of the image
+holds - is `elf-no-storage`. A global the symbol table holds and no unit with debug
+information defines, one written in assembly or built without `-g`, is said to be defined where
+the debug information does not describe it. A name the symbol table holds and no unit's debug
+information describes at all is `elf-symbol-missing`, its unit said to be built without `-g`,
+or, where the image's debug information is split into `.dwo` files (`-gsplit-dwarf`), which the
+reader does not read, to be described there; and a variable `-g1` leaves without a type is
+`elf-type-unsupported`, in a sentence saying so. A name each of several units leaves without an
+address, as a header's `static const` each folded, is `elf-no-storage` once, naming the units,
+for a unit prefix would take none of them.
 
 What the image states, the declaration states:
 
@@ -2644,23 +2783,41 @@ What the image states, the declaration states:
   a `value_block` holds no structure ([section 3.7](#37-type-description)). A curve, a map or
   an axis is never inferred.
 - `datatype`: from the DWARF encoding and size - `boolean` of one byte, `uint8` to `uint64`,
-  `sint8` to `sint64`, `float32` and `float64`. Any other pairing, a pointer, a union, an
-  `_Atomic` type or a function is refused.
-- `conversion`: the identity, or an `enum` conversion carrying the enumerators in declaration
-  order, named by the typedef closest to the enum, else by its tag, else by a name made from
-  what first reaches it.
+  `sint8` to `sint64`, `float32` and `float64`. Any other pairing, a pointer, a union, a
+  function, or an `_Atomic` type where the debug information states it, is refused: gcc states
+  it from DWARF 5 only, and under `-gdwarf-4` (strict or not) writes `_Atomic uint32_t` as the
+  plain type, which is then read as one.
+- `conversion`: an `enum` conversion carrying the enumerators in declaration order, named by
+  the typedef closest to the enum, else by its tag, else by a name made from what first reaches
+  it; for anything else none. That raw equals physical is an engineering claim the author states
+  ([section 3.4](#34-conversions)), and an image says nothing of it, so an entry or a
+  structure member the tool prints without one is a `schema` error until its author states it.
+  `--identity-conversions` writes the identity on every entry and member that is not an enum, on
+  the author's word for all of them, and `elf-not-inferred` says which it was. DDD's own check
+  of the declarations sees the identity either way.
+  Only an enumerator of a signed enum, written as a fixed-width constant as wide as the enum,
+  with its top bit set, is negative. Any other fixed-width constant is the unsigned value it
+  holds, whatever the sign of the enum and whether its form is narrower or wider than the
+  enum: 200 and 40000 in a signed 32 bit enum, and 200 in a 1 byte unsigned one, stay positive.
 - a structure: its `typename`, and one `struct` entry of `types`, members in declaration
   order, a bitfield a `bits` member. `const` or `volatile` on a member cannot be stated, and a
   `_Bool` bitfield is described as a `uint8` one.
 - `init`: from the image's bytes in its byte order - an array whose elements are all equal as
-  that one value, a `float32` as the shortest decimal that reads back to it - and none for a
-  variable in a section without contents, whose bytes the image does not hold. A structured
+  that one value, a `float32` as the shortest decimal that reads back to it, except FLT_MAX
+  and its negative, which are written as the double each is, because their shortest spelling
+  lies past the `float32` range DDD holds it to - and none for a variable in a section without contents, whose bytes the image does not hold. A structured
   object states none ([section 3.7](#37-type-description)).
 - `section`: where the variable's section is not one of the toolchain's defaults, `.data`,
   `.bss`, `.rodata`, `.sdata`, `.sbss`, `.sdata2`, `.sbss2`, `.srodata`, `.data1` and
   `.rodata1`. It is the image's output section, which the project **must** declare
-  ([section 3.5](#35-memory-placement)).
+  ([section 3.5](#35-memory-placement)). It is the section the variable's symbol names
+  (`st_shndx`) where that holds its address; where two sections hold the address, as a linker
+  script that overlays them makes it, and the symbol names neither, the variable is refused,
+  `elf-section-ambiguous`, since its section and its initial value cannot be stated.
 - `volatile`: from the qualifier.
+
+A name two arguments each reach, by two unit prefixes, is refused as `elf-symbol-ambiguous`
+naming both arguments, since DDD names an object once.
 
 `--scope` is `output`, the default, `local` or `input`; an `input` entry states neither `init`
 nor `section` (`consumer-storage`, [section 3.3.1.2](#3312-storage)). Nothing else is stated:
@@ -2673,21 +2830,40 @@ DDD before its analysis. Their findings are reported with the tool's own, under 
 identifiers.
 
 The tool's own findings are not checks of [section 4](#4-consistency-checks) and take no `-W`:
-`elf-symbol-missing`, `elf-symbol-ambiguous`, `elf-no-storage`, `elf-type-unsupported`,
-`elf-type-conflict` and `elf-init-unsupported` are errors; `elf-init-dropped`,
-`elf-bitfield-gap`, `elf-alignment`, `elf-qualifier-dropped`, `elf-section`,
-`elf-name-synthesized` and `elf-types-omitted` warnings; `elf-boolean-bitfield` and
-`elf-not-inferred` infos. A finding about a variable is located at its declaration in the C
-source, as the image recorded the path.
+`elf-symbol-missing`, `elf-symbol-ambiguous`, `elf-no-storage`, `elf-section-ambiguous`,
+`elf-type-unsupported`, `elf-type-conflict` and `elf-init-unsupported` are errors; `elf-init-dropped`,
+`elf-bitfield-gap`, `elf-alignment`, `elf-layout`, `elf-qualifier-dropped`, `elf-section`,
+`elf-name-synthesized` and `elf-types-omitted` warnings; `elf-boolean-bitfield`,
+`elf-not-inferred` and `elf-layout-unchecked` infos. A finding about a variable is located at
+its declaration in the C source, as the image recorded the path.
 
-The layout of a structure is not checked: DDD states no offsets
-([section 3.7](#37-type-description)), and DWARF records neither packing nor an unnamed
-bitfield. The gap such a bitfield leaves where the next one would have fit is
-`elf-bitfield-gap`, and an alignment the source states is `elf-alignment`.
+DDD states no offsets ([section 3.7](#37-type-description)), and DWARF records only some
+requests for a layout directly (DWARF 5's alignment attribute records one), but it records where
+each member is and how large the structure is. The tool lays each structure out as DDD's
+generated C would, every member at the next offset its alignment allows, a scalar's alignment
+held to the cap of the image's ABI (`e_machine` and `e_flags`: 4 on i386, 8 on the other
+machines the tool holds), and states `elf-layout` where a member's offset or the structure's
+size differs, once per structure. Packing, `#pragma pack`, a packed member and an unnamed or
+zero width bitfield are found this way; the gap such a bitfield leaves where the next one would
+have fit is `elf-bitfield-gap` instead, an alignment the source states is `elf-alignment` as
+well, and a structure laid out as the target would is not warned. `elf-alignment` is also
+stated on a variable, where its debug entry states an alignment (`DW_AT_alignment`, as `_Alignas`
+writes it) other than the one the generated C gives its type, and for a GNU vector
+(`DW_AT_GNU_vector`), described as the array it holds, that is a variable or a member: the
+target aligns it as a whole, the generated array by its elements. An alignment a producer
+writes no attribute for (`-gstrict-dwarf` at DWARF 4 and before) is not read. A layout a build flag gives
+every structure (`-fpack-struct`, `-malign-double`) is warned too, although the generated C,
+built the same way, repeats it. The machines the tool holds are x86-64, i386, 32-bit PowerPC,
+S/390, ARM under an EABI, AArch64 and RISC-V other than RV32E; an image of another machine or
+ABI is not checked, and `elf-layout-unchecked` says so once. Two structures of one name that
+differ in a member's offset or in size are `elf-type-conflict`, as two that differ in their
+members are.
 
 The exit code is `0` when every argument was described, and `1` when one was not; nothing is
 written then unless `--force`, which writes what was described. An image that cannot be read,
-is not ELF, carries no DWARF or is not linked, an image whose DWARF holds type units
+is not ELF, carries no DWARF or is not linked, a debug-only companion (`objcopy --only-keep-debug`:
+the DWARF, with no allocated section of code or data holding contents, so that no initial value
+can be read; an image whose code alone has none is read), an image whose DWARF holds type units
 (`-fdebug-types-section`), comes from gcc's link-time optimisation (`-flto`) or is compressed
 with zstd rather than zlib, a malformed `SYMBOL` and an `-o` naming the image - both refused
 before the image is read - and a pyelftools missing or older than 0.32 are usage errors,

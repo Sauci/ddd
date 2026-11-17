@@ -1,19 +1,29 @@
 {
   "hashes": {
+    "tests/fixtures/elf/src/cpp.cc": "dc62c053089e9815fc000952bcd28c2ecf1eb6749f47b2179529f639f34c9bbe",
+    "tests/fixtures/elf/src/disagree_a.c": "cd105e0495a83d8564ed2ac5b86afa6ff007b13e3ea0fcde8af5351a11f2bb9e",
+    "tests/fixtures/elf/src/disagree_b.c": "6b119232eb6e1788c684686b8c6c7c8c9d91e3ebc30331ad59ccb38c42b10326",
     "tests/fixtures/elf/src/gc_sections.c": "b21f09df1a69edf70fca8a540a4575d8f2dac669f586958794711c554e744241",
+    "tests/fixtures/elf/src/gold_kept.c": "0018a4d99dd7556c080585a1f258607521dfec3bd78250c76ed03c5d7f111c92",
+    "tests/fixtures/elf/src/gold_unused.c": "33d28690cef5712c8111cbb817d3e4295ab1dd241031d3351f7b28507925a5c1",
     "tests/fixtures/elf/src/lto.c": "cbb3ae9ca73fe507ccd6903ad2d4402efead45c1513ed6092e697cc4c2844253",
-    "tests/fixtures/elf/src/main.c": "5f0da95dc72442539ed57bb7cf3cdd644940c0a488a4bc3191d7545fcb1b068b",
+    "tests/fixtures/elf/src/main.c": "94d8ea18636832193b966a68432e2c17d7c2662f79935567af0bda40c9cc5c1e",
     "tests/fixtures/elf/src/nodebug.c": "4d9b7026ea22d7bcf5558ec25e9cbe531201e7702b06db9d6a813f2c27515ae1",
+    "tests/fixtures/elf/src/overlay.c": "0cc46a8273f1a8922614d82046e8b76e99c84ea6aa8d40294f81dde77796b409",
+    "tests/fixtures/elf/src/overlay.ld": "e05e4e16f5382092059a6f3d68343064211703c7e5b3129608019fb985cdfa1b",
     "tests/fixtures/elf/src/shared.h": "9cdfa71b5de8dd20c26451a0102a1de36c6f0f07d9c71941e9cc6cf6f761f214",
     "tests/fixtures/elf/src/type_units.c": "93fcd051c5a9047f87cff9b57cf39ac34732adb4f30a6311bd92299f402fe93c",
-    "tests/fixtures/elf/src/unit_a.c": "60b8b97082da5fa21d31c0e2a6d11aed61e2e5f3abde74bbb7b6d4d9ed6f68ad",
-    "tests/fixtures/elf/src/unit_b.c": "e4a43b175f1f6c5c2e5706a553d827f34dd6255c9599898cec2897ca1904dad2",
-    "docker/elf-fixtures.Dockerfile": "1989ac66585296dc7da9c71a1512daa4e49181591a2996aa3b00fe5b6e337996",
-    "docker/build_elf_fixtures.py": "41c5ca29159862d688f56621d4bdaa3d4987dc1856d7fb2a6332556785e02927"
+    "tests/fixtures/elf/src/undescribed_a.c": "7dece1c2062100ba0ba89a28fc96963a09e3f476d8c60dc84182744e0c18acad",
+    "tests/fixtures/elf/src/undescribed_b.c": "654ce0e61ed3ca8fe7340521755a3d5c370edffcb599b638e8bbff371f1d3055",
+    "tests/fixtures/elf/src/unit_a.c": "2c1ad445a0e8436d8cfd4583f3c6ce7372509cdf4f9348c152d4aeb94d7cbd3a",
+    "tests/fixtures/elf/src/unit_b.c": "d01310e13f21f7e58ddf908944b4cb003aba9bbbe5b4850f2e08d77251591d1c",
+    "docker/elf-fixtures.Dockerfile": "2a1a95cd898e573af445df1683b4d531134794c14d2c38a1ce761d12c94ba521",
+    "docker/build_elf_fixtures.py": "ab981e2e03b235c9569158859e52181ae0a1dbc11759fca365f48854b88391d2"
   },
   "rows": {
     "x86_64": {
       "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-fPIE",
         "-O2",
@@ -39,6 +49,7 @@
       },
       "image": {
         "elf_type": "DYN",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -56,6 +67,18 @@
         "compressed": false
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".rodata",
@@ -127,6 +150,42 @@
           "section": ".rodata",
           "contents": true,
           "size": 8
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
         },
         {
           "name": "Layout_Aligned",
@@ -211,6 +270,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -381,6 +452,18 @@
           "size": 2
         },
         {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
           "name": "_DYNAMIC",
           "section": ".dynamic",
           "contents": true,
@@ -390,6 +473,7 @@
     },
     "i686": {
       "compiler": "i686-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -415,6 +499,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "Intel 80386",
         "dwarf_versions": [
           4
         ],
@@ -429,6 +514,18 @@
         "compressed": false
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".rodata",
@@ -500,6 +597,42 @@
           "section": ".rodata",
           "contents": true,
           "size": 8
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
         },
         {
           "name": "Layout_Aligned",
@@ -584,6 +717,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -754,6 +899,18 @@
           "size": 2
         },
         {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
           "name": "_GLOBAL_OFFSET_TABLE_",
           "section": ".got.plt",
           "contents": true,
@@ -763,6 +920,7 @@
     },
     "armv7m": {
       "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
       "flags": [
         "-mcpu=cortex-m4",
         "-mthumb",
@@ -788,6 +946,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "ARM",
         "dwarf_versions": [
           4
         ],
@@ -808,6 +967,18 @@
           "section": ".tbss",
           "contents": false,
           "size": 0
+        },
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
         },
         {
           "name": "Cal_Curve",
@@ -867,7 +1038,7 @@
           "name": "Enum_Signed",
           "section": ".data",
           "contents": true,
-          "size": 1
+          "size": 4
         },
         {
           "name": "Enum_State",
@@ -880,6 +1051,42 @@
           "section": ".rodata",
           "contents": true,
           "size": 2
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Layout_Aligned",
@@ -964,6 +1171,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -1134,6 +1353,18 @@
           "size": 2
         },
         {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
           "name": "_TLS_MODULE_BASE_",
           "section": ".tbss",
           "contents": false,
@@ -1143,6 +1374,7 @@
     },
     "armv7m-dwarf2": {
       "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
       "flags": [
         "-mcpu=cortex-m4",
         "-mthumb",
@@ -1169,6 +1401,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "ARM",
         "dwarf_versions": [
           2
         ],
@@ -1189,6 +1422,18 @@
           "section": ".tbss",
           "contents": false,
           "size": 0
+        },
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
         },
         {
           "name": "Cal_Curve",
@@ -1248,7 +1493,7 @@
           "name": "Enum_Signed",
           "section": ".data",
           "contents": true,
-          "size": 1
+          "size": 4
         },
         {
           "name": "Enum_State",
@@ -1261,6 +1506,42 @@
           "section": ".rodata",
           "contents": true,
           "size": 2
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Layout_Aligned",
@@ -1345,6 +1626,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -1515,6 +1808,18 @@
           "size": 2
         },
         {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
           "name": "_TLS_MODULE_BASE_",
           "section": ".tbss",
           "contents": false,
@@ -1524,6 +1829,7 @@
     },
     "armeb": {
       "compiler": "arm-none-eabi-gcc (15:14.2.rel1-1) 14.2.1 20241119",
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
       "flags": [
         "-mcpu=cortex-r5",
         "-marm",
@@ -1550,6 +1856,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "ARM",
         "dwarf_versions": [
           4
         ],
@@ -1570,6 +1877,18 @@
           "section": ".tbss",
           "contents": false,
           "size": 0
+        },
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
         },
         {
           "name": "Cal_Curve",
@@ -1629,7 +1948,7 @@
           "name": "Enum_Signed",
           "section": ".data",
           "contents": true,
-          "size": 1
+          "size": 4
         },
         {
           "name": "Enum_State",
@@ -1642,6 +1961,42 @@
           "section": ".rodata",
           "contents": true,
           "size": 2
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Layout_Aligned",
@@ -1726,6 +2081,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -1896,6 +2263,18 @@
           "size": 2
         },
         {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 24
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
           "name": "_TLS_MODULE_BASE_",
           "section": ".tbss",
           "contents": false,
@@ -1905,6 +2284,7 @@
     },
     "aarch64": {
       "compiler": "aarch64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -1930,6 +2310,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "AArch64",
         "dwarf_versions": [
           5
         ],
@@ -1952,6 +2333,18 @@
           "section": ".tbss",
           "contents": false,
           "size": 0
+        },
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
         },
         {
           "name": "Cal_Curve",
@@ -2023,6 +2416,42 @@
           "name": "Enum_Table",
           "section": ".rodata",
           "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
           "size": 8
         },
         {
@@ -2108,6 +2537,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -2278,6 +2719,18 @@
           "size": 2
         },
         {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
           "name": "_TLS_MODULE_BASE_",
           "section": ".tbss",
           "contents": false,
@@ -2287,6 +2740,7 @@
     },
     "powerpc": {
       "compiler": "powerpc-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -2312,6 +2766,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "PowerPC",
         "dwarf_versions": [
           3
         ],
@@ -2326,6 +2781,18 @@
         "compressed": false
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".sdata",
@@ -2397,6 +2864,42 @@
           "section": ".sdata",
           "contents": true,
           "size": 8
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
         },
         {
           "name": "Layout_Aligned",
@@ -2481,6 +2984,18 @@
           "section": ".sdata",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -2649,11 +3164,24 @@
           "section": ".sbss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     },
     "s390x": {
       "compiler": "s390x-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "flags": [
         "-O2",
         "-std=gnu11",
@@ -2680,6 +3208,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "IBM S/390",
         "dwarf_versions": [
           5
         ],
@@ -2696,6 +3225,18 @@
         "compressed": true
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".rodata",
@@ -2767,6 +3308,42 @@
           "section": ".rodata",
           "contents": true,
           "size": 8
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
         },
         {
           "name": "Layout_Aligned",
@@ -2851,6 +3428,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -3019,11 +3608,24 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     },
     "riscv32": {
       "compiler": "Debian clang version 19.1.7 (3+b1)",
+      "linker": "Debian LLD 19.1.7 (compatible with GNU linkers)",
       "flags": [
         "--target=riscv32-unknown-elf",
         "-march=rv32imac",
@@ -3050,6 +3652,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "RISC-V",
         "dwarf_versions": [
           5
         ],
@@ -3069,6 +3672,18 @@
         "compressed": false
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".sdata",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".rodata",
@@ -3140,6 +3755,42 @@
           "section": ".rodata",
           "contents": true,
           "size": 8
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".sbss",
+          "contents": false,
+          "size": 2
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".sbss",
+          "contents": false,
+          "size": 6
         },
         {
           "name": "Layout_Aligned",
@@ -3224,6 +3875,18 @@
           "section": ".sdata",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".sbss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".sbss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -3392,11 +4055,24 @@
           "section": ".sbss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     },
     "aarch64_be": {
       "compiler": "Debian clang version 19.1.7 (3+b1)",
+      "linker": "Debian LLD 19.1.7 (compatible with GNU linkers)",
       "flags": [
         "--target=aarch64_be-none-elf",
         "-O2",
@@ -3421,6 +4097,7 @@
       },
       "image": {
         "elf_type": "EXEC",
+        "machine": "AArch64",
         "dwarf_versions": [
           4
         ],
@@ -3435,6 +4112,18 @@
         "compressed": false
       },
       "variables": [
+        {
+          "name": "Aligned_Natural",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Aligned_Var",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
         {
           "name": "Cal_Curve",
           "section": ".rodata",
@@ -3505,6 +4194,42 @@
           "name": "Enum_Table",
           "section": ".rodata",
           "contents": true,
+          "size": 8
+        },
+        {
+          "name": "Laid_Natural",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Laid_Pack2",
+          "section": ".bss",
+          "contents": false,
+          "size": 6
+        },
+        {
+          "name": "Laid_Packed",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Packed_Member",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Laid_Unnamed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Laid_Zero_Width",
+          "section": ".bss",
+          "contents": false,
           "size": 8
         },
         {
@@ -3590,6 +4315,18 @@
           "section": ".data",
           "contents": true,
           "size": 4
+        },
+        {
+          "name": "Pair_A",
+          "section": ".bss",
+          "contents": false,
+          "size": 5
+        },
+        {
+          "name": "Pair_B",
+          "section": ".bss",
+          "contents": false,
+          "size": 8
         },
         {
           "name": "Probe_Align",
@@ -3758,6 +4495,18 @@
           "section": ".bss",
           "contents": false,
           "size": 2
+        },
+        {
+          "name": "Vector_Holder",
+          "section": ".bss",
+          "contents": false,
+          "size": 32
+        },
+        {
+          "name": "Vector_Var",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
         }
       ]
     }
@@ -3776,8 +4525,10 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           4
         ],
@@ -3826,8 +4577,10 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -3879,8 +4632,10 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -3934,8 +4689,10 @@
         "-static",
         "-no-pie"
       ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
       "image": {
         "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
         "dwarf_versions": [
           5
         ],
@@ -3961,6 +4718,501 @@
           "size": 4
         }
       ]
+    },
+    "gold-gc-sections": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "gold_kept.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-Wl,--gc-sections",
+        "-static",
+        "-no-pie",
+        "-fuse-ld=gold"
+      ],
+      "linker": "GNU gold (GNU Binutils for Debian 2.44) 1.16",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Gold_Kept",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Gold_Static",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "bfd-gc-sections": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "gold_kept.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-Wl,--gc-sections",
+        "-static",
+        "-no-pie",
+        "-fuse-ld=bfd"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Gold_Kept",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Gold_Static",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "units-disagree": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "disagree_a.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-fcommon",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Disagree_Agreed",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Disagree_Cal",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Disagree_Shared",
+          "section": ".bss",
+          "contents": false,
+          "size": 16
+        },
+        {
+          "name": "Disagree_Weak",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "units-undescribed": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "undescribed_a.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-fcommon",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Undescribed_Common",
+          "section": ".bss",
+          "contents": false,
+          "size": 4
+        },
+        {
+          "name": "Undescribed_Weak",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "sections-overlaid": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "overlay.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-Wl,-T,overlay.ld",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Page1_Var",
+          "section": ".page1",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Page2_Var",
+          "section": ".page2",
+          "contents": true,
+          "size": 4
+        }
+      ]
+    },
+    "split-dwarf": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "type_units.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-gsplit-dwarf",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_skeleton",
+          "DW_UT_split_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_addr",
+          ".debug_aranges",
+          ".debug_gnu_pubnames",
+          ".debug_gnu_pubtypes",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Mode",
+          "section": ".rodata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        }
+      ]
+    },
+    "split-dwarf-4": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "type_units.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-4",
+        "-gsplit-dwarf",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          4
+        ],
+        "unit_types": [],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_addr",
+          ".debug_aranges",
+          ".debug_gnu_pubnames",
+          ".debug_gnu_pubtypes",
+          ".debug_info",
+          ".debug_line",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Mode",
+          "section": ".rodata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        }
+      ]
+    },
+    "debug-level-1": {
+      "compiler": "x86_64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0",
+      "source": "type_units.c",
+      "flags": [
+        "-O2",
+        "-std=gnu11",
+        "-ffreestanding",
+        "-fno-common",
+        "-gdwarf-5",
+        "-g1",
+        "-static",
+        "-no-pie"
+      ],
+      "linker": "GNU ld (GNU Binutils for Debian) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "Advanced Micro Devices X86-64",
+        "dwarf_versions": [
+          5
+        ],
+        "unit_types": [
+          "DW_UT_compile"
+        ],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_info",
+          ".debug_line",
+          ".debug_line_str",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cal_Gain",
+          "section": ".rodata",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cal_Mode",
+          "section": ".rodata",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Struct_Inlet",
+          "section": ".bss",
+          "contents": false,
+          "size": 12
+        }
+      ]
+    },
+    "cplusplus": {
+      "compiler": "arm-none-eabi-g++ (15:14.2.rel1-1) 14.2.1 20241119",
+      "source": "cpp.cc",
+      "flags": [
+        "-mcpu=cortex-m4",
+        "-mthumb",
+        "-O2",
+        "-ffreestanding",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-gdwarf-4"
+      ],
+      "linker": "GNU ld (2.44-3+23+b1) 2.44",
+      "image": {
+        "elf_type": "EXEC",
+        "machine": "ARM",
+        "dwarf_versions": [
+          4
+        ],
+        "unit_types": [],
+        "debug_sections": [
+          ".debug_abbrev",
+          ".debug_aranges",
+          ".debug_frame",
+          ".debug_info",
+          ".debug_line",
+          ".debug_str"
+        ],
+        "compressed": false
+      },
+      "variables": [
+        {
+          "name": "Cpp_Derived",
+          "section": ".data",
+          "contents": true,
+          "size": 4
+        },
+        {
+          "name": "Cpp_Plain",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "Cpp_Static",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "_ZN10WithStatic7countedE",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        },
+        {
+          "name": "_ZN2ns8OnlyInNsE",
+          "section": ".data",
+          "contents": true,
+          "size": 2
+        }
+      ]
+    }
+  },
+  "companions": {
+    "x86_64.debug": {
+      "from": "x86_64",
+      "command": "objcopy --only-keep-debug",
+      "sections": {
+        ".bss": "NOBITS",
+        ".data": "NOBITS",
+        ".rodata": "NOBITS",
+        ".text": "NOBITS"
+      }
     }
   }
 }

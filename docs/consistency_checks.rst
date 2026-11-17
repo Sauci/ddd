@@ -625,7 +625,12 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - the declarations of one variable carry different preprocessor conditions, so the
        components do not agree on when the variable exists at all. The producer's condition is
-       the one that guards the generated definition.
+       the one that guards the generated definition. It is also raised for a reference: a curve
+       or a map over an axis, or an axis over its input, where the object referred to carries a
+       condition the referrer does not. A build without it holds the one and not the other: the
+       a2l of that build, written from an image or a map that shows the object compiled out,
+       leaves a curve or a map out with its axis (``reference-left-out``), and writes an axis
+       whose input it left out with no input quantity.
    * - ``unused-output``
      - warning
      - a variable is declared ``output`` by its producer and read by no component. Either a
@@ -662,6 +667,13 @@ it is either a smell or a decision somebody should have taken consciously.
      - warning
      - a curve or a map stores its point counts one way and one of its axes the other. The a2l
        describes each as resolved; the interpolation routine is unlikely to read both.
+   * - ``reference-left-out``
+     - warning
+     - a curve or a map is left out of the a2l because its axis was (``condition-left-out``),
+       while the build holds the curve or the map. One finding per axis names the axis and its
+       condition beside what goes with it. A warning where the left-out axis is only
+       information, since the a2l lacks what the build has; ``--strict`` stops a build for it
+       even where ``condition-mismatch``, which reports the cause in ``ddd check``, is ignored.
    * - ``address-missing``
      - warning
      - an object that reaches the a2l has no entry in the map ``--address-map`` was given, or
@@ -670,7 +682,29 @@ it is either a smell or a decision somebody should have taken consciously.
        legitimately lacks the objects that were not linked into this image, and an image lacks
        the objects a condition compiled out of it, which is why the run goes on; a post-link
        build that wants an a2l with no hole in it runs with ``--strict``, which makes this an
-       error and writes nothing.
+       error and writes nothing. An object stating a condition is not reported here where the
+       build holds nothing of it: it is left out of the a2l, and ``condition-left-out`` says so.
+   * - ``elf-mismatch``
+     - warning
+     - the image ``--image`` was given holds a variable it places otherwise than its description
+       states: the size of one element, its encoding (a signed or an unsigned integer, a
+       floating point number, a boolean, an enumeration), its shape, or the qualifiers the
+       generated c gives its kind - ``const`` on everything but a measurement, ``volatile``
+       where the description says so. A type is compared by what it resolves to, so a
+       ``UWORD`` defined as ``uint16_t`` agrees with a ``uint16`` and a ``uint32_t`` does not.
+       A template that leaves out a qualifier the kind carries, and a definition of another
+       type, are what it catches: the generator cannot promise what a project's templates or a
+       hand edit write, and the image is the c that was compiled. One finding per variable,
+       each difference with what the description states and what the image holds. Where the
+       units of the image describe one name at one address in two sizes, the finding says that
+       and the variable is compared with none of them. A structure member is compared on its
+       size, encoding and shape. A unit that declares the variable without defining it, as a
+       consumer does through a component header, is held to the qualifiers of the kind too,
+       and the finding names the unit: a header that leaves out ``volatile`` lets that unit's
+       compiler read the variable once. A declaration may add ``const``, which
+       ``--const-inputs`` gives the inputs of a component on purpose; any other difference is
+       judged as the definition's is. Only declarations the image's debug information states
+       are seen, which gcc writes for a variable a unit reads and clang does not.
 
 Information
 ~~~~~~~~~~~
@@ -682,6 +716,21 @@ Information
    * - Check
      - Default
      - Fires when
+   * - ``image-load-relative``
+     - info
+     - the image ``--image`` was given is position independent (``ET_DYN``): the addresses the a2l
+       takes from it are offsets from where it loads, and the a2l states them as they are. Right
+       for a project that adds its load base when it reads the file, wrong for one that does not,
+       which the note says.
+   * - ``condition-left-out``
+     - info
+     - an object that states a condition is absent from the build: the image ``--image`` was
+       given defines no variable of its name and holds no symbol of it, or the map
+       ``--address-map`` was given, which has entries, names neither the object nor any member
+       of it. The build was made without the feature, so the a2l leaves the object out. One
+       finding per condition. A curve or map over an axis left out cannot be described without
+       it and goes with it, which ``reference-left-out`` names. Any other reason an image gives, and
+       an object stating no condition, are ``address-missing`` instead, so that a hole stays one.
    * - ``empty-component``
      - info
      - a component declares no variable at all. Perfectly legal - a component may have no global

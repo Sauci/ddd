@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from ddd.elf import (
     DW_ATE_UNSIGNED_CHAR,
     FOLDED,
     NOT_AN_ADDRESS,
+    OTHER_SCOPE,
     REMOVED,
     THREAD_LOCAL,
     Array,
@@ -30,11 +32,15 @@ from ddd.elf import (
     Image,
     Member,
     Qualified,
+    Section,
     Struct,
     Typedef,
     Unsupported,
     Variable,
+    open_image,
 )
+
+FIXTURES = Path(__file__).parent / "fixtures" / "elf"
 
 
 def refusal(path: Path) -> str:
@@ -132,6 +138,58 @@ class TestTheMap:
             f"cannot read the address map '{path.as_posix()}': No such file or directory"
         )
 
+    def test_a_map_that_is_not_utf_8_names_the_file_and_what_wrote_it(self, tree: Path) -> None:
+        """What Windows PowerShell's ``>`` writes: UTF-16 with its byte order mark. Python's
+        own words about a byte at a position name no file and no remedy."""
+        path = tree / "addresses.json"
+        path.write_bytes(b"\xff\xfe" + '{"A": "0x10"}'.encode("utf-16-le"))
+        assert refusal(path) == (
+            f"the address map '{path.as_posix()}' is not valid json: it is not UTF-8 text, and "
+            f"Windows PowerShell's > writes UTF-16; write the map as UTF-8"
+        )
+
+    def test_a_map_nested_deeper_than_the_reader_takes_is_refused_naming_the_file(
+        self, tree: Path
+    ) -> None:
+        # The limit is the interpreter's, and a different one on each python: 200,000 is past
+        # all of them, and a document that deep is 400 KB.
+        depth = 200_000
+        path = tree / "addresses.json"
+        path.write_text("[" * depth + "]" * depth, encoding="utf-8")
+        assert refusal(path) == (
+            f"the address map '{path.as_posix()}' is not valid json: it is nested more "
+            f"deeply than this tool reads"
+        )
+
+    def test_a_number_of_more_digits_than_the_reader_takes_is_refused_naming_the_file(
+        self, tree: Path
+    ) -> None:
+        limit = sys.get_int_max_str_digits()
+        assert limit > 0
+        path = tree / "addresses.json"
+        path.write_text('{"A": ' + "9" * (limit + 1) + "}", encoding="utf-8")
+        assert refusal(path) == (
+            f"{path.as_posix()}: the address map holds a number of more than {limit} digits, "
+            f"which this tool does not read"
+        )
+
+    def test_an_address_written_in_more_digits_than_the_reader_takes_names_its_symbol(
+        self, tree: Path
+    ) -> None:
+        limit = sys.get_int_max_str_digits()
+        path = tree / "addresses.json"
+        path.write_text('{"A": "' + "9" * (limit + 1) + '"}', encoding="utf-8")
+        assert refusal(path) == (
+            f"{path.as_posix()}: address of 'A' has more than {limit} digits, which this "
+            f"tool does not read"
+        )
+
+    def test_a_number_of_as_many_digits_as_the_reader_takes_is_read(self, tree: Path) -> None:
+        limit = sys.get_int_max_str_digits()
+        path = tree / "addresses.json"
+        path.write_text('{"A": ' + "9" * limit + "}", encoding="utf-8")
+        assert load_address_map(path) == {"A": int("9" * limit)}
+
     @pytest.mark.parametrize("content", ["[1, 2]", '{"A": "nowhere"}', '{"A": 1, "A": 2}'])
     def test_every_complaint_about_a_map_spells_the_path_forward_slashed(
         self, tree: Path, content: str
@@ -221,8 +279,36 @@ uint8_t level; uint32_t count;`` as gcc 15.2 lays it out for x86_64 (measured wi
 storage unit ``d`` started, and the value members land at bytes 2, 8 and 12."""
 
 
-def image(*variables: Variable, symbols: frozenset[str] = frozenset()) -> Image:
-    return Image(Path("hand.elf"), "little", variables, (), symbols, b"")
+EVERYWHERE = Section(".data", 0, 1 << 64, 0)
+"""A section holding every address a test names, so that the tests of a path or a name leave
+where an address lies to the ones that ask."""
+
+
+def image(
+    *variables: Variable,
+    symbols: frozenset[str] = frozenset(),
+    objects: frozenset[tuple[str, int]] | None = None,
+    sections: tuple[Section, ...] = (EVERYWHERE,),
+    split_dwarf: bool = False,
+) -> Image:
+    """An image holding ``variables``. Unless ``objects`` says otherwise its symbol table holds
+    each global at its address, as a linker that kept the variable leaves it."""
+    if objects is None:
+        objects = frozenset(
+            (variable.name, variable.address)
+            for variable in variables
+            if variable.external and variable.address is not None
+        )
+    return Image(
+        Path("hand.elf"),
+        "little",
+        variables,
+        sections,
+        symbols,
+        b"",
+        objects,
+        split_dwarf=split_dwarf,
+    )
 
 
 def stored(
@@ -247,6 +333,75 @@ def reason(img: Image, symbol: str) -> str:
     assert found.addresses == {}
     (said,) = found.reasons.values()
     return said
+
+
+class TestACplusplusScope:
+    """A variable of a namespace is no candidate by its short name, so a DDD object of that name
+    is not placed at it (finding 11:M8)."""
+
+    def test_a_variable_of_another_scope_places_nothing_and_says_why(self) -> None:
+        img = image(stored("OnlyInNs", address=None, missing=OTHER_SCOPE))
+        assert reason(img, "OnlyInNs") == f"'OnlyInNs' is {OTHER_SCOPE}"
+
+    def test_a_c_variable_of_the_same_short_name_is_the_one_placed(self) -> None:
+        img = image(stored("Shared", address=0x120))
+        assert placed(img, "Shared").addresses == {"Shared": 0x120}
+
+    def test_the_image_of_cplusplus_places_its_c_variable_and_not_the_namespace_s(self) -> None:
+        found = placed(open_image(FIXTURES / "cplusplus.elf"), "Cpp_Plain", "OnlyInNs")
+        assert sorted(found.addresses) == ["Cpp_Plain"]
+        assert found.reasons == {"OnlyInNs": f"'OnlyInNs' is {OTHER_SCOPE}"}
+
+
+class TestWhatTheImageDoesNotDefine:
+    """``Placed.absent`` marks the symbols whose variable the image does not define at all, and
+    no other reason: the ones a build without a feature leaves behind."""
+
+    def absent(self, img: Image, *symbols: str) -> frozenset[str]:
+        found = placed(img, *symbols)
+        assert set(symbols) - set(found.addresses) == set(found.reasons)
+        return found.absent
+
+    def test_a_name_the_image_knows_nowhere_is_absent(self) -> None:
+        assert self.absent(image(stored("Gain")), "Gian") == {"Gian"}
+
+    def test_a_member_of_a_variable_it_does_not_define_is_absent_too(self) -> None:
+        assert self.absent(image(), "Cells[0].raw") == {"Cells[0].raw"}
+
+    def test_a_declaration_alone_with_no_symbol_is_absent(self) -> None:
+        """A header's ``extern`` stays where the unit that defined the variable was left out."""
+        img = image(stored("Gain", address=None, missing=DECLARED_ONLY))
+        assert self.absent(img, "Gain") == {"Gain"}
+
+    def test_a_declaration_alone_beside_a_symbol_of_its_name_is_not(self) -> None:
+        img = image(
+            stored("Gain", address=None, missing=DECLARED_ONLY), symbols=frozenset({"Gain"})
+        )
+        assert self.absent(img, "Gain") == frozenset()
+
+    def test_a_name_only_the_symbol_table_holds_is_not(self) -> None:
+        assert self.absent(image(symbols=frozenset({"Nodebug"})), "Nodebug") == frozenset()
+
+    def test_a_static_is_not(self) -> None:
+        img = image(stored("Gain", address=0x200, external=False))
+        assert self.absent(img, "Gain") == frozenset()
+
+    def test_globals_at_two_addresses_are_not(self) -> None:
+        img = image(stored("Twice", unit="a.c", address=0x2000), stored("Twice", address=0x1000))
+        assert self.absent(img, "Twice") == frozenset()
+
+    def test_a_variable_with_no_storage_is_not(self) -> None:
+        for missing in (FOLDED, REMOVED, DISCARDED, THREAD_LOCAL, NOT_AN_ADDRESS):
+            img = image(stored("Gain", address=None, missing=missing))
+            assert self.absent(img, "Gain") == frozenset(), missing
+
+    def test_a_variable_the_linker_left_with_no_symbol_is_not(self) -> None:
+        img = image(stored("Gain", address=0x100), objects=frozenset())
+        assert self.absent(img, "Gain") == frozenset()
+
+    def test_a_member_the_c_lacks_is_not(self) -> None:
+        img = image(stored("P", PAIR, address=0x100))
+        assert self.absent(img, "P.mid") == frozenset()
 
 
 class TestTheVariable:
@@ -326,6 +481,54 @@ class TestTheVariable:
         img = image(stored("Gain", address=None, missing=FOLDED), symbols=frozenset({"Gain"}))
         assert reason(img, "Gain") == f"'Gain' has no address in the image: {FOLDED}"
 
+    def test_a_name_only_the_symbol_table_holds_in_a_split_image_is_not_placed_naming_the_dwo(
+        self,
+    ) -> None:
+        """``-gsplit-dwarf`` leaves a skeleton in the image and the debug information in ``.dwo``
+        files beside it: the unit was built with ``-g``, and saying it was not sends the reader
+        to what the build already did."""
+        img = image(symbols=frozenset({"Cal_Gain"}), split_dwarf=True)
+        assert reason(img, "Cal_Gain") == (
+            "the image's debug information holds no variable named 'Cal_Gain'; the symbol "
+            "table holds it, and the debug information of this image is in separate .dwo files "
+            "(-gsplit-dwarf), which this tool does not read"
+        )
+
+    def test_a_name_only_declared_in_a_split_image_is_not_placed_naming_the_dwo(self) -> None:
+        img = image(
+            stored("Gain", address=None, missing=DECLARED_ONLY),
+            symbols=frozenset({"Gain"}),
+            split_dwarf=True,
+        )
+        assert reason(img, "Gain") == (
+            "the image's debug information only declares 'Gain'; the symbol table holds it, and "
+            "the debug information of this image is in separate .dwo files (-gsplit-dwarf), "
+            "which this tool does not read"
+        )
+
+    def test_a_name_the_split_image_does_not_hold_at_all_is_still_absent(self) -> None:
+        found = addresses_from_image(image(split_dwarf=True), ["Gone"])
+        assert found.absent == frozenset({"Gone"})
+
+    @pytest.mark.parametrize("symbol", ["Notyped.raw[0]", "Notyped[0]"])
+    def test_a_path_into_a_variable_the_debug_level_gave_no_type_says_so(self, symbol: str) -> None:
+        """``-g1`` keeps the variable and its address and no type: it is not an array or a
+        structure that the path was wrong about."""
+        img = image(stored("Notyped", Unsupported("void")))
+        assert reason(img, symbol) == (
+            "the image's debug information gives 'Notyped' no type, as -g1 leaves it, so no "
+            "path into it can be followed"
+        )
+
+    def test_the_variable_itself_is_placed_where_the_debug_level_gave_it_no_type(self) -> None:
+        img = image(stored("Notyped", Unsupported("void"), address=0x40))
+        assert placed(img, "Notyped") == Placed({"Notyped": 0x40}, {})
+
+    def test_a_name_that_is_no_array_is_still_said_so_beside_the_untyped_one(self) -> None:
+        assert reason(image(stored("Inlet", Unsupported("a pointer"))), "Inlet[2]") == (
+            "'Inlet' is not an array, so it has no element [2]"
+        )
+
     @pytest.mark.parametrize(
         "missing", [DECLARED_ONLY, FOLDED, REMOVED, DISCARDED, THREAD_LOCAL, NOT_AN_ADDRESS]
     )
@@ -334,6 +537,100 @@ class TestTheVariable:
     ) -> None:
         img = image(stored("Gain", address=None, missing=missing))
         assert reason(img, "Gain") == f"'Gain' has no address in the image: {missing}"
+
+
+class TestWhereTheImageKeepsAVariable:
+    """A global is where the symbol table puts it: a linker that discards a unit keeps its debug
+    information, and gold leaves each address in it as an offset into the discarded section."""
+
+    def test_a_global_with_no_symbol_of_its_name_at_its_address_is_not_placed(self) -> None:
+        """The address is held by a section, so that nothing but the symbol table says the
+        variable is gone."""
+        img = image(stored("First_Unused", U32, address=0x4), objects=frozenset())
+        assert reason(img, "First_Unused") == (
+            "the symbol table holds no object named 'First_Unused' at 0x4, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_a_symbol_of_its_name_at_another_address_does_not_place_it(self) -> None:
+        img = image(
+            stored("Gain", address=0x4), objects=frozenset({("Gain", 0x100), ("Other", 0x4)})
+        )
+        assert reason(img, "Gain") == (
+            "the symbol table holds no object named 'Gain' at 0x4, where its debug information "
+            "puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_a_member_of_a_global_the_linker_discarded_is_not_placed_either(self) -> None:
+        img = image(stored("Struct_Unused", PAIR, address=0), objects=frozenset())
+        assert reason(img, "Struct_Unused.hi") == (
+            "the symbol table holds no object named 'Struct_Unused' at 0x0, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_a_global_whose_symbol_sits_at_its_address_is_placed(self) -> None:
+        img = image(stored("Gain", address=0x4), objects=frozenset({("Gain", 0x4)}))
+        assert placed(img, "Gain") == Placed({"Gain": 0x4}, {})
+
+    def test_an_address_no_section_holds_is_not_placed_in_the_words_from_elf_uses(self) -> None:
+        """The symbol is there, and so the symbol table has no complaint."""
+        img = image(
+            stored("Gain", address=0x40),
+            sections=(Section(".data", 0x100, 0x10, 0),),
+        )
+        assert reason(img, "Gain") == (
+            "'Gain' has an address, 0x40, that no section of the image holds"
+        )
+
+    def test_the_first_byte_past_a_section_is_held_by_none(self) -> None:
+        img = image(stored("Gain", address=0x110), sections=(Section(".data", 0x100, 0x10, 0),))
+        assert "no section of the image holds" in reason(img, "Gain")
+
+    def test_the_last_byte_of_a_section_is_held(self) -> None:
+        img = image(stored("Gain", address=0x10F), sections=(Section(".data", 0x100, 0x10, 0),))
+        assert placed(img, "Gain") == Placed({"Gain": 0x10F}, {})
+
+    def test_the_debug_only_companion_places_what_the_image_it_was_split_from_does(self) -> None:
+        """--image keeps reading it: objcopy --only-keep-debug leaves every address as it was,
+        and its sections have no contents, which placing never needs."""
+        linked = open_image(FIXTURES / "x86_64.elf")
+        companion = open_image(FIXTURES / "x86_64.debug")
+        names = ["Cal_Gain", "Cal_Table", "Meas_U16", "Missing_Name"]
+        assert placed(companion, *names) == placed(linked, *names)
+        assert len(placed(companion, *names).addresses) == 3
+
+    def test_the_variables_of_a_unit_gold_discarded_are_not_placed(self) -> None:
+        """gold-gc-sections.elf: the unit nothing references has debug information and no
+        symbol, and its three variables sit at the offsets 0, 4 and 8 of the discarded
+        section; the one the entry reads is placed."""
+        found = placed(
+            open_image(FIXTURES / "gold-gc-sections.elf"),
+            "First_Unused",
+            "Second_Unused",
+            "Struct_Unused.a",
+            "Struct_Unused.b",
+            "Gold_Kept",
+        )
+        assert sorted(found.addresses) == ["Gold_Kept"]
+        assert sorted(found.reasons) == [
+            "First_Unused",
+            "Second_Unused",
+            "Struct_Unused.a",
+            "Struct_Unused.b",
+        ]
+        assert found.reasons["First_Unused"] == (
+            "the symbol table holds no object named 'First_Unused' at 0x8, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+
+    def test_the_same_source_linked_by_gnu_ld_places_the_same_one(self) -> None:
+        """GNU ld drops the debug information of the unit it discarded, and the reader finds
+        no variable of the name."""
+        found = placed(open_image(FIXTURES / "bfd-gc-sections.elf"), "First_Unused", "Gold_Kept")
+        assert sorted(found.addresses) == ["Gold_Kept"]
+        assert found.reasons == {
+            "First_Unused": "the image's debug information holds no variable named 'First_Unused'"
+        }
 
 
 class TestThePath:
@@ -427,6 +724,77 @@ class TestThePath:
         )
 
 
+class TestWhatTheImageHoldsOfEachSymbol:
+    """``Placed.held``: the variable a symbol is, or belongs to, and the type its path ends at,
+    which ``ddd.agreement`` holds to the description."""
+
+    def test_an_object_is_held_as_the_type_of_its_variable_qualifiers_and_typedefs_kept(
+        self,
+    ) -> None:
+        ctype = Qualified(Typedef("UWORD", U16), const=True)
+        variable = stored("Gain", ctype, address=0x100)
+        held = placed(image(variable), "Gain").held["Gain"]
+        assert (held.variable, held.ctype, held.apart) == (variable, ctype, ())
+
+    def test_a_member_is_held_as_the_type_its_path_ends_at_of_the_variable_it_belongs_to(
+        self,
+    ) -> None:
+        variable = stored("Cells", Array(CELL, (3,)), address=0x700)
+        found = placed(image(variable), "Cells[2].v", "Cells[0].raw")
+        assert {symbol: (held.variable, held.ctype) for symbol, held in found.held.items()} == {
+            "Cells[2].v": (variable, U16),
+            "Cells[0].raw": (variable, U16),
+        }
+
+    def test_a_symbol_the_image_does_not_place_is_held_as_nothing(self) -> None:
+        found = placed(image(stored("Inlet", INLET)), "Inlet.pair.mid", "Missing")
+        assert found.held == {}
+
+    def test_units_stating_one_size_hold_no_two_descriptions(self) -> None:
+        first = stored("Gain", U32, unit="a.c", address=0x100)
+        second = stored("Gain", U32, unit="b.c", address=0x100)
+        assert placed(image(first, second), "Gain").held["Gain"].apart == ()
+
+    def test_units_stating_two_sizes_hold_both_descriptions_and_the_first_is_not_the_variable(
+        self,
+    ) -> None:
+        first = stored("Gain", U16, unit="a.c", address=0x100)
+        second = stored("Gain", U32, unit="b.c", address=0x100)
+        held = placed(image(first, second), "Gain").held["Gain"]
+        assert held.apart == (first, second)
+
+    def test_a_description_and_the_symbol_table_disagreeing_are_two_descriptions_too(self) -> None:
+        variable = stored("Gain", U16, address=0x100)
+        sized = Image(
+            Path("hand.elf"),
+            "little",
+            (variable,),
+            (EVERYWHERE,),
+            frozenset(),
+            b"",
+            frozenset({("Gain", 0x100)}),
+            object_sizes={("Gain", 0x100): 4},
+        )
+        assert addresses_from_image(sized, ["Gain"]).held["Gain"].apart == (variable,)
+
+    def test_a_static_of_the_same_name_at_the_same_address_is_no_second_description(self) -> None:
+        stray = stored("Gain", U32, unit="b.c", address=0x100, external=False)
+        variable = stored("Gain", U16, unit="a.c", address=0x100)
+        assert placed(image(variable, stray), "Gain").held["Gain"].apart == ()
+
+    def test_the_declarations_other_units_make_of_the_variable_come_with_it(self) -> None:
+        variable = stored("Gain", U16, unit="a.c", address=0x100)
+        declaration = stored("Gain", U16, unit="b.c", address=None, missing=DECLARED_ONLY)
+        other = stored("Loss", U16, unit="b.c", address=None, missing=DECLARED_ONLY)
+        held = placed(replace(image(variable), declarations=(declaration, other)), "Gain")
+        assert held.held["Gain"].declarations == (declaration,)
+
+    def test_a_static_of_the_same_name_elsewhere_is_no_second_description(self) -> None:
+        stray = stored("Gain", U32, unit="b.c", address=0x200, external=False)
+        variable = stored("Gain", U16, unit="a.c", address=0x100)
+        assert placed(image(variable, stray), "Gain").held["Gain"].apart == ()
+
+
 class TestWithoutPyelftools:
     def test_reading_a_map_needs_no_pyelftools(
         self, tree: Path, monkeypatch: pytest.MonkeyPatch
@@ -445,3 +813,46 @@ class TestWithoutPyelftools:
         path = tree / "addresses.json"
         path.write_text('{"A": "0x10"}', encoding="utf-8")
         assert fresh.load_address_map(path) == {"A": 0x10}
+
+
+class TestTheImagesOfTwoCompilerOptions:
+    """Built by ``docker/build_elf_fixtures.py`` from the source of the type unit fixture, which
+    holds ``Struct_Inlet`` (a structure with an array) and ``Cal_Gain``."""
+
+    def test_a_split_image_names_the_dwo_files_for_every_symbol(self) -> None:
+        img = open_image(FIXTURES / "split-dwarf.elf")
+        found = addresses_from_image(img, ["Struct_Inlet.raw[0]", "Cal_Gain"])
+        assert found.addresses == {}
+        said = (
+            "the symbol table holds it, and the debug information of this image is in separate "
+            ".dwo files (-gsplit-dwarf), which this tool does not read"
+        )
+        assert found.reasons == {
+            "Struct_Inlet.raw[0]": (
+                f"the image's debug information holds no variable named 'Struct_Inlet'; {said}"
+            ),
+            "Cal_Gain": f"the image's debug information holds no variable named 'Cal_Gain'; {said}",
+        }
+
+    def test_a_split_image_of_dwarf_4_is_told_the_same(self) -> None:
+        """GNU's DWARF 4 extension names the skeleton's ``.dwo`` another way."""
+        img = open_image(FIXTURES / "split-dwarf-4.elf")
+        assert img.split_dwarf
+        assert "separate .dwo files" in reason(img, "Cal_Gain")
+
+    def test_an_image_of_debug_level_1_places_the_variables_and_not_a_path_into_one(self) -> None:
+        img = open_image(FIXTURES / "debug-level-1.elf")
+        found = addresses_from_image(img, ["Struct_Inlet", "Cal_Gain", "Struct_Inlet.raw[0]"])
+        assert sorted(found.addresses) == ["Cal_Gain", "Struct_Inlet"]
+        assert found.reasons == {
+            "Struct_Inlet.raw[0]": (
+                "the image's debug information gives 'Struct_Inlet' no type, as -g1 leaves it, "
+                "so no path into it can be followed"
+            )
+        }
+
+    def test_an_image_of_full_debug_information_is_neither(self) -> None:
+        for name in ("x86_64", "armv7m"):
+            assert not open_image(FIXTURES / f"{name}.elf").split_dwarf
+        assert open_image(FIXTURES / "split-dwarf.elf").split_dwarf
+        assert not open_image(FIXTURES / "debug-level-1.elf").split_dwarf

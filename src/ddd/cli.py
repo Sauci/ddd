@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import unicodedata
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
 
     from ddd.addresses import Placed
-    from ddd.backends import Backend, GeneratedFile, WriteStatus
+    from ddd.backends import Backend, ConditionalObject, GeneratedFile, WriteStatus
     from ddd.elf import Image
     from ddd.ir import Comparable, DataDictionary
     from ddd.plugins import Plugin
@@ -574,7 +574,8 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
             "declaration of every C variable named or matched: its kind, datatype, shape, "
             "enumerators, structure members, initial value and section, as the image states "
             "them. What an image does not state - a unit, a description, limits, a scaling, "
-            "whether an array is a curve - is left out, and said once. DDD itself checks every "
+            "whether an array is a curve, whether a raw value is the physical one - is left out, "
+            "and said once. DDD itself checks every "
             "entry, as 'ddd check --standalone' checks a component, before it is printed. "
             "Needs an image built with debug information (-g)."
         ),
@@ -597,6 +598,16 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         help=(
             "print a component file of this name, holding the types its structures need, "
             "rather than a list of interface entries"
+        ),
+    )
+    from_elf.add_argument(
+        "--identity-conversions",
+        action="store_true",
+        help=(
+            "write the identity as the conversion of every entry and member that is not an "
+            "enum, on your word that its raw value is its physical one: an image does not say "
+            "so, so by default no conversion is written, and 'ddd check' asks the author for "
+            "one"
         ),
     )
     from_elf.add_argument(
@@ -1030,6 +1041,88 @@ def _check_image_coverage(
     )
 
 
+def _check_image_agreement(
+    dictionary: DataDictionary, placed: Placed, image: Image, path: Path, bag: DiagnosticBag
+) -> None:
+    """Report each placed variable the image holds otherwise than its description states.
+
+    The image is the one place the run sees the C the build compiled, which a project's own
+    templates write and anybody may edit, so what the generator promises of it is held there.
+    """
+    from ddd.agreement import disagreements
+
+    for found in disagreements(dictionary, placed, image):
+        bag.add(
+            "elf-mismatch", found.message, where(path), notes=[(note, None) for note in found.notes]
+        )
+
+
+def _leave_out(
+    absent: Sequence[ConditionalObject],
+    dictionary: DataDictionary,
+    carried: tuple[str, ...],
+    lacking: str,
+    path: Path,
+    reasons: Mapping[str, str],
+    bag: DiagnosticBag,
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    """Say, at ``info``, which objects the a2l leaves out because the build compiled them out.
+
+    ``absent`` are the conditional objects the source holds nothing of. One finding per
+    condition, the objects it guards named as ``address-missing`` names its own. ``lacking``
+    is how the source says it holds nothing for them - ``the image has no address for`` or
+    ``the address map has no entry for`` - and ``reasons`` is why, for an image, which a map
+    does not give.
+
+    A curve or a map over an axis among them goes with it, which the build holds and the file
+    cannot describe: a finding for each such axis names it, the condition it went under and
+    what goes with it. It says all of that itself, since the findings print by severity, this
+    warning before the information naming the axis, which a project may ignore. What comes
+    back is the symbols left out, and the ``carried`` ones that still reach the file, which
+    are the ones ``address-missing`` is about.
+    """
+    for condition in dict.fromkeys(entry.condition for entry in absent):
+        objects = [entry for entry in absent if entry.condition == condition]
+        names = [entry.name for entry in objects]
+        plural = len(names) != 1
+        reasons_given = dict.fromkeys(
+            reasons[symbol]
+            for entry in objects[:_LISTED_LIMIT]
+            for symbol in entry.symbols[:1]
+            if symbol in reasons
+        )
+        bag.add(
+            "condition-left-out",
+            f"{lacking} {_listed(names)}, which {'are' if plural else 'is'} only present in "
+            f"the build when '{condition}'; {'they are' if plural else 'it is'} left out of "
+            "the a2l",
+            where(path),
+            notes=[(reason, None) for reason in reasons_given],
+        )
+    from ddd.backends import dragged_with
+
+    left_out = frozenset(symbol for entry in absent for symbol in entry.symbols)
+    dragged = dragged_with(dictionary, left_out)
+    condition_of = {symbol: entry.condition for entry in absent for symbol in entry.symbols}
+    going: dict[str, list[str]] = {}
+    for name, axes in dragged.items():
+        for axis in axes:
+            going.setdefault(axis, []).append(name)
+    for axis in sorted(going):
+        names = going[axis]
+        plural = len(names) != 1
+        bag.add(
+            "reference-left-out",
+            f"{_listed(names)} {'refer' if plural else 'refers'} to the axis '{axis}', which is "
+            f"only present in the build when '{condition_of[axis]}' and is left out of the a2l; "
+            f"the a2l cannot describe {'them' if plural else 'it'} without the axis, so "
+            f"{'they are' if plural else 'it is'} left out too",
+            where(path),
+        )
+    gone = left_out.union(dragged)
+    return left_out, tuple(symbol for symbol in carried if symbol not in gone)
+
+
 def _at_address_0(missing: list[str]) -> str:
     """``'A', 'B' and 3 others; they reach the a2l at address 0``: how ``address-missing`` ends,
     whichever source left the symbols out."""
@@ -1174,6 +1267,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         Manifest,
         RemovalError,
         addressed_symbols,
+        conditional_objects,
         describe_write_failure,
         render,
         weigh_addresses,
@@ -1214,6 +1308,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
         addresses: dict[str, int] = {}
+        left_out: frozenset[str] = frozenset()
         byte_order: str | None = getattr(args, "byte_order", None)
         image_path: Path | None = getattr(args, "image", None)
         if image_path is not None:
@@ -1230,10 +1325,40 @@ def _command_generate(args: argparse.Namespace) -> int:
                 )
                 raise ValueError(msg)
             byte_order = image.byte_order
+            if image.load_relative:
+                bag.add(
+                    "image-load-relative",
+                    "the image is position independent, so the addresses the a2l states are "
+                    "offsets from where it loads",
+                    where(image_path),
+                    notes=[
+                        (
+                            "a project that adds its load base when it reads the a2l is right, "
+                            "and one that does not finds every address wrong",
+                            None,
+                        )
+                    ],
+                )
             placed = addresses_from_image(image, carried)
             addresses = placed.addresses
             weigh_addresses(addresses, carried, image_path.as_posix())
-            _check_image_coverage(carried, placed, image_path, bag)
+            # An object is compiled out where the image defines none of it, not where it
+            # holds it and cannot place a part, or holds it in a way that is a defect.
+            left_out, reaching = _leave_out(
+                [
+                    entry
+                    for entry in conditional_objects(dictionary)
+                    if all(symbol in placed.absent for symbol in entry.symbols)
+                ],
+                dictionary,
+                carried,
+                "the image has no address for",
+                image_path,
+                placed.reasons,
+                bag,
+            )
+            _check_image_coverage(reaching, placed, image_path, bag)
+            _check_image_agreement(dictionary, placed, image, image_path, bag)
         elif wants_addresses:
             # The symbols the a2l of this run will state an address for, read once: they
             # decide both which entries of the map are held to what an ECU_ADDRESS can hold
@@ -1243,7 +1368,25 @@ def _command_generate(args: argparse.Namespace) -> int:
             weigh_addresses(addresses, carried, args.address_map.as_posix())
             # Before the gate below, so that a --strict build stops rather than writing a
             # file whose addresses it has just been told are incomplete.
-            _check_address_coverage(carried, addresses, args.address_map, bag)
+            # A map that names something has been through the link: a conditional object it
+            # names no part of, nor the object itself as a symbol lister writes a structure,
+            # is a feature the build left out, which is no hole in it.
+            left_out, reaching = _leave_out(
+                [
+                    entry
+                    for entry in conditional_objects(dictionary)
+                    if addresses
+                    and entry.name not in addresses
+                    and not any(symbol in addresses for symbol in entry.symbols)
+                ],
+                dictionary,
+                carried,
+                "the address map has no entry for",
+                args.address_map,
+                {},
+                bag,
+            )
+            _check_address_coverage(reaching, addresses, args.address_map, bag)
         if bag.has_errors and not args.force:
             _report(bag, args.format)
             return EXIT_FINDINGS
@@ -1259,6 +1402,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                     A2lOptions(
                         byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
                         addresses=addresses,
+                        left_out=left_out,
                         # An image is a source whatever it places, the finding naming what it
                         # does not; a map is one once it has an entry, as for that finding.
                         has_address_source=image_path is not None or bool(addresses),
@@ -1435,7 +1579,14 @@ def _command_tool_from_elf(args: argparse.Namespace) -> int:
         _refuse_a_source(args.output, "-o", resolve_path(args.image))
     image = open_image(args.image)
     bag = DiagnosticBag()
-    description = describe(image, args.symbols, scope=args.scope, component=component, bag=bag)
+    description = describe(
+        image,
+        args.symbols,
+        scope=args.scope,
+        component=component,
+        identity=args.identity_conversions,
+        bag=bag,
+    )
     if bag.has_errors and not args.force:
         _report(bag, args.format, stream=sys.stderr)
         return EXIT_FINDINGS

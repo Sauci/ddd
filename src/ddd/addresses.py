@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -61,7 +62,31 @@ def load_address_map(path: Path) -> dict[str, int]:
     """
     where = path.as_posix()
     try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=_no_repeats)
+        data = json.loads(
+            path.read_text(encoding="utf-8-sig"),
+            object_pairs_hook=_no_repeats,
+            parse_int=_whole,
+        )
+    except UnicodeDecodeError:
+        # What Windows PowerShell's `>` writes is UTF-16, which is where a map written by a
+        # build step on Windows most often comes from; python's own words name a byte.
+        msg = (
+            f"the address map '{where}' is not valid json: it is not UTF-8 text, and Windows "
+            "PowerShell's > writes UTF-16; write the map as UTF-8"
+        )
+        raise ValueError(msg) from None
+    except RecursionError:
+        msg = (
+            f"the address map '{where}' is not valid json: it is nested more deeply than this "
+            "tool reads"
+        )
+        raise ValueError(msg) from None
+    except _TooManyDigitsError:
+        msg = (
+            f"{where}: the address map holds a number of more than "
+            f"{sys.get_int_max_str_digits()} digits, which this tool does not read"
+        )
+        raise ValueError(msg) from None
     except json.JSONDecodeError as error:
         # The bare json message names neither file nor purpose, and this one is typically
         # written by a linker script or a patch tool nobody is looking at.
@@ -83,6 +108,19 @@ def load_address_map(path: Path) -> dict[str, int]:
     for symbol, value in data.items():
         addresses[symbol] = _address(where, symbol, value)
     return addresses
+
+
+class _TooManyDigitsError(ValueError):
+    """A number of the map document has more digits than python converts to an integer."""
+
+
+def _whole(text: str) -> int:
+    """The ``parse_int`` of the reader: ``int(text)``, with python's digit limit as an error of
+    this module's, which its caller words."""
+    try:
+        return int(text)
+    except ValueError:
+        raise _TooManyDigitsError from None
 
 
 class _RepeatedSymbolError(ValueError):
@@ -120,7 +158,15 @@ def _address(where: str, symbol: str, value: object) -> int:
             f"with a '0x' prefix: {value!r}"
         )
         raise ValueError(msg)
-    return int(text, 16 if text.lower().startswith("0x") else 10)
+    try:
+        return int(text, 16 if text.lower().startswith("0x") else 10)
+    except ValueError:
+        # The grammar above was met, so only python's digit limit refuses a decimal number.
+        msg = (
+            f"{where}: address of '{symbol}' has more than {sys.get_int_max_str_digits()} "
+            "digits, which this tool does not read"
+        )
+        raise ValueError(msg) from None
 
 
 _ROOT: Final = re.compile(r"\w+")
@@ -136,6 +182,46 @@ _WITHOUT_G: Final = (
 """The ending of a reason the symbol table answers: it holds a name whose definition the debug
 information does not describe, so the unit defining it was compiled without ``-g``."""
 
+_SPLIT: Final = (
+    "; the symbol table holds it, and the debug information of this image is in separate .dwo "
+    "files (-gsplit-dwarf), which this tool does not read"
+)
+"""The same ending for an image whose debug information is split: the unit was built with ``-g``,
+and what it describes is in the ``.dwo`` files the image holds a skeleton of."""
+
+_UNTYPED: Final = (
+    "the image's debug information gives '{}' no type, as -g1 leaves it, so no path into it can "
+    "be followed"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _Absent:
+    """The reason a variable has no address when the image holds no definition of it at all."""
+
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class Held:
+    """What the image holds of one symbol it places: the variable it is or belongs to, and the
+    type its path ends at, which the description is held to."""
+
+    variable: Variable
+    """The variable of the image the symbol is, or belongs to."""
+
+    ctype: CType
+    """The type the symbol's path ends at: the variable's own for an object, a member's or an
+    element's for a path."""
+
+    declarations: tuple[Variable, ...] = ()
+    """The declarations of the variable other units make without defining it: a consumer's
+    ``extern``, as its header spells it (:attr:`Image.declarations`)."""
+
+    apart: tuple[Variable, ...] = ()
+    """Every unit's description of the variable, where the units do not agree on its size: the
+    variable is then one the image describes in two ways, and none of them stands for it."""
+
 
 @dataclass(frozen=True, slots=True)
 class Placed:
@@ -147,6 +233,17 @@ class Placed:
     reasons: dict[str, str]
     """Every symbol not placed, and why, in one sentence naming the part of it that failed."""
 
+    absent: frozenset[str] = frozenset()
+    """The symbols of ``reasons`` whose variable the image does not define: no variable of the
+    name, no symbol of it, or a declaration alone, as a header's ``extern`` stays where the
+    unit that defines the variable removed it. What a build without a feature looks like; the
+    other reasons say the image holds the variable, or something of its name."""
+
+    held: dict[str, Held] = field(default_factory=dict, compare=False)
+    """What the image holds of every symbol of ``addresses``, for the comparison with the
+    description (:mod:`ddd.agreement`). Left out of an equality: it says what the image states,
+    where the rest says where, and ``addresses`` are what a caller compares."""
+
 
 def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
     """Place each symbol in ``image``: an object by its name, a member by its access path.
@@ -156,39 +253,59 @@ def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
     describe one variable at one address, as ``-fcommon`` makes them, describe one variable.
     Each step of the path sees through typedefs and qualifiers first; ``.member`` adds the
     member's offset within its structure, and ``[index]``, one per dimension, the index times
-    the size of the element, in C's row-major order. The type the path ends at is not compared
-    with the declaration.
+    the size of the element, in C's row-major order. The type the path ends at comes back with
+    the address, in :attr:`Placed.held`, for the caller to hold to the description.
     """
     named: dict[str, list[Variable]] = {}
     for variable in image.variables:
         named.setdefault(variable.name, []).append(variable)
+    declared: dict[str, list[Variable]] = {}
+    for variable in image.declarations:
+        declared.setdefault(variable.name, []).append(variable)
     addresses: dict[str, int] = {}
     reasons: dict[str, str] = {}
+    absent: set[str] = set()
+    held: dict[str, Held] = {}
     for symbol in symbols:
-        placed = _placed(symbol, image, named)
-        if isinstance(placed, int):
-            addresses[symbol] = placed
+        placed = _placed(symbol, image, named, declared)
+        if isinstance(placed, tuple):
+            addresses[symbol], held[symbol] = placed
+        elif isinstance(placed, _Absent):
+            reasons[symbol] = placed.reason
+            absent.add(symbol)
         else:
             reasons[symbol] = placed
-    return Placed(addresses, reasons)
+    return Placed(addresses, reasons, frozenset(absent), held)
 
 
-def _placed(symbol: str, image: Image, named: Mapping[str, list[Variable]]) -> int | str:
-    """The address of ``symbol``, or why the image gives it none."""
+def _placed(
+    symbol: str,
+    image: Image,
+    named: Mapping[str, list[Variable]],
+    declared: Mapping[str, list[Variable]],
+) -> tuple[int, Held] | str | _Absent:
+    """The address of ``symbol`` and what the image holds there, or why it gives none."""
     root = _ROOT.match(symbol)
     # The symbols of an a2l are those addressed_symbols lists: an object's identifier, or a
     # member's path, which ddd.analysis writes starting with the variable's identifier.
     assert root is not None
     found = _variable(root.group(), image, named.get(root.group(), []))
-    if isinstance(found, str):
+    if isinstance(found, str | _Absent):
         return found
-    address, ctype = found
-    return _walk(symbol, root.end(), address, ctype)
+    address, variable, apart = found
+    declarations = tuple(declared.get(root.group(), ()))
+    reached = _walk(symbol, root.end(), address, variable.type)
+    if isinstance(reached, str):
+        return reached
+    return reached[0], Held(variable, reached[1], declarations, apart)
 
 
-def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, CType] | str:
-    """The address and the type of the global ``name``, or why the image holds none."""
-    from ddd.elf import DECLARED_ONLY
+def _variable(
+    name: str, image: Image, named: Sequence[Variable]
+) -> tuple[int, Variable, tuple[Variable, ...]] | str | _Absent:
+    """The address and the variable of the global ``name``, and every description of it where
+    the units that describe it disagree on its size, or why the image holds none."""
+    from ddd.elf import DECLARED_ONLY, described_apart, without_address
 
     external = [variable for variable in named if variable.external]
     if not external:
@@ -199,8 +316,8 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
             )
         missing = f"the image's debug information holds no variable named '{name}'"
         if name in image.symbols:
-            missing += _WITHOUT_G
-        return missing
+            return missing + _ending(image)
+        return _Absent(missing)
     located: dict[int, Variable] = {}
     for variable in external:
         if variable.address is not None:
@@ -209,18 +326,35 @@ def _variable(name: str, image: Image, named: Sequence[Variable]) -> tuple[int, 
         # A unit compiled with -g and reading the global declares it, where the one defining
         # it, compiled without, describes nothing: the reader keeps the declaration alone.
         if external[0].missing == DECLARED_ONLY and name in image.symbols:
-            return f"the image's debug information only declares '{name}'{_WITHOUT_G}"
-        return f"'{name}' has no address in the image: {external[0].missing}"
+            return f"the image's debug information only declares '{name}'{_ending(image)}"
+        reason = without_address(name, external[0].missing)
+        # Declared and not defined, with no symbol of the name either: the unit that defines
+        # it is not in the image.
+        return _Absent(reason) if external[0].missing == DECLARED_ONLY else reason
     if len(located) > 1:
         listed = ", ".join(f"0x{address:X}" for address in sorted(located))
         return f"'{name}' names globals at {len(located)} addresses of the image, {listed}"
     ((address, variable),) = located.items()
-    return address, variable.type
+    if not image.has_object(name, address):
+        return (
+            f"the symbol table holds no object named '{name}' at {address:#x}, where its debug "
+            "information puts it, as a linker leaves a variable of a unit it discarded"
+        )
+    if image.section_of(address) is None:
+        return image.unheld(name, address)
+    apart = described_apart(external, image).get(address, [])
+    return address, variable, tuple(apart)
 
 
-def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
-    """``address`` moved along the steps of ``symbol`` from ``at``, or why it cannot be."""
-    from ddd.elf import Array, Struct, core_of, size_of
+def _ending(image: Image) -> str:
+    """Why the symbol table holds a name the debug information does not describe."""
+    return _SPLIT if image.split_dwarf else _WITHOUT_G
+
+
+def _walk(symbol: str, at: int, address: int, ctype: CType) -> tuple[int, CType] | str:
+    """``address`` moved along the steps of ``symbol`` from ``at``, with the type it ends at,
+    or why it cannot be."""
+    from ddd.elf import Array, Struct, Unsupported, core_of, size_of
 
     while at < len(symbol):
         step = _STEP.match(symbol, at)
@@ -230,6 +364,8 @@ def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
         reached = symbol[:at]
         at = step.end()
         core = core_of(ctype)
+        if core == Unsupported("void"):
+            return _UNTYPED.format(reached)
         member, index = step.groups()
         if member is not None:
             if not isinstance(core, Struct):
@@ -256,4 +392,4 @@ def _walk(symbol: str, at: int, address: int, ctype: CType) -> int | str:
             return _UNKNOWN.format(symbol[:at])
         address += position * size
         ctype = element
-    return address
+    return address, ctype

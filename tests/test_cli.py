@@ -12,6 +12,7 @@ import shutil
 import stat
 import sys
 from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -27,6 +28,7 @@ from conftest import (
     component,
     declare,
     project,
+    types,
     value_member,
     write_tree,
 )
@@ -985,7 +987,8 @@ class TestGenerate:
         captured = capsys.readouterr().err
         assert code == EXIT_OK, captured
         assert "address-missing" not in captured
-        assert (tmp_path / "gen" / "DemoDevice.a2l").is_file()
+        written = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert "ValueG" in self.a2l_symbols(written), "no link has told what the build holds"
 
     def test_a_complete_address_map_is_not_reported(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1011,6 +1014,306 @@ class TestGenerate:
         )
         assert code == EXIT_OK
         assert "address-missing" not in capsys.readouterr().err
+
+    def a_map_of_the_demo_built_without_feature_x(
+        self, tmp_path: Path, without: tuple[str, ...] = ()
+    ) -> tuple[Path, list[str]]:
+        """The map a build without ``FEATURE_X`` extracts: every record of the a2l that states
+        no condition, less the ``without``, and the symbols the condition guards, which it
+        does not hold."""
+        full = tmp_path / "full"
+        assert main(["generate", "a2l", str(DEMO), "-o", str(full)]) == EXIT_OK
+        written = (full / "DemoDevice.a2l").read_text(encoding="utf-8").splitlines()
+        guarded = [
+            line.split()[2]
+            for before, line in pairwise(written)
+            if "only present in the build when" in before
+        ]
+        symbols = self.a2l_symbols("\n".join(written))
+        addresses = tmp_path / "addresses.json"
+        kept = [symbol for symbol in symbols if symbol not in guarded and symbol not in without]
+        addresses.write_text(json.dumps(dict.fromkeys(kept, "0x20001000")), encoding="utf-8")
+        return addresses, guarded
+
+    def test_the_demo_built_without_its_condition_passes_strict_and_leaves_the_object_out(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A condition the build left out is a feature that is off, not a hole in the map:
+        ``ValueG`` is no record, the run says so at ``info`` and ``--strict`` lets it through."""
+        addresses, guarded = self.a_map_of_the_demo_built_without_feature_x(tmp_path)
+        assert "ValueG" in guarded
+        capsys.readouterr()
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+                "--strict",
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert "address-missing" not in captured
+        assert (
+            "info[condition-left-out]: the address map has no entry for 'ValueG', which is only "
+            "present in the build when 'defined(FEATURE_X)'; it is left out of the a2l"
+        ) in captured
+        written = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert "ValueG" not in self.a2l_symbols(written)
+        assert "ValueG" not in written
+        assert "ValueE" in self.a2l_symbols(written)
+
+    def test_an_unconditional_object_missing_beside_a_left_out_one_still_stops_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        addresses, _ = self.a_map_of_the_demo_built_without_feature_x(tmp_path, ("ValueE",))
+        capsys.readouterr()
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(DEMO),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(addresses),
+                "--strict",
+            ]
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'ValueE'; " in captured
+        assert "ValueG" not in captured.split("address-missing", 1)[1].splitlines()[0]
+        assert not (tmp_path / "gen").exists()
+
+    PAIR_T = types(
+        {
+            "name": "Pair_t",
+            "type": "struct",
+            "members": [
+                {
+                    "name": "a",
+                    "member": "value",
+                    "datatype": "uint8",
+                    "conversion": {"kind": "identity"},
+                },
+                {
+                    "name": "b",
+                    "member": "value",
+                    "datatype": "uint8",
+                    "conversion": {"kind": "identity"},
+                },
+            ],
+        }
+    )
+
+    def generate_strict(
+        self,
+        tmp_path: Path,
+        interface: list[dict[str, Any]],
+        mapping: dict[str, str],
+        *extra: str,
+        files: dict[str, Any] | None = None,
+        strict: bool = True,
+    ) -> tuple[int, str, str]:
+        """``generate a2l --strict`` of a project of ``interface`` with a map: the exit status,
+        what it printed, and the a2l it wrote ("" when it wrote none)."""
+        includes = ["a.ddd.json", *(files or {})]
+        write_tree(
+            tmp_path / "tree",
+            {
+                "project.ddd.json": project("Device", *includes),
+                "a.ddd.json": component("A", *interface),
+                **(files or {}),
+            },
+        )
+        (tmp_path / "map.json").write_text(json.dumps(mapping), encoding="utf-8")
+        code = main(
+            [
+                "generate",
+                "a2l",
+                str(tmp_path / "tree" / "project.ddd.json"),
+                "-o",
+                str(tmp_path / "gen"),
+                "--address-map",
+                str(tmp_path / "map.json"),
+                *(["--strict"] if strict else []),
+                "-W",
+                "missing-id=ignore",
+                *extra,
+            ]
+        )
+        written = tmp_path / "gen" / "Device.a2l"
+        return code, "", written.read_text(encoding="utf-8") if written.is_file() else ""
+
+    @staticmethod
+    def a_conditional_pair() -> list[dict[str, Any]]:
+        return [
+            declare("local", "S", typename="Pair_t", condition="defined(F)"),
+            declare("local", "Kept"),
+        ]
+
+    def test_a_conditional_structure_the_map_holds_by_its_own_name_keeps_its_members_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A symbol lister writes ``S`` and no member path: the build holds the structure, so
+        its members are holes the recipe lowers, not a feature that is off."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_conditional_pair(),
+            {"Kept": "0x20000100", "S": "0x20000200"},
+            files={"t.ddd.json": self.PAIR_T},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'S.a', 'S.b'" in captured
+        assert "condition-left-out" not in captured
+        assert a2l == ""
+
+    def test_a_conditional_structure_the_map_holds_in_part_keeps_the_rest_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, _ = self.generate_strict(
+            tmp_path,
+            self.a_conditional_pair(),
+            {"Kept": "0x20000100", "S.a": "0x20000200"},
+            "--force",
+            files={"t.ddd.json": self.PAIR_T},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'S.b'; " in captured
+        assert "condition-left-out" not in captured
+        assert "MEASUREMENT S.a" in (tmp_path / "gen" / "Device.a2l").read_text(encoding="utf-8")
+
+    def test_a_conditional_structure_the_map_knows_nothing_of_is_left_out_as_one_object(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_conditional_pair(),
+            {"Kept": "0x20000100"},
+            files={"t.ddd.json": self.PAIR_T},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert (
+            "info[condition-left-out]: the address map has no entry for 'S', which is only "
+            "present in the build when 'defined(F)'; it is left out of the a2l"
+        ) in captured
+        assert "MEASUREMENT Kept" in a2l
+        assert "S.a" not in a2l
+
+    @staticmethod
+    def a_curve_over_a_conditional_axis() -> list[dict[str, Any]]:
+        return [
+            declare("local", "Speed"),
+            declare("local", "Ax", "uint16", "defined(F)", kind="axis", size=2, input="Speed"),
+            declare("local", "Cv", kind="curve", axis="Ax"),
+        ]
+
+    def test_several_curves_that_go_with_a_left_out_axis_are_named_together(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, _ = self.generate_strict(
+            tmp_path,
+            [
+                *self.a_curve_over_a_conditional_axis(),
+                declare("local", "Cw", kind="curve", axis="Ax"),
+            ],
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+            strict=False,
+        )
+        assert code == EXIT_OK
+        assert (
+            "warning[reference-left-out]: 'Cv', 'Cw' refer to the axis 'Ax', which is only present "
+            "in the build when 'defined(F)' and is left out of the a2l; the a2l cannot describe "
+            "them without the axis, so they are left out too"
+        ) in capsys.readouterr().err
+
+    def test_a_curve_that_goes_with_a_left_out_axis_is_named(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The build holds ``Cv`` and the file cannot describe it without ``Ax``: the run says
+        so, and ``address-missing`` does not claim it reaches the a2l."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_curve_over_a_conditional_axis(),
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+            strict=False,
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert (
+            "warning[reference-left-out]: 'Cv' refers to the axis 'Ax', which is only present in "
+            "the build when 'defined(F)' and is left out of the a2l; the a2l cannot describe it "
+            "without the axis, so it is left out too"
+        ) in captured
+        assert "address-missing" not in captured
+        assert "MEASUREMENT Speed" in a2l
+        assert "Cv" not in a2l
+
+    def test_each_axis_left_out_is_named_with_its_condition_beside_what_goes_with_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Findings print by severity, so the warning comes before the information naming the
+        axis, and with that information ignored it is all a reader is told: each finding names
+        its own axis and the condition it went under, and a map over two goes with each."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            [
+                *self.a_curve_over_a_conditional_axis(),
+                declare("local", "Bx", "uint16", "defined(G)", kind="axis", size=2, input="Speed"),
+                declare("local", "Cw", kind="curve", axis="Bx"),
+                declare("local", "Mp", "uint8", kind="map", x_axis="Ax", y_axis="Bx"),
+            ],
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+            "-W",
+            "condition-left-out=ignore",
+            strict=False,
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        said = [line.split(": ", 1)[1] for line in captured.splitlines() if "-left-out]" in line]
+        assert said == [
+            "warning[reference-left-out]: 'Cv', 'Mp' refer to the axis 'Ax', which is only "
+            "present in the build when 'defined(F)' and is left out of the a2l; the a2l cannot "
+            "describe them without the axis, so they are left out too",
+            "warning[reference-left-out]: 'Cw', 'Mp' refer to the axis 'Bx', which is only "
+            "present in the build when 'defined(G)' and is left out of the a2l; the a2l cannot "
+            "describe them without the axis, so they are left out too",
+        ]
+        assert "above" not in captured
+        assert "MEASUREMENT Speed" in a2l
+        assert "AXIS_PTS" not in a2l
+        assert "CHARACTERISTIC" not in a2l
+
+    def test_that_warning_stops_a_strict_build_whatever_is_done_to_the_mismatch(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            self.a_curve_over_a_conditional_axis(),
+            {"Speed": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+        )
+        assert code == EXIT_FINDINGS
+        assert (
+            "error[reference-left-out]: 'Cv' refers to the axis 'Ax', which is only present in "
+            "the build when 'defined(F)'"
+        ) in capsys.readouterr().err
+        assert a2l == ""
 
     def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -4378,12 +4681,24 @@ def from_elf(capsys: pytest.CaptureFixture[str], *arguments: str) -> tuple[int, 
     return code, out, err
 
 
+SIGNED_ENUMERATORS = {
+    "SIGNED_NEG": -2,
+    "SIGNED_POS": 3,
+    "SIGNED_BIG": 200,
+    "SIGNED_WIDE": 40000,
+    "SIGNED_MIN8": -128,
+    "SIGNED_MIN16": -32768,
+}
+"""``Signed_e`` of main.c: 40000 and -32768 make it a 32 bit enum on every row, the short-enum
+rows included. gcc writes -2, -128 and -32768 as ``DW_FORM_sdata`` and 3, 200 and 40000 as the
+``DW_FORM_dataN`` that holds each."""
+
+
 def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """What a row must print for the variables of main.c every row describes: the values the
     source states, and what the row's own toolchain said its target makes of the rest."""
     identity = {"kind": "identity"}
     unsigned_enum = {1: "uint8", 4: "uint32"}[traits["sizeof_enum"]]
-    signed_enum = {1: "sint8", 4: "sint32"}[traits["sizeof_enum"]]
     state = {
         "kind": "enum",
         "name": "State_t",
@@ -4439,12 +4754,12 @@ def expected_definitions(traits: dict[str, Any]) -> dict[str, dict[str, Any]]:
         value(
             "Enum_Signed",
             "measurement",
-            signed_enum,
+            "sint32",
             -2,
             conversion={
                 "kind": "enum",
                 "name": "Signed_e",
-                "enumerators": {"SIGNED_NEG": -2, "SIGNED_POS": 3},
+                "enumerators": SIGNED_ENUMERATORS,
             },
         ),
         value(
@@ -4505,7 +4820,12 @@ class TestToolFromElf:
     ) -> None:
         expected = expected_definitions(FIXTURE_ROWS[row]["traits"])
         code, out, err = from_elf(
-            capsys, str(FIXTURES / f"{row}.elf"), *expected, "--component", "Fixture"
+            capsys,
+            str(FIXTURES / f"{row}.elf"),
+            *expected,
+            "--component",
+            "Fixture",
+            "--identity-conversions",
         )
         assert code == EXIT_OK, err
         document = json.loads(out)["component"]
@@ -4582,6 +4902,7 @@ class TestToolFromElf:
             "Nested_Frame",
             "--component",
             "Fixture",
+            "--identity-conversions",
         )
         assert code == EXIT_OK, err
         document = json.loads(out)["component"]
@@ -4738,6 +5059,22 @@ class TestToolFromElf:
         assert code == EXIT_OK
         assert json.loads(err)["generated"] == [{"path": target.as_posix(), "status": "unchanged"}]
 
+    def test_a_debug_only_companion_is_refused_and_the_image_it_came_from_is_read(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        companion = FIXTURES / "x86_64.debug"
+        code, out, err = from_elf(capsys, str(companion), "Cal_Gain")
+        assert (code, out, err) == (
+            EXIT_USAGE,
+            "",
+            f"ddd: '{companion.as_posix()}' is debug information without the image's contents: "
+            f"its sections hold none of the program, so no initial value can be read from it; give "
+            f"it the linked image it was split from\n",
+        )
+        code, out, _ = from_elf(capsys, str(X86), "Cal_Gain")
+        assert code == EXIT_OK
+        assert "init" in json.loads(out)[0]["definition"]
+
     def test_an_output_naming_the_image_is_refused_and_the_image_kept(
         self, capsys: pytest.CaptureFixture[str], tmp_path: Path
     ) -> None:
@@ -4817,6 +5154,61 @@ class TestToolFromElf:
         assert err.splitlines()[0] == (
             f"gc_sections.c:{line}: error[elf-no-storage]: 'Cal_Discarded' has no address in the "
             f"image: the linker discarded its storage"
+        )
+
+    def test_a_split_image_is_told_that_its_debug_information_is_in_dwo_files(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """split-dwarf.elf: ``-gsplit-dwarf`` leaves a skeleton of each unit in the image and the
+        unit itself in a ``.dwo`` file, so the unit was built with ``-g``, and telling the reader
+        to build it so sends them back to what the build already did."""
+        image = FIXTURES / "split-dwarf.elf"
+        code, out, err = from_elf(capsys, str(image), "Cal_Gain")
+        assert (code, out) == (EXIT_FINDINGS, "")
+        place, said = err.splitlines()[0].split(": ", 1)
+        assert place.endswith("split-dwarf.elf")
+        assert said == (
+            "error[elf-symbol-missing]: the image's debug information holds no variable named "
+            "'Cal_Gain'; the symbol table holds it, and the debug information of this image is in "
+            "separate .dwo files (-gsplit-dwarf), which this tool does not read"
+        )
+
+    def test_a_variable_debug_level_1_leaves_without_a_type_is_told_so(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """debug-level-1.elf: ``-g1`` keeps each variable and its address and no type, which the
+        reader reads as C's ``void``; the variable is not one of ``void``."""
+        code, out, err = from_elf(capsys, str(FIXTURES / "debug-level-1.elf"), "Cal_Gain")
+        assert (code, out) == (EXIT_FINDINGS, "")
+        line = fixture_line("type_units.c", "const uint16_t Cal_Gain")
+        assert err.splitlines()[0] == (
+            f"type_units.c:{line}: error[elf-type-unsupported]: the image's debug information "
+            f"gives 'Cal_Gain' no type, as -g1 leaves it, so DDD cannot state it"
+        )
+
+    def test_the_unit_gold_discarded_is_refused_and_the_static_a_kept_unit_holds_is_read(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """gold-gc-sections.elf: gold leaves First_Unused at the offset 8 of the section it
+        discarded, where no section of the image lies and no symbol of its name sits."""
+        code, out, err = from_elf(
+            capsys,
+            str(FIXTURES / "gold-gc-sections.elf"),
+            "First_Unused",
+            "Gold_Static",
+            "--force",
+        )
+        assert code == EXIT_FINDINGS
+        (entry,) = json.loads(out)
+        assert (entry["definition"]["name"], entry["definition"]["init"]) == (
+            "Gold_Static",
+            0x01020304,
+        )
+        line = fixture_line("gold_unused.c", "uint32_t First_Unused")
+        assert err.splitlines()[0] == (
+            f"gold_unused.c:{line}: error[elf-no-storage]: the symbol table holds no object named "
+            f"'First_Unused' at 0x8, where its debug information puts it, as a linker leaves a "
+            f"variable of a unit it discarded"
         )
 
     def test_a_damaged_image_is_a_usage_error_rather_than_a_traceback(
@@ -4924,6 +5316,42 @@ class TestToolFromElf:
         (scope,) = [action for action in tool._actions if action.dest == "scope"]
         assert set(scope.choices) == {member.value for member in Scope}
 
+    def test_by_default_no_conversion_is_printed_for_what_is_not_an_enum(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out, err = from_elf(capsys, str(X86), "Cal_Gain", "Enum_State")
+        assert code == EXIT_OK, err
+        definitions = {
+            entry["definition"]["name"]: entry["definition"] for entry in json.loads(out)
+        }
+        assert "conversion" not in definitions["Cal_Gain"]
+        assert definitions["Enum_State"]["conversion"]["kind"] == "enum"
+        assert "'--identity-conversions' writes the identity, where you state it" in err
+
+    def test_what_it_prints_by_default_is_a_schema_error_until_its_author_states_it(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        _, out, _ = from_elf(capsys, str(X86), "Cal_Gain", "--component", "Fixture")
+        written = tmp_path / "fixture.ddd.json"
+        written.write_text(out, encoding="utf-8")
+        assert main(["check", "--standalone", str(written)]) == EXIT_FINDINGS
+        assert "a 'datatype' comes with a 'conversion'" in capsys.readouterr().err
+
+    def test_the_option_prints_the_identity_and_says_it_was_asked_for(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out, err = from_elf(capsys, str(X86), "Cal_Gain", "--identity-conversions")
+        assert code == EXIT_OK, err
+        assert json.loads(out)[0]["definition"]["conversion"] == {"kind": "identity"}
+        assert "which '--identity-conversions' writes on your word" in err
+
+    def test_the_option_is_offered_and_says_why(self) -> None:
+        tool = subcommands(subcommands(_build_parser())["tool"])["from-elf"]
+        (option,) = [a for a in tool._actions if a.dest == "identity_conversions"]
+        assert option.option_strings == ["--identity-conversions"]
+        assert option.default is False
+        assert "on your word that its raw value is its physical one" in option.help
+
     def test_the_diagnostics_formats_offered_are_text_and_json(self) -> None:
         """No test above asks for ``--format text`` by name: the default bypasses the choice
         check, so a ``choices`` list that quietly lost ``"text"`` - or gained a third value
@@ -4977,8 +5405,136 @@ def with_a_window(described: dict[str, Any]) -> None:
     tuning["members"].append(value_member("window", "uint16"))
 
 
+def with_a_ghost(described: dict[str, Any]) -> None:
+    """``Engine`` gains ``Ghost``, a measurement under a condition, which no image holds."""
+    described["component"]["interface"].append(
+        {
+            "scope": "local",
+            "condition": "defined(FEATURE_X)",
+            "definition": {
+                "name": "Ghost",
+                "id": "gbcdefghjkmn",
+                "kind": "measurement",
+                "description": "A feature the build left out",
+                "datatype": "uint8",
+                "conversion": {"kind": "identity"},
+                "volatile": False,
+            },
+        }
+    )
+
+
+class TestASignedEnumFromAnImage:
+    """Finding 11:C1: 200 and 40000 stay 200 and 40000 in what the reader says of a signed
+    enum, and in everything generated from it."""
+
+    @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
+    def test_every_row_reads_200_and_40000_positive_and_minus_128_and_32768_negative(
+        self, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """Review Focus 4, over DWARF 2, 3, 4 and 5: the rows carry every version."""
+        code, out, err = from_elf(capsys, str(FIXTURES / f"{row}.elf"), "Enum_Signed")
+        assert code == EXIT_OK, err
+        (entry,) = json.loads(out)
+        assert entry["definition"]["conversion"]["enumerators"] == SIGNED_ENUMERATORS
+        assert entry["definition"]["datatype"] == "sint32"
+
+    @pytest.mark.parametrize("row", sorted(FIXTURE_ROWS))
+    def test_every_row_generates_them_with_the_values_and_limits_of_the_source(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], row: str
+    ) -> None:
+        """What ``from-elf`` prints is a component, and ``generate all --image`` of it writes
+        the header, the a2l's conversion table and the limits derived from the enumerators:
+        the limits were -25536 .. 0 when 200 and 40000 read negative."""
+        image = FIXTURES / f"{row}.elf"
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "project.ddd.json").write_text(
+            json.dumps({"project": {"name": "Signed", "includes": ["component.ddd.json"]}}),
+            encoding="utf-8",
+        )
+        code, _, err = from_elf(
+            capsys,
+            str(image),
+            "Enum_Signed",
+            "--component",
+            "Fixture",
+            "-o",
+            str(project / "component.ddd.json"),
+        )
+        assert code == EXIT_OK, err
+        output = tmp_path / "gen"
+        arguments = ["generate", "all", str(project / "project.ddd.json"), "-o", str(output)]
+        assert main([*arguments, "-t", str(TEMPLATES), "--image", str(image)]) == EXIT_OK
+        header = (output / "ddd_types.h").read_text(encoding="utf-8")
+        for name, value in SIGNED_ENUMERATORS.items():
+            assert f"    {name} = {value}" in header
+        a2l = (output / "Signed.a2l").read_text(encoding="utf-8")
+        for name, value in SIGNED_ENUMERATORS.items():
+            assert f'      {value} "{name}"\n' in a2l
+        assert "      SLONG CM_Signed_e 0 0 -32768 40000\n" in a2l
+        assert "      ECU_ADDRESS 0x" in a2l
+        definitions = (output / "ddd_globals.c").read_text(encoding="utf-8")
+        assert "int32_t Enum_Signed = -2;" in definitions
+
+
+LOAD_RELATIVE_FINDING = (
+    "{}: info[image-load-relative]: the image is position independent, so the addresses the "
+    "a2l states are offsets from where it loads\n"
+    "    note: a project that adds its load base when it reads the a2l is right, and one that "
+    "does not finds every address wrong\n"
+)
+"""What a run says of a position independent image: the finding, at the image, before whatever
+else the run has to say of it."""
+LOAD_RELATIVE_NOTE = LOAD_RELATIVE_FINDING + "1 info\n"
+"""The whole of it where it is all the run says."""
+
+
 class TestGenerateFromAnImage:
     """``ddd generate a2l --image``: every address the a2l carries, out of the linked image."""
+
+    def test_a_position_independent_image_is_read_and_its_addresses_said_to_be_offsets(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ET_DYN``: the link-time addresses of a static pie are offsets from where it loads.
+        The a2l carries them as they are: a project that adds its load base reads them right, and
+        the run says so at info, so that a strict build does not stop at it."""
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        arguments = [*self.arguments(tmp_path), "--image", str(X86_ADDRESSES), "--strict"]
+        assert main(arguments) == EXIT_OK
+        shown = where(X86_ADDRESSES).render(Path.cwd())
+        assert capsys.readouterr().err == (
+            LOAD_RELATIVE_NOTE.format(shown) + f"wrote       {a2l.as_posix()} (created)\n"
+        )
+        assert a2l_addresses(a2l.read_text(encoding="utf-8")) == ADDRESS_ROWS["x86_64"]["addresses"]
+
+    def test_a_fixed_address_image_is_not_noted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        image = ADDRESS_FIXTURES / "armv7m.elf"
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
+        assert "image-load-relative" not in capsys.readouterr().err
+
+    def test_an_address_map_naming_a_pie_is_not_noted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only an image states its type; a map is what the author wrote."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text("{}", encoding="utf-8")
+        assert main([*self.arguments(tmp_path), "--address-map", str(addresses)]) == EXIT_OK
+        assert "image-load-relative" not in capsys.readouterr().err
+
+    def test_a_map_that_cannot_be_read_is_a_usage_error_naming_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A map nested deeper than the reader takes was a traceback with the findings exit."""
+        addresses = tmp_path / "addresses.json"
+        addresses.write_text("[" * 200_000, encoding="utf-8")
+        assert main([*self.arguments(tmp_path), "--address-map", str(addresses)]) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: the address map '{addresses.as_posix()}' is not valid json: it is nested "
+            f"more deeply than this tool reads\n"
+        )
 
     def arguments(self, tmp_path: Path, project: Path = ADDRESS_PROJECT) -> list[str]:
         return ["generate", "a2l", str(project), "-o", str(tmp_path / "gen")]
@@ -4995,7 +5551,10 @@ class TestGenerateFromAnImage:
         a2l = tmp_path / "gen" / "AddressFixture.a2l"
         image = ADDRESS_FIXTURES / f"{row}.elf"
         assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
-        assert capsys.readouterr().err == f"wrote       {a2l.as_posix()} (created)\n"
+        noted = (
+            LOAD_RELATIVE_NOTE.format(where(image).render(Path.cwd())) if row == "x86_64" else ""
+        )
+        assert capsys.readouterr().err == f"{noted}wrote       {a2l.as_posix()} (created)\n"
         text = a2l.read_text(encoding="utf-8")
         assert a2l_addresses(text) == expected["addresses"]
         assert [path for path in expected["bitfields"] if path in text] == []
@@ -5117,17 +5676,38 @@ class TestGenerateFromAnImage:
     ) -> None:
         """A 64 bit target may place its data above 4 GB, where no ``ECU_ADDRESS`` reaches.
         ``Speed`` is moved there in a copy of the x86_64 image: its DWARF locates it with an
-        expression of nine bytes, ``DW_OP_addr`` (3) and the address, which the copy rewrites."""
+        expression of nine bytes, ``DW_OP_addr`` (3) and the address, which the copy rewrites. An
+        image is placed where its symbol table and its sections agree with the DWARF, so the copy
+        moves Speed's symbol too, and its section grows to hold both addresses."""
+        from elftools.elf.elffile import ELFFile
+        from elftools.elf.sections import SymbolTableSection
+
         address = ADDRESS_ROWS["x86_64"]["addresses"]["Speed"]
         moved = address + 0x1_0000_0000
-        data = X86_ADDRESSES.read_bytes()
+        data = bytearray(X86_ADDRESSES.read_bytes())
         located = bytes([9, 3]) + address.to_bytes(8, "little")
         assert data.count(located) == 1, "the x86_64 image no longer locates Speed this way"
+        data = bytearray(bytes(data).replace(located, bytes([9, 3]) + moved.to_bytes(8, "little")))
+        with X86_ADDRESSES.open("rb") as stream:
+            elf = ELFFile(stream)
+            symbols = elf.get_section_by_name(".symtab")
+            assert isinstance(symbols, SymbolTableSection)
+            (index,) = [i for i, sym in enumerate(symbols.iter_symbols()) if sym.name == "Speed"]
+            value_at = symbols["sh_offset"] + index * symbols["sh_entsize"] + 8
+            (holder,) = [
+                s
+                for s in elf.iter_sections()
+                if s["sh_addr"] <= address < s["sh_addr"] + s["sh_size"] and s["sh_addr"]
+            ]
+            size_at = elf["e_shoff"] + elf.get_section_index(holder.name) * elf["e_shentsize"] + 32
+        data[value_at : value_at + 8] = moved.to_bytes(8, "little")
+        data[size_at : size_at + 8] = (0x1_0000_0000 + holder["sh_size"]).to_bytes(8, "little")
         image = tmp_path / "above.elf"
-        image.write_bytes(data.replace(located, bytes([9, 3]) + moved.to_bytes(8, "little")))
+        image.write_bytes(bytes(data))
         assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_USAGE
         assert capsys.readouterr().err == (
-            f"ddd: {image.as_posix()}: address of 'Speed' is {moved}, outside the range "
+            LOAD_RELATIVE_NOTE.format(image.as_posix())
+            + f"ddd: {image.as_posix()}: address of 'Speed' is {moved}, outside the range "
             f"0 .. 0xFFFFFFFF that an a2l address can hold\n"
         )
 
@@ -5144,7 +5724,9 @@ class TestGenerateFromAnImage:
         monkeypatch.chdir(ADDRESS_FIXTURES)
         arguments = [*self.arguments(tmp_path, project), "--image", "x86_64.elf"]
         assert main([*arguments, "--format", "json"]) == EXIT_OK
-        assert json.loads(capsys.readouterr().out)["diagnostics"] == [
+        found = json.loads(capsys.readouterr().out)["diagnostics"]
+        assert [entry["check"] for entry in found] == ["address-missing", "image-load-relative"]
+        assert found[:1] == [
             {
                 "check": "address-missing",
                 "severity": "warning",
@@ -5176,11 +5758,146 @@ class TestGenerateFromAnImage:
         assert main([*arguments, "--strict"]) == EXIT_FINDINGS
         shown = where(X86_ADDRESSES).render(Path.cwd())
         assert capsys.readouterr().err == (
-            f"{shown}: error[address-missing]: the image has no address for 'Tuning.window'; it "
-            f"reaches the a2l at address 0\n"
+            f"{shown}: error[address-missing]: the image has no address for 'Tuning.window'; "
+            f"it reaches the a2l at address 0\n"
             f"    note: 'Tuning' has no member named 'window' in the image\n"
-            f"1 error\n"
+            + LOAD_RELATIVE_FINDING.format(shown)
+            + "1 error, 1 info\n"
         )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_conditional_variable_the_image_lacks_is_left_out_and_said_at_info(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The image holds no ``Ghost``, which is guarded by a condition: a feature compiled
+        out, so the a2l has no record of it, and a strict run does not stop at it."""
+        project = edited_project(tmp_path, "engine.ddd.json", with_a_ghost)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--strict"]) == EXIT_OK
+        shown = where(X86_ADDRESSES).render(Path.cwd())
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        assert capsys.readouterr().err == (
+            LOAD_RELATIVE_FINDING.format(shown)
+            + f"{shown}: info[condition-left-out]: the image has no address for 'Ghost', which "
+            f"is only present in the build when 'defined(FEATURE_X)'; it is left out of the "
+            f"a2l\n"
+            f"    note: the image's debug information holds no variable named 'Ghost'\n"
+            f"2 infos\n"
+            f"wrote       {a2l.as_posix()} (created)\n"
+        )
+        text = a2l.read_text(encoding="utf-8")
+        assert "Ghost" not in text
+        assert a2l_addresses(text) == ADDRESS_ROWS["x86_64"]["addresses"]
+
+    def test_the_objects_left_out_are_said_once_per_condition_in_the_plural_for_several(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def several(described: dict[str, Any]) -> None:
+            for name, ident, condition in (
+                ("Ghost", "gbcdefghjkmn", "defined(FEATURE_X)"),
+                ("Wraith", "wbcdefghjkmn", "defined(FEATURE_Y)"),
+                ("Shade", "sbcdefghjkmn", "defined(FEATURE_X)"),
+            ):
+                with_a_ghost(described)
+                entry = described["component"]["interface"][-1]
+                entry["condition"] = condition
+                entry["definition"]["name"] = name
+                entry["definition"]["id"] = ident
+
+        project = edited_project(tmp_path, "engine.ddd.json", several)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main(arguments) == EXIT_OK
+        captured = capsys.readouterr().err
+        assert (
+            "info[condition-left-out]: the image has no address for 'Ghost', 'Shade', which "
+            "are only present in the build when 'defined(FEATURE_X)'; they are left out of "
+            "the a2l\n"
+        ) in captured
+        assert (
+            "info[condition-left-out]: the image has no address for 'Wraith', which is only "
+            "present in the build when 'defined(FEATURE_Y)'; it is left out of the a2l\n"
+        ) in captured
+        assert "3 infos" in captured
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert [name for name in ("Ghost", "Wraith", "Shade") if name in text] == []
+
+    def test_a_conditional_member_the_c_lacks_is_a_hole_and_stops_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The image defines ``Tuning``; it is a declaration that names a member its C does not
+        have, which is no feature that is off, and the other members are placed."""
+        project = edited_project(tmp_path, "types.ddd.json", with_a_window)
+        engine = project.parent / "engine.ddd.json"
+        described = json.loads(engine.read_text(encoding="utf-8"))
+        (tuning,) = [
+            entry
+            for entry in described["component"]["interface"]
+            if entry["definition"]["name"] == "Tuning"
+        ]
+        tuning["condition"] = "defined(FEATURE_T)"
+        engine.write_text(json.dumps(described, indent=2), encoding="utf-8")
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--strict"]) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "error[address-missing]: the image has no address for 'Tuning.window'" in captured
+        assert "condition-left-out" not in captured
+        assert main(arguments) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert (
+            a2l_addresses(text)["Tuning.gain"] == ADDRESS_ROWS["x86_64"]["addresses"]["Tuning.gain"]
+        )
+
+    def test_a_conditional_variable_the_image_holds_only_as_a_static_stops_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        write_tree(
+            tmp_path / "tree",
+            {
+                "project.ddd.json": project("Device", "a.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("local", "Static_Used", "uint16", condition="defined(F)")
+                ),
+            },
+        )
+        arguments = [
+            "generate",
+            "a2l",
+            str(tmp_path / "tree" / "project.ddd.json"),
+            "-o",
+            str(tmp_path / "gen"),
+            "--image",
+            str(FIXTURES / "x86_64.elf"),
+            "--strict",
+            "-W",
+            "missing-id=ignore",
+        ]
+        assert main(arguments) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert "error[address-missing]: the image has no address for 'Static_Used'" in captured
+        assert "the image holds 'Static_Used' only as a static" in captured
+        assert "condition-left-out" not in captured
+        assert not (tmp_path / "gen").exists()
+
+    def test_an_unconditional_variable_the_image_lacks_beside_one_left_out_still_fails_strict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def both(described: dict[str, Any]) -> None:
+            with_a_ghost(described)
+            entry = {**described["component"]["interface"][-1]}
+            entry = json.loads(json.dumps(entry))
+            del entry["condition"]
+            entry["definition"]["name"] = "Phantom"
+            entry["definition"]["id"] = "pbcdefghjkmn"
+            described["component"]["interface"].append(entry)
+
+        project = edited_project(tmp_path, "engine.ddd.json", both)
+        arguments = [*self.arguments(tmp_path, project), "--image", str(X86_ADDRESSES)]
+        assert main([*arguments, "--strict"]) == EXIT_FINDINGS
+        captured = capsys.readouterr().err
+        assert (
+            "error[address-missing]: the image has no address for 'Phantom'; it reaches" in captured
+        )
+        assert "info[condition-left-out]: the image has no address for 'Ghost'" in captured
         assert not (tmp_path / "gen").exists()
 
     def test_the_notes_are_the_reasons_of_the_symbols_named_each_said_once(
@@ -5207,9 +5924,84 @@ class TestGenerateFromAnImage:
             f"'Bells[0].v', 'Bells[1].raw', 'Bells[1].v', 'Bells[2].raw' and 2 others; they "
             f"reach the a2l at address 0\n"
             f"    note: the image's debug information holds no variable named 'Bells'\n"
-            f"1 warning\n"
+            + LOAD_RELATIVE_FINDING.format(shown)
+            + "1 warning, 1 info\n"
             f"wrote       {a2l.as_posix()} (created)\n"
         )
+
+    @staticmethod
+    def gold_project(tmp_path: Path) -> Path:
+        """A project of one kept variable and two of the unit gold-gc-sections.elf discarded."""
+        project = tmp_path / "gold"
+        project.mkdir()
+        (project / "project.ddd.json").write_text(
+            json.dumps(
+                {"project": {"name": "Gold", "description": "x", "includes": ["gold.ddd.json"]}}
+            ),
+            encoding="utf-8",
+        )
+        interface = [
+            {
+                "scope": "local",
+                "definition": {
+                    "name": name,
+                    "kind": "measurement",
+                    "description": "d",
+                    "datatype": "uint32",
+                    "conversion": {"kind": "identity"},
+                    "volatile": False,
+                },
+            }
+            for name in ("Gold_Kept", "First_Unused", "Second_Unused")
+        ]
+        (project / "gold.ddd.json").write_text(
+            json.dumps({"component": {"name": "Gold", "description": "x", "interface": interface}}),
+            encoding="utf-8",
+        )
+        return project / "project.ddd.json"
+
+    @pytest.mark.parametrize(
+        ("linker", "note"),
+        [
+            (
+                "gold",
+                "the symbol table holds no object named 'First_Unused' at 0x8, where its debug "
+                "information puts it, as a linker leaves a variable of a unit it discarded",
+            ),
+            ("bfd", "the image's debug information holds no variable named 'First_Unused'"),
+        ],
+    )
+    def test_the_variables_of_a_unit_the_linker_discarded_reach_the_a2l_at_0_and_say_so(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], linker: str, note: str
+    ) -> None:
+        """Gold keeps the discarded unit's debug information, with offsets as addresses, and
+        GNU ld drops it: neither unit's variables are placed, and the one the entry reads is."""
+        image = FIXTURES / f"{linker}-gc-sections.elf"
+        arguments = [*self.arguments(tmp_path, self.gold_project(tmp_path)), "--image", str(image)]
+        assert main([*arguments, "--format", "json"]) == EXIT_OK
+        (finding,) = [
+            item
+            for item in json.loads(capsys.readouterr().out)["diagnostics"]
+            if item["check"] == "address-missing"
+        ]
+        assert finding["message"] == (
+            "the image has no address for 'First_Unused', 'Second_Unused'; they reach the a2l "
+            "at address 0"
+        )
+        assert finding["notes"][0]["message"] == note
+        text = (tmp_path / "gen" / "Gold.a2l").read_text(encoding="utf-8")
+        addresses = a2l_addresses(text)
+        assert (addresses["First_Unused"], addresses["Second_Unused"]) == (0, 0)
+        assert addresses["Gold_Kept"] != 0
+
+    def test_a_strict_run_stops_for_the_unit_gold_discarded(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        image = FIXTURES / "gold-gc-sections.elf"
+        arguments = [*self.arguments(tmp_path, self.gold_project(tmp_path)), "--image", str(image)]
+        assert main([*arguments, "--strict"]) == EXIT_FINDINGS
+        assert "error[address-missing]: the image has no address for" in capsys.readouterr().err
+        assert not (tmp_path / "gen").exists()
 
     def test_the_a2l_run_after_the_link_leaves_what_generate_all_wrote_untouched(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -5239,7 +6031,10 @@ class TestGenerateFromAnImage:
         capsys.readouterr()
         a2l = output / "AddressFixture.a2l"
         assert main([*self.arguments(tmp_path), "--image", str(X86_ADDRESSES)]) == EXIT_OK
-        assert capsys.readouterr().err == f"wrote       {a2l.as_posix()} (created)\n"
+        assert capsys.readouterr().err == (
+            LOAD_RELATIVE_NOTE.format(where(X86_ADDRESSES).render(Path.cwd()))
+            + f"wrote       {a2l.as_posix()} (created)\n"
+        )
         kept = {
             path.name: (path.read_bytes(), path.stat().st_mtime_ns)
             for path in output.iterdir()

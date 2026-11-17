@@ -44,7 +44,7 @@ union {
 /* 4.3 enums */
 typedef enum { STATE_OFF = 0, STATE_ON = 1, STATE_FAULT = 200 } State_t;
 State_t Enum_State = STATE_ON;
-enum Signed_e { SIGNED_NEG = -2, SIGNED_POS = 3 };
+enum Signed_e { SIGNED_NEG = -2, SIGNED_POS = 3, SIGNED_BIG = 200, SIGNED_WIDE = 40000, SIGNED_MIN8 = -128, SIGNED_MIN16 = -32768 };
 enum Signed_e Enum_Signed = SIGNED_NEG;
 enum { ANON_A = 1, ANON_B = 2 } Enum_Anonymous = ANON_B;
 const State_t Enum_Table[2] = {STATE_FAULT, STATE_OFF};
@@ -169,3 +169,64 @@ struct Anonymous_s {
     };
 };
 struct Anonymous_s Member_Anonymous;
+
+/* Appended last, so that no line above it moves: layouts DDD's generated C does not reproduce.
+   Each is one the source asked for with packing or with an unnamed or zero width bitfield, and
+   Laid_Natural, laid out by the target's own alignment, is the control. */
+struct Packed_s {
+    uint8_t kind;
+    uint32_t value;
+} __attribute__((packed));
+struct Packed_s Laid_Packed;
+
+#pragma pack(push, 2)
+struct Pack2_s {
+    uint8_t a;
+    uint32_t b;
+};
+#pragma pack(pop)
+struct Pack2_s Laid_Pack2;
+
+struct Packed_Member_s {
+    uint8_t tag;
+    uint32_t word __attribute__((packed));
+};
+struct Packed_Member_s Laid_Packed_Member;
+
+struct Unnamed_s {
+    uint32_t : 8;
+    uint8_t a;
+};
+struct Unnamed_s Laid_Unnamed;
+
+struct Zero_Width_s {
+    uint16_t head;
+    uint32_t : 0;
+    uint8_t tail;
+};
+struct Zero_Width_s Laid_Zero_Width;
+
+struct Natural_s {
+    uint8_t a;
+    uint32_t b;
+    uint8_t c : 3;
+    uint16_t d;
+    uint64_t e;
+    uint8_t f[3];
+};
+struct Natural_s Laid_Natural;
+
+/* Appended after Laid_Natural, so that no line above it moves: an alignment the source states
+   on a variable, a GNU vector as a variable and as a member, and a variable of natural
+   alignment as the control. */
+_Alignas(64) uint32_t Aligned_Var = 7;
+uint32_t Aligned_Natural = 9;
+
+typedef float Vec4_t __attribute__((vector_size(16)));
+Vec4_t Vector_Var;
+
+struct Vector_Holder_s {
+    uint8_t tag;
+    Vec4_t lanes;
+};
+struct Vector_Holder_s Vector_Holder;

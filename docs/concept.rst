@@ -86,7 +86,14 @@ half of the job and the subject of :doc:`consistency_checks`.
 
 The description is also the only place the information is written down. The same declaration
 produces the c definition, the comment above it, the ``extern`` declaration in each consumer's
-header and the ``MEASUREMENT`` entry of the a2l, so those four cannot disagree with each other.
+header and the ``MEASUREMENT`` entry of the a2l, so those four are written from one declaration
+and the generator cannot make them differ. A project's own template or a hand edit could, and the
+run that reads the linked image for the a2l's addresses closes most of that: it holds the
+definition of each variable it places - size, encoding, qualifiers and shape - to the declaration,
+on every image, and a consumer's ``extern`` to the qualifiers of its kind where the compiler
+records it in the debug information, which gcc does for a variable a unit reads and clang does
+not. A definition of another type, or a template that drops a ``const`` or ``volatile`` there, is
+a warning, ``elf-mismatch``, and so is a header that drops them, on a gcc image.
 Changing the scaling is one edit in one file, and everything that depends on it follows on the
 next build.
 
@@ -437,8 +444,9 @@ object, with the addresses written in decimal or hexadecimal:
 .. code-block:: text
 
    $ ddd generate a2l examples/demo/demo.ddd.json -o build/gen --address-map build/addresses.json
-   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 13 others; they reach the a2l at address 0
-   1 warning
+   build/addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveB', 'Diagnosis.faults', 'FlagA' and 12 others; they reach the a2l at address 0
+   build/addresses.json: info[condition-left-out]: the address map has no entry for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
+   1 warning, 1 info
    wrote       build/gen/DemoDevice.a2l (updated)
 
 The ``a2l`` artefact is what makes the second run one that *cannot* touch the c sources: it

@@ -339,7 +339,7 @@ two documentation guards - a claim about what the tool prints is checked against
 prints - so a reworded diagnostic fails there first. What it does *not* run is counted rather
 than left to be discovered: a page that runs one of its commands has the rest read as
 illustrations, and ``SILENTLY_SHOWN`` in that file records how many such commands each page
-has - 51 of the 173 shown, and five of the eighty-seven runs pinning an exit status. A page
+has - 51 of the 174 shown, and six of the eighty-eight runs pinning an exit status. A page
 that gains one fails until somebody writes the new number down.
 
 The ELF fixtures
@@ -356,7 +356,11 @@ its debug sections are compressed. The reader's tests hold it to the manifest, n
 :doc:`toolbox`. Beside the ten rows sit the negative inputs, each built by x86_64 gcc from a
 small source of its own: DWARF type units at versions 4 and 5, gcc's link-time optimisation,
 and a variable ``--gc-sections`` discarded - the images the reader refuses, or reads a way of
-its own.
+its own. Four more pin what it reports where an image holds more than one answer: two units that
+state one name at one address in two ways, and one built without ``-g`` whose symbols are larger
+than the description beside it; two sections a linker script overlays at one address; and a C++
+unit, built by arm-none-eabi-g++, whose base class, static member and namespace the reader
+refuses.
 
 The images are committed, so the suite needs neither Docker nor a compiler. They are built in
 Docker, out of ``tests/fixtures/elf/src/``, by ``docker/build_elf_fixtures.py`` in the image of

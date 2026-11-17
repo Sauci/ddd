@@ -283,7 +283,8 @@ function floatRefusal(
 /** The raw count `decimal`, typed in raw into a cell of `datatype`, writes - the text read is the
  * count - or the sentence it is refused with, naming it as `said`. A float cell takes the double
  * whatever the digits - the double is what a float holds, and FLT_MAX is a whole number past 2^53
- * as much as 2^64 is - but none past the most a double holds, nor one rounding to zero in it. Any
+ * as much as 2^64 is - but none past the most a double holds, nor one rounding to zero in it; a
+ * `float32`'s is planned as the float32 it rounds to (`singleOf`). Any
  * other cell refuses a number past ±2^53, and a fraction the double drops, which it would plan as
  * the whole number the double reads it as; a fraction the double keeps is the server's to refuse
  * an integer. */
@@ -292,6 +293,10 @@ function rawRead(decimal: Decimal, said: string, datatype: string): CellRead {
   if (floating(datatype)) {
     if (!Number.isFinite(double)) return floatRefusal(said, datatype, true);
     if (double === 0 && decimal.digits !== "") return floatRefusal(said, datatype, false);
+    // A float32 holds the float the number rounds to, which is what is planned: C's FLT_MAX,
+    // 3.4028235e38, lies past FLT_MAX's own double, which the server refuses. What rounds to
+    // zero in a float32 is the server's to refuse, as the double typed.
+    if (datatype === "float32" && Math.fround(double) !== 0) return { raw: singleOf(double) };
     return { raw: double };
   }
   const side = sideOf(decimal);

@@ -9,13 +9,15 @@
 # beside them records the compiler each image was built with, as the compiler states its own
 # version - the `compiler` of every row and negative input - so that a rebuild on newer packages
 # shows in its diff. Every row's compiler is a Debian package, cross gcc for five targets and
-# clang with lld for two more; binutils is here for its readelf, which reads every target's
-# headers, symbols and DWARF and is the manifest's oracle.
+# clang with lld for two more; binutils-gold links the one negative input a unit gold discarded
+# is read from; binutils is here for its readelf, which reads every target's headers, symbols and
+# DWARF and is the manifest's oracle.
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes \
         binutils \
+        binutils-gold \
         clang \
         gcc-aarch64-linux-gnu \
         gcc-arm-none-eabi \

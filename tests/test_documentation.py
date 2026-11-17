@@ -45,6 +45,7 @@ from ddd.toolbox.findings import FINDINGS
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
+ELF_SOURCE = (ROOT / "src" / "ddd" / "elf.py").read_text(encoding="utf-8")
 SPEC = (ROOT / "SPEC.md").read_text(encoding="utf-8")
 EDITOR_INTEGRATION = (ROOT / "docs" / "editor_integration.rst").read_text(encoding="utf-8")
 DOCS_WORKFLOW = (ROOT / ".github" / "workflows" / "docs.yml").read_text(encoding="utf-8")
@@ -318,6 +319,29 @@ class TestTheCheckReference:
         assert "address map" in description
         assert "image" in description
 
+    def test_the_registry_describes_condition_left_out_by_what_the_build_holds(self) -> None:
+        """``ddd checks`` prints the registry's one-liner, which said the check was for an object
+        stating a condition that gets no address: one the build holds and the source cannot
+        place is ``address-missing``, whatever condition it states."""
+        description = CHECKS["condition-left-out"].description
+        assert "gets no address" not in description
+        assert description == (
+            "the build holds nothing of an object stating a condition, which the a2l leaves out: "
+            "the image defines no variable or symbol of its name, or the address map names none "
+            "of it"
+        )
+
+    def test_the_pages_say_reference_left_out_names_each_axis_and_its_condition(self) -> None:
+        """One finding named every curve that went with any axis, pointing at an information
+        printed after it, which a project may ignore: each axis now has a finding of its own."""
+        assert (
+            "It is one finding per axis, naming the axis, its condition and what goes with it, a "
+            "map over two such axes named under each."
+        ) in flattened(SPEC)
+        assert (
+            "One finding per axis names the axis and its condition beside what goes with it."
+        ) in flattened(CONSISTENCY_CHECKS)
+
     @pytest.mark.parametrize("page", sorted(PAGES))
     def test_the_fixed_checks_are_counted_as_the_registry_counts_them(self, page: str) -> None:
         """ "The five checks whose severity cannot be changed" went stale when two more joined.
@@ -466,6 +490,10 @@ class TestTheCommandPage:
         assert (
             "A float's cell takes every number as the double it is, but none past what its float "
             "holds, nor one rounding to zero in it"
+        ) in text
+        assert (
+            "typed or pasted in raw into a ``float32`` cell, a number is planned as the float32 it "
+            "rounds to, so C's ``3.4028235e38`` is FLT_MAX's own double"
         ) in text
         assert "or one at 2^53 in a ``uint64`` or ``sint64``, says it cannot show it" in text
         assert (
@@ -1823,6 +1851,17 @@ class TestTheReleaseNote:
     release starts with whatever its first change says.
     """
 
+    def test_the_respelling_names_what_migrating_costs_for_a_boolean_too(self) -> None:
+        """A description may spell a boolean ``1`` or ``0``, and a cell typed, or a table pasted,
+        over such a value respells it, as it does a float array's whole numbers."""
+        text = flattened(UNRELEASED)
+        assert (
+            "Migrating costs a diff: a table pasted over a float array whose file spells whole "
+            "numbers, or spells a `float32` at double precision, rewrites that spelling, and so "
+            "does a cell typed, or a table pasted, over a boolean the file spells `1` or `0`, "
+            "which is rewritten `true` or `false`; the diff shows it. The values mean the same."
+        ) in text
+
     def test_it_counts_the_checks_needing_every_component_as_the_registry_does(self) -> None:
         for word in project_wide_counts(UNRELEASED):
             assert NUMBER_WORDS[word.lower()] == len(project_wide_checks()), (
@@ -1968,6 +2007,314 @@ class TestTheTemplateReference:
         assert f"``.{name}" in self.TEMPLATES
 
 
+class TestTheFivePagesTheImageReaches:
+    """``--image`` reads the addresses out of a linked image, and the pages that name where an
+    address comes from say so beside the map."""
+
+    def test_the_acronyms_page_says_dwarf_is_read_and_the_address_comes_from_the_image(
+        self,
+    ) -> None:
+        page = flattened(PAGES["docs/acronyms.rst"])
+        assert "DDD does not read it" not in page
+        assert "``ddd generate a2l --image`` reads it to place the addresses the a2l needs" in page
+        assert (
+            "It is ``0x00000000`` until the linked image (``--image``) or an address map "
+            "supplies the real one."
+        ) in page
+        assert "even when neither an image nor an address map was given" in page
+
+    def test_the_faq_says_a_missing_address_is_warned_and_not_silent(self) -> None:
+        page = flattened(PAGES["docs/faq.rst"])
+        assert "keeps address zero silently" not in page
+        assert (
+            "Zero is the placeholder DDD writes when a symbol is not placed by the image "
+            "(``--image``) or in the address map, and it is what the whole file gets when "
+            "neither is given at all"
+        ) in page
+        assert (
+            "A symbol the map does not mention keeps address zero and is named once in the "
+            "``address-missing`` warning"
+        ) in page
+
+    def test_the_getting_started_page_offers_the_image_beside_the_map(self) -> None:
+        page = flattened(PAGES["docs/getting_started.rst"])
+        assert (
+            "``ddd generate a2l --image firmware.elf`` reads the real addresses out of the "
+            "linked image's debug information"
+        ) in page
+
+    def test_the_types_page_names_the_image_as_the_source_of_member_offsets(self) -> None:
+        page = flattened(PAGES["docs/file_formats/types.rst"])
+        assert (
+            "``--image`` reads the answer out of the linked image's debug information, member "
+            "offsets included"
+        ) in page
+
+
+class TestWhatThePagesSayTheImageIsHeldTo:
+    """``elf-mismatch`` holds the definition on every image and a consumer's declaration where the
+    compiler records it, which clang does not for an extern a unit only reads. The four pages that
+    describe the run say so, since a page that promised the header half everywhere would be the
+    claim the check exists to retire (finding 1:I12)."""
+
+    CLAUSE = "which gcc does for a variable a unit reads and clang does not"
+
+    def test_the_concept_page_holds_the_definition_everywhere_and_the_header_where_recorded(
+        self,
+    ) -> None:
+        page = flattened(PAGES["docs/concept.rst"])
+        assert (
+            "it holds the definition of each variable it places - size, encoding, qualifiers "
+            "and shape - to the declaration, on every image, and a consumer's ``extern`` to "
+            "the qualifiers of its kind where the compiler records it in the debug "
+            f"information, {self.CLAUSE}."
+        ) in page
+        assert "so a template that drops a ``const`` or ``volatile`` the kind carries" not in page
+
+    def test_the_build_page_says_a_header_is_caught_on_a_gcc_image_and_not_a_clang_one(
+        self,
+    ) -> None:
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert "The definition is held on every image" in page
+        assert (
+            "A consumer's declaration is held to the qualifiers of its kind where the compiler "
+            f"records it in the debug information, {self.CLAUSE}, so a component header that "
+            "leaves out ``volatile`` is caught on a gcc image and not on a clang one."
+        ) in page
+        assert "are caught here, in the c that was compiled" not in page
+
+    def test_the_specification_and_the_artefacts_page_name_the_declaration_half(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "A unit's declaration of a variable it does not define, a consumer's `extern`, is "
+            "held to the qualifiers of its kind the same way where the image's debug "
+            "information records it, which gcc's does for a variable a unit reads and "
+            "clang's does not."
+        ) in spec
+        page = flattened(PAGES["docs/generated_artefacts.rst"])
+        assert (
+            "A consumer's ``extern`` that leaves out a qualifier of its kind is a warning too, "
+            "where the compiler records the declaration in the debug information, "
+            f"{self.CLAUSE}."
+        ) in page
+
+
+class TestWhatTheToolboxSaysOfDisagreementsAndCplusplus:
+    """The sentences about what the toolbox refuses, reports and leaves to the author."""
+
+    def pages(self) -> tuple[str, str]:
+        return flattened(SPEC), flattened(PAGES["docs/toolbox.rst"]).replace("``", "`")
+
+    def test_both_pages_state_that_the_reader_is_for_c_and_refuses_each_cplusplus_shape(
+        self,
+    ) -> None:
+        spec, page = self.pages()
+        for text in (spec, page):
+            assert "a structure with a base class" in text
+            assert "a structure with a static member" in text
+            assert "namespace" in text
+        assert (
+            "reader is for the C that gcc and clang write, and C++ is refused rather than "
+            "described wrongly"
+        ) in spec
+        assert "The reader is for the C that gcc and clang write, and C++ is not described" in page
+
+    def test_both_pages_state_that_units_disagreeing_about_a_variable_are_reported(self) -> None:
+        spec, page = self.pages()
+        assert (
+            "a common symbol declared at two sizes, an array of two lengths, a weak definition "
+            "over a strong one of another type"
+        ) in spec
+        assert "the variable is `elf-type-conflict`, naming both, and is not described" in spec
+        assert "a common symbol (`-fcommon`) declared at two sizes, an array declared with two" in (
+            page
+        )
+        assert "The variable is left out, since no one of the descriptions is right" in page
+
+    def test_both_pages_state_which_section_an_overlaid_address_belongs_to(self) -> None:
+        spec, page = self.pages()
+        assert "It is the section the variable's symbol names (`st_shndx`)" in spec
+        assert "`elf-section-ambiguous`, since its section and its initial value cannot" in spec
+        assert "the variable's section is the one its symbol names" in page
+        assert "a variable that nothing places in either is `elf-section-ambiguous`" in page
+
+    def test_both_pages_state_that_the_identity_is_the_author_s_to_state(self) -> None:
+        spec, page = self.pages()
+        assert "`--identity-conversions` writes the identity on every entry and member" in spec
+        assert "is a `schema` error until its author states it" in spec
+        assert "`--identity-conversions` writes the identity where you state it" in page
+        assert "``Cal_Gain`` states no `conversion`, and that is deliberate" in page.replace(
+            "`Cal_Gain` states", "``Cal_Gain`` states"
+        )
+
+    def test_the_largest_float32_is_said_to_be_written_as_the_double_it_is(self) -> None:
+        spec, page = self.pages()
+        assert "except FLT_MAX and its negative, which are written as the double each is" in spec
+        assert "except FLT_MAX and its negative, written as the double each is" in page
+
+    def test_the_pages_limit_the_static_member_refusal_to_where_dwarf_writes_it_as_a_member(
+        self,
+    ) -> None:
+        spec, page = self.pages()
+        for text in (spec, page):
+            assert "at DWARF 5 gcc writes it apart" in text
+            assert "described by its storage" in text
+
+    def test_the_spec_lists_the_scoped_variable_among_the_reasons_image_places_nothing(
+        self,
+    ) -> None:
+        spec, _ = self.pages()
+        assert "a variable of a C++ namespace or class, which DDD does not read" in spec
+
+    def test_a_name_two_arguments_reach_is_said_to_be_refused_naming_both(self) -> None:
+        spec, page = self.pages()
+        assert "naming both arguments, since DDD names an object once" in spec
+        assert "are refused too, naming both arguments" in page
+
+
+class TestWhatTheReaderAndTheToolboxSay:
+    """The sentences about the reader's reach and the reasons a variable has no address."""
+
+    def test_the_reader_does_not_claim_every_variation_of_dwarf(self) -> None:
+        assert "Every variation of DWARF" not in ELF_SOURCE
+        assert "an image it cannot read - type units, gcc's link-time optimisation" in ELF_SOURCE
+
+    def test_the_spec_limits_the_atomic_refusal_to_what_the_debug_information_states(self) -> None:
+        spec = flattened(SPEC)
+        assert "or an `_Atomic` type where the debug information states it, is refused" in spec
+        assert "writes `_Atomic uint32_t` as the plain type, which is then read as one" in spec
+
+    def test_the_spec_and_the_page_state_the_two_messages_the_selection_gives(self) -> None:
+        said = (
+            "defined where the debug information does not describe it",
+            "is `elf-no-storage` once, naming the units",
+        )
+        spec = flattened(SPEC)
+        page = flattened(PAGES["docs/toolbox.rst"]).replace("``", "`")
+        for sentence in said:
+            assert sentence in spec
+        assert "defined where the debug information does not describe it" in page
+        assert "is reported once, naming the units, since a unit prefix would take none" in page
+
+    def test_the_spec_and_the_page_tell_a_split_image_and_a_g1_variable_what_they_are(
+        self,
+    ) -> None:
+        """``from-elf`` told a split image that its units had no ``-g`` and a ``-g1`` variable
+        that it was ``void``, as the placement of ``--image`` no longer does."""
+        spec = flattened(SPEC)
+        page = flattened(PAGES["docs/toolbox.rst"]).replace("``", "`")
+        assert (
+            "or, where the image's debug information is split into `.dwo` files (`-gsplit-dwarf`), "
+            "which the reader does not read, to be described there; and a variable `-g1` leaves "
+            "without a type is `elf-type-unsupported`, in a sentence saying so"
+        ) in spec
+        assert (
+            "or, in an image whose debug information is split into `.dwo` files (`-gsplit-dwarf`), "
+            "is described in those, which the tool does not read"
+        ) in page
+        assert "and a variable the debug information gives no type, as `-g1` leaves every one" in (
+            page
+        )
+
+
+class TestWhatThePagesSayOfAnObjectTheBuildLeftOut:
+    """An object that states a condition is left out only where the build holds nothing of it,
+    and that rule has to read the same wherever a reader meets it."""
+
+    def test_the_specification_s_address_missing_is_not_for_unconditional_objects_alone(
+        self,
+    ) -> None:
+        spec = flattened(SPEC)
+        assert "an object the A2L carries, one that states no condition, gets no" not in spec
+        assert (
+            "An object that states a condition, and of which the build holds nothing, is not "
+            "carried: the A2L leaves it out, as `condition-left-out` says. One the build holds, "
+            "and the map or the image does not place, is `address-missing` whatever condition it "
+            "states."
+        ) in spec
+        assert "uncovered, one that states no condition, is `address-missing`" not in spec
+        assert (
+            "is `address-missing` ([section 4](#4-consistency-checks)), an object that states a "
+            "condition among them wherever the build holds anything of it, one it holds nothing "
+            "of being left out as above"
+        ) in spec
+
+    def test_the_specification_says_when_a_linker_s_discard_reads_as_absence(self) -> None:
+        """gold leaves a variable of a unit it discarded at an offset with no symbol, and GNU ld
+        a tombstone address where it discards a section, both defects to show; GNU ld drops the
+        debug information of a unit it discards whole, and nothing is left to read."""
+        spec = flattened(SPEC)
+        assert (
+            "the linker discarded it and the image still shows so, at an address of 0 or all "
+            "ones or at one no symbol of its name holds - is a defect"
+        ) in spec
+        assert (
+            "A unit GNU ld discards whole loses its debug information too "
+            "([section 6](#6-address-information)), so a variable of it reads as absent and is "
+            "left out as one a condition compiled out is"
+        ) in spec
+
+    def test_the_specification_names_the_curve_that_goes_with_its_axis_at_warning(self) -> None:
+        spec = flattened(SPEC)
+        assert "over an axis so left out with it; `condition-left-out` says so at `info`" not in (
+            spec
+        )
+        assert (
+            "A curve or a map over an axis so left out goes with it, and since the build holds "
+            "the curve or the map, `reference-left-out` names it at `warning`"
+        ) in spec
+
+    def test_the_build_page_and_the_check_reference_say_what_the_run_does(self) -> None:
+        page = flattened(PAGES["docs/build_integration.rst"])
+        assert "once, for the objects that state no condition" not in page
+        assert (
+            "raises it, once, for the objects it lacks, save a conditional one of which it names "
+            "neither the object nor a member, which is left out of the a2l and reported at "
+            "``info``: a structure the map names by its own name, as ``nm`` lists it, keeps its "
+            "members ``address-missing``"
+        ) in page
+        reference = flattened(CONSISTENCY_CHECKS)
+        assert "would name a record it does not have" not in reference
+        assert (
+            "leaves a curve or a map out with its axis (``reference-left-out``), and writes an "
+            "axis whose input it left out with no input quantity"
+        ) in reference
+
+    def test_the_build_page_shows_what_its_example_prints_where_gcc_links_position_independent(
+        self,
+    ) -> None:
+        """Run as the page says, the example's image is position independent on a Debian or
+        Ubuntu host, and the step says so first."""
+        page = PAGES["docs/build_integration.rst"]
+        assert (
+            "   firmware.elf: info[image-load-relative]: the image is position independent, so the "
+            "addresses the a2l states are offsets from where it loads\n"
+            "       note: a project that adds its load base when it reads the a2l is right, and "
+            "one that does not finds every address wrong\n"
+            "   firmware.elf: info[condition-left-out]: the image has no address for 'ValueG', "
+            "which is only present in the build when 'defined(FEATURE_X)'; it is left out of the "
+            "a2l\n"
+            "       note: the image's debug information holds no variable named 'ValueG'\n"
+            "   2 infos\n"
+        ) in page
+        flat = flattened(page)
+        assert (
+            "Built where gcc links position independent by default, as it does on a Debian or "
+            "Ubuntu host and in the ``cmake`` compose service, it prints:"
+        ) in flat
+        assert (
+            "The first is ``image-load-relative``: a position independent image holds offsets "
+            "from where it loads, which the a2l states as they are"
+        ) in flat
+        assert "as ``-no-pie`` links this one, prints the second alone" in flat
+
+    def test_the_changelog_names_both_identifiers_of_a_name_asked_for_twice(self) -> None:
+        assert (
+            "A script that matched `duplicate-declaration` for a name asked for twice matches "
+            "`elf-symbol-ambiguous` instead, at the same exit status."
+        ) in flattened(CHANGELOG)
+
+
 class TestTheBuildIntegrationPage:
     """The cmake module is what a build runs, so the page and the module are held together."""
 
@@ -2091,6 +2438,22 @@ class TestTheBuildIntegrationPage:
             "until which, under Ninja, the generation runs at every build and a change of that "
             "component's header reaches its readers a build late"
         ) in flattened(SPEC)
+
+    def test_the_page_says_an_lto_image_cannot_be_read_by_the_image_step(self) -> None:
+        """The tool refuses an image gcc linked with ``-flto``, and the page leading with
+        ``ADDRESSES_FROM_IMAGE`` says so in the words of the refusal, and what to do."""
+        page = flattened(PAGES["docs/build_integration.rst"])
+        refusal = (
+            "its DWARF comes from gcc's link-time optimisation, which this tool does not read; "
+            "build it without -flto"
+        )
+        assert refusal in ELF_SOURCE.replace('"\n            f"', "")
+        assert f'exit 2, with "{refusal}"' in page
+        assert (
+            "A project that links with ``-flto`` and keeps it takes its addresses from a map "
+            "instead (``ADDRESS_MAP``, below)"
+        ) in page
+        assert "built with ``-g`` and without ``-flto``" in page
 
     def test_the_example_is_shown_as_shipped_without_its_comments(self) -> None:
         """The page calls its block the shipped file minus comments, so that is what it is."""
@@ -3721,3 +4084,21 @@ class TestToolbox:
     ) -> None:
         """A finding's severity decides the exit status; the guide is where a user reads it."""
         assert f"   * - ``{finding}``\n     - {severity}\n" in self.GUIDE
+
+    def test_both_pages_state_that_only_a_full_width_constant_of_a_signed_enum_is_negative(
+        self,
+    ) -> None:
+        """The reader sign-extends an enumerator only for a signed enum, from a constant as
+        wide as the enum; an unsigned enum's 200, or a signed one's, is the value it holds."""
+        spec = " ".join(SPEC.split())
+        guide = " ".join(self.GUIDE.split())
+        assert (
+            "Only an enumerator of a signed enum, written as a fixed-width constant as wide as "
+            "the enum, with its top bit set, is negative" in spec
+        )
+        assert (
+            "An enumerator of a signed enum is negative only where its fixed-width constant is "
+            "as wide as the enum and its top bit is set" in guide
+        )
+        for text in (spec, guide):
+            assert "whether its form is narrower or wider than the enum" in text

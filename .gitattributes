@@ -5,3 +5,4 @@
 *.pdf binary
 *.elf binary
 *.o binary
+*.debug binary

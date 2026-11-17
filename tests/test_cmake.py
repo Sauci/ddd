@@ -2774,10 +2774,11 @@ class TestTheDocumentedAddressMapRecipe:
     bit ``ECU_ADDRESS`` can hold, because this host would otherwise place *DDD's own*
     variables above 4 GB, which is not a thing the tool can do anything about - "what a host
     build of an embedded project runs into first". And ``address-missing`` is lowered to
-    ``info`` rather than left to ``STRICT``, because this project has the two objects a symbol
-    lister cannot answer for: a structure member, addressed under its access path, and one a
-    condition compiled out of the image - the page says a project adds the first itself, and
-    the specification calls the second a legitimate omission.
+    ``info`` rather than left to ``STRICT``, because this project has an object a symbol lister
+    cannot answer for: a structure member, addressed under its access path, which the page says
+    a project adds itself. The one a condition compiled out of the image no longer needs the
+    lowering: it is left out of the a2l and said at ``info``, and this build, strict as it is,
+    is not stopped by it.
     """
 
     def write(self, tmp_path: Path) -> Path:
@@ -2814,7 +2815,9 @@ class TestTheDocumentedAddressMapRecipe:
         assert "ValueA" in extracted, "the step extracts the symbols of the image"
         assert any(name.startswith("_") for name in extracted), "the c runtime's among them"
         assert "Reading the addresses of the a2l out of the address map of firmware.elf" in output
-        assert "address-missing" in output, "the two objects a symbol lister cannot answer for"
+        assert "address-missing" in output, "the member a symbol lister cannot answer for"
+        assert "info[condition-left-out]" in output, "ValueG, which the image is built without"
+        assert "ValueG" not in (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
         a2l = (generated / "DemoDevice.a2l").read_text(encoding="utf-8")
         assert f"ECU_ADDRESS 0x{int(extracted['ValueA'], 16):08X}" in a2l
 

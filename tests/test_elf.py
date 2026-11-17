@@ -7,7 +7,7 @@ import itertools
 import json
 import re
 import struct
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,15 +18,19 @@ import pytest
 from build_elf_fixtures import UNITS
 from elftools.elf.elffile import ELFFile
 
+import ddd.elf as ddd_elf
+from ddd.diagnostics import DiagnosticBag
 from ddd.elf import (
     DECLARED_ONLY,
     DISCARDED,
+    DW_ATE_FLOAT,
     DW_ATE_SIGNED,
     DW_ATE_SIGNED_CHAR,
     DW_ATE_UNSIGNED,
     DW_ATE_UNSIGNED_CHAR,
     FOLDED,
     NOT_AN_ADDRESS,
+    OTHER_SCOPE,
     REMOVED,
     THREAD_LOCAL,
     Array,
@@ -44,12 +48,23 @@ from ddd.elf import (
     Typedef,
     Unsupported,
     Variable,
+    _guarded,
+    _Node,
+    _PyelftoolsUnit,
+    _require_line_entries_fit,
+    _Types,
+    core_of,
     file_path,
     file_table,
     open_image,
     read_variables,
     size_of,
 )
+from ddd.elf import (
+    _children as walk_children,
+)
+from ddd.toolbox.from_elf import describe
+from ddd.toolbox.mapping import ALIGNMENT_CAPS
 
 _OFFSETS = itertools.count(1)
 
@@ -88,6 +103,9 @@ class FakeUnit:
     name: str = "unit.c"
     files: dict[int, str] = field(default_factory=lambda: {1: "unit.c"})
     addresses: dict[int, int] = field(default_factory=dict)
+
+    def children(self, entry: Die) -> Iterator[Die]:
+        return entry.iter_children()
 
     def operations(self, expression: Any) -> list[tuple[str, list[Any]]]:
         return list(expression)
@@ -317,32 +335,61 @@ class TestTypes:
         assert type_of(entry) == Enum(None, 2, True, (("WIDE", 255),))
 
     @pytest.mark.parametrize(
-        ("form", "raw"),
+        ("size", "form", "raw", "expected"),
         [
-            ("DW_FORM_data1", 0xFF),
-            ("DW_FORM_data2", 0xFFFF),
-            ("DW_FORM_data4", 0xFFFF_FFFF),
-            ("DW_FORM_data8", 0xFFFF_FFFF_FFFF_FFFF),
+            (1, "DW_FORM_data1", 0xFF, -1),
+            (1, "DW_FORM_data1", 0x80, -128),
+            (1, "DW_FORM_data1", 0x7F, 127),
+            (2, "DW_FORM_data2", 0xFFFF, -1),
+            (2, "DW_FORM_data2", 0x8000, -32768),
+            (4, "DW_FORM_data4", 0xFFFF_FFFF, -1),
+            (4, "DW_FORM_data4", 0x8000_0000, -(2**31)),
+            (8, "DW_FORM_data8", 0xFFFF_FFFF_FFFF_FFFF, -1),
+            (8, "DW_FORM_data8", 1 << 63, -(2**63)),
         ],
     )
-    def test_an_enumerator_is_sign_extended_from_the_width_of_its_form(
-        self, form: str, raw: int
+    def test_an_enumerator_at_the_full_width_of_its_enum_is_sign_extended(
+        self, size: int, form: str, raw: int, expected: int
     ) -> None:
-        """Each ``DW_FORM_dataN`` sign-extends from its own width: ``raw`` is all ones at
-        that width and no wider, so it reads as -1 only where the width is the right one."""
+        """Review Focus 4: a constant as wide as its enum cannot hold a value above the signed
+        maximum, so its top bit says negative - all ones is -1, the top bit alone the minimum."""
         entry = die(
             "DW_TAG_enumeration_type",
-            enumerator(b"NEG", raw, form),
-            of=die(
-                "DW_TAG_base_type",
-                DW_AT_name=b"int",
-                DW_AT_encoding=DW_ATE_SIGNED,
-                DW_AT_byte_size=4,
-            ),
-            DW_AT_name=b"Wide_e",
-            DW_AT_byte_size=4,
+            enumerator(b"EDGE", raw, form),
+            DW_AT_encoding=DW_ATE_SIGNED,
+            DW_AT_byte_size=size,
         )
-        assert type_of(entry) == Enum("Wide_e", 4, True, (("NEG", -1),))
+        assert type_of(entry) == Enum(None, size, True, (("EDGE", expected),))
+
+    @pytest.mark.parametrize(
+        ("size", "form", "raw"),
+        [
+            (4, "DW_FORM_data1", 0xFF),
+            (4, "DW_FORM_data1", 200),
+            (4, "DW_FORM_data1", 128),
+            (4, "DW_FORM_data2", 40000),
+            (4, "DW_FORM_data2", 32768),
+            (4, "DW_FORM_data2", 0xFFFF),
+            (8, "DW_FORM_data4", 2**31),
+            (8, "DW_FORM_data4", 0xFFFF_FFFF),
+            (2, "DW_FORM_data1", 0xFF),
+            (4, "DW_FORM_data8", 0xFFFF_FFFF_FFFF_FFFF),
+        ],
+    )
+    def test_an_enumerator_below_the_full_width_of_its_enum_is_zero_extended(
+        self, size: int, form: str, raw: int
+    ) -> None:
+        """Review Focus 4, and finding 11:C1: a negative enumerator is ``DW_FORM_sdata`` in gcc's
+        output and a positive one is the ``DW_FORM_dataN`` that holds it, so a ``dataN`` not as
+        wide as its enum is positive, whatever the enum's sign: 200 is not -56 and 40000 is
+        not -25536."""
+        entry = die(
+            "DW_TAG_enumeration_type",
+            enumerator(b"EDGE", raw, form),
+            DW_AT_encoding=DW_ATE_SIGNED,
+            DW_AT_byte_size=size,
+        )
+        assert type_of(entry) == Enum(None, size, True, (("EDGE", raw),))
 
     def test_an_enum_declared_but_never_defined_is_unsupported(self) -> None:
         entry = die("DW_TAG_enumeration_type", DW_AT_declaration=DECLARATION)
@@ -636,6 +683,26 @@ class TestVariables:
         (found,) = read(variable(b"Nowhere", located=False, DW_AT_declaration=DECLARATION))
         assert (found.address, found.missing) == (None, DECLARED_ONLY)
 
+    def test_the_declarations_of_other_units_are_handed_to_a_caller_who_asks(self) -> None:
+        """What a consumer's header says of a variable another unit defines: each unit's own
+        declaration, with the name defined, and neither the defining unit's own header's nor
+        that of a name nobody defines."""
+
+        def declared(name: bytes) -> Die:
+            return variable(name, located=False, DW_AT_declaration=DECLARATION)
+
+        units = [
+            FakeUnit(die("DW_TAG_compile_unit", declared(b"Shared"), variable(b"Shared")), "def.c"),
+            FakeUnit(die("DW_TAG_compile_unit", declared(b"Shared"), declared(b"Nowhere")), "a.c"),
+            FakeUnit(die("DW_TAG_compile_unit", declared(b"Shared")), "b.c"),
+        ]
+        found: list[Variable] = []
+        read_variables(units, big_endian=False, declarations=found)
+        assert [(entry.name, entry.unit, entry.missing) for entry in found] == [
+            ("Shared", "a.c", DECLARED_ONLY),
+            ("Shared", "b.c", DECLARED_ONLY),
+        ]
+
     def test_a_name_declared_by_two_units_is_kept_once(self) -> None:
         units = [
             FakeUnit(
@@ -743,6 +810,27 @@ class TestLinkage:
         )
         (found,) = read(declaration, definition)
         assert (found.name, found.address, found.external) == ("Spec", 0x100, True)
+
+    def test_a_definition_takes_its_alignment_from_the_declaration_unless_it_states_one(
+        self,
+    ) -> None:
+        declaration = variable(
+            b"Spec", located=False, DW_AT_declaration=DECLARATION, DW_AT_alignment=32
+        )
+        completes = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        own = variable(b"Own", located=False, DW_AT_declaration=DECLARATION)
+        states = die(
+            "DW_TAG_variable",
+            specification=own,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+            DW_AT_alignment=64,
+        )
+        found = read(declaration, completes, own, states)
+        assert {v.name: v.alignment for v in found} == {"Spec": 32, "Own": 64}
 
     def test_a_variable_built_by_hand_stands_for_a_global(self) -> None:
         """Ruling 2: every hand-built variable of the toolbox's tests stands for a global."""
@@ -854,6 +942,193 @@ class TestImage:
         assert IMAGE.section_of(0x104) is None
 
 
+def node(
+    offset: int,
+    size: int = 4,
+    *,
+    is_null: bool = False,
+    children: bool = False,
+    sibling: int | None = None,
+) -> _Node:
+    """A stand-in entry for the forward-only cursor: it navigates by these fields alone, so a
+    test drives it without any image, damaged or not. ``entry`` is the offset itself, so a
+    walk's result reads as the offsets it visited."""
+    return _Node(offset, size, is_null, children, sibling, offset)
+
+
+def reader(*nodes: _Node) -> Callable[[int], _Node]:
+    """A cursor's ``fetch``: the entry at a byte offset, out of ``nodes`` keyed by offset."""
+    by_offset = {entry.offset: entry for entry in nodes}
+    return lambda offset: by_offset[offset]
+
+
+class TestTheForwardCursor:
+    """Children are walked by a cursor of the reader's own, which only moves forward, so a
+    sibling pointer cannot send it in a circle (finding 11:I6). The cursor navigates plain
+    stand-ins here; the committed fixtures exercise it over real DWARF in every other test that
+    opens one."""
+
+    def test_the_children_are_yielded_in_order(self) -> None:
+        parent = node(0, children=True)
+        a, b = node(4), node(8)
+        fetch = reader(parent, a, b, node(12, 1, is_null=True))
+        assert [entry.entry for entry in walk_children(parent, fetch, "img.elf")] == [4, 8]
+
+    def test_an_entry_without_children_yields_nothing(self) -> None:
+        assert list(walk_children(node(0, children=False), reader(), "img.elf")) == []
+
+    def test_a_sibling_pointer_skips_the_subtree_between_it_and_the_next(self) -> None:
+        parent = node(0, children=True)
+        first = node(4, children=True, sibling=20)  # its subtree, 8..19, is never fetched
+        second = node(20)
+        fetch = reader(parent, first, second, node(24, 1, is_null=True))
+        assert [entry.entry for entry in walk_children(parent, fetch, "img.elf")] == [4, 20]
+
+    def test_an_entry_with_children_and_no_sibling_is_walked_to_its_terminator(self) -> None:
+        parent = node(0, children=True)
+        first = node(4, children=True)  # no sibling: its subtree is walked to find the next
+        grandchild = node(8)
+        first_end = node(12, 1, is_null=True)
+        second = node(13)
+        fetch = reader(parent, first, grandchild, first_end, second, node(17, 1, is_null=True))
+        assert [entry.entry for entry in walk_children(parent, fetch, "img.elf")] == [4, 13]
+
+    def test_a_sibling_that_points_at_its_own_entry_is_a_damaged_image(self) -> None:
+        parent = node(0, children=True)
+        loop = node(4, children=True, sibling=4)
+        with pytest.raises(ElfReadError) as refused:
+            list(walk_children(parent, reader(parent, loop), "img.elf"))
+        assert str(refused.value) == (
+            "'img.elf' is not an ELF image this tool can read: the entry at 0x4 points to a "
+            "next sibling at 0x4, which does not lie past it, so its debug information cannot "
+            "be walked"
+        )
+
+    def test_a_sibling_that_points_back_before_the_entry_is_refused_too(self) -> None:
+        parent = node(0, children=True)
+        first = node(4)
+        back = node(8, children=True, sibling=4)
+        with pytest.raises(ElfReadError) as refused:
+            list(walk_children(parent, reader(parent, first, back), "img.elf"))
+        assert "the entry at 0x8 points to a next sibling at 0x4" in str(refused.value)
+
+
+class TestTheLineHeaderBound:
+    """A line program's header names how many directory and file entries follow it; a count
+    past the bytes left for them is a damaged header, refused before the array is allocated
+    (finding 11:I6's line header). The committed fixtures drive the surrounding extraction;
+    this pins the rule on the two numbers it comes down to."""
+
+    def test_more_entries_than_bytes_is_refused_naming_both(self) -> None:
+        with pytest.raises(ElfReadError) as refused:
+            _require_line_entries_fit(5, 4, "img.elf")
+        assert str(refused.value) == (
+            "'img.elf' is not an ELF image this tool can read: a line program's header names 5 "
+            "directory or file entries, more than the 4 bytes after it can hold"
+        )
+
+    def test_as_many_entries_as_bytes_is_allowed(self) -> None:
+        assert _require_line_entries_fit(4, 4, "img.elf") is None
+
+    def test_fewer_entries_than_bytes_is_allowed(self) -> None:
+        assert _require_line_entries_fit(0, 0, "img.elf") is None
+
+
+class TestTheReadersNet:
+    """Any exception a build runs into becomes the usage error a damaged image is, wherever
+    the reader meets it: in open_image, or in a type or declaration built later."""
+
+    def test_a_build_that_returns_is_handed_back(self) -> None:
+        assert _guarded("img.elf", lambda: 7) == 7
+
+    def test_an_exception_becomes_a_refusal_naming_the_image(self) -> None:
+        def boom() -> int:
+            raise KeyError(3)
+
+        with pytest.raises(ElfReadError) as refused:
+            _guarded("img.elf", boom)
+        assert str(refused.value) == (
+            "'img.elf' is not an ELF image this tool can read: KeyError: 3"
+        )
+
+    def test_a_refusal_already_named_is_passed_through_unchanged(self) -> None:
+        def already() -> int:
+            raise ElfReadError("stated once")
+
+        with pytest.raises(ElfReadError, match=r"^stated once$"):
+            _guarded("img.elf", already)
+
+    def test_a_deferred_type_that_fails_to_build_refuses_the_image(self) -> None:
+        """The net wraps each deferred build, so a value pyelftools hands back that the reader
+        cannot turn into a type is the usage error open_image would have raised, not a traceback
+        escaping from a caller that touched the variable's type."""
+        unbuildable = die(
+            "DW_TAG_base_type",
+            DW_AT_name=b"x",
+            DW_AT_encoding=Attr(object(), "DW_FORM_data1"),
+            DW_AT_byte_size=1,
+        )
+        units = [FakeUnit(die("DW_TAG_compile_unit", variable(b"v", of=unbuildable)))]
+        (found,) = read_variables(units, big_endian=False, shown="img.elf")
+        with pytest.raises(ElfReadError) as refused:
+            _ = found.type
+        assert str(refused.value).startswith(
+            "'img.elf' is not an ELF image this tool can read: TypeError"
+        )
+
+
+class TestLaziness:
+    """A variable's type is built, and the line table read for its declaration, only where a
+    caller asks (findings 11:M5 and 11:I6): a run over an image of many variables pays for the
+    few it is asked about."""
+
+    def test_opening_an_image_builds_no_type_and_asking_builds_only_what_is_reached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        built: list[str | int | None] = []
+        original = _Types._build
+
+        def counting(self: _Types, entry: Any, unit: Any) -> CType:
+            built.append(entry.tag)
+            return original(self, entry, unit)
+
+        monkeypatch.setattr(_Types, "_build", counting)
+        image = open_image(FIXTURES / "x86_64.elf")
+        assert built == []
+        assert by_name(image, "Type_Char").type == Base("char", DW_ATE_SIGNED_CHAR, 1)
+        assert built == ["DW_TAG_base_type"]
+        assert "DW_TAG_structure_type" not in built
+
+    def test_the_line_table_is_read_only_when_a_declaration_is_asked_for(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reads: list[str] = []
+        original = ddd_elf.file_table
+
+        def counting(program: Any, directory: str) -> FileTable | None:
+            reads.append(directory)
+            return original(program, directory)
+
+        monkeypatch.setattr(ddd_elf, "file_table", counting)
+        image = open_image(FIXTURES / "x86_64.elf")
+        assert reads == []
+        assert isinstance(by_name(image, "Type_Char").type, Base)
+        assert reads == []
+        assert by_name(image, "Cal_Gain").declared_at is not None
+        assert len(reads) == 1
+
+    def test_a_unit_without_a_line_program_reads_no_file_table(self) -> None:
+        unit = _PyelftoolsUnit.__new__(_PyelftoolsUnit)
+        unit.top = SimpleNamespace(attributes={})
+        unit._dwarf = SimpleNamespace(line_program_for_CU=lambda cu: None)
+        unit._cu = None
+        unit._compilation_directory = "."
+        unit._shown = "img.elf"
+        unit._files = None
+        unit._files_read = False
+        assert unit.file(3) is None
+
+
 FIXTURES = Path(__file__).parent / "fixtures" / "elf"
 MANIFEST = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
 MAIN = (FIXTURES / "src" / "main.c").read_text(encoding="utf-8").splitlines()
@@ -922,8 +1197,111 @@ def row(request: pytest.FixtureRequest) -> tuple[Image, dict[str, Any]]:
     return open_image(FIXTURES / f"{request.param}.elf"), MANIFEST["rows"][request.param]
 
 
+MACHINES = {
+    "Intel 80386": 3,
+    "PowerPC": 20,
+    "IBM S/390": 22,
+    "ARM": 40,
+    "Advanced Micro Devices X86-64": 62,
+    "AArch64": 183,
+    "RISC-V": 243,
+}
+"""readelf's name for each machine the matrix builds for, and its ``e_machine``."""
+
+
 class TestTheMatrix:
     """Every row read against what its own toolchain said about it (the manifest)."""
+
+    def test_the_machine_is_the_headers(self, row: tuple[Image, dict[str, Any]]) -> None:
+        image, entry = row
+        assert image.machine == MACHINES[entry["image"]["machine"]]
+
+    def test_a_machine_the_reader_has_no_name_for_is_its_number(self, tmp_path: Path) -> None:
+        patched = bytearray((FIXTURES / "x86_64.elf").read_bytes())
+        patched[18:20] = (0x1234).to_bytes(2, "little")
+        path = tmp_path / "odd.elf"
+        path.write_bytes(patched)
+        assert open_image(path).machine == 0x1234
+
+    @pytest.mark.parametrize(
+        ("row", "flags", "checked"),
+        [
+            ("armv7m", 0x600, False),
+            ("armv7m", 0x5000200, True),
+            ("riscv32", 0x9, False),
+            ("riscv32", 0x1, True),
+        ],
+    )
+    def test_the_abi_an_image_names_in_e_flags_decides_whether_its_layouts_are_checked(
+        self, tmp_path: Path, row: str, flags: int, checked: bool
+    ) -> None:
+        """An ARM image built for the older ABIs names no EABI version, and aligns a 64 bit
+        scalar to 4: its cap is not AAPCS's. An RV32E image is left out as well."""
+        patched = bytearray((FIXTURES / f"{row}.elf").read_bytes())
+        order = "little"
+        patched[36:40] = flags.to_bytes(4, order)
+        path = tmp_path / "abi.elf"
+        path.write_bytes(patched)
+        image = open_image(path)
+        assert image.flags == flags
+        bag = DiagnosticBag()
+        describe(image, ["Laid_Packed"], scope="output", component=None, bag=bag)
+        assert [d.check for d in bag.sorted if d.check.startswith("elf-layout")] == [
+            "elf-layout" if checked else "elf-layout-unchecked"
+        ]
+
+    def test_the_alignment_cap_of_the_machine_is_what_its_toolchain_measured(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """A 64 bit integer is aligned to its size, held to the machine's cap: i386 is the row
+        where the two differ, and the measurement is the manifest's, not the table's."""
+        image, entry = row
+        assert image.machine in ALIGNMENT_CAPS
+        assert min(8, ALIGNMENT_CAPS[image.machine]) == entry["traits"]["uint64_alignment"]
+
+    def test_a_layout_the_generated_c_would_not_reproduce_is_warned_and_a_natural_one_is_not(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """Packing, ``#pragma pack(2)``, a packed member, an unnamed bitfield and a zero width
+        one are each warned ``elf-layout``, named at the structure; the structures the target
+        lays out by its own alignment, among them one holding bitfields and a 64 bit member, are
+        not."""
+        image, _ = row
+        natural = (
+            "Laid_Natural",
+            "Layout_Padded",
+            "Layout_Gapped",
+            "Struct_Inlet",
+            "Nested_Frame",
+        )
+        departing = {
+            "Laid_Packed": "Packed_s",
+            "Laid_Pack2": "Pack2_s",
+            "Laid_Packed_Member": "Packed_Member_s",
+            "Laid_Unnamed": "Unnamed_s",
+            "Laid_Zero_Width": "Zero_Width_s",
+        }
+        said: dict[str, list[str]] = {}
+        for name in (*natural, *departing):
+            bag = DiagnosticBag()
+            describe(image, [name], scope="output", component=None, bag=bag)
+            said[name] = [d.message for d in bag.sorted if d.check == "elf-layout"]
+        assert {name: said[name] for name in natural} == {name: [] for name in natural}
+        for name, structure in departing.items():
+            assert len(said[name]) == 1, name
+            assert said[name][0].startswith(f"'{structure}"), name
+
+    def test_one_name_packed_by_one_unit_and_not_by_the_other_is_a_conflict(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        image, _ = row
+        bag = DiagnosticBag()
+        described = describe(image, ["Pair_A", "Pair_B"], scope="output", component=None, bag=bag)
+        assert described.interface == ()
+        assert [d.check for d in bag.sorted if d.check == "elf-type-conflict"] == [
+            "elf-type-conflict",
+            "elf-type-conflict",
+        ]
 
     def test_the_byte_order_is_the_toolchain_s(self, row: tuple[Image, dict[str, Any]]) -> None:
         image, entry = row
@@ -998,7 +1376,8 @@ class TestTheMatrix:
         self, row: tuple[Image, dict[str, Any]]
     ) -> None:
         """Review Focus 2: on strict DWARF 2 an enum states no underlying type and no
-        encoding, and only its negative enumerator says it is signed."""
+        encoding, and only its negative enumerator says it is signed. ``Signed_e`` holds 40000
+        and -32768, so it is 32 bits wide even on a target whose other enums are one byte."""
         image, entry = row
         state = core(by_name(image, "Enum_State").type)
         signed = core(by_name(image, "Enum_Signed").type)
@@ -1006,8 +1385,15 @@ class TestTheMatrix:
         assert isinstance(signed, Enum)
         width = entry["traits"]["sizeof_enum"]
         assert (state.size, state.signed) == (width, False)
-        assert (signed.size, signed.signed) == (width, True)
-        assert signed.enumerators == (("SIGNED_NEG", -2), ("SIGNED_POS", 3))
+        assert (signed.size, signed.signed) == (4, True)
+        assert signed.enumerators == (
+            ("SIGNED_NEG", -2),
+            ("SIGNED_POS", 3),
+            ("SIGNED_BIG", 200),
+            ("SIGNED_WIDE", 40000),
+            ("SIGNED_MIN8", -128),
+            ("SIGNED_MIN16", -32768),
+        )
 
     def test_bitfields_start_at_the_same_bits_whatever_the_byte_order_or_the_dwarf(
         self, row: tuple[Image, dict[str, Any]]
@@ -1071,6 +1457,63 @@ class TestTheMatrix:
         expected = 8 if entry["traits"]["alignment_attribute"] else None
         assert aligned.members[0].alignment == expected
         assert aligned.alignment in (expected, None)
+
+    def test_an_alignment_stated_on_a_variable_is_read_where_the_dwarf_states_it(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """``_Alignas(64)`` on a variable is ``DW_AT_alignment`` on its entry at DWARF 5, and
+        in the trial build at every row but the strict DWARF 2 one: the trait says which. A
+        variable of natural alignment states none."""
+        image, entry = row
+        expected = 64 if entry["traits"]["alignment_attribute"] else None
+        assert by_name(image, "Aligned_Var").alignment == expected
+        assert by_name(image, "Aligned_Natural").alignment is None
+
+    def test_a_gnu_vector_is_read_as_the_array_it_holds_and_marked(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """``vector_size`` is ``DW_AT_GNU_vector`` on the array type, on every row, the strict
+        DWARF 2 one too; an ordinary array is not marked."""
+        image, _ = row
+        lanes = core_of(by_name(image, "Vector_Var").type)
+        assert isinstance(lanes, Array)
+        assert (core(lanes.element), lanes.dimensions, lanes.vector) == (
+            Base("float", DW_ATE_FLOAT, 4),
+            (4,),
+            True,
+        )
+        plain = core_of(by_name(image, "Meas_Array").type)
+        assert isinstance(plain, Array)
+        assert not plain.vector
+        holder = core_of(by_name(image, "Vector_Holder").type)
+        assert isinstance(holder, Struct)
+        member = core_of(holder.members[1].type)
+        assert isinstance(member, Array)
+        assert member.vector
+
+    def test_an_alignment_the_source_states_on_a_variable_or_a_vector_is_warned_per_row(
+        self, row: tuple[Image, dict[str, Any]]
+    ) -> None:
+        """The variable and the vector are warned where their DWARF states them, the member
+        wherever the vector is stated; the variable the row's DWARF cannot state, and those
+        of natural alignment, are not."""
+        image, entry = row
+        said: dict[str, list[str]] = {}
+        for name in ("Aligned_Var", "Aligned_Natural", "Vector_Var", "Vector_Holder", "Meas_Array"):
+            bag = DiagnosticBag()
+            describe(image, [name], scope="output", component=None, bag=bag)
+            said[name] = [d.message for d in bag.sorted if d.check == "elf-alignment"]
+        stated = entry["traits"]["alignment_attribute"]
+        assert len(said["Aligned_Var"]) == (1 if stated else 0)
+        assert all(
+            m.startswith("'Aligned_Var' is aligned to 64 bytes") for m in said["Aligned_Var"]
+        )
+        assert said["Aligned_Natural"] == []
+        assert len(said["Vector_Var"]) == 1
+        assert said["Vector_Var"][0].startswith("'Vector_Var' is a GNU vector of 16 bytes")
+        assert len(said["Vector_Holder"]) == 1
+        assert said["Vector_Holder"][0].startswith("'Vector_Holder_s.lanes' is a GNU vector")
+        assert said["Meas_Array"] == []
 
     def test_thread_local_storage_has_no_address_and_its_sections_are_left_out(
         self, row: tuple[Image, dict[str, Any]]
@@ -1260,6 +1703,42 @@ class TestDiscarded:
         assert (record["name"], section.name) == ("Cal_Kept", record["section"])
 
 
+class TestGoldDiscarded:
+    """gold-gc-sections.elf: gold keeps the debug information of a unit it discarded and
+    leaves each address in it as an offset into the section it dropped, which no symbol of the
+    name marks; the same sources linked by GNU ld drop that debug information."""
+
+    def test_the_reader_keeps_an_offset_for_each_variable_of_the_unit_gold_dropped(self) -> None:
+        image = open_image(FIXTURES / "gold-gc-sections.elf")
+        assert {
+            name: by_name(image, name).address
+            for name in ("First_Unused", "Second_Unused", "Struct_Unused")
+        } == {"First_Unused": 8, "Second_Unused": 4, "Struct_Unused": None}
+        assert by_name(image, "Struct_Unused").missing == DISCARDED
+        assert [name for name, _ in image.objects if name.endswith("_Unused")] == []
+
+    def test_the_symbol_table_holds_the_variables_it_kept_where_the_reader_puts_them(self) -> None:
+        image = open_image(FIXTURES / "gold-gc-sections.elf")
+        for name in ("Gold_Kept", "Gold_Static"):
+            address = by_name(image, name).address
+            assert address is not None
+            assert image.has_object(name, address)
+            assert not image.has_object(name, address + 4)
+
+    def test_the_local_symbols_of_the_image_hold_its_static_and_none_of_the_dropped_unit(
+        self,
+    ) -> None:
+        image = open_image(FIXTURES / "gold-gc-sections.elf")
+        static = by_name(image, "Gold_Static").address
+        assert static is not None
+        assert ("Gold_Static", static) in image.local_objects
+        assert not any(name in {"Gold_Kept", "First_Unused"} for name, _ in image.local_objects)
+
+    def test_gnu_ld_leaves_no_variable_of_the_unit_it_dropped(self) -> None:
+        image = open_image(FIXTURES / "bfd-gc-sections.elf")
+        assert [variable.name for variable in image.variables if "_Unused" in variable.name] == []
+
+
 class TestRefusals:
     """What open_image refuses, each in a sentence naming the file. Where the end of the
     sentence is pyelftools' own words about a damaged file, the test pins ours and leaves
@@ -1332,6 +1811,22 @@ class TestRefusals:
         assert str(refused.value) == (
             f"'{path.as_posix()}' carries no DWARF debug information: build it with -g"
         )
+
+    def test_the_debug_only_companion_of_an_image_is_read_and_holds_no_contents(self) -> None:
+        """The reader keeps reading it, since its addresses are the image's: what it states is
+        that no section of the program has contents, which ``from-elf`` refuses it for. Its
+        build id is a note with contents, and does not count."""
+        companion = open_image(FIXTURES / "x86_64.debug")
+        linked = open_image(FIXTURES / "x86_64.elf")
+        assert companion.variables
+        assert companion.without_contents
+        assert not linked.without_contents
+        notes = {
+            section.name: section.offset is not None
+            for section in companion.sections
+            if section.note
+        }
+        assert notes == {".note.gnu.build-id": True}
 
     def test_a_relocatable_object_is_refused(self) -> None:
         path = FIXTURES / "main.o"
@@ -1539,3 +2034,311 @@ class TestDamagedImages:
 
         path = damaged(tmp_path, "x86_64", "commented.elf", change)
         assert by_name(open_image(path), "Cal_Gain").address is not None
+
+
+class TestCplusplus:
+    """The reader is for C. A C++ shape it would describe wrongly is refused where it occurs
+    (decision 11.1, finding 11:M8)."""
+
+    BASE = die(
+        "DW_TAG_structure_type",
+        member(b"base_member", U8, DW_AT_data_member_location=0),
+        DW_AT_name=b"Base",
+        DW_AT_byte_size=1,
+    )
+
+    def test_a_structure_with_a_base_class_is_unsupported(self) -> None:
+        derived = die(
+            "DW_TAG_structure_type",
+            die("DW_TAG_inheritance", of=self.BASE, DW_AT_data_member_location=0),
+            member(b"own", U8, DW_AT_data_member_location=1),
+            DW_AT_name=b"Derived",
+            DW_AT_byte_size=2,
+        )
+        assert type_of(derived) == Unsupported("a structure with a base class")
+
+    def test_a_static_member_is_unsupported(self) -> None:
+        """At DWARF 4 gcc writes it as a member that is only declared, with no location."""
+        with_static = die(
+            "DW_TAG_structure_type",
+            member(b"value", U8, DW_AT_data_member_location=0),
+            member(b"counted", U8, DW_AT_external=EXTERNAL, DW_AT_declaration=DECLARATION),
+            DW_AT_name=b"WithStatic",
+            DW_AT_byte_size=1,
+        )
+        assert type_of(with_static) == Unsupported("a structure with a static member")
+
+    @pytest.mark.parametrize(
+        "marks",
+        [{"DW_AT_external": EXTERNAL}, {"DW_AT_declaration": DECLARATION}],
+        ids=["external", "declared"],
+    )
+    def test_either_mark_of_a_static_member_is_enough(self, marks: dict[str, Any]) -> None:
+        with_static = die(
+            "DW_TAG_structure_type",
+            member(b"counted", U8, **marks),
+            DW_AT_name=b"WithStatic",
+            DW_AT_byte_size=1,
+        )
+        assert type_of(with_static) == Unsupported("a structure with a static member")
+
+    @pytest.mark.parametrize(
+        "location",
+        [
+            {"DW_AT_data_member_location": 0},
+            {"DW_AT_data_bit_offset": 3, "DW_AT_bit_size": 2},
+        ],
+        ids=["a byte offset", "a bit offset"],
+    )
+    def test_a_member_with_a_location_of_its_own_is_described(
+        self, location: dict[str, Any]
+    ) -> None:
+        plain = die(
+            "DW_TAG_structure_type",
+            member(b"x", U8, **location),
+            DW_AT_name=b"Plain",
+            DW_AT_byte_size=1,
+        )
+        found = type_of(plain)
+        assert isinstance(found, Struct)
+        assert [m.name for m in found.members] == ["x"]
+
+    def test_at_dwarf_5_a_static_member_is_written_apart_and_the_structure_is_its_storage(
+        self,
+    ) -> None:
+        """gcc writes the static as a ``DW_TAG_variable`` child of the structure, which is no
+        member of the object: the structure is described by what it stores."""
+        with_static = die(
+            "DW_TAG_structure_type",
+            member(b"value", U8, DW_AT_data_member_location=0),
+            die("DW_TAG_variable", of=U8, DW_AT_name=b"counted", DW_AT_external=EXTERNAL),
+            DW_AT_name=b"WithStatic",
+            DW_AT_byte_size=1,
+        )
+        found = type_of(with_static)
+        assert isinstance(found, Struct)
+        assert [m.name for m in found.members] == ["value"]
+
+    def test_a_variable_of_a_namespace_is_one_whose_definition_belongs_to_another_scope(
+        self,
+    ) -> None:
+        """gcc writes ``ns::OnlyInNs`` at the unit's top with a reference to its declaration,
+        which sits inside the namespace."""
+        declaration = variable(
+            b"OnlyInNs", located=False, DW_AT_declaration=DECLARATION, DW_AT_external=EXTERNAL
+        )
+        namespace = die("DW_TAG_namespace", declaration, DW_AT_name=b"ns")
+        definition = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(namespace, definition)
+        assert (found.name, found.address, found.missing) == ("OnlyInNs", None, OTHER_SCOPE)
+        assert found.external
+
+    def test_a_definition_beside_its_declaration_at_the_top_is_a_variable_of_c(self) -> None:
+        declaration = variable(b"Spec", located=False, DW_AT_declaration=DECLARATION)
+        definition = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(declaration, definition)
+        assert (found.name, found.address, found.missing) == ("Spec", 0x100, "")
+
+    def test_a_c_variable_of_the_same_short_name_is_the_one_a_name_asks_for(self) -> None:
+        declaration = variable(b"Shared", located=False, DW_AT_declaration=DECLARATION)
+        namespace = die("DW_TAG_namespace", declaration, DW_AT_name=b"ns")
+        scoped = die(
+            "DW_TAG_variable",
+            specification=declaration,
+            DW_AT_location=Attr(AT, "DW_FORM_exprloc"),
+        )
+        (found,) = read(namespace, scoped, variable(b"Shared"))
+        assert (found.name, found.address, found.missing) == ("Shared", 0x100, "")
+
+
+class TestTheImageOfCplusplus:
+    """cplusplus.elf: arm-none-eabi-g++ at DWARF 4, a structure with a base class, one with a
+    static member, a namespace's variable and a plain one (finding 11:M8)."""
+
+    def run(self, *names: str) -> tuple[list[str], list[tuple[str, str]]]:
+        bag = DiagnosticBag()
+        description = describe(
+            open_image(FIXTURES / "cplusplus.elf"),
+            list(names),
+            scope="output",
+            component=None,
+            bag=bag,
+        )
+        described = [entry["definition"]["name"] for entry in description.interface]
+        return described, [
+            (d.check, d.message) for d in bag.sorted if d.check != "elf-not-inferred"
+        ]
+
+    def test_a_structure_with_a_base_class_is_refused_and_says_so(self) -> None:
+        described, said = self.run("Cpp_Derived")
+        assert described == []
+        assert said == [
+            (
+                "elf-type-unsupported",
+                "'Cpp_Derived' is a structure with a base class, which DDD cannot state",
+            )
+        ]
+
+    def test_a_structure_with_a_static_member_is_refused_and_says_so(self) -> None:
+        described, said = self.run("Cpp_Static")
+        assert described == []
+        assert said == [
+            (
+                "elf-type-unsupported",
+                "'Cpp_Static' is a structure with a static member, which DDD cannot state",
+            )
+        ]
+
+    @pytest.mark.parametrize("name", ["OnlyInNs", "counted"])
+    def test_a_variable_defined_in_another_scope_is_no_candidate_by_its_short_name(
+        self, name: str
+    ) -> None:
+        described, said = self.run(name)
+        assert described == []
+        assert said == [
+            (
+                "elf-no-storage",
+                f"'{name}' is a variable of a C++ namespace or class, which DDD does not "
+                f"read: it reads C, and a short name does not say which one it is",
+            )
+        ]
+
+    def test_a_plain_variable_beside_them_is_described(self) -> None:
+        described, said = self.run("Cpp_Plain")
+        assert (described, said) == (["Cpp_Plain"], [])
+
+
+class TestUnitsThatDisagreeInTheImage:
+    """units-disagree.elf and units-undescribed.elf: what an ordinary linker makes of two units
+    that state one name two ways (finding 11:M6)."""
+
+    TAIL = ": one name at one address is one variable, so no one description of it is right"
+
+    def run(self, image: str, *names: str) -> tuple[list[str], list[tuple[str, str]]]:
+        bag = DiagnosticBag()
+        opened = open_image(FIXTURES / f"{image}.elf")
+        description = describe(opened, list(names), scope="output", component=None, bag=bag)
+        described = [entry["definition"]["name"] for entry in description.interface]
+        return described, [
+            (d.check, d.message) for d in bag.sorted if d.check != "elf-not-inferred"
+        ]
+
+    def address(self, image: str, name: str) -> int:
+        (address,) = {
+            variable.address
+            for variable in open_image(FIXTURES / f"{image}.elf").variables
+            if variable.name == name
+        }
+        assert address is not None
+        return address
+
+    @pytest.mark.parametrize(
+        ("name", "first", "second"),
+        [
+            ("Disagree_Cal", 2, 4),
+            ("Disagree_Shared", 8, 16),
+            ("Disagree_Weak", 2, 4),
+        ],
+        ids=["a common symbol", "an array", "a weak definition over a strong one"],
+    )
+    def test_two_units_stating_two_sizes_are_named(
+        self, name: str, first: int, second: int
+    ) -> None:
+        described, said = self.run("units-disagree", name)
+        at = self.address("units-disagree", name)
+        assert described == []
+        assert said == [
+            (
+                "elf-type-conflict",
+                f"'{name}' at {at:#x} is described as {first} bytes by 'disagree_a.c' and as "
+                f"{second} bytes by 'disagree_b.c', and the symbol table holds it as {second} "
+                f"bytes{self.TAIL}",
+            )
+        ]
+
+    def test_units_stating_one_size_are_one_variable(self) -> None:
+        described, said = self.run("units-disagree", "Disagree_Agreed")
+        assert (described, said) == (["Disagree_Agreed"], [])
+
+    def test_a_unit_prefix_does_not_hide_the_other_unit_s_description(self) -> None:
+        described, said = self.run("units-disagree", "disagree_b.c:Disagree_Cal")
+        at = self.address("units-disagree", "Disagree_Cal")
+        assert described == []
+        assert said == [
+            (
+                "elf-type-conflict",
+                f"'Disagree_Cal' at {at:#x} is described as 2 bytes by 'disagree_a.c' and as "
+                f"4 bytes by 'disagree_b.c', and the symbol table holds it as 4 bytes{self.TAIL}",
+            )
+        ]
+
+    @pytest.mark.parametrize("name", ["Undescribed_Common", "Undescribed_Weak"])
+    def test_a_description_is_held_against_the_symbol_s_size(self, name: str) -> None:
+        described, said = self.run("units-undescribed", name)
+        at = self.address("units-undescribed", name)
+        assert described == []
+        assert said == [
+            (
+                "elf-type-conflict",
+                f"'{name}' at {at:#x} is described as 2 bytes by 'undescribed_a.c', and the "
+                f"symbol table holds it as 4 bytes{self.TAIL}",
+            )
+        ]
+
+
+class TestSectionsOverlaidInTheImage:
+    """sections-overlaid.elf: a linker script overlays .page1 and .page2 at 0x20000 (finding
+    11:M7)."""
+
+    def described(self, *names: str) -> dict[str, dict[str, Any]]:
+        bag = DiagnosticBag()
+        description = describe(
+            open_image(FIXTURES / "sections-overlaid.elf"),
+            list(names),
+            scope="output",
+            component=None,
+            bag=bag,
+        )
+        assert not bag.has_errors
+        return {entry["definition"]["name"]: entry["definition"] for entry in description.interface}
+
+    def test_two_sections_hold_the_one_address(self) -> None:
+        image = open_image(FIXTURES / "sections-overlaid.elf")
+        assert [s.name for s in image.sections if s.address == 0x20000] == [".page1", ".page2"]
+
+    def test_each_variable_is_in_the_section_its_symbol_names_with_its_values(self) -> None:
+        found = self.described("Page1_Var", "Page2_Var")
+        assert {name: (d["section"], d["init"]) for name, d in found.items()} == {
+            "Page1_Var": (".page1", 0x11111111),
+            "Page2_Var": (".page2", 0x22222222),
+        }
+
+    def test_the_manifest_states_the_sections_the_toolchain_gave_them(self) -> None:
+        records = MANIFEST["negatives"]["sections-overlaid"]["variables"]
+        assert {record["name"]: record["section"] for record in records} == {
+            "Page1_Var": ".page1",
+            "Page2_Var": ".page2",
+        }
+
+
+class TestWhereAnImageLoads:
+    """``ET_DYN`` is what a position independent link writes: its addresses are offsets."""
+
+    @pytest.mark.parametrize(("row", "relative"), [("x86_64", True), ("armv7m", False)])
+    def test_an_image_is_load_relative_when_it_is_a_shared_object_type(
+        self, row: str, relative: bool
+    ) -> None:
+        image = open_image(FIXTURES / f"{row}.elf")
+        assert image.load_relative is relative
+        assert MANIFEST["rows"][row]["image"]["elf_type"] == ("DYN" if relative else "EXEC")
+
+    def test_the_debug_only_companion_of_a_pie_is_one_too(self) -> None:
+        assert open_image(FIXTURES / "x86_64.debug").load_relative

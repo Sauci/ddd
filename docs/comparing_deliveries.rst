@@ -884,7 +884,7 @@ carries no mark of which a dump is - and an input that arrived with no producer 
 ``changed-owner`` beside it. The one exception is the floor of ``ddd check --standalone``, which
 silences that analysis for what a component read alone was never shown and does not reach a producer
 the baseline had: the comparison then says it, once, as an error whatever the floor says, which is
-what makes a component that drops an output fail that gate, and a project's own
+what makes a component that turns an output into an input fail that gate, and a project's own
 ``-W missing-producer=ignore`` still silences it.
 
 One pair gets one verdict, whoever asks. ``ddd compare``, ``ddd check --baseline`` and the Compare

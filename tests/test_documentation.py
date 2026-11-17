@@ -5627,6 +5627,75 @@ class TestWhatTheReleaseNoteSaysOfBranchFive:
         assert "is taken for `alignment_cap`." not in self.TEXT
 
 
+class TestWhatTheReleaseNoteSaysOfBranchSix:
+    """The migrations of how a delivery is judged that the branch's entries owe a reader: a
+    nested array whose size is spelled another way, a component read alone whose outputs are
+    graded as read and which `ddd check --baseline` now reads under the floor too, and where a
+    file holding only a name is refused and as what."""
+
+    TEXT = flattened(UNRELEASED)
+
+    def test_a_nested_array_spelled_another_way_at_its_size_is_said_with_its_migration(
+        self,
+    ) -> None:
+        assert (
+            "a nested array of another size or of its size spelled another way, `[2]` as "
+            '`["N"]` where `N` is 2'
+        ) in self.TEXT
+        assert (
+            "A nested array whose size a constant names where a number did, or the other way, is "
+            "accepted the same way, or keeps the spelling of the baseline."
+        ) in self.TEXT
+
+    def test_an_output_of_a_component_read_alone_is_said_to_be_graded_as_read(self) -> None:
+        for said in (
+            "**An output a component drops or changes is graded as one somebody reads, an input "
+            "it stops reading stops nothing, and a component is read the same way by every "
+            "command.**",
+            "and every grade that waits on a reader takes an output of it as read, with a message "
+            "that does not claim to know a reader",
+            "Renamed with its id kept, given a condition or another one, or turned `volatile`, it "
+            "is now `renamed-read-object`, `narrowed-condition` or `changed-interface`, each an "
+            "error, where it was the warning `renamed-object`, `changed-condition` or "
+            "`changed-storage`",
+            "a measurement's limits widened are now the warning `widened-limits`, where they were "
+            "silent, and narrowed the info `narrowed-read-limits`, where they were the warning "
+            "`narrowed-limits`",
+            "An object it declares `local` keeps the grades of an object nobody reads",
+            "and a supplier whose gate passed the rename, the condition, the `volatile` or the "
+            "wider range of an output, and stops or warns on it now, relaxes the new id for that "
+            "delivery",
+        ):
+            assert said in self.TEXT, said
+        assert "**An output a component drops stops a comparison, an input it stops" not in (
+            self.TEXT
+        )
+
+    def test_check_baseline_reads_a_component_baseline_under_the_floor_too(self) -> None:
+        assert (
+            "`ddd compare`, `ddd check --baseline` without `--standalone` and the Compare tab now "
+            "read such a baseline under the floor"
+        ) in self.TEXT
+        assert (
+            "a project checked against a component file with an input exited 1 on it, and exits 0"
+        ) in self.TEXT
+
+    def test_a_file_holding_only_a_name_is_refused_as_what_each_reader_refuses_it_as(
+        self,
+    ) -> None:
+        assert (
+            "it is refused as `schema` wherever it is given as a delivery to compare: either side "
+            "of `ddd compare`, the baseline of `ddd check --baseline` and the tab's baseline"
+        ) in self.TEXT
+        assert (
+            "as the file `ddd check` itself reads it stays refused as `file-kind`, the refusal it "
+            "always met"
+        ) in self.TEXT
+        assert "on either side of `ddd compare` and `ddd check --baseline`, and in the tab" not in (
+            self.TEXT
+        )
+
+
 class TestWhatThePagesSayOfFormat10:
     """A leaf's display identifier is a path in the dumped dictionary, which format 10 lets it be;
     the pages that state the format the tool writes state the one it writes."""
@@ -6405,6 +6474,10 @@ class TestWhatThePagesSayOfTheNineSmallerVerdicts:
         ) in spec
         assert ("the comparison then says it, once, as an error whatever the floor says") in spec
         assert "and a project's own `-W missing-producer=ignore` still silences it" in spec
+        assert (
+            "and what fails the gate for a component that turns an output into an input"
+        ) in spec
+        assert "the gate's own for a component that drops an output" not in spec
         pages = flattened(COMPARING_DELIVERIES)
         assert (
             "The one exception is the floor of ``ddd check --standalone``, which silences that "
@@ -6412,8 +6485,31 @@ class TestWhatThePagesSayOfTheNineSmallerVerdicts:
             "producer the baseline had"
         ) in pages
         assert "the comparison then says it, once, as an error whatever the floor says" in pages
-        assert "what makes a component that drops an output fail that gate" in pages
+        assert "what makes a component that turns an output into an input fail that gate" in pages
+        assert "what makes a component that drops an output fail that gate" not in pages
         assert "and a project's own ``-W missing-producer=ignore`` still silences it" in pages
+
+    def test_the_check_reference_says_the_floor_does_not_reach_a_producer_the_baseline_had(
+        self,
+    ) -> None:
+        """The row of ``missing-producer`` names both candidates the comparison says it of, and
+        the paragraph on ``--standalone`` no longer says the option touches nothing else."""
+        reference = flattened(CONSISTENCY_CHECKS)
+        assert (
+            "and so does ``ddd check --baseline --standalone`` of an output the component turned "
+            "into an input, as an error whatever the floor says, since the floor does not reach "
+            "a producer the baseline had; a project's own ``-W missing-producer=ignore`` still "
+            "silences it"
+        ) in reference
+        assert (
+            "and touches nothing else of the analysis, so everything DDD can decide from the file "
+            "in front of it is still reported"
+        ) in reference
+        assert (
+            "Beside ``--baseline``, a producer the candidate lost is said by the comparison "
+            "instead, as an error the floor does not reach (``missing-producer`` below)."
+        ) in reference
+        assert "and touches nothing else, so" not in reference
 
     def test_a_broken_baseline_withholds_nothing_of_the_candidates(self) -> None:
         spec = flattened(SPEC)

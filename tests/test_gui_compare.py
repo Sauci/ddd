@@ -849,8 +849,9 @@ class TestABaselineIsStampedBeforeItIsRead:
     clock is kept like any other.
 
     What a read learns is which files make the baseline up, so a description is stamped before the
-    read by the files the last read of it learned - the first read of one is not yet kept, and the
-    second is."""
+    read by the files the last read of it learned, and before its first read by the files it names
+    itself, as the session stamps a project it opens: a flat one is kept from its first read, and
+    one naming a sub-project from its second."""
 
     @staticmethod
     def reads(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
@@ -1114,7 +1115,7 @@ class TestTheTabReadsABaselineUnderTheProjectsRelaxations:
         write_tree(root, self.FILES)
         cache: BaselineCache = {}
         plain = self._revision(root)
-        # Twice: the first read of a description is not yet kept, the second is.
+        # Twice, the second served from the cache: a flat description is kept from its first read.
         assert compared(plain, root / "old" / "p.ddd.json", root, cache).verdict is False
         assert compared(plain, root / "old" / "p.ddd.json", root, cache).verdict is False
         relaxed = self._revision(root, ["missing-producer=ignore"])

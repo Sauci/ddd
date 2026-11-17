@@ -200,9 +200,11 @@ definition not part of the file:
 ``--standalone`` is that policy, and the whole of it. It holds back the nine checks that need
 every component of a project - ``missing-producer``, ``unknown-constant``,
 ``unknown-extension``, ``unknown-raster``, ``unknown-reference``, ``unknown-section``,
-``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches nothing else, so
-everything DDD can decide from the file in front of it is still reported. A declaration one
-of the nine drops is left out of the dictionary in silence as well, because
+``unknown-type``, ``unknown-unit`` and ``unused-output`` - and touches nothing else of the
+analysis, so everything DDD can decide from the file in front of it is still reported. Beside
+``--baseline``, a producer the candidate lost is said by the comparison instead, as an error the
+floor does not reach (``missing-producer`` below). A declaration one of the nine drops is left
+out of the dictionary in silence as well, because
 ``incomplete-project`` - the trace a dropped declaration leaves when the finding that says
 why is silenced - has nothing to say where the missing file is the reason: the constant, the
 raster or the type is declared, in a file this run was not handed. The trace stays for the
@@ -565,7 +567,11 @@ or an a2l file that does not do what the description says - or that does not com
        consumer header would declare a symbol nobody defines. A producer whose own declaration
        could not resolve still counts as a producer, so a consumer of the same variable is not
        told that nobody produces it. ``ddd compare`` says it too of an object a dumped candidate
-       lost the producer of while a component still reads it, at this severity and under this run's ``-W``.
+       lost the producer of while a component still reads it, at this severity and under this
+       run's ``-W``, and so does ``ddd check --baseline --standalone`` of an output the component
+       turned into an input, as an error whatever the floor says, since the floor does not reach a
+       producer the baseline had; a project's own ``-W missing-producer=ignore`` still silences
+       it.
    * - ``local-conflict``
      - error
      - a variable declared ``local`` by one component is also declared by another. ``local`` is

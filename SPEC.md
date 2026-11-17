@@ -1855,9 +1855,9 @@ compile:
   `changed-owner` is not said beside it there either. The one exception is the floor of
   `ddd check --standalone`, which silences that analysis for what a component read alone was never
   shown and does not reach a producer the baseline had: the comparison then says it, once, as an
-  error whatever the floor says - the grade an output gone from a component read alone has, and the
-  gate's own for a component that drops an output - and a project's own `-W missing-producer=ignore`
-  still silences it.
+  error whatever the floor says - the grade an output gone from a component read alone has, and
+  what fails the gate for a component that turns an output into an input - and a project's own
+  `-W missing-producer=ignore` still silences it.
 - `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
   longer builds, so it is an error whether or not an object is dimensioned by it. A constant
   has no `id`, so one renamed is this finding for the old name and `added-constant` for the

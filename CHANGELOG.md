@@ -700,9 +700,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   and "cannot replace".**  A component that reads an object may be a binary built against the
   baseline's headers, and three changes left it reading the wrong storage while the comparison
   passed: a structured variable whose layout moved (a member of its structure inserted, removed,
-  renamed or reordered, a nested structure grown or rearranged, a nested array of another size, an
-  external member of another type, another header or other dimensions), a constant whose value
-  changed, and `volatile` turned on for an object a component reads.  Each is now the error
+  renamed or reordered, a nested structure grown or rearranged, a nested array of another size or
+  of its size spelled another way, `[2]` as `["N"]` where `N` is 2, an external member of another
+  type, another header or other dimensions), a constant whose value changed, and `volatile` turned
+  on for an object a component reads.  Each is now the error
   `changed-interface`, so `ddd compare`, `ddd check --baseline` and the Compare tab of `ddd gui` say
   the candidate cannot replace the baseline, with or without `--strict`.  A layout is said at each
   variable it changes, naming the structure and where the two layouts part; a constant at the
@@ -715,9 +716,10 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `added-object` alone; a baseline of dictionary format 3 or older compares dimensions by value
   alone.  Migrating costs the delivery: a released structure that has to grow grows at the end of a
   single variable's structure, or the finding is accepted for that delivery by relaxing
-  `changed-interface`.  A `-W changed-storage=...` kept to let `volatile` turned on pass no longer
-  reaches it, and a script that matched the old reorder message follows the new one.  No file format
-  changes; the dictionary stays format 10.
+  `changed-interface`.  A nested array whose size a constant names where a number did, or the other
+  way, is accepted the same way, or keeps the spelling of the baseline.  A `-W changed-storage=...`
+  kept to let `volatile` turned on pass no longer reaches it, and a script that matched the old
+  reorder message follows the new one.  No file format changes; the dictionary stays format 10.
 
 * **A constant that is gone stops a comparison, one that is new does not, and a constant's size is
   told as the number.**  `removed-constant` is a new error, since a reader that uses the macro no
@@ -760,21 +762,30 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   a `widened-limits` of `SupplyVoltage` and a `narrowed-read-limits` of `ValveDuty` where it printed
   one `narrowed-limits`, five findings for its five changes.
 
-* **An output a component drops stops a comparison, an input it stops reading does not, and a
-  component is read the same way by every command.**  A baseline that is one component file is a
-  component read alone, so who read its objects is not known.  An output of it that is gone is now
-  `removed-object`, an error whose message does not claim to know a reader, where it was the warning
-  `removed-unused-object`; an object it declares `local` keeps that warning; and an input it stopped
+* **An output a component drops or changes is graded as one somebody reads, an input it stops
+  reading stops nothing, and a component is read the same way by every command.**  A baseline that
+  is one component file is a component read alone, so who read its objects is not known, and every
+  grade that waits on a reader takes an output of it as read, with a message that does not claim to
+  know a reader.  Gone, such an output is now `removed-object`, an error, where it was the warning
+  `removed-unused-object`.  Renamed with its id kept, given a condition or another one, or turned
+  `volatile`, it is now `renamed-read-object`, `narrowed-condition` or `changed-interface`, each an
+  error, where it was the warning `renamed-object`, `changed-condition` or `changed-storage`; a
+  measurement's limits widened are now the warning `widened-limits`, where they were silent, and
+  narrowed the info `narrowed-read-limits`, where they were the warning `narrowed-limits`.  An
+  object it declares `local` keeps the grades of an object nobody reads, and an input it stopped
   reading is the new info `removed-input`, where it was a `removed-object` error stopping a
-  component that reads less.  `ddd compare` and the Compare tab now read such a baseline under the
-  floor `ddd check --standalone` reads a component under, as `check --baseline --standalone` did, so
-  an input nobody produces is no longer carried as an error of the baseline.  A component file given
-  as the candidate is read as a project's file, so a supplier comparing two versions of a component
-  with inputs uses `ddd check --baseline --standalone`, the command that takes the option.  An
-  archived `ddd dump --standalone` carries no mark of how it was read, and is graded as the
-  dictionary of a whole project, as before.  A project that relaxed `-W removed-object=...` to let
-  an input go can drop it, and one that relied on `removed-unused-object` for a dropped output names
-  `removed-object` now.
+  component that reads less.  `ddd compare`, `ddd check --baseline` without `--standalone` and the
+  Compare tab now read such a baseline under the floor `ddd check --standalone` reads a component
+  under, as `check --baseline --standalone` did, so an input nobody produces is no longer carried as
+  an error of the baseline: a project checked against a component file with an input exited 1 on
+  it, and exits 0.  A component file given as the candidate is read as a project's file, so a
+  supplier comparing two versions of a component with inputs uses `ddd check --baseline
+  --standalone`, the command that takes the option.  An archived `ddd dump --standalone` carries no
+  mark of how it was read, and is graded as the dictionary of a whole project, as before.  A project
+  that relaxed `-W removed-object=...` to let an input go can drop it, one that relied on
+  `removed-unused-object` for a dropped output names `removed-object` now, and a supplier whose gate
+  passed the rename, the condition, the `volatile` or the wider range of an output, and stops or
+  warns on it now, relaxes the new id for that delivery.
 
 * **A producer lost is `missing-producer`, said once, where the baseline had one.**  A dictionary
   dumped from a project that failed is written all the same, and an object it holds with readers and
@@ -832,10 +843,12 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   clean; promotions and `--strict` still do not reach it.  The Compare tab reads it under the
   relaxations every build record of the project makes.  A json that states no `format`, no `project`
   and no `component`, such as one holding only a `name`, was read as an empty dictionary and
-  compared as the removal of everything; it is refused as `schema` on either side of `ddd compare`
-  and `ddd check --baseline`, and in the tab.  A baseline error a project relaxes no longer appears
-  in its comparisons, and a script that matched the lone refusal of a broken baseline now finds the
-  rest of the report after it.
+  compared as the removal of everything; it is refused as `schema` wherever it is given as a
+  delivery to compare: either side of `ddd compare`, the baseline of `ddd check --baseline` and the
+  tab's baseline; as the file `ddd check` itself reads it stays refused as `file-kind`, the refusal
+  it always met.  A baseline error a project relaxes no longer appears in its comparisons, and a
+  script that matched the lone refusal of a broken baseline now finds the rest of the report after
+  it.
 
 * **The Compare tab's verdict counts the project's own errors, and `GET /api/compare` says how
   many.**  `ddd compare` and `ddd check --baseline` have always refused a candidate whose own

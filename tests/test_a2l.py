@@ -8,7 +8,16 @@ from typing import Any
 
 import pytest
 
-from conftest import component, declare, project, render_files, run_analysis
+from conftest import (
+    component,
+    declare,
+    project,
+    render_files,
+    run_analysis,
+    struct_type,
+    types,
+    value_member,
+)
 from ddd.backends import (
     A2lBackend,
     A2lOptions,
@@ -881,3 +890,362 @@ class TestModuleFragment:
         content = self.content(tree, self.named(tree, self.A2ML), "CELLS")
         assert content.index("/end A2ML") < content.index("/begin MOD_COMMON")
         assert content.index("/begin MOD_COMMON") < content.index("/begin MOD_PAR")
+
+
+class TestAMemberNamingAStructure:
+    """The ``a2l`` block of a member that names a structure shapes every record under it.
+
+    ``export: false`` keeps the whole subtree out of every instance; ``format`` and
+    ``display_identifier`` reach each leaf under the member, and a deeper member's own block
+    wins for its subtree.
+    """
+
+    @staticmethod
+    def build(
+        tree: Path, *entries: dict[str, Any], **declaration: Any
+    ) -> tuple[str, dict[str, Any], DiagnosticBag]:
+        """The a2l text, the dumped leaves by path and the findings of ``V`` of ``O_t``."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component(
+                "A", declare("local", "V", typename="O_t", **declaration), description="d"
+            ),
+            "t.ddd.json": types(*entries),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        return content, dict(dictionary.comparable), bag
+
+    @staticmethod
+    def record(content: str, name: str) -> str:
+        head = f"/begin MEASUREMENT {name} "
+        assert head in content, name
+        return content.split(head, 1)[1].split("/end MEASUREMENT", 1)[0]
+
+    def test_export_false_keeps_the_whole_subtree_out_of_every_instance(self, tree: Path) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"export": False}},
+                value_member("k"),
+            ),
+            struct_type("Inner_t", value_member("a"), value_member("b")),
+            dimensions=[2],
+        )
+        assert [d.render() for d in bag] == []
+        for index in (0, 1):
+            for leaf in ("a", "b"):
+                assert f"V[{index}].j.{leaf}" not in content
+                assert leaves[f"V[{index}].j.{leaf}"].a2l.exported is False
+            assert f"/begin MEASUREMENT V[{index}].k " in content
+            assert leaves[f"V[{index}].k"].a2l.exported is True
+
+    def test_the_dump_states_the_subtree_not_exported(self, tree: Path) -> None:
+        import json as jsonlib
+
+        from ddd.cli import EXIT_OK, main
+
+        self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"export": False}},
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        out = tree / "dump.json"
+        assert main(["dump", str(tree / "project.ddd.json"), "--output", str(out)]) == EXIT_OK
+        payload = jsonlib.loads(out.read_text(encoding="utf-8"))
+        leaf = next(leaf for leaf in payload["leaves"] if leaf["path"] == "V.j.a")
+        assert leaf["a2l"]["export"] is False
+
+    def test_a_deeper_export_true_does_not_bring_a_leaf_back(self, tree: Path) -> None:
+        content, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "M_t", "a2l": {"export": False}},
+                value_member("k"),
+            ),
+            struct_type(
+                "M_t",
+                {"name": "m", "member": "value", "typename": "Inner_t", "a2l": {"export": True}},
+            ),
+            struct_type("Inner_t", value_member("a", a2l={"export": True})),
+        )
+        assert "V.j.m.a" not in content
+        assert leaves["V.j.m.a"].a2l.exported is False
+        assert "/begin MEASUREMENT V.k " in content
+
+    def test_a_member_kept_out_below_one_kept_in_stays_out(self, tree: Path) -> None:
+        content, _, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "M_t", "a2l": {"export": True}},
+            ),
+            struct_type(
+                "M_t",
+                {"name": "m", "member": "value", "typename": "Inner_t", "a2l": {"export": False}},
+                value_member("c"),
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        assert "V.j.m.a" not in content
+        assert "/begin MEASUREMENT V.j.c " in content
+
+    def test_a_format_reaches_every_leaf_and_a_deeper_one_wins_below_it(self, tree: Path) -> None:
+        content, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"format": "%6.1"}},
+                value_member("k"),
+            ),
+            struct_type(
+                "Inner_t",
+                value_member("a", a2l={"format": "%9.2"}),
+                value_member("b"),
+                {"name": "n", "member": "value", "typename": "N_t", "a2l": {"format": "%3.0"}},
+                {"name": "p", "member": "value", "typename": "N_t"},
+            ),
+            struct_type("N_t", value_member("x"), value_member("y", a2l={"format": "%4.1"})),
+        )
+        wanted = {
+            "V.j.a": "%9.2",
+            "V.j.b": "%6.1",
+            "V.j.n.x": "%3.0",
+            "V.j.n.y": "%4.1",
+            "V.j.p.x": "%6.1",
+            "V.j.p.y": "%4.1",
+        }
+        for path, text in wanted.items():
+            assert f'FORMAT "{text}"' in self.record(content, path), path
+            assert leaves[path].a2l.format == text, path
+        assert "FORMAT" not in self.record(content, "V.k")
+
+    def test_a_format_does_not_reach_a_string_leaf(self, tree: Path) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"format": "%6.1"}},
+            ),
+            struct_type(
+                "Inner_t",
+                value_member("a"),
+                {
+                    "name": "text",
+                    "member": "value",
+                    "datatype": "uint8",
+                    "conversion": {"kind": "string"},
+                    "dimensions": [8],
+                },
+            ),
+        )
+        assert [d.render() for d in bag] == []
+        assert 'FORMAT "%6.1"' in self.record(content, "V.j.a")
+        assert leaves["V.j.text"].a2l.format is None
+
+    def test_a_display_identifier_joins_the_rest_of_the_path_below_the_member(
+        self, tree: Path
+    ) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "dimensions": [2],
+                    "a2l": {"display_identifier": "J"},
+                },
+                value_member("k"),
+            ),
+            struct_type(
+                "Inner_t",
+                value_member("a", a2l={"display_identifier": "OwnA"}),
+                value_member("b"),
+                {
+                    "name": "n",
+                    "member": "value",
+                    "typename": "N_t",
+                    "a2l": {"display_identifier": "Inner"},
+                },
+                {"name": "p", "member": "value", "typename": "N_t"},
+            ),
+            struct_type("N_t", value_member("x")),
+        )
+        assert [d.render() for d in bag] == []
+        wanted = {
+            "V.j[0].a": "OwnA",
+            "V.j[1].a": "OwnA",
+            "V.j[0].b": "J[0].b",
+            "V.j[1].b": "J[1].b",
+            "V.j[1].n.x": "Inner.x",
+            "V.j[1].p.x": "J[1].p.x",
+        }
+        for path, text in wanted.items():
+            assert f"DISPLAY_IDENTIFIER {text}\n" in self.record(content, path), path
+            assert leaves[path].a2l.display_identifier == text, path
+        assert "DISPLAY_IDENTIFIER" not in self.record(content, "V.k")
+        element = [
+            leaf.a2l.display_identifier
+            for path, leaf in leaves.items()
+            if path.startswith("V.j[1]")
+        ]
+        assert len(element) == len(set(element))  # none of one element's records share
+
+    def test_a_value_members_block_is_unchanged(self, tree: Path) -> None:
+        content, _, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                value_member("k", a2l={"format": "%5.2", "display_identifier": "K"}),
+                value_member("h", a2l={"export": False}),
+            ),
+        )
+        record = self.record(content, "V.k")
+        assert 'FORMAT "%5.2"' in record
+        assert "DISPLAY_IDENTIFIER K\n" in record
+        assert "V.h" not in content
+
+    def test_a_keyword_display_identifier_is_refused_at_the_types_file(self, tree: Path) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "V", typename="O_t")),
+            "t.ddd.json": types(
+                struct_type(
+                    "O_t",
+                    {
+                        "name": "j",
+                        "member": "value",
+                        "typename": "Inner_t",
+                        "a2l": {"display_identifier": "MAP"},
+                    },
+                ),
+                struct_type("Inner_t", value_member("a"), value_member("b")),
+            ),
+        }
+        found = [d.render().rsplit("/", 1)[-1] for d in run_analysis(tree, files)[1]]
+        assert found == [
+            "t.ddd.json#types[0].members[0].a2l.display_identifier: error[a2l-keyword]: "
+            "'MAP' is a keyword of ASAP2 1.6.1, which an identifier of the a2l may not be"
+        ]
+
+    def test_a_display_identifier_past_the_partial_limit_is_warned_at_the_types_file(
+        self, tree: Path
+    ) -> None:
+        long = "D" * 127
+        _, _, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "dimensions": [2],
+                    "a2l": {"display_identifier": long},
+                },
+            ),
+            struct_type("Inner_t", value_member("a"), value_member("b")),
+        )
+        found = [d.render().rsplit("/", 1)[-1] for d in bag]
+        assert len(found) == 1
+        assert found[0].startswith(
+            "t.ddd.json#types[0].members[0].a2l.display_identifier: warning[a2l-unrepresentable]: "
+            "the display identifier of member 'j' of structure 'O_t' with its index is 130 "
+            "characters, but a partial identifier"
+        )
+
+    def test_a_display_identifier_made_past_the_identifier_limit_is_warned_once(
+        self, tree: Path
+    ) -> None:
+        names = [f"{letter}" * 120 for letter in "abcdefghi"]
+        entries = [struct_type("T0", value_member("v"), value_member("w"))]
+        for number, name in enumerate(names, 1):
+            entries.append(
+                struct_type(
+                    f"T{number}",
+                    {"name": name, "member": "value", "typename": f"T{number - 1}"},
+                )
+            )
+        entries.append(
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "T9",
+                    "a2l": {"display_identifier": "J"},
+                },
+            )
+        )
+        _, _, bag = self.build(tree, *entries)
+        found = [d.render().rsplit("/", 1)[-1] for d in bag if "display identifier" in d.render()]
+        assert len(found) == 1
+        assert found[0].startswith(
+            "t.ddd.json#types[10].members[0].a2l.display_identifier: "
+            "warning[a2l-unrepresentable]: "
+            "the display identifier of member 'j' of structure 'O_t' is made of 1092 "
+            "characters with the path below the member, but an identifier of the a2l"
+        )
+
+    def test_a_display_identifier_a_leaf_overrides_is_not_held(self, tree: Path) -> None:
+        _, _, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "MAP"},
+                },
+            ),
+            struct_type("Inner_t", value_member("a", a2l={"display_identifier": "Own"})),
+        )
+        assert [d.render() for d in bag] == []
+
+    def test_a_keyword_display_identifier_is_held_at_the_member_that_states_it(
+        self, tree: Path
+    ) -> None:
+        _, _, bag = self.build(
+            tree,
+            struct_type("O_t", {"name": "j", "member": "value", "typename": "M_t"}),
+            struct_type(
+                "M_t",
+                {
+                    "name": "m",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "MAP"},
+                },
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        assert [d.render().rsplit("/", 1)[-1] for d in bag] == [
+            "t.ddd.json#types[1].members[0].a2l.display_identifier: error[a2l-keyword]: "
+            "'MAP' is a keyword of ASAP2 1.6.1, which an identifier of the a2l may not be"
+        ]
+
+    def test_nothing_is_held_below_a_member_kept_out(self, tree: Path) -> None:
+        _, _, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"export": False, "display_identifier": "MAP"},
+                },
+            ),
+            struct_type("Inner_t", value_member("MAP")),
+        )
+        assert [d.render() for d in bag] == []

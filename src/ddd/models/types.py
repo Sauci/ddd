@@ -213,6 +213,12 @@ class Member(BaseModel):
     Per member rather than per structure, because that is the granularity the a2l ends up with:
     each member becomes an object of its own, so keeping one of them out of the file, or giving
     one of them a display format, is a decision about that member alone.
+
+    On a member that names a structure the block shapes every record below it: ``export: false``
+    keeps the whole subtree out of every instance, and nothing deeper brings a leaf back;
+    ``format`` reaches each leaf below (not a string); ``display_identifier`` reaches each leaf
+    joined to the rest of its path below the member, ``J`` over ``a`` giving ``J.a``. A deeper
+    member's own ``format`` or ``display_identifier`` wins for its own subtree.
     """
 
     def physical_limits(self) -> Limits:

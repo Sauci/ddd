@@ -41,6 +41,7 @@ from ddd.models import (
     IDENTITY_METHOD_PREFIX,
     MAX_ELEMENTS,
     MEMBER_OBJECT_KINDS,
+    A2lObjectOptions,
     Axis,
     Conversion,
     Curve,
@@ -294,6 +295,25 @@ class _EnumRegistry:
     by_name: dict[str, tuple[EnumConversion, Location]] = dataclasses.field(default_factory=dict)
     enumerators: dict[str, tuple[str, Location]] = dataclasses.field(default_factory=dict)
     """Enumerator name -> (name of the enum that introduced it, where it was declared)."""
+
+
+@dataclass(frozen=True, slots=True)
+class _A2lScope:
+    """What the members a walk came down through ask of the a2l for everything below them.
+
+    The innermost member that states a thing wins for its own subtree. ``export`` is the
+    exception: a member kept out keeps its whole subtree out, and nothing below it brings a
+    leaf back.
+    """
+
+    exported: bool = True
+    format: str | None = None
+    display: str | None = None
+    """The display identifier in force, and:"""
+    display_prefix: str = ""
+    """the path of the member that states it, which the rest of a leaf's path is joined to."""
+    display_source: int = -1
+    """and where that member sits in the chain the walk came down through."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -3276,6 +3296,7 @@ class _Analysis:
         out: list[ResolvedLeaf],
         reference: DeclarationRef,
         chain: tuple[tuple[LoadedType, int, Member], ...] = (),
+        scope: _A2lScope | None = None,
     ) -> None:
         """Walk one structure, adding a leaf for every member that holds a value.
 
@@ -3286,10 +3307,12 @@ class _Analysis:
 
         ``chain`` is the members the walk came down through, each with the structure that
         declares it: what the a2l's name of a leaf is made of, and so where a finding about a
-        part of that name is written.
+        part of that name is written. ``scope`` is what those members' ``a2l`` blocks ask for
+        everything below them.
         """
         structure = entry.structure
         assert structure is not None
+        scope = scope or _A2lScope()
         for position, member in enumerate(structure.members):
             if self._member_external(member) is not None:
                 # Opaque storage: the member reaches the generated structure verbatim and
@@ -3300,8 +3323,9 @@ class _Analysis:
             nested = self._member_nested_structure(member)
             if nested is None:
                 datatype, unit, conversion, limits = self._member_meaning(member)
-                if instance.a2l.exported and member.a2l.exported and member.bits is None:
-                    self._check_a2l_member(entry, position, member, chain)
+                carried = instance.a2l.exported and scope.exported and member.a2l.exported
+                if carried and member.bits is None:
+                    self._check_a2l_member(entry, position, member, chain, scope, here)
                 out.append(
                     ResolvedLeaf(
                         path=here,
@@ -3323,20 +3347,19 @@ class _Analysis:
                         owner=instance.owner,
                         consumers=instance.consumers,
                         local=instance.local,
-                        # Both answers, resolved into the one the leaf is published under.
+                        # Every answer, resolved into the one the leaf is published under.
                         # The whole object's export reaches its members the way its storage
                         # class does: an instance kept out of the a2l takes every member
-                        # with it, and a leaf carrying only the member's own opinion left
-                        # the two halves for the a2l backend to put back together - so
-                        # everything else, ``ddd compare`` included, read one half and
-                        # believed it.
-                        a2l=member.a2l.model_copy(
-                            update={"export": instance.a2l.exported and member.a2l.exported}
-                        ),
+                        # with it, and so does a member that names a structure; a leaf
+                        # carrying only its own member's opinion left the halves for the a2l
+                        # backend to put back together - so everything else, ``ddd compare``
+                        # included, read one half and believed it.
+                        a2l=self._leaf_a2l(instance, member, conversion, here, scope),
                     )
                 )
                 continue
             assert member.typename is not None  # it names the structure found above
+            below = self._scope_below(member, here, len(chain), scope)
             for suffix in _element_paths(self._numeric_shape(member.dimensions)):
                 self._flatten(
                     instance,
@@ -3345,7 +3368,56 @@ class _Analysis:
                     out,
                     reference,
                     (*chain, (entry, position, member)),
+                    below,
                 )
+
+    @staticmethod
+    def _scope_below(member: Member, here: str, depth: int, scope: _A2lScope) -> _A2lScope:
+        """What a member naming a structure asks of the a2l for everything below it."""
+        block = member.a2l
+        scope = replace(
+            scope,
+            exported=scope.exported and block.exported,
+            format=block.format if block.format is not None else scope.format,
+        )
+        if block.display_identifier is None:
+            return scope
+        return replace(
+            scope,
+            display=block.display_identifier,
+            display_prefix=here,
+            display_source=depth,
+        )
+
+    @staticmethod
+    def _leaf_a2l(
+        instance: ResolvedInstance,
+        member: Member,
+        conversion: Conversion,
+        here: str,
+        scope: _A2lScope,
+    ) -> A2lObjectOptions:
+        """The a2l block a leaf is published under: its member's, over what is above it.
+
+        A display identifier stated above the leaf is joined to the rest of the path below
+        the member that states it, ``J`` and ``a`` giving ``J.a``, so no two records of one
+        instance share a display identifier. A format is not carried to a string, which has
+        no decimals to display.
+        """
+        block = member.a2l
+        display = block.display_identifier
+        if display is None and scope.display is not None:
+            display = scope.display + here[len(scope.display_prefix) :]
+        shown = block.format
+        if shown is None and not isinstance(conversion, StringConversion):
+            shown = scope.format
+        return block.model_copy(
+            update={
+                "export": instance.a2l.exported and scope.exported and block.exported,
+                "format": shown,
+                "display_identifier": display,
+            }
+        )
 
     def _a2l_first(self, *key: object) -> bool:
         """Whether this is the first time a finding of the a2l's names and limits is asked for.
@@ -3453,11 +3525,15 @@ class _Analysis:
         position: int,
         member: Member,
         chain: tuple[tuple[LoadedType, int, Member], ...],
+        scope: _A2lScope,
+        path: str,
     ) -> None:
         """What the a2l writes of a member it carries, at the type file that declares it.
 
         The parts of the name above it, the members it is reached through, are held as well:
-        the record's name is built from them, and each is a part of an identifier.
+        the record's name is built from them, and each is a part of an identifier. So is a
+        display identifier stated by one of them, which is the leaf's own when the leaf states
+        none: the one in force, at the member that states it.
         """
         for above, above_position, nested in chain:
             where = above.location(f"members[{above_position}].name")
@@ -3474,6 +3550,8 @@ class _Analysis:
             self._a2l_keyword(
                 display, entry.location(f"members[{position}].a2l.display_identifier")
             )
+        if display is None and scope.display is not None:
+            self._check_a2l_display_above(chain, scope, path)
         about = f"member '{member.name}' of structure '{entry.name}'"
         self._a2l_text(
             f"description of {about}",
@@ -3495,6 +3573,31 @@ class _Analysis:
                 member.unit,
                 member.conversion,
                 entry.location(f"members[{position}].unit"),
+            )
+
+    def _check_a2l_display_above(
+        self, chain: tuple[tuple[LoadedType, int, Member], ...], scope: _A2lScope, path: str
+    ) -> None:
+        """A display identifier a member naming a structure states, as it reaches one leaf.
+
+        Held at the member that states it: a keyword, the part it is on its own, and the whole
+        identifier the leaf is shown under, which is the display identifier and the rest of the
+        path below the member.
+        """
+        assert scope.display is not None  # the caller found one in force
+        above, position, stated = chain[scope.display_source]
+        where = above.location(f"members[{position}].a2l.display_identifier")
+        self._a2l_keyword(scope.display, where)
+        about = f"display identifier of member '{stated.name}' of structure '{above.name}'"
+        self._a2l_partial(about, scope.display, self._numeric_shape(stated.dimensions), where)
+        made = len(scope.display) + len(path) - len(scope.display_prefix)
+        if made > _A2L_MAX_IDENT and self._a2l_first("display-ident", where):
+            self._bag.add(
+                "a2l-unrepresentable",
+                f"the {about} is made of {made} characters with the path below the member, "
+                f"but an identifier of the a2l of ASAP2 1.6.1 carries {_A2L_MAX_IDENT} "
+                f"(MAX_IDENT)",
+                where,
             )
 
     def _check_a2l_instance(

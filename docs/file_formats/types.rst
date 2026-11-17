@@ -268,7 +268,16 @@ question of whether the answer is shared: a unit written on a member says it for
 that structure, and a ``Temperature_t`` says it once for everything in the project that names
 it. The ``a2l`` block sits on the member rather than on the structure because that is the
 granularity the file ends up with - keeping one member out of the a2l, or giving one member a
-display format, is a decision about that member alone. A member under a string conversion, its
+display format, is a decision about that member alone. On a member that names a structure the
+block shapes every record below it: ``export: false`` keeps the whole subtree out of the a2l in
+every instance of the type, and nothing deeper brings a leaf back, an inner ``export: true``
+included; ``format`` reaches each leaf below it, but not a string; and ``display_identifier``
+reaches each leaf as itself joined to the rest of the leaf's path below the member, so ``J`` over
+a leaf ``a`` gives ``J.a`` and no two records of one instance share one. A deeper member that
+states its own ``format`` or ``display_identifier`` wins for its own subtree. Each display
+identifier made that way is held as a name is, at the member that states it: ``a2l-keyword`` for
+a keyword, and ``a2l-unrepresentable`` past ``MAX_PARTIAL_IDENT`` or ``MAX_IDENT``. A member
+under a string conversion, its
 own or its type's, is a ``value`` member of exactly one dimension, and states no unit, limits
 or format, as a definition would not.
 

@@ -960,8 +960,15 @@ the type already fixes, so a structured object is zero initialised, and its valu
 there by the running system, by the starting code for a measurement and by the calibration
 tool for a parameter. Of its `a2l` block, `export` decides for the whole object
 ([section 3.3.1](#331-one-object-several-declarations)) and each member's own `export` for
-the member; `format` and `display_identifier` are per member, a whole structure having no
-display format of its own. One stated on the declaration of a structured object is neither
+the member. The `a2l` block of a member that names a structure is honoured for every record
+below it: `export: false` keeps the whole subtree out of the A2L, in every instance of the
+type, and nothing deeper brings a leaf back, an inner `export: true` included; `format`
+reaches each leaf below; `display_identifier` reaches each leaf as itself joined to the rest
+of the leaf's path below the member, `J` over a leaf `a` giving `J.a`, so that no two records
+of one instance share one. Where a deeper member states its own `format` or
+`display_identifier`, it wins for its own subtree, and a `format` does not reach a string.
+Each display identifier so made is held as a name is (`a2l-keyword`, `a2l-unrepresentable`),
+at the member that states it. One stated on the declaration of a structured object is neither
 refused nor used: the dictionary's instance record carries it as the declaration wrote it
 ([section 5.3](#53-data-dictionary)), and the A2L, whose records are the members, writes it
 nowhere.

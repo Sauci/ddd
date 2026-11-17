@@ -1867,7 +1867,13 @@ object that disagree about their qualifiers are undefined (C11 6.2.7, 6.7.3); `d
 reaches the hand written code that reads the object, so a project that turns `volatile` on
 for an array finds that passing it to a helper typed for a plain `const` one no longer
 compiles, and re-types the helper; the cast that would silence it is itself refused by a
-warning set containing `-Wcast-qual`. The declared constants
+warning set containing `-Wcast-qual`. Each object's unit, conversion and
+limits are offered as well, the values the a2l states for it, so that a project can write
+a scale macro of its own, and the example `{component}` template writes the factor and the
+offset of a linear conversion as two macros beside each input and output, so that a rescale
+changes the header every reader includes and the readers are compiled again; code that wrote
+the number itself is not read, and a check compares descriptions and never a description with
+code. The declared constants
 ([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
 object dimensioned by a constant carries the constant's name in its definition and in
 every declaration; the example templates emit each constant as a `#define`. The enum
@@ -2680,7 +2686,8 @@ allow, a type name spelling a base datatype, or one the project already uses, wh
 another object, an enum, an enumerator, a type or a constant, because a rename that silently
 merges two objects compiles, links, and shares storage nobody intended to share; and quick
 fixes that reconcile one key across the declarations of one object, in either direction,
-including removing a key the others do not have, none of which is offered where writing it
+including removing a key the others do not have, which change descriptions and never the code
+of the components that read the variable, and none of which is offered where writing it
 would leave a file the loader refuses; and, on a `missing-id`, a fix that gives the
 declaration an identity, writing what `ddd id --assign` would write and offered only where
 that finding is reported.

@@ -307,7 +307,11 @@ spelling out ``datatype``, ``unit``, ``conversion`` and ``limits`` of its own:
        "typename": "Temperature_t", "volatile": true } }
 
 If all three consumers say ``Temperature_t``, there is nothing left for them to disagree
-about. A type fixes exactly ``datatype``, ``unit``, ``conversion`` and ``limits``; ``kind``,
+about, which is also what it costs: ``ddd check`` cannot see two descriptions drift apart
+when there is one, so a rescale of the type is one edit that no reader's description shows.
+``ddd compare`` against an archived baseline names it, and the example templates write the
+type's factor and offset as macros in the header each reader includes, so the readers rebuild;
+:doc:`concept` says what is detected and what is not. A type fixes exactly ``datatype``, ``unit``, ``conversion`` and ``limits``; ``kind``,
 ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable, because two
 measurements of one type may well differ in whether an interrupt writes one of them. Naming
 a type and then restating what it fixes is an error rather than an override, so "where is

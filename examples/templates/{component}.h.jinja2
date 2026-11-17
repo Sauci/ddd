@@ -25,6 +25,7 @@
 /** {{ entry.variable.comment }} */
 {% endif %}
 {{ entry.line }}
+{{ macros.scale(entry.variable) -}}
 {% if entry.condition %}
 #endif /* {{ entry.condition }} */
 {% endif %}
@@ -41,6 +42,7 @@
 /** {{ entry.variable.comment }} */
 {% endif %}
 {{ entry.line }}{{ "  /* produced by " ~ entry.variable.owner ~ " */" if entry.variable.owner else "" }}
+{{ macros.scale(entry.variable) -}}
 {% if entry.condition %}
 #endif /* {{ entry.condition }} */
 {% endif %}

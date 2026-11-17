@@ -28,12 +28,34 @@ from ddd.analysis import analyze
 from ddd.cli import EXIT_OK, main
 from ddd.diagnostics import DiagnosticBag
 from ddd.editing import edit_text
-from ddd.finding_fixes import fixes_for
+from ddd.finding_fixes import CODE_NOT_TOUCHED, Fix, fixes_for
 from ddd.loading import load_workspace
 from ddd.lsp.edits import reconciliations, settle
 from ddd.lsp.ranges import read
 
 DEFINITION = "component.interface[0].definition"
+
+
+def titles(offered: tuple[Fix, ...]) -> list[str]:
+    """What each reconcile fix changes, after pinning that every one says the code is not."""
+    for fix in offered:
+        assert fix.title.endswith(CODE_NOT_TOUCHED)
+    return [fix.title.removesuffix(CODE_NOT_TOUCHED) for fix in offered]
+
+
+class TestTheCodeIsNotTouched:
+    def test_a_reconcile_fix_says_the_readers_code_is_not_touched(self, tmp_path: Path) -> None:
+        # The check goes green once the descriptions agree, and the readers keep the scale they
+        # were written with: the title of the button the finding carries says so.
+        built, root = built_of(
+            tmp_path,
+            **{
+                "a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+                "b.ddd.json": component("B", declare("input", "Speed", unit="Hz")),
+            },
+        )
+        (fix,) = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
+        assert fix.title == ("Use the unit declared in a (the code of the readers is not touched)")
 
 
 class TestAnIdentity:
@@ -203,7 +225,7 @@ class TestAMismatch:
             },
         )
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
-        assert [fix.title for fix in offered] == ["Use the unit declared in a"]
+        assert titles(offered) == ["Use the unit declared in a"]
         (edit,) = offered[0].changes
         assert edit.path == root / "b.ddd.json"
         assert [(o.op, o.pointer, o.raw) for o in edit.operations] == [
@@ -227,7 +249,7 @@ class TestAMismatch:
             },
         )
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
-        assert [fix.title for fix in offered] == ["Use the unit declared in a"]
+        assert titles(offered) == ["Use the unit declared in a"]
         # An exact set, not a superset check: this is what pins the producer *out*.
         assert {edit.path.name for edit in offered[0].changes} == {"b.ddd.json", "c.ddd.json"}
 
@@ -252,13 +274,11 @@ class TestAMismatch:
         )
         for name in ("b.ddd.json", "c.ddd.json"):
             offered = fixes_for("definition-mismatch", root / name, DEFINITION, {}, built)
-            assert [fix.title for fix in offered] == ["Remove this unit, which a does not declare"]
+            assert titles(offered) == ["Remove this unit, which a does not declare"]
             assert {edit.path.name for edit in offered[0].changes} == {"b.ddd.json", "c.ddd.json"}
         # The same reach as the producer's own row, which is what makes the two rows one fix.
         producer = fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built)
-        assert [fix.title for fix in producer] == [
-            "Remove the unit from 2 other declarations of 'Speed'"
-        ]
+        assert titles(producer) == ["Remove the unit from 2 other declarations of 'Speed'"]
 
     def test_a_key_the_producer_states_is_never_taken_out_of_the_variable(
         self, tmp_path: Path
@@ -281,7 +301,7 @@ class TestAMismatch:
             },
         )
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
-        assert [fix.title for fix in offered] == ["Use the datatype declared in a"]
+        assert titles(offered) == ["Use the datatype declared in a"]
 
     def test_a_datatype_beside_an_explicit_null_typename_is_offered_and_loads(
         self, tmp_path: Path
@@ -307,7 +327,7 @@ class TestAMismatch:
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
         # The null `typename` is a key of its own besides, stated where `a` states none at all -
         # its own, unrelated fix, offered alongside the one this test is about.
-        assert [fix.title for fix in offered] == [
+        assert titles(offered) == [
             "Use the datatype declared in a",
             "Remove this typename, which a does not declare",
         ]
@@ -332,9 +352,7 @@ class TestAMismatch:
             },
         )
         offered = fixes_for("definition-mismatch", root / "a.ddd.json", DEFINITION, {}, built)
-        assert [fix.title for fix in offered] == [
-            "Apply this unit to 2 other declarations of 'Speed'"
-        ]
+        assert titles(offered) == ["Apply this unit to 2 other declarations of 'Speed'"]
         assert {edit.path.name for edit in offered[0].changes} == {"b.ddd.json", "c.ddd.json"}
 
     def test_two_keys_disagreeing_are_two_fixes(self, tmp_path: Path) -> None:
@@ -350,7 +368,7 @@ class TestAMismatch:
             },
         )
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
-        assert [fix.title for fix in offered] == [
+        assert titles(offered) == [
             "Use the datatype declared in a",
             "Use the unit declared in a",
         ]
@@ -495,7 +513,7 @@ class TestAMismatch:
             decision.title for decision in unowned
         ]
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
-        assert [fix.title for fix in offered] == ["Use the datatype declared in a"]
+        assert titles(offered) == ["Use the datatype declared in a"]
         assert "a.ddd.json" not in {edit.path.name for fix in offered for edit in fix.changes}
 
     def test_a_mismatch_between_a_type_and_a_base_datatype_offers_nothing(
@@ -622,7 +640,7 @@ class TestAMismatchThatWouldNotLoad:
     def titles(self, tmp_path: Path, source: str, **files: Any) -> list[str]:
         built, root = built_of(tmp_path, **files)
         offered = fixes_for("definition-mismatch", root / source, DEFINITION, {}, built)
-        return [fix.title for fix in offered]
+        return titles(offered)
 
     def test_a_datatype_is_not_taken_from_a_float_writer_beside_an_enumeration(
         self, tmp_path: Path
@@ -785,7 +803,7 @@ class TestAMismatchThatWouldNotLoad:
             },
         )
         offered = fixes_for("definition-mismatch", root / "b.ddd.json", DEFINITION, {}, built)
-        (fix,) = [fix for fix in offered if fix.title == "Use the limits declared in a"]
+        (fix,) = [fix for fix in offered if fix.title.startswith("Use the limits declared in a")]
         for edit in fix.changes:
             text = edit.path.read_text(encoding="utf-8")
             edit.path.write_text(edit_text(text, edit.operations), encoding="utf-8", newline="")

@@ -4195,7 +4195,9 @@ class TestFix:
         )
         assert reply.status == 200
         assert reply.body["revision"] == 1
-        assert [fix["title"] for fix in reply.body["fixes"]] == ["Use the unit declared in a"]
+        assert [fix["title"] for fix in reply.body["fixes"]] == [
+            "Use the unit declared in a (the code of the readers is not touched)"
+        ]
         (change,) = reply.body["fixes"][0]["changes"]
         assert change["file"] == posix(root, "b.ddd.json")
         assert change["hunks"], "the reader is shown the line it would change"
@@ -4214,7 +4216,9 @@ class TestFix:
             check="definition-mismatch",
         )
         assert reply.status == 200
-        assert [fix["title"] for fix in reply.body["fixes"]] == ["Use the conversion declared in w"]
+        assert [fix["title"] for fix in reply.body["fixes"]] == [
+            "Use the conversion declared in w (the code of the readers is not touched)"
+        ]
         assert applied(api, reply.body["fixes"][0]).status == 200
         bag = DiagnosticBag()
         workspace = load_workspace(tmp_path / "p.ddd.json", bag)
@@ -4237,7 +4241,9 @@ class TestFix:
             check="definition-mismatch",
         )
         assert reply.status == 200
-        assert [fix["title"] for fix in reply.body["fixes"]] == ["Use the conversion declared in w"]
+        assert [fix["title"] for fix in reply.body["fixes"]] == [
+            "Use the conversion declared in w (the code of the readers is not touched)"
+        ]
         assert applied(api, reply.body["fixes"][0]).status == 200
         bag = DiagnosticBag()
         workspace = load_workspace(tmp_path / "p.ddd.json", bag)

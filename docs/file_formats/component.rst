@@ -136,7 +136,8 @@ exists at all.
 The same variable is normally declared by several components: once by the one that writes it
 and once by each one that reads it. That repetition is not redundancy, it is the whole
 mechanism. The consumer states what it *expects*, the producer states what it *promises*, and
-DDD compares the two. Where they differ, the declaration of the **producing** component is the
+DDD compares the two descriptions - a declared type in place of the repetition leaves nothing
+to compare, which :doc:`../concept` weighs. Where they differ, the declaration of the **producing** component is the
 authoritative one: its definition is what gets generated, and the finding points at the
 consumer that deviates.
 

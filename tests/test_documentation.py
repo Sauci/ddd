@@ -36,7 +36,13 @@ from pydantic import BaseModel, ValidationError
 from conftest import DEMO
 from ddd import __version__
 from ddd.analysis import _MAX_LEAVES
-from ddd.backends.c.model import CodeModel, MemberView, ObjectView
+from ddd.backends.c.model import (
+    CodeModel,
+    ConversionView,
+    LimitsView,
+    MemberView,
+    ObjectView,
+)
 from ddd.cli import EXIT_OK, _build_parser, main, schema_models
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
@@ -2009,10 +2015,21 @@ class TestTheTemplateReference:
         assert f"``model.{name}" in self.TEMPLATES
 
     @pytest.mark.parametrize(
-        "name", sorted({*view_attributes(ObjectView), *view_attributes(MemberView)})
+        "name",
+        sorted({*view_attributes(ObjectView), *view_attributes(MemberView)}),
     )
     def test_every_attribute_of_a_view_is_documented(self, name: str) -> None:
         assert f"``.{name}" in self.TEMPLATES
+
+    @pytest.mark.parametrize(
+        ("path", "name"),
+        [
+            *(("conversion", name) for name in view_attributes(ConversionView)),
+            *(("limits", name) for name in view_attributes(LimitsView)),
+        ],
+    )
+    def test_every_attribute_of_the_scale_views_is_documented(self, path: str, name: str) -> None:
+        assert f"``.{path}.{name}``" in self.TEMPLATES
 
 
 class TestTheFivePagesTheImageReaches:
@@ -4315,3 +4332,72 @@ class TestToolbox:
         )
         for text in (spec, guide):
             assert "whether its form is narrower or wider than the enum" in text
+
+
+class TestWhatIsDetectedAndWhatIsNot:
+    """A shared type and a restated definition trade detection against one edit, and the pages
+    say so in one voice: the check compares descriptions, never a description with code."""
+
+    CONCEPT = flattened(PAGES["docs/concept.rst"])
+    FAQ = flattened(PAGES["docs/faq.rst"])
+    TYPES = flattened(PAGES["docs/file_formats/types.rst"])
+    TEMPLATES = flattened(PAGES["docs/templates.rst"])
+    README_TEXT = flattened(README)
+    SPEC_TEXT = flattened(SPEC)
+    EDITOR = flattened(EDITOR_INTEGRATION)
+
+    def test_the_concept_page_says_the_check_compares_descriptions_and_never_code(self) -> None:
+        assert (
+            "``ddd check`` compares **descriptions**. It never compares a description with code"
+            in self.CONCEPT
+        )
+
+    def test_the_concept_page_says_a_rescaled_type_is_one_edit_no_reader_shows(self) -> None:
+        assert "The rescale is one edit that no reader's description shows" in self.CONCEPT
+        assert "``ddd compare`` against a baseline dump archived before the change" in self.CONCEPT
+
+    def test_the_concept_page_says_the_restated_definition_is_what_the_check_sees(self) -> None:
+        assert (
+            "This redundancy is what lets ``ddd check`` see the two sides drift apart. It does "
+            "not reach the code" in self.CONCEPT
+        )
+
+    def test_the_concept_page_says_reconciling_leaves_the_code_alone(self) -> None:
+        assert (
+            "The descriptions agree afterwards, and the code that reads the variable is "
+            "untouched" in self.CONCEPT
+        )
+
+    def test_the_concept_page_no_longer_says_a_shared_declaration_could_never_notice(self) -> None:
+        assert "which a single shared declaration could never do" not in self.CONCEPT
+        assert "which a shared type, naming the meaning once, trades away" in self.CONCEPT
+
+    def test_one_edit_in_one_file_is_said_of_a_shared_type_only(self) -> None:
+        assert (
+            "Changing the scaling is one edit in one file when the variables name a shared type"
+            in self.CONCEPT
+        )
+        assert "one edit in each declaring file when each restates its definition" in self.CONCEPT
+
+    def test_the_faq_says_what_a_shared_type_costs(self) -> None:
+        assert (
+            "there is nothing left for them to disagree about, which is also what it costs: "
+            "``ddd check`` cannot see two descriptions drift apart when there is one" in self.FAQ
+        )
+
+    def test_the_types_page_says_the_check_is_given_up(self) -> None:
+        assert "It is also a check given up" in self.TYPES
+
+    def test_the_readme_says_a_shared_type_cannot_be_seen_to_rescale(self) -> None:
+        assert "`ddd check` cannot see a rescale of the type" in self.README_TEXT
+
+    def test_the_quick_fix_pages_say_the_readers_code_is_not_touched(self) -> None:
+        assert "the code of the readers is not touched" in self.README_TEXT
+        assert "the code of the components that read the variable is not touched" in self.EDITOR
+        assert "never the code of the components that read the variable" in self.SPEC_TEXT
+
+    def test_the_spec_and_the_templates_page_say_what_the_example_header_writes(self) -> None:
+        assert "a rescale changes the header every reader includes" in self.SPEC_TEXT
+        assert "#define Speed__FACTOR (0.1)" in self.TEMPLATES
+        assert "#define Speed__OFFSET (-40.0)" in self.TEMPLATES
+        assert "The example writes nothing for any other kind of conversion" in self.TEMPLATES

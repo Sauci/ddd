@@ -197,7 +197,8 @@ It also navigates, which is where a data dictionary stops being a pile of files:
 | a structure name in a `typename` | where the structure is declared | every member nesting it |
 | an `includes` entry | the file - wildcards land on every match | |
 
-**Quick fixes** reconcile a `definition-mismatch`.  Put the cursor on a `unit`, a
+**Quick fixes** reconcile a `definition-mismatch`. They change descriptions only: the code
+of the readers is not touched, and the fix a finding of `ddd gui` carries says so in its title.  Put the cursor on a `unit`, a
 `conversion`, a `datatype` or any other key the declarations have to agree on, and the editor
 offers every way of reconciling it, ordered by which component owns the variable: a consumer
 is shown the producer's value first, the producer its own.  A key nobody else states can be
@@ -470,8 +471,10 @@ project's `includes` like a component and each with its own page in the document
 
 * a **types** file declares scalar types, structures and external types the project shares
   by name: a declaration states `"typename": "Sensor_t"` instead of `datatype`, the type
-  fixes the datatype, unit, conversion and limits, and there is nothing left for two
-  components to disagree about; an external type names a c type a hand written header
+  fixes the datatype, unit, conversion and limits, so two components have nothing to
+  disagree about, which also means `ddd check` cannot see a rescale of the type (the
+  example templates write its factor and offset as macros in each reader's header, and
+  `ddd compare` against a baseline names it); an external type names a c type a hand written header
   defines, which a structure member carries verbatim
   ([documentation](https://sauci.github.io/ddd/latest/file_formats/types.html));
 * a **units** file pins the unit spellings the project allows, so `Nm` here and
@@ -704,8 +707,12 @@ copy.
 /* inputs - produced elsewhere, UserInterface may only read them */
 /** Measurement used as the input quantity of AxisA [Hz] */
 extern volatile uint16_t ValueE;  /* produced by Controller */
+#define ValueE__FACTOR (0.25)
+#define ValueE__OFFSET (0.0)
 /** Signed measurement with a fixed point conversion [degC] */
 extern int16_t ValueF;  /* produced by Controller */
+#define ValueF__FACTOR (0.1)
+#define ValueF__OFFSET (0.0)
 ```
 
 Access rules are enforced by visibility: a component includes its own header, and that

@@ -217,8 +217,9 @@ calibration parameter of its own with scope ``local``:
 
 Repeating the definition of ``CabinTemperature`` in the consumer looks redundant, and it is the
 point of the exercise: the consumer states what it *expects* to read, DDD compares that with
-what the producer promises to write, and a disagreement becomes a finding instead of a field
-report. Where the two sides differ, the declaration of the producing component is the
+what the producer promises to write, and a disagreement between the two descriptions becomes a
+finding instead of a field report. It compares descriptions, never a description with the
+consumer's code. Where the two sides differ, the declaration of the producing component is the
 authoritative one - its definition is what gets generated, and the diagnostic points at the
 consumer that deviates.
 
@@ -458,6 +459,8 @@ path:
    /* outputs - written by SensorHub, read by other components */
    /** Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;
+   #define CabinTemperature__FACTOR (0.1)
+   #define CabinTemperature__OFFSET (0.0)
 
    #endif /* DDD_COMPONENT_SENSORHUB_H */
 
@@ -491,6 +494,8 @@ description files. The local parameter appears in its own section, and only here
    /* inputs - produced elsewhere, Controller may only read them */
    /** Temperature measured in the cabin [degC] */
    extern volatile int16_t CabinTemperature;  /* produced by SensorHub */
+   #define CabinTemperature__FACTOR (0.1)
+   #define CabinTemperature__OFFSET (0.0)
 
    /* locals - owned exclusively by Controller */
    /** Temperature below which the heater is switched on [degC] (calibration parameter) */

@@ -94,8 +94,47 @@ on every image, and a consumer's ``extern`` to the qualifiers of its kind where 
 records it in the debug information, which gcc does for a variable a unit reads and clang does
 not. A definition of another type, or a template that drops a ``const`` or ``volatile`` there, is
 a warning, ``elf-mismatch``, and so is a header that drops them, on a gcc image.
-Changing the scaling is one edit in one file, and everything that depends on it follows on the
-next build.
+Changing the scaling is one edit in one file when the variables name a shared type, and one
+edit in each declaring file when each restates its definition; what is generated follows on the
+next build. The code a person wrote does not: a ``* 0.1`` in a consumer's source is nothing DDD
+reads, which is what the next section is about.
+
+What is detected, and what is not
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``ddd check`` compares **descriptions**. It never compares a description with code: the
+hand written c that multiplies ``ValueF`` by 0.1 is not read by anything in the tool, so a
+rescale to 0.01 leaves it wrong and silent. What is detected depends on how the variable is
+declared:
+
+* **Each component restates the definition.** Producer and consumer each write the datatype,
+  the unit, the conversion and the limits. Two descriptions that disagree are a
+  ``definition-mismatch``, reported before anything is built, naming the consumer to change.
+  This redundancy is what lets ``ddd check`` see the two sides drift apart. It does not reach
+  the code: once the consumer's description is edited to agree, the check is green whether or
+  not its code was updated.
+* **Producer and consumers name a shared** :doc:`type <file_formats/types>`. There is one
+  place to write the scaling and nothing for two descriptions to disagree about, so
+  ``ddd check`` has nothing to report - including when the type is rescaled and no reader has
+  seen it. The rescale is one edit that no reader's description shows. What names it is
+  ``ddd compare`` against a baseline dump archived before the change, which reports the
+  interface as changed; and the example templates write each linear conversion's factor and
+  offset as two macros in the header every reader includes (``Speed__FACTOR`` and
+  ``Speed__OFFSET``), so the rescale changes that header and every reader that includes it is
+  rebuilt. A reader that uses the macros follows the rescale; a reader that wrote the number
+  itself does not, and the rebuild is the only thing that tells it so. A project's own
+  templates get the same from ``.unit``, ``.conversion`` and ``.limits`` of each variable, see
+  :doc:`templates`.
+* **Reconciling is not a code change either.** The quick fix and the settle panel of
+  ``ddd gui`` push the producer's value into every consumer's description in one click. The
+  descriptions agree afterwards, and the code that reads the variable is untouched; the
+  preview of each says so.
+
+Choose a shared type when the meaning of the number is one fact the whole project holds, and
+accept that a change to it reaches the readers' headers and the a2l, not their descriptions or
+their code. Restate the definition where each side should be made to state, and be held to,
+what it expects: a deliberate duplication, paid for with one edit per file, which buys the
+check that notices when one side moves.
 
 Exactly one component owns each variable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -168,14 +207,22 @@ header declares only what that component declared.
    /* outputs - written by Controller, read by other components */
    /** Measurement used as the input quantity of AxisA [Hz] */
    extern volatile uint16_t ValueE;
+   #define ValueE__FACTOR (0.25)
+   #define ValueE__OFFSET (0.0)
    /** Signed measurement with a fixed point conversion [degC] */
    extern int16_t ValueF;
+   #define ValueF__FACTOR (0.1)
+   #define ValueF__OFFSET (0.0)
 
    /* inputs - produced elsewhere, Controller may only read them */
    /** Scalar measurement with a linear conversion [%] */
    extern uint8_t ValueA;  /* produced by SensorHub */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
    /** Array measurement with four elements [V] */
    extern volatile uint16_t ValueB[4];  /* produced by SensorHub */
+   #define ValueB__FACTOR (0.001)
+   #define ValueB__OFFSET (0.0)
 
    /* locals - owned exclusively by Controller */
    /** Component local measurement of the controller [%] */
@@ -385,9 +432,10 @@ silently accepting it.
 
    Scope is a property of a *declaration*, not of an object. The same object is ``output`` in
    the file of its producer and ``input`` in the file of every consumer, and each side states
-   the full definition. That redundancy is deliberate: it is precisely what allows DDD to
-   notice that the two sides have drifted apart, which a single shared declaration could never
-   do.
+   the full definition. That redundancy is deliberate when the declarations are restated: it
+   is what allows ``ddd check`` to notice that two descriptions have drifted apart, which a
+   shared type, naming the meaning once, trades away; see *What is detected, and what is not*
+   above.
 
 
 Position in the build process

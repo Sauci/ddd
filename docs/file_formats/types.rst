@@ -194,7 +194,12 @@ A scalar type is agreement by naming rather than by copying. Three components co
 engine speed each used to write out the datatype, the unit, the scaling and the limits, and
 DDD's job was to notice when one of the three was wrong. If all three say ``Speed_t`` instead,
 there is nothing left for them to disagree about - which is a check turned into a construction,
-and the reason the four keys above are exactly the ones a scalar type fixes. ``kind``,
+and the reason the four keys above are exactly the ones a scalar type fixes. It is also a
+check given up: with one description there is no second one for ``ddd check`` to find
+different, so a rescale of the type is one edit that no reader's description shows, and it
+changes no generated header but the one the example templates give a scale macro. A project
+that wants a disagreement reported restates the definition instead; :doc:`../concept` sets
+the two against each other. ``kind``,
 ``dimensions``, ``init``, ``volatile`` and the ``a2l`` block stay on the variable, because they
 are properties of one object rather than of the type: two measurements of one type may well
 differ in whether an interrupt writes one of them.

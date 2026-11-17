@@ -307,6 +307,23 @@ themselves:
    * - ``.owner``, ``.consumers``
      - The component that produces the object and the components that read it, for a comment
        that says where a value comes from.
+   * - ``.unit``
+     - The physical unit, exactly as the a2l states it: empty when the object has none, and
+       for a structured variable, whose members state their own.
+   * - ``.conversion``
+     - What turns the raw value into the physical one, as the a2l states it, or nothing for a
+       structured variable. ``.conversion.kind`` is ``identity``, ``linear``, ``enum`` or
+       ``string``. A ``linear`` one has ``.conversion.factor`` and ``.conversion.offset``
+       (physical = raw * factor + offset), each also as a c literal in
+       ``.conversion.factor_literal`` and ``.conversion.offset_literal``, and
+       ``.conversion.coefficients``, the six numbers of the a2l's rational function
+       (``0 1 -offset 0 0 factor``) with ``.conversion.coefficient_literals`` beside them. An
+       ``enum`` one has ``.conversion.name`` and ``.conversion.enumerators``, each with
+       ``.name``, ``.value`` and ``.description``. A field a kind does not have is empty.
+   * - ``.limits``
+     - The range the a2l states: the limits the description states, or what the datatype and
+       the conversion imply. ``.limits.min`` and ``.limits.max``, each also as a c literal in
+       ``.limits.min_literal`` and ``.limits.max_literal``; nothing for a structured variable.
 
 ``.kind``, ``.c_type``, ``.datatype``, ``.array_suffix``, ``.qualifier``, ``.initializer``,
 ``.dimensions``, ``.point_counts`` and ``.extensions`` are there as well, for a template that
@@ -340,6 +357,27 @@ or two keywords that follow, with their trailing space. A template that composes
 declaration is better off testing the two booleans than matching text against the string they
 produce, and they are also what a MISRA deviation record above every ``volatile`` object, or
 a section attribute on the tunable data alone, is written from.
+
+``.unit``, ``.conversion`` and ``.limits`` are the values the a2l is written from, taken from
+the same place, so a template that writes a scale macro, a table or a header of its own cannot
+disagree with the a2l. The example ``{component}.h`` template uses them: beside each input and
+output whose conversion is ``linear`` it writes two macros, named after the variable with a
+double underscore and a suffix::
+
+   extern int16_t Speed;  /* produced by Prod */
+   #define Speed__FACTOR (0.1)
+   #define Speed__OFFSET (-40.0)
+
+A rescale of the conversion changes that header, so every file that includes it is compiled
+again; a reader that multiplies by ``Speed__FACTOR`` follows the rescale, and one that wrote
+the number itself does not, which no check of the descriptions can see. The names carry a
+double underscore because DDD refuses one in every name a project writes - a variable, a type,
+a constant, an enumerator - so no name the generated c holds can be one of them; the values
+are parenthesised so that a negative offset cannot join the sign in front of it. The example
+writes nothing for any other kind of conversion: an ``identity`` and a ``string`` have no
+scale, and the ``typedef enum`` of an ``enum`` is already in the types header. A project whose
+templates were copied before this one keeps the headers it had, and gains the macros by
+copying the two lines and the macro of ``_macros.jinja2``.
 
 A component header
 ~~~~~~~~~~~~~~~~~~

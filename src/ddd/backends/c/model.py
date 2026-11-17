@@ -26,8 +26,11 @@ from ddd.ir import (
     ResolvedStruct,
 )
 from ddd.models import (
+    Conversion,
     Datatype,
     EnumConversion,
+    Enumerator,
+    LinearConversion,
     ObjectKind,
     PointCounts,
     Scope,
@@ -51,6 +54,66 @@ REMOVED_DECLARATION_CONST = (
     "declarations undefined. Call declaration() without it."
 )
 """What a template that still passes ``const`` to ``declaration()`` is told."""
+
+
+@dataclass(frozen=True, slots=True)
+class ConversionView:
+    """What turns an object's raw value into its physical one, as the a2l states it.
+
+    ``kind`` is ``identity``, ``linear``, ``enum`` or ``string``. The other fields say what
+    the kind has and are empty or ``None`` for a kind that has not: a ``linear`` conversion
+    has a ``factor`` and an ``offset`` (physical = raw * factor + offset), an ``enum`` its
+    ``name`` and ``enumerators``.
+    """
+
+    kind: str
+    factor: float | None = None
+    offset: float | None = None
+    name: str = ""
+    enumerators: tuple[EnumeratorView, ...] = ()
+
+    @property
+    def factor_literal(self) -> str:
+        """The factor as a c literal: ``0.1``. Empty for a conversion that has none."""
+        return "" if self.factor is None else c_constant_literal(self.factor)
+
+    @property
+    def offset_literal(self) -> str:
+        """The offset as a c literal: ``-40.0``. Empty for a conversion that has none."""
+        return "" if self.offset is None else c_constant_literal(self.offset)
+
+    @property
+    def coefficients(self) -> tuple[float, ...]:
+        """The six coefficients of the a2l's rational function ``(a*x^2 + b*x + c) / (d*x^2 +
+        e*x + f)``, in the order its ``COEFFS`` record lists them; ``()`` for a conversion
+        that is not linear. A linear one is ``0 1 -offset 0 0 factor``."""
+        if self.factor is None or self.offset is None:
+            return ()
+        return (0.0, 1.0, -self.offset, 0.0, 0.0, self.factor)
+
+    @property
+    def coefficient_literals(self) -> tuple[str, ...]:
+        """:attr:`coefficients`, each spelled as a c literal."""
+        return tuple(c_constant_literal(value) for value in self.coefficients)
+
+
+@dataclass(frozen=True, slots=True)
+class LimitsView:
+    """The range the a2l states for an object: the explicit limits, or what its datatype and
+    conversion imply."""
+
+    min: float
+    max: float
+
+    @property
+    def min_literal(self) -> str:
+        """The lower limit as a c literal."""
+        return c_constant_literal(self.min)
+
+    @property
+    def max_literal(self) -> str:
+        """The upper limit as a c literal."""
+        return c_constant_literal(self.max)
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +166,19 @@ class ObjectView:
     extensions: dict[str, dict[str, Any]] = field(default_factory=dict)
     """The blocks of the project's plugins, keyed by plugin name, exactly as the dictionary
     carries them - a project whose c carries a table derived from a block renders it here."""
+
+    unit: str = ""
+    """The physical unit, as the a2l states it; empty when the object states none, and for a
+    structured variable, whose members state their own."""
+
+    conversion: ConversionView | None = None
+    """What turns the raw value into the physical one, as the a2l states it, so that a project
+    generating a scale macro, a table or a header of its own from it cannot disagree with the
+    a2l. ``None`` for a structured variable."""
+
+    limits: LimitsView | None = None
+    """The range the a2l states: the explicit limits or the derived ones. ``None`` for a
+    structured variable."""
 
     @property
     def qualifier(self) -> str:
@@ -503,17 +579,18 @@ def _external_includes(dictionary: DataDictionary) -> tuple[str, ...]:
 def _enum_view(enum: EnumConversion) -> EnumView:
     return EnumView(
         name=enum.name,
-        enumerators=tuple(
-            EnumeratorView(
-                name=enumerator.name,
-                value=enumerator.value,
-                # Every text that reaches a comment is defused here rather than in the
-                # template: a '*/' in a description would otherwise end the comment and
-                # leave the rest of it as code.
-                description=sanitize_comment(enumerator.description),
-            )
-            for enumerator in enum.enumerators
-        ),
+        enumerators=tuple(_enumerator_view(enumerator) for enumerator in enum.enumerators),
+    )
+
+
+def _enumerator_view(enumerator: Enumerator) -> EnumeratorView:
+    return EnumeratorView(
+        name=enumerator.name,
+        value=enumerator.value,
+        # Every text that reaches a comment is defused here rather than in the template: a
+        # '*/' in a description would otherwise end the comment and leave the rest of it as
+        # code.
+        description=sanitize_comment(enumerator.description),
     )
 
 
@@ -630,7 +707,28 @@ def _view(
             else ()
         ),
         extensions=entry.extensions,
+        unit=entry.unit if isinstance(entry, ResolvedObject) else "",
+        conversion=_conversion_view(entry.conversion)
+        if isinstance(entry, ResolvedObject)
+        else None,
+        limits=(
+            LimitsView(min=entry.limits.min, max=entry.limits.max)
+            if isinstance(entry, ResolvedObject)
+            else None
+        ),
     )
+
+
+def _conversion_view(conversion: Conversion) -> ConversionView:
+    if isinstance(conversion, LinearConversion):
+        return ConversionView(kind="linear", factor=conversion.factor, offset=conversion.offset)
+    if isinstance(conversion, EnumConversion):
+        return ConversionView(
+            kind="enum",
+            name=conversion.name,
+            enumerators=tuple(_enumerator_view(e) for e in conversion.enumerators),
+        )
+    return ConversionView(kind=conversion.kind)
 
 
 def _header(component: ResolvedComponent, views: dict[str, ObjectView]) -> ComponentHeaderView:

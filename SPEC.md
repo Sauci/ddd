@@ -158,7 +158,7 @@ A build that does not require them stops after the first run.
 | **declaration** | one entry of a component interface: a scope, an optional condition and a definition |
 | **definition** | the part of a declaration that says what the object is: kind, datatype, shape, conversion and the remaining keys of [section 3.3](#33-data-object-definition) |
 | **data object** | the subject of a declaration: a measurement, parameter, value block, curve, map or axis |
-| **instance** | the data object of a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path. It is a data object like any other - it has a producer, consumers and an `id`, and the dictionary records it as its own kind of entry ([section 5.3](#53-data-dictionary)) - so every rule this specification states about a data object states it about an instance too |
+| **instance** | the data object of a declaration naming a structure type ([section 3.7](#37-type-description)): one C object whose members are data objects in their own right, each reached by its access path. It is a data object like any other - it has a producer, consumers and an `id`, and the dictionary records it as its own kind of entry ([section 5.3](#53-data-dictionary)) - so every rule this specification states about a data object states it about an instance too, an instance with no leaf included: its removal, its rename, its reuse of a name and its `kind` are reported at the instance, where nothing else says them ([section 4.1](#41-comparing-two-deliveries)) |
 | **leaf** | one value-holding member of an instance, as the dictionary sees it; a member naming an external type is opaque and is no leaf |
 | **measurement** | a data object the software writes and reads, the producer writing and the consumers reading; a calibration tool can both read and write it as well |
 | **calibration object** | a data object the software never writes: a parameter, value block, curve, map or axis, generated `const` and changed, if at all, by a calibration tool |
@@ -1711,7 +1711,8 @@ project kept in a directory each. `ddd compare --renames <file>` writes beside i
 old-to-new name pairs the comparison established, so that a calibration dataset, a
 recording or a test script keyed by the old spelling can be migrated without parsing the
 findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
-name changed, sorted by `to`, `[]` when nothing was renamed; a member of a structured
+name changed, sorted by `to`, `[]` when nothing was renamed; a structured variable with no
+leaf is listed once, under its own `id`, and any other member of a structured
 object is listed once per member, its `id` being the instance's `id` followed by the
 member's path below the instance as the access path spells it - `.latest` for a member of a
 single structure, `[2].raw` for a member of the third element of an array of them, with no
@@ -1726,7 +1727,8 @@ Errors, because the consumers of the object become wrong, whether or not they st
 compile:
 
 - `removed-object`: an object is gone that a component read, or an output of a component
-  read alone, whose readers the run was not shown.
+  read alone, whose readers the run was not shown. A structured variable with no leaf is one,
+  said at the variable; one that has leaves is said by its leaves, and not a second time.
 - `changed-interface`: kind, datatype, unit, scaling, shape, referenced objects, locality,
   where a table keeps its point counts, the width of a bitfield, the `type` a structured
   variable names, the layout of a structured variable or the value of a constant changed. Scaling is the conversion,
@@ -1779,7 +1781,7 @@ compile:
   looks for a spelling that is gone. It is found as `renamed-object` is, by the `id`
   ([section 3.3](#33-data-object-definition)), and reported with the readers named; a
   structured variable's rename is said under each leaf's path, each leaf answering for the
-  readers of its variable. A check has one severity, so a project's `-W renamed-object`
+  readers of its variable; a variable with no leaf is said at the variable. A check has one severity, so a project's `-W renamed-object`
   relaxes only the warning below and does not reach this error; that is why the rename's pair
   of ids runs the other way from the removals', and `renamed-object` keeps the plain id for the
   unread rename.
@@ -1808,7 +1810,9 @@ compile:
   When the baseline's object survives elsewhere in the candidate under a new name, the finding
   carries a note saying so, and when the object now under the name arrived there by a rename,
   a note names what the baseline called it; a swap carries both. A project that reuses names
-  deliberately relaxes the check with `-W reused-name=warning`.
+  deliberately relaxes the check with `-W reused-name=warning`. A structured variable with no
+  leaf is one of the names, and says it at the variable; a variable with leaves says it at
+  each of its leaves' paths.
 - `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
   longer builds, so it is an error whether or not an object is dimensioned by it. A constant
   has no `id`, so one renamed is this finding for the old name and `added-constant` for the
@@ -1826,7 +1830,8 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   reads: every consumer names the object it reads, so a rename that left one behind already
   failed `ddd check`; what breaks is outside DDD's sight - calibration datasets, recordings, test scripts and requirement
   documents keyed by the old spelling.
-- `removed-unused-object`: an object is gone that no component read.
+- `removed-unused-object`: an object is gone that no component read, a structured variable
+  with no leaf included.
 - `changed-storage`: the initial value, the volatility, the section or the measurement
   raster ([section 3.10](#310-measurement-rasters)) of an object changed, or the event or cycle
   of a raster, which are compared as entries by name and said at the raster, the cycle
@@ -1886,7 +1891,8 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
 
 Information:
 
-- `added-object`: the candidate declares an object the baseline did not.
+- `added-object`: the candidate declares an object the baseline did not, a structured
+  variable with no leaf included.
 - `added-constant`: the candidate declares a constant the baseline did not, which no reader
   of the baseline can be disturbed by.
 - `narrowed-read-limits`: the physical limits of a measurement somebody reads got tighter,
@@ -1917,7 +1923,7 @@ on a type's member.
 
 A structured object **shall** be compared as the variable it is and not only through its
 members. The variable answers for what no member carries - its `type` and its layout - and
-for what every member carries only because the variable states it: its array shape and its
+for what every member carries only because the variable states it: its `kind`, its array shape and its
 locality as interface, and its volatility, its section, its raster, its producer and its
 condition as storage and as their own findings. Each of those is therefore reported once,
 at the variable, where the declaration that states it is. Reported under the members
@@ -1925,6 +1931,20 @@ instead, one edit on one declaration was one finding per member of the structure
 per member of every element of an array of them, each naming a path for a change that is on
 one line. What is left at a member is what the member itself states: its datatype, its
 meaning, its shape, its width in bits and the A2L entry it asks for.
+
+A structure holding only members of external types, at any depth, holds nothing DDD can see
+into, and its variable has no leaf. What a leaf says of a variable - that it is gone, that it
+went under another name, that its name is another object's, that it is new - is then said by
+nothing, and a variable could be removed, renamed or reused with no finding at all while every
+reader's header lost the declaration, or found another object where the name was. Such a
+variable **shall** therefore be reported as an object is, at the variable, and graded as one:
+its removal is `removed-object`, or `removed-unused-object` where no component read it, and
+where the baseline is a component read alone it is graded by its scope as an object's is; its
+rename is `renamed-read-object`, or `renamed-object` where no component read it, and is in the
+migration map; another `id` under its name is `reused-name`; and a variable that arrived is
+`added-object`. The side a finding is about says whether the variable has a leaf: the
+baseline's for a removal, a rename and a reused name, the candidate's for an addition. A
+variable that has leaves is not said a second time at the variable.
 
 Limits **shall** be graded by the direction the data flows. Calibration data flows into the
 software, so widening its limits **shall** be silent, because every value the baseline
@@ -2315,7 +2335,9 @@ where no component does, which a consistent project has none of), `consumers`, `
 `point_counts` (`"none"` or `"leading"`, resolved for a curve, a map or an axis, `"none"`
 for every other kind) and `a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,
-`owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
+`owner`, `consumers`, `local` and `a2l`, and is the only record of a variable of a structure holding
+members of external types alone, which has no leaf: a delivery comparison reads the removal, the rename and
+the reuse of such a variable from it ([section 4.1](#41-comparing-two-deliveries)); a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
 `bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
 `a2l`, whose `export` is the instance's and the members' folded into one - true only where

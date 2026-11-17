@@ -145,6 +145,7 @@ _NOT_COMPARED_LEAF: dict[str, str] = {
     "leaf whose variable was renamed is the same leaf under a new path, which renamed-object "
     "reports for the variable once instead of once per member",
     "instance_id": _NOT_COMPARED_RESOLVED["id"],
+    "kind": _BELONGS_TO_THE_VARIABLE,
     "local": _BELONGS_TO_THE_VARIABLE,
     "volatile": _BELONGS_TO_THE_VARIABLE,
     "section": _BELONGS_TO_THE_VARIABLE,
@@ -155,9 +156,6 @@ _NOT_COMPARED_LEAF: dict[str, str] = {
 # variable *of* is on nothing else, and what its members carry only because it does is
 # compared here once instead of once per member.
 _NOT_COMPARED_INSTANCE: dict[str, str] = {
-    "kind": "compared on every leaf: the storage class decides whether a member reaches the "
-    "a2l as a MEASUREMENT or a CHARACTERISTIC, so it is a property of each record the file "
-    "carries rather than of the declaration alone",
     "a2l": "compared on every leaf, which carries the resolved answer: the analysis folds the "
     "variable's export into each member's, and the variable's own format and display "
     "identifier reach no record at all - the a2l backend reads a structured object only "
@@ -568,10 +566,11 @@ class TestComparisonTables:
 
         Derived rather than spelled out, so a field added to an object table reaches a leaf
         too; what this pins is the other half of the deal - that every field taken off a leaf
-        is compared at the instance, and not simply dropped. A member carries ``volatile``,
-        ``section``, ``raster`` and ``local`` only because the analysis copies them there from
-        the variable, so comparing them per member turned one edit into one finding per
-        member.
+        is compared at the instance, and not simply dropped. A member carries ``kind``,
+        ``volatile``, ``section``, ``raster`` and ``local`` only because the analysis copies
+        them there from the variable, so comparing them per member turned one edit into one
+        finding per member - and, for a structure holding only external types, said
+        the ``kind`` nowhere at all.
         """
         whole = table_names(compare._INTERFACE_FIELDS, compare._STORAGE_FIELDS)
         leaf = table_names(compare._LEAF_INTERFACE_FIELDS, compare._LEAF_STORAGE_FIELDS)

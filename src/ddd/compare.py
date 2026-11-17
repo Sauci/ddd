@@ -411,7 +411,7 @@ _STORAGE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ),
 )
 
-_OF_THE_VARIABLE = frozenset({"local", "volatile", "section", "raster"})
+_OF_THE_VARIABLE = frozenset({"kind", "local", "volatile", "section", "raster"})
 """The fields a leaf only carries because its variable does, compared at the variable instead.
 
 ``ddd.analysis`` copies these onto every leaf of a structured variable from the instance, so
@@ -421,6 +421,11 @@ every element of an array of them - each saying the same thing about the same de
 :func:`_compare_instances` compares them once, where they are written. What is left on a leaf
 is what the *member* states: its storage, its meaning, its shape, its width in bits and the
 a2l entry it asks for.
+
+The ``kind`` is one of them, and the one a structure with no leaf shows the reason for: a
+variable turned from a measurement into a parameter changes the declaration every reader's
+header carries, which gains a ``const``, and a structure of external members has no leaf to say
+so.
 """
 
 _LEAF_INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = tuple(
@@ -462,6 +467,7 @@ def _storage_fields(old: Comparable) -> tuple[ComparedField[Comparable], ...]:
 # ``definition-mismatch`` - while the members underneath it can be identical to the byte, so
 # no leaf of it has anything to report.
 _INSTANCE_INTERFACE_FIELDS: tuple[ComparedField[ResolvedInstance], ...] = (
+    ComparedField("kind", lambda o: o.kind.value, lambda o: o.kind.value),
     ComparedField("type", lambda o: o.type, lambda o: f"'{o.type}'"),
     ComparedField(
         "shape", lambda o: o.written_shape, lambda o: format_shape(o.spelled_shape) or "scalar"
@@ -605,7 +611,7 @@ def _pair[T: _Joined](
     return paired, removed, added
 
 
-def renames(paired: Sequence[tuple[Comparable, Comparable]]) -> list[dict[str, str]]:
+def renames(paired: Sequence[tuple[_Joined, _Joined]]) -> list[dict[str, str]]:
     """The old-to-new name pairs of a comparison, for migrating what DDD cannot see.
 
     Takes the pairing :func:`compare` returns rather than the two dictionaries, so the map is
@@ -631,12 +637,14 @@ def compare(
     *,
     location: Location | None = None,
     baseline_alone: bool = False,
-) -> list[tuple[Comparable, Comparable]]:
+) -> list[tuple[_Joined, _Joined]]:
     """Report how far ``candidate`` can stand in for ``baseline``, and hand back the pairing.
 
     The pairing is returned because it is a genuine product of comparing and the migration map
     is a second view of it: ``renames`` reading it back costs nothing, where re-deriving it
-    would build both side maps and run :func:`_pair` a second time over identical input.
+    would build both side maps and run :func:`_pair` a second time over identical input. It
+    holds the objects and the leaves, and the structured variables that have no leaf, which
+    nothing else of the migration map would hold.
 
     The comparison is directional: everything the baseline offered has to still be there and
     still mean the same thing, while anything the candidate adds is its own business.
@@ -660,7 +668,7 @@ def compare(
             location,
         )
 
-    _compare_instances(baseline, candidate, bag, location)
+    bare = _compare_instances(baseline, candidate, bag, location, baseline_alone=baseline_alone)
     _compare_constants(baseline, candidate, bag, location)
     _compare_rasters(baseline, candidate, bag, location)
 
@@ -670,18 +678,46 @@ def compare(
 
     for old, new in paired:
         if old.name != new.name:
-            readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
-            bag.add(
-                "renamed-read-object" if old.consumers else "renamed-object",
-                f"'{old.name}' is now called '{new.name}'{readers}; every dataset, recording "
-                f"and script keyed by the old spelling needs migrating",
-                location,
-            )
+            _report_rename(old, new, bag, location)
         _compare_object(old, new, bag, location, was, now)
 
+    _report_reused_names(was, now, paired, sorted(was.keys() & now.keys()), bag, location)
+
+    candidates = _by_discriminators(added)
+    for old in removed:
+        _report_removal(old, bag, location, candidates, was, now, baseline_alone=baseline_alone)
+
+    for new in added:
+        _report_addition(new, candidate, bag, location)
+
+    return [*paired, *bare]
+
+
+def _report_rename(
+    old: _Joined, new: _Joined, bag: DiagnosticBag, location: Location | None
+) -> None:
+    """One object, or one structured variable with no leaf, under another name."""
+    readers = f", read by {', '.join(old.consumers)}" if old.consumers else ""
+    bag.add(
+        "renamed-read-object" if old.consumers else "renamed-object",
+        f"'{old.name}' is now called '{new.name}'{readers}; every dataset, recording "
+        f"and script keyed by the old spelling needs migrating",
+        location,
+    )
+
+
+def _report_reused_names[T: _Joined](
+    was: Mapping[str, T],
+    now: Mapping[str, T],
+    paired: Sequence[tuple[T, T]],
+    names: Sequence[str],
+    bag: DiagnosticBag,
+    location: Location | None,
+) -> None:
+    """Say ``reused-name`` of each of these names, that both deliveries use, where it is so."""
     renamed = {old.name: new.name for old, new in paired if old.name != new.name}
     claimed = {new: old for old, new in renamed.items()}
-    for name in sorted(was.keys() & now.keys()):
+    for name in names:
         # Proof does not need both sides to have adopted an id, and a rename proves it from
         # either end. Pairing (above) may have matched the baseline's object under this name
         # to a *different* name in the candidate, which proves whatever still answers to the
@@ -710,19 +746,17 @@ def compare(
             notes=notes,
         )
 
-    candidates = _by_discriminators(added)
-    for old in removed:
-        _report_removal(old, bag, location, candidates, was, now, baseline_alone=baseline_alone)
 
-    for new in added:
-        bag.add(
-            "added-object",
-            f"'{new.name}' is new in {candidate.name} "
-            f"({new.kind.value}, produced by {new.owner or 'nobody'})",
-            location,
-        )
-
-    return paired
+def _report_addition(
+    new: _Joined, candidate: DataDictionary, bag: DiagnosticBag, location: Location | None
+) -> None:
+    """One object, or one structured variable with no leaf, that the candidate introduces."""
+    bag.add(
+        "added-object",
+        f"'{new.name}' is new in {candidate.name} "
+        f"({new.kind.value}, produced by {new.owner or 'nobody'})",
+        location,
+    )
 
 
 _FORMAT_SPELLING_DIMENSIONS = 4
@@ -1032,7 +1066,7 @@ def _lost_identity_note(
 
 
 def _report_removal(
-    old: Comparable,
+    old: _Joined,
     bag: DiagnosticBag,
     location: Location | None,
     candidates: Mapping[tuple[object, ...], Sequence[Comparable]],
@@ -1041,8 +1075,13 @@ def _report_removal(
     *,
     baseline_alone: bool = False,
 ) -> None:
-    bucket = candidates.get(_bucket_key(old, of_a_leaf=isinstance(old, ResolvedLeaf)), ())
-    notes = _lost_identity_note(old, bucket, was, now)
+    # What a structured variable might have been renamed to is told by its interface, which a
+    # leaf and an object have and a variable does not: it has no lost identity to point at.
+    if isinstance(old, ResolvedInstance):
+        notes: list[tuple[str, Location | None]] = []
+    else:
+        bucket = candidates.get(_bucket_key(old, of_a_leaf=isinstance(old, ResolvedLeaf)), ())
+        notes = _lost_identity_note(old, bucket, was, now)
     # A ``local`` object is private to the component, so its readers are known even where
     # the rest of the project is not: it keeps the grade a whole comparison gives it.
     read_alone = baseline_alone and not old.local
@@ -1302,7 +1341,9 @@ def _compare_instances(
     candidate: DataDictionary,
     bag: DiagnosticBag,
     location: Location | None,
-) -> None:
+    *,
+    baseline_alone: bool = False,
+) -> list[tuple[ResolvedInstance, ResolvedInstance]]:
     """Compare the structured variables themselves, which their members cannot answer for.
 
     ``DataDictionary.comparable`` offers the plain objects and the leaves and never the
@@ -1329,15 +1370,25 @@ def _compare_instances(
     They are compared here once and left out of the leaf tables.
 
     Pairing is the pairing every other entry gets - an id where there is one, a name
-    otherwise - and nothing is reported about what the pairing leaves over: an instance that
-    went is every one of its leaves removed, an instance that arrived is every one of them
-    added, and an instance renamed is every one of them renamed, each already said under the
-    path that a dataset or a recording is actually keyed by.
+    otherwise - and what the pairing leaves over is reported only for an instance with no leaf.
+    An instance that went is every one of its leaves removed, an instance that arrived is every
+    one of them added, and an instance renamed is every one of them renamed, each already said
+    under the path that a dataset or a recording is actually keyed by - and said once, not a
+    second time at the variable. A structure holding only members of external types, at any depth,
+    has no leaf, and nothing says anything of its variable: it is removed, renamed, reused and
+    added as an object is, and graded as one, with a component read alone graded as it is for an
+    object. What comes back is the pairs of such variables that were renamed or not, for the
+    migration map; the leaves hold the others' ids.
+
+    An instance is said to have no leaf by the side the finding is about: the baseline's for a
+    removal, a rename and a reused name, whose readers are the baseline's, and the candidate's
+    for an addition.
     """
     was = {entry.name: entry for entry in baseline.instances}
     now = {entry.name: entry for entry in candidate.instances}
     layouts = _Layouts(baseline, candidate)
-    paired, _removed, _added = _pair(was, now)
+    paired, removed, added = _pair(was, now)
+    leafed = {leaf.instance for leaf in baseline.leaves}
     for old, new in paired:
         interface = differing(_instance_interface_fields(old, new), old, new)
         moved = layouts.moved(old, new)
@@ -1360,6 +1411,27 @@ def _compare_instances(
             )
 
         _compare_declaration(old, new, bag, location)
+
+    bare = [(old, new) for old, new in paired if old.name not in leafed]
+    for old, new in bare:
+        if old.name != new.name:
+            _report_rename(old, new, bag, location)
+    _report_reused_names(
+        was,
+        now,
+        paired,
+        [name for name in sorted(was.keys() & now.keys()) if name not in leafed],
+        bag,
+        location,
+    )
+    for gone in removed:
+        if gone.name not in leafed:
+            _report_removal(gone, bag, location, {}, {}, {}, baseline_alone=baseline_alone)
+    arrived = {leaf.instance for leaf in candidate.leaves}
+    for new in added:
+        if new.name not in arrived:
+            _report_addition(new, candidate, bag, location)
+    return bare
 
 
 _CONSTANT_FIELDS: tuple[ComparedField[ConstantDeclaration], ...] = (

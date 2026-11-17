@@ -186,6 +186,15 @@ A structured variable renamed with its ``id`` kept is each leaf's ``renamed-obje
 instance's name at their head is the rename told again; an identifier that changed in any other
 way, or one a leaf's own member states, is still ``changed-a2l``.
 
+A structured variable of a structure that holds members of external types alone, at any depth, has no leaf, because
+DDD cannot see into storage its own types do not describe, and so nothing says its removal, its
+rename or its reuse: the variable is reported as an object is, at the variable. Dropped, it is
+``removed-object`` where a component read it and ``removed-unused-object`` where none did, and a
+baseline that is a component file read alone grades it by its scope, as it does an object; renamed
+with its ``id`` kept, it is ``renamed-read-object`` or ``renamed-object``, and ``renames.json``
+lists it under its own id; another ``id`` under its name is ``reused-name``; and one that arrived
+is ``added-object``. A variable that has leaves is not said a second time at the variable.
+
 The comparison checks
 ---------------------
 
@@ -206,7 +215,8 @@ them together with everything else.
    * - error
      - ``removed-object``
      - an object of the baseline is gone and somebody read it, or an output of a component
-       read alone, whose readers the run was not shown
+       read alone, whose readers the run was not shown; a structured variable with no leaf is an
+       object here
    * - error
      - ``changed-interface``
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
@@ -238,7 +248,8 @@ them together with everything else.
        its ``id`` says so
    * - warning
      - ``removed-unused-object``
-     - an object of the baseline is gone; no component read it
+     - an object of the baseline is gone; no component read it, a structured variable with no
+       leaf included
    * - warning
      - ``changed-storage``
      - the initial value, volatility, memory section or measurement raster of an object changed,
@@ -324,7 +335,10 @@ structure grown, so neither is an addition alone. And a structured variable is c
 variable, not only through its members: its ``type`` is what every consumer's header
 declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a changed
 interface, while a structure nested in it is reached through the member that holds it, so
-renaming that one with its layout kept changes nothing.
+renaming that one with its layout kept changes nothing. Its ``kind`` is the variable's as well:
+a measurement turned into a parameter is one edit of one declaration, and the declaration in every
+reader's header gains a ``const``, so it is one ``changed-interface``
+at the variable and not one per member, a structure of external members included.
 
 The vocabularies an object reaches the outputs through are compared as entries too, by name,
 because a change in one of them changes what a reader or a measuring tool is given while every

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from ddd.diagnostics import (
+    CHECKS,
     STANDALONE_POLICY,
     DiagnosticBag,
     Location,
@@ -155,8 +156,13 @@ def read_dictionary(
     if holds_a_description(document):
         if floor_when_alone and _is_a_component(document):
             bag.policy = _with_the_floor(bag.policy)
+        # What this file reported, not what the bag held when it came: a baseline's carried
+        # errors share the bag of the run, and a candidate that was refused for them was never
+        # analysed, so its own findings and its renames were withheld from a run that reports
+        # a candidate's everything.
+        held = bag.count(Severity.ERROR)
         workspace = load_workspace(path, bag)
-        if workspace is None or bag.has_errors:
+        if workspace is None or bag.count(Severity.ERROR) > held:
             account.refusal = Refusal.DESCRIPTION
             return None
         return Resolved(
@@ -167,6 +173,18 @@ def read_dictionary(
             workspace.sources(),
             alone=not workspace.projects,
         )
+    if document is not None and not holds_a_dictionary(document):
+        # Neither: ``format`` has a default, so a file stating only a name validates as an empty
+        # dictionary - every object of the other side an addition, or a removal - and is a
+        # delivery of nothing. Said here, once, for every caller.
+        bag.add(
+            "schema",
+            "the file is neither a dumped dictionary nor a project or component description: it "
+            "states no `format`, no `project` and no `component`",
+            where(path),
+        )
+        account.refusal = Refusal.NEITHER
+        return None
     # Handed the document this already read rather than leaving the reader to read it again:
     # a dumped dictionary is the file a build archives whole, and the 45 MB one of a thousand
     # object project costs about a third of a second per pass, twice over in a comparison.
@@ -193,12 +211,28 @@ def _with_the_floor(policy: SeverityPolicy) -> SeverityPolicy:
 
 def _unread(document: dict[str, Any] | None) -> Refusal:
     """Which refusal a file the dump reader could not read is: the sniff again, now that the
-    reader has had its say, and never a classification of what it happened to report."""
-    if document is None:
-        return Refusal.NOT_JSON
-    if holds_a_dictionary(document):
-        return Refusal.DICTIONARY
-    return Refusal.NEITHER
+    reader has had its say, and never a classification of what it happened to report. A file
+    that is json and states no ``format`` never gets here: it is neither, and was refused
+    before the reader was asked."""
+    return Refusal.NOT_JSON if document is None else Refusal.DICTIONARY
+
+
+def relaxations(policy: SeverityPolicy) -> dict[str, Severity]:
+    """The overrides of ``policy`` that grade a check below the grade it has by default, and
+    none of the rest: what a project says it can live with, as against what it asks of itself.
+
+    A promotion - ``-W unused-output=error``, and ``--strict`` with it, which this leaves out
+    altogether - is a run asking to be told about *its own* findings more loudly; a relaxation
+    is the project's decision about a check, and one project has one decision. A check of a
+    plugin has no grade here to compare with, since the plugin that registers it is not loaded
+    yet, and what nothing grades lower than ``ignore`` is kept whichever it is.
+    """
+    return {
+        check: severity
+        for check, severity in policy.overrides.items()
+        if severity is Severity.IGNORE
+        or (check in CHECKS and severity.rank > CHECKS[check].default_severity.rank)
+    }
 
 
 def read_baseline(
@@ -228,8 +262,12 @@ def read_baseline(
     caller: against the floor, the component's own input nobody was shown the producer of was
     an error of the baseline.
     """
-    floor = STANDALONE_POLICY if standalone else ()
-    own = DiagnosticBag(SeverityPolicy.from_strings(floor, strict=False, standalone=standalone))
+    floor = SeverityPolicy.from_strings(
+        STANDALONE_POLICY if standalone else (), strict=False, standalone=standalone
+    )
+    own = DiagnosticBag(
+        SeverityPolicy({**floor.overrides, **relaxations(bag.policy)}, False, standalone)
+    )
     resolved = read_dictionary(path, own, reading, floor_when_alone=True)
     for diagnostic in own.sorted:
         if diagnostic.severity is Severity.ERROR:
@@ -323,6 +361,7 @@ def compare_deliveries(
         bag,
         location=location,
         baseline_alone=baseline.alone,
+        candidate_analysed=candidate.from_description,
     )
     refused = False
     try:

@@ -9,8 +9,11 @@ reach it. A second way to build one here would be the duplication this series ke
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import time
 from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 
@@ -26,12 +29,14 @@ from conftest import (
 from ddd.cli import EXIT_OK, main
 from ddd.deliveries import Refusal
 from ddd.diagnostics import Severity
+from ddd.gui import compare as gui_compare
 from ddd.gui.api import _finding
 from ddd.gui.compare import (
     _REASONS,
     MAX_BASELINES,
     BaselineCache,
     BaselineRefusedError,
+    _relaxed_by,
     compared,
 )
 from ddd.gui.session import Revision, Session
@@ -230,6 +235,17 @@ class TestTheRefusals:
         (root / "odd.json").write_text(json.dumps({"something": "else"}))
         with pytest.raises(BaselineRefusedError, match="neither a dictionary nor a description"):
             compared(revision, root / "odd.json", root, {})
+
+    def test_a_json_holding_only_a_name_is_no_delivery(self, tmp_path: Path) -> None:
+        """``format`` has a default, so this validated as an empty dictionary and every object of
+        the open project was an addition to it."""
+        root = tmp_path / "project"
+        revision = _revision(root, {"p.ddd.json": project("P")})
+        (root / "almost.json").write_text(json.dumps({"name": "P"}))
+        with pytest.raises(BaselineRefusedError) as refused:
+            compared(revision, root / "almost.json", root, {})
+        assert "is neither a dictionary nor a description" in str(refused.value)
+        assert "no `format`, no `project` and no `component`" in str(refused.value)
 
     def test_a_description_whose_include_is_missing_is_not_called_the_wrong_kind_of_file(
         self, tmp_path: Path
@@ -657,6 +673,7 @@ class TestTheCache:
                 "a.ddd.json": component("A", declare("output", "Speed", "uint8", unit="rpm")),
             },
         )
+        _aged(root, old)
         cache: BaselineCache = {}
         first = compared(revision, dump, root, cache)
         assert first.verdict is True
@@ -673,6 +690,7 @@ class TestTheCache:
             old, {"a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm"))}
         )
         _dumped(old / "p.ddd.json", dump)
+        _aged(root, old)
         after = compared(revision, dump, root, cache)
         assert after.verdict is False
         assert len(cache) == 1
@@ -766,10 +784,11 @@ class TestTheCache:
         )
         dump = root / "baseline.json"
         _dumped(root / "p.ddd.json", dump)
+        _aged(root)
         archived = [root / f"baseline_{number}.json" for number in range(MAX_BASELINES + 1)]
         cache: BaselineCache = {}
         for copy in archived:
-            shutil.copy(dump, copy)
+            shutil.copy2(dump, copy)
             assert compared(revision, copy, root, cache).verdict is True
         assert len(cache) == MAX_BASELINES
         # The oldest fell off; the newest is still there, and the one that fell off is read
@@ -777,3 +796,183 @@ class TestTheCache:
         assert archived[0].resolve() not in cache
         assert archived[-1].resolve() in cache
         assert compared(revision, archived[0], root, cache).verdict is True
+
+
+def _aged(*roots: Path) -> None:
+    """Every file under ``roots`` made an hour old, as files are that nobody just saved: a
+    baseline file written moments before it is read is not kept (:func:`_settled`)."""
+    then = time.time_ns() - 3600 * 10**9
+    for root in roots:
+        for path in root.rglob("*"):
+            if path.is_file() and path.stat().st_mtime_ns > then:
+                os.utime(path, ns=(then, then))
+
+
+class TestABaselineIsStampedBeforeItIsRead:
+    """A save landing while a baseline is being read: the stamps taken afterwards describe the new
+    bytes, so the entry made from the old ones looked fresh and its verdict was served until the
+    next change. What is taken before the read is the time, and no entry is kept that holds a
+    file newer than it."""
+
+    def _trees(self, tmp_path: Path) -> tuple[Path, Revision, Path]:
+        root = tmp_path / "project"
+        revision = _revision(
+            root,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+                "old/p.ddd.json": project("P", "a.ddd.json"),
+                "old/a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm")),
+            },
+        )
+        _aged(root)
+        return root, revision, root / "old" / "p.ddd.json"
+
+    def test_a_save_in_the_window_is_not_served_stale(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, revision, baseline = self._trees(tmp_path)
+        real = gui_compare.read_baseline
+        now = [time.time_ns()]
+
+        class Clock:
+            """A read that takes ten seconds, so that the time a read began at and the time its
+            files are stamped at are as far apart as they are for a large description."""
+
+            @staticmethod
+            def time_ns() -> int:
+                return now[0]
+
+        def saved_meanwhile(*arguments: Any, **keywords: Any) -> Any:
+            found = real(*arguments, **keywords)
+            # The second writer: the baseline's component saved after the reader has read it, and
+            # while the rest of the window is still to run.
+            now[0] += 5 * 10**9
+            changed = root / "old" / "a.ddd.json"
+            write_tree(
+                root / "old",
+                {"a.ddd.json": component("A", declare("output", "Speed", "uint32", unit="rpm"))},
+            )
+            os.utime(changed, ns=(now[0], now[0]))
+            now[0] += 5 * 10**9
+            return found
+
+        monkeypatch.setattr(gui_compare, "read_baseline", saved_meanwhile)
+        monkeypatch.setattr(gui_compare, "time", Clock)
+        cache: BaselineCache = {}
+        # What was read is what it was: the old bytes, and the answer to them.
+        assert compared(revision, baseline, root, cache).verdict is True
+        monkeypatch.setattr(gui_compare, "read_baseline", real)
+        # But it is not kept as though it were the file on disk.
+        assert compared(revision, baseline, root, cache).verdict is False
+        assert main(["compare", str(baseline), str(root / "p.ddd.json")]) != EXIT_OK
+
+    def test_a_file_saved_before_the_read_is_kept(self, tmp_path: Path) -> None:
+        root, revision, baseline = self._trees(tmp_path)
+        cache: BaselineCache = {}
+        compared(revision, baseline, root, cache)
+        assert len(cache) == 1
+
+    def test_a_file_saved_a_moment_before_the_read_is_not_kept(self, tmp_path: Path) -> None:
+        """The clock a file's time comes from is coarser than the one the read began by, so a
+        save in the same instant could be either side of the start: it is read again."""
+        root, revision, baseline = self._trees(tmp_path)
+        now = time.time_ns()
+        os.utime(root / "old" / "a.ddd.json", ns=(now, now))
+        cache: BaselineCache = {}
+        assert compared(revision, baseline, root, cache).verdict is True
+        assert cache == {}
+
+    def test_a_file_gone_during_the_read_is_not_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root, revision, baseline = self._trees(tmp_path)
+        real = gui_compare.read_baseline
+
+        def deleted_meanwhile(*arguments: Any, **keywords: Any) -> Any:
+            found = real(*arguments, **keywords)
+            (root / "old" / "a.ddd.json").unlink()
+            return found
+
+        monkeypatch.setattr(gui_compare, "read_baseline", deleted_meanwhile)
+        cache: BaselineCache = {}
+        assert compared(revision, baseline, root, cache).verdict is True
+        assert cache == {}
+
+    def test_a_replaced_entry_is_dropped_when_the_new_read_is_not_kept(
+        self, tmp_path: Path
+    ) -> None:
+        root, revision, baseline = self._trees(tmp_path)
+        cache: BaselineCache = {}
+        compared(revision, baseline, root, cache)
+        assert len(cache) == 1
+        write_tree(
+            root / "old",
+            {"a.ddd.json": component("A", declare("output", "Speed", "uint16", unit="rpm"))},
+        )
+        assert compared(revision, baseline, root, cache).verdict is True
+        assert cache == {}
+
+
+class TestTheTabReadsABaselineUnderTheProjectsRelaxations:
+    """What ``ddd compare -W missing-producer=ignore`` does for the project's relaxation, the tab
+    does for the build records' own: the strictest build that relaxes it."""
+
+    FILES: ClassVar[dict[str, object]] = {
+        "p.ddd.json": project("P", "b.ddd.json"),
+        "b.ddd.json": component("B", declare("input", "Ghost", unit="rpm")),
+        "old/p.ddd.json": project("P", "b.ddd.json"),
+        "old/b.ddd.json": component("B", declare("input", "Ghost", unit="rpm")),
+    }
+
+    def _revision(self, root: Path, *severities: list[str]) -> Revision:
+        if not (root / "p.ddd.json").exists():
+            write_tree(root, self.FILES)
+        for number, severity in enumerate(severities):
+            build_record(root, root / "p.ddd.json", image=f"fw{number}", severity=severity)
+        session = Session(root)
+        session.open(root / "p.ddd.json")
+        assert session.revision is not None
+        return session.revision
+
+    def test_a_relaxed_check_of_the_baseline_is_not_carried(self, tmp_path: Path) -> None:
+        root = tmp_path / "project"
+        revision = self._revision(root, ["missing-producer=ignore"])
+        result = compared(revision, root / "old" / "p.ddd.json", root, {})
+        assert result.baseline_findings == ()
+        assert result.verdict is True
+
+    def test_a_project_that_relaxes_nothing_carries_it(self, tmp_path: Path) -> None:
+        root = tmp_path / "project"
+        revision = self._revision(root)
+        result = compared(revision, root / "old" / "p.ddd.json", root, {})
+        assert [f.diagnostic.check for f in result.baseline_findings] == ["missing-producer"]
+        assert result.verdict is False
+
+    def test_a_check_one_build_relaxes_and_another_does_not_is_not_relaxed(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "project"
+        revision = self._revision(root, ["missing-producer=ignore"], [])
+        result = compared(revision, root / "old" / "p.ddd.json", root, {})
+        assert [f.diagnostic.check for f in result.baseline_findings] == ["missing-producer"]
+
+    def test_the_least_relaxed_of_the_builds_that_relax_it_governs(self, tmp_path: Path) -> None:
+        root = tmp_path / "project"
+        revision = self._revision(root, ["missing-producer=ignore"], ["missing-producer=warning"])
+        result = compared(revision, root / "old" / "p.ddd.json", root, {})
+        assert result.baseline_findings == ()
+        assert _relaxed_by(revision) == {"missing-producer": Severity.WARNING}
+
+    def test_a_cached_baseline_is_read_again_for_other_relaxations(self, tmp_path: Path) -> None:
+        root = tmp_path / "project"
+        write_tree(root, self.FILES)
+        _aged(root)
+        cache: BaselineCache = {}
+        plain = self._revision(root)
+        _aged(root)
+        assert compared(plain, root / "old" / "p.ddd.json", root, cache).verdict is False
+        relaxed = self._revision(root, ["missing-producer=ignore"])
+        _aged(root)
+        assert compared(relaxed, root / "old" / "p.ddd.json", root, cache).verdict is True
+        assert len(cache) == 1

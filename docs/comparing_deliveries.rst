@@ -140,7 +140,16 @@ rather than at its name, so an archived dictionary, a project description and a 
 component description are all acceptable on either side. Comparing two archived dumps is the
 release-to-release case, comparing a dump with the working tree is the daily case, and
 comparing two working trees is how a branch is judged against the trunk it will be merged
-into. Nothing has to be staged into a temporary file first.
+into. Nothing has to be staged into a temporary file first. A json file that is neither -
+one that states no ``format``, no ``project`` and no ``component``, a file holding only a ``name``
+for one - is no delivery, and is refused on either side in those words rather than read as an
+empty dictionary, of which every object would be an addition or a removal.
+
+``ddd compare`` has no ``--standalone``: it reads a file that is one component as
+``ddd check --standalone`` does, whether or not it is told so, as the section below on the baseline
+says. A component with an input that nobody in the file produces is therefore judged by
+``ddd compare`` and by ``ddd check --standalone --baseline`` alike, and ``--standalone`` is the
+option of the second.
 
 Renames
 -------
@@ -311,7 +320,9 @@ different spellings of one size, and the spelling is what the generated code car
 respelling ``[8]`` as ``["PRESSURE_CELLS"]`` changes the interface even while the number
 stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
 against such a baseline only the values are compared: adopting a constant for a size that
-stands reads clean, and a changed size still does not.
+stands reads clean, and a changed size still does not. A dimension a constant names is told with the
+size the constant gives, ``[N=8] != [N=4]``, because the spelling alone reads the same on both
+sides of a size that changed behind it.
 
 The layout of a :doc:`structure <file_formats/types>` is interface as well, because a reader
 may be a binary compiled against the previous delivery's headers, which takes each member out
@@ -394,12 +405,17 @@ predecessor. A scalar is the array it fills only when every element of the array
 two tables that differ in any element - a square map and its transpose - are two initial
 values, and the finding names the first index they part at, in the order c lays the elements
 out. ``-0.0`` is not ``0.0``, since the sign bit is a stored byte, and changing one into the
-other is a change of the initial value; in an integer datatype ``-0`` is ``0``. Where two of them do differ, the finding spells both the way the file spells
+other is a change of the initial value; in an integer datatype ``-0`` is ``0``. An object stating
+no initial value stores zeros, so adding ``0``, ``[0, 0]`` or ``""`` to one that had none moves no
+byte and is no change, in either direction. Where two of them do differ, the finding spells both the way the file spells
 them, cut short past a few elements when the array is long, and names the first index they
 part at. On a structured variable those three properties are the variable's own, its members
 having no volatility, section or raster of their own, and are reported at the variable, once,
 as its producer and its condition are; what a member answers for is its own datatype,
-meaning, shape, bit width and a2l entry.
+meaning, shape, bit width and a2l entry. A member's own change is reported at every path that
+reaches it - an edit of one member of a structure that two arrays of a thousand hold is told at
+each element - and the paths are in the order ``ddd list`` gives them, an index counted as a number,
+``[2]`` before ``[10]``, as are the removals, the additions and the entries of ``renames.json``.
 
 ``changed-a2l`` covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.
@@ -802,11 +818,17 @@ The verdict line names the two files rather than the two projects, because two d
 one project carry one project name - and, as here, one file name too, so where the two file
 names are the same it spells the paths out as they were typed.
 
-Neither does this run's ``-W`` reach it, for the same reason and in both directions.
-``-W unused-output=error`` is a run asking to be told about *its own* unread outputs; applied
+This run's ``-W`` reaches it in one direction only. A promotion does not:
+``-W unused-output=error`` is a run asking to be told about *its own* unread outputs, and applied
 to the baseline as well it promoted the ``ValveDuty`` above into an error about a delivery
-that went out long ago, carried it over and refused a verdict. ``--standalone`` does reach it,
-because that states how the file was handed over - a component read on its own - and the
+that went out long ago, carried it over and refused a verdict. ``--strict`` does not reach it
+either. A relaxation does: ``-W missing-producer=ignore`` is a project deciding it can live with
+an input nobody produces, and that is as true of the trunk it is compared against as of the working
+tree, so a project that builds with it can compare its branch against its trunk, as
+``ddd check`` of either is clean. Only a lower grade than the check has by default is a
+relaxation; the Compare tab reads a baseline under the relaxations every build record of the
+project makes, and a check one of them does not relax is not relaxed. ``--standalone`` does reach
+it, because that states how the file was handed over - a component read on its own - and the
 baseline was handed over the same way.
 
 A baseline that is a component file is read alone, and the readers its dictionary records are
@@ -828,12 +850,22 @@ component file itself.
 Its errors are another matter. A baseline that could not be read, as in the missing-file
 example above, or whose own components disagree has no dictionary that can be trusted, so
 every error it produces is carried over under the ``in the baseline:`` prefix, at the severity
-its own analysis gave it, and the run fails on them: with a description on the candidate side
-the comparison is not attempted and no verdict is printed, and with an archived dump on the
-candidate side the errors are reported beside the comparison and the verdict is a refusal.
-A ``-W`` of this run does not relax one of them either - the line saying the dictionary the
-comparison rests on cannot be trusted is not this run's to soften. A baseline that is to be
-compared against has to be one that checks clean of errors on its own.
+its own analysis gave it, and the run fails on them: the errors are reported beside the
+comparison and the verdict is a refusal, whether the candidate is a dump or a description. A
+candidate given as a description is analysed all the same, and all its findings and its renames
+are reported - a broken baseline withholds nothing of the candidate's, as ``ddd check --baseline``
+never withheld it. Only a baseline that could not be read at all leaves nothing to compare, and
+prints no verdict. A promotion of this run does not make one of them an error, and a ``-W`` that
+relaxes the check relaxes it. A baseline that is to be compared against has to be one that checks
+clean of errors on its own, under the project's own policy.
+
+A dictionary dumped from a project that failed holds what the analysis left it: ``ddd dump`` exits
+1 on an input nobody produces and writes the file. Given as the candidate, an object with readers
+and no producer is ``missing-producer``, an error, as ``ddd check`` says of the same description,
+and so it cannot replace a baseline that had a producer for it; ``-W missing-producer=ignore``
+relaxes it as it relaxes the check. It is not said of an object the baseline held without a producer
+under the same name - two dumps of one component read alone hold its inputs so - and not of a
+candidate given as a description, whose analysis has said it already.
 
 One pair gets one verdict, whoever asks. ``ddd compare``, ``ddd check --baseline`` and the Compare
 tab of ``ddd gui`` ask the same function, and the delivery cannot replace the baseline when any

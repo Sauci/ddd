@@ -6188,3 +6188,116 @@ class TestLimitsAreGradedByTheDirectionDataFlows:
                 held += 1
         assert held == 10
         assert "Five findings for five changes." in flattened(COMPARING_DELIVERIES)
+
+
+class TestWhatThePagesSayOfTheNineSmallerVerdicts:
+    """Each sentence the pages gained for the nine findings of the branch's last task, held where
+    it is said: the grade of ``missing-producer`` in a dump, what reaches a baseline and what
+    does not, what a file must state to be a delivery, and the order a member's change is told."""
+
+    DICTIONARY = PAGES["docs/data_dictionary.rst"]
+
+    def test_a_shape_is_told_with_the_sizes_its_constants_give(self) -> None:
+        assert (
+            "that shape is told with the size each constant gives, `[N=8] != [N=4]`"
+        ) in flattened(SPEC)
+        assert (
+            "A dimension a constant names is told with the size the constant gives, "
+            "``[N=8] != [N=4]``"
+        ) in flattened(COMPARING_DELIVERIES)
+
+    def test_a_dumped_candidate_with_readers_and_no_producer_is_missing_producer(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "- `missing-producer`: the candidate, given as a dumped dictionary, holds an object or "
+            "a structured variable that a component reads and no component produces"
+        ) in spec
+        assert "with its one severity and under the run's own `-W`" in spec
+        assert "nor of a candidate given as a description, whose analysis has said it" in spec
+        assert "which a delivery comparison says of a candidate as `missing-producer`" in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert (
+            "an object with readers and no producer is ``missing-producer``, an error, as "
+            "``ddd check`` says of the same description"
+        ) in pages
+        assert "two dumps of one component read alone hold its inputs so" in pages
+        assert "at this severity and under this run's ``-W``" in flattened(CONSISTENCY_CHECKS)
+        assert "``ddd compare`` says ``missing-producer`` of such an object" in flattened(
+            self.DICTIONARY
+        )
+
+    def test_a_broken_baseline_withholds_nothing_of_the_candidates(self) -> None:
+        spec = flattened(SPEC)
+        assert "and its renames are written, whatever the baseline carries" in spec
+        assert "a broken baseline withholds nothing of the candidate's" in spec
+        assert (
+            "When the baseline carries an error, the comparison is made and the verdict is a "
+            "refusal; when a side cannot be read, no verdict is printed"
+        ) in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert "a broken baseline withholds nothing of the candidate's" in pages
+        assert "Only a baseline that could not be read at all leaves nothing to compare" in pages
+
+    def test_a_relaxation_reaches_a_description_baseline_and_a_promotion_does_not(self) -> None:
+        spec = flattened(SPEC)
+        assert "under neither `--strict` nor the promotions of the `-W` of this run" in spec
+        assert (
+            "What does reach it is the relaxations of the project's `-W`, an override grading a "
+            "check below the grade it has by default"
+        ) in spec
+        assert "a project that builds with `-W missing-producer=ignore` can compare its branch" in (
+            spec
+        )
+        assert (
+            "The Compare tab reads it under the relaxations that every build record of the "
+            "project makes"
+        ) in spec
+        pages = flattened(COMPARING_DELIVERIES)
+        assert "This run's ``-W`` reaches it in one direction only. A promotion does not" in pages
+        assert "A relaxation does: ``-W missing-producer=ignore`` is a project deciding" in pages
+        assert "a check one of them does not relax is not relaxed" in pages
+        assert "The relaxations of that policy reach a baseline given as a project" in flattened(
+            CONSISTENCY_CHECKS
+        )
+
+    def test_the_commands_name_which_one_takes_standalone(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "`ddd compare` has no `--standalone` of its own, since it needs none: "
+            "`ddd check --baseline --standalone` is the command that takes the option"
+        ) in spec
+        assert "``ddd compare`` has no ``--standalone``: it reads a file that is one component" in (
+            flattened(COMPARING_DELIVERIES)
+        )
+
+    def test_null_against_explicit_zeros_is_no_change(self) -> None:
+        assert (
+            'An object stating no `init` stores zeros, so adding `0`, `[0, 0]` or `""` to one '
+            "that had none moves no byte and is no change, in either direction"
+        ) in flattened(SPEC)
+        assert (
+            "An object stating no initial value stores zeros, so adding ``0``, ``[0, 0]`` or "
+            '``""`` to one that had none moves no byte and is no change, in either direction'
+        ) in flattened(COMPARING_DELIVERIES)
+
+    def test_a_json_holding_only_a_name_is_no_delivery(self) -> None:
+        spec = flattened(SPEC)
+        assert "is no delivery, and is refused on either side in those words" in spec
+        assert "a file stating neither it, nor `project`, nor `component`" in spec
+        assert "is no delivery and is refused as such" in flattened(self.DICTIONARY)
+        assert "is no delivery, and is refused on either side in those words" in flattened(
+            COMPARING_DELIVERIES
+        )
+
+    def test_a_members_change_is_told_per_path_in_numeric_order(self) -> None:
+        assert (
+            "A member's own change is told at every path that reaches it, and the paths are in "
+            "the order `ddd list` gives them, an index counted as a number"
+        ) in flattened(SPEC)
+        assert "sorted by `to` with an index counted as a number" in flattened(SPEC)
+        assert "A member's own change is reported at every path that reaches it" in flattened(
+            COMPARING_DELIVERIES
+        )
+        assert "``[2]`` before ``[10]``, as are the removals, the additions and the entries" in (
+            flattened(COMPARING_DELIVERIES)
+        )

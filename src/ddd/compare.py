@@ -30,7 +30,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
-from ddd.diagnostics import DiagnosticBag, Location
+from ddd.diagnostics import DiagnosticBag, Location, index_order
 from ddd.ir import (
     Comparable,
     DataDictionary,
@@ -158,6 +158,25 @@ def _describe_conversion(conversion: Conversion) -> str:
 _MOST_INIT_ELEMENTS = 4
 """How many elements of a list a finding spells before it says how many there are."""
 
+
+def _describe_shape(written: tuple[tuple[int | str, int], ...]) -> str:
+    """``[N=4][2]``, or ``scalar``: a shape as a finding spells it, each dimension a constant
+    names with the size the constant gives.
+
+    The spelling alone read the same on both sides of a size that changed behind it - a
+    constant's new value was told as ``[N] != [N]`` - and the number alone loses the name the
+    reader has to look for, which is why a layout spells a constant the same way
+    (:func:`_spell_held`).
+    """
+    spelled = format_shape(
+        tuple(
+            f"{spelling}={size}" if isinstance(spelling, str) else size
+            for spelling, size in written
+        )
+    )
+    return spelled or "scalar"
+
+
 _MOST_INIT_CHARACTERS = 32
 """How much of a text init a finding spells before it says how long the text is."""
 
@@ -273,10 +292,15 @@ def _stored_init(entry: Comparable) -> object:
 
     A negative zero is its own value: it is a different float from zero, a sign bit that
     ``0.0F`` and ``-0.0F`` do not share, and python's ``==`` calls them equal.
+
+    An object stating no init stores zeros, which is what c gives an object with static storage
+    that nobody initialised, so it reads as ``0`` here: adding ``0``, ``[0, 0]`` or ``""`` to an
+    object that had none moves no byte, and was a ``changed-storage`` warning - and, under the
+    ``--strict`` gate, a delivery that cannot replace its predecessor - over identical storage.
     """
     init = entry.init
     if init is None:
-        return None
+        return 0
     if isinstance(init, str):
         codes = tuple(ord(character) for character in init)
         width = entry.shape[0] if entry.shape else len(codes)
@@ -363,7 +387,7 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
     ComparedField(
         "shape",
         lambda o: o.written_shape,
-        lambda o: format_shape(o.spelled_shape) or "scalar",
+        lambda o: _describe_shape(o.written_shape),
     ),
     # Where a table keeps its point counts is layout, for the reason a bitfield's width is:
     # the size every reader declares changes, and the data moves behind the counts, so every
@@ -379,7 +403,7 @@ _INTERFACE_FIELDS: tuple[ComparedField[Comparable], ...] = (
 _VALUE_SHAPE_FIELD: ComparedField[Comparable] = ComparedField(
     "shape",
     lambda o: tuple(o.shape),
-    lambda o: format_shape(o.spelled_shape) or "scalar",
+    lambda o: _describe_shape(o.written_shape),
 )
 """The shape comparison a baseline without spellings falls back to: values only.
 
@@ -469,14 +493,12 @@ def _storage_fields(old: Comparable) -> tuple[ComparedField[Comparable], ...]:
 _INSTANCE_INTERFACE_FIELDS: tuple[ComparedField[ResolvedInstance], ...] = (
     ComparedField("kind", lambda o: o.kind.value, lambda o: o.kind.value),
     ComparedField("type", lambda o: o.type, lambda o: f"'{o.type}'"),
-    ComparedField(
-        "shape", lambda o: o.written_shape, lambda o: format_shape(o.spelled_shape) or "scalar"
-    ),
+    ComparedField("shape", lambda o: o.written_shape, lambda o: _describe_shape(o.written_shape)),
     ComparedField("local", lambda o: o.local, lambda o: str(o.local).lower()),
 )
 
 _VALUE_SHAPE_INSTANCE_FIELD: ComparedField[ResolvedInstance] = ComparedField(
-    "shape", lambda o: tuple(o.shape), lambda o: format_shape(o.spelled_shape) or "scalar"
+    "shape", lambda o: tuple(o.shape), lambda o: _describe_shape(o.written_shape)
 )
 """What :data:`_VALUE_SHAPE_FIELD` is, for the array dimensions of a structured variable."""
 
@@ -609,9 +631,9 @@ def _pair[T: _Joined](
         old_done.add(name)
         new_done.add(name)
 
-    paired.sort(key=lambda pair: pair[0].name)
-    removed = [was[name] for name in sorted(was) if name not in old_done]
-    added = [now[name] for name in sorted(now) if name not in new_done]
+    paired.sort(key=lambda pair: index_order(pair[0].name))
+    removed = [was[name] for name in sorted(was, key=index_order) if name not in old_done]
+    added = [now[name] for name in sorted(now, key=index_order) if name not in new_done]
     return paired, removed, added
 
 
@@ -631,7 +653,7 @@ def renames(paired: Sequence[tuple[_Joined, _Joined]]) -> list[dict[str, str]]:
         for old, new in paired
         if old.name != new.name and (key := _identity(old)) is not None
     ]
-    return sorted(moved, key=lambda entry: entry["to"])
+    return sorted(moved, key=lambda entry: index_order(entry["to"]))
 
 
 def compare(
@@ -641,6 +663,7 @@ def compare(
     *,
     location: Location | None = None,
     baseline_alone: bool = False,
+    candidate_analysed: bool = False,
 ) -> Pairing:
     """Report how far ``candidate`` can stand in for ``baseline``, and hand back the pairing.
 
@@ -659,6 +682,11 @@ def compare(
     ``removed-object`` without a claim about who read it, and an input the component stopped
     reading is ``removed-input``, an information. A candidate read alone needs no such flag -
     the readers a whole baseline records are known, and are the ones named.
+
+    ``candidate_analysed`` is the caller saying the candidate was analysed in this very run, so
+    that ``missing-producer`` has already been said of it by the analysis, under this run's own
+    policy: an archived dictionary was not, and a dump of a project that failed holds objects a
+    component reads and nobody produces (:func:`_report_unproduced`).
     """
     if baseline.name != candidate.name:
         # Two deliveries of one project share its name, so a mismatch usually means the
@@ -685,7 +713,9 @@ def compare(
             _report_rename(old, new, bag, location)
         _compare_object(old, new, bag, location, was, now)
 
-    _report_reused_names(was, now, paired, sorted(was.keys() & now.keys()), bag, location)
+    _report_reused_names(
+        was, now, paired, sorted(was.keys() & now.keys(), key=index_order), bag, location
+    )
 
     candidates = _by_discriminators(added)
     for old in removed:
@@ -694,7 +724,50 @@ def compare(
     for new in added:
         _report_addition(new, candidate, bag, location)
 
+    if not candidate_analysed:
+        _report_unproduced(baseline, candidate, bag, location)
+
     return [*paired, *bare]
+
+
+def _report_unproduced(
+    baseline: DataDictionary,
+    candidate: DataDictionary,
+    bag: DiagnosticBag,
+    location: Location | None,
+) -> None:
+    """``missing-producer`` for each object and structured variable of the candidate that a
+    component reads and nobody produces, which the baseline did not already hold so.
+
+    A dictionary dumped from a project that failed is written all the same (``ddd dump`` exits 1
+    and keeps the file), and with no producer an object compared as ``changed-owner`` alone: a
+    warning, and a replacement. Nothing in the dictionary says it is one of those, so the one
+    thing a dump can be asked is the question ``ddd check`` asks a description: it is the same
+    id, with the one severity that id has and the run's own ``-W`` over it, so a project that
+    relaxes ``missing-producer`` has chosen to hold such objects.
+
+    Not told of an object the baseline held without a producer under the same name: a component
+    dumped on its own holds every input it reads that way, and two such dumps compared say
+    nothing has moved. A candidate analysed in this run is not asked at all, since the
+    analysis has said it.
+    """
+    held: dict[str, ResolvedObject | ResolvedInstance] = {}
+    held.update((entry.name, entry) for entry in baseline.objects)
+    held.update((entry.name, entry) for entry in baseline.instances)
+    named: list[ResolvedObject | ResolvedInstance] = [*candidate.objects]
+    named.extend(candidate.instances)
+    for entry in sorted(named, key=lambda entry: index_order(entry.name)):
+        if not entry.consumers or entry.owner is not None:
+            continue
+        before = held.get(entry.name)
+        if before is not None and before.owner is None:
+            continue
+        bag.add(
+            "missing-producer",
+            f"'{entry.name}' is read by {', '.join(entry.consumers)} and nothing in the "
+            f"candidate produces it",
+            location,
+        )
 
 
 def _report_rename(

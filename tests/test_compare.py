@@ -23,7 +23,7 @@ from conftest import (
 )
 from ddd.analysis import analyze
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, _build_parser, main
-from ddd.compare import _MOST_CANDIDATES, compare
+from ddd.compare import _MOST_CANDIDATES, compare, renames
 from ddd.diagnostics import DiagnosticBag, SeverityPolicy
 from ddd.ir import DataDictionary, ResolvedObject
 from ddd.loading import load_workspace
@@ -590,7 +590,7 @@ class TestAStructuredVariableIsComparedAsAVariable:
         new = self.delivery(tree, "new", dimensions=["N"], constants="new-c.ddd.json")
         bag = verdict(without_spellings(old), new)
         assert "changed-interface" in checks(bag)
-        assert "'Inlet' is not the same object any more (shape: [N] != [2])" in messages(bag)
+        assert "'Inlet' is not the same object any more (shape: [N=3] != [2])" in messages(bag)
 
     def test_two_identical_deliveries_of_a_structured_variable_compare_clean(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -3901,7 +3901,7 @@ class TestConstantsAndRastersAreComparedAsEntries:
         bag = verdict(old, new)
         assert checks(bag) == ["changed-interface"] * 2, messages(bag)
         assert "constant 'N' is not the same any more (value: 5 != 4)" in messages(bag)
-        assert "'Arr' is not the same object any more (shape: [N] != [N])" in messages(bag)
+        assert "'Arr' is not the same object any more (shape: [N=5] != [N=4])" in messages(bag)
 
     def test_a_raster_given_another_event_is_a_changed_storage(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -3947,3 +3947,326 @@ class TestConstantsAndRastersAreComparedAsEntries:
         new = self.delivery(tree, "new", gain=3)
         assert checks(verdict(old, new)) == []
         assert checks(verdict(old, new.model_copy(update={"constants": ()}))) == []
+
+
+class TestAShapeIsToldWithTheSizesItsConstantsGive:
+    """A dimension a constant names is spelled with the size, ``N=4``: the spelling alone read
+    the same on both sides of a size that changed behind it, ``[N] != [N]``."""
+
+    @staticmethod
+    def sized(tree: Path, name: str, size: int, *dimensions: object) -> DataDictionary:
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", f"{name}-c.ddd.json", f"{name}-a.ddd.json"),
+                f"{name}-c.ddd.json": {"constants": [{"name": "N", "value": size}]},
+                f"{name}-a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local", "Arr", "uint8", kind="value_block", dimensions=list(dimensions)
+                    ),
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def test_a_constants_changed_value_shows_both_sizes(self, tree: Path) -> None:
+        old = self.sized(tree, "old", 4, "N")
+        new = self.sized(tree, "new", 8, "N")
+        bag = verdict(old, new)
+        assert "(shape: [N=8] != [N=4])" in messages(bag)
+        assert "[N] != [N]" not in messages(bag)
+
+    def test_a_constant_that_arrived_for_a_number_is_told_beside_it(self, tree: Path) -> None:
+        old = self.sized(tree, "old", 4, 4)
+        new = self.sized(tree, "new", 8, "N")
+        assert "(shape: [N=8] != [4])" in messages(verdict(old, new))
+
+    def test_a_number_that_replaced_a_constant_is_told_beside_it(self, tree: Path) -> None:
+        old = self.sized(tree, "old", 4, "N")
+        new = self.sized(tree, "new", 8, 8)
+        assert "(shape: [8] != [N=4])" in messages(verdict(old, new))
+
+    def test_a_second_dimension_is_spelled_beside_the_first(self, tree: Path) -> None:
+        old = self.sized(tree, "old", 4, "N", 2)
+        new = self.sized(tree, "new", 8, "N", 2)
+        assert "(shape: [N=8][2] != [N=4][2])" in messages(verdict(old, new))
+
+    def test_a_baseline_without_spellings_is_told_the_candidates_size(self, tree: Path) -> None:
+        old = without_spellings(self.sized(tree, "old", 4, 4))
+        new = self.sized(tree, "new", 8, "N")
+        assert "(shape: [N=8] != [4])" in messages(verdict(old, new))
+
+    def test_a_structured_variables_array_is_told_the_same_way(self, tree: Path) -> None:
+        def delivery(name: str, size: int) -> DataDictionary:
+            write_tree(
+                tree,
+                {
+                    f"{name}.ddd.json": project(
+                        "P", f"{name}-c.ddd.json", f"{name}-t.ddd.json", f"{name}-a.ddd.json"
+                    ),
+                    f"{name}-c.ddd.json": {"constants": [{"name": "N", "value": size}]},
+                    f"{name}-t.ddd.json": {
+                        "types": [struct_type("Rec_t", value_member("v"))],
+                    },
+                    f"{name}-a.ddd.json": component(
+                        "A",
+                        declare("local", "Rec", typename="Rec_t", dimensions=["N"]),
+                    ),
+                },
+            )
+            return resolve(tree, f"{name}.ddd.json")
+
+        bag = verdict(delivery("old", 2), delivery("new", 3))
+        assert "'Rec' is not the same object any more (shape: [N=3] != [N=2])" in messages(bag)
+
+
+class TestAMembersChangeIsToldPerPathInNumericOrder:
+    """One edit of a structure's member is told at every path it reaches, and the paths are in
+    the order ``ddd list`` gives them: ``[2]`` before ``[10]``, which a plain sort of the names
+    put the other way round."""
+
+    @staticmethod
+    def delivery(
+        tree: Path, name: str, *, unit: str = "rpm", id_of_cells: str | None = None, cells: str
+    ) -> DataDictionary:
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", f"{name}-t.ddd.json", f"{name}-a.ddd.json"),
+                f"{name}-t.ddd.json": {
+                    "types": [struct_type("Cell_t", value_member("raw", "uint16", unit=unit))]
+                },
+                f"{name}-a.ddd.json": component(
+                    "A",
+                    declare(
+                        "local",
+                        cells,
+                        typename="Cell_t",
+                        dimensions=[12],
+                        **({} if id_of_cells is None else {"id": id_of_cells}),
+                    ),
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    @staticmethod
+    def paths(bag: DiagnosticBag) -> list[str]:
+        return [
+            diagnostic.message.split("'")[1]
+            for diagnostic in bag
+            if diagnostic.check == "changed-interface"
+        ]
+
+    def test_an_edit_of_a_member_is_told_at_every_path_in_numeric_order(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", cells="Cells")
+        new = self.delivery(tree, "new", unit="km/h", cells="Cells")
+        listed = [leaf.path for leaf in old.leaves]
+        assert listed[:3] == ["Cells[0].raw", "Cells[1].raw", "Cells[2].raw"]
+        assert self.paths(verdict(old, new)) == listed
+
+    def test_what_went_is_told_in_numeric_order(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", cells="Cells")
+        new = self.delivery(tree, "new", cells="Others")
+        bag = verdict(old, new)
+        gone = [d.message.split("'")[1] for d in bag if d.check == "removed-unused-object"]
+        assert gone == [leaf.path for leaf in old.leaves]
+        arrived = [d.message.split("'")[1] for d in bag if d.check == "added-object"]
+        assert arrived == [leaf.path for leaf in new.leaves]
+
+    def test_a_reused_name_is_told_in_numeric_order(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", id_of_cells="k7m2q9xr4t8w", cells="Cells")
+        new = self.delivery(tree, "new", id_of_cells="p3rt5vwx9z2q", cells="Cells")
+        bag = verdict(old, new)
+        told = [d.message.split("'")[1] for d in bag if d.check == "reused-name"]
+        assert told == [leaf.path for leaf in old.leaves]
+
+    def test_a_rename_is_told_in_numeric_order(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", id_of_cells="k7m2q9xr4t8w", cells="Cells")
+        new = self.delivery(tree, "new", id_of_cells="k7m2q9xr4t8w", cells="Others")
+        bag = DiagnosticBag()
+        paired = compare(old, new, bag)
+        assert [row["to"] for row in renames(paired)] == [leaf.path for leaf in new.leaves]
+        told = [d.message.split("'")[1] for d in bag if d.check == "renamed-object"]
+        assert told == [leaf.path for leaf in old.leaves]
+
+
+class TestNoInitAndExplicitZerosAreOneStorage:
+    """An object stating no init and one stating zeros produce the same bytes: ``null`` is
+    equal to an init of explicit zeros, as it is to the array they fill."""
+
+    ARRAY: ClassVar[dict[str, Any]] = {"kind": "value_block", "dimensions": [2]}
+    TEXT: ClassVar[dict[str, Any]] = {
+        "kind": "value_block",
+        "dimensions": [4],
+        "conversion": {"kind": "string"},
+    }
+
+    def pair(
+        self,
+        tree: Path,
+        before: object,
+        after: object,
+        datatype: str = "uint8",
+        **shape: Any,
+    ) -> tuple[DataDictionary, DataDictionary]:
+        shape = shape or {"kind": "measurement"}
+        stated = {} if before is None else {"init": before}
+        then = {} if after is None else {"init": after}
+        return (
+            one_component(tree, "old", declare("local", "S", datatype, **shape, **stated)),
+            one_component(tree, "new", declare("local", "S", datatype, **shape, **then)),
+        )
+
+    @pytest.mark.parametrize(
+        ("shape", "zeros"),
+        [
+            ({"kind": "measurement"}, 0),
+            (ARRAY, [0, 0]),
+            (ARRAY, 0),
+            (TEXT, ""),
+        ],
+        ids=["a scalar zero", "a list of zeros", "a scalar zero for an array", "an empty text"],
+    )
+    @pytest.mark.parametrize("flip", [False, True], ids=["added", "dropped"])
+    def test_stating_zeros_where_none_was_stated_is_no_change(
+        self, tree: Path, shape: dict[str, Any], zeros: object, flip: bool
+    ) -> None:
+        old, new = self.pair(tree, None, zeros, **shape)
+        if flip:
+            old, new = new, old
+        assert checks(verdict(old, new)) == []
+
+    def test_it_holds_under_strict_for_the_verdict(
+        self, tree: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self.pair(tree, None, 0)
+        code, report = ruling(tree, capsys, "--strict")
+        assert code == EXIT_OK, report
+        assert "can replace" in report and "cannot replace" not in report
+
+    def test_zeros_against_no_init_are_equal_for_a_float_too(self, tree: Path) -> None:
+        old, new = self.pair(tree, None, 0.0, "float32")
+        assert checks(verdict(old, new)) == []
+
+    def test_a_negative_zero_is_not_the_zeros_none_stores(self, tree: Path) -> None:
+        old, new = self.pair(tree, None, -0.0, "float32")
+        assert checks(verdict(old, new)) == ["changed-storage"]
+
+    @pytest.mark.parametrize("stated", [1, [0, 1]], ids=["a one", "one element"])
+    def test_an_init_that_is_not_all_zeros_is_still_a_change(
+        self, tree: Path, stated: object
+    ) -> None:
+        old, new = self.pair(tree, None, stated, **self.ARRAY)
+        bag = verdict(old, new)
+        assert checks(bag) == ["changed-storage"]
+        assert "init:" in messages(bag)
+
+    def test_zeros_against_a_different_zero_spelling_stay_silent(self, tree: Path) -> None:
+        """What was already silent: ``0`` against the empty text, over the same four bytes."""
+        old = one_component(tree, "old", declare("local", "S", "uint8", init=0, **self.TEXT))
+        new = one_component(tree, "new", declare("local", "S", "uint8", init="", **self.TEXT))
+        assert checks(verdict(old, new)) == []
+
+    def test_the_first_difference_names_the_zeros_none_stands_for(self, tree: Path) -> None:
+        old, new = self.pair(tree, None, [0, 7], **self.ARRAY)
+        assert "first differs at [1]: 7 != 0" in messages(verdict(old, new))
+
+
+class TestAnObjectWithReadersAndNoProducerIsAnError:
+    """A candidate dictionary dumped from a project that failed holds objects a component reads
+    and nobody produces, and compared as ``changed-owner`` alone it was a replacement. It is
+    ``missing-producer``, the id ``ddd check`` gives the same fault, with that id's one
+    severity and under the run's own ``-W``."""
+
+    @staticmethod
+    def delivery(tree: Path, name: str, *, produced: bool) -> DataDictionary:
+        write_tree(
+            tree,
+            {
+                f"{name}.ddd.json": project("P", f"{name}-a.ddd.json", f"{name}-b.ddd.json"),
+                f"{name}-a.ddd.json": component(
+                    "A",
+                    *([declare("output", "Speed", unit="rpm")] if produced else []),
+                    declare("output", "Other", unit="rpm"),
+                ),
+                f"{name}-b.ddd.json": component(
+                    "B", declare("input", "Speed", unit="rpm"), declare("input", "Other")
+                ),
+            },
+        )
+        return resolve(tree, f"{name}.ddd.json")
+
+    def test_the_candidate_of_a_failed_dump_cannot_replace(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", produced=True)
+        new = self.delivery(tree, "new", produced=False)
+        bag = verdict(old, new)
+        assert sorted(checks(bag)) == ["changed-owner", "missing-producer"]
+        assert (
+            "error[missing-producer]: 'Speed' is read by B and nothing in the candidate produces it"
+        ) in messages(bag)
+        assert bag.has_errors
+
+    def test_the_run_can_relax_it_as_it_relaxes_the_check(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", produced=True)
+        new = self.delivery(tree, "new", produced=False)
+        bag = verdict(old, new, "missing-producer=ignore")
+        assert checks(bag) == ["changed-owner"]
+        assert not bag.has_errors
+
+    def test_an_object_the_baseline_held_without_a_producer_is_not_new(self, tree: Path) -> None:
+        """Two dumps of a component read alone hold it on both sides: nothing moved."""
+        old = self.delivery(tree, "old", produced=False)
+        new = self.delivery(tree, "new", produced=False)
+        assert checks(verdict(old, new)) == []
+
+    def test_an_object_that_arrived_with_readers_and_no_producer_is_an_error(
+        self, tree: Path
+    ) -> None:
+        old = self.delivery(tree, "old", produced=True)
+        new = self.delivery(tree, "new", produced=True)
+        ghost = new.by_name["Other"].model_copy(update={"name": "Ghost", "owner": None})
+        bag = verdict(old, new.model_copy(update={"objects": (*new.objects, ghost)}))
+        assert sorted(checks(bag)) == ["added-object", "missing-producer"]
+
+    def test_an_object_nobody_reads_is_not_one(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", produced=True)
+        new = self.delivery(tree, "new", produced=True)
+        loose = new.by_name["Other"].model_copy(
+            update={"name": "Loose", "owner": None, "consumers": ()}
+        )
+        bag = verdict(old, new.model_copy(update={"objects": (*new.objects, loose)}))
+        assert checks(bag) == ["added-object"]
+
+    def test_a_candidate_that_was_analysed_in_this_run_is_not_told_twice(self, tree: Path) -> None:
+        old = self.delivery(tree, "old", produced=True)
+        new = self.delivery(tree, "new", produced=False)
+        bag = DiagnosticBag()
+        compare(old, new, bag, candidate_analysed=True)
+        assert checks(bag) == ["changed-owner"]
+
+    def test_a_structured_variable_is_one_too(self, tree: Path) -> None:
+        def delivery(name: str, *, produced: bool) -> DataDictionary:
+            write_tree(
+                tree,
+                {
+                    f"{name}.ddd.json": project(
+                        "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
+                    ),
+                    f"{name}-t.ddd.json": {"types": [struct_type("Rec_t", value_member("v"))]},
+                    f"{name}-a.ddd.json": component(
+                        "A",
+                        *(
+                            [declare("output", "Rec", typename="Rec_t")]
+                            if produced
+                            else [declare("output", "Rec2", typename="Rec_t")]
+                        ),
+                    ),
+                    f"{name}-b.ddd.json": component("B", declare("input", "Rec", typename="Rec_t")),
+                },
+            )
+            return resolve(tree, f"{name}.ddd.json")
+
+        bag = verdict(delivery("old", produced=True), delivery("new", produced=False))
+        assert "'Rec' is read by B and nothing in the candidate produces it" in messages(bag)

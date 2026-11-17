@@ -9,6 +9,7 @@ answer.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Any, ClassVar
@@ -18,7 +19,15 @@ import pytest
 from conftest import component, declare, project, write_tree
 from ddd.cli import EXIT_FINDINGS, EXIT_OK, main
 from ddd.compare import renames
-from ddd.deliveries import Comparison, compare_deliveries, read_dictionary
+from ddd.deliveries import (
+    Comparison,
+    Reading,
+    Refusal,
+    compare_deliveries,
+    read_baseline,
+    read_dictionary,
+    relaxations,
+)
 from ddd.diagnostics import DiagnosticBag, Location, Severity, SeverityPolicy
 from ddd.gui.api import Api
 from ddd.gui.session import Session
@@ -361,3 +370,262 @@ class TestTheBaselinesOwnErrors:
         read_dictionary(tmp_path / "c.ddd.json", strict, floor_when_alone=True)
         assert sorted(d.check for d in relaxed) == ["limits-out-of-range", "missing-id"]
         assert strict.has_errors and not relaxed.has_errors
+
+
+def _read_of(path: Path, *, relaxing: tuple[str, ...] = ()) -> tuple[Any, DiagnosticBag]:
+    """What ``read_baseline`` makes of ``path`` for a run that was given ``-W``."""
+    bag = DiagnosticBag(SeverityPolicy.from_strings(relaxing))
+    return read_baseline(path, bag), bag
+
+
+# A project that holds an input nobody produces, and an output nobody reads: the first is an
+# error of its own analysis, the second a warning.
+UNPRODUCED: dict[str, object] = {
+    "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+    "a.ddd.json": component("A", declare("output", "Lonely", unit="rpm")),
+    "b.ddd.json": component("B", declare("input", "Ghost", unit="rpm")),
+}
+
+
+class TestADumpFromAFailingProject:
+    """``ddd dump`` exits 1 on a project with an input nobody produces and writes the file all
+    the same; compared as a candidate it used to be a ``changed-owner`` warning and a verdict
+    of "can replace"."""
+
+    def _dumps(self, tmp_path: Path) -> tuple[Path, Path]:
+        write_tree(tmp_path / "old", CLEAN)
+        write_tree(tmp_path / "new", _without(CLEAN, "a.ddd.json"))
+        write_tree(tmp_path / "new", {"a.ddd.json": component("A")})
+        base, broken = tmp_path / "base.json", tmp_path / "broken.json"
+        assert main(["dump", str(tmp_path / "old" / "p.ddd.json"), "-o", str(base)]) == EXIT_OK
+        assert main(["dump", str(tmp_path / "new" / "p.ddd.json"), "-o", str(broken)]) == (
+            EXIT_FINDINGS
+        )
+        return base, broken
+
+    def test_ddd_compare_cannot_replace(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        base, broken = self._dumps(tmp_path)
+        capsys.readouterr()
+        assert main(["compare", str(base), str(broken)]) == EXIT_FINDINGS
+        report = capsys.readouterr().err
+        assert "error[missing-producer]: 'Speed' is read by B" in report
+        assert "broken.json cannot replace base.json" in report
+
+    def test_a_project_that_relaxes_the_check_has_chosen_to_hold_such_objects(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        base, broken = self._dumps(tmp_path)
+        capsys.readouterr()
+        assert main(["compare", str(base), str(broken), "-W", "missing-producer=ignore"]) == EXIT_OK
+        assert "missing-producer" not in capsys.readouterr().err
+
+
+class TestABrokenBaselineWithholdsNothingOfTheCandidates:
+    """The baseline's carried errors stop nothing: a description candidate is analysed, and all
+    its findings and its renames are reported, as ``ddd check --baseline`` reports them."""
+
+    def _trees(self, tmp_path: Path) -> tuple[Path, Path]:
+        write_tree(
+            tmp_path / "old",
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A", declare("output", "Old", unit="rpm", id="aaaaaaaaaaaa")
+                ),
+                "b.ddd.json": component(
+                    "B", declare("input", "Old", unit="rpm"), declare("input", "Ghost", unit="rpm")
+                ),
+            },
+        )
+        write_tree(
+            tmp_path / "new",
+            {
+                "p.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "New", unit="rpm", id="aaaaaaaaaaaa"),
+                    declare("output", "Lonely", unit="rpm"),
+                ),
+                "b.ddd.json": component("B", declare("input", "New", unit="rpm")),
+            },
+        )
+        return tmp_path / "old" / "p.ddd.json", tmp_path / "new" / "p.ddd.json"
+
+    def test_the_candidates_warnings_are_reported(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self._trees(tmp_path)
+        assert main(["compare", str(old), str(new)]) == EXIT_FINDINGS
+        report = capsys.readouterr().err
+        assert "in the baseline: 'Ghost' is read by component 'B'" in report
+        assert "warning[unused-output]: 'Lonely'" in report
+        assert "error[renamed-read-object]" in report
+
+    def test_check_baseline_reports_the_same_findings_of_the_candidate(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self._trees(tmp_path)
+        main(["compare", str(old), str(new)])
+        compared = capsys.readouterr().err
+        main(["check", str(new), "--baseline", str(old)])
+        checked = capsys.readouterr().err
+
+        def findings(report: str) -> list[str]:
+            return sorted(line for line in report.splitlines() if "[" in line and ": " in line)
+
+        assert findings(compared) == findings(checked)
+
+    def test_the_renames_are_written(self, tmp_path: Path) -> None:
+        old, new = self._trees(tmp_path)
+        written = tmp_path / "renames.json"
+        assert main(["compare", str(old), str(new), "--renames", str(written)]) == EXIT_FINDINGS
+        assert json.loads(written.read_text(encoding="utf-8")) == [
+            {"id": "aaaaaaaaaaaa", "from": "Old", "to": "New"}
+        ]
+
+    def test_a_candidate_that_is_itself_broken_still_stops_at_its_own_errors(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What the baseline does not excuse: a candidate whose own files do not load is not
+        analysed, as it was not before."""
+        old, new = self._trees(tmp_path)
+        (tmp_path / "new" / "a.ddd.json").write_text("{not json", encoding="utf-8")
+        written = tmp_path / "renames.json"
+        assert main(["compare", str(old), str(new), "--renames", str(written)]) == EXIT_FINDINGS
+        assert not written.exists()
+        assert "error[json-syntax]" in capsys.readouterr().err
+
+
+class TestADescriptionBaselineTakesTheProjectsRelaxationsAlone:
+    """A project that builds with ``-W missing-producer=ignore`` can compare its branch against
+    its trunk: the relaxation reaches the baseline's own analysis. A promotion never does."""
+
+    def _trees(self, tmp_path: Path) -> tuple[Path, Path]:
+        write_tree(tmp_path / "old", UNPRODUCED)
+        write_tree(tmp_path / "new", UNPRODUCED)
+        return tmp_path / "old" / "p.ddd.json", tmp_path / "new" / "p.ddd.json"
+
+    def test_without_the_relaxation_the_baselines_error_is_carried(self, tmp_path: Path) -> None:
+        old, new = self._trees(tmp_path)
+        assert main(["compare", str(old), str(new)]) == EXIT_FINDINGS
+
+    @pytest.mark.parametrize("severity", ["ignore", "warning", "info"])
+    def test_ddd_compare_under_the_projects_w_has_a_verdict(
+        self, tmp_path: Path, severity: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        old, new = self._trees(tmp_path)
+        argv = ["compare", str(old), str(new), "-W", f"missing-producer={severity}"]
+        assert main(argv) == EXIT_OK
+        report = capsys.readouterr().err
+        assert "in the baseline" not in report
+        assert " can replace " in report and "cannot replace" not in report
+
+    def test_ddd_check_baseline_takes_it_too(self, tmp_path: Path) -> None:
+        old, new = self._trees(tmp_path)
+        argv = ["check", str(new), "--baseline", str(old), "-W", "missing-producer=ignore"]
+        assert main(argv) == EXIT_OK
+
+    def test_a_promotion_does_not_reach_the_baseline(self, tmp_path: Path) -> None:
+        """What ``-W unused-output=error`` says about this run's own outputs: the baseline's
+        unread output is its own, as it always was, and the run's strictness is no more its."""
+        write_tree(
+            tmp_path / "old",
+            {
+                **CLEAN,
+                "a.ddd.json": component(
+                    "A",
+                    declare("output", "Speed", unit="rpm"),
+                    declare("output", "Lonely", unit="rpm"),
+                ),
+            },
+        )
+        write_tree(tmp_path / "new", CLEAN)
+        old, new = tmp_path / "old" / "p.ddd.json", tmp_path / "new" / "p.ddd.json"
+        assert main(["compare", str(old), str(new), "-W", "unused-output=error"]) == EXIT_OK
+
+    def test_an_override_equal_to_the_checks_grade_is_not_a_relaxation_and_the_floor_stands(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``-W missing-producer=error`` states what the check already is: it must not take the
+        last word over the floor a component baseline is read under."""
+        write_tree(
+            tmp_path,
+            {**CLEAN, "baseline.ddd.json": component("B", declare("input", "Speed", unit="rpm"))},
+        )
+        argv = [
+            "compare",
+            str(tmp_path / "baseline.ddd.json"),
+            str(tmp_path / "p.ddd.json"),
+            "-W",
+            "missing-producer=error",
+        ]
+        assert main(argv) == EXIT_OK
+        assert "in the baseline" not in capsys.readouterr().err
+
+    def test_the_relaxations_of_a_policy_are_the_overrides_below_the_checks_own_grade(self) -> None:
+        policy = SeverityPolicy.from_strings(
+            [
+                "missing-producer=ignore",
+                "unused-output=error",
+                "definition-mismatch=warning",
+                "missing-id=warning",
+                "demo/rule=ignore",
+                "demo/other=error",
+            ],
+            strict=True,
+        )
+        assert relaxations(policy) == {
+            "missing-producer": Severity.IGNORE,
+            "definition-mismatch": Severity.WARNING,
+            "demo/rule": Severity.IGNORE,
+        }
+
+    def test_what_is_read_is_the_same_whichever_way_it_is_asked(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, UNPRODUCED)
+        resolved, bag = _read_of(tmp_path / "p.ddd.json", relaxing=("missing-producer=ignore",))
+        assert resolved is not None and len(bag) == 0
+
+
+class TestAJsonHoldingOnlyANameIsNoDelivery:
+    """A lone ``name`` used to validate as an empty dictionary, the stamp of the format being a
+    field with a default: every object of the other side was an addition, or a removal. A file
+    that is neither a dump nor a description is refused, on either side."""
+
+    def _almost(self, tmp_path: Path) -> Path:
+        write_tree(tmp_path, {**CLEAN, "almost.json": {"name": "P"}})
+        return tmp_path / "almost.json"
+
+    def test_as_a_baseline_it_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        almost = self._almost(tmp_path)
+        assert main(["compare", str(almost), str(tmp_path / "p.ddd.json")]) == EXIT_FINDINGS
+        report = capsys.readouterr().err
+        assert "neither a dumped dictionary nor a project or component description" in report
+        assert "can replace" not in report
+
+    def test_as_a_candidate_it_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        almost = self._almost(tmp_path)
+        assert main(["compare", str(tmp_path / "p.ddd.json"), str(almost)]) == EXIT_FINDINGS
+        report = capsys.readouterr().err
+        assert "neither a dumped dictionary nor a project or component description" in report
+        assert "can replace" not in report
+
+    def test_the_reader_says_which_refusal_it_is(self, tmp_path: Path) -> None:
+        almost = self._almost(tmp_path)
+        reading = Reading()
+        assert read_dictionary(almost, DiagnosticBag(), reading) is None
+        assert reading.refusal is Refusal.NEITHER
+
+    def test_a_dump_with_no_objects_still_reads(self, tmp_path: Path) -> None:
+        write_tree(tmp_path, {"p.ddd.json": project("Empty")})
+        dump = tmp_path / "empty.json"
+        assert main(["dump", str(tmp_path / "p.ddd.json"), "-o", str(dump)]) == EXIT_OK
+        assert json.loads(dump.read_text(encoding="utf-8"))["format"] >= 4
+        bag = DiagnosticBag()
+        resolved = read_dictionary(dump, bag)
+        assert resolved is not None and len(bag) == 0

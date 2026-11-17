@@ -2805,11 +2805,14 @@ class TestBaselineIsolation:
         assert main(arguments) == EXIT_OK
         assert "in the baseline:" not in capsys.readouterr().err
 
-    def test_a_relaxation_does_not_reach_the_baseline_either(
+    def test_a_relaxation_does_reach_the_baseline(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The other direction of the same rule, and the one that costs something: a baseline
-        that resolved only because this run relaxed an error of its own now reports it."""
+        """The other direction is not the same rule: a project that relaxes an error has decided
+        it can live with it, in the delivery it compares against as much as in its own, so
+        branch against trunk has a verdict wherever ``check`` is clean. It was the cost of the
+        symmetry: a baseline that resolved only because this run relaxed an error of its own
+        reported it, and the documented comparison of two working trees had none."""
         write_tree(
             tmp_path,
             {
@@ -2829,8 +2832,8 @@ class TestBaselineIsolation:
             "-W",
             "missing-id=ignore",
         ]
-        assert main(arguments) == EXIT_FINDINGS
-        assert "in the baseline:" in capsys.readouterr().err
+        assert main(arguments) == EXIT_OK
+        assert "in the baseline:" not in capsys.readouterr().err
 
     def test_the_floor_of_a_component_read_alone_still_reaches_the_baseline(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -3994,9 +3997,13 @@ class TestWhereTheRunsOwnFindingsAre:
         monkeypatch.chdir(tree)
         assert main(["compare", "base.json", "app.ddd.json", "--format", "json"]) == EXIT_FINDINGS
         payload = json.loads(capsys.readouterr().out)
-        assert [entry["location"]["path"] for entry in payload["diagnostics"]] == [
-            (tree / "base.json").as_posix()
-        ]
+        # The candidate is analysed beside the baseline that could not be read, and says what it
+        # has of its own: what is asked here is where the finding about the dump is.
+        assert [
+            entry["location"]["path"]
+            for entry in payload["diagnostics"]
+            if entry["check"] == "json-syntax"
+        ] == [(tree / "base.json").as_posix()]
 
 
 class TestAnOutputThatIsASource:

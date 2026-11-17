@@ -160,7 +160,10 @@ it has consciously decided to live with.
 The policy belongs to the project rather than to the engineer who happens to be typing: whoever
 checks the project should get the same verdict as the build server, so the overrides are best
 written once into the build system - the CMake integration takes them as ``SEVERITY`` and
-``STRICT`` arguments, see :doc:`build_integration` - instead of being remembered by hand.
+``STRICT`` arguments, see :doc:`build_integration` - instead of being remembered by hand. The
+relaxations of that policy reach a baseline given as a project description as well, so a project
+that builds with ``-W missing-producer=ignore`` can compare its branch against its trunk; its
+promotions and ``--strict`` do not, see :doc:`comparing_deliveries`.
 
 A :doc:`plugin <plugins>` check is spelled ``<plugin>/<check>`` and takes the same overrides
 a built-in check does - ``-W layout/duplicate-key=warning``, ``--strict``, ``ignore`` - the
@@ -561,7 +564,8 @@ or an a2l file that does not do what the description says - or that does not com
      - a variable is read as ``input`` but no component declares it as an output. The generated
        consumer header would declare a symbol nobody defines. A producer whose own declaration
        could not resolve still counts as a producer, so a consumer of the same variable is not
-       told that nobody produces it.
+       told that nobody produces it. ``ddd compare`` says it too of an object a dumped candidate
+       holds with readers and no producer, at this severity and under this run's ``-W``.
    * - ``local-conflict``
      - error
      - a variable declared ``local`` by one component is also declared by another. ``local`` is

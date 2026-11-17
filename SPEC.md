@@ -1681,12 +1681,17 @@ artefact to archive (`ddd dump`, [section 7](#7-tool-interface)), and the compar
 function of two of them. Either side **may** also be given as a project or component
 description, which is resolved to its dictionary on the spot; the archived dictionary is
 what keeps the question answerable after the descriptions have moved on. The baseline is
-analysed in its own right, under neither `--strict` nor the `-W` of this run, its findings
-being its own; only its error findings are carried into the report, each prefixed with
-"in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
-is visible without drowning the comparison and without this run's policy relaxing it away.
-What does reach it is `--standalone`, which states how the file was handed over rather than
-how strictly the run grades. A baseline that is a component file is a component read alone, and the
+analysed in its own right, under neither `--strict` nor the promotions of the `-W` of this run,
+its findings being its own; only its error findings are carried into the report, each prefixed
+with "in the baseline:" and at the severity its own analysis gave them, so that a broken baseline
+is visible without drowning the comparison and without this run's strictness promoting its
+warnings. What does reach it is the relaxations of the project's `-W`, an override grading a
+check below the grade it has by default, because a project that decided it can live with a
+finding decided it of the delivery it compares against as much as of its own: a project that
+builds with `-W missing-producer=ignore` can compare its branch against its trunk, as `ddd check`
+of either is clean. The Compare tab reads it under the relaxations that every build record of
+the project makes. What reaches it as well is `--standalone`, which states how the file was
+handed over rather than how strictly the run grades. A baseline that is a component file is a component read alone, and the
 readers its dictionary records are the component's own and nobody else's, because the run
 was not shown the rest. An output gone from it is therefore `removed-object` with a message that does
 not claim to know who read it, where "no component read it" is a claim about components the run never saw, and
@@ -1694,18 +1699,26 @@ an input the component stopped reading is `removed-input`, an information, becau
 component that reads less harms nobody. An object it declares `local` keeps its grade,
 `removed-unused-object`, because no other component can read it. `ddd check --standalone --baseline`, `ddd compare` and the Compare tab of `ddd gui`
 take it from the file, and read it under the floor `ddd check --standalone` reads a component under,
-whether or not the run said so, because one component file is read one way by every caller. An archived dictionary carries no mark of how it was read, `ddd dump
+whether or not the run said so, because one component file is read one way by every caller.
+`ddd compare` has no `--standalone` of its own, since it needs none: `ddd check --baseline
+--standalone` is the command that takes the option, and `ddd compare` reads a component file as it
+reads one with the option given. An archived dictionary carries no mark of how it was read, `ddd dump
 --standalone` included: the mark is a change of the format, and is deferred, so a comparison
 against such a dump is graded as one of a whole project is, whose readers the dump records as
 they were. A candidate given as a
-description is analysed too, and all of its findings are reported at their own severities.
+description is analysed too, and all of its findings are reported at their own severities, and its
+renames are written, whatever the baseline carries: a broken baseline withholds nothing of the
+candidate's. A file that is neither a dictionary nor a description - it states no `format`, no
+`project` and no `component`, a file holding only a `name` among them - is no delivery, and is
+refused on either side in those words rather than read as an empty dictionary.
 The verdict is that the candidate can replace the baseline exactly when no finding of the
 run is reported as an error - the candidate's own, the baseline's carried ones and the
 comparison's alike - and the exit code follows the verdict
 ([section 7](#7-tool-interface)). `ddd compare`, `ddd check --baseline` and the Compare tab of
 `ddd gui` give one pair one verdict, since they ask one function: the tab counts the open project's own errors in it as the commands do, under the strictest
-reading of the build records that grade it, and says how many the project has of its own. When a side cannot be read, or the baseline carries an
-error and the candidate is a description, no verdict is printed and the exit code is 1.
+reading of the build records that grade it, and says how many the project has of its own. When the baseline carries an error, the comparison is
+made and the verdict is a refusal; when a side cannot be read, no verdict is printed and the exit
+code is 1.
 
 In plain text the report closes with a verdict line naming the two files and saying whether
 the candidate can replace the baseline; it names them by file name, and by the paths as
@@ -1714,7 +1727,7 @@ project kept in a directory each. `ddd compare --renames <file>` writes beside i
 old-to-new name pairs the comparison established, so that a calibration dataset, a
 recording or a test script keyed by the old spelling can be migrated without parsing the
 findings: a JSON list of objects `{"id", "from", "to"}`, one entry per paired object whose
-name changed, sorted by `to`, `[]` when nothing was renamed; a structured variable with no
+name changed, sorted by `to` with an index counted as a number, `[]` when nothing was renamed; a structured variable with no
 leaf is listed once, under its own `id`, and a member of a structured variable that has
 leaves is listed once per member, its `id` being the instance's `id` followed by the
 member's path below the instance as the access path spells it - `.latest` for a member of a
@@ -1776,7 +1789,8 @@ compile:
   `SYSTEM_CONSTANT`, whether or not an object is dimensioned by it, so a changed value is a
   changed interface, said at the constant. An object it dimensions says its own shape at the
   object as well, because the macro and the size are two facts and neither stands for the
-  other. The description of a constant is documentation and is never compared, and a baseline of
+  other, and that shape is told with the size each constant gives, `[N=8] != [N=4]`, since the
+  spelling alone reads the same on both sides of a size that changed behind it. The description of a constant is documentation and is never compared, and a baseline of
   format 3 or older, which recorded no constants, has none to compare them with. The header of
   an external member is part of the layout above, and is said once, at the variable.
 - `renamed-read-object`: an object of the baseline is offered under a different name and a
@@ -1816,6 +1830,14 @@ compile:
   deliberately relaxes the check with `-W reused-name=warning`. A structured variable with no
   leaf is one of the names, and says it at the variable; a variable with leaves says it at
   each of its leaves' paths.
+- `missing-producer`: the candidate, given as a dumped dictionary, holds an object or a structured
+  variable that a component reads and no component produces. A dictionary dumped from a project that
+  failed is written all the same, and with no producer the object compared as `changed-owner` alone,
+  a warning, and a replacement; it is the id `ddd check` gives the same fault
+  ([section 4](#4-consistency-checks)), with its one severity and under the run's own `-W`, so that a
+  project that relaxes it has chosen to hold such objects. It is not said of an object the baseline
+  held without a producer under the same name, which a dump of a component read alone holds for every
+  input it reads, nor of a candidate given as a description, whose analysis has said it.
 - `removed-constant`: a constant of the baseline is gone. A reader that uses its macro no
   longer builds, so it is an error whether or not an object is dimensioned by it. A constant
   has no `id`, so one renamed is this finding for the old name and `added-constant` for the
@@ -1856,7 +1878,8 @@ Warnings, because behaviour or tooling changes while no consumer becomes wrong:
   from one to the other is a change; in an integer datatype `-0` is `0`. Both spellings are the tool's
   own offer, and a finding naming them is what the description writes: the two values as
   JSON, cut short past a few elements when the array is long, with the first index at which
-  they part named beside them.
+  they part named beside them. An object stating no `init` stores zeros, so adding `0`, `[0, 0]`
+  or `""` to one that had none moves no byte and is no change, in either direction.
 - `narrowed-limits`: the physical limits got tighter, so calibrated data may no longer
   fit; it is the grade of calibration data and of a measurement nobody reads. The two ends are compared with the relative tolerance of `limits-out-of-range`
   ([section 4](#4-consistency-checks)), because most limits are derived and a derived end
@@ -1935,7 +1958,9 @@ condition as storage and as their own findings. Each of those is therefore repor
 at the variable, where the declaration that states it is. Reported under the members
 instead, one edit on one declaration was one finding per member of the structure, and one
 per member of every element of an array of them, each naming a path for a change that is on
-one line. What is left at a member is what the member itself states: its datatype, its
+one line. A member's own change is told at every path that reaches it, and the paths are in the
+order `ddd list` gives them, an index counted as a number - `[2]` before `[10]` - as are the
+removals, the additions and the renames. What is left at a member is what the member itself states: its datatype, its
 meaning, its shape, its width in bits and the A2L entry it asks for.
 
 A structure holding only members of external types, at any depth, holds nothing DDD can see
@@ -2316,7 +2341,9 @@ whole number of at least 1, written as a number and not as text, of which a read
 description file is read under ([section 3](#3-file-formats)) - a key spelled twice in one
 object is refused rather than resolved to its last spelling - because a document archived
 beside a delivery is as open to a hand edit as the description it was dumped from. Its
-schema is published by `ddd schema dictionary`. The top level carries `format`, `name`,
+schema is published by `ddd schema dictionary`. A reader of a delivery takes a file for a dictionary
+by its `format`, which every dump states: a file stating neither it, nor `project`, nor `component`
+is no delivery ([section 4.1](#41-comparing-two-deliveries)). The top level carries `format`, `name`,
 `description`, `source`
 (the file name of the root description), `components`, `objects`, `enums`, `constants`,
 `rasters`, `types`, `instances`, `leaves`, `plugins` and `extensions`.
@@ -2337,7 +2364,8 @@ own, else its component's default), `volatile`,
 `condition` (the producer's), `references` (the objects this one names, keyed by the role it
 names them in - `axis` for a curve, `x_axis` and `y_axis` for a map, `input` for an axis -
 and `{}` on an object that names none), `owner` (the component producing it, `null` only
-where no component does, which a consistent project has none of), `consumers`, `local`,
+where no component does, which a consistent project has none of, and which a delivery comparison
+says of a candidate as `missing-producer` ([section 4.1](#41-comparing-two-deliveries))), `consumers`, `local`,
 `point_counts` (`"none"` or `"leading"`, resolved for a curve, a map or an axis, `"none"`
 for every other kind) and `a2l` with `export` resolved to a boolean. An instance records `name`, `id`, `extensions`, `type`,
 `kind`, `description`, `shape`, `dimensions`, `volatile`, `section`, `raster`, `condition`,

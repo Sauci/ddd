@@ -60,6 +60,7 @@ list it is in, not by where its path happens to resolve to.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -72,6 +73,7 @@ from ddd.deliveries import (
     Resolved,
     compare_deliveries,
     read_baseline,
+    relaxations,
 )
 from ddd.diagnostics import (
     CHECKS,
@@ -117,6 +119,15 @@ class Cached:
     forwarded: tuple[Diagnostic, ...]
     """Every diagnostic that read forwarded ("in the baseline: ..."), captured once so that a
     cache hit still reports them without reading the file again."""
+
+    relaxed: dict[str, Severity]
+    """The relaxations of the project this baseline was read under
+    (:func:`~ddd.deliveries.relaxations`): a read under other ones is another read."""
+
+    begun: int
+    """The time, in nanoseconds, taken before the read began - never after, as the session takes
+    its stamps (:func:`~ddd.gui.session.stamped`): after it, a file saved while the read was
+    going on is stamped as the bytes that were read, and a stale entry looks fresh."""
 
     stamps: dict[Path, tuple[int, int] | None]
     """The stamp of every file the read was made out of, as :func:`~ddd.gui.session.stamped`
@@ -215,7 +226,7 @@ def compared(revision: Revision, baseline: Path, root: Path, cache: BaselineCach
         raise ValueError(
             "the open project did not resolve, so it cannot be compared against a baseline"
         )
-    resolved, forwarded = _resolved_baseline(baseline, root, cache)
+    resolved, forwarded = _resolved_baseline(baseline, root, cache, _relaxed_by(revision))
 
     # The baseline's own errors, in a bag of their own: kept apart from `compare`'s own findings
     # from the moment they are read, exactly so that they are never routed as though they were
@@ -334,6 +345,23 @@ def _policy_of(revision: Revision) -> SeverityPolicy:
     )
 
 
+def _relaxed_by(revision: Revision) -> dict[str, Severity]:
+    """What a description baseline is read under: the relaxations every build of the project
+    makes, each at the strictest grade any build gives it - a check one build does not relax is
+    one the project does not, as :func:`_policy_of` takes the strictest reading of a comparison
+    check. Never a promotion, for the reason ``ddd compare`` gives (:func:`read_baseline`)."""
+    each = [
+        relaxations(SeverityPolicy.from_strings(list(build.severity), strict=build.strict))
+        for build in revision.builds
+    ]
+    if not each:
+        return {}
+    return {
+        check: min((one[check] for one in each), key=lambda severity: severity.rank)
+        for check in set.intersection(*(set(one) for one in each))
+    }
+
+
 def _graded(revision: Revision) -> dict[str, CheckInfo]:
     """Every check this comparison can file and the registry entry to grade it by: the built-in
     comparison checks, and the comparison checks the project's own plugins register.
@@ -349,7 +377,7 @@ def _graded(revision: Revision) -> dict[str, CheckInfo]:
 
 
 def _resolved_baseline(
-    path: Path, root: Path, cache: BaselineCache
+    path: Path, root: Path, cache: BaselineCache, relaxed: dict[str, Severity]
 ) -> tuple[Resolved, tuple[Diagnostic, ...]]:
     """Read the baseline named at ``path``, which must be under ``root``, through the cache.
 
@@ -396,19 +424,42 @@ def _resolved_baseline(
             f"the baseline '{resolved.as_posix()}' is outside the session root '{root.as_posix()}'"
         )
     hit = cache.get(resolved)
-    if hit is None or stamped(hit.stamps) != hit.stamps:
-        hit = _read(resolved)
+    if hit is None or hit.relaxed != relaxed or stamped(hit.stamps) != hit.stamps:
+        hit = _read(resolved, relaxed)
         # Taken out and put back rather than assigned in place, so that the entry dropped below
         # is the one read longest ago: updating a key leaves it where it first went in.
         cache.pop(resolved, None)
-        cache[resolved] = hit
-        while len(cache) > MAX_BASELINES:
-            del cache[next(iter(cache))]
+        if _settled(hit):
+            cache[resolved] = hit
+            while len(cache) > MAX_BASELINES:
+                del cache[next(iter(cache))]
     return hit.resolved, hit.forwarded
 
 
-def _read(path: Path) -> Cached:
+_CLOCK_SLACK_NS: Final = 2 * 10**9
+"""How far before the read began a file's own time may lie and still be taken as possibly newer
+than it: the clock a file's time comes from is coarser than the one the read is begun by - a
+jiffy on one system, two seconds on a FAT volume - so a file saved in the same instant as the
+start could be stamped either side of it."""
+
+
+def _settled(entry: Cached) -> bool:
+    """Whether every file ``entry`` was read out of is older than the read that made it, and so
+    stamped as the bytes that were read: one that is not may have been saved while the read went
+    on, and an entry that held it would be served as the file on disk until the next change.
+    A file that is not there any more is one nothing is known of, and unsettled too. Not kept, it is
+    read again by the next ask, which costs one read and cannot be wrong."""
+    return all(
+        stamp is not None and stamp[0] < entry.begun - _CLOCK_SLACK_NS
+        for stamp in entry.stamps.values()
+    )
+
+
+def _read(path: Path, relaxed: dict[str, Severity]) -> Cached:
     """The baseline at ``path``, read and stamped, or the reason it is not one.
+
+    The time is taken before the read and the files are stamped after it, which is the order that
+    can be told apart (:attr:`Cached.begun`).
 
     The open is a probe and reads nothing: it answers *unreadable* - a file that is not there,
     a directory, one whose permissions refuse - before ``read_baseline`` is asked for a reading
@@ -423,7 +474,10 @@ def _read(path: Path) -> Cached:
         raise BaselineRefusedError(
             f"the baseline '{path.as_posix()}' is unreadable: {error}"
         ) from (error)
-    own = DiagnosticBag()
+    begun = time.time_ns()
+    # The bag the carried errors are forwarded into, graded by the project's relaxations as
+    # ``ddd compare``'s own bag is: that is where `read_baseline` takes them from.
+    own = DiagnosticBag(SeverityPolicy(dict(relaxed)))
     reading = Reading()
     try:
         found = read_baseline(path, own, reading=reading)
@@ -441,7 +495,7 @@ def _read(path: Path) -> Cached:
         # two readers met the file, so there is always a reason here to put into words.
         assert reading.refusal is not None
         raise BaselineRefusedError(_refusal_reason(path, reading.refusal, forwarded))
-    return Cached(found, forwarded, stamped(found.sources))
+    return Cached(found, forwarded, dict(relaxed), begun, stamped(found.sources))
 
 
 def _refusal_reason(path: Path, refusal: Refusal, diagnostics: tuple[Diagnostic, ...]) -> str:

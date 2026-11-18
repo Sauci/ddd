@@ -336,20 +336,17 @@ counts changed, or the value of a constant, or the layout a released structure f
 bitfield’s width, the type a structured variable names, or the members of that structure
 in order, each with what it holds and its dimensions, nested and external ones included,
 an external one by its header too, save a member added at the end of it when the variable
-is no array, or volatile turned on for an object a component reads or a component read
-alone produces</p></td>
+is no array, or volatile turned on for an object a component reads or an output of a component read alone</p></td>
 </tr>
 <tr class="row-even"><td><p>error</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">renamed-read-object</span></code></p></td>
-<td><p>an object of the baseline that a component read, or that a component read alone
-produced, is offered under a different name, so a reader compiled against the baseline
+<td><p>an object of the baseline that a component read, or an output of a component read alone, is offered under a different name, so a reader compiled against the baseline
 looks for a spelling that is gone; its <code class="docutils literal notranslate"><span class="pre">id</span></code> says so. A <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">renamed-object</span></code> relaxation does not
 reach it</p></td>
 </tr>
 <tr class="row-odd"><td><p>error</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code></p></td>
-<td><p>the preprocessor condition of an object a component reads, or of one a component read
-alone produces, was added or replaced, so a reader compiled against the baseline does not
+<td><p>the preprocessor condition of an object a component reads, or of any output of a component read alone, was added or replaced, so a reader compiled against the baseline does not
 link in a build where the new condition is false; a <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">changed-condition</span></code>
 relaxation does not reach it</p></td>
 </tr>
@@ -374,19 +371,17 @@ leaf included</p></td>
 <tr class="row-even"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
 <td><p>the initial value, volatility, memory section or measurement raster of an object changed,
-or the event or cycle of a raster; volatile turned on for an object a component reads or a
-component read alone produces is changed-interface instead</p></td>
+or the event or cycle of a raster; volatile turned on for an object a component reads or an output of a component read alone is changed-interface instead</p></td>
 </tr>
 <tr class="row-odd"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
 <td><p>the physical limits of an object got tighter, so calibrated data may not fit; on a
-measurement a component reads, or on one a component read alone produces, it is
+measurement a component reads, or on an output measurement of a component read alone, it is
 <code class="docutils literal notranslate"><span class="pre">widened-limits</span></code> or <code class="docutils literal notranslate"><span class="pre">narrowed-read-limits</span></code> instead</p></td>
 </tr>
 <tr class="row-even"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">widened-limits</span></code></p></td>
-<td><p>the physical limits of a measurement a component reads, or of one a component read alone
-produces, got wider, so a reader sized for the baseline’s range may meet a value it was
+<td><p>the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got wider, so a reader sized for the baseline’s range may meet a value it was
 not written for</p></td>
 </tr>
 <tr class="row-odd"><td><p>warning</p></td>
@@ -396,7 +391,7 @@ not written for</p></td>
 <tr class="row-even"><td><p>warning</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">changed-condition</span></code></p></td>
 <td><p>the preprocessor condition of an object changed; one added or replaced on an object a
-component reads, or on one a component read alone produces, is <code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code>
+component reads, or on an output of a component read alone, is <code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code>
 instead</p></td>
 </tr>
 <tr class="row-odd"><td><p>warning</p></td>
@@ -422,8 +417,7 @@ plugin’s comparison rules did not run</p></td>
 </tr>
 <tr class="row-even"><td><p>info</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">narrowed-read-limits</span></code></p></td>
-<td><p>the physical limits of a measurement a component reads, or of one a component read alone
-produces, got tighter: a reader still gets values inside the range it was written for</p></td>
+<td><p>the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got tighter: a reader still gets values inside the range it was written for</p></td>
 </tr>
 <tr class="row-odd"><td><p>info</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">removed-input</span></code></p></td>

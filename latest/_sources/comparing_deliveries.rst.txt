@@ -234,18 +234,15 @@ them together with everything else.
        bitfield's width, the type a structured variable names, or the members of that structure
        in order, each with what it holds and its dimensions, nested and external ones included,
        an external one by its header too, save a member added at the end of it when the variable
-       is no array, or volatile turned on for an object a component reads or a component read
-       alone produces
+       is no array, or volatile turned on for an object a component reads or an output of a component read alone
    * - error
      - ``renamed-read-object``
-     - an object of the baseline that a component read, or that a component read alone
-       produced, is offered under a different name, so a reader compiled against the baseline
+     - an object of the baseline that a component read, or an output of a component read alone, is offered under a different name, so a reader compiled against the baseline
        looks for a spelling that is gone; its ``id`` says so. A ``-W renamed-object`` relaxation does not
        reach it
    * - error
      - ``narrowed-condition``
-     - the preprocessor condition of an object a component reads, or of one a component read
-       alone produces, was added or replaced, so a reader compiled against the baseline does not
+     - the preprocessor condition of an object a component reads, or of any output of a component read alone, was added or replaced, so a reader compiled against the baseline does not
        link in a build where the new condition is false; a ``-W changed-condition``
        relaxation does not reach it
    * - error
@@ -265,17 +262,15 @@ them together with everything else.
    * - warning
      - ``changed-storage``
      - the initial value, volatility, memory section or measurement raster of an object changed,
-       or the event or cycle of a raster; volatile turned on for an object a component reads or a
-       component read alone produces is changed-interface instead
+       or the event or cycle of a raster; volatile turned on for an object a component reads or an output of a component read alone is changed-interface instead
    * - warning
      - ``narrowed-limits``
      - the physical limits of an object got tighter, so calibrated data may not fit; on a
-       measurement a component reads, or on one a component read alone produces, it is
+       measurement a component reads, or on an output measurement of a component read alone, it is
        ``widened-limits`` or ``narrowed-read-limits`` instead
    * - warning
      - ``widened-limits``
-     - the physical limits of a measurement a component reads, or of one a component read alone
-       produces, got wider, so a reader sized for the baseline's range may meet a value it was
+     - the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got wider, so a reader sized for the baseline's range may meet a value it was
        not written for
    * - warning
      - ``changed-owner``
@@ -283,7 +278,7 @@ them together with everything else.
    * - warning
      - ``changed-condition``
      - the preprocessor condition of an object changed; one added or replaced on an object a
-       component reads, or on one a component read alone produces, is ``narrowed-condition``
+       component reads, or on an output of a component read alone, is ``narrowed-condition``
        instead
    * - warning
      - ``changed-a2l``
@@ -303,8 +298,7 @@ them together with everything else.
      - the candidate declares a constant the baseline did not
    * - info
      - ``narrowed-read-limits``
-     - the physical limits of a measurement a component reads, or of one a component read alone
-       produces, got tighter: a reader still gets values inside the range it was written for
+     - the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got tighter: a reader still gets values inside the range it was written for
    * - info
      - ``removed-input``
      - an input of a component read alone is gone: the component stops reading it, which harms

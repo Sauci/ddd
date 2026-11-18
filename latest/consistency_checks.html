@@ -1018,8 +1018,7 @@ counts changed, or the value of a constant, or the layout a released structure f
 bitfield’s width, the type a structured variable names, or the members of that structure
 in order, each with what it holds and its dimensions, nested and external ones included,
 an external one by its header too, save a member added at the end of it when the variable
-is no array, or volatile turned on for an object a component reads or a component read
-alone produces. Turned on, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is the interface of an object a reader was
+is no array, or volatile turned on for an object a component reads or an output of a component read alone. Turned on, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is the interface of an object a reader was
 compiled against: a reader built without the qualifier reaches it through an lvalue that
 is not volatile, which C leaves undefined, and the finding is not repeated as
 <code class="docutils literal notranslate"><span class="pre">changed-storage</span></code>. Scaling compares an enum by its name and
@@ -1027,16 +1026,14 @@ its ordered enumerators, whose descriptions are documentation and are not compar
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">renamed-read-object</span></code></p></td>
 <td><p>error</p></td>
-<td><p>an object of the baseline that a component read, or that a component read alone
-produced, is offered under a different name. A reader may be a binary compiled against
+<td><p>an object of the baseline that a component read, or an output of a component read alone, is offered under a different name. A reader may be a binary compiled against
 the baseline’s headers, and it looks for a spelling that is gone. A structured variable’s rename is said under each leaf’s path,
 and each leaf answers for its variable’s readers. <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">renamed-object</span></code> relaxes the
 warning an unread object’s rename is, and does not reach this error.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code></p></td>
 <td><p>error</p></td>
-<td><p>the preprocessor condition of an object a component reads, or of one a component read
-alone produces, was added or replaced, so a reader compiled against the baseline does not
+<td><p>the preprocessor condition of an object a component reads, or of any output of a component read alone, was added or replaced, so a reader compiled against the baseline does not
 link in a build where the new condition is false. DDD cannot weigh one condition against another and takes a replacement as the
 builds the object is present in changing. A <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">changed-condition</span></code> relaxation does not
 reach it.</p></td>
@@ -1090,8 +1087,7 @@ instead.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">widened-limits</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>the physical limits of a measurement a component reads, or of one a component read alone
-produces, got wider, so a reader sized for the range of the baseline may meet a value it
+<td><p>the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got wider, so a reader sized for the range of the baseline may meet a value it
 was not written for. The ends are weighed
 as <code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code> weighs them.</p></td>
 </tr>
@@ -1102,7 +1098,7 @@ as <code class="docutils literal notranslate"><span class="pre">narrowed-limits<
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">changed-condition</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>the preprocessor condition of an object changed; one added or replaced on an object a
-component reads, or on one a component read alone produces, is <code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code>
+component reads, or on an output of a component read alone, is <code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code>
 instead.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code></p></td>
@@ -1132,8 +1128,7 @@ can be disturbed by.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-read-limits</span></code></p></td>
 <td><p>info</p></td>
-<td><p>the physical limits of a measurement a component reads, or of one a component read alone
-produces, got tighter: a reader still gets values inside the range it was written for.</p></td>
+<td><p>the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got tighter: a reader still gets values inside the range it was written for.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">removed-input</span></code></p></td>
 <td><p>info</p></td>

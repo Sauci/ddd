@@ -845,23 +845,20 @@ registry can be read in one place.
        bitfield's width, the type a structured variable names, or the members of that structure
        in order, each with what it holds and its dimensions, nested and external ones included,
        an external one by its header too, save a member added at the end of it when the variable
-       is no array, or volatile turned on for an object a component reads or a component read
-       alone produces. Turned on, ``volatile`` is the interface of an object a reader was
+       is no array, or volatile turned on for an object a component reads or an output of a component read alone. Turned on, ``volatile`` is the interface of an object a reader was
        compiled against: a reader built without the qualifier reaches it through an lvalue that
        is not volatile, which C leaves undefined, and the finding is not repeated as
        ``changed-storage``. Scaling compares an enum by its name and
        its ordered enumerators, whose descriptions are documentation and are not compared.
    * - ``renamed-read-object``
      - error
-     - an object of the baseline that a component read, or that a component read alone
-       produced, is offered under a different name. A reader may be a binary compiled against
+     - an object of the baseline that a component read, or an output of a component read alone, is offered under a different name. A reader may be a binary compiled against
        the baseline's headers, and it looks for a spelling that is gone. A structured variable's rename is said under each leaf's path,
        and each leaf answers for its variable's readers. ``-W renamed-object`` relaxes the
        warning an unread object's rename is, and does not reach this error.
    * - ``narrowed-condition``
      - error
-     - the preprocessor condition of an object a component reads, or of one a component read
-       alone produces, was added or replaced, so a reader compiled against the baseline does not
+     - the preprocessor condition of an object a component reads, or of any output of a component read alone, was added or replaced, so a reader compiled against the baseline does not
        link in a build where the new condition is false. DDD cannot weigh one condition against another and takes a replacement as the
        builds the object is present in changing. A ``-W changed-condition`` relaxation does not
        reach it.
@@ -908,8 +905,7 @@ registry can be read in one place.
        instead.
    * - ``widened-limits``
      - warning
-     - the physical limits of a measurement a component reads, or of one a component read alone
-       produces, got wider, so a reader sized for the range of the baseline may meet a value it
+     - the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got wider, so a reader sized for the range of the baseline may meet a value it
        was not written for. The ends are weighed
        as ``narrowed-limits`` weighs them.
    * - ``changed-owner``
@@ -918,7 +914,7 @@ registry can be read in one place.
    * - ``changed-condition``
      - warning
      - the preprocessor condition of an object changed; one added or replaced on an object a
-       component reads, or on one a component read alone produces, is ``narrowed-condition``
+       component reads, or on an output of a component read alone, is ``narrowed-condition``
        instead.
    * - ``changed-a2l``
      - warning
@@ -942,8 +938,7 @@ registry can be read in one place.
        can be disturbed by.
    * - ``narrowed-read-limits``
      - info
-     - the physical limits of a measurement a component reads, or of one a component read alone
-       produces, got tighter: a reader still gets values inside the range it was written for.
+     - the physical limits of a measurement a component reads, or of an output measurement of a component read alone, got tighter: a reader still gets values inside the range it was written for.
    * - ``removed-input``
      - info
      - an input of a component read alone is gone: the component stops reading it, which harms

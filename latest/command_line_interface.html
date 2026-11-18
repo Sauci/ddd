@@ -869,10 +869,11 @@ rather than every one at once, and every long table - the component table, the
 Types, Units, Shared files and Files tabs’ own, a component’s own declarations, a
 unit’s own places and a variable’s keys - draws only the rows in view, in a box of
 its own.
-<code class="docutils literal notranslate"><span class="pre">-b</span> <span class="pre">DIR</span></code> names a build directory as for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code>, <code class="docutils literal notranslate"><span class="pre">--host</span> <span class="pre">ADDRESS</span></code>
+<code class="docutils literal notranslate"><span class="pre">-b</span> <span class="pre">DIR</span></code> names a build directory as for <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">lsp</span></code>, <code class="docutils literal notranslate"><span class="pre">--host</span> <span class="pre">0.0.0.0</span></code>
 listens beyond this computer for a container, <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code> fixes the port and
-<code class="docutils literal notranslate"><span class="pre">--no-browser</span></code> only prints the address. It serves until interrupted, and its
-options are not yet part of the stable interface.</p></td>
+<code class="docutils literal notranslate"><span class="pre">--no-browser</span></code> only prints the address. <code class="docutils literal notranslate"><span class="pre">--host</span></code> takes that address, the
+default <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> or a name resolving to either, and refuses any other. It
+serves until interrupted, and its options are not yet part of the stable interface.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">build-info</span> <span class="pre">FILE</span> <span class="pre">-o</span> <span class="pre">FILE</span></code></p></td>
 <td><p>record which project description a build runs DDD on, whether it was given to the build
@@ -912,8 +913,8 @@ back the checks that need the rest of the project - which is what lets a supplie
 component long before an integrator ever sees it. With <code class="docutils literal notranslate"><span class="pre">--baseline</span></code> the gate compares that
 component with its predecessor, and what it can know is what one file shows: an output a
 component drops, renames, puts under a new condition or turns <code class="docutils literal notranslate"><span class="pre">volatile</span></code> fails that gate,
-whoever reads it, and one whose limits it widens is warned of, while an input it stops reading
-does not fail it. That holds when the baseline is the component file itself; an archived dump
+whoever reads it, and the limits of a measurement it widens are warned of, while an input it
+stops reading does not fail it. That holds when the baseline is the component file itself; an archived dump
 of a component carries no mark of how it was read, and <a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a> says what
 that costs.
 <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> takes no <code class="docutils literal notranslate"><span class="pre">--standalone</span></code>: generating from a component is generating the c
@@ -1645,7 +1646,7 @@ that is added, renamed or removed cannot leave its documentation behind.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-ddd-gui-host">
 <span class="sig-name descname"><span class="pre">--host</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;address&gt;</span></span><a class="headerlink" href="#cmdoption-ddd-gui-host" title="Link to this definition"></a></dt>
-<dd><p>IPv4 address to listen on, or a name that resolves to one; the default answers this computer alone, and 0.0.0.0 is what a container gives its host once the same port is published</p>
+<dd><p>IPv4 address to listen on: 127.0.0.1, the default, which answers this computer alone, or 0.0.0.0, every interface, which a container gives its host once the same port is published - or a name that resolves to one of the two; any other is refused</p>
 </dd></dl>
 
 <dl class="std option">

@@ -107,36 +107,45 @@ What it defends against
   reads.
 
 * **The address printed, opened as** ``localhost``. When it listens on loopback, as it
-  does by default, ``ddd gui`` binds an IPv6 address beside its IPv4 socket, on the very
-  same port, and never listens on it: ``[::1]`` on Linux and macOS, or, on Windows, the
-  wildcard ``[::]`` alone in its place - bound there exclusively
-  (``SO_EXCLUSIVEADDRUSE``), as its IPv4 socket is too. So no other program can listen on
-  ``localhost`` at that port: a browser trying ``[::1]`` first, which resolving
-  ``localhost`` may do, is refused and falls back to ``127.0.0.1``, rather than reaching
-  a stranger there - the program that an address rewritten from ``127.0.0.1`` to
-  ``localhost`` would otherwise have handed the token to, and that owns the ``localhost``
-  origin's storage besides. Measured on Linux and Windows, in Chromium and Edge: what
-  macOS refuses beside the hold was not. A fixed ``--port`` already held by another
-  program is refused before ``ddd gui`` starts, naming the port on IPv6 rather than an
-  address, since that program's need not be the one ``ddd gui`` tried to hold; left to
-  the system, ``--port 0`` tries another port instead.
+  does by default, ``ddd gui`` listens on ``[::1]`` too, on the very same port, and answers
+  there as it answers on ``127.0.0.1``: ``localhost`` is ``ddd gui`` itself, whichever of
+  the two a browser tries, signed out until the address it printed is opened there. No
+  other program can listen on ``[::1]`` at that port: on Windows, ``ddd gui`` binds both
+  addresses exclusively (``SO_EXCLUSIVEADDRUSE``). A fixed ``--port`` another program
+  already listens on at ``[::1]`` is refused before ``ddd gui`` starts, naming the port;
+  left to the system, ``--port 0`` tries another port instead. None of this is tested on
+  macOS.
 
 What it trusts
 --------------
 
 * **The project the reader opens, and its plugins.** They run when the project is
-  analysed, exactly as they run under ``ddd check``.
+  analysed, exactly as they run under ``ddd check``: ``ddd gui`` runs the code a project
+  names, as ``make`` runs the recipes a Makefile names. Opening a project here is running it.
 
 * **A baseline the reader compares against, and its plugins.** They run exactly as they
   run under ``ddd compare``.
 
 * **The directory** ``ddd gui`` **was started in.** The project's own files may name files
   above that directory, and ``ddd gui`` reads them.
+  Its build records are read as well, for the projects the start page offers and for how a
+  project is generated: a record's ``project`` is read only under the rule a request's path
+  meets, and only as a file named ``*.ddd.json``, and a record naming anything else is read
+  as no record.
 
-* **Whoever holds the token.** It is the key: whoever started ``ddd gui`` holds it, and so
-  does anyone its terminal shows it to. The printed address is for pasting into a browser's
-  own address bar; clicked in the terminal instead, it is handed to an opener such as
-  ``xdg-open`` on its command line, which any local user can read while it runs.
+* **Whoever holds the token.** It is code execution as the reader: whoever holds it acts on
+  the project's descriptions as the reader does, and ``ddd gui`` runs the plugins they name,
+  as ``ddd check`` does. Whoever started ``ddd gui`` holds it, and so does anyone its terminal
+  shows it to. The printed address is for pasting into a browser's own address bar; clicked in
+  the terminal instead, it is handed to an opener such as ``xdg-open`` on its command line,
+  which any local user can read while it runs. The token names no new code: an edit that
+  would change which plugins the project's descriptions name is refused, ``409``, so the
+  reader makes that change in a text editor, not through the page. What it can run is what
+  descriptions already name: the open project's, and those of a project the start page offers
+  or a baseline under the directory ``ddd gui`` was started in, which the page may open or
+  compare against. A description that does not load runs none of the plugins it names,
+  whichever way an edit leaves it. A process already running as this same user is outside
+  what this page defends: it reads these files and runs this code with no token at all.
 
 * **The page's own origin.** The token is kept in its ``localStorage``, readable only by
   script running in this origin; the content security policy runs no script but one served
@@ -177,11 +186,13 @@ one of the browsers above.
 
 In every browser, the gate lets through by design a navigation marked
 ``Sec-Fetch-Site: none``, which a browser sends for a navigation it begins itself - an
-address typed, or chosen from a bookmark - and an older browser marks such a navigation
-with nothing. Either way it lands, signed in, on the page its address names, just as above,
-as it did when the token was a cookie: a ``SameSite=Strict`` cookie rode the same
-navigations. Open ``ddd gui``'s pages from the address it prints, or from the page itself,
-rather than from a link someone else wrote.
+address typed, or chosen from a bookmark - and for one a redirect continues from such a
+beginning, whatever site the address typed or chosen was; an older browser marks such a
+navigation with nothing. Either way it lands, signed in, on the page its last address names,
+just as above. The two a browser begins itself landed so when the token was a cookie as
+well: a ``SameSite=Strict`` cookie rode them. Open ``ddd gui``'s pages from the address it
+prints, or from the page itself, rather than from a link someone else wrote, or an address
+that sends the browser on to it.
 
 Running it in a container
 -------------------------
@@ -202,7 +213,9 @@ What it does not defend against
   page available: anyone who can reach the port, token or not, can still open and hold
   sixty-four connections, and so deny the page its server - though a connection idle for
   thirty seconds is closed and gives its slot back, so holding one takes writing to it at
-  least that often. A browser never comes near that limit by itself - six connections to
+  least that often. A wait for the state to change, which the page keeps open, looks every
+  second whether the page is still there, and gives its slot back once it is not - reloaded,
+  or its tab closed. A browser never comes near that limit by itself - six connections to
   one host, across every tab - so this is a risk from another local process or user, not
   from ordinary use.
 
@@ -211,18 +224,29 @@ What it does not defend against
   the code, or the token from a pasted address, to ``POST /open`` and keeps the token it
   is answered. The browser is handed a one-time code instead of the long-lived token, so
   the token itself never sits on a command line. But a local process reading the
-  launcher's command line - polling ``/proc``, on Linux - and presenting that code before
-  the reader's browser does is signed in with the token for as long as this run of
-  ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this happened:
-  the reader's own browser shows it is signed out instead of landing on the project, and
-  presenting that same code again prints one line on the terminal, saying so and to
-  restart ``ddd gui`` rather than open the address it printed - a restart takes the token
-  from the winner, and the printed address would not. The same two signs also follow an
-  innocent cause: the first ``POST /open`` reaches the server and spends the code, but
-  its answer is lost on the way back, so the page sends the same code once more; the
-  server refuses it as already spent, and the terminal prints the very same line - no
-  other process involved. Either way, its advice is the same: restart ``ddd gui``. A code
-  that expired unused signed nobody in, and prints nothing.
+  launcher's command line, which any local user can read on Linux and on macOS alike, and
+  presenting that code before the reader's browser does holds the token, and so runs the
+  project's code as the reader, for as long as this run of ``ddd gui`` lasts - not merely
+  ahead of the reader once. What the winner holds is what any holder of the token holds, as
+  *Whoever holds the token*, under *What it trusts*, says: it acts on the project's
+  descriptions as the reader, and runs no code but what descriptions already name. The
+  winner may be any local user's program, not only one of the reader's own account: on a
+  shared machine, another user's program that wins holds the reader's power over the project
+  for the rest of the run, which a program of another user did not hold before. A process
+  already running as this same user is outside what this page defends, as *Whoever holds the
+  token* says; the race is where any other local user's program reaches the same ground. Two
+  things show this happened: the reader's own browser shows it is signed out instead of
+  landing on the project, and presenting that same code again prints one line on the
+  terminal. The line says that nothing more is needed only if the browser ``ddd gui`` opened
+  landed on the project, and that if it says it is signed out, the reader stops ``ddd gui``
+  and starts it again, which mints a new code and a new token, and opens the address printed
+  then: a restart takes the token from the winner, and this run's address, opened since,
+  does not. The same two signs also follow an innocent cause: the first ``POST /open``
+  reaches the server and spends the code, but its answer is lost on the way back, so the page
+  sends the same code once more; the server refuses it as already spent, and the terminal
+  prints the very same line - no other process involved. Either way, the browser ``ddd gui``
+  opened says it is signed out, and the advice is the same: restart ``ddd gui``. A code that
+  expired unused signed nobody in, and prints nothing.
 
 * **A server that used the same port before.** The page's origin is its address and port,
   and the browser keeps what a server on them left behind into any later run on that port.
@@ -240,10 +264,10 @@ What it does not defend against
 
 * **Beyond loopback, as in a container.** There ``ddd gui`` listens on
   ``--host 0.0.0.0``, published on the host's ``127.0.0.1`` alone, as *Running it in a
-  container* above describes, and the IPv6 hold, being loopback's alone, holds nothing
-  there. The host's ``[::1]`` at that port is open all the same, to a program already
-  listening on it, which may receive ``localhost:<port>/open?token=<the token>`` in the
-  container's place. Open the address exactly as ``ddd gui`` prints it.
+  container* above describes, and not on ``[::1]``, which it listens on only when it
+  listens on loopback. The host's ``[::1]`` at that port is open all the same, to a program
+  already listening on it, which may receive ``localhost:<port>/open?token=<the token>`` in
+  the container's place. Open the address exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

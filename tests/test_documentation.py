@@ -3620,6 +3620,60 @@ class TestTheSuiteRunsEverythingEverywhere:
         )
 
 
+MASTER_HEAD = "1" * 40
+"""master's newest commit, which a run Publish's completion starts is given as its own."""
+
+TAGGED = "2" * 40
+"""The commit a release's tag names, which Publish's run for that release ran on."""
+
+
+def started_by(event_name: str, ref: str) -> dict[str, Any]:
+    """The context a run of the documentation workflow is given by an event of its own: that
+    event's ref, and the newest commit on it."""
+    return {
+        "github": {
+            "event_name": event_name,
+            "ref": ref,
+            "ref_name": ref.split("/", 2)[2],
+            "sha": MASTER_HEAD,
+            "run_id": "41",
+            "event": {},
+        }
+    }
+
+
+def completed(
+    event: str = "release",
+    conclusion: str = "success",
+    head_branch: str = "v0.12.0",
+    run_id: str = "42",
+) -> dict[str, Any]:
+    """The context a run Publish's completion starts is given, as GitHub documents
+    ``workflow_run``: its own ref and commit are the default branch's - master's newest commit,
+    whatever Publish ran on - and Publish's run is in the payload, with the event that started
+    it, its conclusion, the commit it ran on and, as ``head_branch``, a release's tag. Publish's
+    run for v0.11.0, 35957643647, reads ``"event": "release", "head_branch": "v0.11.0"`` and the
+    commit ``v0.11.0`` names as ``head_sha``."""
+    return {
+        "github": {
+            "event_name": "workflow_run",
+            "ref": "refs/heads/master",
+            "ref_name": "master",
+            "sha": MASTER_HEAD,
+            "run_id": run_id,
+            "event": {
+                "workflow_run": {
+                    "name": "Publish",
+                    "event": event,
+                    "conclusion": conclusion,
+                    "head_branch": head_branch,
+                    "head_sha": TAGGED,
+                }
+            },
+        }
+    }
+
+
 class TestPublishedDocumentation:
     """The documentation is a deliverable with an address, published by ci.
 
@@ -3655,22 +3709,280 @@ class TestPublishedDocumentation:
             f"the published documentation is built without -W: {command.strip()}"
         )
 
-    def test_only_master_and_a_release_are_ever_published(self) -> None:
-        """The deploy job names the two things it publishes rather than only an event.
+    @pytest.mark.parametrize(
+        ("context", "built", "deployed"),
+        [
+            (started_by("push", "refs/heads/master"), True, True),
+            (started_by("pull_request", "refs/pull/5/merge"), True, False),
+            (started_by("workflow_dispatch", "refs/heads/master"), True, True),
+            (started_by("workflow_dispatch", "refs/heads/feature"), True, False),
+            (completed(), True, True),
+            (completed(conclusion="failure"), False, False),
+            (completed(conclusion="cancelled"), False, False),
+            (completed(event="workflow_dispatch", head_branch="master"), False, False),
+            (completed(event="workflow_dispatch"), False, False),
+            (completed(event="pull_request"), False, False),
+        ],
+        ids=[
+            "a push to master",
+            "a pull request",
+            "a dispatch on master",
+            "a dispatch on a branch",
+            "a release Publish published",
+            "a release Publish failed or refused",
+            "a release whose Publish was cancelled",
+            "Publish's dry run",
+            "Publish dispatched from a tag",
+            "a pull request's own workflow called Publish",
+        ],
+    )
+    def test_only_master_and_a_release_publish_published_are_ever_deployed(
+        self, context: dict[str, Any], built: bool, deployed: bool
+    ) -> None:
+        """Which runs build the documentation and which deploy it, read off both jobs' ``if:``
+        as the runner evaluates them, over the context GitHub gives each run.
 
         A pull request from a fork proposes arbitrary content and runs on this workflow
-        definition. Guarding the deployment by event alone would leave opening one enough to
-        publish somebody else's revision as the product's documentation - and ``pull_request``
-        is neither of the two conditions below, which is the whole point of spelling them out.
+        definition, so it builds and never deploys: opening one would otherwise be enough to
+        publish somebody else's revision as the product's documentation. A release deploys
+        once Publish has published it (20:I3), and only then: Publish completes for every run
+        it makes - a dispatch's dry run, a release it refused or failed - and so does a
+        workflow called Publish in a pull request from a fork, which is why the event that
+        started Publish's run is read as well as its conclusion. A run Publish's completion
+        starts is given master as its own ref, so a condition resting on the ref alone would
+        deploy every one of them. The deploy job's own condition says so too, so that the
+        build's being skipped is not all that keeps a refused release off the site.
         """
-        deploy = DOCS_WORKFLOW.split("\n  deploy:\n", 1)[1]
-        condition = next(line for line in deploy.splitlines() if line.strip().startswith("if:"))
-        assert "github.ref == 'refs/heads/master'" in condition, (
-            f"the deployment is not guarded by the branch: {condition.strip()}"
+        deploys = holds(setting(job(DOCS_WORKFLOW, "deploy"), "if", 4), context)
+        assert (
+            job_runs(DOCS_WORKFLOW, "build", context),
+            job_runs(DOCS_WORKFLOW, "deploy", context),
+            deploys,
+        ) == (built, deployed, deployed), "(builds, deploys, the deploy job's own if holds)"
+
+    def test_a_release_publishes_no_documentation_by_itself(self) -> None:
+        """20:I3. Publish and the documentation both ran on ``release: published``, and neither
+        waited for the other. Publish refused a tag naming a version ``pyproject.toml`` did not,
+        and failed when its tests or its build did; the documentation, waiting for none of it,
+        pushed the release's directory to ``gh-pages`` all the same - where
+        ``tools/site_versions.py``, reading what is on disk, crowned it stable and pointed the
+        root of the site at it."""
+        assert "release" not in events(DOCS_WORKFLOW), (
+            "a published release starts the documentation itself, before Publish has said "
+            "whether the release is published at all"
         )
-        assert "github.event_name == 'release'" in condition, (
-            f"a release does not deploy its own documentation: {condition.strip()}"
+
+    def test_a_release_s_documentation_waits_for_publish(self) -> None:
+        """What starts a release's documentation is Publish's run completing, watched by the
+        name ``publish.yml`` gives itself."""
+        triggers = events(DOCS_WORKFLOW)
+        assert "workflow_run" in triggers, (
+            "nothing starts the documentation when Publish completes, so a release's "
+            "documentation either does not wait for Publish or is never published"
         )
+        watched = re.search(r"^    workflows: \[([^]\n]*)\]$", triggers["workflow_run"], re.M)
+        named = re.search(r"^name: (.+)$", PUBLISH_WORKFLOW, re.M)
+        assert watched is not None and named is not None
+        assert watched.group(1).split(", ") == [named.group(1)], (
+            f"the documentation waits for {watched.group(1)}, and publish.yml is {named.group(1)}"
+        )
+        assert re.search(r"^    types: \[completed\]$", triggers["workflow_run"], re.M), (
+            "the documentation starts before Publish's run has completed"
+        )
+
+    @pytest.mark.parametrize(
+        "context",
+        [
+            started_by("push", "refs/heads/master"),
+            started_by("pull_request", "refs/pull/5/merge"),
+            started_by("workflow_dispatch", "refs/heads/feature"),
+            completed(),
+        ],
+        ids=["a push to master", "a pull request", "a dispatch", "a release Publish published"],
+    )
+    def test_a_release_is_built_from_the_commit_its_tag_names(
+        self, context: dict[str, Any]
+    ) -> None:
+        """A run Publish's completion starts is given master's newest commit as its own, and
+        ``actions/checkout`` with no ``ref`` checks out the run's own commit: so the release's
+        commit is named, from Publish's run. Every other run leaves ``ref`` empty, which is
+        checkout's own default - the event's commit, as before."""
+        checkout = re.search(
+            r"- uses: actions/checkout@\S+\n((?:        .*\n)*)", job(DOCS_WORKFLOW, "build")
+        )
+        assert checkout is not None, "the build job checks nothing out"
+        ref = setting(checkout.group(1), "ref", 10)
+        named = "" if ref is None else text_of(evaluated(ref, context))
+        if context["github"]["event_name"] == "workflow_run":
+            assert (named or context["github"]["sha"]) == TAGGED, (
+                "a release's documentation is built from master's newest commit, not from the "
+                "commit its tag names"
+            )
+        else:
+            assert named == "", f"a {context['github']['event_name']} run builds {named}"
+
+    def chosen(self, cwd: Path, context: dict[str, Any]) -> subprocess.CompletedProcess[str]:
+        """The deploy job's step choosing the directory, run over ``context``."""
+        chooser = step(
+            job(DOCS_WORKFLOW, "deploy"), "Choose the directory this build is published under"
+        )
+        return run_step(chooser, cwd, **step_environment(chooser, context), GITHUB_OUTPUT="output")
+
+    @pytest.mark.parametrize(
+        ("context", "directory"),
+        [
+            (started_by("push", "refs/heads/master"), "latest"),
+            (started_by("workflow_dispatch", "refs/heads/master"), "latest"),
+            (completed(), "v0.12.0"),
+            (completed(head_branch="v0.10.0rc1"), "v0.10.0rc1"),
+        ],
+        ids=["a push to master", "a dispatch on master", "a release", "a release candidate"],
+    )
+    def test_a_release_is_published_under_its_tag(
+        self, tmp_path: Path, context: dict[str, Any], directory: str
+    ) -> None:
+        """A release's tag is the ``head_branch`` of Publish's run, since the run itself is
+        given master as its ref: a step choosing by the run's own event or ref would put the
+        release over ``latest``."""
+        done = self.chosen(tmp_path, context)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert (tmp_path / "output").read_text(encoding="utf-8") == f"name={directory}\n"
+
+    def test_a_release_tag_without_its_prefix_is_still_refused(self, tmp_path: Path) -> None:
+        """The check the release event's runs made, kept for the runs Publish starts: a tag
+        the version menu would never list is refused rather than published at a url nothing
+        links to (``test_a_release_tag_has_to_carry_its_prefix``)."""
+        done = self.chosen(tmp_path, completed(head_branch="0.12.0"))
+        assert done.returncode == 1, done.stdout + done.stderr
+        assert done.stdout.startswith("::error::release tag 0.12.0 does not start with a v")
+        assert not (tmp_path / "output").exists()
+
+    @pytest.fixture
+    def git(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+        """git configured by nothing but each repository's own settings, here and in the steps
+        run: a developer's signing key or line-ending rule has no business in what is asserted."""
+        assert shutil.which("git") is not None, "the deploy job's steps run git, so git is needed"
+        empty = tmp_path / "gitconfig"
+        empty.write_bytes(b"")
+        isolated = {"GIT_CONFIG_GLOBAL": empty.as_posix(), "GIT_CONFIG_NOSYSTEM": "1"}
+        for name, value in isolated.items():
+            monkeypatch.setenv(name, value)
+        return isolated
+
+    @staticmethod
+    def git_in(cwd: Path, *arguments: str) -> str:
+        done = subprocess.run(
+            ["git", *arguments], cwd=cwd, capture_output=True, text=True, check=False
+        )
+        assert done.returncode == 0, f"git {' '.join(arguments)}: {done.stderr}"
+        return done.stdout
+
+    def site(self, tmp_path: Path) -> Path:
+        """``gh-pages`` as a deploy finds it - master's documentation and v0.11.0's, indexed -
+        in a bare repository standing for GitHub's."""
+        seed = tmp_path / "seed"
+        for name in ("latest", "v0.11.0"):
+            (seed / name).mkdir(parents=True)
+            (seed / name / "index.html").write_bytes(f"{name} as it was\n".encode())
+        site_versions.write_index(seed)
+        (seed / ".nojekyll").write_bytes(b"")
+        origin = tmp_path / "origin.git"
+        self.git_in(
+            tmp_path, "init", "--quiet", "--bare", "--initial-branch=gh-pages", "origin.git"
+        )
+        self.git_in(seed, "init", "--quiet", "--initial-branch=gh-pages")
+        self.git_in(seed, "add", "--all")
+        signed = ("-c", "user.name=site", "-c", "user.email=site@example.com")
+        self.git_in(seed, *signed, "commit", "--quiet", "--message", "the site")
+        self.git_in(seed, "push", "--quiet", origin.as_uri(), "gh-pages")
+        return origin
+
+    def workspace(self, tmp_path: Path, origin: Path, build: str) -> Path:
+        """A deploy job's workspace as its first steps leave it: the script writing the index,
+        the build, and ``gh-pages`` checked out as checkout leaves it, one commit deep."""
+        workspace = tmp_path / build
+        (workspace / "repository" / "tools").mkdir(parents=True)
+        shutil.copy(ROOT / "tools" / "site_versions.py", workspace / "repository" / "tools")
+        (workspace / "html").mkdir()
+        (workspace / "html" / "index.html").write_bytes(f"{build}\n".encode())
+        self.git_in(
+            workspace, "clone", "--quiet", "--depth=1", "--branch=gh-pages", origin.as_uri(), "site"
+        )
+        return workspace
+
+    def publish(
+        self, workspace: Path, context: dict[str, Any], git: dict[str, str]
+    ) -> subprocess.CompletedProcess[str]:
+        """The deploy job's steps from the one choosing the directory to the last before the
+        read back, run in order over ``context`` as the runner runs them; the first to fail
+        ends the job."""
+        done = self.chosen(workspace, context)
+        assert done.returncode == 0, done.stdout + done.stderr
+        name = (workspace / "output").read_text(encoding="utf-8").removeprefix("name=").strip()
+        context = {**context, "steps": {"slot": {"outputs": {"name": name}}}}
+        deploy = steps_of(job(DOCS_WORKFLOW, "deploy"))
+        first = next(n for n, one in enumerate(deploy) if "uses: actions/download-artifact" in one)
+        last = next(n for n, one in enumerate(deploy) if one.startswith("name: Ask Pages where"))
+        for one in deploy[first + 1 : last]:
+            if holds(setting(one, "if", 8), context):
+                done = run_step(one, workspace, **step_environment(one, context), **git)
+                if done.returncode != 0:
+                    break
+        return done
+
+    def test_a_release_lands_under_its_tag_beside_what_was_there(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """The deploy job's steps for a release Publish published, over a site holding master's
+        documentation and the release before: the release lands under its tag, nothing else is
+        touched, the index crowns it, and the commit saying so names the release's commit
+        rather than the run's own, which is master's."""
+        origin = self.site(tmp_path)
+        done = self.publish(self.workspace(tmp_path, origin, "release"), completed(), git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        held = self.git_in(origin, "ls-tree", "--name-only", "gh-pages").split()
+        assert "v0.12.0" in held, f"the release is not published under its tag: the site is {held}"
+        assert self.git_in(origin, "show", "gh-pages:v0.12.0/index.html") == "release\n"
+        assert self.git_in(origin, "show", "gh-pages:latest/index.html") == "latest as it was\n"
+        assert json.loads(self.git_in(origin, "show", "gh-pages:versions.json")) == {
+            "stable": "v0.12.0",
+            "versions": ["latest", "v0.12.0", "v0.11.0"],
+        }
+        assert self.git_in(origin, "log", "-1", "--format=%s", "gh-pages") == (
+            f"docs: publish v0.12.0 from {TAGGED}\n"
+        )
+
+    @staticmethod
+    def publishing_this_documentation() -> str:
+        """The developer page's section on the site, its line breaks flattened."""
+        page = PAGES["docs/developer_documentation.rst"]
+        section = page.split("\nPublishing this documentation\n", 1)[1]
+        return flattened(section.split("\n.. _publishing-a-release:", 1)[0])
+
+    def test_the_page_says_a_release_s_documentation_waits_for_publish(self) -> None:
+        """20:I3 where a maintainer reads it: what deploys, why a release waits for Publish
+        and what not waiting cost, what starts a release's run and what it builds, what a
+        failed Publish costs, and what writes a version's directory."""
+        said = self.publishing_this_documentation()
+        claims = {
+            "what deploys": "deploys on a push to ``master`` and for a release - the release "
+            "once ``publish.yml`` has published it",
+            "why a release waits": "a release can be one Publish refuses",
+            "what not waiting cost": "became the version its root redirects to",
+            "what a release starts": "the release starts no documentation run",
+            "when a release's run goes on": "builds and deploys only if Publish's run was a "
+            "release's and succeeded",
+            "what it builds": "from the commit the release's tag names, and under the tag",
+            "what a failed Publish costs": "published once a re-run of Publish succeeds",
+            "what writes a version": "that release, once Publish has published it",
+            "what rewrites one": "only by that release's own runs",
+            "what the deploy job names": "the Publish run it waits for",
+            "why the Publish run is read": "a workflow called Publish in a pull request from a "
+            "fork completes as well",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+        assert "a published release" not in said, "the page still has a release deploy itself"
 
     def test_the_deployment_is_read_back_from_the_site_it_published_to(self) -> None:
         """The branch is the site, and a push that lands is still not proof that it is served.
@@ -3922,26 +4234,250 @@ def step(job_text: str, name: str) -> str:
 
 
 def run_step(step_text: str, cwd: Path, **variables: str) -> subprocess.CompletedProcess[str]:
-    """A step's ``run: |`` script, run the way the runner runs one: ``bash -e``, in ``cwd``.
+    """A step's ``run:`` script, a ``|`` block or a single line, run the way the runner runs
+    one: ``bash -e``, in ``cwd``.
 
     The variables are exported by the script itself rather than handed over in the environment
     of the process, so that a bash that does not inherit it - WSL's, on windows - sees them too.
     ``python3`` is this interpreter: the runner's own is what a step calls by that name, and a
     windows machine may have none by it.
     """
-    block = re.search(r"^        run: \|\n((?: {10}.*\n|\n)*)", step_text + "\n", re.M)
+    block = re.search(r"^        run: (?:\|\n((?: {10}.*\n|\n)*)|(.+)\n)", step_text + "\n", re.M)
     assert block is not None, "the step runs no script"
+    script = block.group(2) + "\n" if block.group(1) is None else textwrap.dedent(block.group(1))
     bash = shutil.which("bash")
     assert bash is not None, "the workflow's scripts are bash, so bash is needed to run them"
     exports = "".join(f"export {name}={shlex.quote(value)}\n" for name, value in variables.items())
     python3 = f'python3() {{ {shlex.quote(Path(sys.executable).as_posix())} "$@"; }}\n'
     return subprocess.run(
-        [bash, "-e", "-c", python3 + exports + textwrap.dedent(block.group(1))],
+        [bash, "-e", "-c", python3 + exports + script],
         cwd=cwd,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def steps_of(job_text: str) -> list[str]:
+    """Every step of a job in order, each from the line after its ``- `` to the next step."""
+    return re.split(r"^      - ", job_text.split("\n    steps:\n", 1)[1], flags=re.M)[1:]
+
+
+def setting(text: str, key: str, indent: int) -> str | None:
+    """The value of ``key`` at ``indent`` spaces of a workflow's text - a plain one as written, a
+    folded one (``>-``) joined as YAML joins it - or None where the key is not set."""
+    pad = " " * indent
+    found = re.search(
+        rf"^{pad}{re.escape(key)}: *(?:>-\n((?:{pad}  .*\n)+)|(.+)\n)", text + "\n", re.M
+    )
+    if found is None:
+        return None
+    if found.group(1) is None:
+        return found.group(2).strip()
+    return " ".join(line.strip() for line in found.group(1).splitlines())
+
+
+def events(workflow: str) -> dict[str, str]:
+    """The events a workflow runs on, each with the lines configuring it."""
+    block = re.split(r"\n(?=\S)", workflow.split("\non:\n", 1)[1], maxsplit=1)[0]
+    found = re.split(r"^  ([a-z_]+):", block, flags=re.M)
+    return dict(zip(found[1::2], found[2::2], strict=True))
+
+
+CONTEXTS = frozenset({"github", "inputs", "steps", "needs", "env", "vars", "matrix", "runner"})
+"""The contexts an expression may read: a word naming none of them - ``true``, a function this
+reader does not know - is refused, rather than read as a property nothing holds."""
+
+JSON_NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
+
+def truthy(value: Any) -> bool:
+    """GitHub's truth: null, false, 0 and the empty string are false, and nothing else is."""
+    return value not in (None, False, 0, "")
+
+
+def text_of(value: Any) -> str:
+    """A value as GitHub writes it into a string: null as nothing, a boolean in lower case."""
+    if value is None:
+        return ""
+    return str(value).lower() if isinstance(value, bool) else str(value)
+
+
+def number_of(value: Any) -> float | None:
+    """A value as GitHub turns one into a number to compare it with a value of another type:
+    null and the empty string are 0, a boolean 1 or 0, a string the number it spells; None
+    stands for NaN, which is equal to nothing."""
+    if value is None or value == "":
+        return 0.0
+    if isinstance(value, bool | int | float):
+        return float(value)
+    if isinstance(value, str) and JSON_NUMBER.fullmatch(value.strip()):
+        return float(value)
+    return None
+
+
+def equal(left: Any, right: Any) -> bool:
+    """``==`` as GitHub has it: two strings whatever their case, two values of one type as they
+    are, and values of two types as numbers."""
+    if isinstance(left, str) and isinstance(right, str):
+        return left.casefold() == right.casefold()
+    if type(left) is type(right):
+        return bool(left == right)
+    number = number_of(left)
+    return number is not None and number == number_of(right)
+
+
+class Expression:
+    """A GitHub Actions expression, evaluated over a context as the runner evaluates one.
+
+    It reads what the documentation workflow writes - string literals, the contexts' dotted
+    names, ``!``, ``==``, ``!=``, ``&&``, ``||``, parentheses and ``format()`` - and refuses
+    anything else, so that a condition it cannot read fails the test reading it instead of
+    being read wrong. As GitHub documents the language: ``&&`` binds tighter than ``||``, both
+    evaluate to one of their operands, and a property the context does not hold is null.
+    """
+
+    TOKEN = re.compile(r"\s*('(?:[^']|'')*'|==|!=|&&|\|\||[!(),]|[A-Za-z_][\w.-]*)")
+
+    def __init__(self, text: str, context: dict[str, Any]) -> None:
+        self.text, self.context, self.at = text.strip(), context, 0
+        self.tokens: list[str] = []
+        position = 0
+        while position < len(self.text):
+            found = self.TOKEN.match(self.text, position)
+            assert found is not None, f"cannot read {self.text[position:]!r} in {self.text!r}"
+            self.tokens.append(found.group(1))
+            position = found.end()
+
+    def value(self) -> Any:
+        result = self.alternative()
+        assert self.at == len(self.tokens), f"cannot read {self.tokens[self.at :]} in {self.text!r}"
+        return result
+
+    def peek(self) -> str | None:
+        return self.tokens[self.at] if self.at < len(self.tokens) else None
+
+    def take(self) -> str:
+        assert self.at < len(self.tokens), f"{self.text!r} ends where something more is expected"
+        self.at += 1
+        return self.tokens[self.at - 1]
+
+    def alternative(self) -> Any:
+        left = self.conjunction()
+        while self.peek() == "||":
+            self.take()
+            right = self.conjunction()
+            left = left if truthy(left) else right
+        return left
+
+    def conjunction(self) -> Any:
+        left = self.comparison()
+        while self.peek() == "&&":
+            self.take()
+            right = self.comparison()
+            left = right if truthy(left) else left
+        return left
+
+    def comparison(self) -> Any:
+        left = self.negation()
+        while self.peek() in ("==", "!="):
+            same = self.take() == "=="
+            left = equal(left, self.negation()) == same
+        return left
+
+    def negation(self) -> Any:
+        if self.peek() == "!":
+            self.take()
+            return not truthy(self.negation())
+        return self.operand()
+
+    def operand(self) -> Any:
+        token = self.take()
+        if token == "(":
+            inner = self.alternative()
+            assert self.take() == ")", f"a parenthesis is left open in {self.text!r}"
+            return inner
+        if token.startswith("'"):
+            return token[1:-1].replace("''", "'")
+        if self.peek() == "(":
+            assert token == "format", f"{token}() is not read here, in {self.text!r}"
+            self.take()
+            arguments = [self.alternative()]
+            while self.peek() == ",":
+                self.take()
+                arguments.append(self.alternative())
+            assert self.take() == ")", f"a call is left open in {self.text!r}"
+            return re.sub(
+                r"\{\{|\}\}|\{(\d+)\}",
+                lambda found: (
+                    found.group(0)[0]
+                    if found.group(1) is None
+                    else text_of(arguments[1 + int(found.group(1))])
+                ),
+                text_of(arguments[0]),
+            )
+        root, *path = token.split(".")
+        assert root in CONTEXTS, f"{token} is not read here, in {self.text!r}"
+        found: Any = self.context.get(root)
+        for key in path:
+            found = found.get(key) if isinstance(found, dict) else None
+        return found
+
+
+def evaluated(text: str, context: dict[str, Any]) -> Any:
+    """A workflow value over ``context``: an expression standing alone keeps its type, as an
+    ``if:`` or a ``cancel-in-progress:`` has it, and one inside other text is written into it."""
+    alone = re.fullmatch(r"\$\{\{(.*)\}\}", text.strip(), re.S)
+    if alone is not None and "${{" not in alone.group(1):
+        return Expression(alone.group(1), context).value()
+    return re.sub(
+        r"\$\{\{(.*?)\}\}",
+        lambda found: text_of(Expression(found.group(1), context).value()),
+        text,
+        flags=re.S,
+    )
+
+
+def holds(condition: str | None, context: dict[str, Any]) -> bool:
+    """Whether an ``if:`` holds over ``context``: one written without ``${{ }}`` is an
+    expression all the same, and a job or a step with none runs."""
+    if condition is None:
+        return True
+    return truthy(
+        evaluated(condition if "${{" in condition else f"${{{{ {condition} }}}}", context)
+    )
+
+
+def job_runs(workflow: str, name: str, context: dict[str, Any]) -> bool:
+    """Whether a job of a workflow runs over ``context``: every job it needs ran, and its own
+    ``if:`` holds. GitHub reads a condition calling no status function as ``success() && (it)``,
+    which is what skips a job whose dependency was skipped; the reader above knows no status
+    function, so a condition calling one is refused rather than read without it."""
+    body = job(workflow, name)
+    needed = re.findall(r"[\w-]+", setting(body, "needs", 4) or "")
+    return all(job_runs(workflow, other, context) for other in needed) and holds(
+        setting(body, "if", 4), context
+    )
+
+
+def step_environment(step_text: str, context: dict[str, Any]) -> dict[str, str]:
+    """What a step runs with: the variables the runner sets for every step, from the run's
+    context, and the step's own ``env:``, evaluated over that context."""
+    github = context["github"]
+    variables = {
+        "GITHUB_EVENT_NAME": github["event_name"],
+        "GITHUB_REF": github["ref"],
+        "GITHUB_REF_NAME": github["ref_name"],
+        "GITHUB_SHA": github["sha"],
+        "GITHUB_RUN_ID": github["run_id"],
+        "GITHUB_REPOSITORY": "Sauci/ddd",
+    }
+    env = re.search(r"^        env:\n((?: {10}\S.*\n)+)", step_text + "\n", re.M)
+    for line in env.group(1).splitlines() if env is not None else []:
+        if not line.lstrip().startswith("#"):
+            name, value = line.strip().split(": ", 1)
+            variables[name] = text_of(evaluated(value, context))
+    return variables
 
 
 STAMPED = ("pyproject.toml", "src/ddd/__init__.py", "cmake/Ddd.cmake")

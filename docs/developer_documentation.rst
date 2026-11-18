@@ -698,9 +698,19 @@ Publishing this documentation
 
 ``.github/workflows/docs.yml`` builds the html and publishes it to
 `GitHub Pages <https://sauci.github.io/ddd/>`_. It runs on every pull request, and deploys on
-two events: a push to ``master``, and a published release. The deployment is a push to the
-``gh-pages`` branch with the workflow's own token, and Pages serves that branch directly;
-nothing else authenticates, and no deployment environment is involved.
+a push to ``master`` and for a release - the release once ``publish.yml`` has published it.
+The deployment is a push to the ``gh-pages`` branch with the workflow's own token, and Pages
+serves that branch directly; nothing else authenticates, and no deployment environment is
+involved.
+
+A release's documentation waits for Publish, because a release can be one Publish refuses -
+its tag names a version ``pyproject.toml`` does not - or one whose tests or build fail. While
+both workflows started on the release itself, neither waiting for the other, such a release
+was published on the site all the same, and became the version its root redirects to, though
+PyPI never received it. So the release starts no documentation run. Publish's run completing
+starts one, which builds and deploys only if Publish's run was a release's and succeeded -
+from the commit the release's tag names, and under the tag. A release Publish failed is
+published once a re-run of Publish succeeds.
 
 The site keeps one directory per version, and a menu in the bottom left corner of every page
 switches between them:
@@ -715,8 +725,8 @@ switches between them:
      - a push to ``master``
      - every push
    * - ``v0.5.0``, ``v0.6.0``, ...
-     - publishing that release
-     - never
+     - that release, once Publish has published it
+     - only by that release's own runs
 
 Old documentation describes old code, so nothing rebuilds a released version. That is not
 only a saving: a tag from two years ago would have to keep building under the sphinx of the
@@ -766,10 +776,12 @@ the branch whether or not anything serves it, so with the setting missing the pu
 and the *Read back what was published* step fails five minutes later, naming that setting.
 There is nothing to change in the repository to fix it: correct the setting and re-run.
 
-**A pull request builds but never deploys.** The deploy job names the branch and the release
-event it publishes, rather than resting on the event alone, because a pull request from a
-fork proposes arbitrary content: without that condition, opening one would be enough to
-publish somebody else's revision as the product's documentation.
+**A pull request builds but never deploys.** The deploy job names the branch it publishes and
+the Publish run it waits for, rather than resting on the event alone, because a pull request
+from a fork proposes arbitrary content: without that condition, opening one would be enough to
+publish somebody else's revision as the product's documentation. The Publish run has to have
+been a release's, too, since a workflow called Publish in a pull request from a fork completes
+as well.
 
 .. _publishing-a-release:
 

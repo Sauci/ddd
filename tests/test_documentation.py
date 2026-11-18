@@ -6526,6 +6526,225 @@ class TestWhatPublishRunsBeforeItUploads:
         assert not missing, f"the developer page no longer says {missing}"
 
 
+class TestTheStepsOfARelease:
+    """20:M15. The developer page gave an account of the release machinery and no steps: no
+    order for merging, waiting, bumping, the notes, the tag and the checks after it, and no word
+    on meeting a failed job. An ordered list on the page gives them now, each held here to the
+    workflow, the walk or the script it names, and to what it says."""
+
+    LEADS: ClassVar[list[str]] = [
+        "Merge",
+        "Wait for ci",
+        "Bump the version",
+        "Write the notes",
+        "Create the release",
+        "Publish runs",
+        "Documentation publishes",
+        "Check",
+        "When a job fails",
+        "Leave master's version",
+    ]
+    """Each step's bold lead, in the order the steps are taken."""
+
+    @staticmethod
+    def steps() -> list[str]:
+        """The items of the page's ordered list of the steps of a release, each flattened."""
+        page = PAGES["docs/developer_documentation.rst"]
+        heading = "\nThe steps of a release\n~~~~~~~~~~~~~~~~~~~~~~\n"
+        assert heading in page, "the developer page lists no steps of a release"
+        section = page.split(heading, 1)[1].split("\nDelivering the editor extension\n", 1)[0]
+        return [flattened(item).strip() for item in re.split(r"^#\. ", section, flags=re.M)[1:]]
+
+    def taken(self, lead: str) -> str:
+        """The step whose bold lead is ``lead``."""
+        found = [step for step in self.steps() if step.startswith(f"**{lead}**")]
+        assert len(found) == 1, f"the page has {len(found)} steps led by {lead!r}"
+        return found[0]
+
+    def said(self, lead: str, claims: dict[str, str]) -> None:
+        """Each of ``claims`` is said by the step led by ``lead``."""
+        step = self.taken(lead)
+        missing = [what for what, claim in claims.items() if claim not in step]
+        assert not missing, f"the step {lead!r} no longer says {missing}"
+
+    def test_they_are_listed_in_the_order_they_are_taken(self) -> None:
+        leads = [re.match(r"\*\*(.+?)\*\*", step) for step in self.steps()]
+        assert [lead.group(1) if lead else None for lead in leads] == self.LEADS
+
+    def test_the_release_is_merged_and_waited_for_before_anything_is_bumped(self) -> None:
+        self.said(
+            "Merge",
+            {
+                "what": "**Merge** into ``master`` everything the release is to carry, each "
+                "change through its pull request.",
+            },
+        )
+        self.said(
+            "Wait for ci",
+            {
+                "what": "**Wait for ci** on ``master``'s newest commit, every job of ``ci.yml`` "
+                "passing.",
+                "why": "Publish runs all of them but the development builds again on the "
+                "release's commit and uploads nothing until they pass, so what would fail there "
+                "fails here first, where it costs a pull request rather than a release to delete "
+                "and create again.",
+            },
+        )
+
+    def test_the_version_is_bumped_in_the_files_the_walk_counts(self) -> None:
+        """The step names the walk above it by its number: a file added to the walk without the
+        step changing leaves the step counting the old number, and this fails."""
+        walk = re.search(
+            r"\*\*The version is spelled in (\w+) files",
+            flattened(PAGES["docs/developer_documentation.rst"]),
+        )
+        assert walk is not None, "the page no longer counts the files that spell the version"
+        self.said(
+            "Bump the version",
+            {
+                "where": f"in a commit of its own, on a branch, in the {walk.group(1)} files "
+                "listed above, and in no other commit",
+                "what it makes true": "``master`` states the release's version from the moment "
+                "that commit lands.",
+            },
+        )
+
+    def test_the_notes_are_the_unreleased_section_under_the_version(self) -> None:
+        """The topmost section of the changelog is what the tests hold to the tree, whatever its
+        name (``UNRELEASED``), so the rename the step asks for moves nothing else."""
+        self.said(
+            "Write the notes",
+            {
+                "the rename": "``## Unreleased`` in ``CHANGELOG.md`` becomes ``## <version>``, "
+                "and that section is the release's notes.",
+                "the merge": "Merge the commit through its pull request, and wait for ci on "
+                "``master`` once more: the commit it runs on is the one the tag names.",
+            },
+        )
+
+    def test_the_tag_is_the_one_publish_checks_for(self) -> None:
+        self.said(
+            "Create the release",
+            {
+                "where": "**Create the release** on GitHub, on that commit, with a new tag "
+                "``v<version>``",
+                "the tag": "``v`` and the version ``pyproject.toml`` states, exactly, or Publish "
+                "refuses it",
+                "the notes": "and the notes of ``## <version>``, and publish it.",
+            },
+        )
+        checked = step(job(PUBLISH_WORKFLOW, "build"), "Check tag matches package version")
+        assert '"$GITHUB_REF_NAME" != "v$version"' in checked
+        assert "types: [published]" in events(PUBLISH_WORKFLOW)["release"]
+
+    def test_publish_s_jobs_are_named_in_the_order_a_release_runs_them(self) -> None:
+        """The step names the jobs a release runs, in the order their ``needs`` run them: the
+        gates, the build, then the two that wait for the build. A job renamed, added to a
+        release or moved in that order fails here until the step says so."""
+        jobs = PUBLISH_WORKFLOW.split("\njobs:\n", 1)[1]
+        names = re.findall(r"^  ([a-z][\w-]*):\n", jobs, re.M)
+        release = publish_run("release", "refs/tags/v0.12.0")
+
+        def depth(name: str) -> int:
+            needed = re.findall(r"[\w-]+", setting(job(PUBLISH_WORKFLOW, name), "needs", 4) or "")
+            return 1 + max((depth(other) for other in needed), default=0)
+
+        running = [name for name in names if job_runs(PUBLISH_WORKFLOW, name, release)]
+        order = sorted(running, key=lambda name: (depth(name), names.index(name)))
+        publishing = self.taken("Publish runs")
+        named = [found for found in re.findall(r"``([\w-]+)``", publishing) if found in names]
+        assert list(dict.fromkeys(named)) == order
+        self.said(
+            "Publish runs",
+            {
+                "the gates": "on the tag's commit, in this order: ``ci``, every job of ``ci.yml`` "
+                "but the development builds",
+                "the build": "then ``build``, which compiles the pages, points the description's "
+                "links into the documentation at ``v<version>/``, builds the wheel and the sdist, "
+                "checks that the wheel carries the pages and that the tag is the version, runs "
+                "``twine check``, and installs the wheel into a fresh environment and checks the "
+                "installation",
+                "the uploads": "each waiting for ``build``, ``extension``, which attaches "
+                "``ddd-<version>.vsix`` to the release, and ``publish-pypi``, which uploads the "
+                "wheel and the sdist to pypi.org.",
+            },
+        )
+
+    def test_documentation_waits_for_the_whole_of_publish_as_the_step_says(self) -> None:
+        self.said(
+            "Documentation publishes",
+            {
+                "when": "once Publish's run has succeeded - every job of it, the ``.vsix``'s "
+                "included",
+                "what": "a run of ``docs.yml`` builds the commit the tag names, publishes it under "
+                "``v<version>``, lists it in the menu of every page, and reads it back from the "
+                "site.",
+                "the root": "The root of the site lands on it if it is the newest release, which a "
+                "release candidate never is.",
+            },
+        )
+        assert "Publish" in events(DOCS_WORKFLOW)["workflow_run"]
+        assert job_runs(DOCS_WORKFLOW, "deploy", completed())
+        assert not job_runs(DOCS_WORKFLOW, "deploy", completed(conclusion="failure"))
+
+    def test_what_is_checked_after_is_what_the_release_published(self) -> None:
+        self.said(
+            "Check",
+            {
+                "what": "**Check** what was published: the version on pypi.org, whose page links "
+                "``v<version>/`` of the documentation; ``ddd-<version>.vsix`` on the release; "
+                "``v<version>`` in the menu of the site; and, in a fresh environment, ``pip "
+                "install ddd-tool==<version>`` installing a ``ddd`` whose ``--version`` answers "
+                "``ddd <version>``.",
+            },
+        )
+
+    def test_a_failure_is_met_by_the_routes_the_workflows_offer(self) -> None:
+        """What the step has a maintainer do is what the workflows allow: a re-run of what
+        failed, a release made again while no index holds it, no upload passing twice, and a
+        release's documentation published by hand from a dispatch naming its tag."""
+        self.said(
+            "When a job fails",
+            {
+                "what decides": "what to do depends on whether anything has reached pypi.org",
+                "before the upload": "Until ``publish-pypi`` has uploaded, nothing has - whether "
+                "a gate failed, the build, one of its checks, or the upload itself, refused before "
+                "it began, as for ``invalid-publisher`` until the registration is corrected",
+                "a failure that comes and goes": "*Re-run failed jobs* on Publish's run, for a "
+                "failure that comes and goes or one corrected outside the tree",
+                "one in the commit": "for one in the tagged commit, delete the release and its "
+                "tag, fix ``master``, and create the release again, its version unchanged, since "
+                "no index holds it",
+                "a refused tag": "A tag Publish refused is remade so too.",
+                "after the upload": "Once a file is on pypi.org no run of the upload passes "
+                "again, an index taking a file name once",
+                "what a re-run of what failed serves": "*Re-run failed jobs* runs again only what "
+                "failed and what waits for it, so it serves a failed ``extension`` beside an "
+                "upload that passed",
+                "what a re-run of everything cannot": "and *Re-run all jobs* cannot pass.",
+                "by hand": "A release no re-run can finish has its documentation published by "
+                "hand: *Documentation*, run from ``master`` with the release's tag as ``tag``.",
+                "documentation's own failure": "A run of *Documentation* that fails on its own "
+                "is re-run as it is.",
+            },
+        )
+        assert "skip-existing" not in uncommented(job(PUBLISH_WORKFLOW, "publish-pypi"))
+        assert "tag:" in events(DOCS_WORKFLOW)["workflow_dispatch"]
+
+    def test_master_keeps_the_release_s_version_after_it(self) -> None:
+        self.said(
+            "Leave master's version",
+            {
+                "what": "**Leave master's version** as the release's: nothing is bumped after a "
+                "release.",
+                "until when": "``master`` states it until the next release commit",
+                "its builds": "its development builds number themselves after it, "
+                "``<next patch>.dev<run>``.",
+            },
+        )
+        assert dev_version.next_development("0.12.0", 57) == "0.12.1.dev57"
+
+
 LAUNCH = """\
 import sys
 from pathlib import Path

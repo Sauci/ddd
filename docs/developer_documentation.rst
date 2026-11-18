@@ -1003,6 +1003,62 @@ reviewer stops both. An environment restricted to the default branch instead is 
 what a release is not - a release runs from its tag - and rejects the release after a green
 build, with *not allowed to deploy ... due to environment protection rules*.
 
+.. _the-steps-of-a-release:
+
+The steps of a release
+~~~~~~~~~~~~~~~~~~~~~~
+
+In order, each step waiting for the one before it:
+
+#. **Merge** into ``master`` everything the release is to carry, each change through its pull
+   request.
+#. **Wait for ci** on ``master``'s newest commit, every job of ``ci.yml`` passing. Publish runs
+   all of them but the development builds again on the release's commit and uploads nothing
+   until they pass, so what would fail there fails here first, where it costs a pull request
+   rather than a release to delete and create again.
+#. **Bump the version** in a commit of its own, on a branch, in the ten files listed above, and
+   in no other commit: ``master`` states the release's version from the moment that commit
+   lands.
+#. **Write the notes** in that commit: ``## Unreleased`` in ``CHANGELOG.md`` becomes
+   ``## <version>``, and that section is the release's notes. Merge the commit through its pull
+   request, and wait for ci on ``master`` once more: the commit it runs on is the one the tag
+   names.
+#. **Create the release** on GitHub, on that commit, with a new tag ``v<version>`` - ``v`` and
+   the version ``pyproject.toml`` states, exactly, or Publish refuses it - and the notes of
+   ``## <version>``, and publish it.
+#. **Publish runs**, on the tag's commit, in this order: ``ci``, every job of ``ci.yml`` but the
+   development builds; then ``build``, which compiles the pages, points the
+   description's links into the documentation at ``v<version>/``, builds the wheel and the
+   sdist, checks that the wheel carries the pages and that the tag is the version, runs
+   ``twine check``, and installs the wheel into a fresh environment and checks the
+   installation; then, each waiting for ``build``, ``extension``, which attaches
+   ``ddd-<version>.vsix`` to the release, and ``publish-pypi``, which uploads the wheel and the
+   sdist to pypi.org.
+#. **Documentation publishes** once Publish's run has succeeded - every job of it, the
+   ``.vsix``'s included: a run of ``docs.yml`` builds the commit the tag names, publishes it
+   under ``v<version>``, lists it in the menu of every page, and reads it back from the site.
+   The root of the site lands on it if it is the newest release, which a release candidate
+   never is.
+#. **Check** what was published: the version on pypi.org, whose page links ``v<version>/`` of
+   the documentation; ``ddd-<version>.vsix`` on the release; ``v<version>`` in the menu of the
+   site; and, in a fresh environment, ``pip install ddd-tool==<version>`` installing a ``ddd``
+   whose ``--version`` answers ``ddd <version>``.
+#. **When a job fails**, what to do depends on whether anything has reached pypi.org. Until
+   ``publish-pypi`` has uploaded, nothing has - whether a gate failed, the build, one of its
+   checks, or the upload itself, refused before it began, as for ``invalid-publisher`` until the
+   registration is corrected: *Re-run failed jobs* on Publish's run, for a failure that comes and
+   goes or one corrected outside the tree; for one in the tagged commit, delete the release and
+   its tag, fix ``master``, and create the release again, its version unchanged, since no index
+   holds it. A tag Publish refused is remade so too. Once a file is on pypi.org no run of the
+   upload passes again, an index taking a file name once: *Re-run failed jobs* runs again only
+   what failed and what waits for it, so it serves a failed ``extension`` beside an upload that
+   passed, and *Re-run all jobs* cannot pass. A release no re-run can finish has its
+   documentation published by hand: *Documentation*, run from ``master`` with the release's tag
+   as ``tag``. A run of *Documentation* that fails on its own is re-run as it is.
+#. **Leave master's version** as the release's: nothing is bumped after a release. ``master``
+   states it until the next release commit, and its development builds number themselves after
+   it, ``<next patch>.dev<run>``.
+
 Delivering the editor extension
 -------------------------------
 

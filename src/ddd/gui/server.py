@@ -328,10 +328,14 @@ def _held_beside(host: str, port: int) -> socket.socket | None:
     (P19a-12): a server that cannot make its hold does not start without it. Each refusal's
     message is the same on every system; the error the system raised is its cause.
 
-    ``IPV6_V6ONLY``, so that it never touches IPv4. Never ``SO_REUSEADDR``: Linux lets two
-    sockets share a port nobody listens on yet when both set it. ``SO_EXCLUSIVEADDRUSE`` on
-    Windows (:data:`_EXCLUSIVE`), where a socket bound without it can be shared by any that sets
-    ``SO_REUSEADDR``. Listened on with the backlog the IPv4 socket listens with."""
+    ``IPV6_V6ONLY``, so that it never touches IPv4. Otherwise bound as the IPv4 socket is
+    (ruling B7-10): ``SO_EXCLUSIVEADDRUSE`` on Windows (:data:`_EXCLUSIVE`), where a socket bound
+    without it can be shared by any that sets ``SO_REUSEADDR``, and ``SO_REUSEADDR`` wherever the
+    IPv4 socket takes it (:attr:`GuiServer.allow_reuse_address`, everywhere but Windows). Linux
+    lets a port be bound through the ``TIME_WAIT`` of a connection this server closed first only
+    when both sockets set it, and shares no port a socket listens on, whatever the other sets:
+    so a fixed ``--port`` is held again the moment ``ddd gui`` starts again, and still no stranger
+    binds ``[::1]`` beside the hold. Listened on with the backlog the IPv4 socket listens with."""
     if not is_loopback(host):
         return None
     try:
@@ -344,6 +348,8 @@ def _held_beside(host: str, port: int) -> socket.socket | None:
         held.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         if _EXCLUSIVE:
             held.setsockopt(socket.SOL_SOCKET, _SO_EXCLUSIVEADDRUSE, 1)
+        if GuiServer.allow_reuse_address:
+            held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         held.bind(("::1", port))
         held.listen(GuiServer.request_queue_size)
     except OSError as error:
@@ -363,7 +369,8 @@ class GuiServer(ThreadingHTTPServer):
 
     allow_reuse_address = sys.platform != "win32"
     """Not on Windows, where the socket option lets a second server bind a port the first still
-    listens on, so a taken ``--port`` would be shared instead of refused."""
+    listens on, so a taken ``--port`` would be shared instead of refused. The IPv6 hold takes it
+    where this socket does (:func:`_held_beside`)."""
 
     held: socket.socket | None = None
     """The IPv6 hold, ``[::1]``, bound on this server's port and listened on

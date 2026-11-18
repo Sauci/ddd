@@ -203,11 +203,11 @@ REFUSED: Final = {"error": "forbidden", "message": _SIGN_IN}
 """What ``POST /open`` answers a secret that signs nothing in."""
 
 
-def raw_answer(server: GuiServer, sent: bytes) -> tuple[int, bytes]:
-    """The status and body ``server`` answers ``sent`` with, over a connection of its own,
-    read to its end. For bytes ``http.client`` itself refuses to send - a request line that
-    is not well-formed, say - which is exactly what a hostile request is not."""
-    with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+def raw_answer(server: GuiServer, sent: bytes, *, address: str = "127.0.0.1") -> tuple[int, bytes]:
+    """The status and body ``server`` answers ``sent`` with, over a connection of its own to
+    ``address``, read to its end. For bytes ``http.client`` itself refuses to send - a request
+    line that is not well-formed, say - which is exactly what a hostile request is not."""
+    with socket.create_connection((address, server.port), timeout=10) as connection:
         connection.sendall(sent)
         with connection.makefile("rb") as answer:
             data = answer.read()
@@ -3209,14 +3209,15 @@ def free_port() -> int:
         return int(picked.getsockname()[1])
 
 
-def holding(port: int) -> socket.socket:
-    """A stranger's socket bound at ``port`` on ``[::1]``, where the server would hold it, and
-    never listened on: another program holding it. It sets ``IPV6_V6ONLY`` and nothing else.
-    The caller closes it."""
+def holding(port: int, address: str = "::1") -> socket.socket:
+    """A stranger's socket bound at ``port`` on ``address`` - by default ``[::1]``, where the
+    server would hold it - and never listened on: another program holding it. It sets
+    ``IPV6_V6ONLY`` and nothing else, so that on ``[::]`` it takes no IPv4 port from the
+    server's own. The caller closes it."""
     stranger = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     try:
         stranger.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-        stranger.bind(("::1", port))
+        stranger.bind((address, port))
     except OSError:
         stranger.close()
         raise
@@ -3227,7 +3228,9 @@ class TestIPv6Held:
     """On loopback, ``ddd gui`` holds ``[::1]`` on its port beside its IPv4 socket, on every
     system, and listens there, answering it as it answers ``127.0.0.1`` (12:I1, ruling B7-2): a
     browser opening ``localhost:<port>`` may try ``[::1]`` first, and reaches ``ddd gui``
-    itself. Real sockets, on loopback alone, except where a test says otherwise."""
+    itself. Real sockets, except where a test says otherwise: nothing listens beyond loopback,
+    and a stranger on the wildcard ``[::]`` sets ``IPV6_V6ONLY`` and never listens (ruling
+    B7-11)."""
 
     @pytest.fixture
     def started(self, tmp_path: Path, pages: Path) -> Iterator[GuiServer]:
@@ -3240,34 +3243,58 @@ class TestIPv6Held:
             server.server_close()
 
     @staticmethod
-    def binds(address: str, reusing: bool, port: int) -> bool:
-        """Whether a stranger's ``IPV6_V6ONLY`` socket binds ``address`` at ``port``, with
-        ``SO_REUSEADDR`` set or not."""
-        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as stranger:
-            stranger.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+    @contextlib.contextmanager
+    def stranger(address: str, reusing: bool, port: int) -> Iterator[bool]:
+        """A stranger's socket on ``address`` at ``port``, ``IPV6_V6ONLY`` and never listened
+        on, with ``SO_REUSEADDR`` set or not: whether it bound, kept bound while the block
+        runs."""
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as made:
+            made.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
             if reusing:
-                stranger.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                made.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                stranger.bind((address, port))
+                made.bind((address, port))
             except OSError:
-                return False
-            return True
+                bound = False
+            else:
+                bound = True
+            yield bound
 
-    def test_ipv6_loopback_is_listened_on_and_no_other_program_can_bind_it(self, started) -> None:
-        """The hold is ``[::1]`` itself, on every system, and is listened on. No stranger can
-        bind ``[::1]`` on the port beside it, not even with ``SO_REUSEADDR`` - which Linux
-        honours only between sockets that both set it, neither listened on, and Windows over any
-        socket not bound with ``SO_EXCLUSIVEADDRUSE``.
+    def test_ipv6_loopback_is_listened_on_and_no_other_program_can_bind_it(self, server) -> None:
+        """The hold is ``[::1]`` itself, on every system, listened on, and bound as the IPv4
+        socket is: with ``SO_REUSEADDR`` where that takes it, everywhere but Windows (ruling
+        B7-10). No stranger can bind ``[::1]`` on the port beside it, with ``SO_REUSEADDR`` or
+        without: Linux shares no port a socket listens on, whatever the other sets, and Windows
+        none bound with ``SO_EXCLUSIVEADDRUSE``. Nor can one bind the wildcard ``[::]`` there on
+        Linux. On Windows one can, as run 37737377854 measured beside an exclusive ``[::1]`` (part
+        19a), and a connection to ``[::1]`` made while any stranger is held is answered by
+        ``ddd gui`` all the same. Every stranger sets ``IPV6_V6ONLY`` and never listens.
 
         The hold reads ``IPV6_V6ONLY``. Linux turns that on itself for any socket bound to
         ``::1`` (a fresh socket there reads 0, and 1 once bound), so the option's own call is
-        pinned by the tests that note each option set."""
-        let_in = [reusing for reusing in (False, True) if self.binds("::1", reusing, started.port)]
-        assert let_in == []
-        assert started.held is not None
-        assert started.held.getsockname()[:2] == ("::1", started.port)
-        assert started.held.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 1
-        assert started.held.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+        pinned by the tests that note each option set. Each connection asks the server to close
+        it, so that the ``TIME_WAIT`` it leaves is the server's own, which a later hold binds
+        through, and none is left on a client's port."""
+        port = server.port
+        asked = f"GET / HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n"
+        strangers = [(address, reusing) for address in ("::1", "::") for reusing in (False, True)]
+        let_in: list[tuple[str, bool]] = []
+        for address, reusing in strangers:
+            with self.stranger(address, reusing, port) as bound:
+                if bound:
+                    let_in.append((address, reusing))
+        assert let_in == ([("::", False), ("::", True)] if sys.platform == "win32" else [])
+        for address, reusing in strangers:
+            with self.stranger(address, reusing, port):
+                answered = raw_answer(server, asked.encode("ascii"), address="::1")
+                assert answered == (200, b"stand-in")
+        held = server.held
+        assert held is not None
+        assert held.getsockname()[:2] == ("::1", port)
+        assert held.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 1
+        assert held.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+        reused = held.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) != 0
+        assert reused is GuiServer.allow_reuse_address
 
     def test_localhost_on_ipv6_is_answered_by_ddd_gui_and_signs_in_by_the_address_token(
         self, server
@@ -3279,8 +3306,9 @@ class TestIPv6Held:
         name of this server's.
 
         Asked over one connection, kept open as a browser keeps it, and closed by this end: on
-        Linux, the ``TIME_WAIT`` a closed connection leaves on its port holds that port's
-        ``[::1]`` against a later server's hold, so each test leaves as few of them as it can."""
+        Linux, the ``TIME_WAIT`` a client's closed connection leaves on the client's own port
+        holds that port's ``[::1]`` against a later server's hold there, so each test leaves as
+        few of them as it can."""
         port = server.port
         local = f"localhost:{port}"
         connection = http.client.HTTPConnection("::1", port, timeout=10)
@@ -3361,8 +3389,7 @@ class TestIPv6Held:
     ) -> None:
         """An interrupt landing while a connection is handed to its thread closes that
         connection and ends the loop, raised from it as from ``socketserver``'s, and a shutdown
-        asked after that returns at once. Over IPv4, since the server closes this connection
-        first: the ``TIME_WAIT`` that leaves on the port holds no ``[::1]``."""
+        asked after that returns at once."""
 
         def interrupted(request: Any, client_address: Any) -> None:
             raise KeyboardInterrupt
@@ -3459,6 +3486,21 @@ class TestIPv6Held:
         port on IPv6, the same sentence whatever socket refused the hold."""
         port = free_port()
         with holding(port), pytest.raises(module.IPv6HeldError) as refused:
+            GuiServer(Api(Session(tmp_path)), pages, port)
+        assert str(refused.value) == (
+            f"another program holds port {port} on IPv6, where a browser opening "
+            f"localhost:{port} may reach it"
+        )
+
+    def test_a_program_already_on_the_ipv6_wildcard_refuses_the_start(
+        self, tmp_path, pages
+    ) -> None:
+        """The other address: a program bound on the wildcard ``[::]``, ``IPV6_V6ONLY`` and
+        never listened on, before the server starts on that port. The server's own ``[::1]`` is
+        refused beside it, on Linux and, bound exclusively, on Windows. The refusal names the
+        port, and no address: the program holds ``[::]``, and the server tried ``[::1]``."""
+        port = free_port()
+        with holding(port, "::"), pytest.raises(module.IPv6HeldError) as refused:
             GuiServer(Api(Session(tmp_path)), pages, port)
         assert str(refused.value) == (
             f"another program holds port {port} on IPv6, where a browser opening "
@@ -3722,9 +3764,10 @@ class TestIPv6Held:
         tmp_path: Path, pages: Path, monkeypatch: pytest.MonkeyPatch, *, windows: bool
     ) -> dict[str, list[tuple[Any, ...]]]:
         """What each socket of a server is given, by the address it binds: every option set on
-        it, then its bind, then its listen - with Windows' flag set as ``windows`` says. Through a
-        socket that notes each, and sets each but Windows' own exclusive option, whose value
-        Linux refuses."""
+        it, then its bind, then its listen - with both of a system's flags, ``_EXCLUSIVE`` and
+        ``GuiServer.allow_reuse_address``, set as Windows sets them or as every other system
+        does, as ``windows`` says. Through a socket that notes each, and sets each but Windows'
+        own exclusive option, whose value Linux refuses."""
         given: dict[str, list[tuple[Any, ...]]] = {}
 
         class Noting(socket.socket):
@@ -3747,59 +3790,58 @@ class TestIPv6Held:
                 super().listen(*backlog)
 
         monkeypatch.setattr(module, "_EXCLUSIVE", windows)
+        monkeypatch.setattr(GuiServer, "allow_reuse_address", not windows)
         monkeypatch.setattr(socket, "socket", Noting)
         GuiServer(Api(Session(tmp_path)), pages).server_close()
         return given
 
-    @staticmethod
-    def reusing() -> list[tuple[Any, ...]]:
-        """``SO_REUSEADDR``, where ``http.server`` sets it on the socket it serves on: everywhere
-        but Windows (``test_the_windows_server_does_not_share_a_port``)."""
-        if GuiServer.allow_reuse_address:
-            return [(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)]
-        return []
-
     def test_windows_binds_both_sockets_exclusively_and_listens_on_both(
         self, tmp_path, pages, monkeypatch
     ) -> None:
-        """On Windows both sockets take ``SO_EXCLUSIVEADDRUSE`` before their bind, so that no
-        program can share either port through ``SO_REUSEADDR``, and the hold is ``[::1]``, as
-        everywhere: never the wildcard ``[::]``, which would answer on every IPv6 interface. The
-        hold never sets ``SO_REUSEADDR`` itself, and is listened on as the IPv4 socket is, with
-        the same backlog."""
+        """On Windows both sockets take ``SO_EXCLUSIVEADDRUSE`` before their bind, and neither
+        ``SO_REUSEADDR``, so that no program can share either port through ``SO_REUSEADDR``; and
+        the hold is ``[::1]``, as everywhere: never the wildcard ``[::]``, which would answer on
+        every IPv6 interface. Both are listened on, with the same backlog."""
         given = self.given(tmp_path, pages, monkeypatch, windows=True)
         exclusive = (socket.SOL_SOCKET, module._SO_EXCLUSIVEADDRUSE, 1)
         v6only = (socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         listened = ("listen", GuiServer.request_queue_size)
         assert given == {
-            "127.0.0.1": [exclusive, *self.reusing(), ("bind",), listened],
+            "127.0.0.1": [exclusive, ("bind",), listened],
             "::1": [v6only, exclusive, ("bind",), listened],
         }
 
-    def test_elsewhere_loopback_is_held_and_listened_on_and_nothing_is_exclusive(
+    def test_elsewhere_both_sockets_reuse_their_address_and_listen_and_nothing_is_exclusive(
         self, tmp_path, pages, monkeypatch
     ) -> None:
+        """Everywhere but Windows both sockets take ``SO_REUSEADDR`` before their bind, as
+        ``http.server`` gives it the socket it serves on (ruling B7-10), and neither is
+        exclusive. Both are listened on, with the same backlog."""
         given = self.given(tmp_path, pages, monkeypatch, windows=False)
+        reusing = (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         v6only = (socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         listened = ("listen", GuiServer.request_queue_size)
         assert given == {
-            "127.0.0.1": [*self.reusing(), ("bind",), listened],
-            "::1": [v6only, ("bind",), listened],
+            "127.0.0.1": [reusing, ("bind",), listened],
+            "::1": [v6only, reusing, ("bind",), listened],
         }
 
-    def test_a_port_served_on_is_served_on_again_at_once(self, tmp_path, pages) -> None:
-        """A fixed ``--port`` given again the moment ``ddd gui`` stopped. Microsoft documents that
-        a port whose listening socket was bound with ``SO_EXCLUSIVEADDRUSE`` cannot be bound
-        again while a connection it accepted is still active. Here the server closes first,
-        having answered ``Connection: close`` to a client that reads to its end, so the server's
-        end of that connection waits out ``TIME_WAIT`` on the port itself - measured with ``ss``
-        on Linux, where ``SO_REUSEADDR`` is what lets the port be bound again."""
+    @pytest.mark.parametrize("address", ["127.0.0.1", "::1"], ids=["ipv4", "ipv6"])
+    def test_a_port_served_on_is_served_on_again_at_once(self, tmp_path, pages, address) -> None:
+        """A fixed ``--port`` given again the moment ``ddd gui`` stopped, after a connection to
+        either address, named ``localhost`` as a browser names both. Microsoft documents that a
+        port whose listening socket was bound with ``SO_EXCLUSIVEADDRUSE`` cannot be bound again
+        while a connection it accepted is still active. Here the server closes first, having
+        answered ``Connection: close`` to a client that reads to its end, so the server's end of
+        that connection waits out ``TIME_WAIT`` on the port itself - measured with ``ss`` on
+        Linux, where ``SO_REUSEADDR``, set on both sockets there, is what lets the port be bound
+        again (ruling B7-10)."""
         first = GuiServer(Api(Session(tmp_path)), pages)
-        asked = f"GET / HTTP/1.1\r\nHost: 127.0.0.1:{first.port}\r\nConnection: close\r\n\r\n"
+        asked = f"GET / HTTP/1.1\r\nHost: localhost:{first.port}\r\nConnection: close\r\n\r\n"
         thread = threading.Thread(target=first.serve_forever, daemon=True)
         thread.start()
         try:
-            status, _ = raw_answer(first, asked.encode("ascii"))
+            status, _ = raw_answer(first, asked.encode("ascii"), address=address)
         finally:
             first.shutdown()
             first.server_close()

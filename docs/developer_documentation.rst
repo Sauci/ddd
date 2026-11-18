@@ -504,9 +504,9 @@ Continuous integration
 ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request, in two jobs,
 ``test`` and ``lint``, and six more the commands above do not cover. ``extension`` installs node
 and the package, runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and
-uploads the ``.vsix`` it produced. Its tests start a real language server, which is why it installs the
-python package as well as compiling typescript, and packaging the extension there proves that
-the artefact a customer is handed can be produced at all.
+uploads the ``.vsix`` it produced. Its tests start a real language server, which is why it
+installs the python package as well as compiling typescript, and packaging the extension there
+proves that the artefact a customer is handed can be produced at all.
 
 ``gui`` builds and tests the browser interface, on three legs: ubuntu with Playwright's own
 Chromium, windows with the same Chromium, and windows with the windows runner's own Edge, driven
@@ -693,8 +693,9 @@ and runs the checks ``dev-publish`` makes.
 commit it was built from - for a pull request, the merge ``gui`` tests, where ``dev-build``
 builds the head. Each is numbered after the version its own commit states: the two are one on a
 push, and differ on a pull request whose branch states another version than ``master``, as one
-cut before a release's commit does. A wheel built anywhere else, by ``python -m build`` in a checkout, carries the version its ``pyproject.toml``
-states, and ``master`` states the last release's until the next release commit: built between
+cut before a release's commit does. A wheel built anywhere else, by ``python -m build`` in a
+checkout, carries the version its ``pyproject.toml`` states, and ``master`` states the last
+release's until the next release commit: built between
 releases, such a wheel holds every commit since that release and says it is that release - to
 ``ddd --version``, to the banner of every file it generates, to the module's handshake and to
 pip - and its metadata names no commit. Only the release's own build, from its tag, is the

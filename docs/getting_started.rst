@@ -66,9 +66,10 @@ unpacked sdist, the package runs directly out of ``src``, once the runtime depen
 
 Without them, the version and the help still answer, and ``check`` fails, naming the
 ``pydantic`` it cannot import. With them, ``PYTHONPATH=src python -m ddd`` and ``ddd`` are the
-same program invoked in two ways, and every command shown below works with either. The transcripts use the installed form for
-readability; if you follow along in a checkout, put ``PYTHONPATH=src python -m`` in front of
-each of them. A checkout also gives you a bigger project to look at than the one built on this
+same program invoked in two ways, and every command shown below works with either. The
+transcripts use the installed form for readability; if you follow along in a checkout, put
+``PYTHONPATH=src python -m`` in front of each of them. A checkout also gives you a bigger project
+to look at than the one built on this
 page - ``examples/demo/demo.ddd.json`` exercises every kind of data object DDD knows:
 
 .. code-block:: text

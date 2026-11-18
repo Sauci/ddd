@@ -3897,14 +3897,15 @@ class TestPublishedDocumentation:
         self.git_in(seed, "push", "--quiet", origin.as_uri(), "gh-pages")
         return origin
 
-    def workspace(self, tmp_path: Path, origin: Path, build: str) -> Path:
+    def workspace(self, tmp_path: Path, origin: Path, build: str, page: str = "") -> Path:
         """A deploy job's workspace as its first steps leave it: the script writing the index,
-        the build, and ``gh-pages`` checked out as checkout leaves it, one commit deep."""
+        the build - a page saying ``page``, or the workspace's name - and ``gh-pages`` checked
+        out as checkout leaves it, one commit deep."""
         workspace = tmp_path / build
         (workspace / "repository" / "tools").mkdir(parents=True)
         shutil.copy(ROOT / "tools" / "site_versions.py", workspace / "repository" / "tools")
         (workspace / "html").mkdir()
-        (workspace / "html" / "index.html").write_bytes(f"{build}\n".encode())
+        (workspace / "html" / "index.html").write_bytes(f"{page or build}\n".encode())
         self.git_in(
             workspace, "clone", "--quiet", "--depth=1", "--branch=gh-pages", origin.as_uri(), "site"
         )
@@ -3936,10 +3937,14 @@ class TestPublishedDocumentation:
         """The deploy job's steps for a release Publish published, over a site holding master's
         documentation and the release before: the release lands under its tag, nothing else is
         touched, the index crowns it, and the commit saying so names the release's commit
-        rather than the run's own, which is master's."""
+        rather than the run's own, which is master's. Its push lands, so the step stops there,
+        with no account of a refusal that never happened."""
         origin = self.site(tmp_path)
         done = self.publish(self.workspace(tmp_path, origin, "release"), completed(), git)
         assert done.returncode == 0, done.stdout + done.stderr
+        assert not re.search(r"^attempt \d+:", done.stdout, re.M), (
+            f"a push that landed is reported as refused: {done.stdout}"
+        )
         held = self.git_in(origin, "ls-tree", "--name-only", "gh-pages").split()
         assert "v0.12.0" in held, f"the release is not published under its tag: the site is {held}"
         assert self.git_in(origin, "show", "gh-pages:v0.12.0/index.html") == "release\n"
@@ -3950,6 +3955,32 @@ class TestPublishedDocumentation:
         }
         assert self.git_in(origin, "log", "-1", "--format=%s", "gh-pages") == (
             f"docs: publish v0.12.0 from {TAGGED}\n"
+        )
+
+    @pytest.mark.parametrize(
+        "context",
+        [started_by("push", "refs/heads/master"), completed()],
+        ids=["master's", "a release's"],
+    )
+    def test_a_deploy_that_would_change_nothing_pushes_nothing(
+        self, tmp_path: Path, git: dict[str, str], context: dict[str, Any]
+    ) -> None:
+        """A deploy with nothing to change on the site - a push to master touching no page, or
+        the re-run a failed read-back calls for - commits and pushes nothing, and the step
+        passes saying why: committing with nothing staged would fail the step under ``bash -e``
+        before the read-back. The second deploy here checks the site out after the first has
+        pushed, as a re-run's fresh runner does, and publishes the same build."""
+        origin = self.site(tmp_path)
+        first = self.publish(self.workspace(tmp_path, origin, "first"), context, git)
+        assert first.returncode == 0, first.stdout + first.stderr
+        tip = self.git_in(origin, "rev-parse", "gh-pages")
+        again = self.workspace(tmp_path, origin, "again", page="first")
+        done = self.publish(again, context, git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "the site is already in this state, nothing to archive" in done.stdout
+        assert not re.search(r"^attempt \d+:", done.stdout, re.M), done.stdout
+        assert self.git_in(origin, "rev-parse", "gh-pages") == tip, (
+            "a deploy changing nothing pushed"
         )
 
     @staticmethod

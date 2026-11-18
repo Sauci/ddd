@@ -16,6 +16,37 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
+Read together, what the entries below cost a user comes to six things, each named by the entry that
+asks it.  A CMake project may be asked for a line or two: a component reached only through a link
+made after the directory calling `ddd_generate()` is done now fails the configure ("Under Ninja, a
+build after a description change compiles the components whose header it changed"); a `PROJECT` that
+does not exist, a value keyword given an empty variable and a project that has not enabled C fail it
+too ("A call the module cannot honour fails the configure, naming why"); a step in another directory
+depends on `<stem>_ddd_generation` or `<stem>_ddd_a2l` and not on a generated file's path ("Makefile
+generators leave a build that changed nothing with nothing to do"); and an address map written by
+anything but a `POST_BUILD` command of the image is written before `<stem>_ddd_a2l` runs ("With
+`ADDRESS_MAP`, the a2l carries the addresses of the image just linked").  A description is refused
+in a few spellings it was accepted in: a name that is a keyword of ASAP2 or a unit typed with spaces
+around it, a description that spells a key twice before `ddd id --assign` stamps it, and
+`--const-inputs`, `CONST_INPUTS` and a template's `.const`, which are gone.  A delivery comparison
+says "cannot replace" more often, and each of those is a finding a project relaxes for the delivery
+it accepts or answers with a new baseline ("A delivery that moves what a precompiled reader was
+built against is `changed-interface`" and the entries after it), and a baseline dumped by 0.11.0
+reports `changed-a2l` against a project with a member that states `export: false`, `format` or a
+display identifier until it is dumped again, the dumped dictionary being format 10, which 0.11.0
+refuses ("A structure member's `export: false`, `format` and `display_identifier` reach the records
+below it").  The a2l and the generated c come out once with a diff nobody wrote, from the records of
+a member's block, the names of two conversions in one unit, a component's include guard and the byte
+order a run defaults, which `byte-order-defaulted` says.  And a script or a client reading what the
+tool prints sees different words and more lines: the count line of `ddd check`, the listing of `ddd
+sources`, an a2l record at address 0 for an address the linker left meaningless, the findings and
+identifiers of `ddd tool from-elf`, the text of a `ddd gui` fix, a launch code presented twice, a
+`POST /api/edit` that names a plugin or a file that is no description, and the `--host` of a
+container.  `ddd tool from-elf` also brings `pyelftools` 0.32 or newer as a new runtime dependency,
+which an air-gapped install brings with the wheel ("A toolbox, and its first tool"), and a team on
+mixed versions upgrades its editors with the module, a build record of a `PROJECT` build being
+stamped `format` 2 ("`ddd gui` edits a hand-written project whose build record sits beside it").
+
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
   Linux a file kept `0600` came out with the mode a new file gets, a file kept read-only was
@@ -1215,6 +1246,131 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   trusts instead, and what it leaves open - including when run in a container - with a table
   of every route.
 
+* **A Files tab: the project's own includes, and the three things that change them.**  `ddd gui`
+  lists the root project's `includes` one row per entry, in the description's own order, a
+  pattern's row followed by every file it matched, with each file's kind, the findings filed on it
+  and its state: blank for a file that loaded, `did not load`, `names no file` for an entry that
+  names nothing, and `not read by the last analysis` for a file the page has not yet had an
+  analysis of.  A finding of a whole file leads there.  New file creates a component, types, units,
+  constants, sections or rasters file beside the project description, in its newline and
+  indentation, and adds it to the includes in the same edit; a first units file lists every unit
+  the project states, so that one click cannot fail a passing project with `unknown-unit`, and is
+  created empty where a file of the tree has opted the project in already.  Add a file appends a
+  path, written from the description's directory, to the includes, and previews the errors it
+  brings rather than refusing for them; it refuses, in the server's own words, a path outside what
+  `ddd gui` serves, one naming no file, the project's own description, a python file, a file the
+  project has already, and on Windows a file on another drive.  Remove takes every entry of the
+  selected row's key out of the includes, the files staying on disk, and is refused where the
+  analysis counts an error more at some place than the project has there now.  Each is previewed,
+  written to every file or none, and undone like every other change.  The tab is not part of the
+  public interface, and the includes it writes are the ones a person would write by hand.  No file
+  format changes; nothing to migrate.
+
+* **A types, units, constants, sections or rasters file may declare nothing, and `empty-vocabulary`
+  says so.**  The list of each of the five files had to hold an entry, so a file emptied of its
+  last constant, section, raster, unit or type stopped loading and was refused as `schema`, and
+  `ddd gui`, which cannot delete a file, could never take a project from one entry to none.  An
+  empty list now loads, and the new check `empty-vocabulary`, an info, is filed once for it, at
+  the list, naming the file and its kind; it can be graded as any check can.  A structure's
+  members, an enumeration's enumerators, a shape's dimensions and a component's own inline types
+  and constants still need an entry, the spelling of none being to leave the key out.  The five
+  published schemas no longer require an item.  An empty units file still opts the project into
+  its vocabulary, which the file decides rather than what it lists: every unit a declaration,
+  member or scalar type then states is `unknown-unit`, where a project with no units file keeps
+  its units free.  Migrating costs nothing: a file that loaded before loads as it did.  A tool that validates against the schemas of an earlier version refuses
+  an empty list as the loader did, and a build that counts the findings it prints sees one info
+  per such file, which `-W empty-vocabulary=ignore` silences.
+
+* **A Shared files tab: the constants, the sections and the rasters a project declares.**  `ddd
+  gui` lists every constant, from a constants file or a component's own list, every memory section
+  and every measurement raster, a row saying which vocabulary an entry belongs to, what it
+  states - a constant its value, a section its access and alignment, a raster its event and
+  cycle - and what names it.  What an entry states is changed there, and renaming one rewrites
+  every place that names it in one edit: for a constant every shape spelling it; for a section
+  every definition placing data in it; for a raster every definition measured in it and a
+  component's own default naming it.  A section's name is judged as the linker string it is and a
+  raster's as the short name of an XCP event, so a leading dot is an ordinary spelling for the
+  first and eight printable characters the most the second holds; a name the project already
+  declares as a section or a raster is refused, since merging two would move data into memory with
+  other properties or sample one signal on another's channel, and so is an event another raster
+  claims.  A new constant, section or raster is declared there too, writing `constants.ddd.json`,
+  `sections.ddd.json` or `rasters.ddd.json` beside the project description and adding it to
+  `includes` where the project has no file of its kind, and a removal is refused while anything
+  still names the entry, counting what does.  The last entry of a file removed leaves a file that
+  declares nothing, which is `empty-vocabulary` above.  A finding naming a constant, a section or
+  a raster leads to the tab.  Every change is previewed, written to every file or none, and undone
+  like every other.  The tab is not part of the public interface, and what it writes is what a
+  person would write by hand.  No file format changes; nothing to migrate.
+
+* **A table copied from a spreadsheet is pasted into the values grid.**  Anywhere in the grid, a
+  table copied from a spreadsheet replaces every value of the object in one change, previewed and
+  undone the same way as every other change.  The pasted block must be the object's own shape - a
+  one-dimensional object is one row, as the grid already draws it - or exactly one row and one
+  column larger, with the header a reader selects along with the grid's own cells; a comma is read
+  as the decimal separator where the block states no point, and one that mixes `.` and `,` is
+  refused rather than guessed at - as is a comma that could be a thousands separator, `1,200` being
+  twelve hundred to one spreadsheet and one and a fifth to another, which names the cell and says
+  so.  The header itself is discarded without being read, so a block whose header names a different
+  axis is not caught here; the preview, which shows the lines each file will change, is what catches
+  it before anything is written.  Nothing to migrate.
+
+* **The values grid is drawn as a picture under it.**  Under the grid, the object's values are drawn
+  as a picture: a marker at each point and a line joining them where a row holds more than one, laid
+  against an axis's own breakpoints - unevenly spaced, exactly as those breakpoints are - or over
+  plain indices where there is none, with the declared limits ruled across it wherever they fall
+  inside the range it draws and left off it where they do not, the one place a value stored outside
+  them can be seen.  It follows the same toggle between physical values and raw counts, offers no
+  control of its own, changes nothing, and is drawn under a read-only grid exactly as under a
+  writable one, left undrawn only where there is no grid to begin with.  The toggle always rescales
+  to its own range: for a positive conversion the same numbers in a different unit draw the very
+  same picture, only the readings along its edges changing; a negative one - legal here - mirrors
+  the curve instead of leaving it alone.  Nothing to migrate.
+
+* **A Compare tab says whether the open project can stand in for a delivery.**  It answers the
+  question `ddd check` was never asked: can the open project stand in for a delivery the reader
+  names.  The baseline is a dumped dictionary, or a project or component description, at a path
+  under the directory `ddd gui` was started in - refused, and told why, when it is outside that
+  directory, unreadable, not valid json, a description or a dictionary this DDD could not read, or
+  json that is neither.  Its verdict counts only the comparison and the baseline's own errors, never
+  the open project's own consistency errors - the Findings tab's own question - so a project the
+  Findings tab still shows full of errors can be told here that it can replace its baseline.  A
+  finding that names a place in this project leads there, as on the Findings tab: a plugin's
+  comparison rule files at the declaration it is about.  The comparison's own findings name the
+  whole delivery rather than a place in one file, and the baseline's own errors marked `in the
+  baseline:` name a place in the baseline's files rather than in this project's; for those the panel
+  says so rather than offering to go anywhere.  The renames the comparison finds - objects the two
+  sides agree are one and the same, called differently now - are drawn here as a table, exactly what
+  `ddd compare --renames` would write to a file, and the tab does not write it.  Nothing to migrate:
+  it reads the files it is given and writes none.
+
+* **A `definition-mismatch` finding now carries a button for each key its declarations
+  disagree about.**  Opened from a consumer, it takes the producing component's value;
+  opened from the producer's own row - the same disagreement, filed there too - it sends
+  that value outward, and the reader never chooses a direction.  Either way the value may
+  be silence: a producer stating no `unit` where its readers state one is settled by taking
+  it out of all of them, from either row.  Previewed first, it
+  settles every declaration of the variable at once, not only the one the finding names;
+  the apply button reads "Apply to 2 files" where two have to move.  Nothing is offered
+  where the variable has no single producer - several components writing it, or none,
+  leaves no owner to take a direction from; the variable's own panel, one click from the
+  finding, still settles any value the reader chooses, unless it would leave the file
+  unable to load.  A key is offered only where one change settles it for every
+  declaration: never `kind`, the one key no edit may carry between declarations, and not a
+  key some declaration could neither take nor drop - one its named type fixes, one its
+  kind does not allow, or the `datatype`, `conversion` or `typename` its own storage is
+  made of.  Nothing to migrate.
+
+* **The editor no longer offers to unname a declaration's storage, or to name it twice.**  A
+  definition states either a `datatype` with the `conversion` that goes with it or the `typename` of
+  a type fixing both, and the loader refuses a file that states neither or both.  "Remove the
+  datatype from N other declarations", the same for a `conversion`, and "Apply this typename" into a
+  declaration already stating a `datatype` each wrote one of those files; none of them is offered
+  any more, and an action reaching several declarations leaves out whichever of them could not take
+  it.  The same holds for a `datatype`: a declaration naming a type takes it from the type as it
+  takes its `unit`, `conversion` and `limits`, so the fix that offered the producer's `datatype` to
+  it, and "Apply this datatype" from another declaration, are not offered either, and the action
+  leaves it out of the declarations it counts and changes.  Nothing to migrate.
+
 ## 0.11.0
 
 * **A browser interface, as a preview.**  `ddd gui` serves a browser interface over one
@@ -1325,66 +1481,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   number, and nothing is written.  An
   object initialised with text shows a sentence saying so rather than a grid; one stated
   once draws that value in every cell with a note, and one stating nothing draws greyed
-  zeros with a note.  A table copied from a spreadsheet is pasted anywhere in the grid
-  to replace every value of the object in one change, previewed and undone the same way
-  as every other change.  The pasted block must be the object's own shape - a
-  one-dimensional object is one row, as the grid already draws it - or exactly one row
-  and one column larger, with the header a reader selects along with the grid's own
-  cells; a comma is read as the decimal separator where the block states no point, and
-  one that mixes `.` and `,` is refused rather than guessed at - as is a comma that
-  could be a thousands separator, `1,200` being twelve hundred to one spreadsheet and
-  one and a fifth to another, which names the cell and says so.  The header itself is
-  discarded without being read, so a block whose header names a different axis is not
-  caught here; the preview, which shows the lines each file will change, is what catches
-  it before anything is written.  Under the grid, the object's values are drawn as a
-  picture too: a marker at each point and a line joining them where a row holds more
-  than one, laid against an axis's own breakpoints - unevenly spaced, exactly as those
-  breakpoints are - or over plain indices where there is none, with the declared limits
-  ruled across it wherever they fall inside the range it draws and left off it where
-  they do not, the one place a value stored outside them can be seen.  It follows the
-  same toggle between physical values and raw counts, offers no control of its own,
-  changes nothing, and is drawn under a read-only grid exactly as under a writable one,
-  left undrawn only where there is no grid to begin with.  The toggle always rescales
-  to its own range: for a positive conversion the same numbers in a different unit
-  draw the very same picture, only the readings along its edges changing; a negative
-  one - legal here - mirrors the curve instead of leaving it alone.  A finding filed
-  on an object's `init` now leads to this grid, the way every other finding already
-  leads to what it names.
-
-  A sixth tab, Compare, answers the question `ddd check` was never asked: can the open
-  project stand in for a delivery the reader names.  The baseline is a dumped dictionary,
-  or a project or component description, at a path under the directory `ddd gui` was
-  started in - refused, and told why, when it is outside that directory, unreadable, not
-  valid json, a description or a dictionary this DDD could not read, or json that is
-  neither.  Its verdict counts only the comparison and the baseline's own errors,
-  never the open project's own consistency errors - the Findings tab's own question - so a
-  project the Findings tab still shows full of errors can be told here that it can replace
-  its baseline.  A finding that names a place in this project leads there, as on the
-  Findings tab: a plugin's comparison rule files at the declaration it is about.  The
-  comparison's own findings name the whole delivery rather than a place in one file, and
-  the baseline's own errors marked `in the baseline:` name a place in the baseline's files
-  rather than in this project's; for those the panel says so rather than offering to go
-  anywhere.  The renames the
-  comparison finds - objects the two sides agree are one and the same, called differently
-  now - are drawn here as a table, exactly what `ddd compare --renames` would write to a
-  file, and the tab does not write it.
-
-* **A `definition-mismatch` finding now carries a button for each key its declarations
-  disagree about.**  Opened from a consumer, it takes the producing component's value;
-  opened from the producer's own row - the same disagreement, filed there too - it sends
-  that value outward, and the reader never chooses a direction.  Either way the value may
-  be silence: a producer stating no `unit` where its readers state one is settled by taking
-  it out of all of them, from either row.  Previewed first, it
-  settles every declaration of the variable at once, not only the one the finding names;
-  the apply button reads "Apply to 2 files" where two have to move.  Nothing is offered
-  where the variable has no single producer - several components writing it, or none,
-  leaves no owner to take a direction from; the variable's own panel, one click from the
-  finding, still settles any value the reader chooses, unless it would leave the file
-  unable to load.  A key is offered only where one change settles it for every
-  declaration: never `kind`, the one key no edit may carry between declarations, and not a
-  key some declaration could neither take nor drop - one its named type fixes, one its
-  kind does not allow, or the `datatype`, `conversion` or `typename` its own storage is
-  made of.
+  zeros with a note.  A finding filed on an object's `init` now leads to this grid, the
+  way every other finding already leads to what it names.
 
 * **The editor's reconcile quick fix is no longer offered for a value that already means what
   it would be set to.**  Taking the producing component's value, or spreading one declaration's
@@ -1393,22 +1491,14 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   one are one value, as the checks have always counted them.
 
 * **The editor offers no unit to a declaration whose type fixes it.**  A declaration naming a
-  declared type takes its `datatype`, `unit`, `conversion` and `limits` from the type, and the
-  loader refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
+  declared type takes its `unit`, `conversion` and `limits` from the type, and the loader
+  refuses one of them stated beside the `typename`.  A `definition-mismatch` on such a
   declaration was offered the producer's `unit` or `conversion` all the same, or the one
   every other declaration states, and "Apply this unit to N other declarations" from another
   declaration wrote into it too: each fix left a file that no longer loaded.  None of the
-  four is offered to a declaration naming a type any longer, and "Apply this unit", or the
-  same action for a `datatype`, a `conversion` or `limits`, leaves it out of the declarations
-  it counts and changes.
-
-* **The editor no longer offers to unname a declaration's storage, or to name it twice.**  A
-  definition states either a `datatype` with the `conversion` that goes with it or the
-  `typename` of a type fixing both, and the loader refuses a file that states neither or
-  both.  "Remove the datatype from N other declarations", the same for a `conversion`, and
-  "Apply this typename" into a declaration already stating a `datatype` each wrote one of
-  those files; none of them is offered any more, and an action reaching several declarations
-  leaves out whichever of them could not take it.
+  three is offered to a declaration naming a type any longer, and "Apply this unit", or the
+  same action for a `conversion` or `limits`, leaves it out of the declarations it counts and
+  changes.
 
 * **Renaming a unit from the editor, and quick fixes for an unknown one.**  `F2` on a unit -
   from any place it is stated, or from its entry in a units file - renames it everywhere at

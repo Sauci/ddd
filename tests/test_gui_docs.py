@@ -84,10 +84,28 @@ def test_the_page_says_the_launch_race_winner_holds_what_any_holder_of_the_token
     )
 
 
-def test_the_page_says_a_launch_race_winner_is_a_process_of_the_readers_own_account() -> None:
+def test_the_page_says_the_launch_race_winner_may_be_any_local_user_s_program() -> None:
     assert (
-        "A process already running as this same user is outside what this page defends, and a "
-        "winner of this race is one." in _prose()
+        "The winner may be any local user's program, not only one of the reader's own account: "
+        "on a shared machine, another user's program that wins holds the reader's power over "
+        "the project for the rest of the run, which a program of another user did not hold "
+        "before. A process already running as this same user is outside what this page "
+        "defends, as the first item above says; the race is where any other local user's "
+        "program reaches the same ground." in _prose()
+    )
+
+
+def test_the_page_says_the_opener_s_command_line_is_readable_on_linux_and_macos_alike() -> None:
+    assert (
+        "launcher's command line, which any local user can read on Linux and on macOS alike, "
+        "and presenting that code" in _prose()
+    )
+
+
+def test_the_page_says_a_browser_not_signed_in_is_told_to_restart_either_way() -> None:
+    assert (
+        "Either way, if the browser is not signed in, the advice is the same: restart "
+        "``ddd gui``." in _prose()
     )
 
 

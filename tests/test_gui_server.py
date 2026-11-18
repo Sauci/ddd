@@ -1279,6 +1279,55 @@ class TestWhatIsServed:
         assert static_directory() == Path(ddd.__file__).parent / "gui" / "static"
 
 
+class TestWhatTheDirectoriesServedGuard:
+    """What the directories ``ddd gui`` serves guard (12:M2): a file the page names by its path -
+    read by ``GET /api/file``, written by an edit - lies in one of them, or is refused, ``404``.
+    They bound nothing the analysis reads: an edit may add a file above them to the project's
+    ``includes``, the analysis reads it there, as ``ddd check`` does, and the routes answering
+    from the analysis answer what it states."""
+
+    def test_a_file_included_from_above_is_answered_from_the_analysis_and_never_by_its_path(
+        self, tmp_path: Path, pages: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "outside.ddd.json": component("S", declare("output", "Pressure", unit="bar")),
+                "inside/p.ddd.json": project("P", "a.ddd.json"),
+                "inside/a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        described = tmp_path / "inside" / "p.ddd.json"
+        session = Session(described.parent)
+        session.open(described)
+        outside = (tmp_path / "outside.ddd.json").resolve()
+        for server in serving(Api(session, described, wait_seconds=0.05), pages):
+            included = {
+                "changes": [
+                    {
+                        "file": described.as_posix(),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {
+                                "op": "insert",
+                                "pointer": "project.includes[1]",
+                                "raw": '"../outside.ddd.json"',
+                            }
+                        ],
+                    }
+                ],
+                "label": "one more include",
+            }
+            answered(server, "POST", "/api/edit", included)
+            dictionary = answered(server, "GET", "/api/dictionary")["dictionary"]
+            assert {"Speed", "Pressure"} <= {entry["name"] for entry in dictionary["objects"]}
+            asked = answered(
+                server, "GET", f"/api/file?path={quote(outside.as_posix())}", status=404
+            )
+            assert asked["error"] == "not-found"
+            assert outside.as_posix() in asked["message"]
+
+
 INDEX: Final = (200, "text/html; charset=utf-8", b"stand-in")
 """The ``pages`` fixture's ``index.html``, as it is answered: what a path naming no file of the
 pages is served."""

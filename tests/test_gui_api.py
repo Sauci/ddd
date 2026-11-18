@@ -1906,11 +1906,12 @@ class TestFiles:
 
 
 class TestWhatTheSessionServes:
-    """``ddd gui`` serves the directory it was started in, and the project it was pointed at
-    where that lies elsewhere. What the open project *includes* is wider than that and is the
-    project's own business - a directory up is where a shared vocabulary lives - but an edit
-    may add such an entry, so belonging to the project is a reach the page can widen for
-    itself. These two directories it cannot.
+    """``ddd gui`` serves the directory it was started in, and the open project's own where that
+    lies elsewhere: a file the page reads, writes or previews by its path lies in one of them.
+    What the open project *includes* is wider than that and is the project's own business - a
+    directory up is where a shared vocabulary lives - and an edit may add such an entry. The
+    analysis reads a file so included, and the routes answering from it answer what it states;
+    named by its path, it is refused, read or edited alike (12:M2).
     """
 
     @pytest.fixture

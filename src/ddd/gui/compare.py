@@ -400,11 +400,11 @@ def _resolved_baseline(
     own comes back filed at a path outside the root. That is deliberate: the include tree is how
     a project is composed and it is that project's own business - ``ddd compare`` reads it the
     same way, and holding the tree to this root here would be a second reading of "which files
-    is a delivery made of", diverging from the command the first time either changed. It is also
-    not the file-read primitive spec §3 weighs: reaching one needs a description under the root
-    that *already* points where the reader wants to look, which whoever can reach the port
-    cannot put there - ``POST /api/edit`` writes description files of the open project and
-    nothing else.
+    is a delivery made of", diverging from the command the first time either changed. Nor does
+    it read further than the open project's own analysis can be made to read: an edit may point
+    the open project's ``includes`` at a file anywhere, and that analysis then reads it, as
+    ``ddd check`` does - what the directories ``ddd gui`` serves guard, and what they do not,
+    :attr:`~ddd.gui.session.Revision.served` says (12:M2).
 
     An entry already held is used only while every file it was read out of still carries the
     stamp it was read at - :func:`~ddd.gui.session.stamped`, the session's own reading of "has

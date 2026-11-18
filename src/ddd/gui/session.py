@@ -237,17 +237,24 @@ class Revision:
     run that built one, since every run of one project reads the same files."""
 
     served: tuple[Path, ...]
-    """The directories a file of this project may be read from and written to through the
-    interface: the one the session was given, and the open project's own where the operator
-    named a project from outside it.
+    """The directories a file the page names by its path may be read, written or previewed in:
+    the one the session was given, and the open project's own where it lies outside it - a
+    project named on the command line from elsewhere, or one a build record names there, opened
+    from the start page.
 
-    Belonging to the project is not enough, because what a project includes is the project's
-    own business - a directory up, which is where a shared vocabulary lives - and an edit may
-    add such an entry. A reader of the page could otherwise widen the page's own reach: point
-    the includes at a file anywhere and read it back. These cannot be widened that way, being
-    what ``ddd gui`` was started in and what it was pointed at. A file outside them still takes
-    part in the analysis and is named by the findings on it, the page reporting what
-    ``ddd check`` reports; its contents are neither read, written, nor shown in a preview.
+    What they guard is ``GET /api/file``'s reads, and the files an edit writes and a plan
+    previews, each named by its path (:func:`_source`, :func:`_served`): a description file of
+    the project outside them is refused, ``404``, saying where ``ddd gui`` would have to be
+    started to reach it (12:M2). They are no boundary around what the project's analysis reads.
+    What a project includes is the project's own business - a directory up is where a shared
+    vocabulary lives - and an edit may add any file to its ``includes``: the analysis then reads
+    that file wherever it lies, as ``ddd check`` does, and every route answering from the
+    analysis - the dictionary, its types, units and values, a variable, the graph, the findings,
+    which may quote what the file holds - answers what it states. What bounds an edit is
+    elsewhere: it cannot change which plugins the project runs (:func:`_refuse_plugins`); a file
+    it creates is a description named ``*.ddd.json``, beside the project description and
+    included by the same edit (:func:`_confined`); and a build record's ``project`` is read only
+    under the rule a request's path meets (:func:`_readable_project`).
     """
 
     edits: int = 0
@@ -717,9 +724,10 @@ class Session:
         grouped, covered = _grouped(runs, project)
         registered = {info.identifier: info for run in runs for info in run.bag.registered.values()}
         # The project's own directory as well, where it is not already inside the root: a
-        # project named on the command line from elsewhere. Two statements rather than one
-        # conditional expression, which coverage.py counts no branch in, so the arm no test
-        # took would pass the gate unexercised.
+        # project named on the command line from elsewhere, or one a build record names there,
+        # opened from the start page (`Revision.served` says what that guards). Two statements
+        # rather than one conditional expression, which coverage.py counts no branch in, so the
+        # arm no test took would pass the gate unexercised.
         served: tuple[Path, ...] = (self.root,)
         if not project.parent.is_relative_to(self.root):
             served = (self.root, project.parent)
@@ -979,10 +987,12 @@ def _source(revision: Revision, path: Path) -> Path:
     """One path the page gave, resolved and allowed: a description file of the open project,
     inside a directory the session serves.
 
-    Both, not membership alone. ``POST /api/edit`` naming a file a directory up in the project's
-    ``includes`` and ``GET /api/file`` reading it back was the page widening its own reach - and
-    checked here rather than at that one route, because this is where every route that takes a
-    path from the page resolves it, and where an edit resolves the file it writes.
+    Both, not membership alone: an edit may add a file a directory up to the project's
+    ``includes``, and membership alone would then have ``GET /api/file`` read it back and an
+    edit write it. Checked here rather than at that one route, because this is where every route
+    that takes a path from the page resolves it, and where an edit resolves the file it writes.
+    What this does not bound, what the analysis reads of such a file, :attr:`Revision.served`
+    says.
 
     Resolved as the loader resolves a path (:func:`ddd.loading.resolve_path`), which hands one it
     cannot resolve back as given, to be no file of the project: on python 3.12 a loop of links
@@ -999,8 +1009,9 @@ def _served(revision: Revision, resolved: Path) -> Path:
 
     Membership of the open project is not this question and does not answer it: an edit may add
     anything to the project's own ``includes``, so a reader of the page can make a file
-    anywhere part of the project and then ask for it. What the session serves cannot be widened
-    that way - see :attr:`Revision.served`.
+    anywhere part of the project and then name it by its path, which this refuses outside the
+    directories served. That is all it bounds: what the analysis reads of such a file, and what
+    the routes answering from the analysis say of it, :attr:`Revision.served` says.
     """
     if not any(resolved.is_relative_to(directory) for directory in revision.served):
         serves = " and ".join(directory.as_posix() for directory in revision.served)

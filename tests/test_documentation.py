@@ -5264,6 +5264,93 @@ class TestTheDevelopmentBuild:
         assert run_step(guard, tmp_path, COMMIT=COMMIT).returncode == 0
         assert build.index("carries the stamping script") < build.index("dev_version.py stamp")
 
+    def test_the_gui_job_stamps_the_wheel_it_uploads_as_dev_build_stamps_its_own(
+        self, tree: Path
+    ) -> None:
+        """20:M16. The gui job uploads a wheel of every commit ci runs on, and it said it was the
+        last release. Its step runs the script on its own checkout with the run's number and the
+        commit it built - for a pull request, the merge it tests - so the tree it builds from
+        states the version dev-build's would, and names that commit."""
+        (tree / "tools").mkdir()
+        shutil.copyfile(ROOT / "tools" / "dev_version.py", tree / "tools" / "dev_version.py")
+        stamps = [
+            found
+            for found in steps_of(job(CI_WORKFLOW, "gui"))
+            if "name: Stamp the development version\n" in found
+        ]
+        assert len(stamps) == 1, "the gui job does not stamp the wheel it uploads"
+        ran = run_step(stamps[0], tree, GITHUB_RUN_NUMBER="57", GITHUB_SHA=COMMIT)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        assert ran.stdout == "1.2.4.dev57\n"
+        project = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        assert (project["version"], project["urls"]["Commit"]) == ("1.2.4.dev57", COMMIT_URL)
+        package = (tree / "src" / "ddd" / "__init__.py").read_text(encoding="utf-8")
+        assert '__version__ = "1.2.4.dev57"' in package.splitlines()
+        module = (tree / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+        assert 'set(DDD_MODULE_VERSION "1.2.4.dev57")' in module.splitlines()
+
+    def test_every_wheel_ci_builds_is_stamped_before_it_is_built(self) -> None:
+        """20:M16. Between releases ``master`` states the last release's version, so a wheel ci
+        built of it said it was that release - to ``ddd --version``, to the banner of every file
+        it generated, to the module's handshake and to pip - while holding every commit since.
+        Every job of ``ci.yml`` that builds a wheel stamps its checkout first, in every run in
+        which it builds one; Publish, building the release, never does."""
+        contexts = [
+            ci_run("push", "refs/heads/master"),
+            ci_run("pull_request", "refs/pull/5/merge"),
+            ci_run("workflow_dispatch", "refs/heads/feature"),
+            ci_run("push", "refs/heads/master", os="Windows"),
+            publish_run("release", "refs/tags/v0.12.0", called=True),
+        ]
+        built = []
+        for name in job_names(CI_WORKFLOW):
+            steps = steps_of(job(CI_WORKFLOW, name))
+            conditions = [setting(found, "if", 0) or setting(found, "if", 8) for found in steps]
+            stamps = [at for at, found in enumerate(steps) if "tools/dev_version.py stamp" in found]
+            for at, found in enumerate(steps):
+                if not re.search(r"^ *python -m build\b", found, re.M):
+                    continue
+                built.append(name)
+                for context in contexts:
+                    if holds(conditions[at], context):
+                        assert any(
+                            holds(conditions[stamp], context) for stamp in stamps if stamp < at
+                        ), f"{name} builds a wheel it has not stamped, in {context['github']}"
+        assert sorted(built) == ["dev-build", "gui"]
+        assert "dev_version" not in uncommented(PUBLISH_WORKFLOW)
+
+    def test_the_page_says_every_wheel_ci_builds_is_stamped_and_what_another_carries(
+        self,
+    ) -> None:
+        """20:M16, where the maintainer reads it: which wheels ci stamps, what that refuses, and
+        what a wheel built anywhere else says it is."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "the gui leg stamps": "On the ubuntu leg of the workflow's own runs it then stamps a "
+            "development version into its checkout, as ``dev-build`` stamps its own",
+            "what its wheel says": "under a version that says it is a build of that commit and "
+            "not a release",
+            "the candidate, gui too": "fails ``dev-build``, and the ubuntu leg of ``gui``, which "
+            "stamps the wheel it uploads the same way",
+            "a pull request's too": "and every pull request's as well, since ``gui`` tests a "
+            "pull request merged with ``master``",
+            "every wheel ci builds": "Every wheel ci builds is stamped so, and no other.",
+            "the gui's number": "numbered as ``dev-build``'s of the same run and naming the "
+            "commit it was built from - for a pull request, the merge ``gui`` tests",
+            "a local build": "A wheel built anywhere else, by ``python -m build`` in a checkout, "
+            "carries the version its ``pyproject.toml`` states",
+            "master's version": "``master`` states the last release's until the next release "
+            "commit",
+            "what it says it is": "holds every commit since that release and says it is that "
+            "release",
+            "no commit": "its metadata names no commit",
+            "only the release": "Only the release's own build, from its tag, is the release.",
+            "the pages' section": "uploads the wheel as ``ddd-tool-<commit>``, stamped as a "
+            "development build of that commit",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
     def test_the_upload_is_this_runs_two_files(self, tmp_path: Path) -> None:
         check = step(job(CI_WORKFLOW, "dev-publish"), "Check what is about to be published")
         passed = run_step(
@@ -5664,16 +5751,16 @@ class TestWhatPublishRunsBeforeItUploads:
         wheel = [
             step
             for step in steps_of(job(CI_WORKFLOW, "gui"))
-            if "-m build" in step or "static/index.html" in step or "name: ddd-tool-" in step
+            if re.search(r"dev_version\.py stamp|-m build|static/index\.html|name: ddd-tool-", step)
         ]
-        assert len(wheel) == 3, "the gui job's wheel is no longer built, checked and uploaded"
+        assert len(wheel) == 4, "the gui job's wheel is no longer stamped, built, checked, uploaded"
         for context, built in [
             (ci_run("push", "refs/heads/master"), True),
             (ci_run("pull_request", "refs/pull/5/merge"), True),
             (ci_run("push", "refs/heads/master", os="Windows"), False),
             (publish_run("release", "refs/tags/v0.12.0", called=True), False),
         ]:
-            assert [holds(setting(step, "if", 0), context) for step in wheel] == [built] * 3
+            assert [holds(setting(step, "if", 0), context) for step in wheel] == [built] * 4
 
     def test_the_wheel_is_installed_and_checked_before_it_is_handed_on(self) -> None:
         """Into a fresh environment, from the file the upload jobs are handed, its dependencies

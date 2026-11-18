@@ -513,11 +513,12 @@ Chromium, windows with the same Chromium, and windows with the windows runner's 
 through ``PLAYWRIGHT_CHANNEL=msedge``, which needs no download. Each leg installs the package and
 node, generates the TypeScript types from ``ddd schema``, runs Biome, the type check and Vitest
 with its coverage gate, compiles the pages, and drives them against a real ``ddd gui`` with
-Playwright. On the ubuntu leg it then builds the wheel and the sdist with the pages it compiled,
-checks that the wheel carries them the way the release build checks its own, and uploads both as
-``ddd-tool-<commit>``: what installs a branch without node. The release build still compiles the
-pages again, into the wheel it publishes - an artifact expires, and needs a GitHub account to
-reach.
+Playwright. On the ubuntu leg of the workflow's own runs it then stamps a development version
+into its checkout, as ``dev-build`` stamps its own, builds the wheel and the sdist with the pages
+it compiled, checks that the wheel carries them the way the release build checks its own, and
+uploads both as ``ddd-tool-<commit>``: what installs a branch without node, under a version that
+says it is a build of that commit and not a release. The release build still compiles the pages
+again, into the wheel it publishes - an artifact expires, and needs a GitHub account to reach.
 
 A manual run of the workflow (``workflow_dispatch``) takes a ``repeat`` input, one by default;
 above that it is a hunt, and only these three legs run, each journey repeated that many times
@@ -643,8 +644,8 @@ Renaming ``ci.yml`` is one way: it restarts the run numbers - and its registrati
 the file - so its uploads are refused until the numbers, or the next release, move past the
 versions already published.
 
-``tools/dev_version.py`` writes that version into the job's own checkout, and nothing it
-rewrites is committed. It writes it into the three places the installed package compares at
+``tools/dev_version.py`` writes that version into the checkout of the job running it, and
+nothing it rewrites is committed. It writes it into the three places the installed package compares at
 run time: ``pyproject.toml``; ``src/ddd/__init__.py``, so that ``ddd --version`` prints ``ddd
 0.10.1.dev57``, in the format it always has; and ``cmake/Ddd.cmake``, whose
 ``DDD_MODULE_VERSION`` the module compares with that output by exact string, refusing a tool of
@@ -652,10 +653,21 @@ any other release. Nothing compares the other spellings, listed under
 :ref:`publishing-a-release`, at run time: the extension's manifest and lock file reach no
 installed package, and the rest is prose - the README's included, which the wheel carries as
 its description. The script refuses a version with no next patch, and a release candidate is
-one: a run whose commit states a candidate in ``__version__`` fails ``dev-build`` - every run of
-``master`` for as long as the candidate stands there - while a pull request branched before it
-still builds. ``tests/test_documentation.py`` holds the script to all of this, and runs the
-checks ``dev-publish`` makes.
+one: a run whose commit states a candidate in ``__version__`` fails ``dev-build``, and the ubuntu
+leg of ``gui``, which stamps the wheel it uploads the same way. That is every run of ``master``
+for as long as the candidate stands there, and every pull request's as well, since ``gui`` tests
+a pull request merged with ``master``. ``tests/test_documentation.py`` holds the script to all
+of this, and runs the checks ``dev-publish`` makes.
+
+**Every wheel ci builds is stamped so, and no other.** ``dev-build``'s is, and so is the one the
+``gui`` job uploads as ``ddd-tool-<commit>``, numbered as ``dev-build``'s of the same run and
+naming the commit it was built from - for a pull request, the merge ``gui`` tests. A wheel built
+anywhere else, by ``python -m build`` in a checkout, carries the version its ``pyproject.toml``
+states, and ``master`` states the last release's until the next release commit: built between
+releases, such a wheel holds every commit since that release and says it is that release - to
+``ddd --version``, to the banner of every file it generates, to the module's handshake and to
+pip - and its metadata names no commit. Only the release's own build, from its tag, is the
+release.
 
 The run's summary gives the two commands that install the build, for instance:
 
@@ -986,7 +998,8 @@ The browser interface
 ``src/ddd/gui/static/``. git ignores the compiled pages, and Node.js is needed where they are
 compiled, never where ddd is installed. The release build compiles them before it builds the
 wheel, which then carries them. The ``gui`` job of ci does the same and uploads the wheel as
-``ddd-tool-<commit>``, so every branch ci runs on installs without Node.js as well, and
+``ddd-tool-<commit>``, stamped as a development build of that commit, so every branch ci runs on
+installs without Node.js as well, and
 ``dev-build`` does it again for the :ref:`development build <development-builds>` of the last
 commit of a push to ``master`` or to a pull request, which TestPyPI serves to anybody. The image
 behind ``docker compose`` compiles them in a build stage of its own, thrown away with its

@@ -182,11 +182,11 @@ jobs:
     # both come from it.
     #
     # On ubuntu, in this file's own runs, the pages it compiled then go into a wheel and an
-    # sdist, uploaded as ddd-tool-<commit>: a branch installed from them needs no node, as a
-    # release needs none - on a machine or in a container that only runs ddd, where node has no
-    # business. A release is still what anyone outside this repository installs, or the
-    # development build below for a commit not released yet: an artifact expires, and needs a
-    # GitHub account to reach.
+    # sdist, stamped as a development build of the commit and uploaded as ddd-tool-<commit>: a
+    # branch installed from them needs no node, as a release needs none - on a machine or in a
+    # container that only runs ddd, where node has no business. A release is still what anyone
+    # outside this repository installs, or the development build below for a commit not
+    # released yet: an artifact expires, and needs a GitHub account to reach.
     #
     # Three legs: Playwright's own Chromium on both systems, and the windows runner's own Edge,
     # which a reader on windows most likely has (part 19a).
@@ -256,6 +256,17 @@ jobs:
       # python, the same wherever it is built. In this file's own runs alone: in Publish's run,
       # its build job builds the wheel it ships, and installs and checks it, so a release's run
       # carries no second wheel of its commit.
+      #
+      # Stamped first, as dev-build stamps its own: <next patch>.dev<run number>, with the commit
+      # it is built from named in its metadata - for a pull request, the merge this job tests.
+      # Unstamped, it was a wheel of the last release's version holding every commit since, and
+      # said it was that release to ddd --version, to the banner of every file it generated, to
+      # the module's handshake and to pip. Into this job's checkout once the journeys have run
+      # on it as it is, and never committed.
+      - if: runner.os == 'Linux' && github.workflow == 'CI'
+        name: Stamp the development version
+        working-directory: .
+        run: python tools/dev_version.py stamp "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"
       - if: runner.os == 'Linux' && github.workflow == 'CI'
         working-directory: .
         run: |

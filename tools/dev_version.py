@@ -4,8 +4,10 @@
 master, and of every push to this repository's own pull requests, to TestPyPI, so that such a
 commit installs with ``pip install`` - its compiled pages included, and no node anywhere.  Its
 ``dev-build`` job runs this in its own checkout before it builds; ``dev-publish`` checks what it
-is handed, and writes the run's summary from what it checked.  Nothing this rewrites is ever
-committed.
+is handed, and writes the run's summary from what it checked.  The ubuntu leg of its ``gui`` job
+runs it as well, before it builds the wheel it uploads as ``ddd-tool-<commit>``: every wheel ci
+builds says it is a development build of its commit, and only a release's own build says it is
+the release.  Nothing this rewrites is ever committed.
 
 The version is ``<next patch>.dev<run number>``: after 0.10.0, run 57 builds ``0.10.1.dev57``.
 The commit cannot be part of it - PEP 440 refuses ``0.10.0-<sha>``, and PyPI and TestPyPI both

@@ -76,6 +76,30 @@ def test_the_page_says_the_launch_race_winner_runs_the_project_code() -> None:
     assert "holds the token, and so runs the project's code as the reader" in _prose()
 
 
+def test_the_page_says_the_launch_race_winner_holds_what_any_holder_of_the_token_holds() -> None:
+    assert (
+        "Since the token no longer chooses which plugins run, what the winner holds is what any "
+        "holder of the token holds, as the first item above says: the project's descriptions, "
+        "and the plugins they name, as the reader." in _prose()
+    )
+
+
+def test_the_page_says_a_launch_race_winner_is_a_process_of_the_readers_own_account() -> None:
+    assert (
+        "A process already running as this same user is outside what this page defends, and a "
+        "winner of this race is one." in _prose()
+    )
+
+
+def test_the_page_says_what_the_line_on_the_terminal_tells_the_reader_to_do() -> None:
+    assert (
+        "The line says that if the browser is signed in nothing more is needed, and that if it "
+        "is not, the reader stops ``ddd gui`` and starts it again, which mints a new code and a "
+        "new token, and opens the address printed then, not the earlier one: a restart takes "
+        "the token from the winner, and the earlier address would not." in _prose()
+    )
+
+
 def test_the_page_says_every_reading_of_a_build_record_s_project_meets_a_request_s_rule() -> None:
     assert (
         "Its build records are read as well, for the projects the start page offers and for how "

@@ -219,16 +219,22 @@ What it does not defend against
   the token itself never sits on a command line. But a local process reading the
   launcher's command line - polling ``/proc``, on Linux - and presenting that code before
   the reader's browser does holds the token, and so runs the project's code as the reader,
-  for as long as this run of ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this happened:
+  for as long as this run of ``ddd gui`` lasts - not merely ahead of the reader once. Since
+  the token no longer chooses which plugins run, what the winner holds is what any holder of
+  the token holds, as the first item above says: the project's descriptions, and the plugins
+  they name, as the reader. A process already running as this same user is outside what this
+  page defends, and a winner of this race is one. Two things show this happened:
   the reader's own browser shows it is signed out instead of landing on the project, and
-  presenting that same code again prints one line on the terminal, saying so and to
-  restart ``ddd gui`` rather than open the address it printed - a restart takes the token
-  from the winner, and the printed address would not. The same two signs also follow an
-  innocent cause: the first ``POST /open`` reaches the server and spends the code, but
-  its answer is lost on the way back, so the page sends the same code once more; the
-  server refuses it as already spent, and the terminal prints the very same line - no
-  other process involved. Either way, its advice is the same: restart ``ddd gui``. A code
-  that expired unused signed nobody in, and prints nothing.
+  presenting that same code again prints one line on the terminal. The line says that if the
+  browser is signed in nothing more is needed, and that if it is not, the reader stops
+  ``ddd gui`` and starts it again, which mints a new code and a new token, and opens the
+  address printed then, not the earlier one: a restart takes the token from the winner, and
+  the earlier address would not. The same two signs also follow an innocent cause: the first
+  ``POST /open`` reaches the server and spends the code, but its answer is lost on the way
+  back, so the page sends the same code once more; the server refuses it as already spent,
+  and the terminal prints the very same line - no other process involved. Either way, the
+  advice is the same: restart ``ddd gui``. A code that expired unused signed nobody in, and
+  prints nothing.
 
 * **A server that used the same port before.** The page's origin is its address and port,
   and the browser keeps what a server on them left behind into any later run on that port.

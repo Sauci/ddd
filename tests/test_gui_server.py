@@ -379,18 +379,21 @@ class TestTheSignInExchange:
         assert (again.status, json.loads(data)) == (403, REFUSED)
         assert capsys.readouterr().err == f"{_CODE_REUSED}\n"
 
-    def test_a_code_presented_again_says_why_to_restart(self, server, capsys) -> None:
-        """Its winner holds the token itself, which a restart takes from it and the printed
-        address does not. Pinned by its literal text: the test above compares against the
-        imported ``_CODE_REUSED``, which would drift along with any rewording of it."""
+    def test_a_code_presented_again_says_what_to_do(self, server, capsys) -> None:
+        """The line says what the reader does: stop the run and start it again, which mints a
+        new code and a new token, and when another program on the computer is to be suspected.
+        Pinned by its literal text: the test above compares against the imported
+        ``_CODE_REUSED``, which would drift along with any rewording of it."""
         code = server.issue_code()
         assert exchange(server, {"code": code})[0].status == 200
+        assert capsys.readouterr().err == ""
         exchange(server, {"code": code})
         assert capsys.readouterr().err == (
-            "ddd gui: a launch code that already signed a browser in was presented again; if "
-            "your browser is not signed in, another process on this computer may have signed "
-            "in with it first and now holds the token itself, so restart ddd gui rather than "
-            "open the address it printed\n"
+            "ddd gui: a launch code that already signed a browser in was presented again. If "
+            "your browser is signed in, nothing more is needed. If it is not, stop ddd gui "
+            "(Ctrl+C) and start it again, which mints a new code and a new token, and open "
+            "the address it prints then, not this run's: another program on this computer may "
+            "have signed in with the code first, and holds this run's token\n"
         )
 
     def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:

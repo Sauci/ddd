@@ -46,17 +46,18 @@ route's ``?after=`` is lenient: none of these values is a whole number, so it is
 once every time, and the walk's ``wait_seconds=0`` (as ``tests/test_gui_api.py``'s own fixtures
 construct the api) means nothing here could wait regardless.
 
-The query walk runs with the working directory at the demo's root, as ``ddd gui`` serves from
-the directory it was started in, so that a relative path lands where a real run's would (12:M1).
-It runs twice: resolving every path as the system the suite runs on resolves it, and as Windows
-resolves it (:func:`_resolving_as_windows_does`), which hands back a path it cannot look up
-rather than raising, so that every system the suite runs on asks what a run on Windows is asked.
+Both walks run with the working directory at the demo's root, as ``ddd gui`` serves from the
+directory it was started in, so that a relative path lands where a real run's would (12:M1). The
+query walk runs twice: resolving every path as the system the suite runs on resolves it, and as
+Windows resolves it (:func:`_resolving_as_windows_does`), so that every system the suite runs on
+asks what a run on Windows is asked.
 """
 
 from __future__ import annotations
 
 import http.client
 import json
+import os
 import re
 import shutil
 import threading
@@ -271,16 +272,19 @@ def _well_formed(
 
 
 def _resolving_as_windows_does(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``Path.resolve`` as Windows answers it from python 3.13 on, wherever looking a path up
-    raises ``ValueError``: the path made absolute and handed back as it is, as ``ntpath.realpath``
-    does when it is not strict. Every other path resolves as it does on the system this runs on."""
+    """``Path.resolve`` as Windows resolves a path it cannot look up, from python 3.13 on: made
+    absolute against the working directory and normalised, or refused with an ``OSError`` where
+    ``strict``, as ``ntpath.realpath`` does. Every other path resolves as it does on the system
+    this runs on."""
     real = Path.resolve
 
     def resolve(self: Path, strict: bool = False) -> Path:
         try:
             return real(self, strict)
-        except ValueError:
-            return self.absolute()
+        except ValueError as error:
+            if strict:
+                raise OSError(str(error)) from None
+            return Path(os.path.normpath(Path.cwd() / self))
 
     monkeypatch.setattr(Path, "resolve", resolve)
 
@@ -329,7 +333,9 @@ def test_every_key_of_every_route_s_query_is_never_answered_500(
     assert cases == 1320, "every route's query, every key, every hostile value: once each"
 
 
-def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path) -> None:
+def test_every_string_field_of_a_post_body_is_never_answered_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Ruling P18-6: every field of :class:`~ddd.gui.contract.OpenRequest`,
     :class:`~ddd.gui.contract.Changes`, :class:`~ddd.gui.contract.Change`,
     :class:`~ddd.gui.contract.Operation` and :class:`~ddd.gui.contract.UndoRequest` that
@@ -342,6 +348,7 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
     case is asked before any is judged, and anything the api raises is answered ``500``, as the
     server answers it, so that one run names every case that fails."""
     _, root = demo_api(tmp_path)
+    monkeypatch.chdir(root)
     found = _files(root)
     target = root / "demo.ddd.json"
     demo_json = target.resolve().as_posix()
@@ -474,8 +481,7 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
 
 
 UNOPENABLE_BASELINES: Final = ("%00", "a%00b", "base%00.ddd.json")
-"""Baselines as a query spells them, each a path no file can bear: resolving one raises on some
-systems and hands it back on Windows, and opening one raises on every system."""
+"""Baselines as a query spells them, each a path no file can bear."""
 
 
 @pytest.mark.parametrize("windows", [False, True], ids=["as-this-system-resolves", "as-windows"])

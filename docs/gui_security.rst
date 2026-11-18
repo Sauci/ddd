@@ -183,11 +183,13 @@ one of the browsers above.
 
 In every browser, the gate lets through by design a navigation marked
 ``Sec-Fetch-Site: none``, which a browser sends for a navigation it begins itself - an
-address typed, or chosen from a bookmark - and an older browser marks such a navigation
-with nothing. Either way it lands, signed in, on the page its address names, just as above,
-as it did when the token was a cookie: a ``SameSite=Strict`` cookie rode the same
-navigations. Open ``ddd gui``'s pages from the address it prints, or from the page itself,
-rather than from a link someone else wrote.
+address typed, or chosen from a bookmark - and for one a redirect continues from such a
+beginning, whatever site the address typed or chosen was; an older browser marks such a
+navigation with nothing. Either way it lands, signed in, on the page its last address names,
+just as above. The two a browser begins itself landed so when the token was a cookie as
+well: a ``SameSite=Strict`` cookie rode them. Open ``ddd gui``'s pages from the address it
+prints, or from the page itself, rather than from a link someone else wrote, or an address
+that sends the browser on to it.
 
 Running it in a container
 -------------------------

@@ -155,6 +155,37 @@ def test_the_page_says_none_of_it_is_tested_on_macos() -> None:
     assert "None of this is tested on macOS." in _prose()
 
 
+def test_the_page_says_a_navigation_a_redirect_continues_is_one_the_browser_began() -> None:
+    assert (
+        "the gate lets through by design a navigation marked ``Sec-Fetch-Site: none``, which a "
+        "browser sends for a navigation it begins itself - an address typed, or chosen from a "
+        "bookmark - and for one a redirect continues from such a beginning, whatever site the "
+        "address typed or chosen was; an older browser marks such a navigation with nothing."
+        in _prose()
+    )
+
+
+def test_the_page_says_such_a_navigation_lands_signed_in_on_its_last_address() -> None:
+    assert "Either way it lands, signed in, on the page its last address names, just as above." in (
+        _prose()
+    )
+
+
+def test_the_page_says_a_cookie_rode_the_two_navigations_a_browser_begins_itself() -> None:
+    assert (
+        "The two a browser begins itself landed so when the token was a cookie as well: a "
+        "``SameSite=Strict`` cookie rode them." in _prose()
+    )
+
+
+def test_the_page_says_to_open_ddd_gui_from_its_own_address_alone() -> None:
+    assert (
+        "Open ``ddd gui``'s pages from the address it prints, or from the page itself, rather "
+        "than from a link someone else wrote, or an address that sends the browser on to it."
+        in _prose()
+    )
+
+
 def test_the_page_says_a_wait_for_the_state_gives_its_slot_back_once_the_page_has_gone() -> None:
     assert (
         "A wait for the state to change, which the page keeps open, looks every second whether "

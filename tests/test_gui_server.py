@@ -2875,6 +2875,18 @@ class TestTheStandardLibrarysAnswers:
         status, _, _ = whole_answer(server, b"GET / x HTTP/1.1\r\n")
         assert status == "HTTP/1.1 400 Bad request syntax ('GET / x HTTP/1.1')"
 
+    def test_a_refusal_past_ascii_is_as_long_as_its_bytes_and_its_page_is_utf_8(
+        self, server
+    ) -> None:
+        """A request line is read as latin-1, a byte to a character, and the page that echoes it
+        is sent as UTF-8, as its type says: its length counts the bytes sent, never the page's
+        characters."""
+        status, headers, body = whole_answer(server, b"GET /caf\xe9 y HTTP/1.1\r\n")
+        assert status.startswith("HTTP/1.1 400 ")
+        assert headers["Content-Type"] == "text/html; charset=utf-8"
+        assert int(headers["Content-Length"]) == len(body)
+        assert "\N{LATIN SMALL LETTER E WITH ACUTE}".encode("utf-8") in body
+
     def test_a_refusal_s_page_holds_what_the_request_said_escaped(self, server) -> None:
         status, _, body = whole_answer(server, b"GET /<script> x HTTP/1.1\r\n")
         assert status.startswith("HTTP/1.1 400 ")

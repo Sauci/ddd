@@ -184,6 +184,14 @@ def test_the_page_says_none_of_it_is_tested_on_macos() -> None:
     assert "None of this is tested on macOS." in _prose()
 
 
+def test_the_page_says_ddd_gui_listens_on_ipv6_loopback_only_beside_ipv4_loopback() -> None:
+    assert (
+        "There ``ddd gui`` listens on ``--host 0.0.0.0``, published on the host's "
+        "``127.0.0.1`` alone, as *Running it in a container* above describes, and not on "
+        "``[::1]``, which it listens on only when it listens on loopback." in _prose()
+    )
+
+
 def test_the_page_says_a_navigation_a_redirect_continues_is_one_the_browser_began() -> None:
     assert (
         "the gate lets through by design a navigation marked ``Sec-Fetch-Site: none``, which a "

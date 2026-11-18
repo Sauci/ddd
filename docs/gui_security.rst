@@ -264,10 +264,10 @@ What it does not defend against
 
 * **Beyond loopback, as in a container.** There ``ddd gui`` listens on
   ``--host 0.0.0.0``, published on the host's ``127.0.0.1`` alone, as *Running it in a
-  container* above describes, and the IPv6 hold, being loopback's alone, holds nothing
-  there. The host's ``[::1]`` at that port is open all the same, to a program already
-  listening on it, which may receive ``localhost:<port>/open?token=<the token>`` in the
-  container's place. Open the address exactly as ``ddd gui`` prints it.
+  container* above describes, and not on ``[::1]``, which it listens on only when it
+  listens on loopback. The host's ``[::1]`` at that port is open all the same, to a program
+  already listening on it, which may receive ``localhost:<port>/open?token=<the token>`` in
+  the container's place. Open the address exactly as ``ddd gui`` prints it.
 
 * **Transport security.** ``ddd gui`` speaks plain HTTP, trusting the loopback interface
   or, in a container, the host's own. Nothing here signs or encrypts what crosses it.

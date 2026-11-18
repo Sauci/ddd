@@ -3321,9 +3321,9 @@ class TestRunning:
         """An address the server cannot be made on: refused the way a taken port is.
 
         The construction is patched, standing in for whatever the platform's socket would have
-        refused: a real bind of the wildcard can raise a firewall dialog on Windows, and no test
-        binds beyond loopback (ruling B7-3). It resolves to itself (it is already numeric), so it
-        is what run() hands the fake."""
+        refused: a real server listening on the wildcard can raise a firewall dialog on Windows,
+        and no test listens beyond loopback (ruling B7-3). It resolves to itself (it is already
+        numeric), so it is what run() hands the fake."""
 
         def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
             raise OSError("Cannot assign requested address")

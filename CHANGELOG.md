@@ -893,7 +893,7 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   naming the port, and `--port 0` tries another port instead; a program that is merely bound there,
   and does not listen, does not take `localhost` from `ddd gui`.  A fixed port the previous run of
   `ddd gui` served on is served on again at once when it is started again.  Beyond loopback, as in a
-  container, `ddd gui` listens on neither.
+  container, `ddd gui` does not listen on `[::1]`.  Nothing to migrate.
 
 * **`ddd gui` says what to do when a launch code is presented again.**  A launch code signs one
   browser in, once; when it is presented a second time, `ddd gui` prints on stderr `ddd gui: a

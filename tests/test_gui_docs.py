@@ -74,3 +74,12 @@ def test_the_page_leaves_a_process_of_the_reader_s_own_account_undefended() -> N
 
 def test_the_page_says_the_launch_race_winner_runs_the_project_code() -> None:
     assert "holds the token, and so runs the project's code as the reader" in _prose()
+
+
+def test_the_page_says_the_start_page_reads_a_build_record_s_project_under_a_request_s_rule() -> (
+    None
+):
+    assert (
+        "a record's ``project`` is read only under the rule a request's path meets, and only a "
+        "description's name, and a record naming anything else is read as no record" in _prose()
+    )

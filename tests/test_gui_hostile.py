@@ -49,22 +49,27 @@ construct the api) means nothing here could wait regardless.
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import shutil
+import threading
 import types
 import typing
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Final, Literal
 
 import pytest
 from pydantic import BaseModel
 
-from conftest import EXAMPLES
+from conftest import EXAMPLES, project, write_tree
 from ddd.editing import fingerprint
+from ddd.gui import queries as queries_module
 from ddd.gui.api import ROUTES, Api, Reply
 from ddd.gui.contract import Change, Changes, OpenRequest, Operation, UndoRequest
 from ddd.gui.queries import actions_of
+from ddd.gui.server import GuiServer
 from ddd.gui.session import Session
 
 HOSTILE: tuple[str, ...] = (
@@ -438,3 +443,138 @@ def test_every_string_field_of_a_post_body_is_never_answered_500(tmp_path: Path)
         "the seven string fields these five models hold, eleven values each, and the two "
         "numbers spelled as an index"
     )
+
+
+# What the start page reads of a build record (12:I4): a record's project is read under the rule a
+# request's path meets, and only a description's name, whatever the record writes.
+
+
+def _start_page(root: Path) -> Iterator[tuple[GuiServer, Path]]:
+    """``ddd gui`` started over ``root`` with no project open, on loopback alone."""
+    pages = root.parent / "pages"
+    pages.mkdir(exist_ok=True)
+    (pages / "index.html").write_text("stand-in", encoding="utf-8")
+    server = GuiServer(Api(Session(root), None, wait_seconds=0.05), pages)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server, root
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.fixture
+def start_page(tmp_path: Path) -> Iterator[tuple[GuiServer, Path]]:
+    root = tmp_path / "clone"
+    write_tree(root, {"mine.ddd.json": project("Mine"), "other.json": project("Other")})
+    yield from _start_page(root)
+
+
+def _ask(server: GuiServer, method: str, path: str, body: object = None) -> tuple[int, Any]:
+    """One request, with a client timeout so that a regression fails and never hangs."""
+    connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
+    headers = {"Host": f"127.0.0.1:{server.port}", "Authorization": f"Bearer {server.token}"}
+    sent = None
+    if body is not None:
+        sent = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+        headers["Origin"] = f"http://127.0.0.1:{server.port}"
+    try:
+        connection.request(method, path, body=sent, headers=headers)
+        response = connection.getresponse()
+        return response.status, json.loads(response.read())
+    finally:
+        connection.close()
+
+
+def _record(root: Path, named: object) -> None:
+    """A build record under ``root`` naming ``named`` as its project."""
+    write_tree(root, {"build/ddd-build.json": {"format": 1, "project": named}})
+
+
+def _reads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every path ``Path.read_bytes`` is asked for from now on."""
+    asked: list[str] = []
+    real = Path.read_bytes
+
+    def spy(self: Path) -> bytes:
+        asked.append(self.as_posix())
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", spy)
+    return asked
+
+
+REFUSED_RECORD_PROJECTS: Final = (
+    "\\\\127.0.0.1\\share\\far.ddd.json",
+    "//127.0.0.1/share/far.ddd.json",
+    "//127.0.0.1/share/p/../../far.ddd.json",
+    "",
+    "far.ddd.json",
+    "/tmp/a\x00b.ddd.json",
+    "/tmp/" + "x" * 5000 + ".ddd.json",
+    "C:/dir/CON.ddd.json",
+    "/dir/not-a-description.json",
+    "C:/dir/other.ini",
+    "C:/dir",
+    7,
+)
+"""What a record's ``project`` may be, none of which the start page reads or offers."""
+
+
+@pytest.mark.parametrize("named", REFUSED_RECORD_PROJECTS, ids=range(len(REFUSED_RECORD_PROJECTS)))
+def test_a_record_naming_what_a_request_s_path_is_refused_is_read_as_no_record(
+    start_page: tuple[GuiServer, Path], monkeypatch: pytest.MonkeyPatch, named: object
+) -> None:
+    server, root = start_page
+    monkeypatch.setattr(queries_module, "_OPENS_DEVICES", True)
+    _record(root, named)
+    asked = _reads(monkeypatch)
+    status, listed = _ask(server, "GET", "/api/projects")
+    assert status == 200
+    assert [p["path"] for p in listed["projects"]] == [
+        (root.resolve() / "mine.ddd.json").as_posix()
+    ]
+    mine = f"{root.resolve().as_posix()}/mine.ddd.json"
+    status, opened_ = _ask(server, "POST", "/api/open", {"path": mine})
+    assert status == 200, opened_
+    assert opened_["project"]["name"] == "Mine"
+    assert [path for path in asked if path.endswith("ddd-build.json")], "the record was read"
+    assert not [path for path in asked if "far.ddd.json" in path or "a\x00b" in path]
+    assert not [path for path in asked if path.endswith(("CON.ddd.json", "other.ini", "dir"))]
+    assert not [path for path in asked if path.endswith("not-a-description.json")]
+
+
+def test_a_record_naming_a_file_not_named_as_a_description_is_not_read_or_offered(
+    start_page: tuple[GuiServer, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server, root = start_page
+    _record(root, (root / "other.json").as_posix())
+    asked = _reads(monkeypatch)
+    status, listed = _ask(server, "GET", "/api/projects")
+    assert status == 200
+    assert [p["name"] for p in listed["projects"]] == ["Mine"]
+    assert not [path for path in asked if path.endswith("other.json")]
+
+
+def test_a_record_naming_an_ordinary_description_still_offers_it(
+    start_page: tuple[GuiServer, Path],
+) -> None:
+    server, root = start_page
+    write_tree(root, {"build/p.ddd.json": project("Built")})
+    _record(root, (root / "build" / "p.ddd.json").as_posix())
+    status, listed = _ask(server, "GET", "/api/projects")
+    assert status == 200
+    assert {p["name"] for p in listed["projects"]} == {"Mine", "Built"}
+
+
+def test_a_record_naming_a_nul_writes_no_traceback(
+    start_page: tuple[GuiServer, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    server, root = start_page
+    _record(root, f"{root.as_posix()}/a\x00b.ddd.json")
+    status, _ = _ask(server, "GET", "/api/projects")
+    assert status == 200
+    assert "Traceback" not in capsys.readouterr().err

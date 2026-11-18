@@ -58,6 +58,7 @@ from ddd.editing import (
     restore,
 )
 from ddd.file_names import uncreatable
+from ddd.gui.queries import is_a_path
 from ddd.ir import DataDictionary
 from ddd.loading import (
     DDD_SUFFIX,
@@ -80,6 +81,10 @@ loader's own, which :func:`kind_of` tells a file's kind by."""
 
 SEARCH_DEPTH: Final = 4
 """How many directories below the start the search for project descriptions goes."""
+
+DESCRIPTION_SUFFIX: Final = ".ddd.json"
+"""How the name of a project description ends: the walk's finds, and the only files a build record
+may name as its project for the start page to read."""
 
 UNKNOWN: Final = (-1, -1)
 """The stamp of a file whose modification time and size were not taken before an analysis read
@@ -297,6 +302,20 @@ class FileContent:
     error: str | None
 
 
+def _offering(records: Iterable[BuildInfo], root: Path) -> list[BuildInfo]:
+    """The build records whose ``project`` names a description the start page may read: a path a
+    request may name (:func:`~ddd.gui.queries.is_a_path`) - judged as text, before anything
+    resolves it, which a network or device spelling would have the system open - and named
+    ``*.ddd.json``. A record naming anything else reads as no record, and nothing is read at the
+    path it names."""
+    served = (root.as_posix(),)
+    return [
+        info
+        for info in records
+        if info.project.endswith(DESCRIPTION_SUFFIX) and is_a_path(info.project, served)
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class Snapshot:
     """What the session says at one moment, every part of it read at once: what
@@ -333,7 +352,7 @@ def find_projects(root: Path, build_directories: Sequence[Path] = ()) -> Found:
     base = root.resolve()
     refused: dict[Path, str] = {}
     images: dict[Path, list[str]] = {}
-    for info in discover(base, build_directories, refused):
+    for info in _offering(discover(base, build_directories, refused), base):
         named = images.setdefault(Path(info.project).resolve(), [])
         # A record offers its project whatever it names: one written without an image names
         # none, and two build trees of one image name it twice.
@@ -687,7 +706,7 @@ class Session:
         ignored: dict[Path, str] = {}  # the start page is where a refused record is reported
         builds = tuple(
             info
-            for info in discover(self.root, self.build_directories, ignored)
+            for info in _offering(discover(self.root, self.build_directories, ignored), self.root)
             if Path(info.project).resolve() == project
         )
         runs = _runs(project, builds)
@@ -1347,7 +1366,7 @@ def _descriptions(root: Path) -> list[Path]:
         found.extend(
             directory / name
             for name in files
-            if name.endswith(".ddd.json") and _is_project(directory / name)
+            if name.endswith(DESCRIPTION_SUFFIX) and _is_project(directory / name)
         )
     return found
 

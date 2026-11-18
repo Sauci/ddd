@@ -261,6 +261,13 @@ def _absolute(text: str, served: Iterable[str]) -> bool:
     return text.startswith("/") or _DRIVE.match(text) is not None
 
 
+def is_a_path(text: str, served: Iterable[str]) -> bool:
+    """Whether ``text`` is a path a request may name (:func:`file_path`), ``served`` the
+    directories a network path may name one under: for a path the session reads that no request
+    named, so that it meets the rule a request's path meets before anything resolves it."""
+    return _absolute(text, served)
+
+
 def named(sentence: str, *, blank: object = _REFUSED) -> BeforeValidator:
     """A name: not empty, at most :data:`MAX_NAME` characters, no NUL. Whether anything goes by
     it is the handler's question; anything else is refused with ``sentence``."""

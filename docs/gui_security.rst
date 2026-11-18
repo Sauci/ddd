@@ -238,10 +238,10 @@ What it does not defend against
   things show this happened: the reader's own browser shows it is signed out instead of
   landing on the project, and presenting that same code again prints one line on the
   terminal. The line says that nothing more is needed only if the browser ``ddd gui`` opened
-  landed on the project, and that if it says it is signed out, the reader stops ``ddd gui``
-  and starts it again, which mints a new code and a new token, and opens the address printed
-  then: a restart takes the token from the winner, and this run's address, opened since,
-  does not. The same two signs also follow an innocent cause: the first ``POST /open``
+  is signed in, and that if it says it is signed out, the reader is to stop ``ddd gui``,
+  start it again and open the address it prints then: this run's address, opened since, does
+  not take the token back. A restart mints a new code and a new token, and so takes the token
+  from the winner. The same two signs also follow an innocent cause: the first ``POST /open``
   reaches the server and spends the code, but its answer is lost on the way back, so the page
   sends the same code once more; the server refuses it as already spent, and the terminal
   prints the very same line - no other process involved. Either way, the browser ``ddd gui``

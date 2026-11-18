@@ -139,11 +139,17 @@ def test_the_page_says_either_cause_leaves_the_browser_signed_out_and_the_advice
 
 def test_the_page_says_what_the_line_on_the_terminal_tells_the_reader_to_do() -> None:
     assert (
-        "The line says that nothing more is needed only if the browser ``ddd gui`` opened "
-        "landed on the project, and that if it says it is signed out, the reader stops "
-        "``ddd gui`` and starts it again, which mints a new code and a new token, and opens the "
-        "address printed then: a restart takes the token from the winner, and this run's "
-        "address, opened since, does not." in _prose()
+        "The line says that nothing more is needed only if the browser ``ddd gui`` opened is "
+        "signed in, and that if it says it is signed out, the reader is to stop ``ddd gui``, "
+        "start it again and open the address it prints then: this run's address, opened since, "
+        "does not take the token back." in _prose()
+    )
+
+
+def test_the_page_says_a_restart_mints_a_new_code_and_a_new_token() -> None:
+    assert (
+        "A restart mints a new code and a new token, and so takes the token from the winner."
+        in _prose()
     )
 
 

@@ -899,10 +899,9 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 * **`ddd gui` says what to do when a launch code is presented again.**  A launch code signs one
   browser in, once; when it is presented a second time, `ddd gui` prints on stderr `ddd gui: a
   launch code that already signed a browser in was presented again. If the browser ddd gui opened
-  landed on the project, nothing more is needed. If it says it is signed out, stop ddd gui
-  (Ctrl+C), start it again and open the address it prints then: another program on this computer
-  may hold this run's token, which this run's address, opened since, does not take back`.  A tool
-  that matched the line's earlier text must match this one.
+  is signed in, nothing more is needed; if it says it is signed out, stop ddd gui (Ctrl+C), start
+  it again and open the address it prints then: this run's address, opened since, does not take
+  the token back`.  A tool that matched the line's earlier text must match this one.
 
 * **The Compare tab refuses a baseline that cannot be opened as unreadable, on every system.**  `GET
   /api/compare` answers `400` for a baseline whose path cannot be opened, on Windows as on every

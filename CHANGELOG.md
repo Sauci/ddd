@@ -36,9 +36,11 @@ A project built with CMake:
     build naming its targets builds `<stem>_ddd_a2l` too, and a target that depended on the
     generation for the a2l depends on `<stem>_ddd_a2l`; a project that defined a target of that name
     renames it; a `POST_BUILD` command of the image reading `DDD_A2L` reads the a2l of the build
-    before; under `STRICT` a map that leaves out a member of a structure now stops the first build,
-    where it stopped the second; and a file named by `DEPENDS` still reruns the generation before
-    the link, and no longer the a2l written after it.
+    before; an a2l written with no address source says so in a comment under `ASAP2_VERSION`, so a
+    step comparing a2l files byte for byte sees that line where it applies; under `STRICT` a map
+    that leaves out a member of a structure now stops the first build, where it stopped the second;
+    and a file named by `DEPENDS` still reruns the generation before the link, and no longer the a2l
+    written after it.
   - "A call the module cannot honour fails the configure, naming why": a project file is given to
     `ddd_generate(... PROJECT <file>)` and not to `ddd_add_component()`; a value keyword is given a
     value, or the keyword and its value wrapped in `if()`; the `PROJECT` file is written before
@@ -46,7 +48,8 @@ A project built with CMake:
     CXX)` or `enable_language(C)`.
   - "The configure follows the tool and the templates it renders with": a step that recovered a
     deleted output directory by hand can go, the configure reconfiguring by itself where a Ninja
-    build stopped on the missing description.
+    build stopped on the missing description; and `DDD_VERSION_HANDSHAKE` is no longer cached, the
+    module asking `ddd --version` at every configure.
   - "Makefile generators leave a build that changed nothing with nothing to do": a step in another
     directory, or one reading a `{component}` header, depends on `<stem>_ddd_generation`, or on
     `<stem>_ddd_a2l` for the linked a2l, and not on a generated file's path; a file of the step
@@ -55,7 +58,10 @@ A project built with CMake:
 A description, a template and what the tool writes from them:
 
   - "`ddd id --assign` writes a description the way `ddd gui` does": a description that spells a key
-    twice has to be corrected first, as `ddd check` has always asked.
+    twice has to be corrected first, as `ddd check` has always asked; a read-only file is reported
+    as one that cannot be written and left as it was, a link is written through to the file it names
+    and stays a link, and a file `ddd check` would refuse to read is reported as not readable as
+    json and left alone, each reported while the other files are stamped, and the run exits 1.
   - "A name that is a keyword of ASAP2 is an error, and a string or a name past the format's limits
     is named": the error costs a rename, and `-W a2l-keyword=ignore` relaxes it for a name the
     target's tool accepts; the warning stops a `--strict` or `STRICT` build, and `-W
@@ -85,7 +91,8 @@ A description, a template and what the tool writes from them:
     identifier that was ignored now renames the records it stands for.
   - "The a2l's records, groups and methods are named and ordered the same way on every run": a
     project with two conversions in one unit, whose first holder changed, sees the two names swap
-    between the records, which a tool that addresses a method by its name sees.
+    between the records, which a tool that addresses a method by its name sees, and a `GROUP` lists
+    the elements of an array of structures in the dictionary's order, `SA[1].v` before `SA[10].v`.
   - "Every component has an include guard of its own": a hand written reference to a guard that
     moved, such as an `#ifdef` on it, is changed; a template that builds a component's guard with
     `model.guard()` keeps the old collision.
@@ -95,6 +102,9 @@ A description, a template and what the tool writes from them:
     macro.
   - "A reader of a variable's scale can follow its rescale": a project that copied the example
     templates earlier copies the `scale` macro of `_macros.jinja2` and its call to gain it.
+  - "The a2l's addresses out of the linked image: `ddd generate a2l --image`": the a2l takes the
+    byte order the image states, and a `--byte-order` that contradicts it is refused; `ADDRESS_MAP`
+    and `--address-map` stay as they were, for an image without debug information.
 
 A delivery comparison:
 
@@ -107,13 +117,16 @@ A delivery comparison:
     structure, follows the new one, said at each variable.
   - "A constant that is gone stops a comparison, one that is new does not": a project that changes a
     constant between two deliveries relaxes `changed-interface` or `removed-constant`, or takes a
-    new baseline.
+    new baseline; and a raster whose event or cycle changed is `changed-storage`, a warning and so
+    an error under `--strict`, where it was no finding.
   - "A rename, or a narrowing by condition, of an object a component reads is an error": a project
     that relaxed `-W renamed-object=ignore` or `-W changed-condition=ignore` to accept such a
     delivery names `-W renamed-read-object=...` or `-W narrowed-condition=...` for that delivery.
   - "The limits of a measurement a component reads are graded by what its readers meet": a project
     that relaxed `-W narrowed-limits=ignore` for a measurement a component reads no longer has it
-    reach it, and a `--strict` run now stops on a widened measurement.
+    reach it, and a `--strict` run now stops on a widened measurement; a delivery that moved a
+    member's limits and changed its variable's kind, locality, type, shape or where its members lie
+    meets the `changed-interface` alone, the limits told again once it is resolved.
   - "An output a component drops or changes is graded as one somebody reads": a project that relaxed
     `-W removed-object=...` to let an input go can drop it; one that relied on
     `removed-unused-object` for a dropped output names `removed-object` now; and a supplier whose
@@ -130,12 +143,17 @@ A delivery comparison:
     removal of everything.
   - "A producer lost is `missing-producer`, said once, where the baseline had one": a project's own
     `-W missing-producer=ignore` silences it on every path, and a relaxation of `changed-owner` no
-    longer reaches this pair.
+    longer reaches this pair; a component that turns an output into an input exits 1 under `ddd
+    check --baseline --standalone` with or without `--strict`, as it exited 0 with a `changed-owner`
+    warning.
   - "An initial value is compared as the bytes it stores, and one no double holds is refused": a
     `1e-400` written to mean zero is written `0`, and a comparison that was clean over a changed
-    table reports it.
+    table, a square map and its transpose, or over `-0.0` against `0.0`, reports it.
   - "A structured variable's changes are told once, in order, and a variable with no leaf is
-    compared": the new errors are relaxed by the ids they carry.
+    compared": the new errors are relaxed by the ids they carry; and a structure variable with no
+    leaf, one holding only members of external types, that is removed, renamed or reused is now
+    `removed-object`, `removed-unused-object`, `renamed-read-object`, `renamed-object` or
+    `reused-name`, where no finding was made.
   - "A structure member's `export: false`, `format` and `display_identifier` reach the records below
     it": `ddd compare` against a baseline 0.11.0 archived reports `changed-a2l` for every such leaf,
     and `ddd check --baseline --strict` of a project unchanged since exits 1 after the upgrade,
@@ -179,6 +197,32 @@ A script or a client reading what the tool prints:
   - "`ddd gui --host` takes the two addresses `ddd gui` listens on": a `--host` naming any address
     but `127.0.0.1`, `0.0.0.0` or a name resolving to either is refused, exit 2, and a build script
     or a CI job that passed one gives `--host 0.0.0.0` instead.
+  - "A types, units, constants, sections or rasters file may declare nothing, and `empty-vocabulary`
+    says so": a tool that validates against the schemas of an earlier version refuses an empty list
+    as the loader did, and a build that counts the findings it prints sees one info per such file,
+    which `-W empty-vocabulary=ignore` silences.
+  - "An include through a loop of links is a finding on python 3.12 too": `ddd check` reports the
+    file it cannot read, at the entry naming it, where it ended in a traceback, and `ddd gui`
+    answers a request naming a path through such a loop as one naming no file it can read, where it
+    answered `500`.
+  - "Every route of `ddd gui` reads its query through one typed model": a hostile or malformed value
+    in a query, a body or a page's path is refused with a plain `400`, `404` or `409` and never a
+    `500`, and an answer carrying json nested more than 99 levels deep is refused `409` rather than
+    sent.
+  - "`ddd gui` answers at most sixty-four connections at once": the sixty-fifth is refused
+    immediately, `503`.
+  - "`ddd gui`'s token is no longer a cookie": the page keeps the token in the browser's storage for
+    its own address and sends it as a header, a cookie being no credential any more; a browser too
+    old to send `Sec-Fetch-Site` lets any site open the page itself at an address it chooses, and
+    the security page says what that allows.
+  - "`ddd gui` refuses a request that says it came from somewhere else": in a browser that sends
+    `Sec-Fetch-Site`, a page served from another port of `127.0.0.1` is refused rather than
+    answered.
+  - "`ddd gui` edits the value of a scalar and the description of a variable": `GET
+    /api/description-plan` and `GET /api/value-plan`, like the rest of the api, are a preview's and
+    change with the package.
+  - "Six small edges of the edit engine are settled": a pointer's element is spelled with its
+    brackets: `at` without them is refused, where `1` planned a key of its own.
 
 A user of `ddd tool from-elf`:
 
@@ -187,13 +231,17 @@ A user of `ddd tool from-elf`:
     written again by `ddd tool from-elf` and the project generated again.
   - "`ddd tool from-elf` warns where a structure is laid out otherwise than the generated C would
     lay it out": a script that counts the findings, or a project that turns warnings into errors on
-    its output, meets the new ones, and the only way to silence one is to change the source.
+    its output, meets the new ones, and the only way to silence one is to change the source; two
+    structures of one name that differ in a member's offset or in size are an `elf-type-conflict`
+    error, where they were one entry.
   - "`ddd tool from-elf` refuses a debug-only file": a script that ran it over a companion file
     passes the linked image.
   - "`ddd tool from-elf` says where an image answers twice": a variable that was described silently
-    from the first unit's answer is now an error naming both answers, and the units have to agree; a
-    script that matched `duplicate-declaration` for a name asked for twice matches
-    `elf-symbol-ambiguous` instead.
+    from the first unit's answer is now an error naming both answers, and the units have to agree;
+    one name at one address that two units give two sizes is `elf-type-conflict` and the variable is
+    left out; two sections a linker script overlays that hold an address, with a symbol naming
+    neither, are the error `elf-section-ambiguous`; a script that matched `duplicate-declaration`
+    for a name asked for twice matches `elf-symbol-ambiguous` instead.
   - "`ddd tool from-elf` refuses the C++ it does not read": a project that relied on the wrong
     description describes those by hand.
   - "A name no unit gave storage is `elf-no-storage`, once": a script that matches the old
@@ -222,6 +270,45 @@ A user of `ddd tool from-elf`:
   - "A unit with spaces around it is refused on a variable's panel and a type's": a unit typed that
     way is typed without them, and the route that settles a key and the type route answer 409 for
     one.
+  - "A plan made over a file saved during the analysis is refused as `stale`": a plan whose file
+    reads differently, or whose recorded place no longer names what was asked about, is refused as
+    `stale`, and a settled value is refused as `unreadable` when its declaration moved.
+  - "`ddd gui` writes nothing under the build tree of a generated project": a change of any file
+    under the build tree that holds the record naming the description is refused as `generated`, and
+    a new file is offered instead beside the first description outside the build tree that has a
+    `CMakeLists.txt` beside it, with the `ddd_add_component()` line to add to it.
+  - "A build record's `project` is read under the rule a request's path meets": a project whose
+    record names a `project` that is not a path a request may name, or is not named `*.ddd.json`, is
+    read as no record: it is not offered on the start page and its builds do not feed it when it is
+    open; it is opened by its path on the command line, its records' severities still not applying
+    to it.
+  - "`localhost` is `ddd gui` itself, whichever of its two addresses a browser tries": a page opened
+    at `localhost` is signed out until the address `ddd gui` printed is opened there; a fixed
+    `--port` on which another program already listens at `[::1]` is refused before `ddd gui` starts,
+    naming the port, and `--port 0` tries another.
+  - "A file that cannot be written is refused before anything is, on every system, and what is
+    written is synced": a file that is read-only, another user's, on a read-only mount, or to be
+    written by root over a file nobody can write is refused as `unwritable`, naming it, with nothing
+    written, where on Linux a read-only file was written through, silently.
+  - "A rename, a removal or a declaration that produces a name is refused while a file of the
+    project does not load": each is refused as `unreadable`, naming every file that did not load,
+    until the file is repaired.
+  - "A fix or a value that would leave a file unable to load is withheld, or said so": a fix is
+    offered in the editor only for the declarations it leaves loadable, and on the page only where
+    it leaves every one of them loadable; a value the variable's panel would write that leaves one
+    unable to load is planned with a sentence naming the declaration and the file that would not
+    load, drawn above Apply.
+  - "A name another component keeps local is no longer offered to read": a name any component
+    declares local is left out of what a component may read, and reading it is refused, saying whose
+    it is.
+  - "The Files tab's Remove panel waits when a row arrives from elsewhere": a row the page was
+    loaded with - from a link, a bookmark, a typed address, a reload or a new tab - says that its
+    removal is planned once asked, behind a button.
+  - "A sign-in that gets no answer at all is retried once": a launch code whose first answer was
+    lost is already spent, so that one case still ends signed out, with the terminal's reused-code
+    line printed as a false alarm.
+  - "The browser `ddd gui` opens for the reader is no longer launched on the long-lived token": it
+    is launched on a one-time code, good for sixty seconds or one use.
 
 An install and the tool's python:
 

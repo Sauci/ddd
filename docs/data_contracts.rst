@@ -285,6 +285,12 @@ definition that leaves it out is a ``schema`` finding like any other missing fie
 
 .. autopydantic_model:: ddd.models.A2lObjectOptions
 
+A leaf of the :doc:`data dictionary <data_dictionary>` carries the same block resolved, as
+:class:`ddd.models.LeafA2lOptions`: a display identifier there may be the path a member above
+the leaf composes, ``V[1].J.b``, where the block a description writes holds one identifier.
+
+.. autopydantic_model:: ddd.models.LeafA2lOptions
+
 Conversions
 ~~~~~~~~~~~
 

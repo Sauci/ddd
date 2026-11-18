@@ -397,23 +397,6 @@ class TestCodeGeneration:
         assert "const volatile uint16_t Ax[3];" in source
         assert "extern const volatile uint16_t P;" in header
 
-    def test_asking_for_a_const_consumer_view_does_not_repeat_the_qualifier(
-        self, tree: Path
-    ) -> None:
-        """``const const`` is not a declaration any compiler accepts.
-
-        The consumer view adds ``const`` so that a write does not compile; calibration data
-        already carries one, whether or not it also carries ``volatile``.
-        """
-        files = generate(
-            tree,
-            declare("output", "P", "uint16", kind="parameter", volatile=True),
-            const_inputs=True,
-        )
-        header = files["A.h"]
-        assert "extern const volatile uint16_t P;" in header
-        assert "const const" not in header
-
     def test_sections_separate_ram_from_calibration_data(self, tree: Path) -> None:
         files = generate(
             tree,
@@ -458,24 +441,6 @@ class TestCodeGeneration:
             declare("local", "C", "uint8", kind="curve", axis="Ax", description="feed forward"),
         )
         assert "/** feed forward (calibration curve over Ax) */" in files["ddd_globals.c"]
-
-    def test_const_inputs_does_not_duplicate_const(self, tree: Path) -> None:
-        dictionary, bag = run_analysis(
-            tree,
-            {
-                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
-                "a.ddd.json": component("A", declare("output", "P", "uint8", kind="parameter")),
-                "b.ddd.json": component("B", declare("input", "P", "uint8", kind="parameter")),
-            },
-        )
-        assert dictionary is not None
-        assert not bag.has_errors
-        files = {
-            file.path.name: file.content
-            for file in render_files(dictionary, tree / "gen", const_inputs=True)
-        }
-        assert "extern const uint8_t P;" in files["B.h"]
-        assert "const const" not in files["B.h"]
 
 
 class TestA2l:

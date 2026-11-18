@@ -5,12 +5,15 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from conftest import component, declare, project, render_files, run_analysis
+from conftest import DEMO, EXAMPLES, component, declare, project, render_files, run_analysis
 from ddd.backends import (
     MANIFEST_NAME,
     A2lBackend,
@@ -23,6 +26,8 @@ from ddd.backends import (
     render,
     write,
 )
+from ddd.backends.c.literals import component_guard
+from ddd.models.reserved import is_reserved_identifier
 
 
 def generate(tree: Path, files: dict[str, Any], **options: Any) -> dict[str, str]:
@@ -99,7 +104,7 @@ class TestGlobalDefinitionFile:
         source = files["ddd_globals.c"]
         assert "#if defined(FEATURE_X) && VERSION > 2\n" in source
         assert "#endif /* defined(FEATURE_X) && VERSION > 2 */" in source
-        assert source.index("#if ") < source.index("uint8_t A;") < source.index("#endif")
+        assert source.index("#if ") < source.index("uint8_t A;") < source.index("#endif /*")
 
     def test_description_and_unit_become_a_comment(self, tree: Path) -> None:
         files = generate(tree, simple(declare("local", "A", description="Flow rate", unit="l/min")))
@@ -230,7 +235,7 @@ class TestComponentHeaders:
         )
         assert "extern uint8_t X;  /* produced by Producer */" in files["Consumer.h"]
 
-    def test_const_inputs(self, tree: Path) -> None:
+    def test_an_input_is_declared_as_its_producer_defines_it(self, tree: Path) -> None:
         files = generate(
             tree,
             {
@@ -238,10 +243,10 @@ class TestComponentHeaders:
                 "a.ddd.json": component("A", declare("output", "X")),
                 "b.ddd.json": component("B", declare("input", "X")),
             },
-            const_inputs=True,
         )
-        assert "extern const uint8_t X;" in files["B.h"]
+        assert "extern uint8_t X;" in files["B.h"]
         assert "extern uint8_t X;" in files["A.h"]
+        assert "const" not in files["B.h"]
         assert "const" not in files["ddd_globals.c"]
 
     def test_empty_component_gets_a_header(self, tree: Path) -> None:
@@ -624,3 +629,245 @@ class TestStringInitialisers:
     def test_a_signed_byte_string_takes_the_same_literal(self, tree: Path) -> None:
         files = generate(tree, self.string("abc", datatype="sint8", size=8))
         assert 'const int8_t Label[8] = "abc";' in files["ddd_globals.c"]
+
+
+class TestRetainingADefinitionAGarbageCollectingLinkWouldDrop:
+    """``DDD_RETAIN``, which the example ``ddd_globals.c`` template puts before every definition:
+    empty unless the project defines it, and then what keeps the object under ``--gc-sections``."""
+
+    RETAIN = "__attribute__((used, retain))"
+
+    @staticmethod
+    def generated(directory: Path) -> Path:
+        from ddd.cli import main
+
+        arguments = ["generate", "c", str(DEMO), "-o", str(directory), "-t"]
+        assert main([*arguments, str(EXAMPLES / "templates")]) == 0
+        return directory / "ddd_globals.c"
+
+    @staticmethod
+    def compiler() -> str:
+        gcc = shutil.which("gcc")
+        assert gcc, "no gcc on the path: the objects a link keeps are counted from its output"
+        return gcc
+
+    def run(self, *command: str | Path) -> str:
+        done = subprocess.run(
+            [str(part) for part in command], capture_output=True, text=True, check=False
+        )
+        assert done.returncode == 0, done.stderr
+        return done.stdout
+
+    def kept(self, tmp_path: Path, *flags: str) -> tuple[set[str], set[str], bytes, str]:
+        """Link the generated definitions with ``-fdata-sections`` and ``--gc-sections`` against
+        a ``main`` that references none of them: the objects the unit defines, the ones the image
+        keeps, the image's first bytes, and its path."""
+        source = self.generated(tmp_path / "gen")
+        main_c = tmp_path / "main.c"
+        main_c.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+        include = f"-I{DEMO.parent / 'include'}"
+        gcc = self.compiler()
+        self.run(gcc, "-g", "-O2", "-fdata-sections", include, f"-I{source.parent}", *flags,
+                 "-c", source, "-o", tmp_path / "globals.o")  # fmt: skip
+        self.run(gcc, "-g", "-O2", "-c", main_c, "-o", tmp_path / "main.o")
+        image = tmp_path / "image.exe"
+        self.run(gcc, "-Wl,--gc-sections", tmp_path / "main.o", tmp_path / "globals.o", "-o", image)
+
+        def objects(path: Path) -> set[str]:
+            symbols = (line.split() for line in self.run("nm", path).splitlines())
+            return {s[2].removeprefix("_") for s in symbols if len(s) == 3 and s[1] in "BbDdRrGgSs"}
+
+        defined = objects(tmp_path / "globals.o")
+        return defined, defined & objects(image), image.read_bytes()[:4], str(image)
+
+    def test_the_macro_keeps_every_definition_on_elf_and_no_more_than_the_empty_one_on_pe(
+        self, tmp_path: Path
+    ) -> None:
+        """Measured on ELF with gcc 15.2.0 and binutils 2.46: the empty macro and ``used`` alone
+        keep nothing, and ``used, retain`` keeps every object. On PE gcc ignores ``retain``, so the
+        macro keeps what the empty one does, whatever the linker leaves of that: no count is held
+        there, since it is the linker's."""
+        defined, empty, magic, _ = self.kept(tmp_path / "empty")
+        _, used, _, _ = self.kept(tmp_path / "used", "-DDDD_RETAIN=__attribute__((used))")
+        _, retained, _, _ = self.kept(tmp_path / "retain", f"-DDDD_RETAIN={self.RETAIN}")
+        version = self.run(self.compiler(), "--version").splitlines()[0]
+        met = f"{version}: the empty macro kept {sorted(empty)}, used {sorted(used)}"
+        assert len(defined) >= 20, met
+        if magic == b"\x7fELF":
+            assert empty == used == set(), met
+            assert retained == defined, f"{met}, used and retain {sorted(retained)}"
+        else:
+            assert magic[:2] == b"MZ", met
+            assert used == retained == empty, f"{met}, used and retain {sorted(retained)}"
+
+    def test_the_a2l_of_an_image_without_them_says_the_addresses_are_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """On an ELF image the a2l run warns ``address-missing``; the reader reads no other
+        format, so what a PE leg holds is that the image it linked is a PE one."""
+        from ddd.cli import main
+
+        _, _, magic, image = self.kept(tmp_path / "empty")
+        if magic != b"\x7fELF":
+            assert magic[:2] == b"MZ", "the linked image is neither an ELF nor a PE one"
+            return
+        arguments = ["generate", "a2l", str(DEMO), "--image", image, "-o", str(tmp_path / "a2l")]
+        main(arguments)
+        assert "warning[address-missing]" in capsys.readouterr().err
+
+    def test_the_macro_defaults_to_nothing_and_the_c_compiles_as_it_did(
+        self, tmp_path: Path
+    ) -> None:
+        """Compiled to assembly, the unit with ``DDD_RETAIN`` before each definition is the unit
+        without it, byte for byte."""
+        source = self.generated(tmp_path / "with")
+        text = source.read_text(encoding="utf-8")
+        assert text.count("DDD_RETAIN ") >= 20
+        without = tmp_path / "without"
+        without.mkdir()
+        (without / "ddd_globals.c").write_text(
+            text.replace("DDD_RETAIN ", ""), encoding="utf-8", newline="\n"
+        )
+        for directory in (source.parent, without):
+            self.run(
+                self.compiler(), "-S", "-O2", "-g0", "-fdata-sections", f"-I{source.parent}",
+                f"-I{DEMO.parent / 'include'}", directory / "ddd_globals.c",
+                "-o", directory / "out.s",
+            )  # fmt: skip
+        assert (source.parent / "out.s").read_bytes() == (without / "out.s").read_bytes()
+
+
+CI_C_FLAGS = [
+    "-std=c11",
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Werror",
+    "-Wconversion",
+    "-Wshadow",
+    "-Wcast-qual",
+    "-Wstrict-prototypes",
+]
+"""The warning set ``docker/compile.sh`` verifies the generated c with."""
+
+
+def compiled(directory: Path, source: str) -> subprocess.CompletedProcess[str]:
+    """Compile ``source`` as a translation unit beside the generated files, under the CI flags."""
+    gcc = shutil.which("gcc")
+    assert gcc, "no gcc on the path: the generated c is proved by compiling it"
+    unit = directory / "unit.c"
+    unit.write_text(source, encoding="utf-8")
+    return subprocess.run(
+        [gcc, *CI_C_FLAGS, f"-I{directory}", "-c", str(unit), "-o", os.devnull],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+class TestOneGuardForOneComponent:
+    """Two components must not open one include guard: a file including both headers finds the
+    second one preprocessed away, and ``compile.sh`` compiles each header alone."""
+
+    @staticmethod
+    def two(tree: Path, first: str, second: str) -> dict[str, str]:
+        return generate(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component(first, declare("output", "FromFirst")),
+                "b.ddd.json": component(second, declare("output", "FromSecond")),
+            },
+        )
+
+    @staticmethod
+    def guard_of(header: str) -> str:
+        return header.split("#ifndef ", 1)[1].split("\n", 1)[0]
+
+    def test_a_trailing_underscore_has_a_prefix_of_its_own(self, tree: Path) -> None:
+        files = self.two(tree, "Valve", "Valve_")
+        assert self.guard_of(files["Valve.h"]) == "DDD_COMPONENT_VALVE_H"
+        assert self.guard_of(files["Valve_.h"]) == "DDD_COMPONENTS_TRAILING_VALVE_H"
+
+    def test_a_leading_underscore_has_a_prefix_of_its_own(self, tree: Path) -> None:
+        files = self.two(tree, "valve", "_valve")
+        assert self.guard_of(files["valve.h"]) == "DDD_COMPONENT_VALVE_H"
+        assert self.guard_of(files["_valve.h"]) == "DDD_COMPONENTS_LEADING_VALVE_H"
+
+    def test_both_edges_have_a_prefix_of_their_own(self, tree: Path) -> None:
+        files = self.two(tree, "_valve_", "valve")
+        assert self.guard_of(files["_valve_.h"]) == "DDD_COMPONENTS_BOTH_VALVE_H"
+
+    def test_no_two_of_these_names_share_a_guard(self, tree: Path) -> None:
+        names = ["v", "_v", "v_", "_v_", "v_w", "_v_w", "v_w_", "_v_w_", "leading_v", "both_v"]
+        guards = [component_guard(name) for name in names]
+        assert len(set(guards)) == len(names)
+
+    def test_a_file_including_both_headers_compiles_under_the_ci_flags(self, tree: Path) -> None:
+        files = self.two(tree, "Valve", "Valve_")
+        directory = tree / "gen"
+        directory.mkdir()
+        for name, content in files.items():
+            (directory / name).write_text(content, encoding="utf-8")
+        done = compiled(
+            directory,
+            '#include "Valve.h"\n#include "Valve_.h"\n'
+            "unsigned char read_both(void) { return (unsigned char)(FromFirst + FromSecond); }\n",
+        )
+        assert done.returncode == 0, done.stderr
+
+    def test_a_name_with_no_edge_underscore_keeps_the_guard_it_had(self, tree: Path) -> None:
+        files = self.two(tree, "ValveHub", "Valve_Hub")
+        assert self.guard_of(files["ValveHub.h"]) == "DDD_COMPONENT_VALVEHUB_H"
+        assert self.guard_of(files["Valve_Hub.h"]) == "DDD_COMPONENT_VALVE_HUB_H"
+
+    def test_no_guard_is_a_reserved_identifier(self, tree: Path) -> None:
+        """The screen the analysis applies to a component's own name: a double underscore
+        anywhere, or an underscore and a capital at the start."""
+        for name in ("valve", "_valve", "valve_", "_v_", "v_w", "_v_w_"):
+            files = self.two(tree / name, name, "Other")
+            guard = self.guard_of(files[f"{name}.h"])
+            assert not is_reserved_identifier(guard), guard
+            assert re.fullmatch(r"[A-Z][A-Z0-9_]*", guard), guard
+
+    def test_the_shared_headers_keep_theirs(self, tree: Path) -> None:
+        files = self.two(tree, "Valve", "Valve_")
+        assert self.guard_of(files["ddd_types.h"]) == "DDD_TYPES_H"
+        assert self.guard_of(files["ddd_globals.h"]) == "DDD_GLOBALS_H"
+
+
+class TestADescriptionEndingInATrigraph:
+    """``??/`` is a backslash to a compiler that reads trigraphs, and at the end of a line it
+    splices the next one: ``-Wtrigraphs``, which the CI flags turn into an error, stops it.
+    The component's description ends a line in the component header and in the file of
+    definitions."""
+
+    @pytest.mark.parametrize("ending", ["=", "(", "/", ")", "'", "<", "!", ">", "-"])
+    def test_a_component_description_ending_in_any_trigraph_compiles_under_the_ci_flags(
+        self, tree: Path, ending: str
+    ) -> None:
+        description = f"Reads??{ending}"
+        files = generate(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("C", declare("output", "Value"), description=description),
+            },
+        )
+        directory = tree / "gen"
+        directory.mkdir()
+        for name, content in files.items():
+            (directory / name).write_text(content, encoding="utf-8")
+        for unit in (
+            '#include "C.h"\n',
+            '#include "ddd_globals.h"\n',
+            '#include "ddd_globals.c"\n',
+        ):
+            done = compiled(directory, unit)
+            assert done.returncode == 0, done.stderr
+        assert f"Reads? ?{ending}\n" in files["C.h"]
+        assert all(
+            description not in content
+            for name, content in files.items()
+            if name.endswith((".c", ".h"))
+        )

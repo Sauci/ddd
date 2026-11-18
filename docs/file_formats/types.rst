@@ -194,7 +194,12 @@ A scalar type is agreement by naming rather than by copying. Three components co
 engine speed each used to write out the datatype, the unit, the scaling and the limits, and
 DDD's job was to notice when one of the three was wrong. If all three say ``Speed_t`` instead,
 there is nothing left for them to disagree about - which is a check turned into a construction,
-and the reason the four keys above are exactly the ones a scalar type fixes. ``kind``,
+and the reason the four keys above are exactly the ones a scalar type fixes. It is also a
+check given up: with one description there is no second one for ``ddd check`` to find
+different, so a rescale of the type is one edit that no reader's description shows, and it
+changes no generated header but the one the example templates give a scale macro. A project
+that wants a disagreement reported restates the definition instead; :doc:`../concept` sets
+the two against each other. ``kind``,
 ``dimensions``, ``init``, ``volatile`` and the ``a2l`` block stay on the variable, because they
 are properties of one object rather than of the type: two measurements of one type may well
 differ in whether an interrupt writes one of them.
@@ -263,7 +268,20 @@ question of whether the answer is shared: a unit written on a member says it for
 that structure, and a ``Temperature_t`` says it once for everything in the project that names
 it. The ``a2l`` block sits on the member rather than on the structure because that is the
 granularity the file ends up with - keeping one member out of the a2l, or giving one member a
-display format, is a decision about that member alone. A member under a string conversion, its
+display format, is a decision about that member alone. On a member that names a structure the
+block shapes every record below it: ``export: false`` keeps the whole subtree out of the a2l in
+every instance of the type, and nothing deeper brings a leaf back, an inner ``export: true``
+included; ``format`` reaches each leaf below it, but not a string; and a ``display_identifier`` stands for
+that member's own segment of the path of each record below it, so ``V[1].j.b`` with ``j`` displayed
+``J`` is displayed ``V[1].J.b``, and the identifiers of several members compose:
+``V.J[0].Inner.x`` for ``j`` displayed ``J`` and ``n`` below it ``Inner``. A deeper member that states
+its own ``format`` wins for its own subtree. A leaf's own ``display_identifier``, on a member that
+names no structure, is written as stated and not composed into a path, so the elements of an array of
+structures share it. Each identifier a member states is held as a name is, at the member that states
+it: ``a2l-keyword`` for a keyword, and ``a2l-unrepresentable`` past ``MAX_PARTIAL_IDENT``, or, for the
+composed identifier, past ``MAX_IDENT``. Two members displayed alike give records alike, and DDD does
+not warn of it, as it does not of two leaves so displayed. A member
+under a string conversion, its
 own or its type's, is a ``value`` member of exactly one dimension, and states no unit, limits
 or format, as a definition would not.
 
@@ -471,9 +489,9 @@ the declaration rather than to the members:
 .. code-block:: c
 
    /** The inlet sensor as this ecu sees it */
-   volatile Sensor_t Inlet;
+   DDD_RETAIN volatile Sensor_t Inlet;
    /** What the calibration tool may change about the inlet sensor */
-   const volatile SensorCal_t InletCal;
+   DDD_RETAIN const volatile SensorCal_t InletCal;
 
 Flattened into the a2l
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -493,9 +511,10 @@ load a file that uses it without a warning and then display nothing for it.
      SYMBOL_LINK "Inlet.latest.value" 0
    /end MEASUREMENT
 
-The offset in ``SYMBOL_LINK`` is ``0`` and means it: the offset of a symbol from itself. The
-name carries the whole path, so the address a build reports for ``Inlet.latest.value`` is the
-address of that member and nothing has to be added to it. The limits ``-40 150`` and the
+``SYMBOL_LINK`` is shown as it is written before the link and with an address map: the member's
+path at offset ``0``, which names no symbol a linker map holds. With ``--image`` it names the
+variable's own symbol, ``Inlet``, and the member's offset from it in bytes, as ASAP2 defines
+the record, and the same holds for the two records below. The limits ``-40 150`` and the
 ``CM_LIN_DEGC`` come from ``Temperature_t``, which the member names and the enclosing structure
 never repeats. Each leaf also joins the ``GROUP`` of the component that declares the variable,
 so a structured variable is not a hole in that component's measurement list.

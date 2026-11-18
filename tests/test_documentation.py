@@ -12,6 +12,7 @@ import ast
 import contextlib
 import dataclasses
 import io
+import itertools
 import json
 import re
 import shlex
@@ -23,7 +24,7 @@ import tomllib
 import zipfile
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import dev_version
 import jsonschema
@@ -36,7 +37,13 @@ from pydantic import BaseModel, ValidationError
 from conftest import DEMO
 from ddd import __version__
 from ddd.analysis import _MAX_LEAVES
-from ddd.backends.c.model import CodeModel, MemberView, ObjectView
+from ddd.backends.c.model import (
+    CodeModel,
+    ConversionView,
+    LimitsView,
+    MemberView,
+    ObjectView,
+)
 from ddd.cli import EXIT_OK, _build_parser, main, schema_models
 from ddd.diagnostics import CHECKS
 from ddd.loading import FILE_KINDS
@@ -206,7 +213,6 @@ class TestChecks:
         # file names contain other characters.
         unknown = {name for name in claimed if name not in CHECKS and "-" in name}
         assert unknown <= {
-            "const-inputs",
             "dry-run",
             "address-map",
             "byte-order",
@@ -726,13 +732,16 @@ def generate_options(artefact: str) -> set[str]:
 
 class TestTheA2lOptions:
     """The options the a2l takes and the c does not say where its addresses and its byte order
-    come from, so every document that says how to run ``generate`` names each of them."""
+    come from, and what the project pastes into its module, so every document that says how to
+    run ``generate`` names each of them."""
 
     OWN = sorted(generate_options("a2l") - generate_options("c"))
 
-    def test_they_are_the_two_sources_of_the_addresses_and_the_byte_order(self) -> None:
+    def test_they_are_the_sources_of_the_addresses_the_byte_order_and_the_module_fragment(
+        self,
+    ) -> None:
         """The positive control: what the test below is parametrized over is not nothing."""
-        assert self.OWN == ["--address-map", "--byte-order", "--image"]
+        assert self.OWN == ["--a2l-module-fragment", "--address-map", "--byte-order", "--image"]
 
     @pytest.mark.parametrize("option", OWN)
     @pytest.mark.parametrize(
@@ -1862,6 +1871,12 @@ class TestTheReleaseNote:
             "which is rewritten `true` or `false`; the diff shows it. The values mean the same."
         ) in text
 
+    def test_the_changelog_names_both_identifiers_of_a_name_asked_for_twice(self) -> None:
+        assert (
+            "A script that matched `duplicate-declaration` for a name asked for twice matches "
+            "`elf-symbol-ambiguous` instead, at the same exit status."
+        ) in flattened(UNRELEASED)
+
     def test_it_counts_the_checks_needing_every_component_as_the_registry_does(self) -> None:
         for word in project_wide_counts(UNRELEASED):
             assert NUMBER_WORDS[word.lower()] == len(project_wide_checks()), (
@@ -2001,10 +2016,21 @@ class TestTheTemplateReference:
         assert f"``model.{name}" in self.TEMPLATES
 
     @pytest.mark.parametrize(
-        "name", sorted({*view_attributes(ObjectView), *view_attributes(MemberView)})
+        "name",
+        sorted({*view_attributes(ObjectView), *view_attributes(MemberView)}),
     )
     def test_every_attribute_of_a_view_is_documented(self, name: str) -> None:
         assert f"``.{name}" in self.TEMPLATES
+
+    @pytest.mark.parametrize(
+        ("path", "name"),
+        [
+            *(("conversion", name) for name in view_attributes(ConversionView)),
+            *(("limits", name) for name in view_attributes(LimitsView)),
+        ],
+    )
+    def test_every_attribute_of_the_scale_views_is_documented(self, path: str, name: str) -> None:
+        assert f"``.{path}.{name}``" in self.TEMPLATES
 
 
 class TestTheFivePagesTheImageReaches:
@@ -2048,6 +2074,79 @@ class TestTheFivePagesTheImageReaches:
         assert (
             "``--image`` reads the answer out of the linked image's debug information, member "
             "offsets included"
+        ) in page
+
+
+class TestWhatThePagesSayOfSymbolLink:
+    """``SYMBOL_LINK`` names a linker symbol and the offset from it. With ``--image`` a member's
+    names its variable and its offset; before the link, and with a map, it names the path at
+    offset 0, which no linker map can answer, and a tool reading the debug information may
+    resolve it, which nobody tried (finding 1:I9)."""
+
+    BEFORE = (
+        "Before the link, and with an address map, which gives a symbol's address and nothing "
+        "of a member's offset, the record names the member's path at offset 0, which is a path "
+        "no linker map can answer."
+    )
+    UNTRIED = (
+        "A tool that reads the debug information of the linked image may resolve it; no such "
+        "tool was tried."
+    )
+
+    def test_the_specification_says_what_an_image_and_what_a_map_gives_a_member(self) -> None:
+        spec = flattened(SPEC)
+        assert (
+            "`SYMBOL_LINK` names the linker symbol and the offset from it, as ASAP2 defines the "
+            "record: with `--image`, `Inlet.cells[1].v` carries the variable's own symbol, "
+            "`Inlet`, and the member's offset from that symbol's address in bytes, both taken "
+            "from where the image placed the member."
+        ) in spec
+        assert (
+            "Before the link, and with an address map, which gives a symbol's address and "
+            "nothing of a member's offset, the record of a member names its path at offset 0, "
+            "and that is a path no linker map can answer."
+        ) in spec
+        assert self.UNTRIED in spec
+        assert "the `SYMBOL_LINK` symbol and the key of the address map" not in spec
+
+    def test_the_concept_page_says_it(self) -> None:
+        page = flattened(PAGES["docs/concept.rst"])
+        assert (
+            "With ``--image`` its record names the variable's symbol and the member's offset "
+            "from it, both taken from where the image placed the member"
+        ) in page
+        assert self.BEFORE in page
+        assert self.UNTRIED in page
+
+    def test_the_faq_says_a_map_based_patcher_needs_the_image_run_for_a_member(self) -> None:
+        page = flattened(PAGES["docs/faq.rst"])
+        assert (
+            "for a member only once the a2l was written with ``--image``, where the record "
+            "names the variable's symbol and the member's offset from it; before the link the "
+            "record of a member names a path no linker map can answer."
+        ) in page
+
+    def test_the_readme_says_it(self) -> None:
+        readme = flattened(README)
+        assert (
+            "with `--image` a structure member's names the variable's linker symbol and the "
+            "member's offset from it, and before the link, or with a map, it names the member's "
+            "path at offset 0, which no linker map can answer."
+        ) in readme
+
+    def test_the_types_and_artefacts_pages_say_it(self) -> None:
+        types = flattened(PAGES["docs/file_formats/types.rst"])
+        assert (
+            "the member's path at offset ``0``, which names no symbol a linker map holds. With "
+            "``--image`` it names the variable's own symbol, ``Inlet``, and the member's offset "
+            "from it in bytes"
+        ) in types
+        assert "The offset in ``SYMBOL_LINK`` is ``0`` and means it" not in types
+        page = flattened(PAGES["docs/generated_artefacts.rst"])
+        assert (
+            "a structure member names the variable and its own offset when ``--image`` placed "
+            "it, and its path at offset 0 before the link or with a map, which is a path no "
+            "linker map can answer."
         ) in page
 
 
@@ -2097,6 +2196,121 @@ class TestWhatThePagesSayTheImageIsHeldTo:
             "where the compiler records the declaration in the debug information, "
             f"{self.CLAUSE}."
         ) in page
+
+
+class TestWhereConstVolatileLiesAndWhatAGarbageCollectingLinkDrops:
+    """What the pages say of the placement of a ``const volatile`` object, which the committed
+    images measure (``test_a_const_volatile_object_lies_...``), and of ``--gc-sections``, which
+    the example template's ``DDD_RETAIN`` answers (``TestRetainingADefinition...``)."""
+
+    PLACEMENT = ("README.md", "SPEC.md", "docs/generated_artefacts.rst")
+    BRIEF = (
+        "docs/concept.rst",
+        "docs/getting_started.rst",
+        "docs/file_formats/variable_definition.rst",
+    )
+    GONE = (
+        "target independent",
+        "out of the read only category",
+        "becomes a plain",
+        "every byte of it crossing",
+        "-A ddd_globals.o",
+        "when they are ``const volatile``",
+        "leaves ``.rodata`` for ``.data``",
+        "out of ``.rodata`` into",
+        "stops putting the object in",
+        "out of read only memory",
+        "should** be confirmed",
+        "measured with gcc 12.2.0 on ddd's own generated demo",
+        "The definitions reach the image whole",
+        "What that costs is not a write that fails",
+        "prints, identically at",
+    )
+
+    @staticmethod
+    def page(name: str) -> tuple[str, str]:
+        """The page flattened and lower cased, and the quote its markup writes code in."""
+        text = SPEC if name == "SPEC.md" else PAGES[name]
+        return flattened(text).lower(), "``" if name.endswith(".rst") else "`"
+
+    @pytest.mark.parametrize("name", [*PLACEMENT, *BRIEF])
+    def test_no_page_says_volatile_moves_an_object_out_of_read_only_data(self, name: str) -> None:
+        text, _ = self.page(name)
+        for gone in self.GONE:
+            assert gone.lower() not in text
+
+    @pytest.mark.parametrize("name", [*PLACEMENT, *BRIEF])
+    def test_every_page_says_volatile_does_not_move_a_value_to_ram_on_a_toolchain_measured(
+        self, name: str
+    ) -> None:
+        text, q = self.page(name)
+        assert f"{q}volatile{q} does not move a value to ram on any toolchain measured" in text
+
+    @pytest.mark.parametrize("name", PLACEMENT)
+    def test_the_placement_is_said_with_the_versions_measured_and_what_a_tool_does(
+        self, name: str
+    ) -> None:
+        text, q = self.page(name)
+        for sentence in (
+            "gcc 14.2.0 (x86_64, i686, aarch64, powerpc and s390x), arm-none-eabi-gcc 14.2.1 and "
+            "clang 19.1.7",
+            f"hold every {q}const volatile{q} object in {q}.rodata{q}, which is not writable, "
+            f"except the small ones on powerpc, which lie in {q}.sdata{q}, a writable section, "
+            f"as the plain {q}const{q} objects of their size do",
+            "depends on the target and on the compiler's version, and no other version was "
+            "measured",
+            "is the project's to decide",
+            "a tool writes a parameter that stays in flash through an overlay or an emulation "
+            "memory",
+        ):
+            assert sentence.lower() in text
+
+    def test_the_artefacts_page_says_what_the_hosted_program_and_nm_showed(self) -> None:
+        text, q = self.page("docs/generated_artefacts.rst")
+        for sentence in (
+            "on an ordinary hosted build the store faults, a segmentation fault, at "
+            f"{q}-O0{q}, {q}-O2{q} and {q}-Os{q}, for {q}const{q} and {q}const volatile{q} alike, "
+            f"because both lie in {q}.rodata{q}",
+            f"a plain {q}const{q} object reads 3 and {q}apply(1){q} returns 3 at all three "
+            f"levels, while memory holds 7 at {q}-O0{q} and still 3 at {q}-O2{q} and {q}-Os{q}",
+            f"a {q}const volatile{q} object reads 7 and {q}apply(1){q} returns 7 at all three",
+            "what a particular target does with a store to flash is the target's to say, and "
+            "was not measured",
+            f"{q}nm{q} the class {q}R{q}, not {q}D{q}, on every image measured but the small "
+            "objects of powerpc",
+        ):
+            assert sentence.lower() in text
+
+    @pytest.mark.parametrize("name", BRIEF)
+    def test_the_shorter_pages_say_the_placement_is_the_projects_and_depends_on_the_toolchain(
+        self, name: str
+    ) -> None:
+        text, _ = self.page(name)
+        assert "depends on the target and on the compiler's version" in text
+        assert "the project's to decide" in text
+
+    @pytest.mark.parametrize("name", ["SPEC.md", "docs/templates.rst"])
+    def test_the_specification_and_the_templates_page_say_what_gc_sections_does_and_the_macro(
+        self, name: str
+    ) -> None:
+        text, q = self.page(name)
+        for sentence in (
+            f"a link with {q}--gc-sections{q} drops a definition no code references",
+            f"the a2l then carries its object at address 0 or, given the image with "
+            f"{q}--image{q}, reports it {q}address-missing{q}",
+            f"the example template {q}ddd_globals.c.jinja2{q} puts {q}DDD_RETAIN{q} before every "
+            "definition, and it is empty unless the project defines it",
+            f"on elf a project that links with {q}--gc-sections{q} defines it as "
+            f"{q}__attribute__((used, retain)){q}, which with gcc 15.2.0, binutils 2.46 and "
+            f"{q}-fdata-sections{q} kept every object of the demo where the empty macro kept "
+            f"none, and {q}used{q} alone kept none",
+            f"on pe gcc ignores {q}retain{q}, so the macro does not keep a definition there, and "
+            "a reference to the object from code that is linked, or a linker script that keeps "
+            "the section, does",
+            "linking the demo this way gave the same result on this host with "
+            f"{q}-fdata-sections{q} and without it",
+        ):
+            assert sentence.lower() in text
 
 
 class TestWhatTheToolboxSaysOfDisagreementsAndCplusplus:
@@ -2239,6 +2453,29 @@ class TestWhatThePagesSayOfAnObjectTheBuildLeftOut:
             "of being left out as above"
         ) in spec
 
+    def test_the_pages_say_what_goes_with_an_object_left_out_is_not_named_by_address_missing(
+        self,
+    ) -> None:
+        """A measurement that asked to stay out of the a2l and was in it only as the input of an
+        axis the run left out is not in the file, so no page may say it reaches it."""
+        assert (
+            "What the A2L leaves out with it is not carried either: a curve or a map over an "
+            "axis left out, which `reference-left-out` names, and a measurement that asked to "
+            "stay out of the A2L and was in it only as the input of such an axis, which no "
+            "finding names."
+        ) in flattened(SPEC)
+        assert (
+            "What the a2l leaves out with it is not reported here either: a curve or a map over "
+            "an axis so left out, which ``reference-left-out`` names, and a measurement that "
+            "asked to stay out of the file and was in it only as the input of such an axis, "
+            "which no finding names."
+        ) in flattened(CONSISTENCY_CHECKS)
+        assert (
+            "What the a2l leaves out with that object is not raised either: a curve or a map "
+            "over an axis so left out, and a measurement that asked to stay out of the file and "
+            "was in it only as the input of such an axis."
+        ) in flattened(PAGES["docs/build_integration.rst"])
+
     def test_the_specification_says_when_a_linker_s_discard_reads_as_absence(self) -> None:
         """gold leaves a variable of a unit it discarded at an offset with no symbol, and GNU ld
         a tombstone address where it discards a section, both defects to show; GNU ld drops the
@@ -2300,19 +2537,13 @@ class TestWhatThePagesSayOfAnObjectTheBuildLeftOut:
         flat = flattened(page)
         assert (
             "Built where gcc links position independent by default, as it does on a Debian or "
-            "Ubuntu host and in the ``cmake`` compose service, it prints:"
+            "Ubuntu host, it prints:"
         ) in flat
         assert (
             "The first is ``image-load-relative``: a position independent image holds offsets "
             "from where it loads, which the a2l states as they are"
         ) in flat
         assert "as ``-no-pie`` links this one, prints the second alone" in flat
-
-    def test_the_changelog_names_both_identifiers_of_a_name_asked_for_twice(self) -> None:
-        assert (
-            "A script that matched `duplicate-declaration` for a name asked for twice matches "
-            "`elf-symbol-ambiguous` instead, at the same exit status."
-        ) in flattened(CHANGELOG)
 
 
 class TestTheBuildIntegrationPage:
@@ -4102,3 +4333,959 @@ class TestToolbox:
         )
         for text in (spec, guide):
             assert "whether its form is narrower or wider than the enum" in text
+
+
+class TestWhatIsDetectedAndWhatIsNot:
+    """A shared type and a restated definition trade detection against one edit, and the pages
+    say so in one voice: the check compares descriptions, never a description with code."""
+
+    CONCEPT = flattened(PAGES["docs/concept.rst"])
+    FAQ = flattened(PAGES["docs/faq.rst"])
+    TYPES = flattened(PAGES["docs/file_formats/types.rst"])
+    TEMPLATES = flattened(PAGES["docs/templates.rst"])
+    README_TEXT = flattened(README)
+    SPEC_TEXT = flattened(SPEC)
+    EDITOR = flattened(EDITOR_INTEGRATION)
+
+    def test_the_concept_page_says_the_check_compares_descriptions_and_never_code(self) -> None:
+        assert (
+            "``ddd check`` compares **descriptions**. It never compares a description with code"
+            in self.CONCEPT
+        )
+
+    def test_the_concept_page_says_a_rescaled_type_is_one_edit_no_reader_shows(self) -> None:
+        assert "The rescale is one edit that no reader's description shows" in self.CONCEPT
+        assert "``ddd compare`` against a baseline dump archived before the change" in self.CONCEPT
+
+    def test_the_concept_page_says_the_restated_definition_is_what_the_check_sees(self) -> None:
+        assert (
+            "This redundancy is what lets ``ddd check`` see the two sides drift apart. It does "
+            "not reach the code" in self.CONCEPT
+        )
+
+    def test_the_concept_page_says_reconciling_leaves_the_code_alone(self) -> None:
+        assert (
+            "The descriptions agree afterwards, and the code that reads the variable is "
+            "untouched" in self.CONCEPT
+        )
+
+    def test_the_concept_page_no_longer_says_a_shared_declaration_could_never_notice(self) -> None:
+        assert "which a single shared declaration could never do" not in self.CONCEPT
+        assert "which a shared type, naming the meaning once, trades away" in self.CONCEPT
+
+    def test_one_edit_in_one_file_is_said_of_a_shared_type_only(self) -> None:
+        assert (
+            "Changing the scaling is one edit in one file when the variables name a shared type"
+            in self.CONCEPT
+        )
+        assert "one edit in each declaring file when each restates its definition" in self.CONCEPT
+
+    def test_the_faq_says_what_a_shared_type_costs(self) -> None:
+        assert (
+            "there is nothing left for them to disagree about, which is also what it costs: "
+            "``ddd check`` cannot see two descriptions drift apart when there is one" in self.FAQ
+        )
+
+    def test_the_types_page_says_the_check_is_given_up(self) -> None:
+        assert "It is also a check given up" in self.TYPES
+
+    def test_the_readme_says_a_shared_type_cannot_be_seen_to_rescale(self) -> None:
+        assert "`ddd check` cannot see a rescale of the type" in self.README_TEXT
+
+    def test_the_quick_fix_pages_say_the_readers_code_is_not_touched(self) -> None:
+        assert "the code of the readers is not touched" in self.README_TEXT
+        assert "the code of the components that read the variable is not touched" in self.EDITOR
+        assert "never the code of the components that read the variable" in self.SPEC_TEXT
+
+    def test_the_spec_and_the_templates_page_say_what_the_example_header_writes(self) -> None:
+        assert "a rescale changes the header every reader includes" in self.SPEC_TEXT
+        assert "#define Speed__FACTOR (0.1)" in self.TEMPLATES
+        assert "#define Speed__OFFSET (-40.0)" in self.TEMPLATES
+        assert "The example writes nothing for any other kind of conversion" in self.TEMPLATES
+
+
+class TestTheSmallSentencesOfTheTemplateAndArtefactsPages:
+    """What the pages say of the literals, the sections, the include guard, the linear
+    conversion and the compu method names, each held to the code that does it."""
+
+    TEMPLATES = flattened(PAGES["docs/templates.rst"])
+    ARTEFACTS = flattened(PAGES["docs/generated_artefacts.rst"])
+    DICTIONARY = flattened(PAGES["docs/data_dictionary.rst"])
+    SPEC_TEXT = flattened(SPEC)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            -2147483648,
+            2147483647,
+            2147483648,
+            4294967295,
+            -2147483649,
+            -9223372036854775808,
+            18446744073709551615,
+        ],
+    )
+    def test_the_templates_page_names_the_literal_each_value_renders_as(self, value: int) -> None:
+        from ddd.backends.c.literals import c_constant_literal
+
+        assert f"``{c_constant_literal(value)}``" in self.TEMPLATES
+
+    def test_the_templates_page_says_the_literal_depends_on_the_range_alone(self) -> None:
+        assert "depends on the value's range alone" in self.TEMPLATES
+        assert "although an ``unsigned int`` holds it" in self.TEMPLATES
+        assert "is the unary minus applied to ``2147483648``" in self.TEMPLATES
+
+    def test_the_templates_page_no_longer_calls_the_literal_the_narrowest_type(self) -> None:
+        assert "The two differ only at the ends" not in self.TEMPLATES
+        assert "narrowest type that holds it" not in self.TEMPLATES
+
+    def test_the_templates_page_says_an_object_states_the_enum_the_types_header_declares(
+        self,
+    ) -> None:
+        assert (
+            "the enum's entries in ``model.enums``, so an object whose own copy documents less "
+            "states the copy the types header declares"
+        ) in self.TEMPLATES
+
+    def test_the_templates_page_says_a_placed_object_is_in_both_lists(self) -> None:
+        assert "A placed object is in its component's group as well" in self.TEMPLATES
+        assert "defines it twice" in self.TEMPLATES
+        assert "Objects without a ``section`` are not here" not in self.TEMPLATES
+
+    def test_the_templates_page_says_an_underscore_at_the_edge_of_a_name_stays_in_the_guard(
+        self,
+    ) -> None:
+        from ddd.backends.c.literals import component_guard, guard_name
+
+        for name in ("Valve_", "_valve", "_valve_"):
+            assert f"``{component_guard(name)}``" in self.TEMPLATES
+        assert "No guard holds a double underscore" in self.TEMPLATES
+        assert "``DDD_COMPONENT_VALVE__H``" not in self.TEMPLATES
+        assert guard_name("a-", "b") == "A_B_H"
+        assert "the underscores at either end are dropped" in self.TEMPLATES
+        assert "is kept, the ones at its edges" not in self.TEMPLATES
+
+    def test_a_double_underscore_is_said_to_be_reserved_by_cplusplus(self) -> None:
+        """C reserves a name that begins with two underscores, or with one and a capital, and
+        C++ one that holds two anywhere, which is what a guard and the scale macros meet."""
+        from ddd.backends.c.literals import component_guard
+
+        said = "No guard holds a double underscore, which C++ reserves wherever it stands"
+        assert said in self.TEMPLATES
+        assert "which c reserves" not in self.TEMPLATES
+        assert "which C++ reserves wherever it stands" in flattened(component_guard.__doc__ or "")
+        assert "which c reserves" not in (component_guard.__doc__ or "")
+        assert (
+            "The names are sound C, which reserves a name that begins with two underscores, or "
+            "with one and a capital letter, but not one that holds two further in. C++ reserves "
+            "that too, so a C++ unit including the header meets ``Speed__FACTOR`` as a name "
+            "reserved to the implementation"
+        ) in self.TEMPLATES
+        assert "renames the macros in the two lines of the ``scale`` macro" in self.TEMPLATES
+
+    @pytest.mark.parametrize("text", ["SPEC_TEXT", "ARTEFACTS"])
+    def test_the_linear_conversion_is_said_to_be_a_choice_against_the_standard(
+        self, text: str
+    ) -> None:
+        page = getattr(self, text)
+        assert "``LINEAR``" in page.replace("`LINEAR`", "``LINEAR``")
+        assert "``RAT_FUNC``" in page.replace("`RAT_FUNC`", "``RAT_FUNC``")
+        assert "ASAP2 1.6.1" in page
+        assert "is not an option of the tool" in page
+        assert "states a linear function exactly" not in page
+        assert "keeps the type of its methods" in page
+        assert "a choice" in page
+
+    @pytest.mark.parametrize("text", ["SPEC_TEXT", "ARTEFACTS"])
+    def test_the_unsuffixed_name_is_said_to_go_to_the_first_record_of_the_file(
+        self, text: str
+    ) -> None:
+        page = getattr(self, text)
+        assert "whose record the file writes first" in page
+        assert "then the other calibration objects, curves and maps among them" in page
+        assert "before the member paths" not in page
+
+    def test_the_dictionary_page_names_no_keyword_the_format_lacks(self) -> None:
+        assert "LOWER_LIMIT" not in self.DICTIONARY
+        assert "UPPER_LIMIT" not in self.DICTIONARY
+        assert "read from one field" not in self.DICTIONARY
+        assert "``MATRIX_DIM`` from ``shape``" in self.DICTIONARY
+        assert "writes the array from ``dimensions``" in self.DICTIONARY
+
+
+class TestWhatThePagesSayOfTheFieldASizeIsNamedBy:
+    """A size past 65,535 is named by the field its record writes. A string measurement stays
+    the byte array it is, with a ``MATRIX_DIM``; only a string characteristic has a
+    ``NUMBER``; and a string member, named once at its type, reaches both."""
+
+    @pytest.mark.parametrize(
+        ("text", "tick"),
+        [(flattened(SPEC), "`"), (flattened(CONSISTENCY_CHECKS), "``")],
+        ids=["SPEC", "the check reference"],
+    )
+    def test_spec_and_the_check_reference_name_the_records_field(
+        self, text: str, tick: str
+    ) -> None:
+        assert (
+            f"the {tick}MATRIX_DIM{tick} of an array, a string measurement's among them, the "
+            f"{tick}NUMBER{tick} of a string characteristic"
+        ) in text
+        assert "the finding names the field the record writes" in text
+        assert "a string member naming both of its fields" in text
+        assert f"the {tick}NUMBER{tick} of a string and" not in text
+
+
+C_BLOCK = re.compile(r"^(?:\.\. code-block:: c|```c)$")
+CAPTION = re.compile(r"^/\* ([\w./]+?\.[ch])\b[^*]*\*/$")
+"""A comment opening an excerpt that names the file it is of: ``/* ddd_globals.c */``, or
+``/* Controller.h, shortened - ... */``. A generated file opens with a banner of its own, whose
+first line is ``/*`` alone, so no generated line reads as one."""
+
+
+def c_blocks(page: str) -> list[list[str]]:
+    """Every block of c a page shows, dedented, without the blank lines at its ends."""
+    lines = PAGES[page].splitlines()
+    found: list[list[str]] = []
+    for number, text in enumerate(lines):
+        if not C_BLOCK.match(text.strip()):
+            continue
+        body: list[str] = []
+        for line in lines[number + 1 :]:
+            if text.startswith("```"):
+                if line.startswith("```"):
+                    break
+                body.append(line)
+            elif line.strip() and not line.startswith("   "):
+                break
+            else:
+                body.append(line[3:])
+        while body and not body[0].strip():
+            body.pop(0)
+        while body and not body[-1].strip():
+            body.pop()
+        found.append([line.rstrip() for line in body])
+    return found
+
+
+def without_version(line: str) -> str:
+    """A banner names the version that wrote the file, which a page shows as it was then."""
+    return re.sub(r"\bddd \d+\.\d+\.\d+\b", "ddd VERSION", line)
+
+
+class Excerpt(NamedTuple):
+    """One block of c a page shows as the example templates' output, and the run it is held to.
+
+    ``opening`` is the block's first lines, which tell it from the page's other blocks. ``file``
+    is the file of the run it is from, or nothing where the block's own caption comments name
+    it. ``held`` is how much of the file it shows: ``whole``, a ``slice`` of consecutive lines,
+    or ``shortened``, its lines in the file's order with some left out - a declaration never
+    without the scale macros that follow it.
+    """
+
+    page: str
+    opening: tuple[str, ...]
+    project: str
+    file: str | None
+    held: Literal["whole", "slice", "shortened"]
+
+
+GETTING_STARTED = "docs/getting_started.rst"
+ARTEFACTS_PAGE = "docs/generated_artefacts.rst"
+VARIABLES_PAGE = "docs/file_formats/variable_definition.rst"
+RULE = "/* " + "-" * 75
+
+EXCERPTS: tuple[Excerpt, ...] = (
+    Excerpt(GETTING_STARTED, ("/*", " * ddd_globals.c"), "thermostat", "ddd_globals.c", "whole"),
+    Excerpt(GETTING_STARTED, ("/*", " * SensorHub.h"), "thermostat", "SensorHub.h", "whole"),
+    Excerpt(GETTING_STARTED, ("/*", " * Controller.h"), "thermostat", "Controller.h", "whole"),
+    Excerpt(ARTEFACTS_PAGE, ("/*", " * ddd_types.h"), "demo", "ddd_types.h", "whole"),
+    Excerpt(
+        ARTEFACTS_PAGE,
+        (RULE, " * Controller - Consumes the raw values and produces the derived ones"),
+        "demo",
+        "ddd_globals.c",
+        "slice",
+    ),
+    Excerpt(
+        ARTEFACTS_PAGE,
+        ("/*", " * Interface of software component 'UserInterface'."),
+        "demo",
+        "UserInterface.h",
+        "slice",
+    ),
+    Excerpt(ARTEFACTS_PAGE, ("#if defined(FEATURE_X)",), "demo", "ddd_globals.c", "slice"),
+    Excerpt(ARTEFACTS_PAGE, ("/*", " * ddd_globals.c"), "demo", "ddd_globals.c", "slice"),
+    Excerpt(
+        "README.md",
+        ("/* ddd_globals.c, as the example templates render it */",),
+        "demo",
+        None,
+        "slice",
+    ),
+    Excerpt(
+        "README.md",
+        ("/* UserInterface.h - only what UserInterface declared */",),
+        "demo",
+        None,
+        "slice",
+    ),
+    Excerpt(
+        "docs/concept.rst",
+        ("/* Controller.h, shortened - the whole file has the same three sections */",),
+        "demo",
+        None,
+        "shortened",
+    ),
+    Excerpt(
+        "docs/file_formats/component.rst",
+        ("/* outputs - written by Controller, read by other components */",),
+        "demo",
+        "Controller.h",
+        "shortened",
+    ),
+    Excerpt(
+        "docs/file_formats/component.rst",
+        ("#if defined(FEATURE_X)",),
+        "demo",
+        "ddd_globals.c",
+        "slice",
+    ),
+    Excerpt(
+        "docs/faq.rst",
+        ("/* ddd_globals.c */", "DDD_RETAIN uint16_t ValueD[8];"),
+        "demo",
+        None,
+        "slice",
+    ),
+    Excerpt(
+        "docs/faq.rst",
+        ("/* ddd_globals.c */", "DDD_RETAIN int16_t InletTemperature = -400;"),
+        "storage",
+        None,
+        "slice",
+    ),
+    Excerpt("docs/file_formats/constants.rst", ("/* ddd_types.h */",), "vocabulary", None, "slice"),
+    Excerpt(
+        "docs/file_formats/conversions.rst", ("/* Level_t */",), "enums", "ddd_types.h", "slice"
+    ),
+    Excerpt(
+        "docs/file_formats/conversions.rst",
+        ("/** Software label of the controller, as text (calibration value block) */",),
+        "demo",
+        "ddd_globals.c",
+        "slice",
+    ),
+    Excerpt(
+        "docs/file_formats/sections.rst",
+        ('DDD_RETAIN volatile uint16_t Speed __attribute__((section(".fast_ram")));',),
+        "sections",
+        "ddd_globals.c",
+        "shortened",
+    ),
+    Excerpt(
+        "docs/file_formats/types.rst",
+        ("#include <stdint.h>",),
+        "structures",
+        "ddd_types.h",
+        "slice",
+    ),
+    Excerpt(
+        "docs/file_formats/types.rst",
+        ("/* Sample_t - One reading and the instant it was taken */",),
+        "structures",
+        "ddd_types.h",
+        "shortened",
+    ),
+    Excerpt(
+        "docs/file_formats/types.rst",
+        ("/** The inlet sensor as this ecu sees it */",),
+        "structures",
+        "ddd_globals.c",
+        "shortened",
+    ),
+    *(
+        Excerpt(VARIABLES_PAGE, opening, "demo", "ddd_globals.c", "slice")
+        for opening in (
+            ("/** Floating point measurement without a conversion [degC] */",),
+            (
+                "/** Second calibratable curve over the same shared axis [%] (calibration curve "
+                "over AxisA) */",
+            ),
+            ("/** Array measurement with four elements [V] */",),
+            (
+                "/** Single calibratable constant [Hz] (calibration parameter) */",
+                "DDD_RETAIN const uint16_t ParameterA = 3200U;",
+            ),
+            ("/** Calibratable array of constants (calibration value block) */",),
+            ("/** Shared axis indexed by ValueE [Hz] (calibration axis, 6 points) */",),
+            ("/** Calibratable curve over AxisA [ms] (calibration curve over AxisA) */",),
+            (
+                "/** Calibratable map over AxisA and AxisB [%] (calibration map over AxisA and "
+                "AxisB) */",
+            ),
+        )
+    ),
+)
+"""Every block of c a page shows as what the example templates write, with the run it is of.
+
+The demo, ``examples/structures`` and ``examples/vocabulary`` are shipped; the thermostat is
+the tutorial's own, written from its page as its reader writes it. Three are projects a page
+describes without shipping, built below as the page tells them: ``storage``, the two sensors
+of the FAQ's ``storage-mismatch``; ``sections``, the sections page's ``Speed`` and a ``Gain``;
+and ``enums``, the two spellings of an enum the conversions page shows."""
+
+ILLUSTRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # A flat table's declaration, its initialiser elided.
+    (
+        "docs/data_dictionary.rst",
+        ("DDD_RETAIN const uint32_t M[2 + (16) * (16)] = { 16U, 16U, ... };",),
+    ),
+    # One line of each of two images' headers, of projects the page describes.
+    ("docs/faq.rst", ("/* build/full/Controller.h */",)),
+    # The better documented of two copies of an enum, the components left to the reader.
+    ("docs/file_formats/conversions.rst", ("typedef enum",)),
+    # The demo's ParameterA as it would be with "volatile": true.
+    (
+        VARIABLES_PAGE,
+        (
+            "/** Single calibratable constant [Hz] (calibration parameter) */",
+            "DDD_RETAIN const volatile uint16_t ParameterA = 3200U;",
+        ),
+    ),
+    # The four ways the two qualifiers compose, each labelled.
+    (
+        ARTEFACTS_PAGE,
+        ('volatile uint16_t Speed;            /* measurement, "volatile": true  */',),
+    ),
+    # A declaration of c, for the order of its indices.
+    (ARTEFACTS_PAGE, ("uint8_t Table[2][3];",)),
+)
+"""The blocks of c a page shows that are not a run's output, each with why."""
+
+
+def interface(name: str, *entries: tuple[str, dict[str, Any]]) -> dict[str, Any]:
+    """A component description, each entry a scope and a definition."""
+    return {
+        "component": {
+            "name": name,
+            "interface": [{"scope": scope, "definition": entry} for scope, entry in entries],
+        }
+    }
+
+
+INLET_TEMPERATURE: dict[str, Any] = {
+    "name": "InletTemperature",
+    "kind": "measurement",
+    "datatype": "sint16",
+    "unit": "degC",
+    "conversion": {"factor": 0.1},
+    "volatile": False,
+}
+
+STORAGE_PROJECT: dict[str, Any] = {
+    "device.ddd.json": {
+        "project": {"name": "Device", "includes": ["sensor_hub.ddd.json", "controller.ddd.json"]}
+    },
+    "sensor_hub.ddd.json": interface(
+        "SensorHub",
+        ("output", {**INLET_TEMPERATURE, "init": -400, "a2l": {"format": "%5.1"}}),
+    ),
+    "controller.ddd.json": interface(
+        "Controller", ("input", {**INLET_TEMPERATURE, "a2l": {"format": "%8.3"}})
+    ),
+}
+"""The FAQ's two sensors: one variable whose two declarations disagree about its a2l format."""
+
+SECTIONS_PROJECT: dict[str, Any] = {
+    "p.ddd.json": {"project": {"name": "P", "includes": ["s.ddd.json", "a.ddd.json"]}},
+    "s.ddd.json": {
+        "sections": [
+            {"section": ".fast_ram", "access": "read-write", "alignment": 4},
+            {"section": ".calib", "access": "read-only", "alignment": 4},
+        ]
+    },
+    "a.ddd.json": interface(
+        "A",
+        (
+            "output",
+            {
+                "name": "Speed",
+                "kind": "measurement",
+                "datatype": "uint16",
+                "conversion": {},
+                "volatile": True,
+                "section": ".fast_ram",
+            },
+        ),
+        (
+            "local",
+            {
+                "name": "Gain",
+                "kind": "parameter",
+                "datatype": "uint32",
+                "conversion": {},
+                "init": 3,
+                "volatile": False,
+                "section": ".calib",
+            },
+        ),
+    ),
+}
+"""The sections page's ``Speed`` as its block shows it, and a ``Gain`` in ``.calib``."""
+
+
+def level(name: str, value: int, description: str) -> dict[str, Any]:
+    return {"name": name, "value": value, "description": description}
+
+
+ENUMS_PROJECT: dict[str, Any] = {
+    "p.ddd.json": {"project": {"name": "P", "includes": ["a.ddd.json"]}},
+    "a.ddd.json": interface(
+        "A",
+        (
+            "local",
+            {
+                "name": "Mode",
+                "kind": "measurement",
+                "description": "Short form",
+                "datatype": "uint8",
+                "conversion": {
+                    "kind": "enum",
+                    "name": "Mode_t",
+                    "enumerators": {"MODE_OFF": 0, "MODE_RUN": 1, "MODE_FAULT": 15},
+                },
+                "volatile": False,
+            },
+        ),
+        (
+            "local",
+            {
+                "name": "Level",
+                "kind": "measurement",
+                "description": "Long form",
+                "datatype": "uint8",
+                "conversion": {
+                    "name": "Level_t",
+                    "enumerators": [
+                        level("LEVEL_LOW", 0, "below the working range"),
+                        level("LEVEL_OK", 1, "inside the working range"),
+                        level("LEVEL_HIGH", 2, "above the working range"),
+                    ],
+                },
+                "volatile": False,
+            },
+        ),
+    ),
+}
+"""The conversions page's two spellings of an enum, as its blocks show them."""
+
+
+@pytest.fixture(scope="module")
+def runs(tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict[str, list[str]]]:
+    """The c the example templates write for every project an excerpt is of, once per run of
+    this module, each file as its lines, the version in its banner left out."""
+    from conftest import TEMPLATES, write_tree
+    from test_transcripts import written_files
+
+    root = tmp_path_factory.mktemp("generated-c")
+    tutorial = written_files(ROOT / GETTING_STARTED)
+    projects = {
+        "demo": DEMO,
+        "structures": ROOT / "examples" / "structures" / "project.ddd.json",
+        "vocabulary": ROOT / "examples" / "vocabulary" / "project.ddd.json",
+        "thermostat": write_tree(root / "thermostat", tutorial) / "thermostat.ddd.json",
+        "storage": write_tree(root / "storage", STORAGE_PROJECT) / "device.ddd.json",
+        "sections": write_tree(root / "sections", SECTIONS_PROJECT) / "p.ddd.json",
+        "enums": write_tree(root / "enums", ENUMS_PROJECT) / "p.ddd.json",
+    }
+    found: dict[str, dict[str, list[str]]] = {}
+    for name, project in projects.items():
+        output = root / name / "gen"
+        printed = io.StringIO()
+        with contextlib.redirect_stderr(printed), contextlib.redirect_stdout(printed):
+            arguments = ["generate", "c", str(project), "-o", str(output), "-t", str(TEMPLATES)]
+            status = main(arguments)
+        assert status == EXIT_OK, printed.getvalue()
+        found[name] = {
+            path.name: path.read_text(encoding="utf-8")
+            .replace(f"ddd {__version__}", "ddd VERSION")
+            .splitlines()
+            for path in sorted(output.iterdir())
+            if path.suffix in (".c", ".h")
+        }
+    return found
+
+
+class TestTheGeneratedCThePagesShow:
+    """Every excerpt of generated c a page shows is held to a run of the project it is from.
+
+    Three kinds of line drifted while no test read them: the ``DDD_RETAIN`` the example
+    definition template writes before each definition, the scale macros its component header
+    writes after a linear input or output, and the comment the definition file opens with. A
+    page holding the file whole holds every line of it; a slice holds consecutive lines; a
+    shortened excerpt holds lines in the file's order, and a declaration it shows is followed
+    by the macros that follow it in the file.
+    """
+
+    @staticmethod
+    def parts(excerpt: Excerpt, block: list[str]) -> list[tuple[str, list[str]]]:
+        """The block cut at the captions naming a file, each part with the file it is of."""
+        parts: list[tuple[str | None, list[str]]] = [(excerpt.file, [])]
+        for line in block:
+            caption = CAPTION.match(line)
+            if caption:
+                parts.append((caption.group(1), []))
+            else:
+                parts[-1][1].append(without_version(line))
+        found: list[tuple[str, list[str]]] = []
+        for file, lines in parts:
+            while lines and not lines[-1]:
+                lines.pop()
+            if lines:
+                assert file is not None, f"{excerpt.page}: {excerpt.opening[0]!r} names no file"
+                found.append((file, lines))
+        return found
+
+    @staticmethod
+    def problem(held: str, shown: list[str], file: list[str]) -> str | None:
+        """What is wrong with ``shown`` as an excerpt of ``file``, or nothing."""
+        if held == "whole":
+            return None if shown == file else "is not the whole file"
+        if held == "slice":
+            width = len(shown)
+            if any(file[at : at + width] == shown for at in range(len(file) - width + 1)):
+                return None
+            return "is no run of lines of it"
+        position = 0
+        for index, line in enumerate(shown):
+            try:
+                position = file.index(line, position) + 1
+            except ValueError:
+                return f"has {line!r}, which the file has not got there"
+            if line.startswith("extern "):
+                after = file[position:]
+                macros = list(itertools.takewhile(lambda text: text.startswith("#define "), after))
+                if shown[index + 1 : index + 1 + len(macros)] != macros:
+                    return f"shows {line!r} without the macros after it: {macros}"
+        return None
+
+    @staticmethod
+    def opens(block: list[str], opening: tuple[str, ...]) -> bool:
+        return tuple(block[: len(opening)]) == opening
+
+    def located(self, excerpt: Excerpt) -> list[str]:
+        blocks = [block for block in c_blocks(excerpt.page) if self.opens(block, excerpt.opening)]
+        assert len(blocks) == 1, f"{excerpt.page}: {len(blocks)} blocks of c open {excerpt.opening}"
+        return blocks[0]
+
+    @pytest.mark.parametrize(
+        "excerpt", EXCERPTS, ids=lambda excerpt: f"{excerpt.page}: {excerpt.opening[-1][:40]}"
+    )
+    def test_each_excerpt_is_what_the_run_writes(
+        self, excerpt: Excerpt, runs: dict[str, dict[str, list[str]]]
+    ) -> None:
+        for file, shown in self.parts(excerpt, self.located(excerpt)):
+            written = runs[excerpt.project][file]
+            problem = self.problem(excerpt.held, shown, written)
+            assert problem is None, (
+                f"{excerpt.page}: the excerpt of {file} {problem}; the run of {excerpt.project} "
+                f"writes:\n" + "\n".join(written)
+            )
+
+    def test_every_block_of_c_on_a_page_is_held_or_said_to_be_an_illustration(self) -> None:
+        """A new excerpt has to join one list or the other, so that none is shown unread."""
+        claimed = [(excerpt.page, excerpt.opening) for excerpt in EXCERPTS] + list(ILLUSTRATIONS)
+        loose = [
+            (page, block[0])
+            for page in PAGES
+            for block in c_blocks(page)
+            if sum(page == owner and self.opens(block, opening) for owner, opening in claimed) != 1
+        ]
+        assert not loose, f"blocks of c held by no excerpt and called no illustration: {loose}"
+
+
+class TestEveryShownRunThatDefaultsTheByteOrderSaysSo:
+    """A run that writes an a2l with neither ``--byte-order`` nor an image prints the info
+    ``byte-order-defaulted`` and counts it, so a page showing one shows that too. The runs a
+    page shows and the documentation tests do not re-run are held here, since nothing else
+    reads them: seven of them had kept the output of the runs before the info."""
+
+    COUNT = re.compile(r"^\d+ (?:errors?|warnings?|infos?)(?:, \d+ (?:errors?|warnings?|infos?))*$")
+
+    @staticmethod
+    def defaulting() -> list[Any]:
+        from test_transcripts import PAGES as TRANSCRIBED
+        from test_transcripts import transcripts
+
+        found = []
+        for page in TRANSCRIBED:
+            for transcript in transcripts(page):
+                words = transcript.command.split()
+                if words[:2] != ["ddd", "generate"] or words[2] not in ("all", "a2l"):
+                    continue
+                if any(option in words for option in ("--byte-order", "--image", "--without")):
+                    continue
+                if (
+                    not transcript.shown
+                    or transcript.shown[0].strip() == "..."
+                    or (transcript.shown[0].startswith("ddd: "))
+                ):
+                    continue  # a page leaving the findings out, or a usage error, which has none
+                found.append(transcript)
+        return found
+
+    def test_the_runs_are_found(self) -> None:
+        assert len(self.defaulting()) >= 15
+
+    def test_each_shows_the_info_and_counts_it(self) -> None:
+        wrong = []
+        for transcript in self.defaulting():
+            counts = [line for line in transcript.shown if self.COUNT.match(line.strip())]
+            says = any("info[byte-order-defaulted]" in line for line in transcript.shown)
+            if not (says and counts and re.search(r"\d+ infos?$", counts[0].strip())):
+                wrong.append(f"{transcript.where}: $ {transcript.command}")
+        assert not wrong, "runs shown without byte-order-defaulted or its count:\n" + "\n".join(
+            wrong
+        )
+
+
+class TestWhatTheA2lChecksCannotSee:
+    """``a2l-keyword`` and ``a2l-unrepresentable`` are judged from the descriptions alone: an
+    object stating ``export: false`` for the a2l is not held, and since neither check reads the
+    image or the map, an object a run drops because its build holds none of it still is."""
+
+    SPEC_TEXT = flattened(SPEC)
+    CHECKS_TEXT = flattened(CONSISTENCY_CHECKS)
+    RELEASE = flattened(CHANGELOG.split("\n## ", 2)[1])
+
+    @staticmethod
+    def a2l(tick: str) -> str:
+        return "A2L" if tick == "`" else "a2l"
+
+    @pytest.mark.parametrize(
+        ("text", "tick"), [("SPEC_TEXT", "`"), ("CHECKS_TEXT", "``")], ids=["SPEC", "checks"]
+    )
+    def test_the_keyword_check_is_said_to_hold_a_name_only_a_run_leaves_out(
+        self, text: str, tick: str
+    ) -> None:
+        page = getattr(self, text)
+        assert (
+            f"judged from the descriptions alone: an object or a member that states "
+            f"{tick}export: false{tick} for the {self.a2l(tick)} is not held, but the check reads "
+            f"neither the image nor the map, so an object a run drops because its build holds "
+            f"none of it ({tick}condition-left-out{tick}) still draws the error, and "
+            f"{tick}-W a2l-keyword=ignore{tick} relaxes it for that run"
+        ) in page
+        assert "An object or a member the a2l leaves out is not held" not in page
+        assert "member, the A2L leaves out is not held" not in page
+
+    @pytest.mark.parametrize(
+        ("text", "tick"), [("SPEC_TEXT", "`"), ("CHECKS_TEXT", "``")], ids=["SPEC", "checks"]
+    )
+    def test_the_limits_check_is_said_to_hold_an_object_only_a_run_leaves_out(
+        self, text: str, tick: str
+    ) -> None:
+        page = getattr(self, text)
+        assert f"fires for what the descriptions send to the {self.a2l(tick)}" in page
+        assert (
+            f"neither the image nor the map, so an object a run drops because its build holds "
+            f"none of it ({tick}condition-left-out{tick}) is"
+        ) in page
+        assert (
+            f"the same, and stops a {tick}--strict{tick} run; "
+            f"{tick}-W a2l-unrepresentable=ignore{tick} relaxes it for that run"
+        ) in page
+        assert "The check fires only for an object the A2L carries" not in page
+        assert "It fires for what the file carries" not in page
+
+    def test_the_release_note_says_it_of_both_checks(self) -> None:
+        assert "so a name only such a run drops still draws the error" in self.RELEASE
+        assert (
+            "It cannot see a run's left-out objects either, so an object only such a run drops "
+            "is still named, and `-W a2l-unrepresentable=ignore` relaxes it for that run"
+        ) in self.RELEASE
+        assert (
+            "and so does one whose object only a run drops because its build holds none of it, "
+            "since the check reads neither the image nor the map"
+        ) in self.RELEASE
+
+
+class TestTheRuleOfADerivedEnd:
+    """The conversions page and SPEC 3.3.1 give one rule: the short decimal within four units
+    in the last place, the number itself otherwise, and no end rounded outward."""
+
+    CONVERSIONS = flattened(PAGES["docs/file_formats/conversions.rst"])
+    SPEC_TEXT = flattened(SPEC)
+
+    def test_the_conversions_page_states_the_tail_and_the_number_itself(self) -> None:
+        for said in (
+            "An end within four units in the last place of its twelve digit decimal is written "
+            "as that decimal, ``7.65`` here, which may sit up to those four units inward of the "
+            "product",
+            "``sint16`` under ``factor 0.1`` gives ``3276.7`` where the product is "
+            "``3276.7000000000003``",
+            "Any other end is the number itself, in the fewest digits that read back as it: "
+            "``uint64`` under ``factor 1`` gives ``1.8446744073709552e+19``, and ``uint32`` "
+            "under 2^-10 ``4194303.9990234375``",
+            "so a ``float32`` stops at ``FLT_MAX``, ``3.4028234663852886e+38``",
+        ):
+            assert said in self.CONVERSIONS, said
+        assert "rounded to twelve significant digits" not in self.CONVERSIONS
+        assert "The rounded end is what reaches" not in self.CONVERSIONS
+
+    def test_spec_no_longer_says_an_end_is_rounded_outward(self) -> None:
+        assert (
+            "where it is rounded it moves inward of the computed product by no more than the "
+            "arithmetic's tail of four units in the last place"
+        ) in self.SPEC_TEXT
+        assert "is rounded outward where it is rounded at all" not in self.SPEC_TEXT
+
+
+class TestWhatTheReadmeAndTheConceptPageNoLongerOverstate:
+    """The README's store through a ``const`` object, its options of ``ddd_generate()``, the
+    retain macro beside two excerpts, and what the concept page says a preview says."""
+
+    README_TEXT = flattened(README)
+    ARTEFACTS = flattened(PAGES["docs/generated_artefacts.rst"])
+    CONCEPT = flattened(PAGES["docs/concept.rst"])
+
+    def test_the_readme_says_what_a_store_through_a_const_object_did(self) -> None:
+        assert (
+            "a hosted program built by gcc 15.2.0 that stores 7 into a `const` object of 3 "
+            "faults at `-O0`, `-O2` and `-Os`, and with the page made writable first the object "
+            "still reads 3 at all three, where a `const volatile` one reads the 7"
+        ) in self.README_TEXT
+        assert "prints it back out of memory" not in self.README_TEXT
+
+    def test_the_readme_names_every_option_of_ddd_generate(self) -> None:
+        module = (ROOT / "cmake" / "Ddd.cmake").read_text(encoding="utf-8")
+        call = module[module.index('_ddd_refuse_empty_keywords(\n        "ddd_generate"') :]
+        lists = re.findall(r'^\s+"([A-Z0-9_;]+)"', call[: call.index(")")], re.MULTILINE)
+        keywords = {word for spelled in lists for word in spelled.split(";")}
+        assert "A2L_MODULE_FRAGMENT" in keywords and "PROJECT" in keywords
+        options = self.README_TEXT[self.README_TEXT.index("Options: `PROJECT`") :]
+        options = options[: options.index("The last one matters")]
+        assert {word for word in keywords if f"`{word}`" not in options} == set()
+
+    def test_the_retain_macro_is_said_beside_two_excerpts_that_show_it(self) -> None:
+        assert (
+            "The `DDD_RETAIN` before each definition is theirs too, a macro the file defines "
+            "empty unless the build defines it first, which a build linking with "
+            "`--gc-sections` on ELF does"
+        ) in self.README_TEXT
+        assert (
+            "So is the ``DDD_RETAIN`` before each definition, a macro the file defines empty "
+            "unless the build defines it first, which a build linking with ``--gc-sections`` on "
+            "ELF does"
+        ) in self.ARTEFACTS
+
+    def test_the_concept_page_says_the_fix_says_so_and_nothing_of_a_preview(self) -> None:
+        assert "the fix a finding carries says so in its title" in self.CONCEPT
+        assert "the preview of each says so" not in self.CONCEPT
+
+
+class TestWhatTheReleaseNoteSaysOfBranchFive:
+    """Three claims of the unreleased entries, each held to what a run showed: what a baseline
+    0.11.0 archived meets, which cmake step prints ``byte-order-defaulted``, and the fields and
+    figures the a2l's entries name."""
+
+    TEXT = flattened(UNRELEASED)
+
+    def test_a_baseline_of_0_11_0_meets_the_member_blocks_as_changed_a2l(self) -> None:
+        assert (
+            "so `ddd compare` against a baseline 0.11.0 archived reports `changed-a2l` once for "
+            "every such leaf"
+        ) in self.TEXT
+        assert (
+            "so `ddd check --baseline --strict` of a project unchanged since passes with 0.11.0 "
+            "and exits 1 after the upgrade, its four warnings made errors"
+        ) in self.TEXT
+
+    def test_the_info_is_said_of_the_cmake_steps_that_write_an_a2l(self) -> None:
+        assert (
+            "A cmake build with no `BYTE_ORDER` prints it from the generation of a build of one "
+            "step and from the step that writes the a2l after the link with `ADDRESS_MAP`, and "
+            "from no step of a build with `ADDRESSES_FROM_IMAGE`, whose a2l takes the image's "
+            "byte order"
+        ) in self.TEXT
+        assert "printed on a pre-link run of a two step cmake flow" not in self.TEXT
+
+    def test_the_uint64_end_is_spelled_as_the_a2l_writes_it(self) -> None:
+        from ddd.models import format_number
+
+        written = format_number(float(2**64 - 1))
+        assert written == "1.8446744073709552e+19"
+        assert f"as `{written}` for the `uint64`" in self.TEXT
+        assert "1.8446744073709552e19" not in self.TEXT
+
+    def test_the_method_name_order_puts_every_other_calibration_object_after_the_axes(
+        self,
+    ) -> None:
+        assert (
+            "measurements first, then axes, then the other calibration objects, parameters, "
+            "value blocks, curves and maps together in the dictionary's order"
+        ) in self.TEXT
+        assert "then axes, then curves and maps, a member's" not in self.TEXT
+
+    def test_every_field_the_a2l_options_gained_is_named_where_it_stands(self) -> None:
+        from ddd.backends.a2l.options import A2lOptions
+
+        names = [field.name for field in dataclasses.fields(A2lOptions)]
+        assert {"module_fragment", "links", "alignment_cap"} <= set(names)
+        assert (
+            "gains three fields in this release: `module_fragment`, `links`, which a member's "
+            "`SYMBOL_LINK` below is written from, and `alignment_cap`, which `MOD_COMMON`'s "
+            "alignments below are"
+        ) in self.TEXT
+        assert names.index("alignment_cap") == 1
+        assert names.index("links") == names.index("addresses") + 1
+        assert (
+            "`alignment_cap` stands second, after `byte_order`, and `links` after `addresses`"
+            in (self.TEXT)
+        )
+
+
+class TestWhatThePagesSayOfFormat10:
+    """A leaf's display identifier is a path in the dumped dictionary, which format 10 lets it be;
+    the pages that state the format the tool writes state the one it writes."""
+
+    SPEC_TEXT = flattened(SPEC)
+    DICTIONARY = flattened(PAGES["docs/data_dictionary.rst"])
+
+    def test_spec_and_the_dictionary_page_state_the_format_the_tool_writes(self) -> None:
+        from ddd.ir import DICTIONARY_FORMAT
+
+        written = str(DICTIONARY_FORMAT)
+        assert re.findall(r"Its `format` is `(\d+)`", self.SPEC_TEXT) == [written]
+        assert re.findall(r"its own format \(`format`, today `(\d+)`\)", self.SPEC_TEXT) == [
+            written
+        ]
+        assert re.findall(r"currently ``(\d+)``", self.DICTIONARY) == [written]
+
+    def test_a_leafs_display_identifier_is_said_to_be_a_path(self) -> None:
+        assert (
+            "and its `display_identifier` the member's own, or the path that the members above "
+            "it compose ([section 3.7](#37-type-description)), as `V[1].J.b`: identifiers joined "
+            "by dots, each with its indices"
+        ) in self.SPEC_TEXT
+        assert "are the member's own. `types` lists the" not in self.SPEC_TEXT
+        assert (
+            "Format 10 lets a leaf's ``display_identifier`` be a path of identifiers, "
+            "``V[1].J.b``, which a member naming a structure composes for every leaf below it; a "
+            "format 9 dictionary holds at most one identifier there, and reads back unchanged"
+        ) in self.DICTIONARY
+
+    def test_the_release_note_says_a_baseline_dumped_again_clears_and_what_0_11_0_reads(
+        self,
+    ) -> None:
+        text = flattened(UNRELEASED)
+        assert (
+            "its four warnings made errors; dumping the baseline again with this version clears"
+            in (text)
+        )
+        assert (
+            "The dumped dictionary is format 10, for the display identifier a leaf takes from a "
+            "member above it, a path of identifiers where format 9 held one; a format 9 dictionary "
+            "reads back unchanged, and 0.11.0, which reads up to format 9, refuses a format 10 one "
+            "as the dictionary of a newer DDD"
+        ) in text

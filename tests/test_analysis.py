@@ -1073,7 +1073,8 @@ class TestArraysTooLarge:
 
     def test_an_array_at_the_limit_is_kept(self, tree: Path) -> None:
         dictionary, bag = run_analysis(tree, self.declaring(dimensions=[10000000]))
-        assert checks(bag) == []
+        # Kept, and said once for the two bytes a MATRIX_DIM holds (tests/test_a2l_sizes.py).
+        assert checks(bag) == ["a2l-unrepresentable"]
         assert dictionary is not None
         assert dictionary.by_name["V"].shape == (10000000,)
 
@@ -1163,7 +1164,8 @@ class TestArraysTooLarge:
                 ),
             },
         )
-        assert checks(bag) == []
+        # Kept: only the axis is named, for the two bytes a MaxAxisPoints holds.
+        assert checks(bag) == ["a2l-unrepresentable"]
         assert dictionary is not None
         assert dictionary.by_name["C"].shape == (10000000,)
 

@@ -49,10 +49,12 @@ def c_constant_literal(value: int | float) -> str:
     """Render a declared constant as the c literal its value means.
 
     A constant carries no datatype - it is a named number, and what a shape or an expression
-    does with it is the project's business - so the literal is spelled for the narrowest type
-    that holds the value: an ``int`` where one holds it, and ``long long`` or ``unsigned long
-    long`` past that, which is what :func:`c_literal` already spells for an ``init``. Written
-    out bare instead, the two ends of the 64 bit range are not the numbers they read as:
+    does with it is the project's business - so the literal is spelled by the value's range
+    alone: bare from the smallest ``int`` to the largest, ``long long`` past that up to the 64
+    bit signed ends, and ``unsigned long long`` above them, which is what :func:`c_literal`
+    already spells for an ``init``. A value an ``unsigned int`` holds, ``4294967295``, is still
+    ``4294967295LL``. Written out
+    bare instead, the two ends of the 64 bit range are not the numbers they read as:
     ``18446744073709551615`` has no signed type to be and c takes it as unsigned with a
     diagnostic, and ``-9223372036854775808`` is a unary minus applied to that same literal.
     A number with a fraction is a ``double`` literal, which is what it looks like already.
@@ -202,6 +204,10 @@ def _kind_detail(entry: ResolvedObject) -> str:
             return ""
 
 
+_TRIGRAPH = re.compile(r"\?\?(?=[=(/)'<!>-])")
+"""The first two characters of the nine trigraphs, the ones a description can end a line in."""
+
+
 def sanitize_comment(text: str) -> str:
     """Make text safe to put inside a ``/* ... */`` comment.
 
@@ -218,16 +224,51 @@ def sanitize_comment(text: str) -> str:
     alone re-forms the other out of what is left. Taking the opener first leaves no ``/``
     immediately before a ``*``, so the second pass can form no new opener, and it inserts a
     space before the ``/`` it writes, so it can form no new closer either.
+
+    The two question marks that open a trigraph are separated as well. ``??/`` is a
+    backslash to a compiler that reads trigraphs, and the templates end a line with a
+    description: the backslash splices the next line onto the comment, and ``-Wtrigraphs``,
+    which ``-Wall`` turns on and ``-Werror`` makes an error, stops the build before that. The
+    other eight forms change nothing inside a comment, and are separated the same way for a
+    compiler that warns of every one. Separating the question marks leaves no trigraph
+    behind however many of them come in a row.
     """
     collapsed = re.sub(r"\s+", " ", text).strip()
-    return collapsed.replace("/*", "/ *").replace("*/", "* /")
+    defused = collapsed.replace("/*", "/ *").replace("*/", "* /")
+    return _TRIGRAPH.sub("? ?", defused)
 
 
 def guard_name(*parts: str) -> str:
-    """Build an include guard such as ``DDD_SENSOR_HUB_H``."""
+    """Build an include guard such as ``DDD_SENSOR_HUB_H``.
+
+    The parts are joined by an underscore and upper cased, a run of anything that is not a
+    letter or a digit becomes one underscore, the underscores at either end are dropped, and
+    a leading digit is prefixed.
+    """
     joined = "_".join(part for part in parts if part)
     upper = re.sub(r"[^0-9A-Za-z]+", "_", joined).upper()
     upper = re.sub(r"__+", "_", upper).strip("_")
     if upper and upper[0].isdigit():
         upper = "N" + upper
     return f"{upper}_H"
+
+
+def component_guard(name: str) -> str:
+    """The include guard of a component's header.
+
+    ``DDD_COMPONENT_<NAME>_H``, for every name without an underscore at an edge. Dropped by
+    :func:`guard_name`, such an underscore would give ``Valve`` and ``Valve_`` one guard, and a
+    file including both headers would find the second preprocessed away. Written into the
+    guard, it would make a double underscore, which C++ reserves wherever it stands and the
+    analysis refuses in a name. So a name with one takes a prefix no other name can:
+    ``DDD_COMPONENTS_TRAILING_``, ``DDD_COMPONENTS_LEADING_`` or ``DDD_COMPONENTS_BOTH_``,
+    ahead of the name without its edge underscores. The character after ``COMPONENT`` is what
+    tells the two families apart, and the analysis refuses names that differ only in case, so
+    no two names share a guard.
+    """
+    bare = name.strip("_")
+    leading, trailing = name.startswith("_"), name.endswith("_")
+    if not (leading or trailing):
+        return guard_name("ddd", "component", name)
+    kind = "both" if leading and trailing else "leading" if leading else "trailing"
+    return guard_name("ddd", "components", kind, bare)

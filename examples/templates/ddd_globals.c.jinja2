@@ -1,6 +1,6 @@
 {% import "_macros.jinja2" as macros %}
 {% macro define(variable) -%}
-{{ variable.qualifier }}{{ variable.c_type }} {{ variable.name }}{{ variable.array_suffix -}}
+DDD_RETAIN {{ variable.qualifier }}{{ variable.c_type }} {{ variable.name }}{{ variable.array_suffix -}}
 {{ ' __attribute__((section("' ~ variable.section ~ '")))' if variable.section else '' -}}
 {{ ' = ' ~ variable.initializer if variable.initializer is not none else '' }};
 {%- endmacro %}
@@ -11,6 +11,20 @@
  * Definition of every global variable of the project.  Compile and link this
  * file exactly once; DDD is the only owner of these storage locations.
  */
+
+/*
+ * A link with --gc-sections drops a definition no code references, a
+ * measurement only the calibration tool reads among them, and the a2l then
+ * describes storage the image does not hold.  A project on ELF that links so
+ * defines DDD_RETAIN as __attribute__((used, retain)), with -D or in a header
+ * the build includes first, with a gcc that knows 'retain' and a binutils that
+ * keeps such a section; where gcc ignores 'retain' (PE), a reference to the
+ * object or a linker script that keeps its section does the same.  Left
+ * undefined it is empty, and the definitions are what they were.
+ */
+#ifndef DDD_RETAIN
+#define DDD_RETAIN
+#endif
 {% for group in model.groups %}
 
 /* ---------------------------------------------------------------------------

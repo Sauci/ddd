@@ -13,44 +13,58 @@
  * file exactly once; DDD is the only owner of these storage locations.
  */
 
+/*
+ * A link with --gc-sections drops a definition no code references, a
+ * measurement only the calibration tool reads among them, and the a2l then
+ * describes storage the image does not hold.  A project on ELF that links so
+ * defines DDD_RETAIN as __attribute__((used, retain)), with -D or in a header
+ * the build includes first, with a gcc that knows 'retain' and a binutils that
+ * keeps such a section; where gcc ignores 'retain' (PE), a reference to the
+ * object or a linker script that keeps its section does the same.  Left
+ * undefined it is empty, and the definitions are what they were.
+ */
+#ifndef DDD_RETAIN
+#define DDD_RETAIN
+#endif
+
 /* ---------------------------------------------------------------------------
  * Engine - Owns one variable of every shape the address fixtures place
  * ------------------------------------------------------------------------ */
 
 /* measurements */
 /** An array of structures in one dimension */
-Cell_t Cells[3];
+DDD_RETAIN Cell_t Cells[3];
 /** Energy spent since the last reset [J] */
-double Energy;
+DDD_RETAIN double Energy;
 /** Engaged gear, negative in reverse */
-int8_t Gear;
+DDD_RETAIN int8_t Gear;
 /** An array of structures in two dimensions */
-Cell_t Grid[2][3];
+DDD_RETAIN Cell_t Grid[2][3];
 /** The inlet sensor: a structure nesting another, with arrays inside */
-Sensor_t Inlet;
+DDD_RETAIN Sensor_t Inlet;
 /** Values inside a bitfield's unit, and an eight byte unit */
-Mixed_t Mixed;
+DDD_RETAIN Mixed_t Mixed;
 /** Gear ratio */
-float Ratio;
+DDD_RETAIN float Ratio;
 /** The last eight raw samples, an array of values */
-uint8_t Samples[8];
+DDD_RETAIN uint8_t Samples[8];
 /** Shaft speed [rpm] */
-uint16_t Speed;
+DDD_RETAIN uint16_t Speed;
 /** Bitfields of one, two and four bytes between values */
-Status_t Status;
+DDD_RETAIN Status_t Status;
 /** Timer ticks since the last reset */
-uint64_t Ticks;
+DDD_RETAIN uint64_t Ticks;
 /** Shaft torque, initialised so that it lands in .data [Nm] */
-int32_t Torque = 7;
+DDD_RETAIN int32_t Torque = 7;
 
 /* calibration data */
 /** Whether the engine may start (calibration parameter) */
-bool Enabled = 1;
+DDD_RETAIN bool Enabled = 1;
 /** Speed loop gain (calibration parameter) */
-float Gain = 1.5F;
+DDD_RETAIN float Gain = 1.5F;
 /** Torque limit [Nm] (calibration parameter) */
-int16_t Limit = -100;
+DDD_RETAIN int16_t Limit = -100;
 /** Four calibratable thresholds (calibration value block) */
-uint16_t Table[4] = { 1U, 2U, 3U, 4U };
+DDD_RETAIN uint16_t Table[4] = { 1U, 2U, 3U, 4U };
 /** The calibration of the speed loop, bitfields among its values */
-Tuning_t Tuning;
+DDD_RETAIN Tuning_t Tuning;

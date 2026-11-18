@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from fractions import Fraction
+from math import ulp
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -25,7 +28,12 @@ from ddd.models import (
     definition_problem,
     format_shape,
     is_reserved_identifier,
+    physical_range,
+    round_physical,
 )
+from ddd.models.conversion import TAIL_ULPS, is_above, is_below
+
+FLT_MAX = 3.4028234663852886e38
 
 
 def definition(**kwargs: object) -> Measurement:
@@ -204,6 +212,83 @@ class TestLimits:
         ).physical_limits()
         assert limits.min == pytest.approx(-3276.8)
         assert limits.max == pytest.approx(3276.7)
+
+    def test_a_uint64_under_factor_1_holds_both_ends_of_its_raw_range(self) -> None:
+        """Twelve digits stated 1.84467440737e+19, 9.6e6 under what 2^64 - 1 counts read."""
+        limits = definition(datatype="uint64", conversion={"factor": 1}).physical_limits()
+        assert limits.min <= 0
+        assert Fraction(limits.max) >= 18446744073709551615
+
+    def test_a_sint64_under_factor_1_holds_both_ends_of_its_raw_range(self) -> None:
+        limits = definition(datatype="sint64", conversion={"factor": 1}).physical_limits()
+        assert Fraction(limits.min) <= -(2**63)
+        assert Fraction(limits.max) >= 2**63 - 1
+
+    def test_a_uint32_under_two_to_the_minus_ten_holds_its_top_count(self) -> None:
+        """4194303.99902 is below 4194303.9990234375, the physical value of 2^32 - 1 counts."""
+        limits = definition(datatype="uint32", conversion={"factor": 2.0**-10}).physical_limits()
+        assert limits.max >= 4194303.9990234375
+        assert limits.max == 4194303.9990234375
+
+    def test_a_sint32_in_q16_16_holds_its_top_count(self) -> None:
+        limits = definition(datatype="sint32", conversion={"factor": 2.0**-16}).physical_limits()
+        assert limits.max >= 32767.99998474121
+        assert limits.min <= -32768.0
+
+    def test_a_whole_number_is_never_made_a_float_by_the_rounding_of_a_reading(self) -> None:
+        """The largest uint64 count is exact as an int and wrong by one as a float."""
+        assert round_physical(18446744073709551615) == 18446744073709551615
+        limits = definition(datatype="uint64").physical_limits()
+        assert (limits.min, limits.max) == (0, 18446744073709551615)
+
+    def test_a_float32_under_the_identity_stops_at_flt_max(self) -> None:
+        limits = definition(datatype="float32", conversion={}).physical_limits()
+        assert (limits.min, limits.max) == (-FLT_MAX, FLT_MAX)
+        assert limits.max == 3.4028234663852886e38
+
+    def test_a_float64_under_the_identity_stops_at_dbl_max(self) -> None:
+        limits = definition(datatype="float64", conversion={}).physical_limits()
+        assert (limits.min, limits.max) == (-sys.float_info.max, sys.float_info.max)
+
+    def test_a_float64_under_factor_1_never_rounds_to_infinity(self) -> None:
+        limits = definition(datatype="float64", conversion={"factor": 1}).physical_limits()
+        assert limits.max == sys.float_info.max
+        assert limits.min == -sys.float_info.max
+
+    def test_a_float32_under_factor_1_does_not_pass_flt_max(self) -> None:
+        limits = definition(datatype="float32", conversion={"factor": 1}).physical_limits()
+        assert limits.max == FLT_MAX
+
+    def test_a_short_decimal_still_reads_as_it_was_written(self) -> None:
+        """The tail of the arithmetic is not outward rounding: 255 counts of 0.03 are 7.65."""
+        assert definition(conversion={"factor": 0.03}).physical_limits().max == 7.65
+        assert (
+            definition(datatype="sint16", conversion={"factor": 0.1}).physical_limits().max
+            == 3276.7
+        )
+
+    def test_a_short_decimal_may_sit_inward_of_the_float_by_the_tail_alone(self) -> None:
+        """32767 counts of 0.1 compute 3276.7000000000003 and state 3276.7: inward, and by no
+        more than the tail of the arithmetic (TAIL_ULPS units in the last place)."""
+        product = 32767 * 0.1
+        stated = definition(datatype="sint16", conversion={"factor": 0.1}).physical_limits().max
+        assert stated == 3276.7
+        assert 0 < product - stated <= TAIL_ULPS * ulp(product)
+
+    def test_an_end_further_than_the_tail_from_its_short_decimal_is_kept(self) -> None:
+        """1000000000000003 is 24 units in the last place from 1e15: digits, not a tail."""
+        low, high = physical_range(LinearConversion(factor=1.0), 0, 1000000000000003)
+        assert (low, high) == (0, 1000000000000003.0)
+
+    def test_the_outward_end_stays_within_the_tolerance_of_the_old_one(self) -> None:
+        """Baselines archived at twelve digits still compare clean (decision 8.3)."""
+        for datatype, factor in (("uint64", 1), ("uint32", 2.0**-10), ("sint32", 2.0**-16)):
+            high = (
+                definition(datatype=datatype, conversion={"factor": factor}).physical_limits().max
+            )
+            old = float(f"{high:.12g}")
+            assert not is_above(old, high)
+            assert not is_below(old, high)
 
     def test_negative_factor_swaps_the_limits(self) -> None:
         limits = definition(conversion={"factor": -1.0}).physical_limits()
@@ -1050,7 +1135,7 @@ class TestDictionaryFormat:
         )
         assert dictionary is not None, messages(bag)
         payload = dictionary.model_dump(mode="json")
-        assert payload["format"] == DICTIONARY_FORMAT == 9
+        assert payload["format"] == DICTIONARY_FORMAT == 10
         entry = next(o for o in payload["objects"] if o["name"] == "Label")
         assert entry["conversion"] == {"kind": "string"}
         assert entry["init"] == "V1.2"

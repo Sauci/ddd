@@ -505,7 +505,8 @@ including the ones this image happens not to link.
    * - ``<stem>_ddd_a2l``
      - with ``ADDRESSES_FROM_IMAGE`` or ``ADDRESS_MAP``, built by default: writes the a2l once
        the image is linked, every address it carries read out of the image or out of the map
-       (see below). It depends on the image, on the map with ``ADDRESS_MAP``, on the project
+       (see below). It depends on the image, on the map with ``ADDRESS_MAP``, on the
+       ``A2L_MODULE_FRAGMENT`` file, on the project
        description and the files collected into it, on a ``.py`` plugin the call names and on the
        tool, and on nothing the c alone is rendered from. A build that names its targets -
        ``cmake --build --target firmware.elf``, say, or ``firmware_ddd_generation`` - does not
@@ -699,6 +700,9 @@ Options
        objects it lacks, save a conditional one of which it names neither the object nor a
        member, which is left out of the a2l and reported at ``info``: a structure the map names
        by its own name, as ``nm`` lists it, keeps its members ``address-missing``.
+       What the a2l leaves out with that object is not raised either: a curve or a map over an
+       axis so left out, and a measurement that asked to stay out of the file and was in it only
+       as the input of such an axis.
    * - ``ADDRESSES_FROM_IMAGE``
      - write the a2l once the image is linked, every address it carries read out of the
        image's debug information, so that one build gives the complete a2l: the run before the
@@ -709,6 +713,10 @@ Options
        with ``-g`` and without ``-flto``. Refused together with ``ADDRESS_MAP`` or ``NO_A2L``.
    * - ``BYTE_ORDER little|big``
      - byte order reported in the a2l.
+   * - ``A2L_MODULE_FRAGMENT <file>``
+     - a text file pasted unchanged at the head of the a2l's ``MODULE``, whichever step writes
+       the a2l (:ref:`a2l-module-fragment`). It is an input of that step, so an edit to it writes
+       the a2l again. Refused together with ``NO_A2L``.
    * - ``SEVERITY <check=level>...``
      - severity overrides, exactly like ``-W`` on the command line. They apply to both the
        generation and the check target.
@@ -723,8 +731,6 @@ Options
        component that includes a generated header needing one of them has to link it itself.
    * - ``DEPENDS <file>...``
      - additional files that retrigger the generation.
-   * - ``CONST_INPUTS``
-     - declare input variables ``const`` in the consumer headers.
    * - ``NO_A2L``
      - do not generate the a2l file; no ``DDD_A2L`` property is set then. The run still
        produces everything else the project has, the artefacts of the plugins named with
@@ -815,8 +821,8 @@ than ship an a2l with an address of 0. An object that states a condition, and of
 image defines nothing at all, is not reported that way: the build was made without it, and the
 a2l leaves it out. The example above, built as ``RelWithDebInfo`` with the keyword added,
 places every object of the demo but ``ValueG``, which a condition compiles out of this image.
-Built where gcc links position independent by default, as it does on a Debian or Ubuntu host and
-in the ``cmake`` compose service, it prints:
+Built where gcc links position independent by default, as it does on a Debian or Ubuntu host, it
+prints:
 
 .. code-block:: text
 
@@ -949,7 +955,6 @@ the pages reach the image, installed with DDD.
    docker compose run --rm check           # ddd check on the demo project
    docker compose run --rm generate        # ddd generate into build/gen
    docker compose run --rm compile         # generate + compile + link + verify
-   docker compose run --rm compile-const   # the same, with --const-inputs
    docker compose run --rm cmake           # configure and build examples/cmake
    docker compose run --rm test            # pytest with the coverage gate
    docker compose run --rm coverage        # the same, plus build/htmlcov/index.html

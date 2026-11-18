@@ -31,9 +31,11 @@ from dataclasses import dataclass
 
 from ddd.backends.a2l.options import A2lOptions
 from ddd.backends.a2l.types import A2L_TYPE
+from ddd.diagnostics import index_order
 from ddd.ir import DataDictionary, ResolvedComponent, ResolvedLeaf, ResolvedObject
 from ddd.models import (
     IDENTIFIER_MAX_LENGTH,
+    IDENTITY_METHOD_PREFIX,
     Conversion,
     Datatype,
     EnumConversion,
@@ -93,6 +95,9 @@ class MeasurementView:
     lower: str
     upper: str
     address: str
+    link: tuple[str, int]
+    """The linker symbol the record names and the offset from it (``SYMBOL_LINK``)."""
+
     matrix_dim: str | None
     format: str | None
     display_identifier: str | None
@@ -134,6 +139,9 @@ class CharacteristicView:
     description: str
     type: str
     address: str
+    link: tuple[str, int]
+    """The linker symbol the record names and the offset from it (``SYMBOL_LINK``)."""
+
     deposit: str
     compu_method: str
     lower: str
@@ -157,6 +165,9 @@ class AxisPtsView:
     name: str
     description: str
     address: str
+    link: tuple[str, int]
+    """The linker symbol the record names and the offset from it (``SYMBOL_LINK``)."""
+
     input_quantity: str
     deposit: str
     compu_method: str
@@ -197,8 +208,14 @@ class A2lModel:
     generator: str
     version: str
     byte_order: str
+    wide_alignment: int
+    """``ALIGNMENT_INT64`` and ``ALIGNMENT_FLOAT64_IEEE``."""
     has_address_source: bool
     """Whether the run had a source of addresses (:attr:`A2lOptions.has_address_source`)."""
+
+    module_fragment: str
+    """What the project pastes at the head of the module, without the newline that ends it
+    (:attr:`A2lOptions.module_fragment`); empty where there is none."""
 
     system_constants: tuple[SystemConstantView, ...]
     """One per declared constant, in name order; the ``MOD_PAR`` is written only when the
@@ -218,8 +235,12 @@ def build_a2l_model(dictionary: DataDictionary, options: A2lOptions, generator: 
     return _A2lModelBuilder(dictionary, options).build(generator)
 
 
-def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
-    """Every symbol this dictionary's a2l carries an ``ECU_ADDRESS`` for, sorted.
+def addressed_symbols(
+    dictionary: DataDictionary, left_out: frozenset[str] = frozenset()
+) -> tuple[str, ...]:
+    """Every symbol this dictionary's a2l carries an ``ECU_ADDRESS`` for, sorted, under the
+    ``left_out`` symbols of a run: what the file leaves out is not among them, nor what only
+    an axis among them pulled in.
 
     Asked of the builder that renders the file rather than worked out again, because "which
     objects reach the file" is a question with several parts - what asked to be exported, what
@@ -229,7 +250,7 @@ def addressed_symbols(dictionary: DataDictionary) -> tuple[str, ...]:
     seconds on top of a 1.7 second render at a thousand components. The selections are the
     same two; only the record views are not built.
     """
-    return _A2lModelBuilder(dictionary, A2lOptions()).addressed()
+    return _A2lModelBuilder(dictionary, A2lOptions(left_out=left_out)).addressed()
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,18 +392,27 @@ class _A2lModelBuilder:
         characteristics: list[CharacteristicView] = []
         axis_pts: list[AxisPtsView] = []
 
-        for entry in self._exported_objects():
+        # Built in the order the file writes its records - measurements, the axes, then the
+        # curves and maps, and the structure members after the plain objects of their kind -
+        # because the first record to reach a conversion names its method: in one pass over
+        # the dictionary, a curve ahead of a measurement in name order would give its axis's
+        # conversion the plain name before the measurement was met.
+        objects = tuple(self._exported_objects())
+        leaves = tuple(self._carried_leaves())
+        for entry in objects:
             if entry.kind is ObjectKind.MEASUREMENT:
                 measurements.append(self._measurement(entry))
-            elif entry.kind is ObjectKind.AXIS:
-                axis_pts.append(self._axis_pts(entry))
-            else:
-                characteristics.append(self._characteristic(entry))
-
-        for leaf in self._carried_leaves():
+        for leaf in leaves:
             if leaf.kind is ObjectKind.MEASUREMENT:
                 measurements.append(self._measurement(leaf))
-            else:
+        for entry in objects:
+            if entry.kind is ObjectKind.AXIS:
+                axis_pts.append(self._axis_pts(entry))
+        for entry in objects:
+            if entry.kind not in (ObjectKind.MEASUREMENT, ObjectKind.AXIS):
+                characteristics.append(self._characteristic(entry))
+        for leaf in leaves:
+            if leaf.kind is not ObjectKind.MEASUREMENT:
                 characteristics.append(self._leaf_characteristic(leaf))
 
         groups = [
@@ -398,7 +428,13 @@ class _A2lModelBuilder:
             generator=generator,
             version=self._options.version,
             byte_order=self._options.byte_order.a2l,
+            wide_alignment=self._options.wide_alignment,
             has_address_source=self._options.has_address_source,
+            module_fragment=(
+                self._options.module_fragment.text.removesuffix("\n")
+                if self._options.module_fragment
+                else ""
+            ),
             system_constants=tuple(
                 SystemConstantView(name=entry.name, value=str(entry.value))
                 for entry in dictionary.constants
@@ -477,6 +513,7 @@ class _A2lModelBuilder:
             description=leaf.description or leaf.path,
             type="ASCII" if string else ("VAL_BLK" if leaf.shape else "VALUE"),
             address=self._options.address_of(leaf.path),
+            link=self._options.link_of(leaf.path),
             deposit=self._layouts.values(leaf.datatype),
             compu_method=self._methods.reference(leaf),
             lower=format_number(leaf.limits.min),
@@ -498,6 +535,7 @@ class _A2lModelBuilder:
             lower=format_number(entry.limits.min),
             upper=format_number(entry.limits.max),
             address=self._options.address_of(entry.name),
+            link=self._options.link_of(entry.name),
             matrix_dim=_matrix_dim(entry),
             format=entry.a2l.format,
             display_identifier=entry.a2l.display_identifier,
@@ -518,6 +556,7 @@ class _A2lModelBuilder:
             description=entry.description or entry.name,
             type="ASCII" if string else _CHARACTERISTIC_TYPE[entry.kind],
             address=self._options.address_of(entry.name),
+            link=self._options.link_of(entry.name),
             deposit=(
                 self._layouts.counted(entry.kind, entry.datatype)
                 if entry.point_counts is PointCounts.LEADING
@@ -567,6 +606,7 @@ class _A2lModelBuilder:
             name=entry.name,
             description=entry.description or entry.name,
             address=self._options.address_of(entry.name),
+            link=self._options.link_of(entry.name),
             input_quantity=self._input_quantity(entry),
             deposit=(
                 self._layouts.counted(entry.kind, entry.datatype)
@@ -595,12 +635,13 @@ class _A2lModelBuilder:
         measurements = [n for n in names if by_name[n].kind is ObjectKind.MEASUREMENT]
         characteristics = [n for n in names if by_name[n].kind is not ObjectKind.MEASUREMENT]
         # The members of the structured variables this component declares, read out of the
-        # index and put back into the order the dictionary carries them in - which is by path,
-        # and is the order the file had while this walked every leaf of the project instead.
+        # index and put back into the order the dictionary carries them in: by path, an index
+        # counted as a number (:func:`ddd.diagnostics.index_order`), so ``SA[2]`` comes before
+        # ``SA[10]`` here as it does among the records.
         index = self._carried_by_instance()
         carried = sorted(
             (leaf for name in declared for leaf in index.get(name, ())),
-            key=lambda leaf: leaf.path,
+            key=lambda leaf: index_order(leaf.path),
         )
         for leaf in carried:
             target = measurements if leaf.kind is ObjectKind.MEASUREMENT else characteristics
@@ -692,6 +733,7 @@ class _CompuMethodBuilder:
         self._methods: dict[object, CompuMethodView] = {}
         self._vtabs: dict[str, CompuVtabView] = {}
         self._names: set[str] = set()
+        self._counted: dict[str, int] = {}
 
     def reference(self, entry: ResolvedObject | ResolvedLeaf) -> str:
         conversion = entry.conversion
@@ -747,7 +789,7 @@ class _CompuMethodBuilder:
             )
         return CompuMethodView(
             name=self._unique(f"CM_IDENT_{_slug(unit)}"),
-            description=f"physical value in {unit}" if unit else "identity",
+            description=f"{IDENTITY_METHOD_PREFIX}{unit}" if unit else "identity",
             conversion_type="IDENTICAL",
             format=_default_format(datatype, conversion),
             unit=unit,
@@ -773,11 +815,14 @@ class _CompuMethodBuilder:
         unit is not capped at all, so the synthesised name is what has to fit.
         """
         candidate = base[:IDENTIFIER_MAX_LENGTH]
-        index = 1
+        # A name is never given back, so every suffix below the last one counted for this base
+        # is taken: counting resumes there, and the work is the methods and not their square.
+        index = self._counted.get(base, 1)
         while candidate in self._names:
             index += 1
             suffix = f"_{index}"
             candidate = f"{base[: IDENTIFIER_MAX_LENGTH - len(suffix)]}{suffix}"
+        self._counted[base] = index
         self._names.add(candidate)
         return candidate
 

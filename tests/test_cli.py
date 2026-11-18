@@ -372,6 +372,120 @@ class TestGenerateAll:
         assert "would write nothing" in capsys.readouterr().err
 
 
+VOCABULARY = EXAMPLES / "vocabulary" / "project.ddd.json"
+MODULE_OPENING = '  /begin MODULE DemoDevice "'
+
+
+class TestTheA2lModuleFragment:
+    """``--a2l-module-fragment``: a project's file pasted at the head of the ``MODULE``."""
+
+    FRAGMENT = '/begin A2ML\n  block "IF_DATA" taggedunion if_data {\n  };\n/end A2ML\n'
+
+    def fragment(self, tmp_path: Path, text: str = FRAGMENT) -> Path:
+        path = tmp_path / "module.a2l"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    @pytest.mark.parametrize("addresses", [False, True], ids=["before-the-link", "after-the-link"])
+    def test_the_fragment_is_once_the_head_of_the_module_with_or_without_a_map(
+        self, addresses: bool, tmp_path: Path
+    ) -> None:
+        """The run before the link writes the a2l with no address source; the one after it
+        reads a map. Both write the file the same way round the fragment."""
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        arguments += ["--a2l-module-fragment", str(self.fragment(tmp_path))]
+        if addresses:
+            (tmp_path / "map.json").write_text('{"ValueE": "0x20001000"}', encoding="utf-8")
+            arguments += ["--address-map", str(tmp_path / "map.json")]
+        assert main(arguments) == EXIT_OK
+        content = (tmp_path / "gen" / "DemoDevice.a2l").read_text(encoding="utf-8")
+        assert content.count(self.FRAGMENT) == 1
+        assert content.count("/begin A2ML") == 1
+        head = content.index(MODULE_OPENING)
+        assert content.index(self.FRAGMENT) == content.index("\n", head) + 1
+        assert content.index(self.FRAGMENT) < content.index("/begin MOD_COMMON")
+        assert content.index("/end MOD_COMMON") < content.index("/end MODULE")
+        assert content.index(self.FRAGMENT) < content.index("/end MODULE")
+        assert ("ECU_ADDRESS 0x20001000" in content) is addresses
+
+    def test_all_hands_it_to_the_a2l_alone(self, tmp_path: Path) -> None:
+        arguments = ["generate", "all", str(LAYOUT), "-o", str(tmp_path / "gen")]
+        arguments += ["-t", str(TEMPLATES), "-W", "missing-id=ignore"]
+        arguments += ["--a2l-module-fragment", str(self.fragment(tmp_path))]
+        assert main(arguments) == EXIT_OK
+        written = {
+            path.name: path.read_text(encoding="utf-8") for path in (tmp_path / "gen").iterdir()
+        }
+        assert [name for name, text in written.items() if "/begin A2ML" in text] == [
+            "LayoutDevice.a2l"
+        ]
+
+    def test_the_c_artefact_does_not_take_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "c", str(DEMO), "-o", str(tmp_path / "gen"), "-t", str(TEMPLATES)]
+        with pytest.raises(SystemExit) as refused:
+            main([*arguments, "--a2l-module-fragment", str(self.fragment(tmp_path))])
+        assert refused.value.code == EXIT_USAGE
+        assert "--a2l-module-fragment" in capsys.readouterr().err
+
+    def test_a_subtracted_a2l_takes_the_option_with_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "all", str(LAYOUT), "-o", str(tmp_path / "gen")]
+        arguments += ["-t", str(TEMPLATES), "--without", "a2l", "-W", "missing-id=ignore"]
+        arguments += ["--a2l-module-fragment", str(self.fragment(tmp_path))]
+        assert main(arguments) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            "ddd: --a2l-module-fragment belongs to the a2l artefact, left out by --without\n"
+        )
+
+    def test_the_help_offers_it(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit):
+            main(["generate", "a2l", "--help"])
+        assert "--a2l-module-fragment" in capsys.readouterr().out
+
+    def test_a_missing_file_is_named(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        missing = tmp_path / "nosuch.a2l"
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--a2l-module-fragment", str(missing)]) == EXIT_USAGE
+        assert capsys.readouterr().err.endswith(
+            f"ddd: cannot read the a2l module fragment '{missing.as_posix()}': "
+            "No such file or directory\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_file_that_is_not_utf_8_is_named(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """What Windows PowerShell's ``>`` writes, as for the address map."""
+        path = tmp_path / "module.a2l"
+        path.write_bytes(b"\xff\xfe" + "/begin A2ML".encode("utf-16-le"))
+        arguments = ["generate", "a2l", str(DEMO), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--a2l-module-fragment", str(path)]) == EXIT_USAGE
+        assert capsys.readouterr().err.endswith(
+            f"ddd: the a2l module fragment '{path.as_posix()}' is not UTF-8 text, and Windows "
+            "PowerShell's > writes UTF-16; write the fragment as UTF-8\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+    def test_a_second_mod_par_is_a_usage_error_naming_the_fragment(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = self.fragment(tmp_path, '/begin MOD_PAR "ecu"\n  EPK "EPROM1"\n/end MOD_PAR\n')
+        arguments = ["generate", "a2l", str(VOCABULARY), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "--a2l-module-fragment", str(path)]) == EXIT_USAGE
+        assert capsys.readouterr().err.endswith(
+            f"ddd: the a2l module fragment '{path.as_posix()}' holds a MOD_PAR, and the named "
+            "constants of this project make ddd write one: ASAP2 allows one MOD_PAR in a "
+            "MODULE, so a project that declares a named constant cannot carry EPK, ADDR_EPK "
+            "or MEMORY_SEGMENT through the fragment\n"
+        )
+        assert not (tmp_path / "gen").exists()
+
+
 class TestGenerateOwnsItsOutputDirectory:
     """What a run wrote once and no longer writes, the next run takes back.
 
@@ -550,6 +664,30 @@ class TestGenerate:
                 main(arguments)
             assert exit_code.value.code == EXIT_USAGE
         assert "-t/--template-dir" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("artefact", ["c", "all"])
+    def test_const_inputs_is_refused_with_the_release_that_removed_it(
+        self, artefact: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        output = tmp_path / "gen"
+        arguments = ["generate", artefact, str(DEMO), "-t", str(TEMPLATES), "-o", str(output)]
+        assert main([*arguments, "--const-inputs"]) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert captured.err == (
+            "ddd: --const-inputs was removed in 0.12.0: the header it wrote declared an input "
+            "const while the input's definition is not const. C leaves such a pair of "
+            "declarations undefined, so an optimising compiler may hand the reader a stale "
+            "value. Generate the headers without it.\n"
+        )
+        assert captured.out == ""
+        assert not output.exists()
+
+    def test_const_inputs_is_not_offered_by_the_help(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit):
+            main(["generate", "c", "--help"])
+        assert "const-inputs" not in capsys.readouterr().out
 
     def test_the_a2l_artefact_refuses_the_options_of_the_c_one(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1315,6 +1453,66 @@ class TestGenerate:
         ) in capsys.readouterr().err
         assert a2l == ""
 
+    def test_a_measurement_only_a_left_out_axis_pulled_in_is_not_named_as_reaching_the_a2l(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``Speed`` asks to stay out of the file and is in it only as the input of ``Ax``, which
+        the run leaves out: the a2l does not hold it, so ``address-missing`` has nothing to say
+        of it and ``--strict`` has nothing to stop for."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            [
+                declare("local", "Kept"),
+                declare("local", "Speed", a2l={"export": False}),
+                declare(
+                    "local",
+                    "Ax",
+                    "uint16",
+                    "defined(F)",
+                    kind="axis",
+                    size=2,
+                    input="Speed",
+                    a2l={"export": True},
+                ),
+            ],
+            {"Kept": "0x20000000"},
+            "-W",
+            "condition-mismatch=ignore",
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_OK, captured
+        assert "address-missing" not in captured
+        assert "info[condition-left-out]: the address map has no entry for 'Ax'" in captured
+        assert "MEASUREMENT Kept" in a2l
+        assert "Speed" not in a2l
+
+    def test_a_measurement_an_axis_the_run_keeps_pulled_in_is_still_named_when_the_map_lacks_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The control: the same measurement under an axis with no condition is in the file, at
+        address 0 where the map has no entry for it."""
+        code, _, a2l = self.generate_strict(
+            tmp_path,
+            [
+                declare("local", "Kept"),
+                declare("local", "Speed", a2l={"export": False}),
+                declare(
+                    "local",
+                    "Ax",
+                    "uint16",
+                    kind="axis",
+                    size=2,
+                    input="Speed",
+                    a2l={"export": True},
+                ),
+            ],
+            {"Kept": "0x20000000"},
+        )
+        captured = capsys.readouterr().err
+        assert code == EXIT_FINDINGS
+        assert "error[address-missing]: the address map has no entry for 'Ax', 'Speed'" in captured
+        assert a2l == ""
+
     def test_a_map_entry_matching_nothing_is_named_beside_the_missing_ones(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1476,6 +1674,8 @@ class TestGenerate:
                 str(output),
                 "-t",
                 str(TEMPLATES),
+                "--byte-order",
+                "little",
                 "--format",
                 "json",
             ]
@@ -5490,6 +5690,53 @@ LOAD_RELATIVE_NOTE = LOAD_RELATIVE_FINDING + "1 info\n"
 """The whole of it where it is all the run says."""
 
 
+BYTE_ORDER_DEFAULTED = (
+    "info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states "
+    "MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the "
+    "BYTE_ORDER of ddd_generate in cmake), and an image states its own\n"
+)
+
+
+class TestADefaultedByteOrder:
+    """No ``--byte-order`` and no ``--image``: the byte order is not a choice, and is said so."""
+
+    def arguments(self, tmp_path: Path, *more: str) -> list[str]:
+        return ["generate", "a2l", str(ADDRESS_PROJECT), "-o", str(tmp_path / "gen"), *more]
+
+    def test_the_default_is_reported_at_info_and_stops_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        a2l = tmp_path / "gen" / "AddressFixture.a2l"
+        assert main(self.arguments(tmp_path, "--strict")) == EXIT_OK
+        err = capsys.readouterr().err
+        assert BYTE_ORDER_DEFAULTED in err
+        assert "      BYTE_ORDER MSB_LAST\n" in a2l.read_text(encoding="utf-8")
+
+    def test_a_stated_byte_order_is_not_a_default(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.arguments(tmp_path, "--byte-order", "little")) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+    def test_an_image_states_it(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        image = ADDRESS_FIXTURES / "armv7m.elf"
+        assert main(self.arguments(tmp_path, "--image", str(image))) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+    def test_a_run_writing_no_a2l_has_no_byte_order_to_default(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        arguments = ["generate", "c", str(ADDRESS_PROJECT), "-o", str(tmp_path / "gen")]
+        assert main([*arguments, "-t", str(TEMPLATES)]) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+    def test_it_can_be_silenced_like_any_info(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(self.arguments(tmp_path, "-W", "byte-order-defaulted=ignore")) == EXIT_OK
+        assert "byte-order-defaulted" not in capsys.readouterr().err
+
+
 class TestGenerateFromAnImage:
     """``ddd generate a2l --image``: every address the a2l carries, out of the linked image."""
 
@@ -5560,6 +5807,39 @@ class TestGenerateFromAnImage:
         assert [path for path in expected["bitfields"] if path in text] == []
         order = {"little": "MSB_LAST", "big": "MSB_FIRST"}[expected["byte_order"]]
         assert f"      BYTE_ORDER {order}\n" in text
+
+    @pytest.mark.parametrize(
+        ("row", "wide"), [("i686", 4), ("x86_64", 8), ("armv7m", 8), ("powerpc", 8)]
+    )
+    def test_the_alignments_are_the_images_machines_where_it_has_a_table_for_it(
+        self, tmp_path: Path, row: str, wide: int
+    ) -> None:
+        """A 64 bit scalar is aligned to 4 on i386, where the file used to state 8 for a record
+        the image places at an address 4 modulo 8."""
+        image = ADDRESS_FIXTURES / f"{row}.elf"
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert (
+            "      ALIGNMENT_BYTE 1\n      ALIGNMENT_WORD 2\n      ALIGNMENT_LONG 4\n"
+            f"      ALIGNMENT_INT64 {wide}\n      ALIGNMENT_FLOAT32_IEEE 4\n"
+            f"      ALIGNMENT_FLOAT64_IEEE {wide}\n"
+        ) in text
+
+    def test_an_image_of_a_machine_without_a_table_keeps_the_fixed_alignments(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("ddd.toolbox.mapping.alignment_cap", lambda machine, flags: None)
+        image = ADDRESS_FIXTURES / "i686.elf"
+        assert main([*self.arguments(tmp_path), "--image", str(image)]) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert "ALIGNMENT_INT64 8\n" in text
+        assert "ALIGNMENT_FLOAT64_IEEE 8\n" in text
+
+    def test_a_run_without_an_image_states_the_fixed_alignments(self, tmp_path: Path) -> None:
+        assert main([*self.arguments(tmp_path), "--byte-order", "little"]) == EXIT_OK
+        text = (tmp_path / "gen" / "AddressFixture.a2l").read_text(encoding="utf-8")
+        assert "ALIGNMENT_INT64 8\n" in text
+        assert "ALIGNMENT_FLOAT64_IEEE 8\n" in text
 
     def test_generate_all_reads_the_image_as_generate_a2l_does(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

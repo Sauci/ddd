@@ -8,3 +8,17 @@
  * DO NOT EDIT - every change is lost the next time DDD runs.
  */
 {%- endmacro %}
+
+{# The factor and the offset of a linear conversion, as two macros beside the declaration.
+   Their names carry a double underscore, which DDD refuses in every name of a project (a
+   variable, a type, a constant, an enumerator), so no name the generated C holds can be
+   one of them. A rescale of the conversion changes this header, and every file that
+   includes it is rebuilt. Another kind of conversion - identity, an enum, a string -
+   writes nothing: there is no scale to carry. The values are parenthesised so that a
+   negative offset cannot join the sign before it: 'x-Speed__OFFSET' would read as a decrement. #}
+{% macro scale(variable) -%}
+{% if variable.conversion and variable.conversion.kind == "linear" %}
+#define {{ variable.name }}__FACTOR ({{ variable.conversion.factor_literal }})
+#define {{ variable.name }}__OFFSET ({{ variable.conversion.offset_literal }})
+{% endif %}
+{%- endmacro %}

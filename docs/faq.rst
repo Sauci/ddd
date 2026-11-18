@@ -224,7 +224,7 @@ reported:
 .. code-block:: c
 
    /* ddd_globals.c */
-   int16_t InletTemperature = -400;
+   DDD_RETAIN int16_t InletTemperature = -400;
 
 If the disagreement is real and the project needs to see the generated files anyway - to
 compare them, or to get an image out of the door while two teams argue - the ``--force``
@@ -307,7 +307,11 @@ spelling out ``datatype``, ``unit``, ``conversion`` and ``limits`` of its own:
        "typename": "Temperature_t", "volatile": true } }
 
 If all three consumers say ``Temperature_t``, there is nothing left for them to disagree
-about. A type fixes exactly ``datatype``, ``unit``, ``conversion`` and ``limits``; ``kind``,
+about, which is also what it costs: ``ddd check`` cannot see two descriptions drift apart
+when there is one, so a rescale of the type is one edit that no reader's description shows.
+``ddd compare`` against an archived baseline names it, and the example templates write the
+type's factor and offset as macros in the header each reader includes, so the readers rebuild;
+:doc:`concept` says what is detected and what is not. A type fixes exactly ``datatype``, ``unit``, ``conversion`` and ``limits``; ``kind``,
 ``dimensions``, ``init``, ``volatile`` and ``a2l`` stay on the variable, because two
 measurements of one type may well differ in whether an interrupt writes one of them. Naming
 a type and then restating what it fixes is an error rather than an override, so "where is
@@ -452,7 +456,7 @@ generated c code:
 .. code-block:: c
 
    /* ddd_globals.c */
-   uint16_t ValueD[8];
+   DDD_RETAIN uint16_t ValueD[8];
 
 That asymmetry is deliberate. ``export`` describes what a calibration tool is shown; it says
 nothing about what the software is allowed to use, and a variable that vanished from the
@@ -509,14 +513,15 @@ already parses it in your build:
 
 .. code-block:: json
 
-   { "ValueE": "0x20000100", "AxisA": "0x08004000", "ParameterA": 134234112 }
+   { "ValueE": "0x20000100", "AxisA": "0x08004000", "ParameterA": 134234128 }
 
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o gen -t examples/templates --address-map addresses.json
    addresses.json: warning[address-missing]: the address map has no entry for 'AxisB', 'BlockA', 'CurveA', 'CurveB', 'Diagnosis.faults' and 12 others; they reach the a2l at address 0
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
    addresses.json: info[condition-left-out]: the address map has no entry for 'ValueG', which is only present in the build when 'defined(FEATURE_X)'; it is left out of the a2l
-   1 warning, 1 info
+   1 warning, 2 infos
    ...
    $ sed -n '/MEASUREMENT ValueE/,/end MEASUREMENT/p' gen/DemoDevice.a2l
        /begin MEASUREMENT ValueE "Measurement used as the input quantity of AxisA"
@@ -551,7 +556,10 @@ the note under the warning above.
 
 The other route needs no map at all: ``SYMBOL_LINK`` is written for every object, always, so
 an a2l address patcher can resolve the symbols against the linked image itself and fill the
-addresses in afterwards. Both routes exist because projects differ in which tool owns the
+addresses in afterwards. A patcher that works from a linker map can do that for an object that
+is not a member of a structure, and for a member only once the a2l was written with ``--image``,
+where the record names the variable's symbol and the member's offset from it; before the link
+the record of a member names a path no linker map can answer. Both routes exist because projects differ in which tool owns the
 linker output; neither of them requires editing the generated file by hand.
 
 Why is the address of my variable still ``0x00000000``?
@@ -607,7 +615,8 @@ only a 1.7 reader understands, and says so:
 
    $ ddd generate all buffers.ddd.json -o gen -t templates
    buffers.ddd.json#component.interface[1].definition: warning[a2l-unrepresentable]: 'Tesseract' has 4 dimensions, but the MATRIX_DIM of ASAP2 1.6.1 carries 3; the extra dimensions are written out and only a 1.7 reader understands them
-   1 warning
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 warning, 1 info
    wrote       gen/ddd_globals.c (created)
    ...
 
@@ -621,8 +630,10 @@ calibration tool would address the wrong element.
    protocol that reaches it: an exported measurement with a :doc:`raster
    <file_formats/rasters>` gets an ``IF_DATA XCP`` block naming its event channel, while the
    module level ``DAQ`` list defining the events, the ``PROTOCOL_LAYER`` and the transport
-   come from whatever configures the XCP stack. No file DDD writes contains an ``IF_DATA``
-   section for CCP.
+   come from whatever configures the XCP stack, and reach the a2l in the project's own
+   :ref:`module fragment <a2l-module-fragment>`, pasted at the head of the module with
+   ``--a2l-module-fragment`` - the ``A2ML`` describing them with it. No file DDD writes
+   contains an ``IF_DATA`` section for CCP.
 
 How large may an array be?
 --------------------------
@@ -694,6 +705,8 @@ shipping a calibration description for variables the software does not contain.
 .. code-block:: text
 
    $ ddd generate all sensor_only.ddd.json -o build/sensor -t templates -W unused-output=ignore
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/sensor/ddd_globals.c (created)
    wrote       build/sensor/ddd_globals.h (created)
    wrote       build/sensor/ddd_types.h (created)
@@ -701,6 +714,8 @@ shipping a calibration description for variables the software does not contain.
    wrote       build/sensor/SensorOnly.a2l (created)
 
    $ ddd generate all full.ddd.json -o build/full -t templates -W unused-output=ignore -W missing-producer=ignore
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/full/ddd_globals.c (created)
    wrote       build/full/ddd_globals.h (created)
    wrote       build/full/ddd_types.h (created)
@@ -717,9 +732,13 @@ produces each of its inputs, and that answer depends on what else is in the imag
 
    /* build/full/Controller.h */
    extern uint8_t ValueA;  /* produced by SensorHub */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
 
    /* build/ctrl/Controller.h - an image that does not link SensorHub */
    extern uint8_t ValueA;  /* produced by <unresolved> */
+   #define ValueA__FACTOR (0.5)
+   #define ValueA__OFFSET (0.0)
 
 This is why the cmake integration refuses the ambiguous case instead of letting an include
 order decide it: only one ``ddd_generate`` call may hand its ``<stem>_ddd_headers`` to the
@@ -744,6 +763,8 @@ on it needs rebuilding:
 .. code-block:: text
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    wrote       build/docs-check/ddd_globals.c (created)
    wrote       build/docs-check/ddd_globals.h (created)
    wrote       build/docs-check/ddd_types.h (created)
@@ -754,6 +775,8 @@ on it needs rebuilding:
    wrote       build/docs-check/DemoDevice.a2l (created)
 
    $ ddd generate all examples/demo/demo.ddd.json -o build/docs-check -t examples/templates
+   <project>: info[byte-order-defaulted]: no --byte-order and no --image was given, so the a2l states MSB_LAST, little endian, as a default; a big endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in cmake), and an image states its own
+   1 info
    unchanged   build/docs-check/ddd_globals.c
    unchanged   build/docs-check/ddd_globals.h
    unchanged   build/docs-check/ddd_types.h

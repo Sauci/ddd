@@ -9,6 +9,7 @@ from typing import Any
 from ddd.backends.c.literals import (
     c_constant_literal,
     c_type,
+    component_guard,
     doc_comment,
     guard_name,
     initializer_of,
@@ -26,8 +27,11 @@ from ddd.ir import (
     ResolvedStruct,
 )
 from ddd.models import (
+    Conversion,
     Datatype,
     EnumConversion,
+    Enumerator,
+    LinearConversion,
     ObjectKind,
     PointCounts,
     Scope,
@@ -36,6 +40,82 @@ from ddd.models import (
 )
 
 UNRESOLVED_GROUP = "<unresolved>"
+
+REMOVED_ENTRY_CONST = (
+    "'.const' of a header entry was removed in 0.12.0 with --const-inputs: it said whether the "
+    "option had added a const to the declaration, and the option is gone because a header that "
+    "declares an input const while its definition is not leaves C's two declarations "
+    "undefined. Use entry.line."
+)
+"""What a template that still reads ``.const`` of a header entry is told."""
+
+REMOVED_DECLARATION_CONST = (
+    "'declaration(const=...)' was removed in 0.12.0 with --const-inputs: the option is gone "
+    "because a header that declares an input const while its definition is not leaves C's two "
+    "declarations undefined. Call declaration() without it."
+)
+"""What a template that still passes ``const`` to ``declaration()`` is told."""
+
+
+@dataclass(frozen=True, slots=True)
+class ConversionView:
+    """What turns an object's raw value into its physical one, as the a2l states it.
+
+    ``kind`` is ``identity``, ``linear``, ``enum`` or ``string``. The other fields say what
+    the kind has and are empty or ``None`` for a kind that has not: a ``linear`` conversion
+    has a ``factor`` and an ``offset`` (physical = raw * factor + offset), an ``enum`` its
+    ``name`` and ``enumerators``, which are its entry's in ``model.enums``, the copy the types
+    header declares.
+    """
+
+    kind: str
+    factor: float | None = None
+    offset: float | None = None
+    name: str = ""
+    enumerators: tuple[EnumeratorView, ...] = ()
+
+    @property
+    def factor_literal(self) -> str:
+        """The factor as a c literal: ``0.1``. Empty for a conversion that has none."""
+        return "" if self.factor is None else c_constant_literal(self.factor)
+
+    @property
+    def offset_literal(self) -> str:
+        """The offset as a c literal: ``-40.0``. Empty for a conversion that has none."""
+        return "" if self.offset is None else c_constant_literal(self.offset)
+
+    @property
+    def coefficients(self) -> tuple[float, ...]:
+        """The six coefficients of the a2l's rational function ``(a*x^2 + b*x + c) / (d*x^2 +
+        e*x + f)``, in the order its ``COEFFS`` record lists them; ``()`` for a conversion
+        that is not linear. A linear one is ``0 1 -offset 0 0 factor``."""
+        if self.factor is None or self.offset is None:
+            return ()
+        return (0.0, 1.0, -self.offset, 0.0, 0.0, self.factor)
+
+    @property
+    def coefficient_literals(self) -> tuple[str, ...]:
+        """:attr:`coefficients`, each spelled as a c literal."""
+        return tuple(c_constant_literal(value) for value in self.coefficients)
+
+
+@dataclass(frozen=True, slots=True)
+class LimitsView:
+    """The range the a2l states for an object: the explicit limits, or what its datatype and
+    conversion imply."""
+
+    min: float
+    max: float
+
+    @property
+    def min_literal(self) -> str:
+        """The lower limit as a c literal."""
+        return c_constant_literal(self.min)
+
+    @property
+    def max_literal(self) -> str:
+        """The upper limit as a c literal."""
+        return c_constant_literal(self.max)
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +169,19 @@ class ObjectView:
     """The blocks of the project's plugins, keyed by plugin name, exactly as the dictionary
     carries them - a project whose c carries a table derived from a block renders it here."""
 
+    unit: str = ""
+    """The physical unit, as the a2l states it; empty when the object states none, and for a
+    structured variable, whose members state their own."""
+
+    conversion: ConversionView | None = None
+    """What turns the raw value into the physical one, as the a2l states it, so that a project
+    generating a scale macro, a table or a header of its own from it cannot disagree with the
+    a2l. ``None`` for a structured variable."""
+
+    limits: LimitsView | None = None
+    """The range the a2l states: the explicit limits or the derived ones. ``None`` for a
+    structured variable."""
+
     @property
     def qualifier(self) -> str:
         """``"const volatile "``, ``"const "``, ``"volatile "`` or the empty string.
@@ -108,11 +201,15 @@ class ObjectView:
             text += f" = {self.initializer}"
         return text
 
-    def declaration(self, *, const: bool = False) -> str:
-        """``extern const volatile uint16_t Speed[4]``, without the trailing semicolon."""
-        # Calibration data already carries const, and c refuses a repeated qualifier.
-        prefix = "const " if const and not self.constant else ""
-        return f"extern {prefix}{self.qualifier}{self.c_type} {self.name}{self.array_suffix}"
+    def declaration(self, *, const: object = None) -> str:
+        """``extern const volatile uint16_t Speed[4]``, without the trailing semicolon.
+
+        ``const`` is the keyword ``--const-inputs`` needed, and is refused in a sentence naming
+        its removal rather than as python's own ``unexpected keyword argument``.
+        """
+        if const is not None:
+            raise ValueError(REMOVED_DECLARATION_CONST)
+        return f"extern {self.qualifier}{self.c_type} {self.name}{self.array_suffix}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,11 +271,16 @@ class DeclarationView:
 
     variable: ObjectView
     condition: str | None
-    const: bool
 
     @property
     def line(self) -> str:
-        return self.variable.declaration(const=self.const) + ";"
+        return self.variable.declaration() + ";"
+
+    @property
+    def const(self) -> bool:
+        """Removed with ``--const-inputs``, and refused in a sentence naming the removal rather
+        than as jinja's own ``has no attribute``."""
+        raise ValueError(REMOVED_ENTRY_CONST)
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,7 +332,7 @@ class ConstantView:
 
     @property
     def literal(self) -> str:
-        """The value as a c literal of the narrowest type that holds it.
+        """The value as a c literal, chosen by its range alone.
 
         ``8`` and ``-40`` and ``1.5`` come back as themselves; the two ends of the 64 bit
         range do not, because bare they are not the values they read as. C has no negative
@@ -308,8 +410,9 @@ class CodeModel:
         """An include guard built out of ``parts``, e.g. ``model.guard('ddd', 'globals')``.
 
         Offered rather than imposed: a template that wants a guard of its own writes one, and
-        this only spares it the normalisation - upper casing, replacing what is not a letter
-        or a digit, and keeping a leading digit out of the macro name.
+        this only spares it the normalisation - upper casing, replacing a run of what is not a
+        letter or a digit with one underscore, dropping the underscores at either end, and
+        keeping a leading digit out of the macro name.
         """
         return guard_name(*parts)
 
@@ -405,7 +508,14 @@ def _by_owner(dictionary: DataDictionary) -> dict[str, list[ResolvedObject | Res
 
 def build_code_model(dictionary: DataDictionary, options: COptions, generator: str) -> CodeModel:
     """Turn the dictionary into the flat structures used by the templates."""
-    views: dict[str, ObjectView] = {entry.name: _object_view(entry) for entry in dictionary.objects}
+    enums = tuple(_enum_view(enum) for enum in dictionary.enums)
+    # One tuple of views per enum, shared by every object it converts and by the types header:
+    # built once per object, the views of a project of 5,000 objects naming an enum of 200
+    # values took a million calls, and four times as long as the rest of the generation.
+    enumerators = {enum.name: enum.enumerators for enum in enums}
+    views: dict[str, ObjectView] = {
+        entry.name: _object_view(entry, enumerators) for entry in dictionary.objects
+    }
     views.update({entry.name: _instance_view(entry) for entry in dictionary.instances})
 
     owned = _by_owner(dictionary)
@@ -444,11 +554,11 @@ def build_code_model(dictionary: DataDictionary, options: COptions, generator: s
             )
             for entry in dictionary.constants
         ),
-        enums=tuple(_enum_view(enum) for enum in dictionary.enums),
+        enums=enums,
         structures=tuple(_struct_view(entry) for entry in dictionary.types),
         groups=tuple(groups),
         sections=_section_groups(dictionary, views),
-        headers=tuple(_header(component, views, options) for component in dictionary.components),
+        headers=tuple(_header(component, views) for component in dictionary.components),
         needs_stdint=needs_stdint(dictionary.datatypes),
         needs_stdbool=needs_stdbool(dictionary.datatypes),
         external_includes=_external_includes(dictionary),
@@ -479,17 +589,18 @@ def _external_includes(dictionary: DataDictionary) -> tuple[str, ...]:
 def _enum_view(enum: EnumConversion) -> EnumView:
     return EnumView(
         name=enum.name,
-        enumerators=tuple(
-            EnumeratorView(
-                name=enumerator.name,
-                value=enumerator.value,
-                # Every text that reaches a comment is defused here rather than in the
-                # template: a '*/' in a description would otherwise end the comment and
-                # leave the rest of it as code.
-                description=sanitize_comment(enumerator.description),
-            )
-            for enumerator in enum.enumerators
-        ),
+        enumerators=tuple(_enumerator_view(enumerator) for enumerator in enum.enumerators),
+    )
+
+
+def _enumerator_view(enumerator: Enumerator) -> EnumeratorView:
+    return EnumeratorView(
+        name=enumerator.name,
+        value=enumerator.value,
+        # Every text that reaches a comment is defused here rather than in the template: a
+        # '*/' in a description would otherwise end the comment and leave the rest of it as
+        # code.
+        description=sanitize_comment(enumerator.description),
     )
 
 
@@ -562,7 +673,9 @@ def _instance_view(entry: ResolvedInstance) -> ObjectView:
     )
 
 
-def _object_view(entry: ResolvedObject) -> ObjectView:
+def _object_view(
+    entry: ResolvedObject, enumerators: dict[str, tuple[EnumeratorView, ...]]
+) -> ObjectView:
     # The initialiser lays its braces out over the numeric shape, whatever the spelling.
     return _view(
         entry,
@@ -570,6 +683,7 @@ def _object_view(entry: ResolvedObject) -> ObjectView:
         datatype=entry.datatype.value,
         initializer=initializer_of(entry),
         comment=doc_comment(entry),
+        conversion=_conversion_view(entry.conversion, enumerators),
     )
 
 
@@ -580,9 +694,10 @@ def _view(
     datatype: str,
     initializer: str | None,
     comment: str | None,
+    conversion: ConversionView | None = None,
 ) -> ObjectView:
     """What a plain object and a structured variable share, which is everything but the four
-    values that say what the thing is."""
+    values that say what the thing is, and the conversion a structured variable has none of."""
     return ObjectView(
         name=entry.name,
         kind=entry.kind,
@@ -606,12 +721,38 @@ def _view(
             else ()
         ),
         extensions=entry.extensions,
+        unit=entry.unit if isinstance(entry, ResolvedObject) else "",
+        conversion=conversion,
+        limits=(
+            LimitsView(min=entry.limits.min, max=entry.limits.max)
+            if isinstance(entry, ResolvedObject)
+            else None
+        ),
     )
 
 
-def _header(
-    component: ResolvedComponent, views: dict[str, ObjectView], options: COptions
-) -> ComponentHeaderView:
+def _conversion_view(
+    conversion: Conversion, enumerators: dict[str, tuple[EnumeratorView, ...]]
+) -> ConversionView:
+    """The view of one object's conversion; an enum's enumerators are its entry's in
+    ``model.enums``, the very tuple, so an object states the copy the types header declares,
+    the better documented one where two copies differ in nothing else.
+
+    An enum the dictionary does not list, which only a dictionary another producer wrote can
+    leave out, has its views built the first time an object names it, and shared from then on.
+    """
+    if isinstance(conversion, LinearConversion):
+        return ConversionView(kind="linear", factor=conversion.factor, offset=conversion.offset)
+    if isinstance(conversion, EnumConversion):
+        known = enumerators.get(conversion.name)
+        if known is None:
+            known = tuple(_enumerator_view(e) for e in conversion.enumerators)
+            enumerators[conversion.name] = known
+        return ConversionView(kind="enum", name=conversion.name, enumerators=known)
+    return ConversionView(kind=conversion.kind)
+
+
+def _header(component: ResolvedComponent, views: dict[str, ObjectView]) -> ComponentHeaderView:
     buckets: dict[Scope, list[DeclarationView]] = {scope: [] for scope in Scope}
     for declaration in component.declarations:
         # Every name here has a view: the analysis keeps a declaration out of the component's
@@ -621,7 +762,6 @@ def _header(
             DeclarationView(
                 variable=views[declaration.name],
                 condition=declaration.condition,
-                const=options.const_inputs and declaration.scope is Scope.INPUT,
             )
         )
     return ComponentHeaderView(
@@ -630,7 +770,7 @@ def _header(
         # 'component' keeps this guard out of the space of the shared headers: without it a
         # component named 'types' would define DDD_TYPES_H before including ddd_types.h,
         # and the whole types header would preprocess away.
-        guard=guard_name("ddd", "component", component.name),
+        guard=component_guard(component.name),
         outputs=tuple(buckets[Scope.OUTPUT]),
         inputs=tuple(buckets[Scope.INPUT]),
         locals=tuple(buckets[Scope.LOCAL]),

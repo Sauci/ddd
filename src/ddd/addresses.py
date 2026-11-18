@@ -176,19 +176,6 @@ _STEP: Final = re.compile(r"\.(\w+)|\[(\d+)\]")
 
 _UNKNOWN: Final = "where '{}' lies cannot be worked out from the image's debug information"
 
-_WITHOUT_G: Final = (
-    "; the symbol table holds it, so the unit defining it was built without debug information (-g)"
-)
-"""The ending of a reason the symbol table answers: it holds a name whose definition the debug
-information does not describe, so the unit defining it was compiled without ``-g``."""
-
-_SPLIT: Final = (
-    "; the symbol table holds it, and the debug information of this image is in separate .dwo "
-    "files (-gsplit-dwarf), which this tool does not read"
-)
-"""The same ending for an image whose debug information is split: the unit was built with ``-g``,
-and what it describes is in the ``.dwo`` files the image holds a skeleton of."""
-
 _UNTYPED: Final = (
     "the image's debug information gives '{}' no type, as -g1 leaves it, so no path into it can "
     "be followed"
@@ -222,6 +209,12 @@ class Held:
     """Every unit's description of the variable, where the units do not agree on its size: the
     variable is then one the image describes in two ways, and none of them stands for it."""
 
+    offset: int = 0
+    """Where the symbol lies from the variable's own address, in bytes: ``0`` for the variable
+    itself, a member's or an element's offset for a path. What an a2l's ``SYMBOL_LINK`` states
+    after the variable's name; taken from the walk that placed the symbol, never worked out
+    again."""
+
 
 @dataclass(frozen=True, slots=True)
 class Placed:
@@ -243,6 +236,14 @@ class Placed:
     """What the image holds of every symbol of ``addresses``, for the comparison with the
     description (:mod:`ddd.agreement`). Left out of an equality: it says what the image states,
     where the rest says where, and ``addresses`` are what a caller compares."""
+
+    @property
+    def links(self) -> dict[str, tuple[str, int]]:
+        """Every symbol placed, with the linker symbol it lies in and its offset from it: the
+        variable's name as the image's symbol table holds it, and the bytes from that symbol's
+        address to the symbol's own. What a map cannot state of a member, and an a2l's
+        ``SYMBOL_LINK`` carries."""
+        return {symbol: (held.variable.name, held.offset) for symbol, held in self.held.items()}
 
 
 def addresses_from_image(image: Image, symbols: Collection[str]) -> Placed:
@@ -297,7 +298,11 @@ def _placed(
     reached = _walk(symbol, root.end(), address, variable.type)
     if isinstance(reached, str):
         return reached
-    return reached[0], Held(variable, reached[1], declarations, apart)
+    # The walk started at the variable's address and only ever added to it, so what it
+    # added is the symbol's offset from the variable: the one the walk found, not a second
+    # look in the image.
+    held = Held(variable, reached[1], declarations, apart=apart, offset=reached[0] - address)
+    return reached[0], held
 
 
 def _variable(
@@ -348,7 +353,9 @@ def _variable(
 
 def _ending(image: Image) -> str:
     """Why the symbol table holds a name the debug information does not describe."""
-    return _SPLIT if image.split_dwarf else _WITHOUT_G
+    from ddd.elf import SPLIT, WITHOUT_G
+
+    return SPLIT if image.split_dwarf else WITHOUT_G
 
 
 def _walk(symbol: str, at: int, address: int, ctype: CType) -> tuple[int, CType] | str:

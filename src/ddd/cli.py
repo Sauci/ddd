@@ -60,6 +60,12 @@ Distinct from the findings and usage codes on purpose: a script that stops a lon
 must not read the result as a project with errors.
 """
 
+CONST_INPUTS_REMOVED = (
+    "--const-inputs was removed in 0.12.0: the header it wrote declared an input const while "
+    "the input's definition is not const. C leaves such a pair of declarations undefined, so "
+    "an optimising compiler may hand the reader a stale value. Generate the headers without it."
+)
+
 GENERATOR = f"ddd {__version__}"
 
 _FORMAT_HELP = "output format"
@@ -703,7 +709,8 @@ def _add_generate_arguments(
         parser.add_argument(
             "--const-inputs",
             action="store_true",
-            help="declare input variables const in the consumer headers",
+            # Parsed only so that it can be refused in a sentence of its own; see _selected.
+            help=argparse.SUPPRESS,
         )
     if with_a2l:
         parser.add_argument(
@@ -728,6 +735,17 @@ def _add_generate_arguments(
             help=(
                 "linked ELF image whose DWARF debug information gives every address the a2l "
                 "carries, and its byte order"
+            ),
+        )
+        parser.add_argument(
+            "--a2l-module-fragment",
+            type=Path,
+            metavar="FILE",
+            help=(
+                "text file pasted verbatim at the head of the a2l's MODULE: what the a2l cannot "
+                "state itself, such as the A2ML its IF_DATA are written in, and, where the "
+                "project declares no named constant, a MOD_PAR carrying EPK, ADDR_EPK and "
+                "MEMORY_SEGMENT"
             ),
         )
     if with_exclusions:
@@ -1060,7 +1078,6 @@ def _check_image_agreement(
 def _leave_out(
     absent: Sequence[ConditionalObject],
     dictionary: DataDictionary,
-    carried: tuple[str, ...],
     lacking: str,
     path: Path,
     reasons: Mapping[str, str],
@@ -1078,8 +1095,9 @@ def _leave_out(
     cannot describe: a finding for each such axis names it, the condition it went under and
     what goes with it. It says all of that itself, since the findings print by severity, this
     warning before the information naming the axis, which a project may ignore. What comes
-    back is the symbols left out, and the ``carried`` ones that still reach the file, which
-    are the ones ``address-missing`` is about.
+    back is the symbols left out, and the ones that still reach the file, which are the ones
+    ``address-missing`` is about: the writer's own selection under them, so that what only an
+    axis among them pulled in, such as an ``export: false`` measurement, is not among them.
     """
     for condition in dict.fromkeys(entry.condition for entry in absent):
         objects = [entry for entry in absent if entry.condition == condition]
@@ -1099,7 +1117,7 @@ def _leave_out(
             where(path),
             notes=[(reason, None) for reason in reasons_given],
         )
-    from ddd.backends import dragged_with
+    from ddd.backends import addressed_symbols, dragged_with
 
     left_out = frozenset(symbol for entry in absent for symbol in entry.symbols)
     dragged = dragged_with(dictionary, left_out)
@@ -1119,8 +1137,7 @@ def _leave_out(
             f"{'they are' if plural else 'it is'} left out too",
             where(path),
         )
-    gone = left_out.union(dragged)
-    return left_out, tuple(symbol for symbol in carried if symbol not in gone)
+    return left_out, addressed_symbols(dictionary, left_out)
 
 
 def _at_address_0(missing: list[str]) -> str:
@@ -1151,6 +1168,8 @@ def _selected(args: argparse.Namespace) -> None:
     stayed must still have them. The a2l's addresses come from one source, a map or an image,
     which is refused here too, before anything is read.
     """
+    if getattr(args, "const_inputs", False):
+        raise ValueError(CONST_INPUTS_REMOVED)
     for artefact in getattr(args, "without", ()):
         setattr(args, f"render_{artefact}", False)
 
@@ -1160,10 +1179,14 @@ def _selected(args: argparse.Namespace) -> None:
         raise ValueError(msg)
     for option, given, artefact in (
         ("-t/--template-dir", template_dir is not None, "c"),
-        ("--const-inputs", getattr(args, "const_inputs", False), "c"),
         ("--byte-order", getattr(args, "byte_order", None) is not None, "a2l"),
         ("--address-map", getattr(args, "address_map", None) is not None, "a2l"),
         ("--image", getattr(args, "image", None) is not None, "a2l"),
+        (
+            "--a2l-module-fragment",
+            getattr(args, "a2l_module_fragment", None) is not None,
+            "a2l",
+        ),
     ):
         if given and not getattr(args, f"render_{artefact}"):
             msg = f"{option} belongs to the {artefact} artefact, left out by --without"
@@ -1269,6 +1292,7 @@ def _command_generate(args: argparse.Namespace) -> int:
         addressed_symbols,
         conditional_objects,
         describe_write_failure,
+        load_module_fragment,
         render,
         weigh_addresses,
         write,
@@ -1304,13 +1328,21 @@ def _command_generate(args: argparse.Namespace) -> int:
             )
             raise ValueError(msg)
 
+        # Read with the address source, before the findings gate: a file the run cannot take is
+        # a usage error whatever state the project is in. _selected has seen to it that the
+        # option is only here for a run that writes the a2l.
+        fragment_path: Path | None = getattr(args, "a2l_module_fragment", None)
+        fragment = None if fragment_path is None else load_module_fragment(fragment_path)
+
         # Guarded on the artefact, not just on the option: a run that does not write the a2l
         # has no use for the map and must not be killed by one it was never going to read.
         wants_addresses = args.render_a2l and getattr(args, "address_map", None) is not None
         addresses: dict[str, int] = {}
+        links: dict[str, tuple[str, int]] = {}
         left_out: frozenset[str] = frozenset()
         byte_order: str | None = getattr(args, "byte_order", None)
         image_path: Path | None = getattr(args, "image", None)
+        alignment: int | None = None
         if image_path is not None:
             # Only a run writing the a2l gets here with an image: _selected refused it to the
             # others, as it refuses them the map. The symbols are the a2l's, as for a map.
@@ -1325,6 +1357,13 @@ def _command_generate(args: argparse.Namespace) -> int:
                 )
                 raise ValueError(msg)
             byte_order = image.byte_order
+            if image.machine is not None:
+                from ddd.toolbox.mapping import alignment_cap
+
+                # The ABI the image was built for says how a 64 bit scalar is aligned; the
+                # table is the one the image's structures are weighed with (``ddd tool
+                # from-elf``), and a machine it holds none for keeps the fixed values.
+                alignment = alignment_cap(image.machine, image.flags)
             if image.load_relative:
                 bag.add(
                     "image-load-relative",
@@ -1341,6 +1380,7 @@ def _command_generate(args: argparse.Namespace) -> int:
                 )
             placed = addresses_from_image(image, carried)
             addresses = placed.addresses
+            links = placed.links
             weigh_addresses(addresses, carried, image_path.as_posix())
             # An object is compiled out where the image defines none of it, not where it
             # holds it and cannot place a part, or holds it in a way that is a defect.
@@ -1351,7 +1391,6 @@ def _command_generate(args: argparse.Namespace) -> int:
                     if all(symbol in placed.absent for symbol in entry.symbols)
                 ],
                 dictionary,
-                carried,
                 "the image has no address for",
                 image_path,
                 placed.reasons,
@@ -1380,32 +1419,43 @@ def _command_generate(args: argparse.Namespace) -> int:
                     and not any(symbol in addresses for symbol in entry.symbols)
                 ],
                 dictionary,
-                carried,
                 "the address map has no entry for",
                 args.address_map,
                 {},
                 bag,
             )
             _check_address_coverage(reaching, addresses, args.address_map, bag)
+        if args.render_a2l and byte_order is None:
+            # Neither the option nor an image said it: the a2l states little endian because
+            # something has to be stated, and a big endian target that forgot to say so would
+            # otherwise get a file whose every multi byte value a tool reads swapped.
+            bag.add(
+                "byte-order-defaulted",
+                f"no --byte-order and no --image was given, so the a2l states "
+                f"{ByteOrder(BYTE_ORDERS[0]).a2l}, {BYTE_ORDERS[0]} endian, as a default; a big "
+                f"endian target needs --byte-order big (the BYTE_ORDER of ddd_generate in "
+                f"cmake), and an image states its own",
+            )
         if bag.has_errors and not args.force:
             _report(bag, args.format)
             return EXIT_FINDINGS
 
         backends: list[Backend] = []
         if args.render_c:
-            backends.append(
-                CBackend(args.template_dir, COptions(const_inputs=args.const_inputs), GENERATOR)
-            )
+            backends.append(CBackend(args.template_dir, COptions(), GENERATOR))
         if args.render_a2l:
             backends.append(
                 A2lBackend(
                     A2lOptions(
                         byte_order=ByteOrder(byte_order or BYTE_ORDERS[0]),
+                        alignment_cap=alignment,
                         addresses=addresses,
+                        links=links,
                         left_out=left_out,
                         # An image is a source whatever it places, the finding naming what it
                         # does not; a map is one once it has an entry, as for that finding.
                         has_address_source=image_path is not None or bool(addresses),
+                        module_fragment=fragment,
                     ),
                     GENERATOR,
                 )

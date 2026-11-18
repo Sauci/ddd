@@ -24,6 +24,8 @@ from build_elf_fixtures import (
     hashed,
 )
 
+from conftest import placement
+
 MANIFEST = json.loads((OUTPUT / "manifest.json").read_text(encoding="utf-8"))
 TRAITS = {
     "byte_order",
@@ -172,3 +174,15 @@ def test_the_debug_only_companion_is_the_row_it_was_split_from() -> None:
             ".text": "NOBITS",
         },
     }
+
+
+@pytest.mark.parametrize("row", sorted(MANIFEST["rows"]))
+def test_a_const_volatile_object_lies_where_the_plain_const_one_of_its_size_does(row: str) -> None:
+    """``Cal_Tunable`` is ``const volatile`` and ``Cal_Gain`` is ``const``, both small: they lie
+    in the same section on every row, ``.rodata`` and not writable on every row but ``powerpc``,
+    where both are in ``.sdata``, which is. The larger ``Cal_Table`` is in ``.rodata`` on all."""
+    image = OUTPUT / f"{row}.elf"
+    small = (".sdata", True) if row == "powerpc" else (".rodata", False)
+    assert placement(image, "Cal_Tunable") == small
+    assert placement(image, "Cal_Gain") == small
+    assert placement(image, "Cal_Table") == (".rodata", False)

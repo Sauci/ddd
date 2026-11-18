@@ -3099,6 +3099,20 @@ message(STATUS "DDD_A2L=${{a2l}}")
         # Rewrapped: cmake folds a message to its own width.
         assert said in " ".join(run.stderr.split())
 
+    def test_const_inputs_is_refused_at_configure_time_with_the_release_that_removed_it(
+        self, tmp_path: Path
+    ) -> None:
+        self.write(tmp_path, options="\n             CONST_INPUTS")
+        run = attempt(tmp_path, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        # Rewrapped: cmake folds a message to its own width.
+        assert (
+            "ddd_generate: CONST_INPUTS was removed in 0.12.0: the header it wrote declared an "
+            "input const while the input's definition is not const. C leaves such a pair of "
+            "declarations undefined, so an optimising compiler may hand the reader a stale "
+            "value. Generate the headers without it." in " ".join(run.stderr.split())
+        )
+
     def test_under_strict_a_symbol_the_image_cannot_place_stops_the_build(
         self, tmp_path: Path
     ) -> None:
@@ -3239,6 +3253,13 @@ target_link_libraries(img PRIVATE store)
                 'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" ADDRESS_MAP ${{DDD_MAP}})',
                 "ADDRESS_MAP",
                 id="the address map of the two-run flow",
+            ),
+            pytest.param(
+                'ddd_add_component(store JSON "{component}")\n'
+                'ddd_generate(img TEMPLATE_DIRECTORY "{templates}" '
+                'A2L_MODULE_FRAGMENT "${{DDD_FRAGMENT}}")',
+                "A2L_MODULE_FRAGMENT",
+                id="the a2l module fragment, quoted",
             ),
             pytest.param(
                 'ddd_add_component(store JSON "{component}")\n'
@@ -4061,6 +4082,94 @@ add_executable(img main.c)
             f"-DCMAKE_MAKE_PROGRAM={NINJA}",
             f"-DDDD_EXECUTABLE={tool.as_posix()}",
             *compiler(),
+        )
+
+
+class TestTheA2lModuleFragment:
+    """``A2L_MODULE_FRAGMENT``: a project's file pasted at the head of the a2l's ``MODULE``.
+
+    The shipped example, built twice over: with the a2l written before the link, and with
+    ``ADDRESS_MAP`` naming a map in the build tree - seeded empty at configure time, which is
+    all this needs - so that it is written after the link, by the step of its own. Each is
+    told the way branch 2's stale-build tests tell theirs: build, build again, edit an input,
+    and read what the build did.
+    """
+
+    TEXT = '/begin A2ML\n  block "IF_DATA" taggedunion if_data {\n  };\n/end A2ML\n'
+
+    def write(self, tmp_path: Path, keywords: str) -> Path:
+        source = example_project(tmp_path)
+        (source / "module.a2l").write_text(self.TEXT, encoding="utf-8")
+        listing = source / "CMakeLists.txt"
+        text = listing.read_text(encoding="utf-8")
+        assert text.count("NAME DemoDevice\n") == 1, "the example no longer names the device so"
+        listing.write_text(
+            text.replace("NAME DemoDevice\n", f"NAME DemoDevice\n             {keywords}\n"),
+            encoding="utf-8",
+        )
+        return source
+
+    @pytest.mark.parametrize(
+        "address_map", [False, True], ids=["before-the-link", "after-the-link"]
+    )
+    def test_the_fragment_is_once_the_head_of_the_module_and_an_edit_to_it_writes_the_a2l_again(
+        self, tmp_path: Path, address_map: bool
+    ) -> None:
+        step = "Reading the addresses of the a2l out of the address map"
+        keywords = 'A2L_MODULE_FRAGMENT "${CMAKE_CURRENT_SOURCE_DIR}/module.a2l"'
+        if address_map:
+            keywords += ' ADDRESS_MAP "${CMAKE_CURRENT_BINARY_DIR}/map.json"'
+        source = self.write(tmp_path, keywords)
+        build_dir = tmp_path / "build"
+        configure(source, build_dir)
+        first = build(build_dir)
+        a2l = build_dir / "ddd" / "firmware.elf" / "DemoDevice.a2l"
+        content = a2l.read_text(encoding="utf-8")
+        assert content.count(self.TEXT) == 1
+        opening = content.index("  /begin MODULE DemoDevice")
+        assert content.index(self.TEXT) == content.index("\n", opening) + 1
+        assert content.index(self.TEXT) < content.index("/begin MOD_COMMON")
+        assert content.index(self.TEXT) < content.index("/end MODULE")
+        assert (step in first) is address_map
+        # Nothing to do the second time: the fragment is an input, not a reason to run.
+        assert "ninja: no work to do." in build(build_dir)
+
+        set_back(tmp_path)
+        edited = self.TEXT + "/* a project's own line */\n"
+        (source / "module.a2l").write_text(edited, encoding="utf-8")
+        rebuilt = build(build_dir)
+        assert (step in rebuilt) is address_map
+        assert a2l.read_text(encoding="utf-8").count(edited) == 1
+        assert a2l.read_text(encoding="utf-8").count("/begin A2ML") == 1
+
+    def test_no_fragment_writes_the_module_as_it_was(self, tmp_path: Path) -> None:
+        configure(EXAMPLES / "cmake", tmp_path / "build")
+        build(tmp_path / "build")
+        a2l = tmp_path / "build" / "ddd" / "firmware.elf" / "DemoDevice.a2l"
+        assert "A2ML" not in a2l.read_text(encoding="utf-8")
+
+    def test_a_fragment_the_a2l_does_not_take_is_refused_at_configure_time(
+        self, tmp_path: Path
+    ) -> None:
+        source = self.write(
+            tmp_path, 'A2L_MODULE_FRAGMENT "${CMAKE_CURRENT_SOURCE_DIR}/module.a2l" NO_A2L'
+        )
+        run = attempt(source, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        assert (
+            "ddd_generate: A2L_MODULE_FRAGMENT cannot be given together with NO_A2L: the "
+            "fragment is the a2l's." in " ".join(run.stderr.split())
+        )
+
+    def test_a_missing_fragment_is_refused_at_configure_time(self, tmp_path: Path) -> None:
+        source = self.write(
+            tmp_path, 'A2L_MODULE_FRAGMENT "${CMAKE_CURRENT_SOURCE_DIR}/nosuch.a2l"'
+        )
+        run = attempt(source, tmp_path / "build")
+        assert run.returncode != 0, run.stdout + run.stderr
+        assert (
+            f'ddd_generate: the file "{(source / "nosuch.a2l").as_posix()}" does not exist.'
+            in " ".join(run.stderr.split())
         )
 
 

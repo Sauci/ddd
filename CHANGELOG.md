@@ -469,11 +469,225 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   `elf-mismatch`, naming what the description states and what the image holds.  A consumer's
   declaration of the variable is held to the qualifiers too, where the compiler records it, which
   gcc does for a variable a unit reads and clang does not, so a header that drops `volatile`, or
-  adds it, is named; adding `const` is allowed, as `--const-inputs` does.  A one-byte unsigned
+  adds it or `const`, is named.  A one-byte unsigned
   integer agrees with a `boolean`.  Migrating costs a fix or a silence: a `STRICT` build whose image
   disagrees with its description stops and writes no a2l, and `-W elf-mismatch=ignore`, or
   `SEVERITY` in cmake, lets it through; a run that is not stopped writes the a2l from the
   description.
+
+* **`--const-inputs` and `CONST_INPUTS` are gone, and a header that adds `const` is named.**  The
+  option wrote an input's declaration `const` while the input's definition, in the producer, is not.
+  C leaves such a pair of declarations undefined (C11 6.2.7p2 and 6.7.3p10), and an optimising
+  compiler may hand a reader a stale value, so a build that passed was not one that was right.  `ddd
+  generate c|all --const-inputs` now exits `2` and `ddd_generate()` stops at configure time with
+  `CONST_INPUTS`, each in a sentence saying the option was removed in 0.12.0 and why; nothing is
+  written.  A template's `.const` on a header entry, and `declaration(const=...)` on an object, are
+  removed from the names a template renders from and refused at generation in a sentence naming the
+  same release; `DeclarationView` loses its `const` field, and `COptions` its `const_inputs`, so
+  code that builds either by position or by that keyword breaks, and the `compile-const` service of
+  `docker-compose.yml` is gone.  Migrating costs the deletion of the option or the keyword and of
+  any template line using either, and nothing replaces them: `entry.line` is the declaration, and
+  `declaration()` refuses a `const=` and says why.  `elf-mismatch` now also names a consumer's
+  declaration that adds `const`, where the compiler records the qualifier, so a `STRICT` build whose
+  hand-written header did that stops, until the header is fixed or `-W elf-mismatch=ignore` lets it
+  through.
+
+* **`ddd generate a2l --a2l-module-fragment FILE` puts a project's own text at the head of the
+  `MODULE`.**  DDD models none of what describes the target rather than the data: the `A2ML`
+  metalanguage the `IF_DATA` blocks it writes are described by, the protocol layer of the XCP stack,
+  an `EPK` with its `ADDR_EPK`, a `MEMORY_SEGMENT` for each memory.  A project that needed one had
+  to add it to the a2l after every run.  The file, read as UTF-8 text, goes in once, right after
+  `/begin MODULE`, before the first `IF_DATA` of the a2l, with a final newline added if it has none
+  and its line endings made the a2l's own; DDD does not read its keywords.  `ddd generate all` takes
+  the option too, and `ddd_generate()` takes `A2L_MODULE_FRAGMENT <file>` in both its a2l runs, the
+  one before the link and the one after it, so that an edit of the file writes the a2l again.  A
+  file that cannot be read or is not UTF-8, a fragment beside `--without a2l` or `NO_A2L`, and a
+  fragment holding a `MOD_PAR` in a project that declares named constants, which DDD writes a
+  `MOD_PAR` for, are usage errors, exit `2`.  Where a project declares none, the fragment's
+  `MOD_PAR` is the module's, so an `EPK` can only be carried through the fragment there.  Nothing is
+  migrated for the option, which is new.  `A2lOptions`, public through `ddd.backends`, gains three
+  fields in this release: `module_fragment`, `links`, which a member's `SYMBOL_LINK` below is
+  written from, and `alignment_cap`, which `MOD_COMMON`'s alignments below are.  `alignment_cap`
+  stands second, after `byte_order`, and `links` after `addresses`, so code that builds the options
+  by position meets them there: in `A2lOptions(ByteOrder.BIG, "1 61")` the version 0.11.0 took
+  second is taken for `alignment_cap`.
+
+* **A member's `SYMBOL_LINK` is where a linker map can find it.**  With `ddd generate a2l --image`,
+  the record of a structure member, at any depth and in an element of an array of structures, said
+  `SYMBOL_LINK "Inlet.cells[1].v" 0`: the path of a name no linker map holds, so a patcher that
+  resolves a record's symbol through the map found nothing for it.  It now says `SYMBOL_LINK "Inlet"
+  26`, the variable the linker knows and the byte offset of the member in it, taken from the image's
+  own placement of it.  The offsets measured on the address fixtures' members agree on every image
+  of them.  A script that matched a record by the spelling of its path in `SYMBOL_LINK` must read
+  the variable and the offset instead.  Before the link, and with `--address-map`, the record is as
+  it was, the path at offset 0: a map holds no member's offset, and a debug information reader may
+  resolve the path, which was not tried.
+
+* **A name that is a keyword of ASAP2 is an error, and a string or a name past the format's limits
+  is named.**  A project whose variable, member, component or display identifier is `MAP`, `VALUE`,
+  `ROOT` or `MODULE` was written to an a2l that a tool reading it refuses or misparses, and DDD said
+  nothing.  The new check `a2l-keyword`, an error, names every name that reaches the a2l and is one
+  of the keywords or enumeration values of ASAP2 1.6.1, by an exact, case sensitive match, so `map`
+  is fine; it holds a name only where the a2l is meant to write it, so an object or a member that
+  states `export: false` for the a2l is not held; but the check cannot see which objects a run
+  leaves out of the a2l (`condition-left-out`, or the symbols a build compiled out), so a name only
+  such a run drops still draws the error, and `-W a2l-keyword=ignore` relaxes it for that run.
+  `a2l-unrepresentable`, a warning, now also names a description or a unit past 255 characters, the
+  longest path of a structure variable's records past 255 characters, which a string of the a2l
+  carries, or past 1024, which an identifier does, and a part of a name past 128 characters with its
+  array index counted; a unit under an identity conversion is held to 237 characters, since the
+  method's description repeats it after 18 more. The file is written whole all the same, and the
+  finding names which of the limits it passes. It cannot see a run's left-out objects either, so an
+  object only such a run drops is still named, and `-W a2l-unrepresentable=ignore` relaxes it for
+  that run. Migrating costs a rename for the error, which stops
+  `ddd check`, `ddd generate` and a build that passed, and `-W a2l-keyword=ignore` relaxes it for a
+  name the target's tool accepts; the warning stops a `--strict` or `STRICT` build, and `-W
+  a2l-unrepresentable=ignore` lets it through.  The list of keywords is DDD's own, written without a
+  copy of the standard to check it against, so a word may be missing from it or held that the
+  standard does not hold.
+
+* **A size past 65,535 is named, once, where it is declared.**  An array or a string of more than
+  65,535 elements, or a curve or map axis of more than 65,535 points, was written to the a2l's
+  `MATRIX_DIM`, `NUMBER` or `MaxAxisPoints` without a word, though the a2l's datatype for each
+  cannot hold it.  The record is still written, the number whole, and `a2l-unrepresentable` now
+  warns of it, naming the number and the field, once per object; a curve or a map is not named, its
+  axis is.  A member of a structure is named once at its type, in the types file, whatever the
+  number of variables and array elements that carry it, in the words "member 'v' of structure
+  'S_t'"; a member of more than three dimensions is named the same way, once at its type, where a
+  warning for each element and each variable came before, at the variable's declaration and in the
+  words "'X.hyper' has".  A script that read the text of such a warning, and its location, must read
+  the new.  A `--strict` or `STRICT` build with such a size stops, and so does one whose object only
+  a run drops because its build holds none of it, since the check reads neither the image nor the
+  map; the cost is a smaller object, or `-W a2l-unrepresentable=ignore`.
+
+* **The example `ddd_globals.c` template keeps a definition through `--gc-sections`, and the pages
+  say where `const volatile` lies.**  The pages said that `volatile` takes a `const volatile`
+  calibration object out of `.rodata` and into RAM; it does not, on any toolchain measured.
+  Measured in the ELF images the test suite is built on, gcc 14.2.0 for x86_64, i686, aarch64 and
+  s390x, arm-none-eabi-gcc 14.2.1 and clang 19.1.7 held every such object in `.rodata`, which is not
+  writable, except on powerpc, where the small ones lie in `.sdata` as the plain `const` ones of
+  their size do; where a compiler places one depends on the target and its version.  And a link with
+  `--gc-sections` drops a definition no code references, so a calibration object nothing reads left
+  the image and reached the a2l at address 0: on the demo linked by gcc 15.2.0 and GNU ld 2.46, with
+  `-fdata-sections` and without it, none of the 23 objects stayed, and `ddd generate a2l --image`
+  warned `address-missing` for 20 objects.  The example `ddd_globals.c.jinja2` now writes
+  `DDD_RETAIN` before each definition, an empty macro unless the build defines it; defined as
+  `__attribute__((used, retain))`, it kept all 23 on that host.  A project that links with
+  `--gc-sections` on ELF defines it, with `-D` or in a header the build includes first; on PE gcc
+  ignores `retain`, so a reference to the object or a linker script that keeps its section is what
+  keeps it there.  A project that copied the example templates before does not gain the macro, and
+  has to copy it.  The page that said a program storing through a `const` object prints the new
+  value back is corrected as well: on that host the store ended the program with a segmentation
+  fault at -O0, -O2 and -Os, and no target's flash was measured.
+
+* **A reader of a variable's scale can follow its rescale: templates see `unit`, `conversion` and
+  `limits`, and the example header writes the factor.**  A project that read `ddd check` as proof
+  its readers agree with the descriptions had no warning, and no compile error, when a unit's
+  conversion changed from 0.1 to 0.01 and the code that multiplied by 0.1 was left behind: `ddd
+  check` compares the descriptions of a variable's declarations, never the code, and a variable
+  whose type is shared in a types file has nothing to compare.  An object a template renders now has
+  `.unit`, `.conversion` (`kind`, `factor`, `offset`, `name`, `enumerators`, `coefficients` and the
+  literals of the numbers) and `.limits` (`min`, `max` and their literals), the fields the a2l is
+  written from, and the example component header writes, after an input or an output that has a
+  linear conversion, `#define ValueE__FACTOR (0.25)` and `#define ValueE__OFFSET (0.0)`.  A reader
+  that multiplies by the macro is built again when the conversion changes; one that wrote the number
+  itself is not, which the pages now say.  A double underscore is refused in every name of a
+  project, so no accepted name can be one of the macros.  Another kind of conversion writes nothing,
+  and a header with none changes not at all.  A project that copied the example templates earlier
+  gains no macro until it copies the `scale` macro of `_macros.jinja2` and its call.  The fix a `ddd
+  gui` finding offers for a `definition-mismatch` now ends its title with "(the code of the readers
+  is not touched)", and `GET /api/fix` returns that title; a script that matched the old title must
+  match the new.
+
+* **A structure member's `export: false`, `format` and `display_identifier` reach the records below
+  it.**  Stated on a member that names a structure, the block was ignored: `export: false` left
+  every record under the member in the a2l, and a `format` or a display identifier changed none.
+  The member's `export: false` now leaves every record below it out of the a2l; a `format` reaches
+  every number record below, the innermost member's winning, and a display identifier stands for
+  that member's own segment of each record's path, so `j` displayed `J` writes `V[1].J.b` where the
+  record was `V[1].j.b`, and a display identifier of a deeper member or of a leaf below it is
+  written as stated.  `a2l-keyword` and `a2l-unrepresentable` hold a display identifier at the
+  member that states it, in the types file, and the whole identifier made of the segments at the
+  innermost one, once.  Two members of a structure displayed alike are not warned of, as two leaves
+  displayed alike never were.  A project that relied on the ignored block sees fewer records in the
+  a2l, and a display identifier that was ignored now renames the records it stands for.  The
+  dumped dictionary records the block on each leaf below such a member, where one dumped by 0.11.0
+  records each without it, so `ddd compare` against a baseline 0.11.0 archived reports
+  `changed-a2l` once for every such leaf: four where one member of a structure, over two leaves,
+  gives them its format and display identifier, and another, over two, leaves them out with
+  `export: false`.
+  It is a warning, so `ddd check --baseline --strict` of a project unchanged since passes with
+  0.11.0 and exits 1 after the upgrade, its four warnings made errors; dumping the baseline again
+  with this version clears them.  The dumped dictionary is format 10, for the display identifier a
+  leaf takes from a member above it, a path of identifiers where format 9 held one; a format 9
+  dictionary reads back unchanged, and 0.11.0, which reads up to format 9, refuses a format 10 one
+  as the dictionary of a newer DDD.
+
+* **A derived limit no longer stops short of the largest raw value, and never passes the largest a
+  float holds.**  A limit written from a datatype and a conversion was rounded to twelve significant
+  digits, so it could sit outside the values the description's own raw counts read as, and a tool
+  holding data to the range refused them: `uint64` under a factor of 1 stated `1.84467440737e+19`,
+  and `float32` and `float64` under the identity stated a number past what the type holds.  An end
+  within four units in the last place of its twelve digit decimal keeps the decimal, so `uint8`
+  under a factor of 0.03 still states 7.65 and `sint16` under 0.1 still states 3276.7, which may sit
+  up to four units inside the product; any other end is the float it is, written in the shortest
+  form that reads back as itself, as `1.8446744073709552e+19` for the `uint64`, `4194303.9990234375`
+  for a `uint32` under 2^-10 and `FLT_MAX` and `DBL_MAX` exactly for the two identities.  Only an
+  a2l or a dumped dictionary with an end of more than twelve digits changes, in the digits after the
+  twelfth, and an archived one compares as the same limit in `ddd compare` and in the check on
+  stated limits, which weigh two limits with one relative tolerance; a script comparing the numbers
+  as text, or without a tolerance, sees the difference.  The examples' a2l files hold no such end.
+
+* **The a2l's `MOD_COMMON` states the image's alignments, and a run that defaults the byte order
+  says so.**  `ALIGNMENT_INT64` and `ALIGNMENT_FLOAT64_IEEE` were always 8, though a 64 bit value is
+  aligned to 4 on i386.  With `--image` of an i386 machine they are now 4, from the table the
+  image's machine is held to; with another machine, one the tool holds no table for, or no image,
+  they stay 8.  And an a2l written with neither `--byte-order` nor an image states little endian
+  only because something has to be stated, so a big endian target that forgot to say so got a file
+  whose every multi byte value a tool read swapped, and nothing said so.  Such a run now prints the
+  new info `byte-order-defaulted`, which is most of the runs of a project that gives neither, and
+  says to state it with `--byte-order big` or `BYTE_ORDER` in cmake.  It stops nothing.  A cmake
+  build with no `BYTE_ORDER` prints it from the generation of a build of one step and from the
+  step that writes the a2l after the link with `ADDRESS_MAP`, and from no step of a build with
+  `ADDRESSES_FROM_IMAGE`, whose a2l takes the image's byte order; the run before the link of
+  either writes no a2l.  A script that read the count of diagnostics from `--format json`,
+  expecting none, now finds one; `-W byte-order-defaulted=ignore` silences it, and so does stating
+  the byte order.
+
+* **The a2l's records, groups and methods are named and ordered the same way on every run.**  A
+  `GROUP` listed the elements of an array of structures sorted by their path as text, so `SA[10].v`
+  came before `SA[1].v`, while the records were already in the dictionary's order, an index counted
+  as a number; the `GROUP` now lists them in that order too, so only the order of a `GROUP`'s
+  members changes.  The compu method name with no suffix, `CM_LIN_V` for a unit `V`, went to the
+  first object the dictionary met that used it, and `CM_LIN_V_2` to the second; it now goes to the
+  first record the file writes, measurements first, then axes, then the other calibration objects,
+  parameters, value blocks, curves and maps together in the dictionary's order, a member's after a
+  plain object's.  A project that has two conversions in one unit, and whose first holder
+  changed, sees the two names swap between the records, which a tool that addresses a method by its
+  name sees.  And the naming of the methods took time quadratic in their count: measured by timing
+  that naming alone, over objects that each had a factor of their own in one unit, so each needed a
+  method and a name of its own, 2,000 objects took 0.20 s before and 0.01 s after, and 16,000 took
+  13.00 s before and 0.07 s after; the names it gives are the same.
+
+* **Every component has an include guard of its own, and a description that ends in a trigraph does
+  not break the build.**  Two components `Valve` and `Valve_`, or `Valve` and `_valve`, were given
+  the same guard, `DDD_COMPONENT_VALVE_H`, so a file that included both lost the second's
+  declarations.  A component whose name begins or ends with an underscore now has
+  `DDD_COMPONENTS_LEADING_VALVE_H`, `DDD_COMPONENTS_TRAILING_VALVE_H` or
+  `DDD_COMPONENTS_BOTH_VALVE_H`, and any other name keeps `DDD_COMPONENT_VALVE_H`, `DDD_TYPES_H` and
+  `DDD_GLOBALS_H` as they were.  A description that ends in the opening of a trigraph, `??/` among
+  them, left one in the generated comment, and a build with `-Werror=trigraphs` stopped on it; the
+  two question marks of any of the nine are now separated, `? ?`.  Migrating costs a hand written
+  reference to a guard that moved, such as an `#ifdef` on it; `header.guard` in the example
+  component template follows the rule, but `model.guard()` is unchanged, so a template that builds a
+  component's guard with it keeps the old collision.
+
+* **`address-missing` no longer names a measurement that only a left-out axis pulled in.**  An
+  `export: false` measurement that only a curve's or map's axis, left out of the a2l by a build that
+  did not compile it, pulled into the a2l was still named as missing from the address map, and a
+  `--strict` run stopped over a record the file did not hold.  The coverage is taken under the same
+  left-out objects the a2l is, so the finding names only what the file holds, and the measurement is
+  not named at all.
 
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after

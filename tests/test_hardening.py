@@ -171,6 +171,61 @@ class TestGeneratedArtefactsAreCorrect:
         assert dictionary is not None
         return dictionary
 
+    @pytest.mark.parametrize(
+        ("text", "said"),
+        [
+            pytest.param(
+                "{{ entry.const }}",
+                "'.const' of a header entry was removed in 0.12.0 with --const-inputs: it said "
+                "whether the option had added a const to the declaration, and the option is "
+                "gone because a header that declares an input const while its definition is "
+                "not leaves C's two declarations undefined. Use entry.line.",
+                id="attribute",
+            ),
+            pytest.param(
+                "{{ entry.variable.declaration(const=true) }}",
+                "'declaration(const=...)' was removed in 0.12.0 with --const-inputs: the "
+                "option is gone because a header that declares an input const while its "
+                "definition is not leaves C's two declarations undefined. Call "
+                "declaration() without it.",
+                id="keyword",
+            ),
+            pytest.param(
+                "{{ entry.variable.declaration(const=false) }}",
+                "'declaration(const=...)' was removed in 0.12.0 with --const-inputs: the "
+                "option is gone because a header that declares an input const while its "
+                "definition is not leaves C's two declarations undefined. Call "
+                "declaration() without it.",
+                id="keyword-false",
+            ),
+        ],
+    )
+    def test_a_template_using_what_the_const_option_gave_is_told_so(
+        self, tree: Path, text: str, said: str
+    ) -> None:
+        """Not as jinja's ``has no attribute 'const'`` or python's ``unexpected keyword``."""
+        from ddd.backends import CBackend
+
+        templates = tree / "templates"
+        templates.mkdir()
+        (templates / "{component}.h.jinja2").write_text(
+            "{% for entry in header.inputs %}\n" + text + "\n{% endfor %}\n", encoding="utf-8"
+        )
+        dictionary, _ = run_analysis(
+            tree,
+            {
+                "project.ddd.json": project("P", "a.ddd.json", "b.ddd.json"),
+                "a.ddd.json": component("A", declare("output", "X")),
+                "b.ddd.json": component("B", declare("input", "X")),
+            },
+        )
+        assert dictionary is not None
+        with pytest.raises(ValueError) as caught:
+            CBackend(templates).generate(dictionary, tree / "gen")
+        assert str(caught.value) == (
+            f"cannot render template '{{component}}.h.jinja2' for component 'B', line 2: {said}"
+        )
+
     def test_a_template_directory_that_is_not_there_says_so(self, tree: Path) -> None:
         """A path nobody created and a directory holding the wrong files are two different
         mistakes with two different answers; reported as an empty one, the author reads the
@@ -924,7 +979,7 @@ class TestInputTheToolMustSurvive:
             },
         )
         assert "a2l-unrepresentable" in checks(bag)
-        assert "'X.hyper' has 4 dimensions" in messages(bag)
+        assert "member 'hyper' of structure 'S_t' has 4 dimensions" in messages(bag)
 
     def test_a_member_kept_out_of_the_a2l_raises_no_dimension_warning(self, tree: Path) -> None:
         """The warning is about the file the member reaches; a member that reaches none has

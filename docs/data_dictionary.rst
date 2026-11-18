@@ -12,12 +12,13 @@ know something, that something is a field of the dictionary rather than a second
 performed in a template.
 
 That arrangement is worth having for two reasons. The first is that two backends cannot
-disagree about what a project contains: the shape a c array is declared with and the
-``MATRIX_DIM`` written into the a2l are read from one field, so they cannot drift apart -
-each backend only has to order the indices the way its own format wants them, c with the
-last index running fastest and ASAP2 with the first. The second is that the work of
-resolving a project is done once, in a place that reports findings, instead of once per
-output format in a place that can only crash.
+disagree about what a project contains: the number of elements of an array is worked out
+once, by the analysis, and each backend only has to order the indices the way its own format
+wants them, c with the last index running fastest and ASAP2 with the first. The two do not
+read one field: the a2l backend writes ``MATRIX_DIM`` from ``shape``, and the c backend writes
+the array from ``dimensions``, which names a declared constant where the description stated
+one. That they agree holds of the shipped backends and templates; nothing holds a template of a
+project's own that reads the other field to it.
 
 DDD publishes the dictionary rather than keeping it to itself. ``ddd dump`` writes it out as
 json, and ``ddd schema dictionary`` prints its json schema, so a generator DDD does not ship
@@ -34,7 +35,7 @@ implementation:
 
    $ ddd dump examples/demo/demo.ddd.json
    {
-     "format": 9,
+     "format": 10,
      "name": "DemoDevice",
      "description": "Demonstration project showing every kind of data object",
      "source": "demo.ddd.json",
@@ -71,8 +72,8 @@ backend sees it:
 
 The **limits are filled in.** ``limits`` is never absent. A declaration that states its
 physical limits keeps them; one that does not gets the full range its datatype and
-conversion imply, computed once. A backend writing ``LOWER_LIMIT`` and ``UPPER_LIMIT`` into
-an a2l therefore never has to decide what a missing limit means, and cannot decide it
+conversion imply, computed once. A backend writing the lower and the upper limit of a record
+into an a2l therefore never has to decide what a missing limit means, and cannot decide it
 differently from anybody else.
 
 The **shape is a tuple of dimensions**, empty for a scalar, and it is complete even when the
@@ -201,7 +202,7 @@ A table resolved to ``"leading"`` is declared flat, counts first, in its own dat
 
 .. code-block:: c
 
-   const uint32_t M[2 + (16) * (16)] = { 16U, 16U, ... };
+   DDD_RETAIN const uint32_t M[2 + (16) * (16)] = { 16U, 16U, ... };
 
 and the a2l describes it with a record layout of its own, the counts ahead of the values it
 governs:
@@ -225,8 +226,10 @@ The format field
 
 A dumped dictionary is meant to be archived next to a delivery and read back by a later
 version of DDD, possibly years later. The ``format`` field stamps the shape of the document
-- currently ``9`` - and changes only when that shape changes, not with every release of the
-tool.
+- currently ``10`` - and changes only when that shape changes, not with every release of the
+tool. Format 10 lets a leaf's ``display_identifier`` be a path of identifiers, ``V[1].J.b``,
+which a member naming a structure composes for every leaf below it; a format 9 dictionary
+holds at most one identifier there, and reads back unchanged.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses
@@ -235,7 +238,7 @@ one that is newer:
 .. code-block:: text
 
    $ ddd compare baseline.json demo.ddd.json
-   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 10, and this DDD understands up to 9; use a newer DDD to read it
+   baseline.json#format: error[schema]: in the baseline: this dictionary is in format 11, and this DDD understands up to 10; use a newer DDD to read it
    1 error
 
 Refusing is the only safe answer: reading the file anyway would compare a delivery against
@@ -284,7 +287,7 @@ elided here for space):
      "description": "The resolved data of one project.",
      "properties": {
        "format": {
-         "default": 9,
+         "default": 10,
          "minimum": 1,
          "title": "Format",
          "type": "integer"

@@ -307,6 +307,55 @@
         }
       ]
     },
+    "LeafA2lOptions": {
+      "additionalProperties": false,
+      "description": "The ``a2l`` block a leaf is published under, which the analysis resolves.\n\nThe block a member states, with ``export`` folded over the variable and every member above\nthe leaf, ``format`` the innermost stated one, and ``display_identifier`` a path where a\nmember above the leaf states one: that member's identifier stands for its own segment of\nthe leaf's path, so ``V[1].j.b`` with ``j`` displayed ``J`` is ``V[1].J.b``. The block a\nproject writes keeps one plain identifier; this one is written by the analysis alone.",
+      "properties": {
+        "export": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the object belongs in the a2l file; omitted, it does.\n\nThe one a2l option any component may state, not only the producer. Which signals a\ncalibration engineer needs to see is not a property of whoever happens to write the\nvariable: a component reading a value from a library it does not own has as good a claim\nto measuring it.\n\nStated by several, the answer is yes if any of them says so, and an object nobody\nmentions is exported: see \"Who asks for an export\" on the definition page.",
+          "title": "Export"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "pattern": "^%[0-9]*\\.[0-9]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a2l ``FORMAT`` string, e.g. ``\"%8.3\"``: total width, then decimal places.\n\nRefused beside a ``string`` conversion, which has no decimals to display.",
+          "title": "Format"
+        },
+        "display_identifier": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[0-9]+\\])*)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The name the calibration tool shows the leaf under: the member's own identifier, or the\npath a member above composes; nothing where neither states one.\n\nNot held to a length. The a2l's checks hold what reaches the file, and a leaf of a variable\nkept out of it is composed all the same, so a dictionary can carry a path past\n``MAX_IDENT`` or a part past ``MAX_PARTIAL_IDENT`` that nothing reported, and has to read\nback.",
+          "title": "Display Identifier"
+        }
+      },
+      "title": "LeafA2lOptions",
+      "type": "object"
+    },
     "Limits": {
       "additionalProperties": false,
       "description": "Physical lower/upper limit of a data object.",
@@ -818,13 +867,13 @@
           "type": "boolean"
         },
         "a2l": {
-          "$ref": "#/$defs/A2lObjectOptions",
+          "$ref": "#/$defs/LeafA2lOptions",
           "default": {
             "export": null,
             "format": null,
             "display_identifier": null
           },
-          "description": "The member's own a2l options; a member may be kept out of the file on its own."
+          "description": "The member's a2l options resolved over the variable and the members above it; a member\nmay be kept out of the file on its own."
         }
       },
       "required": [
@@ -1307,7 +1356,7 @@
   "description": "The resolved data of one project.\n\nWhat ``ddd dump`` writes and every backend reads. Unlike the description files, this one\nis produced rather than authored: every derived property is already worked out, so a\nconsumer never has to repeat the resolution and two consumers can never disagree about it.",
   "properties": {
     "format": {
-      "default": 9,
+      "default": 10,
       "description": "Version of this document format, raised only when the shape of the document changes.\n\nStamped so that a dictionary archived next to a delivery can be read back years later by\na version of DDD that can say \"this file is newer than I understand\" rather than misread\nit. It does not follow the version of the tool.\n\nA whole number of at least 1, and strictly that: ``\"9\"``, ``9.0`` and ``0`` are not\nversions any DDD ever wrote, and the check that refuses a dictionary from a newer DDD has\nno version to compare them with.",
       "minimum": 1,
       "title": "Format",

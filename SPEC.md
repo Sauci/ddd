@@ -142,8 +142,8 @@ their axes.
 ```
 
 DDD is run once per build to generate the artefacts, the A2L among them. Without address
-information, every object in the A2L carries address zero, and `SYMBOL_LINK` names the
-symbol in every case ([section 6](#6-address-information)). A build that requires the A2L
+information, every object in the A2L carries address zero, and `SYMBOL_LINK` is written in
+every case ([section 6](#6-address-information)). A build that requires the A2L
 to carry the real addresses, which exist only after linking, runs DDD a second time, after
 the link, reading them out of the linked image or out of a map taken from the linker output.
 A build that does not require them stops after the first run.
@@ -422,7 +422,9 @@ no datatype could hold it.
 Every name is a C identifier of at most 128 characters, the bound the A2L format places on
 an identifier, which is tighter than the bound of C. The cap holds wherever a name is
 written: objects, components, projects, enums, enumerators, types, members, constants
-([section 3.9](#39-constant-vocabulary)) and `display_identifier`.
+([section 3.9](#39-constant-vocabulary)) and `display_identifier`. The A2L counts an array
+index within the part of the identifier it ends, so the name of an array of structures that
+fits with no index can pass the bound with it (`a2l-unrepresentable`).
 
 Kind specific attributes:
 
@@ -497,16 +499,20 @@ Kind specific attributes:
   translation units. Where the load does survive, for example in a component reading
   through the generated header of another and compiled without `-flto`, `const` still lets
   the compiler serve two reads from one load and move that load across a call. In either
-  case the tool writes a value the software does not pick up. What `const volatile` costs
-  is the read only memory: the compiler treats every read as a side effect and drops the
-  object out of the read only category, so it is emitted into a writable section instead of
-  `.rodata`. This behaviour was measured with GCC 12.2.0 and **should** be confirmed on the
-  toolchain a project ships with. On a flash target it means a RAM address with a load
-  region and a startup copy that overwrites what the tool wrote, unless the linker script
-  says otherwise. DDD states no preference between the two and reports nothing about the
-  choice: a project that calibrates online states `true` and places the object through its
-  linker script or by naming a `section` ([section 3.5](#35-memory-placement)), and a
-  project that does not calibrate online states `false` and keeps its data in flash.
+  case the tool writes a value the software does not pick up. Where the object lies is a
+  separate question: `volatile` does not move a value to RAM on any toolchain measured. The
+  ELF images the test suite is built on, by gcc 14.2.0 (x86_64, i686, aarch64, powerpc and
+  s390x), arm-none-eabi-gcc 14.2.1 and clang 19.1.7, hold every `const volatile` object in
+  `.rodata`, which is not writable, except the small ones on powerpc, which lie in `.sdata`,
+  a writable section, as the plain `const` objects of their size do. Where the compiler
+  places such an object depends on the target and on the compiler's version, and no other
+  version was measured. Where a calibration parameter lives is the project's to decide, by
+  the `section` DDD writes and by the linker script, and a tool writes a parameter that
+  stays in flash through an overlay or an emulation memory. DDD states no preference between
+  the two and reports nothing about the choice: a project that calibrates online states
+  `true` and places the object through its linker script or by naming a `section`
+  ([section 3.5](#35-memory-placement)), and a project that does not calibrate online states
+  `false` and keeps its data in flash.
 - `volatile` buys freshness and gives up coherence, which is worth knowing before it is
   turned on for a whole dictionary: the compiler has to re-read the object at every
   mention, so a set of parameters read at several points of one control step can straddle a
@@ -541,14 +547,23 @@ whoever states them, and only two *stated* sets of limits can disagree
 (`definition-mismatch`). The resolved limits come from the producer when it states them,
 otherwise from the first declaration in load order that states them, and otherwise they
 are derived; every other declaration that states limits is compared against that stated
-reference. A derived end is rounded to twelve significant digits, because a decimal factor
-has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 .. `7.65`, the number
-its own largest raw count reads as, rather than the `7.6499999999999995` the multiplication
-produces, and the A2L and the dumped dictionary state the rounded end. The relative tolerance
-of `limits-out-of-range` ([section 4](#4-consistency-checks)) spans the difference, so limits
-copied out of a file an earlier version wrote are still on the range. An omitted `unit` is
-the empty unit and compares as such: a consumer stating none
-against a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
+reference. A derived end holds the physical value of its raw count, and where it is rounded
+it moves inward of the computed product by no more than the arithmetic's tail of four units in
+the last place. The tail of the arithmetic is taken off a short decimal, because a
+decimal factor has no exact binary float: a `uint8` under `{"factor": 0.03}` covers 0 ..
+`7.65`, the number its own largest raw count reads as, rather than the `7.6499999999999995`
+the multiplication produces. That may take the end inward of the float, by at most four units
+in its last place: `sint16` under `{"factor": 0.1}` states `3276.7` where the product is
+`3276.7000000000003`, which the tolerance below treats as the same number. An end whose
+digits run past twelve keeps them: a `uint64` under `{"factor": 1}` covers 0 ..
+`1.8446744073709552e+19`, and a `uint32` under 2^-10 up to `4194303.9990234375`, where twelve
+digits stated a number short of the top count. Under the identity the ends are the raw ends
+and are not rounded, so a `float32` stops at `FLT_MAX`, `3.4028234663852886e+38`, and a
+`float64` at its largest value. The A2L and the dumped dictionary state the end. The
+relative tolerance of `limits-out-of-range` ([section 4](#4-consistency-checks)) spans the
+difference, so limits copied out of a file an earlier version wrote are still on the range.
+An omitted `unit` is the empty unit and compares as such: a consumer stating none against
+a producer stating `rpm` is `definition-mismatch`. A `typename` compares as what
 it fixes - the `datatype`, `unit`, `conversion` and `limits` of the scalar type - so a
 declaration naming `Speed_t` and one spelling `uint16` with the same unit, conversion and
 limits agree, because a scalar type reaches no generated header: the datatype it fixes
@@ -954,8 +969,20 @@ the type already fixes, so a structured object is zero initialised, and its valu
 there by the running system, by the starting code for a measurement and by the calibration
 tool for a parameter. Of its `a2l` block, `export` decides for the whole object
 ([section 3.3.1](#331-one-object-several-declarations)) and each member's own `export` for
-the member; `format` and `display_identifier` are per member, a whole structure having no
-display format of its own. One stated on the declaration of a structured object is neither
+the member. The `a2l` block of a member that names a structure is honoured for every record
+below it: `export: false` keeps the whole subtree out of the A2L, in every instance of the
+type, and nothing deeper brings a leaf back, an inner `export: true` included; `format`
+reaches each leaf below; a `display_identifier` on it stands for that member's own segment
+of the path of each record below it, so `V[1].j.b` with `j` displayed `J` is displayed
+`V[1].J.b`, and the identifiers of several members compose, `V.J[0].Inner.x` for `j` displayed
+`J` and `n` below it `Inner`. A leaf's own `display_identifier`, on a member that names no
+structure, is written as stated and is not composed into a path, so the elements of an array
+of structures share it. Where a deeper member states its own `format`, it wins for its own
+subtree, and a `format` does not reach a string. Each identifier a member states is held as
+a name is (`a2l-keyword`, and `a2l-unrepresentable` for a part past `MAX_PARTIAL_IDENT` and for
+a composed identifier past `MAX_IDENT`), at the member that states it. Two members displayed
+alike give records alike, and DDD does not warn of it, as it does not of two leaves so
+displayed. One stated on the declaration of a structured object is neither
 refused nor used: the dictionary's instance record carries it as the declaration wrote it
 ([section 5.3](#53-data-dictionary)), and the A2L, whose records are the members, writes it
 nowhere.
@@ -1426,6 +1453,19 @@ Errors:
   header, so the verdict does not depend on a toolchain. It applies to the names that reach
   the generated C: projects, components, data objects, declared types, structure members,
   enums, enumerators and constants; not to `display_identifier`, which reaches only the A2L.
+- `a2l-keyword`: a name that reaches the A2L as an identifier, or as a part of one, is a
+  keyword or an enumeration value of ASAP2 1.6.1, which the standard keeps identifiers off
+  (table 5, the index of keywords): `MAP`, `VALUE`, `IDENTICAL`, `ROOT` and `MODULE` are
+  among them. The list is DDD's own, written from the 1.6.1 grammar, and the match is exact
+  and case sensitive, so `map` is a name. It holds the project, a component that gets a group,
+  an object the A2L carries, each member of a path, and a `display_identifier`, judged from the
+  descriptions alone: an object or a member that states `export: false` for the A2L is not
+  held, but the check reads neither the image nor the map, so an object a run drops because
+  its build holds none of it (`condition-left-out`) still draws the error, and
+  `-W a2l-keyword=ignore` relaxes it for that run. A member is the finding of the file declaring its structure, once however many
+  variables use it. It is an error, so a build that passed can stop on it, and it is not the c
+  half of `reserved-identifier`: a name can be fine for the compiler and forbidden by the A2L,
+  and the reverse.
 - `name-collision`: two names that are distinct in the description files become the same
   C identifier or the same generated file. Exactly these pairs are compared: enumerators of
   different enums, an enumerator and a data object, a data object and the name of an enum
@@ -1474,11 +1514,34 @@ Warnings:
 - `enum-duplicate-value`: two enumerators share a value.
 - `name-similar`: two object names differ only in upper and lower case.
 - `a2l-unrepresentable`: an object, or a member of a structured object, cannot be fully
-  described by the A2L version DDD writes;
-  today that is an array of more than three dimensions, which the `MATRIX_DIM` of
-  version 1.6.1 cannot carry. The check fires only for an object the A2L carries, the
-  closure over references included ([section 5.2](#52-a2l)), and the emitted file writes
-  every dimension out regardless, which a 1.7 reader accepts.
+  described by the A2L version DDD writes, or the A2L carries a string, an identifier or a
+  part of one past what the format holds. It is a warning, and the file is written whole.
+  An array of more than three dimensions is the first: the `MATRIX_DIM` of version 1.6.1
+  cannot carry it, and a 1.7 reader accepts the dimensions written out; a member with too many
+  is named once at its type, however many variables reach it. A size past 65,535
+  is the second: the `MATRIX_DIM` of an array, a string measurement's among them, the
+  `NUMBER` of a string characteristic and the `MaxAxisPoints` of an axis are a `uint` of two
+  bytes in ASAP2 1.6.1, and the record is written with the number whole; the finding names
+  the field the record writes. A curve or a map is named at its axis, and a member of a
+  structure at its type, once, a string member naming both of its fields, since its record is
+  a measurement or a characteristic as the variable holding it is. The limits are those of
+  ASAP2 1.6.1, table 5: a string,
+  which is a description of an object, a member, a
+  component or the project (written on `PROJECT`, `HEADER` and `MODULE`), a unit - 237 characters
+  at most under an identity conversion, whose method describes itself as `physical value in`
+  and the unit - and the
+  `SYMBOL_LINK` a record holds until the image names the variable, is at most `MAX_STRING`
+  255 characters; a record's name is at most `MAX_IDENT` 1024; and a part of that name, an
+  index counted within it, is at most `MAX_PARTIAL_IDENT` 128, so an array of structures named
+  with the full 128 characters passes it. A path made of members is held once per variable. A string
+  or a name of a member is the finding of the file that states it. The check fires for what the
+  descriptions send to the A2L, the closure over references included
+  ([section 5.2](#52-a2l)): an object or a member that states `export: false` for the A2L is
+  not held. Judged from the descriptions alone, it reads neither the image nor the map, so an
+  object a run drops because its build holds none of it (`condition-left-out`) is named all
+  the same, and stops a `--strict` run; `-W a2l-unrepresentable=ignore` relaxes it for that
+  run. The text of a module fragment is
+  the project's own A2L and is never checked.
 - `point-counts-mismatch`: a curve or a map stores its point counts one way and one of its
   axes the other. The A2L describes each as resolved; an interpolation routine is unlikely
   to read both.
@@ -1491,7 +1554,9 @@ Warnings:
   image the run was given. An object that states a condition, and of which the build holds
   nothing, is not carried: the A2L leaves it out, as `condition-left-out` says. One the build
   holds, and the map or the image does not place, is `address-missing` whatever condition it
-  states. It fires for a map only when the map has at least one entry:
+  states. What the A2L leaves out with it is not carried either: a curve or a map over an
+  axis left out, which `reference-left-out` names, and a measurement that asked to stay out of
+  the A2L and was in it only as the input of such an axis, which no finding names. It fires for a map only when the map has at least one entry:
   without a map, or with an empty one, every address is zero by construction. That is the run
   a build makes before it has linked anything, and it is as well the step after the link
   when the map it reads has no entry, one the project's step extracted nothing into among
@@ -1527,9 +1592,9 @@ Warnings:
   defining it, as a consumer does through a component header, is held to the qualifiers of
   the kind as well, since a header that leaves out `volatile` lets that unit's compiler read
   the variable once where the description says something else writes it: the finding names
-  the unit and the qualifier it lost. A declaration may add `const`, which `--const-inputs`
-  gives the inputs of a component on purpose; every other difference is judged as the
-  definition's is, and only the qualifiers are compared. The declarations are those the
+  the unit and the qualifier it lost. A declaration that adds `const` is named too, since the
+  definition is not `const` and two declarations of one object that disagree about it are
+  undefined; every difference is judged as the definition's is, and only the qualifiers are compared. The declarations are those the
   image's debug information states, which gcc writes for a variable a unit reads and clang
   leaves out, so the images of clang say nothing of them. It is a warning, so a `--strict` build
   stops at it; the A2L is written from the description either way, and a calibration tool
@@ -1542,6 +1607,11 @@ Information:
   the loader knows. The A2L states them as they are, which is right for a project that adds
   its load base when it reads the file and wrong for one that does not; the finding is
   located at the image, and says so in a note.
+- `byte-order-defaulted`: the A2L is written with neither `--byte-order` nor `--image`, so
+  `MSB_LAST` is a default and not a choice, which a big endian target that forgot the option
+  would not notice. The finding says what the run assumed and how to state the other
+  (`--byte-order big`, `BYTE_ORDER` of `ddd_generate` in cmake). An image states its own, and
+  a run writing no A2L has none to default.
 - `condition-left-out`: an object the A2L would carry states a condition, and the build
   does not hold it: the image defines no variable of its name, nor holds a symbol of it,
   or the address map with entries names neither the object nor any of its members. The A2L
@@ -1831,13 +1901,20 @@ in it, exactly as naming a plugin runs its module ([section 3.11](#311-plugins))
 Whatever the templates spell, the *data* they are given is fixed: measurements are writable
 variables and calibration objects are `const`, each of them additionally `volatile` when
 its declaration states so; a declaration that carries a condition is offered with that
-condition, so that it can be wrapped in `#if` / `#endif`; and input objects are marked
-`const` for the consumer header when the project asks for it
-(`ddd generate c --const-inputs`), so that a write access does not compile. The qualifier
+condition, so that it can be wrapped in `#if` / `#endif`; and an input is declared as its
+producer defines it, never `const` where the definition is not, since two declarations of one
+object that disagree about their qualifiers are undefined (C11 6.2.7, 6.7.3); `ddd generate c
+--const-inputs`, which wrote the disagreement, was removed in 0.12.0. The qualifier
 reaches the hand written code that reads the object, so a project that turns `volatile` on
 for an array finds that passing it to a helper typed for a plain `const` one no longer
 compiles, and re-types the helper; the cast that would silence it is itself refused by a
-warning set containing `-Wcast-qual`. The declared constants
+warning set containing `-Wcast-qual`. Each object's unit, conversion and
+limits are offered as well, the values the a2l states for it, so that a project can write
+a scale macro of its own, and the example `{component}` template writes the factor and the
+offset of a linear conversion as two macros beside each input and output, so that a rescale
+changes the header every reader includes and the readers are compiled again; code that wrote
+the number itself is not read, and a check compares descriptions and never a description with
+code. The declared constants
 ([section 3.9](#39-constant-vocabulary)) are offered to the templates as well, and an
 object dimensioned by a constant carries the constant's name in its definition and in
 every declaration; the example templates emit each constant as a `#define`. The enum
@@ -1877,13 +1954,27 @@ when it changes ([section 7.1](#71-build-system-integration)). A source has to b
 before it can be compiled, and a name read at configure time is one a renamed component
 makes stale until the build is configured again.
 
-The definitions reach the image whole. An object that no compiled code references, for
+The definitions reach the link whole. An object that no compiled code references, for
 example a measurement only the calibration tool reads, has nothing to pull it out of a
 library archive, so the definitions are compiled as a unit of their own and linked into the
 image rather than into the libraries of the components that own them. A definition file per
 component invites the second arrangement, in which the linker drops precisely the objects
 nobody but the calibration tool reads, and the A2L is left describing storage the image
 does not contain.
+
+That holds for an archive and not for the linker's own collection of sections. A link with
+`--gc-sections` drops a definition no code references, with or without `-fdata-sections`,
+and an object nobody but the calibration tool reads goes with it: the a2l then
+carries its object at address 0 or, given the image with `--image`, reports it
+`address-missing`. Linking the demo this way gave the same result on this host with
+`-fdata-sections` and without it. The example template `ddd_globals.c.jinja2` puts `DDD_RETAIN` before
+every definition, and it is empty unless the project defines it, so that the C is what it
+was. On ELF a project that links with `--gc-sections` defines it as
+`__attribute__((used, retain))`, which with gcc 15.2.0, binutils 2.46 and `-fdata-sections`
+kept every object of the demo where the empty macro kept none, and `used` alone kept none;
+it needs a gcc that knows `retain` and a binutils that keeps such a section. On PE gcc
+ignores `retain`, so the macro does not keep a definition there, and a reference to the
+object from code that is linked, or a linker script that keeps the section, does.
 
 None of this forbids the arrangement: a `{component}` template renders a `.c` as readily as
 a `.h`. A project that wants its definitions spread over several files **may** also write
@@ -1898,12 +1989,14 @@ the same project generates the same bytes on any machine. A component's own head
 the author's declaration order within each scope, and an object no component owns - one of
 those that arise where `missing-producer` is relaxed - is grouped under `<unresolved>` in
 the definition file rather than under a component. Names sort by code point, an
-upper case name before every lower case one and `cell[10]` before `cell[2]`, which is a
-spelling rule rather than a locale's, and the paths a wildcard include matched sort the same
-way, by the code point of their POSIX spelling: nothing in a generated file is ordered by
-what the platform running the tool thinks of a name. Whether two paths are the *same* file
-still follows the platform ([section 3.1](#31-project-description)), because that is a
-property of the file system rather than of the output.
+upper case name before every lower case one, which is a spelling rule rather than a
+locale's, and the paths a wildcard include matched sort the same way, by the code point of
+their POSIX spelling: nothing in a generated file is ordered by what the platform running
+the tool thinks of a name. The one exception is an index within a member path, which counts
+as a number: the members of an array of structures run `cell[2]` before `cell[10]`, in the
+a2l's records and in its `GROUP` alike, and in the dictionary and `ddd list`. Whether two
+paths are the *same* file still follows the platform ([section 3.1](#31-project-description)),
+because that is a property of the file system rather than of the output.
 Files are written UTF-8 with LF line endings and no byte order mark - the A2L of
 [section 5.2](#52-a2l) is the one artefact that carries one, because its own format has no
 other way of stating an encoding - and a rendered file whose content has not changed is left
@@ -1950,7 +2043,8 @@ ASAM MCD-2 MC output containing:
   structured objects it declares after the plain ones in each; a component contributing
   none gets no empty `GROUP`.
 - the address field of every object taken from the address information (`ECU_ADDRESS` is
-  the keyword the format uses for it), `SYMBOL_LINK` always; an object the address
+  the keyword the format uses for it), `SYMBOL_LINK` always, naming the linker symbol and the
+  offset from it where the image placed the record ([section 6](#6-address-information)); an object the address
   information does not cover keeps address `0x00000000`
   ([section 6](#6-address-information)).
 - deterministic order: records sorted by object name, member paths by path, `GROUP`s in the
@@ -1974,14 +2068,17 @@ reaches a tool as `Â°C` or stops its parser; no other artefact carries one
 ([section 5.1](#51-c-code)). The `PROJECT` carries a
 `HEADER` stating the project description, the project name as `PROJECT_NO` and the
 generator with its version; the `MODULE` carries a `MOD_COMMON` stating the
-byte order and fixed alignments (1/2/4/8, floats 4/8) and, when the project declares
+byte order and the alignments (1/2/4/8, floats 4/8 by default; with `--image`, the
+64 bit ones are the image's machine's, 4 on i386, where the tool holds the machine's ABI, and
+the defaults stand for a machine it does not) and, when the project declares
 constants ([section 3.9](#39-constant-vocabulary)), a `MOD_PAR` stating one
 `SYSTEM_CONSTANT` per declared constant in name order. Every record spells its sizes as
 resolved numbers, because the format accepts no symbol where a `MATRIX_DIM` expects a
 count. The byte order is the build's to
 state (`ddd generate a2l --byte-order little|big`, default little, emitted as
 `MSB_LAST`/`MSB_FIRST`): it is a property of the target the description files cannot know,
-and a tool reading multi byte values under the wrong one misreads every value.
+and a tool reading multi byte values under the wrong one misreads every value, so a run that
+gave neither the option nor an image reports the default (`byte-order-defaulted`).
 
 Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 `RL_AXIS_<TYPE>` per datatype and storage category, or, for one whose objects resolve
@@ -1992,10 +2089,16 @@ Generated identifiers are deterministic: record layouts `RL_VALUES_<TYPE>` and
 record refers to. The suffix is added when the generated name collides - two linear
 conversions in one unit, or one identity with a unit, or one linear conversion with whole
 `factor` and `offset`, used by an integer and by a float object - and the unsuffixed name
-goes to the method of the object that reaches the file first, the plain objects in name
-order before the member paths. An enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
+goes to the method of the object whose record the file writes first: the measurements, then
+the axes, then the other calibration objects, curves and maps among them, the plain objects of each kind in the dictionary's name
+order and the structure members after them. An axis a curve reaches is met as an axis, not
+as the curve's, so a measurement that comes earlier in the file keeps the plain name. An
+enum is a `TAB_VERB` referring to its `COMPU_VTAB`.
 A linear conversion is a `RAT_FUNC` whose `COEFFS` state raw as a function of physical, so
-the stated slope is the inverse of `factor`. An identity with a unit is `IDENTICAL`, and
+the stated slope is the inverse of `factor`. That is a choice: ASAP2 1.6.1 asks for
+`LINEAR` for a linear function, whose `COEFFS_LINEAR a b` would state physical as `a` times
+raw plus `b`, and DDD writes `RAT_FUNC` all the same: a file written by an earlier version
+keeps the type of its methods, and the choice is not an option of the tool. An identity with a unit is `IDENTICAL`, and
 one without a unit gets no method at all: the record says `NO_COMPU_METHOD`. What the
 description files do not carry is emitted neutrally: resolution and accuracy of a
 `MEASUREMENT` and the `MaxDiff` of a `CHARACTERISTIC` and of an `AXIS_PTS` are 0. The
@@ -2031,8 +2134,14 @@ A structured object ([section 3.3.2](#332-naming-a-declared-type)) reaches the A
 object per value-holding member, named by its C access path: an `Inlet` of the `Inlet_t`
 of [section 3.7](#37-type-description) contributes `Inlet.latest` and `Inlet.raw`, and a
 member that is itself a structure contributes its members beneath its own name. The path
-is at once the A2L name, the `SYMBOL_LINK` symbol and the key of the address map
-([section 6](#6-address-information)). A member of a measurement-kind object becomes a
+is at once the A2L name and the key of the address map ([section 6](#6-address-information)).
+`SYMBOL_LINK` names the linker symbol and the offset from it, as ASAP2 defines the record:
+with `--image`, `Inlet.cells[1].v` carries the variable's own symbol, `Inlet`, and the
+member's offset from that symbol's address in bytes, both taken from where the image placed
+the member. Before the link, and with an address map, which gives a symbol's address
+and nothing of a member's offset, the record of a member names its path at offset 0, and that
+is a path no linker map can answer. A tool that reads the debug information of the linked image
+may resolve it; no such tool was tried. A member of a measurement-kind object becomes a
 `MEASUREMENT`, and a member of a parameter-kind object becomes a `CHARACTERISTIC`, as
 `VALUE` when scalar and as `VAL_BLK` with `MATRIX_DIM` when an array. A member under
 a `string` conversion follows the string records of the first bullet of this section
@@ -2047,14 +2156,28 @@ whose layout DDD does not know. A `bits` member reaches no A2L at all:
 `SYMBOL_LINK` can carry a byte offset but not a bit position, so a bitfield waits for a
 build to report both the word and the bits *(planned)*.
 
-Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, the module
-level `IF_DATA XCP` block describing the protocol layer, the transport and the `DAQ` events
-themselves, `IF_DATA` for CCP, and A2L *import* for migration and merging are *planned*.
+What the A2L cannot state itself - the `A2ML` that describes an `IF_DATA` (the format asks
+for it), a module level `IF_DATA`, the `EPK` and its `ADDR_EPK`, a `MEMORY_SEGMENT` - is the
+project's to state, in a text file `--a2l-module-fragment FILE` names (`A2L_MODULE_FRAGMENT` in
+the cmake module). The A2L holds it **once**, as the first thing inside the `MODULE`, before
+the `MOD_COMMON` and so before every `IF_DATA` of the file; it is the file's text unchanged,
+with a final newline added where it has none, read as UTF-8 with or without a byte order mark.
+A fragment that cannot be read or is not UTF-8 text is a usage error naming it. ASAP2 allows
+one `MOD_PAR` in a `MODULE` and `EPK`, `ADDR_EPK` and `MEMORY_SEGMENT` live inside it, and DDD
+writes a `MOD_PAR` of its own wherever the project declares a named constant
+([section 3.9](#39-constant-vocabulary)): a fragment holding a `/begin MOD_PAR` beside one **shall** be
+refused, as a usage error naming the fragment, and where the project declares none the
+fragment's `MOD_PAR` is the module's. DDD reads nothing else of the fragment; it is not checked
+against the A2L's own text.
+
+Selectable output versions (1.5.1, 1.6, 1.7), `FUNCTION` and nested groups, a model of
+`MEMORY_SEGMENT`, `EPK` and the XCP block as DDD's own output, `IF_DATA` for CCP, and A2L
+*import* for migration and merging are *planned*.
 
 ### 5.3 Data dictionary
 
 `ddd dump` publishes the resolved project as one JSON document, the contract between the
-checking front end and every backend, DDD's own and a project's. Its `format` is `9`: a
+checking front end and every backend, DDD's own and a project's. Its `format` is `10`: a
 whole number of at least 1, written as a number and not as text, of which a reader
 **shall** refuse a higher one and reads a lower one with the defaults of that format
 ([section 4.1](#41-comparing-two-deliveries)). A dictionary is read under the JSON rules a
@@ -2089,9 +2212,13 @@ for every other kind) and `a2l` with `export` resolved to a boolean. An instance
 `owner`, `consumers`, `local` and `a2l`; a leaf records `path`, `instance`, `instance_id`,
 `kind`, `datatype`, `description`, `unit`, `conversion`, `limits`, `shape`, `dimensions`,
 `bits`, `volatile`, `section`, `raster`, `condition`, `owner`, `consumers`, `local` and
-`a2l`, whose `export` is the instance's and the member's folded into one - true only where
-both are, so keeping a structure out of the A2L keeps every member of it out - while its
-`format` and `display_identifier` are the member's own. `types` lists the
+`a2l`, whose `export` is the instance's and the members' folded into one - true only where
+all are, so keeping a structure out of the A2L keeps every member of it out - while its
+`format` is the innermost one stated on the way down, none reaching a string, and its
+`display_identifier` the member's own, or the path that the members above it compose
+([section 3.7](#37-type-description)), as `V[1].J.b`: identifiers joined by dots, each with
+its indices. It is the one display identifier of the document that may hold more than one
+identifier, and it is held to no length. `types` lists the
 structures in dependency order with their members; `enums` the enum conversions, one per
 name, the best documented variant; `constants` and `rasters` the declared entries. Nothing
 in the document depends on the machine that wrote it.
@@ -2183,8 +2310,8 @@ byte order mark, as a description file may ([section 3](#3-file-formats)): it is
 a build step, and on Windows that is exactly where one comes from. A key the project does
 not know is ignored, and an object the map does not
 cover keeps address `0x00000000` rather than failing the run: a map extracted from a linker
-output legitimately omits some objects, and `SYMBOL_LINK` lets a downstream tool resolve
-those it cares about. An object that states a condition, of which the map names neither the
+output legitimately omits some objects, and `SYMBOL_LINK` names what a downstream tool
+resolves those it cares about by. An object that states a condition, of which the map names neither the
 object nor any member, is the exception: it is left out of the A2L, as it is for an image,
 because a map extracted from a linker output omits the objects a condition compiled away. A
 map that names the structure by its own name, as a symbol lister writes it, or some of its
@@ -2219,8 +2346,9 @@ the two built-in artefacts and the artefact of every plugin the project names th
 one, in one run, or the name of such a plugin for its artefact alone, each carrying only the
 options of what it produces - a plugin's artefact takes the output directory, `--dry-run`,
 `--force` and the severity and format options, and none of the built-in artefacts' own;
-`a2l` and `all` take `--byte-order` and one source of the addresses, `--image` or
-`--address-map` ([section 6](#6-address-information));
+`a2l` and `all` take `--byte-order`, one source of the addresses, `--image` or
+`--address-map` ([section 6](#6-address-information)), and `--a2l-module-fragment`
+([section 5.2](#52-a2l)), each refused with `--without a2l`;
 `all` additionally takes a repeatable `--without c|a2l`, which leaves that built-in
 artefact out of the run while still producing the plugins'. What it subtracts it subtracts
 entirely: the options of an artefact left out are refused rather than accepted and ignored,
@@ -2377,7 +2505,7 @@ names the artefact and is a usage error.
 
 The data dictionary **shall** be writable and readable as JSON, so that a generator DDD
 does not ship can consume it without depending on the implementation. The dictionary names
-its own format (`format`, today `8`), raised only when the document's shape changes, so
+its own format (`format`, today `10`), raised only when the document's shape changes, so
 that an archived delivery says which shape it carries, which is what the build record's
 `format` does for it ([section 3.6](#36-build-record)). A reader handed a dictionary whose
 `format` is newer than the one it implements refuses it (`schema`), located at the file;
@@ -2522,7 +2650,7 @@ then - and deleting the stamp, or a clean, runs it.
 the generation before the link leaves the A2L out, as `NO_A2L` does, and a second step after
 the link runs `ddd generate a2l` over the image with `--image`, or over the map with
 `--address-map`, the A2L its output. The step depends on the image, on the map with
-`ADDRESS_MAP`, and on what the project is read from - its description, the files it is
+`ADDRESS_MAP`, on the `A2L_MODULE_FRAGMENT` file, and on what the project is read from - its description, the files it is
 collected or included from, the `.py` plugins, the list of those files that `PROJECT` keeps in
 the build tree, and the tool - so it runs again when the image relinks, the map changes or a
 description does, and never otherwise. A target `<stem>_ddd_a2l`, built by default,
@@ -2538,7 +2666,8 @@ naming both.
 
 The remaining keywords mirror the command line: `TEMPLATE_DIRECTORY` (required,
 `--template-dir`), `OUTPUT_DIRECTORY` (`-o`, defaulting into the build tree), `BYTE_ORDER`,
-`CONST_INPUTS`, `NO_A2L` - which subtracts the a2l from the run rather than narrowing it to
+`A2L_MODULE_FRAGMENT` (`--a2l-module-fragment`, refused beside `NO_A2L`),
+`NO_A2L` - which subtracts the a2l from the run rather than narrowing it to
 the c artefact, so the plugins' artefacts are produced either way - `STRICT` and repeatable
 `SEVERITY` entries written
 `check=severity` ([section 4](#4-consistency-checks)), the latter two also recorded in the
@@ -2613,7 +2742,8 @@ allow, a type name spelling a base datatype, or one the project already uses, wh
 another object, an enum, an enumerator, a type or a constant, because a rename that silently
 merges two objects compiles, links, and shares storage nobody intended to share; and quick
 fixes that reconcile one key across the declarations of one object, in either direction,
-including removing a key the others do not have, none of which is offered where writing it
+including removing a key the others do not have, which change descriptions and never the code
+of the components that read the variable, and none of which is offered where writing it
 would leave a file the loader refuses; and, on a `missing-id`, a fix that gives the
 declaration an identity, writing what `ddd id --assign` would write and offered only where
 that finding is reported.

@@ -3,16 +3,30 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-from conftest import component, declare, project, render_files, run_analysis
+import pytest
+
+from conftest import (
+    component,
+    declare,
+    project,
+    render_files,
+    run_analysis,
+    struct_type,
+    types,
+    value_member,
+)
 from ddd.backends import (
     A2lBackend,
     A2lOptions,
     ByteOrder,
+    ModuleFragment,
     conditional_objects,
     dragged_with,
+    load_module_fragment,
     render,
     write,
 )
@@ -515,6 +529,112 @@ class TestSharedCompuMethods:
         assert all(len(token) <= 128 for token in identifiers)
 
 
+class TestTheUnsuffixedMethodNameGoesToTheFirstRecord:
+    """Two linear conversions in one unit get ``CM_LIN_V`` and ``CM_LIN_V_2``, and the first
+    name goes to the object whose record the file writes first: the measurements, then the
+    axes, then the curves and maps, each in the dictionary's order."""
+
+    @staticmethod
+    def method_of(content: str, kind: str, name: str) -> str:
+        block = content.split(f"/begin {kind} {name} ", 1)[1].split(f"/end {kind}", 1)[0]
+        found = re.search(r"\bCM_\w+\b", block)
+        assert found, block
+        return found.group(0)
+
+    @staticmethod
+    def declarations() -> list[dict[str, Any]]:
+        return [
+            declare("local", "C_meas", "uint16", unit="V", conversion={"factor": 0.5}),
+            declare(
+                "local",
+                "Z_axis",
+                "uint16",
+                kind="axis",
+                size=2,
+                unit="V",
+                conversion={"factor": 0.25},
+            ),
+            declare("local", "B_curve", "uint8", kind="curve", axis="Z_axis"),
+        ]
+
+    def test_a_measurement_keeps_the_plain_name_over_an_axis_a_curve_reaches(
+        self, tree: Path
+    ) -> None:
+        content = a2l(tree, *self.declarations())
+        assert self.method_of(content, "MEASUREMENT", "C_meas") == "CM_LIN_V"
+        assert self.method_of(content, "AXIS_PTS", "Z_axis") == "CM_LIN_V_2"
+
+    def test_an_axis_keeps_the_plain_name_when_no_measurement_asks(self, tree: Path) -> None:
+        content = a2l(tree, *self.declarations()[1:])
+        assert self.method_of(content, "AXIS_PTS", "Z_axis") == "CM_LIN_V"
+        assert "CM_LIN_V_2" not in content
+
+    def test_an_axis_comes_before_a_curve_with_a_conversion_of_its_own(self, tree: Path) -> None:
+        content = a2l(
+            tree,
+            declare(
+                "local",
+                "Z_axis",
+                "uint16",
+                kind="axis",
+                size=2,
+                unit="V",
+                conversion={"factor": 0.25},
+            ),
+            declare(
+                "local",
+                "A_curve",
+                "uint8",
+                kind="curve",
+                axis="Z_axis",
+                unit="V",
+                conversion={"factor": 0.5},
+            ),
+        )
+        assert self.method_of(content, "AXIS_PTS", "Z_axis") == "CM_LIN_V"
+        assert self.method_of(content, "CHARACTERISTIC", "A_curve") == "CM_LIN_V_2"
+
+    @staticmethod
+    def with_a_structure(tree: Path, kind: str) -> str:
+        """``A_inst`` sorts before ``Z_plain``, and its member's record follows the plain one."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component(
+                "A",
+                declare("local", "A_inst", typename="O_t", kind=kind),
+                declare(
+                    "local",
+                    "Z_plain",
+                    "uint16",
+                    kind=kind,
+                    unit="V",
+                    conversion={"factor": 0.25},
+                ),
+                description="d",
+            ),
+            "t.ddd.json": types(
+                struct_type(
+                    "O_t",
+                    value_member("v", "uint16", unit="V", conversion={"factor": 0.5}),
+                )
+            ),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        return next(file.content for file in rendered if file.path.name == "Device.a2l")
+
+    def test_a_structure_member_comes_after_the_plain_measurements(self, tree: Path) -> None:
+        content = self.with_a_structure(tree, "measurement")
+        assert self.method_of(content, "MEASUREMENT", "Z_plain") == "CM_LIN_V"
+        assert self.method_of(content, "MEASUREMENT", "A_inst.v") == "CM_LIN_V_2"
+
+    def test_a_structure_member_comes_after_the_plain_characteristics(self, tree: Path) -> None:
+        content = self.with_a_structure(tree, "parameter")
+        assert self.method_of(content, "CHARACTERISTIC", "Z_plain") == "CM_LIN_V"
+        assert self.method_of(content, "CHARACTERISTIC", "A_inst.v") == "CM_LIN_V_2"
+
+
 class TestForcedOutput:
     def test_a_curve_whose_axis_is_unknown_is_dropped_before_the_backend(self, tree: Path) -> None:
         """Dropped at analysis: a CURVE without its AXIS_DESCR would be an invalid file
@@ -758,3 +878,615 @@ class TestEncoding:
         assert 'IDENTICAL "%8.0" "°C"' in text
         assert "CM_IDENT_DEGC" in text
         assert "﻿" not in text
+
+
+class TestModuleFragment:
+    """A project's own text, pasted verbatim at the head of the ``MODULE``.
+
+    What the a2l cannot state itself - the ``A2ML`` describing an ``IF_DATA``, the module's own
+    ``IF_DATA``, an ``EPK`` and a ``MEMORY_SEGMENT`` - is the project's to say, as the house
+    style of the c is: the fragment is the extension point, and ddd does not model any of it.
+    """
+
+    A2ML = (
+        "/begin A2ML\n"
+        '  block "IF_DATA" taggedunion if_data {\n'
+        '    "XCP" struct { uint; };\n'
+        "  };\n"
+        "/end A2ML\n"
+    )
+
+    def named(self, tree: Path, text: str) -> ModuleFragment:
+        path = tree / "fragment.a2l"
+        path.write_text(text, encoding="utf-8", newline="")
+        return load_module_fragment(path)
+
+    def content(self, tree: Path, fragment: ModuleFragment | None, *constants: str) -> str:
+        files: dict[str, Any] = {
+            "project.ddd.json": project(
+                "Device", *(["constants.ddd.json"] if constants else []), "a.ddd.json"
+            ),
+            "a.ddd.json": component("A", declare("local", "X"), description="a component"),
+        }
+        if constants:
+            files["constants.ddd.json"] = {
+                "constants": [{"name": name, "value": 8} for name in constants]
+            }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen", module_fragment=fragment)
+        return next(file.content for file in rendered if file.path.name == "Device.a2l")
+
+    def test_the_fragment_is_once_the_head_of_the_module(self, tree: Path) -> None:
+        content = self.content(tree, self.named(tree, self.A2ML))
+        assert content.count(self.A2ML) == 1
+        opening = '/begin MODULE Device "Device"\n'
+        assert opening + self.A2ML + "\n    /begin MOD_COMMON" in content
+        assert content.index(self.A2ML) < content.index("/end MODULE")
+
+    def test_a_fragment_precedes_every_if_data_the_file_holds(self, tree: Path) -> None:
+        """A reader that parses an ``IF_DATA`` by the metalanguage meets the metalanguage first,
+        the blocks ddd writes on a measurement included."""
+        content = self.content(tree, self.named(tree, self.A2ML))
+        assert content.index("/begin A2ML") < content.index("/begin MEASUREMENT")
+
+    def test_the_text_is_the_files_with_a_final_newline_added_where_it_has_none(
+        self, tree: Path
+    ) -> None:
+        bare = "/begin A2ML\n/end A2ML"
+        assert 'MODULE Device "Device"\n' + bare + "\n\n    /begin MOD_COMMON" in self.content(
+            tree, self.named(tree, bare)
+        )
+
+    def test_a_fragment_is_pasted_unindented_and_unchanged(self, tree: Path) -> None:
+        odd = '\t/* keep  this   */\n\n\n  EPK  "x"\n'
+        assert self.content(tree, self.named(tree, odd)).count(odd + "\n    /begin MOD_COMMON") == 1
+
+    def test_a_byte_order_mark_in_front_of_the_text_is_not_part_of_it(self, tree: Path) -> None:
+        content = self.content(tree, self.named(tree, chr(0xFEFF) + self.A2ML))
+        assert content.count(chr(0xFEFF)) == 1
+        assert self.A2ML in content
+
+    def test_an_empty_fragment_adds_nothing(self, tree: Path) -> None:
+        assert self.content(tree, self.named(tree, "")) == self.content(tree, None)
+
+    def test_no_fragment_leaves_the_module_as_it_was(self, tree: Path) -> None:
+        content = self.content(tree, None)
+        assert 'MODULE Device "Device"\n\n    /begin MOD_COMMON' in content
+
+    def test_a_mod_par_of_the_fragment_is_the_modules_where_no_constant_is_named(
+        self, tree: Path
+    ) -> None:
+        fragment = '/begin MOD_PAR "ecu"\n  EPK "EPROM1"\n  ADDR_EPK 0x1000\n/end MOD_PAR\n'
+        content = self.content(tree, self.named(tree, fragment))
+        assert content.count("/begin MOD_PAR") == 1
+        assert content.count(fragment) == 1
+
+    def test_a_mod_par_of_the_fragment_beside_a_named_constant_is_refused(self, tree: Path) -> None:
+        fragment = self.named(tree, '/begin MOD_PAR "ecu"\n  EPK "EPROM1"\n/end MOD_PAR\n')
+        with pytest.raises(ValueError, match="MOD_PAR") as refused:
+            self.content(tree, fragment, "CELLS")
+        assert str(refused.value) == (
+            f"the a2l module fragment '{fragment.where}' holds a MOD_PAR, and the named "
+            "constants of this project make ddd write one: ASAP2 allows one MOD_PAR in a "
+            "MODULE, so a project that declares a named constant cannot carry EPK, ADDR_EPK "
+            "or MEMORY_SEGMENT through the fragment"
+        )
+
+    def test_the_spelling_of_the_opening_is_what_is_looked_for(self, tree: Path) -> None:
+        fragment = self.named(tree, '/begin   MOD_PAR "ecu"\n/end MOD_PAR\n')
+        with pytest.raises(ValueError, match="holds a MOD_PAR"):
+            self.content(tree, fragment, "CELLS")
+
+    def test_a_mod_par_only_mentioned_is_no_mod_par(self, tree: Path) -> None:
+        """A comment, or a string, naming one is the fragment's text and no block of the kind;
+        a named constant beside it takes ddd's own."""
+        fragment = self.named(
+            tree,
+            "/* /begin MOD_PAR */\n// /begin MOD_PAR\n/* over\n/begin MOD_PAR\nlines */\n"
+            '/begin A2ML\n"/begin MOD_PAR // not a comment"\n'
+            '"say \\" /begin MOD_PAR \\" again"\n/end A2ML\n',
+        )
+        content = self.content(tree, fragment, "CELLS")
+        assert content.count('SYSTEM_CONSTANT "CELLS" "8"') == 1
+        assert content.count("/begin MOD_PAR") == 6  # five mentions and the modules own
+
+    def test_a_fragment_beside_a_named_constant_comes_before_the_modules_own_mod_par(
+        self, tree: Path
+    ) -> None:
+        content = self.content(tree, self.named(tree, self.A2ML), "CELLS")
+        assert content.index("/end A2ML") < content.index("/begin MOD_COMMON")
+        assert content.index("/begin MOD_COMMON") < content.index("/begin MOD_PAR")
+
+
+class TestAMemberNamingAStructure:
+    """The ``a2l`` block of a member that names a structure shapes every record under it.
+
+    ``export: false`` keeps the whole subtree out of every instance; ``format`` and
+    ``display_identifier`` reach each leaf under the member, and a deeper member's own block
+    wins for its subtree.
+    """
+
+    @staticmethod
+    def build(
+        tree: Path, *entries: dict[str, Any], **declaration: Any
+    ) -> tuple[str, dict[str, Any], DiagnosticBag]:
+        """The a2l text, the dumped leaves by path and the findings of ``V`` of ``O_t``."""
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component(
+                "A", declare("local", "V", typename="O_t", **declaration), description="d"
+            ),
+            "t.ddd.json": types(*entries),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        content = next(file.content for file in rendered if file.path.name == "Device.a2l")
+        return content, dict(dictionary.comparable), bag
+
+    @staticmethod
+    def record(content: str, name: str) -> str:
+        head = f"/begin MEASUREMENT {name} "
+        assert head in content, name
+        return content.split(head, 1)[1].split("/end MEASUREMENT", 1)[0]
+
+    def test_export_false_keeps_the_whole_subtree_out_of_every_instance(self, tree: Path) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"export": False}},
+                value_member("k"),
+            ),
+            struct_type("Inner_t", value_member("a"), value_member("b")),
+            dimensions=[2],
+        )
+        assert [d.render() for d in bag] == []
+        for index in (0, 1):
+            for leaf in ("a", "b"):
+                assert f"V[{index}].j.{leaf}" not in content
+                assert leaves[f"V[{index}].j.{leaf}"].a2l.exported is False
+            assert f"/begin MEASUREMENT V[{index}].k " in content
+            assert leaves[f"V[{index}].k"].a2l.exported is True
+
+    def test_the_dump_states_the_subtree_not_exported(self, tree: Path) -> None:
+        from ddd.cli import EXIT_OK, main
+
+        self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"export": False}},
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        out = tree / "dump.json"
+        assert main(["dump", str(tree / "project.ddd.json"), "--output", str(out)]) == EXIT_OK
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        leaf = next(leaf for leaf in payload["leaves"] if leaf["path"] == "V.j.a")
+        assert leaf["a2l"]["export"] is False
+
+    def test_a_deeper_export_true_does_not_bring_a_leaf_back(self, tree: Path) -> None:
+        content, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "M_t", "a2l": {"export": False}},
+                value_member("k"),
+            ),
+            struct_type(
+                "M_t",
+                {"name": "m", "member": "value", "typename": "Inner_t", "a2l": {"export": True}},
+            ),
+            struct_type("Inner_t", value_member("a", a2l={"export": True})),
+        )
+        assert "V.j.m.a" not in content
+        assert leaves["V.j.m.a"].a2l.exported is False
+        assert "/begin MEASUREMENT V.k " in content
+
+    def test_a_member_kept_out_below_one_kept_in_stays_out(self, tree: Path) -> None:
+        content, _, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "M_t", "a2l": {"export": True}},
+            ),
+            struct_type(
+                "M_t",
+                {"name": "m", "member": "value", "typename": "Inner_t", "a2l": {"export": False}},
+                value_member("c"),
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        assert "V.j.m.a" not in content
+        assert "/begin MEASUREMENT V.j.c " in content
+
+    def test_a_format_reaches_every_leaf_and_a_deeper_one_wins_below_it(self, tree: Path) -> None:
+        content, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"format": "%6.1"}},
+                value_member("k"),
+            ),
+            struct_type(
+                "Inner_t",
+                value_member("a", a2l={"format": "%9.2"}),
+                value_member("b"),
+                {"name": "n", "member": "value", "typename": "N_t", "a2l": {"format": "%3.0"}},
+                {"name": "p", "member": "value", "typename": "N_t"},
+            ),
+            struct_type("N_t", value_member("x"), value_member("y", a2l={"format": "%4.1"})),
+        )
+        wanted = {
+            "V.j.a": "%9.2",
+            "V.j.b": "%6.1",
+            "V.j.n.x": "%3.0",
+            "V.j.n.y": "%4.1",
+            "V.j.p.x": "%6.1",
+            "V.j.p.y": "%4.1",
+        }
+        for path, text in wanted.items():
+            assert f'FORMAT "{text}"' in self.record(content, path), path
+            assert leaves[path].a2l.format == text, path
+        assert "FORMAT" not in self.record(content, "V.k")
+
+    def test_a_format_does_not_reach_a_string_leaf(self, tree: Path) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "a2l": {"format": "%6.1"}},
+            ),
+            struct_type(
+                "Inner_t",
+                value_member("a"),
+                {
+                    "name": "text",
+                    "member": "value",
+                    "datatype": "uint8",
+                    "conversion": {"kind": "string"},
+                    "dimensions": [8],
+                },
+            ),
+        )
+        assert [d.render() for d in bag] == []
+        assert 'FORMAT "%6.1"' in self.record(content, "V.j.a")
+        assert leaves["V.j.text"].a2l.format is None
+
+    def test_a_display_identifier_stands_for_its_members_own_segment_of_the_path(
+        self, tree: Path
+    ) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "dimensions": [2],
+                    "a2l": {"display_identifier": "J"},
+                },
+                value_member("k"),
+            ),
+            struct_type(
+                "Inner_t",
+                value_member("a", a2l={"display_identifier": "OwnA"}),
+                value_member("b"),
+                {
+                    "name": "n",
+                    "member": "value",
+                    "typename": "N_t",
+                    "a2l": {"display_identifier": "Inner"},
+                },
+                {"name": "p", "member": "value", "typename": "N_t"},
+            ),
+            struct_type("N_t", value_member("x")),
+            dimensions=[2],
+        )
+        assert [d.render() for d in bag] == []
+        wanted = {
+            "V[1].j[0].a": "OwnA",
+            "V[1].j[1].a": "OwnA",
+            "V[0].j[0].b": "V[0].J[0].b",
+            "V[1].j[1].b": "V[1].J[1].b",
+            "V[1].j[1].n.x": "V[1].J[1].Inner.x",
+            "V[0].j[0].n.x": "V[0].J[0].Inner.x",
+            "V[1].j[1].p.x": "V[1].J[1].p.x",
+        }
+        for path, text in wanted.items():
+            assert f"DISPLAY_IDENTIFIER {text}\n" in self.record(content, path), path
+            assert leaves[path].a2l.display_identifier == text, path
+        assert "DISPLAY_IDENTIFIER" not in self.record(content, "V[1].k")
+        composed = [
+            leaf.a2l.display_identifier
+            for path, leaf in leaves.items()
+            if not path.endswith((".k", ".a"))
+        ]
+        assert len(composed) == 2 * 2 * 3  # elements of V and of j, then b, n.x and p.x
+        assert len(composed) == len(set(composed))  # none of an instance's records share one
+
+    def test_a_deeper_display_identifier_composes_with_the_one_above(self, tree: Path) -> None:
+        _, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "dimensions": [2],
+                    "a2l": {"display_identifier": "J"},
+                },
+            ),
+            struct_type(
+                "Inner_t",
+                {
+                    "name": "n",
+                    "member": "value",
+                    "typename": "N_t",
+                    "a2l": {"display_identifier": "Inner"},
+                },
+            ),
+            struct_type("N_t", value_member("x")),
+        )
+        assert leaves["V.j[0].n.x"].a2l.display_identifier == "V.J[0].Inner.x"
+
+    def test_a_deeper_display_identifier_alone_keeps_the_path_above_as_it_is(
+        self, tree: Path
+    ) -> None:
+        _, leaves, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {"name": "j", "member": "value", "typename": "Inner_t", "dimensions": [2]},
+            ),
+            struct_type(
+                "Inner_t",
+                {
+                    "name": "n",
+                    "member": "value",
+                    "typename": "N_t",
+                    "a2l": {"display_identifier": "Inner"},
+                },
+            ),
+            struct_type("N_t", value_member("x")),
+        )
+        assert leaves["V.j[0].n.x"].a2l.display_identifier == "V.j[0].Inner.x"
+        assert leaves["V.j[1].n.x"].a2l.display_identifier == "V.j[1].Inner.x"
+
+    def test_siblings_displayed_alike_are_not_warned_of(self, tree: Path) -> None:
+        content, leaves, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "Same"},
+                },
+                {
+                    "name": "m",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "Same"},
+                },
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        assert [d.render() for d in bag] == []
+        assert leaves["V.j.a"].a2l.display_identifier == leaves["V.m.a"].a2l.display_identifier
+        assert content.count("DISPLAY_IDENTIFIER V.Same.a") == 2
+
+    def test_a_value_members_block_is_unchanged(self, tree: Path) -> None:
+        content, _, _ = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                value_member("k", a2l={"format": "%5.2", "display_identifier": "K"}),
+                value_member("h", a2l={"export": False}),
+            ),
+        )
+        record = self.record(content, "V.k")
+        assert 'FORMAT "%5.2"' in record
+        assert "DISPLAY_IDENTIFIER K\n" in record
+        assert "V.h" not in content
+
+    def test_a_keyword_display_identifier_is_refused_at_the_types_file(self, tree: Path) -> None:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "V", typename="O_t")),
+            "t.ddd.json": types(
+                struct_type(
+                    "O_t",
+                    {
+                        "name": "j",
+                        "member": "value",
+                        "typename": "Inner_t",
+                        "a2l": {"display_identifier": "MAP"},
+                    },
+                ),
+                struct_type("Inner_t", value_member("a"), value_member("b")),
+            ),
+        }
+        found = [d.render().rsplit("/", 1)[-1] for d in run_analysis(tree, files)[1]]
+        assert found == [
+            "t.ddd.json#types[0].members[0].a2l.display_identifier: error[a2l-keyword]: "
+            "'MAP' is a keyword of ASAP2 1.6.1, which an identifier of the a2l may not be"
+        ]
+
+    def test_a_display_identifier_past_the_partial_limit_is_warned_at_the_types_file(
+        self, tree: Path
+    ) -> None:
+        long = "D" * 127
+        _, _, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "dimensions": [2],
+                    "a2l": {"display_identifier": long},
+                },
+            ),
+            struct_type("Inner_t", value_member("a"), value_member("b")),
+        )
+        found = [d.render().rsplit("/", 1)[-1] for d in bag]
+        assert len(found) == 1
+        assert found[0].startswith(
+            "t.ddd.json#types[0].members[0].a2l.display_identifier: warning[a2l-unrepresentable]: "
+            "the display identifier of member 'j' of structure 'O_t' with its index is 130 "
+            "characters, but a partial identifier"
+        )
+
+    def test_a_display_identifier_made_past_the_identifier_limit_is_warned_once(
+        self, tree: Path
+    ) -> None:
+        names = [f"{letter}" * 120 for letter in "abcdefghi"]
+        entries = [struct_type("T0", value_member("v"), value_member("w"))]
+        for number, name in enumerate(names, 1):
+            entries.append(
+                struct_type(
+                    f"T{number}",
+                    {"name": name, "member": "value", "typename": f"T{number - 1}"},
+                )
+            )
+        entries.append(
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "T9",
+                    "a2l": {"display_identifier": "J"},
+                },
+            )
+        )
+        _, _, bag = self.build(tree, *entries)
+        found = [d.render().rsplit("/", 1)[-1] for d in bag if "display identifier" in d.render()]
+        assert len(found) == 1
+        assert found[0].startswith(
+            "t.ddd.json#types[10].members[0].a2l.display_identifier: "
+            "warning[a2l-unrepresentable]: "
+            "the display identifier of member 'j' of structure 'O_t' puts the path of a record "
+            "at 1094 characters, but an identifier of the a2l"
+        )
+
+    def test_the_composed_identifier_past_the_limit_is_held_at_the_innermost_member(
+        self, tree: Path
+    ) -> None:
+        names = [f"{letter}" * 120 for letter in "abcdefghij"]
+        entries = [struct_type("T0", value_member("v"))]
+        for number, name in enumerate(names, 1):
+            member: dict[str, Any] = {
+                "name": name,
+                "member": "value",
+                "typename": f"T{number - 1}",
+            }
+            if number == 1:
+                member["a2l"] = {"display_identifier": "Z"}
+            entries.append(struct_type(f"T{number}", member))
+        entries.append(
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "T10",
+                    "a2l": {"display_identifier": "J"},
+                },
+            )
+        )
+        _, _, bag = self.build(tree, *entries)
+        found = [d.render().rsplit("/", 1)[-1] for d in bag if "display identifier" in d.render()]
+        assert len(found) == 1
+        assert found[0].startswith("t.ddd.json#types[1].members[0].a2l.display_identifier: ")
+
+    def test_a_display_identifier_a_leaf_overrides_is_not_held(self, tree: Path) -> None:
+        _, _, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "MAP"},
+                },
+            ),
+            struct_type("Inner_t", value_member("a", a2l={"display_identifier": "Own"})),
+        )
+        assert [d.render() for d in bag] == []
+
+    def test_a_keyword_display_identifier_is_held_at_the_member_that_states_it(
+        self, tree: Path
+    ) -> None:
+        _, _, bag = self.build(
+            tree,
+            struct_type("O_t", {"name": "j", "member": "value", "typename": "M_t"}),
+            struct_type(
+                "M_t",
+                {
+                    "name": "m",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"display_identifier": "MAP"},
+                },
+            ),
+            struct_type("Inner_t", value_member("a")),
+        )
+        assert [d.render().rsplit("/", 1)[-1] for d in bag] == [
+            "t.ddd.json#types[1].members[0].a2l.display_identifier: error[a2l-keyword]: "
+            "'MAP' is a keyword of ASAP2 1.6.1, which an identifier of the a2l may not be"
+        ]
+
+    def test_nothing_is_held_below_a_member_kept_out(self, tree: Path) -> None:
+        _, _, bag = self.build(
+            tree,
+            struct_type(
+                "O_t",
+                {
+                    "name": "j",
+                    "member": "value",
+                    "typename": "Inner_t",
+                    "a2l": {"export": False, "display_identifier": "MAP"},
+                },
+            ),
+            struct_type("Inner_t", value_member("MAP")),
+        )
+        assert [d.render() for d in bag] == []
+
+
+class TestOneOrderForRecordsAndGroups:
+    """``SA[2]`` comes before ``SA[10]`` in the records and in the ``GROUP``: the dictionary's
+    order, in which an index is a number."""
+
+    def twelve(self, tree: Path) -> str:
+        files = {
+            "project.ddd.json": project("Device", "a.ddd.json", "t.ddd.json"),
+            "a.ddd.json": component("A", declare("local", "SA", typename="S_t", dimensions=[12])),
+            "t.ddd.json": types(struct_type("S_t", value_member("v"))),
+        }
+        dictionary, bag = run_analysis(tree, files)
+        assert dictionary is not None, [d.render() for d in bag]
+        rendered = render_files(dictionary, tree / "gen")
+        return next(file.content for file in rendered if file.path.name == "Device.a2l")
+
+    @staticmethod
+    def order(content: str, keyword: str) -> list[str]:
+        return re.findall(rf"{keyword} (SA\[\d+\]\.v)", content)
+
+    def test_the_records_run_in_index_order(self, tree: Path) -> None:
+        records = self.order(self.twelve(tree), "/begin MEASUREMENT")
+        assert records == [f"SA[{i}].v" for i in range(12)]
+
+    def test_the_group_lists_them_in_the_same_order(self, tree: Path) -> None:
+        content = self.twelve(tree)
+        group = content[content.index("/begin GROUP") :]
+        listed = re.findall(r"(SA\[\d+\]\.v)", group)
+        assert listed == [f"SA[{i}].v" for i in range(12)]

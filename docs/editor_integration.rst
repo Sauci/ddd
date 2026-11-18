@@ -131,7 +131,8 @@ every other file and leave that one holding the old name, and a fix would offer 
 key "no other declaration has" while the unloaded producer states exactly that key. Fix the
 file and ask again.
 
-**Quick fixes.** On a key the declarations of one object have to agree on - a ``unit``, a
+**Quick fixes.** They change descriptions: the code of the components that read the variable is
+not touched, and the title of the fix a finding of ``ddd gui`` carries says so. On a key the declarations of one object have to agree on - a ``unit``, a
 ``conversion``, a ``datatype`` - a ``definition-mismatch`` offers every way of reconciling
 it: take the producing component's value, spread this one to the others, or, when nobody
 else states the key, remove it. ``limits`` are the exception to the last: a declaration that

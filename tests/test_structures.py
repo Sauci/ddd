@@ -376,7 +376,9 @@ class TestNestingTooDeep:
 
     def test_a_structure_at_the_limit_still_resolves(self, tree: Path) -> None:
         """Sixty four levels is the deepest structure there is, and it flattens as any does."""
-        dictionary, bag = run_analysis(tree, self.files(64))
+        # Kept out of the a2l: the path of its one leaf is 322 characters, which the a2l's
+        # SYMBOL_LINK cannot hold, and that is `a2l-unrepresentable`'s to say, not this test's.
+        dictionary, bag = run_analysis(tree, self.files(64, a2l={"export": False}))
         assert checks(bag) == []
         assert dictionary is not None
         assert [leaf.path for leaf in dictionary.leaves] == ["X" + ".down" * 63 + ".value"]
@@ -412,11 +414,11 @@ class TestNestingTooDeep:
                 "types.ddd.json": types(*self.chain(70)),
                 "a.ddd.json": component(
                     "A",
-                    declare("local", "X63", typename="T63_t"),
-                    declare("local", "X64", typename="T64_t"),
-                    declare("local", "X65", typename="T65_t"),
-                    declare("local", "X66", typename="T66_t"),
-                    declare("local", "X70", typename="T70_t"),
+                    declare("local", "X63", typename="T63_t", a2l={"export": False}),
+                    declare("local", "X64", typename="T64_t", a2l={"export": False}),
+                    declare("local", "X65", typename="T65_t", a2l={"export": False}),
+                    declare("local", "X66", typename="T66_t", a2l={"export": False}),
+                    declare("local", "X70", typename="T70_t", a2l={"export": False}),
                 ),
             },
         )

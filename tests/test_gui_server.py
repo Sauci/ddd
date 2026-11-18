@@ -3635,9 +3635,9 @@ HOSTS_TAKEN: Final = (
 
 class TestTheHostsServedOn:
     """``--host`` takes loopback's ``127.0.0.1``, the default, and the wildcard ``0.0.0.0``, or a
-    name resolving to either (12:M5, 9:M8). Any other host - the empty one, another address of
-    loopback, an address of a network - is refused, exit 2, saying what to give instead, before
-    anything binds or the session starts. Only the refusals run here, and nothing binds."""
+    name resolving to either (12:M5, 9:M8). Any other host is refused, exit 2, saying what to give
+    instead, before anything binds or the session starts. Only the refusals run here, and nothing
+    binds."""
 
     @pytest.fixture
     def nothing_starts(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -3658,8 +3658,7 @@ class TestTheHostsServedOn:
 
     @pytest.fixture
     def resolved(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-        """Every host the run resolves, each to an address of a network, as some systems answer
-        even the empty host."""
+        """Every host the run resolves, each to an address of a network."""
         asked: list[str] = []
 
         def getaddrinfo(host, port, family, kind):
@@ -3670,7 +3669,7 @@ class TestTheHostsServedOn:
         return asked
 
     @pytest.mark.parametrize("port", [0, 8123])
-    def test_the_empty_host_is_refused_before_anything_resolves_it(
+    def test_a_host_naming_no_address_is_refused_before_anything_resolves_it(
         self, pages, capsys, nothing_starts, resolved, port
     ) -> None:
         assert run(None, [], port, open_browser=False, static=pages, host="") == EXIT_USAGE
@@ -3679,7 +3678,7 @@ class TestTheHostsServedOn:
         assert (resolved, nothing_starts) == ([], [])
 
     @pytest.mark.parametrize("port", [0, 8123])
-    @pytest.mark.parametrize("host", ["127.0.0.2", "127.255.255.254"])
+    @pytest.mark.parametrize("host", ["127.0.0.2", "127.255.255.254"], ids=range(2))
     def test_another_address_of_loopback_is_refused(
         self, pages, capsys, nothing_starts, host, port
     ) -> None:
@@ -3693,7 +3692,7 @@ class TestTheHostsServedOn:
         assert nothing_starts == []
 
     @pytest.mark.parametrize("port", [0, 8123])
-    @pytest.mark.parametrize("host", ["192.168.1.50", "a-name.example"])
+    @pytest.mark.parametrize("host", ["192.168.1.50", "a-name.example"], ids=range(2))
     def test_an_address_of_a_network_is_refused(
         self, pages, capsys, nothing_starts, resolved, host, port
     ) -> None:

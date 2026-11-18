@@ -2802,6 +2802,105 @@ class TestTheStandardLibrarysLimits:
         assert status_of(server, headed(server, 99)) == 401
 
 
+def whole_answer(server: GuiServer, sent: bytes) -> tuple[str, dict[str, str], bytes]:
+    """The status line, the headers and the body ``server`` answers ``sent`` with, over a
+    connection of its own, read to its end."""
+    with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+        connection.sendall(sent)
+        with connection.makefile("rb") as answer:
+            data = answer.read()
+    head, _, body = data.partition(b"\r\n\r\n")
+    status, *fields = head.decode("latin-1").split("\r\n")
+    return status, dict(field.split(": ", 1) for field in fields), body
+
+
+def refusals_of(server: GuiServer) -> dict[str, tuple[int, bytes]]:
+    """A request the standard library refuses before this server reads it, for each of its
+    refusals, by status: each sent only as far as the line it is refused at."""
+    host = f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
+    return {
+        "400-of-its-syntax": (400, b"GET / x HTTP/1.1\r\n"),
+        "400-of-its-version": (400, b"GET / HTTP/1.x\r\n"),
+        "400-of-no-version": (400, b"POST /\r\n"),
+        "414": (414, request_line(65537)),
+        "431": (431, b"GET / HTTP/1.1\r\n" + header_line(65537)),
+        "501": (501, b"PUT / HTTP/1.1\r\n" + host + b"Content-Length: 0\r\n\r\n"),
+        "505": (505, b"GET / HTTP/2.0\r\n"),
+    }
+
+
+class TestTheStandardLibrarysAnswers:
+    """What the standard library answers a request it cannot read or does not handle carries
+    the headers every answer of this server carries, as ``ddd gui``'s own refusals do: the
+    page's policy, ``nosniff``, no referrer, and ``no-store`` (12:M7). Each is a status line and
+    headers, whatever the request named for its version, and its page as the standard library
+    writes it."""
+
+    REFUSED: Final = (
+        "400-of-its-syntax",
+        "400-of-its-version",
+        "400-of-no-version",
+        "414",
+        "431",
+        "501",
+        "505",
+    )
+    """Each refusal of :func:`refusals_of`."""
+
+    @pytest.mark.parametrize("refused", REFUSED)
+    def test_each_refusal_carries_the_headers_of_every_answer(self, server, refused) -> None:
+        code, sent = refusals_of(server)[refused]
+        status, headers, body = whole_answer(server, sent)
+        assert status.startswith(f"HTTP/1.1 {code} ")
+        # Server and Date are the standard library's own, on every answer alike.
+        own = {name: value for name, value in headers.items() if name not in ("Server", "Date")}
+        assert own == {
+            **SECURITY_HEADERS,
+            "Content-Security-Policy": server.policy,
+            "Cache-Control": "no-store",
+            "Connection": "close",
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Length": str(len(body)),
+        }
+        assert f"Error code: {code}".encode("ascii") in body
+
+    def test_a_head_is_refused_with_those_headers_and_no_page(self, server) -> None:
+        sent = b"HEAD / HTTP/1.1\r\n" + f"Host: 127.0.0.1:{server.port}\r\n\r\n".encode("ascii")
+        status, headers, body = whole_answer(server, sent)
+        assert status.startswith("HTTP/1.1 501 ")
+        assert (headers["Content-Security-Policy"], headers["Cache-Control"]) == (
+            server.policy,
+            "no-store",
+        )
+        assert int(headers["Content-Length"]) > 0
+        assert body == b""
+
+    def test_a_refusal_carries_the_policy_of_the_page_served(self, project_file, pages) -> None:
+        (pages / "index.html").write_bytes(INLINE_PAGE)
+        session = Session(project_file.parent)
+        session.open(project_file)
+        for inline in serving(Api(session, project_file, wait_seconds=0.05), pages):
+            _, headers, _ = whole_answer(inline, b"GET / HTTP/2.0\r\n")
+            assert headers["Content-Security-Policy"] == page_policy(INLINE_PAGE)
+
+    def test_a_request_naming_no_version_is_answered_with_a_status_line_and_headers(
+        self, server
+    ) -> None:
+        status, headers, body = whole_answer(server, b"GET /\r\n")
+        assert (status, body) == ("HTTP/1.1 421 Misdirected Request", b"misdirected request")
+        assert headers["Content-Security-Policy"] == server.policy
+        assert headers["Cache-Control"] == "no-store"
+
+    def test_a_misdirected_request_is_never_stored(self, server) -> None:
+        response, _ = ask(server, "GET", "/api/session", host=f"evil.example:{server.port}")
+        assert (response.status, response.getheader("Cache-Control")) == (421, "no-store")
+
+    def test_the_sign_in_page_is_never_stored(self, server) -> None:
+        response, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
+        assert response.getheader("Cache-Control") == "no-store"
+
+
 def answered(
     server: GuiServer, method: str, path: str, body: object = None, status: int = 200
 ) -> dict[str, Any]:

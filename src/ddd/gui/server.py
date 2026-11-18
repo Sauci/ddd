@@ -49,6 +49,7 @@ import contextlib
 import errno
 import hashlib
 import hmac
+import html
 import ipaddress
 import json
 import os
@@ -273,10 +274,9 @@ def is_loopback(address: str) -> bool:
 def _head(kind: str, length: int, headers: dict[str, str] | None = None) -> dict[str, str]:
     """The headers of an answer, in the order they are sent: the security headers, the
     answer's own, then the type and length of what it carries. Read by every answer
-    :meth:`_Handler._send` writes and by the refusal :func:`_refuse` writes by hand alike, so
-    that the two cannot drift apart. The answers ``http.server`` writes itself with
-    ``send_error``, to a request it cannot read or does not handle (400, 414, 431, 501, 505),
-    do not come through here."""
+    :meth:`_Handler._send` writes, by the refusal :func:`_refuse` writes by hand, and by the
+    answers ``http.server`` gives a request it cannot read or does not handle - 400, 414, 431,
+    501, 505 - which :meth:`_Handler.send_error` writes (12:M7), so that none can drift apart."""
     return {
         **SECURITY_HEADERS,
         **(headers or {}),
@@ -620,6 +620,13 @@ class _Handler(BaseHTTPRequestHandler):
     the handful of connections the browser keeps. Every answer here carries a ``Content-Length``,
     which is what lets the page tell one from the next on a connection it reads twice."""
 
+    default_request_version = "HTTP/1.1"
+    """The version a request is answered in until its own is read: this server's own, so that
+    every answer is a status line and headers (12:M7) - a request line the standard library
+    refuses before it has read its version (:meth:`send_error`), and one naming none, as
+    HTTP/0.9's did, among them. HTTP/0.9, the standard library's default, answers with neither,
+    and so with none of the headers every answer here carries."""
+
     timeout = IDLE_SECONDS
     """Applied to the socket, so a connection nobody is using does not hold its thread."""
 
@@ -706,7 +713,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _route(self, method: str) -> None:
         if self.headers.get("Host") not in self._own_hosts():
-            self._send(421, b"misdirected request", CONTENT_TYPES[".txt"])
+            # Never stored, as no refusal here is (12:M7).
+            never_stored = {"Cache-Control": "no-store"}
+            self._send(421, b"misdirected request", CONTENT_TYPES[".txt"], never_stored)
             return
         try:
             url = urlsplit(self.path)
@@ -729,7 +738,7 @@ class _Handler(BaseHTTPRequestHandler):
             if api:
                 self._send_json(403, {"error": "forbidden", "message": _ELSEWHERE})
             else:
-                self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
+                self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], {"Cache-Control": "no-store"})
             return
         if url.path == "/open":
             # A POST alone: GET /open was answered above, before the gate. The sign-in needs
@@ -953,6 +962,35 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
+
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        """The answer the standard library gives a request it cannot read or does not handle -
+        ``400``, ``414``, ``431``, ``501`` or ``505`` - written as it writes one: its reason in
+        the status line, the page explaining it, escaped, and the connection closed behind it.
+        But with the headers every answer of this server carries (:func:`_head`): the policy of
+        the page served, ``nosniff``, no referrer, and ``no-store`` as every refusal here has it
+        (12:M7). Never by way of :meth:`_send`: the request may be one whose headers were never
+        read, and :meth:`_send` reads them for a ``POST``'s body."""
+        short, long = self.responses.get(code, ("???", "???"))
+        reason = short if message is None else message
+        page = self.error_message_format % {
+            "code": code,
+            "message": html.escape(reason, quote=False),
+            "explain": html.escape(long if explain is None else explain, quote=False),
+        }
+        data = page.encode("utf-8", "replace")
+        own = {
+            "Content-Security-Policy": self._gui.policy,
+            "Cache-Control": "no-store",
+            "Connection": "close",
+        }
+        self.log_error("code %d, message %s", code, reason)
+        self.send_response(code, reason)
+        for name, value in _head(CONTENT_TYPES[".html"], len(data), own).items():
+            self.send_header(name, value)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(data)
 
     def finish(self) -> None:
         """Close the files the connection was read and written through, then - if its last

@@ -16,36 +16,202 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
 
 ## Unreleased
 
-Read together, what the entries below cost a user comes to six things, each named by the entry that
-asks it.  A CMake project may be asked for a line or two: a component reached only through a link
-made after the directory calling `ddd_generate()` is done now fails the configure ("Under Ninja, a
-build after a description change compiles the components whose header it changed"); a `PROJECT` that
-does not exist, a value keyword given an empty variable and a project that has not enabled C fail it
-too ("A call the module cannot honour fails the configure, naming why"); a step in another directory
-depends on `<stem>_ddd_generation` or `<stem>_ddd_a2l` and not on a generated file's path ("Makefile
-generators leave a build that changed nothing with nothing to do"); and an address map written by
-anything but a `POST_BUILD` command of the image is written before `<stem>_ddd_a2l` runs ("With
-`ADDRESS_MAP`, the a2l carries the addresses of the image just linked").  A description is refused
-in a few spellings it was accepted in: a name that is a keyword of ASAP2 or a unit typed with spaces
-around it, a description that spells a key twice before `ddd id --assign` stamps it, and
-`--const-inputs`, `CONST_INPUTS` and a template's `.const`, which are gone.  A delivery comparison
-says "cannot replace" more often, and each of those is a finding a project relaxes for the delivery
-it accepts or answers with a new baseline ("A delivery that moves what a precompiled reader was
-built against is `changed-interface`" and the entries after it), and a baseline dumped by 0.11.0
-reports `changed-a2l` against a project with a member that states `export: false`, `format` or a
-display identifier until it is dumped again, the dumped dictionary being format 10, which 0.11.0
-refuses ("A structure member's `export: false`, `format` and `display_identifier` reach the records
-below it").  The a2l and the generated c come out once with a diff nobody wrote, from the records of
-a member's block, the names of two conversions in one unit, a component's include guard and the byte
-order a run defaults, which `byte-order-defaulted` says.  And a script or a client reading what the
-tool prints sees different words and more lines: the count line of `ddd check`, the listing of `ddd
-sources`, an a2l record at address 0 for an address the linker left meaningless, the findings and
-identifiers of `ddd tool from-elf`, the text of a `ddd gui` fix, a launch code presented twice, a
-`POST /api/edit` that names a plugin or a file that is no description, and the `--host` of a
-container.  `ddd tool from-elf` also brings `pyelftools` 0.32 or newer as a new runtime dependency,
-which an air-gapped install brings with the wheel ("A toolbox, and its first tool"), and a team on
-mixed versions upgrades its editors with the module, a build record of a `PROJECT` build being
-stamped `format` 2 ("`ddd gui` edits a hand-written project whose build record sits beside it").
+What the entries below ask of a user, grouped by who meets it: each item names the entry that asks
+it and says what that entry says, and the entry has the rest.  An entry that says there is nothing
+to migrate asks nothing and is not named.
+
+A project built with CMake:
+
+  - "Under Ninja, a build after a description change compiles the components whose header it
+    changed": a component the image reaches only through a link made, or a library defined, after
+    the directory calling `ddd_generate()` is done, or registered after it, now fails the configure,
+    naming it: link it, define it or register it before the end of that directory; in the collected
+    mode a renamed component needs a reconfigure, until then every build runs the generation and a
+    change of that component's header reaches the components reading it a build late; and nothing in
+    the calling directory can `APPEND` to the generation's command earlier, it being added at the
+    end of that directory.
+  - "With `ADDRESS_MAP`, the a2l carries the addresses of the image just linked": a project
+    following the build page's recipe, whose extractor is a `POST_BUILD` command of the image,
+    migrates nothing; a map written by any other step is written before `<stem>_ddd_a2l` runs; a
+    build naming its targets builds `<stem>_ddd_a2l` too, and a target that depended on the
+    generation for the a2l depends on `<stem>_ddd_a2l`; a project that defined a target of that name
+    renames it; a `POST_BUILD` command of the image reading `DDD_A2L` reads the a2l of the build
+    before.
+  - "A call the module cannot honour fails the configure, naming why": a project file is given to
+    `ddd_generate(... PROJECT <file>)` and not to `ddd_add_component()`; a value keyword is given a
+    value, or the keyword and its value wrapped in `if()`; the `PROJECT` file is written before
+    configuring; and C is enabled where `ddd_generate()` is called, by `project(<name> LANGUAGES C
+    CXX)` or `enable_language(C)`.
+  - "Makefile generators leave a build that changed nothing with nothing to do": a step in another
+    directory, or one reading a `{component}` header, depends on `<stem>_ddd_generation`, or on
+    `<stem>_ddd_a2l` for the linked a2l, and not on a generated file's path; a file of the step
+    deleted by hand is not written again until the step's stamp is deleted or the tree cleaned.
+
+A description, a template and what the tool writes from them:
+
+  - "`ddd id --assign` writes a description the way `ddd gui` does": a description that spells a key
+    twice has to be corrected first, as `ddd check` has always asked.
+  - "A name that is a keyword of ASAP2 is an error, and a string or a name past the format's limits
+    is named": the error costs a rename, and `-W a2l-keyword=ignore` relaxes it for a name the
+    target's tool accepts; the warning stops a `--strict` or `STRICT` build, and `-W
+    a2l-unrepresentable=ignore` lets it through.
+  - "A size past 65,535 is named, once, where it is declared": a `--strict` or `STRICT` build with
+    such a size stops; the cost is a smaller object, or `-W a2l-unrepresentable=ignore`.
+  - "`--const-inputs` and `CONST_INPUTS` are gone, and a header that adds `const` is named": the
+    option or the keyword, and any template line using `.const` on a header entry or
+    `declaration(const=...)`, are deleted, and nothing replaces them; a `STRICT` build whose
+    hand-written header adds `const` stops, until the header is fixed or `-W elf-mismatch=ignore`
+    lets it through.
+  - "`ddd generate a2l --image` warns where the image holds a variable otherwise than its
+    description says": a `STRICT` build whose image disagrees with its description stops and writes
+    no a2l, until it is fixed, or `-W elf-mismatch=ignore`, or `SEVERITY` in cmake, lets it through.
+  - "An address the linker left meaningless is not placed": a variable with such an address has its
+    a2l record at address 0 with a warning, where it had a wrong address, and a `--strict` or
+    `STRICT` build now stops at it.
+  - "An object the build compiled out is left out of the a2l, and a reference across conditions is
+    checked": an `address-missing=info` lowering kept for this is dropped; a tool that expected the
+    record, or its comment, finds none; and a project with a reference across conditions meets
+    `condition-mismatch`, an error under `--strict`.
+  - "A member's `SYMBOL_LINK` is where a linker map can find it": a script that matched a record by
+    the spelling of its path in `SYMBOL_LINK` reads the variable and the offset instead.
+  - "A structure member's `export: false`, `format` and `display_identifier` reach the records below
+    it": a project that relied on the ignored block sees fewer records in the a2l, and a display
+    identifier that was ignored now renames the records it stands for.
+  - "The a2l's records, groups and methods are named and ordered the same way on every run": a
+    project with two conversions in one unit, whose first holder changed, sees the two names swap
+    between the records, which a tool that addresses a method by its name sees.
+  - "Every component has an include guard of its own": a hand written reference to a guard that
+    moved, such as an `#ifdef` on it, is changed; a template that builds a component's guard with
+    `model.guard()` keeps the old collision.
+  - "The example `ddd_globals.c` template keeps a definition through `--gc-sections`": a project
+    that links with `--gc-sections` on ELF defines `DDD_RETAIN`, with `-D` or in a header the build
+    includes first, and one that copied the example templates before copies the template to gain the
+    macro.
+  - "A reader of a variable's scale can follow its rescale": a project that copied the example
+    templates earlier copies the `scale` macro of `_macros.jinja2` and its call to gain it.
+
+A delivery comparison:
+
+  - "A delivery that moves what a precompiled reader was built against is `changed-interface`": a
+    released structure that has to grow grows at the end of a single variable's structure, or the
+    finding is accepted for that delivery by relaxing `changed-interface`; a nested array whose size
+    a constant names where a number did, or the other way, is accepted the same way, or keeps the
+    spelling of the baseline; a `-W changed-storage=...` kept to let `volatile` turned on pass no
+    longer reaches it.
+  - "A constant that is gone stops a comparison, one that is new does not": a project that changes a
+    constant between two deliveries relaxes `changed-interface` or `removed-constant`, or takes a
+    new baseline.
+  - "A rename, or a narrowing by condition, of an object a component reads is an error": a project
+    that relaxed `-W renamed-object=ignore` or `-W changed-condition=ignore` to accept such a
+    delivery names `-W renamed-read-object=...` or `-W narrowed-condition=...` for that delivery.
+  - "The limits of a measurement a component reads are graded by what its readers meet": a project
+    that relaxed `-W narrowed-limits=ignore` for a measurement a component reads no longer has it
+    reach it, and a `--strict` run now stops on a widened measurement.
+  - "An output a component drops or changes is graded as one somebody reads": a project that relaxed
+    `-W removed-object=...` to let an input go can drop it; one that relied on
+    `removed-unused-object` for a dropped output names `removed-object` now; and a supplier whose
+    gate passed the rename, the condition, the `volatile` or the wider range of an output relaxes
+    the new id for that delivery.
+  - "A producer lost is `missing-producer`, said once, where the baseline had one": a project's own
+    `-W missing-producer=ignore` silences it on every path, and a relaxation of `changed-owner` no
+    longer reaches this pair.
+  - "An initial value is compared as the bytes it stores, and one no double holds is refused": a
+    `1e-400` written to mean zero is written `0`, and a comparison that was clean over a changed
+    table reports it.
+  - "A structured variable's changes are told once, in order, and a variable with no leaf is
+    compared": the new errors are relaxed by the ids they carry.
+  - "A structure member's `export: false`, `format` and `display_identifier` reach the records below
+    it": `ddd compare` against a baseline 0.11.0 archived reports `changed-a2l` for every such leaf,
+    and `ddd check --baseline --strict` of a project unchanged since exits 1 after the upgrade,
+    until the baseline is dumped again with this version; the dumped dictionary is format 10, which
+    0.11.0 refuses as the dictionary of a newer DDD, and a format 9 dictionary reads back unchanged.
+
+A script or a client reading what the tool prints:
+
+  - "`ddd check`'s count line agrees in number": a script matching the old line changes.
+  - "`ddd sources` lists every file a build depends on, and a plugin's defect no longer hides them":
+    the listing grows, and a script that took its length for something else changes.
+  - "The a2l's `MOD_COMMON` states the image's alignments, and a run that defaults the byte order
+    says so": a script that read the count of diagnostics from `--format json`, expecting none, now
+    finds `byte-order-defaulted`, which `-W byte-order-defaulted=ignore` silences, as does stating
+    the byte order.
+  - "A position independent image, an unreadable map and two debug options say what they are": a
+    build that counts its findings sees `image-load-relative`, which `-W image-load-relative=ignore`
+    silences.
+  - "A size past 65,535 is named, once, where it is declared": a script that read the text of such a
+    warning, and its location, reads the new.
+  - "A derived limit no longer stops short of the largest raw value": a script comparing the limits
+    of an archived a2l or dictionary as text, or without a tolerance, sees the difference in the
+    digits after the twelfth.
+  - "A reader of a variable's scale can follow its rescale": a script that matched the title of the
+    fix a `ddd gui` finding offers for a `definition-mismatch` matches the new one, which `GET
+    /api/fix` returns.
+  - "`ddd gui` says what to do when a launch code is presented again": a tool that matched the
+    earlier text of the line `ddd gui` prints on stderr matches the new.
+  - "An edit through `ddd gui` is held to what the reader could do by hand": a client that scripted
+    `POST /api/edit` to change which plugins the project's descriptions name, or to create a file
+    that is not a description, now gets the `409`; the page's own flows need nothing changed.
+  - "`ddd gui --host` takes the two addresses `ddd gui` listens on": a `--host` naming any address
+    but `127.0.0.1`, `0.0.0.0` or a name resolving to either is refused, exit 2, and a build script
+    or a CI job that passed one gives `--host 0.0.0.0` instead.
+
+A user of `ddd tool from-elf`:
+
+  - "`ddd tool from-elf` reads a positive enumerator of a signed enum as positive": a component file
+    or an interface written from an image with such an enumerator holds the wrong values, and is
+    written again by `ddd tool from-elf` and the project generated again.
+  - "`ddd tool from-elf` warns where a structure is laid out otherwise than the generated C would
+    lay it out": a script that counts the findings, or a project that turns warnings into errors on
+    its output, meets the new ones, and the only way to silence one is to change the source.
+  - "`ddd tool from-elf` refuses a debug-only file": a script that ran it over a companion file
+    passes the linked image.
+  - "`ddd tool from-elf` says where an image answers twice": a variable that was described silently
+    from the first unit's answer is now an error naming both answers, and the units have to agree; a
+    script that matched `duplicate-declaration` for a name asked for twice matches
+    `elf-symbol-ambiguous` instead.
+  - "`ddd tool from-elf` refuses the C++ it does not read": a project that relied on the wrong
+    description describes those by hand.
+  - "A name no unit gave storage is `elf-no-storage`, once": a script that matches the old
+    identifier for such a name matches the new one.
+  - "`ddd tool from-elf` writes no conversion it cannot know": the output pasted into a component is
+    a `schema` error until its author states what raw is to physical, or runs with
+    `--identity-conversions`.
+
+`ddd gui`, and what its page takes:
+
+  - "An edit of `ddd gui` is written whole, or refused, however many people write at once": a reader
+    may meet a `stale` where the edit used to be written, and reads the project again and asks once
+    more.
+  - "`ddd gui` edits a hand-written project whose build record sits beside it": a record of a
+    `PROJECT` build is stamped `format` 2, which a DDD from 0.11.0 on declines as written by a newer
+    DDD and an older one skips in silence, so a team on mixed versions upgrades its editors with the
+    module.
+  - "A float's values are written as floats, and a boolean's as booleans": a table pasted over a
+    float array whose file spells whole numbers, or a cell typed or a table pasted over a boolean
+    the file spells `1` or `0`, rewrites that spelling, and the diff shows it.
+  - "A whole number a double cannot hold is never shown, or written, as another": a value or a limit
+    at or past 2^53 is set in the file, in the editor.
+  - "Every number the page takes is read in decimal notation, and in no other": a person who typed
+    `0x1F` types 31.
+  - "A unit with spaces around it is refused on a variable's panel and a type's": a unit typed that
+    way is typed without them.
+
+An install and the tool's python:
+
+  - "A toolbox, and its first tool: `ddd tool from-elf`": `pyelftools` 0.32 or newer is a new
+    runtime dependency, which an air-gapped install brings with the wheel.
+  - "`--const-inputs` and `CONST_INPUTS` are gone, and a header that adds `const` is named": code
+    that builds `DeclarationView` or `COptions` by position or by the keyword breaks, they having
+    lost `const` and `const_inputs`, and the `compile-const` service of `docker-compose.yml` is
+    gone.
+  - "`ddd generate a2l --a2l-module-fragment FILE` puts a project's own text at the head of the
+    `MODULE`": code that builds `A2lOptions` by position meets its new fields: `alignment_cap`
+    stands second, after `byte_order`, and `links`, `has_address_source`, `left_out` and
+    `module_fragment` after `addresses`.
+  - "The a2l's addresses out of the linked image: `ddd generate a2l --image`": a caller of
+    `load_address_map` or `ADDRESS_PATTERN` takes them from `ddd.addresses` and not `ddd.backends`,
+    `load_address_map` takes no `carried` any more, and a caller reading a map checks the 32-bit
+    range of the addresses with `ddd.backends.weigh_addresses`.
 
 * **`ddd id --assign` writes a description the way `ddd gui` does.**  It staged its text beside
   the file and renamed it into place by a writer of its own, which lacked what the page's has.  On
@@ -1267,19 +1433,19 @@ stamped `format` 2 ("`ddd gui` edits a hand-written project whose build record s
   format changes; nothing to migrate.
 
 * **A types, units, constants, sections or rasters file may declare nothing, and `empty-vocabulary`
-  says so.**  The list of each of the five files had to hold an entry, so a file emptied of its
-  last constant, section, raster, unit or type stopped loading and was refused as `schema`, and
-  `ddd gui`, which cannot delete a file, could never take a project from one entry to none.  An
-  empty list now loads, and the new check `empty-vocabulary`, an info, is filed once for it, at
-  the list, naming the file and its kind; it can be graded as any check can.  A structure's
-  members, an enumeration's enumerators, a shape's dimensions and a component's own inline types
-  and constants still need an entry, the spelling of none being to leave the key out.  The five
-  published schemas no longer require an item.  An empty units file still opts the project into
-  its vocabulary, which the file decides rather than what it lists: every unit a declaration,
-  member or scalar type then states is `unknown-unit`, where a project with no units file keeps
-  its units free.  Migrating costs nothing: a file that loaded before loads as it did.  A tool that validates against the schemas of an earlier version refuses
-  an empty list as the loader did, and a build that counts the findings it prints sees one info
-  per such file, which `-W empty-vocabulary=ignore` silences.
+  says so.**  The list of each of the five files had to hold an entry, so a file emptied of its last
+  constant, section, raster, unit or type stopped loading and was refused as `schema`, and `ddd
+  gui`, which cannot delete a file, could never take a project from one entry to none.  An empty
+  list now loads, and the new check `empty-vocabulary`, an info, is filed once for it, at the list,
+  naming the file and its kind; it can be graded as any check can.  A structure's members, an
+  enumeration's enumerators, a shape's dimensions and a component's own inline types and constants
+  still need an entry, the spelling of none being to leave the key out.  The five published schemas
+  no longer require an item.  An empty units file still opts the project into its vocabulary, which
+  the file decides rather than what it lists: every unit a declaration, member or scalar type then
+  states is `unknown-unit`, where a project with no units file keeps its units free.  Migrating
+  costs nothing: a file that loaded before loads as it did.  A tool that validates against the
+  schemas of an earlier version refuses an empty list as the loader did, and a build that counts the
+  findings it prints sees one info per such file, which `-W empty-vocabulary=ignore` silences.
 
 * **A Shared files tab: the constants, the sections and the rasters a project declares.**  `ddd
   gui` lists every constant, from a constants file or a component's own list, every memory section

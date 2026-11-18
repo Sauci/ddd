@@ -4076,6 +4076,9 @@ class TestPublishedDocumentation:
         assert setting(tag.group(1), "type", 8) == "string"
         assert setting(tag.group(1), "required", 8) == "false"
         assert setting(tag.group(1), "default", 8) == '""'
+        assert setting(tag.group(1), "description", 8) == (
+            "A release's tag, to publish its documentation when no re-run of its Publish can"
+        ), "the dispatch no longer says what its tag is for"
 
     @staticmethod
     def check_of_the_tag() -> str:
@@ -4108,31 +4111,39 @@ class TestPublishedDocumentation:
         assert holds(setting(self.check_of_the_tag(), "if", 8), context) == checks
 
     @pytest.mark.parametrize(
-        "context",
-        [completed(), started_by("workflow_dispatch", "refs/heads/master", tag="v0.12.0")],
-        ids=["a release Publish published", "a release named by hand"],
+        ("tag", "version", "refused"),
+        [("v0.12.0", "0.12.0", False), ("v0.12.0", "0.12.1", True), ("0.12.0", "0.12.0", True)],
+        ids=["the tag of the version", "another version's tag", "the version without its v"],
     )
+    @pytest.mark.parametrize("route", ["a release Publish published", "a release named by hand"])
     def test_a_tag_naming_another_version_than_its_commit_is_refused(
-        self, tmp_path: Path, context: dict[str, Any]
+        self, tmp_path: Path, route: str, tag: str, version: str, refused: bool
     ) -> None:
         """Publish refuses a release whose tag is not ``v`` and the version ``pyproject.toml``
-        states, before it uploads anything. A release named by hand has been through no
-        Publish, so the build makes the same check of the tree it checked out, and refuses to
-        publish documentation under a version that commit does not state; a release Publish
-        published passes it again."""
-        verdicts = {}
-        for version in ("0.12.0", "0.12.1"):
-            tree = tmp_path / version
-            tree.mkdir()
-            (tree / "pyproject.toml").write_bytes(
-                f'[project]\nname = "ddd-tool"\nversion = "{version}"\n'.encode()
-            )
-            check = self.check_of_the_tag()
-            verdicts[version] = run_step(check, tree, **step_environment(check, context))
-        assert verdicts["0.12.0"].returncode == 0, verdicts["0.12.0"].stdout
-        refused = verdicts["0.12.1"]
-        assert refused.returncode == 1, refused.stdout + refused.stderr
-        assert refused.stdout.startswith("::error::tag v0.12.0 is not v0.12.1, the version")
+        states, before it uploads anything - the whole tag, its ``v`` included, as
+        ``test_a_release_tag_has_to_carry_its_prefix`` pins there. A release named by hand has
+        been through no Publish, so the build makes the same check of the tree it checked out,
+        and refuses to publish documentation under a version that commit does not state; a
+        release Publish published passes it again."""
+        context = (
+            completed(head_branch=tag)
+            if route == "a release Publish published"
+            else started_by("workflow_dispatch", "refs/heads/master", tag=tag)
+        )
+        (tmp_path / "pyproject.toml").write_bytes(
+            f'[project]\nname = "ddd-tool"\nversion = "{version}"\n'.encode()
+        )
+        check = self.check_of_the_tag()
+        done = run_step(check, tmp_path, **step_environment(check, context))
+        if not refused:
+            assert done.returncode == 0, done.stdout + done.stderr
+            return
+        assert done.returncode == 1, done.stdout + done.stderr
+        assert done.stdout.splitlines() == [
+            f"::error::tag {tag} is not v{version}, the version pyproject.toml states at the",
+            "::error::commit it names. A release's documentation is published under its tag,",
+            "::error::which has to be v and that version; name the tag of a release.",
+        ]
 
     def test_a_release_named_by_hand_lands_under_its_tag(
         self, tmp_path: Path, git: dict[str, str]

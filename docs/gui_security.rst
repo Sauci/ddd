@@ -107,19 +107,13 @@ What it defends against
   reads.
 
 * **The address printed, opened as** ``localhost``. When it listens on loopback, as it
-  does by default, ``ddd gui`` binds an IPv6 address beside its IPv4 socket, on the very
-  same port, and never listens on it: ``[::1]`` on Linux and macOS, or, on Windows, the
-  wildcard ``[::]`` alone in its place - bound there exclusively
-  (``SO_EXCLUSIVEADDRUSE``), as its IPv4 socket is too. So no other program can listen on
-  ``localhost`` at that port: a browser trying ``[::1]`` first, which resolving
-  ``localhost`` may do, is refused and falls back to ``127.0.0.1``, rather than reaching
-  a stranger there - the program that an address rewritten from ``127.0.0.1`` to
-  ``localhost`` would otherwise have handed the token to, and that owns the ``localhost``
-  origin's storage besides. Measured on Linux and Windows, in Chromium and Edge: what
-  macOS refuses beside the hold was not. A fixed ``--port`` already held by another
-  program is refused before ``ddd gui`` starts, naming the port on IPv6 rather than an
-  address, since that program's need not be the one ``ddd gui`` tried to hold; left to
-  the system, ``--port 0`` tries another port instead.
+  does by default, ``ddd gui`` listens on ``[::1]`` too, on the very same port, and answers
+  there as it answers on ``127.0.0.1``: ``localhost`` is ``ddd gui`` itself, whichever of
+  the two a browser tries, signed out until the address it printed is opened there. No
+  other program can bind ``[::1]`` at that port: on Windows, ``ddd gui`` binds both
+  addresses exclusively (``SO_EXCLUSIVEADDRUSE``). A fixed ``--port`` another program
+  already holds on IPv6 is refused before ``ddd gui`` starts, naming the port; left to the
+  system, ``--port 0`` tries another port instead. None of this is tested on macOS.
 
 What it trusts
 --------------

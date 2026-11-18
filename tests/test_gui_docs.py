@@ -83,3 +83,31 @@ def test_the_page_says_every_reading_of_a_build_record_s_project_meets_a_request
         "path meets, and only as a file named ``*.ddd.json``, and a record naming anything else "
         "is read as no record" in _prose()
     )
+
+
+def test_the_page_says_localhost_is_ddd_gui_whichever_address_a_browser_tries() -> None:
+    assert (
+        "When it listens on loopback, as it does by default, ``ddd gui`` listens on ``[::1]`` "
+        "too, on the very same port, and answers there as it answers on ``127.0.0.1``: "
+        "``localhost`` is ``ddd gui`` itself, whichever of the two a browser tries, signed out "
+        "until the address it printed is opened there." in _prose()
+    )
+
+
+def test_the_page_says_no_other_program_can_bind_ipv6_loopback_at_the_port() -> None:
+    assert (
+        "No other program can bind ``[::1]`` at that port: on Windows, ``ddd gui`` binds both "
+        "addresses exclusively (``SO_EXCLUSIVEADDRUSE``)." in _prose()
+    )
+
+
+def test_the_page_says_a_fixed_port_held_on_ipv6_is_refused_naming_it() -> None:
+    assert (
+        "A fixed ``--port`` another program already holds on IPv6 is refused before ``ddd gui`` "
+        "starts, naming the port; left to the system, ``--port 0`` tries another port "
+        "instead." in _prose()
+    )
+
+
+def test_the_page_says_none_of_it_is_tested_on_macos() -> None:
+    assert "None of this is tested on macOS." in _prose()

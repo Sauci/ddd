@@ -5756,6 +5756,45 @@ class TestWhatThePagesSayOfFormat10:
         ) in text
 
 
+class TestEveryFormatNumberTheSpecStatesIsTheTools:
+    """The specification names the version of each document the tool writes: the dumped
+    dictionary's in two places and the build record's in two more. A raise of one constant that
+    leaves a number behind has a reader written from the specification refuse every file the
+    tool writes, so every statement is read out of the specification and held to the constant
+    in the code, which no test types a number for."""
+
+    TEXT = flattened(SPEC)
+
+    def test_the_dictionary_is_stated_as_the_format_the_tool_writes(self) -> None:
+        from ddd.ir import DICTIONARY_FORMAT
+
+        for pattern in (
+            r"Its `format` is `(\d+)`",
+            r"its own format \(`format`, today `(\d+)`\)",
+        ):
+            stated = re.findall(pattern, self.TEXT)
+            assert stated, f"the specification no longer says it in the words {pattern!r}"
+            assert {int(number) for number in stated} == {DICTIONARY_FORMAT}, (
+                f"the specification states dictionary format {sorted(set(stated))}, and the "
+                f"tool writes {DICTIONARY_FORMAT}"
+            )
+
+    def test_the_build_record_is_stated_as_the_format_the_tool_writes(self) -> None:
+        from ddd.build_info import BUILD_INFO_FORMAT
+
+        for pattern in (
+            r"`1`, or `(\d+)` for a record with an `origin`, which is the highest this version "
+            r"understands",
+            r"given description alone, and that record is stamped `(\d+)`",
+        ):
+            stated = re.findall(pattern, self.TEXT)
+            assert stated, f"the specification no longer says it in the words {pattern!r}"
+            assert {int(number) for number in stated} == {BUILD_INFO_FORMAT}, (
+                f"the specification states build record format {sorted(set(stated))}, and the "
+                f"tool writes {BUILD_INFO_FORMAT}"
+            )
+
+
 class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:
     """A rename of a structured variable is each leaf's ``renamed-object`` and no
     ``changed-a2l`` for the instance's name at the head of a composed display identifier."""

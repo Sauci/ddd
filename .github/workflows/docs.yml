@@ -78,15 +78,18 @@ permissions:
   contents: read
 
 # The published site and the branch it is archived on are both single shared resources, so
-# master's runs, and manual ones, wait for one another in one group rather than racing.
-# GitHub keeps one run going and one waiting in a group, and cancels the waiting one when
-# another arrives; for master that costs nothing, since the newer push builds everything
-# the run it replaced would have. A release's run waiting there, though, was cancelled by
-# the next push, with nothing red and no directory for the release - so each release's
-# run is alone in a group of its own, named after the run, where nothing can wait for it
-# or replace it: a run Publish's completion started, and a dispatch naming a release's tag.
-# A release's deploy and master's can then run at once, which the push to gh-pages below
-# allows for. Superseding a pull request build is free, and those deploy nothing.
+# master's runs, and dispatches naming no tag, wait for one another in one group rather than
+# racing. GitHub keeps one run going and one waiting in a group, and cancels the waiting one
+# when another arrives. Between master's own runs that costs nothing, since the newer push
+# builds everything the run it replaced would have. A dispatch on another branch does cost
+# something: it waits in the same group and deploys nothing, so when it replaces master's
+# waiting run, `latest` is left a push behind, and nothing turns red, until master's next
+# push. A release's run waiting there, though, was cancelled by the next push, with nothing
+# red and no directory for the release - so each release's run is alone in a group of its
+# own, named after the run, where nothing can wait for it or replace it: a run Publish's
+# completion started, and a dispatch naming a release's tag. A release's deploy and master's
+# can then run at once, which the push to gh-pages below allows for. Superseding a pull
+# request build is free, and those deploy nothing.
 concurrency:
   group: >-
     docs-${{ github.event_name == 'pull_request' && github.ref

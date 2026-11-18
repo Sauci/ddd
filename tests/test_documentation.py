@@ -4325,6 +4325,9 @@ class TestPublishedDocumentation:
             "why master's may queue": "``master``'s runs share a group, where that costs nothing",
             "what queueing cost a release": "a release's run waiting there was cancelled by the "
             "next merge",
+            "what a dispatch off master costs": "A dispatch on another branch naming no tag waits "
+            "in ``master``'s group as well, and deploys nothing, so when it replaces ``master``'s "
+            "waiting run, ``latest`` stays a push behind until the next push",
             "what follows": "A release's deploy and ``master``'s can therefore run at once",
             "what a refused push does": "puts its own directory back on it, rewrites the index "
             "from that, and pushes again",

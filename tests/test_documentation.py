@@ -3733,13 +3733,53 @@ class TestWhatKeepsTheToolchainMoving:
             "the backend": "``hatchling`` and ``hatch-requirements-txt`` in the "
             "``[build-system]`` table of ``pyproject.toml``",
             "vsce": "``@vscode/vsce`` in the scripts of ``editors/vscode/package.json``",
-            "what dependabot may not reach": "Dependabot may not reach two of them: its "
-            "documentation says nothing of ``[build-system]``, and a version written into an "
-            "``npx`` command is no dependency it reads",
+            "what dependabot may not reach": "Dependabot may not reach the backend, since its "
+            "documentation says nothing of ``[build-system]``",
             "what holds them": "the release's tools each to one version",
         }
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the developer page no longer says {missing}"
+
+    def test_the_three_say_alike_what_dependabot_may_not_reach(self) -> None:
+        """``dependabot.yml`` said its pip entry does not reach the backend ``pyproject.toml``
+        pins in ``[build-system]``, where the page and ``pyproject.toml`` said it may not.
+        Dependabot's documentation says nothing of that table, so the three now say what holds:
+        perhaps, which its first weekly run shows; and of vsce, inside an ``npx`` command, that
+        no entry reaches it."""
+        config = comments_of((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+        manifest = comments_of((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        page = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "dependabot.yml, the backend": (
+                config,
+                "Perhaps the backend that pyproject.toml pins in [build-system] as well: "
+                "Dependabot's documentation says nothing of that table, so its first weekly run "
+                "shows whether it proposes a move there.",
+            ),
+            "dependabot.yml, vsce": (
+                config,
+                "Not the vsce the extension's scripts name: a version inside an npx command is no "
+                "dependency.",
+            ),
+            "pyproject.toml": (
+                manifest,
+                "Dependabot's documentation says nothing of this table, so a move here may have "
+                "to be made by hand.",
+            ),
+            "the page, the backend": (
+                page,
+                "Dependabot may not reach the backend, since its documentation says nothing of "
+                "``[build-system]`` - its first weekly run shows whether it does -",
+            ),
+            "the page, vsce": (
+                page,
+                "and cannot reach vsce, since a version written into an ``npx`` command is no "
+                "dependency it reads: vsce is moved by hand, and the backend may have to be.",
+            ),
+        }
+        missing = [what for what, (text, claim) in claims.items() if claim not in text]
+        assert not missing, f"no longer said: {missing}"
+        assert "Not the backend" not in config
 
     def test_an_action_is_pinned_at_one_version_across_the_workflows(self) -> None:
         """Three workflows, one toolchain: a version bumped in two of them and not the third

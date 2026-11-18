@@ -603,11 +603,12 @@ that build is a release's. So is every tool a release is built and checked with:
 What proposes the moves instead is ``.github/dependabot.yml``, weekly, for the actions, the
 requirements files, the extension and the browser interface: a bump then arrives as a pull
 request that ci has already run, which is the difference between upgrading a tool and
-discovering on a release day that one has moved on without you. Dependabot may not reach two
-of them: its documentation says nothing of ``[build-system]``, and a version written into an
-``npx`` command is no dependency it reads, so the backend and vsce may have to be moved by
-hand. A test holds every action to one version across the three workflows, both caps to being
-caps, and sphinx and the release's tools each to one version.
+discovering on a release day that one has moved on without you. Dependabot may not reach the
+backend, since its documentation says nothing of ``[build-system]`` - its first weekly run shows
+whether it does - and cannot reach vsce, since a version written into an ``npx`` command is no
+dependency it reads: vsce is moved by hand, and the backend may have to be. A test holds every
+action to one version across the three workflows, both caps to being caps, and sphinx and the
+release's tools each to one version.
 
 .. _development-builds:
 

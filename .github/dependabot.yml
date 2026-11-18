@@ -20,9 +20,10 @@ updates:
 
   # requirements.txt, requirements-dev.txt and requirements-docs.txt, which the metadata hook
   # in pyproject.toml reads as the project's own dependency lists, and requirements-release.txt,
-  # which publish.yml installs the release's build and twine from. Not the backend that
-  # pyproject.toml pins in [build-system], which its documentation says nothing of, nor the
-  # vsce the extension's scripts name: a version inside an npx command is no dependency.
+  # which publish.yml installs the release's build and twine from. Perhaps the backend that
+  # pyproject.toml pins in [build-system] as well: Dependabot's documentation says nothing of
+  # that table, so its first weekly run shows whether it proposes a move there. Not the vsce
+  # the extension's scripts name: a version inside an npx command is no dependency.
   - package-ecosystem: pip
     directory: /
     schedule:

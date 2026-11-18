@@ -16,16 +16,14 @@ test("localhost reaches ddd gui, and nothing else can listen on [::1] at its por
 }) => {
   const address = new URL(gui.address);
   const port = Number(address.port);
-  // ddd gui holds [::1] on linux, and the wildcard [::] in its place on windows, listening on
-  // neither (part 19a), so the bind must be refused: EADDRINUSE on the linux development PC, as
-  // measured. Which of the two windows gives was not recorded, so either is taken.
+  // ddd gui listens on [::1] itself, beside 127.0.0.1 on the same port, on every system and
+  // exclusively on windows (12:I1, ruling B7-2), so the bind must be refused: EADDRINUSE on the
+  // linux development PC, as measured. Which of the two windows gives was not recorded, so either
+  // is taken.
   expect(["EADDRINUSE", "EACCES"]).toContain(await listenRefusal(port, "::1"));
 
-  // Part 18b's review saw Chrome 153 send localhost to a program listening on [::1], three
-  // times of three. On windows the wildcard [::] is held instead (part 19a, P19a-14), and
-  // nothing listens on IPv6, so [::1] is refused there too, and ddd gui answers through
-  // 127.0.0.1: chromium took 1.1 s in run 37752340092 and 1.0 s in run 37760106344, and
-  // msedge 1.2 s and 845 ms in those same two runs.
+  // A browser opening localhost may try [::1] first, and ddd gui answers there as it answers on
+  // 127.0.0.1: the page, signed in by the token the address carries.
   const token = address.searchParams.get("token");
   await page.goto(`http://localhost:${port}/open?token=${token}`);
   await expect(page.getByRole("button", { name: "Controller", exact: true })).toBeVisible();

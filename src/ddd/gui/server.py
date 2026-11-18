@@ -9,8 +9,9 @@ this one trusts nothing it did not hand out itself:
   browser sends a cookie to every port of 127.0.0.1. The browser ``ddd gui`` opens for the
   reader is launched on that one-time code rather than the token itself, so the token
   never sits on a command line for another local process to read;
-* a request has to name this server's own host and port, which refuses a page whose domain was
-  re-pointed at the loopback address;
+* a request has to name this server's own host and port - on port 80, HTTP's own, the host
+  alone too, as a browser names it there - which refuses a page whose domain was re-pointed at
+  the loopback address;
 * in a browser that sends ``Sec-Fetch-Site`` (Chrome 76, Firefox 90, Safari 16.4 and later),
   every request has to say, with it, that it came from this page or from no page at all, and,
   if it names an ``Origin``, that the ``Origin`` is this server's, so a page on another port
@@ -24,11 +25,10 @@ this one trusts nothing it did not hand out itself:
 * no more than sixty-four connections are answered at once; past that, the thread that accepts
   connections refuses the next itself, so no flood of connections can exhaust the machine's
   threads;
-* on loopback, an IPv6 address is held beside the IPv4 socket, on the very same port, and never
-  listened on - ``[::1]`` on Linux and macOS, or on Windows the wildcard ``[::]`` in its place.
-  So no other program can listen on ``localhost`` there, and a browser trying ``[::1]`` first
-  falls back to 127.0.0.1 - each measured on Linux and Windows, never on macOS - rather than
-  reaching a stranger;
+* on loopback, ``[::1]`` is listened on too, beside the IPv4 socket on the very same port, and
+  answered as it is. So ``localhost`` is this server itself, whichever of the two addresses a
+  browser tries, signed out until the address it printed is opened there, and no other program
+  can listen on ``[::1]`` at that port;
 * a ``POST`` refused before its body is read has that body read and thrown away, at most
   1,048,576 bytes of it, rather than left unread; where its length cannot be read this way, the
   connection closes behind the answer instead, draining until the client closes, two seconds
@@ -49,10 +49,12 @@ import contextlib
 import errno
 import hashlib
 import hmac
+import html
 import ipaddress
 import json
 import os
 import secrets
+import selectors
 import socket
 import sys
 import threading
@@ -109,7 +111,9 @@ MAX_CONNECTIONS: Final = 64
 A browser opens at most six connections to one host, across all its tabs, so the page never
 comes near this: sixty-four leaves room for ten browser profiles and some scripts. Without
 it, the threads grew with whatever was asked: probed against ``7d7aaed``, three hundred long
-polls at once took the server from 4 threads to 275."""
+polls at once took the server from 4 threads to 275. A long poll a page leaves behind,
+reloading or closing, gives its slot back within a slice (:data:`ddd.gui.api.SLICE_SECONDS`), so
+reloading never piles them up."""
 
 BUSY: Final = "ddd gui is answering as many connections as it takes at once; ask again in a moment"
 """What a connection past :data:`MAX_CONNECTIONS` is answered, with a ``503``."""
@@ -125,21 +129,26 @@ _EXCLUSIVE: Final = sys.platform == "win32"
 can be shared by another that sets ``SO_REUSEADDR``. A flag, so that the suite takes both
 branches on every platform (``test_nothing_in_the_suite_skips``)."""
 
-_WILDCARD: Final = sys.platform == "win32"
-"""Whether the IPv6 hold is the wildcard ``[::]``, in place of ``[::1]`` (ruling P19a-14): on
-Windows. There run 37737377854 measured a stranger's ``[::]`` binding beside an exclusive
-``[::1]`` hold - and a program listening on ``[::]`` would take the connections the hold never
-accepts - and run 37741191678 the server's own exclusive ``[::]`` refused beside its own
-exclusive ``[::1]``, so the two cannot both be held. An exclusive wildcard is what Microsoft
-documents refusing every other bind of its port, specific addresses included; run 37744112657
-measured it refusing a stranger's ``[::1]`` too, on Windows 3.12, 3.13 and 3.14. Linux holds
-``[::1]``, which refuses a stranger's ``[::]`` as well. A flag of its own rather than
-:data:`_EXCLUSIVE`, which Windows sets too: the two rest on different measurements, and the suite
-flips this one alone to hold the wildcard on Linux, where Windows' exclusive option is refused."""
-
 PORT_TRIES: Final = 5
 """How many ports ``--port 0`` is tried on before the IPv6 hold refused on each of them is a
 refusal."""
+
+HTTP_PORT: Final = 80
+"""HTTP's own port, which a browser leaves out of an address it opens there, and so out of the
+``Host`` and the ``Origin`` it sends: ``ddd gui --port 80`` prints its address without it, and
+takes the host without it for its own (12:M4)."""
+
+SERVED_ON: Final = ("127.0.0.1", "0.0.0.0")
+"""The addresses ``ddd gui`` listens on, a ``--host`` resolving to one of them (12:M5, 9:M8):
+loopback's ``127.0.0.1`` alone, the default, or every interface, the wildcard ``0.0.0.0``, for a
+container, its port published on the host's loopback. Any other is refused before anything
+binds, exit 2, saying what to give instead."""
+
+_HOSTS_TAKEN: Final = (
+    "give --host 127.0.0.1, the default, to answer this computer alone, or --host 0.0.0.0 to "
+    "answer a container's host, its port published on the host's loopback"
+)
+"""What every refusal of a ``--host`` ends with: the two it takes (:data:`SERVED_ON`)."""
 
 _SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
 """Windows' own option, which typeshed declares on win32 alone, so read rather than named for mypy
@@ -150,12 +159,10 @@ _IPV6_HELD: Final = (
     "reach it"
 )
 """What :class:`IPv6HeldError` says: the port on IPv6, never an address (ruling P19a-30). The
-other program's socket need not be on the address the hold tried - on Linux one on ``[::]``
-refuses the ``[::1]`` hold, on Windows one on ``[::1]`` the ``[::]`` hold - and a browser
-opening ``localhost`` reaches that program only if it listens on ``[::1]`` or ``[::]``, hence
-"may"."""
+other program's socket need not be on ``[::1]`` itself to refuse the hold, and a browser opening
+``localhost`` reaches that program only if it listens on IPv6, hence "may"."""
 
-_IPV6_UNHELD: Final = "cannot hold [{address}]:{port} beside it: {error}"
+_IPV6_UNHELD: Final = "cannot hold [::1]:{port} beside it: {error}"
 """What a hold that failed for any other reason says, the system's own words after it
 (P19a-12): no proof of another program, and no server without its hold either."""
 
@@ -265,10 +272,9 @@ def is_loopback(address: str) -> bool:
 def _head(kind: str, length: int, headers: dict[str, str] | None = None) -> dict[str, str]:
     """The headers of an answer, in the order they are sent: the security headers, the
     answer's own, then the type and length of what it carries. Read by every answer
-    :meth:`_Handler._send` writes and by the refusal :func:`_refuse` writes by hand alike, so
-    that the two cannot drift apart. The answers ``http.server`` writes itself with
-    ``send_error``, to a request it cannot read or does not handle (400, 414, 431, 501, 505),
-    do not come through here."""
+    :meth:`_Handler._send` writes, by the refusal :func:`_refuse` writes by hand, and by the
+    answers ``http.server`` gives a request it cannot read or does not handle - 400, 414, 431,
+    501, 505 - which :meth:`_Handler.send_error` writes (12:M7), so that none can drift apart."""
     return {
         **SECURITY_HEADERS,
         **(headers or {}),
@@ -323,54 +329,57 @@ def _linger(connection: socket.socket) -> None:
 
 
 class IPv6HeldError(OSError):
-    """The IPv6 hold - ``[::1]``, or ``[::]`` on Windows - refused on its port by another
-    program's socket on IPv6, on that address or on one that collides with it
-    (:data:`_IPV6_HELD`)."""
+    """The IPv6 hold, ``[::1]``, refused on its port by another program's socket on IPv6, on
+    that address or on one that collides with it (:data:`_IPV6_HELD`)."""
 
 
 def _held_beside(host: str, port: int) -> socket.socket | None:
-    """The IPv6 hold, bound on ``port`` beside a loopback ``host`` and never listened on (spec
-    §6.2): ``[::1]``, or where :data:`_WILDCARD` the wildcard ``[::]`` in its place. No other
-    program can then take ``localhost`` there, and a browser trying ``[::1]`` first is refused,
-    and falls back to ``127.0.0.1`` - measured on Linux and Windows, never on macOS.
+    """The IPv6 hold: ``[::1]``, bound on ``port`` beside a loopback ``host`` and listened on,
+    on every system, for :meth:`GuiServer.serve_forever` to answer as it answers the IPv4 socket
+    (12:I1, ruling B7-2). A browser opening ``localhost`` may try ``[::1]`` first, and so
+    reaches this server itself, and no other program can listen on ``[::1]`` at that port. Never
+    the wildcard ``[::]``, which would answer on every IPv6 interface of the computer.
 
     ``None`` where nothing need or can be held: a host beyond loopback, or where the system says
     there is no IPv6 loopback - ``EAFNOSUPPORT`` making the socket, ``EADDRNOTAVAIL`` binding
-    ``[::1]``. A wildcard is not refused for a missing address: in a network namespace with no
-    IPv6 address at all, ``[::1]`` was refused ``EADDRNOTAVAIL`` and ``[::]`` bound (Linux,
-    measured). Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
+    ``[::1]``. Raises :class:`IPv6HeldError` for a port another socket holds: ``EADDRINUSE``, or
     ``EACCES``, the errno CPython gives Windows' ``WSAEACCES``. Any other error is proof of
     neither, and raises an ``OSError`` naming the address, the system's own words after it
     (P19a-12): a server that cannot make its hold does not start without it. Each refusal's
     message is the same on every system; the error the system raised is its cause.
 
-    ``IPV6_V6ONLY``, so that it never touches IPv4. Never ``SO_REUSEADDR``: Linux lets two
-    sockets share a port nobody listens on when both set it, and the other could then listen
-    there. ``SO_EXCLUSIVEADDRUSE`` on Windows (:data:`_EXCLUSIVE`), where a socket bound without
-    it can be shared by any that sets ``SO_REUSEADDR``."""
+    ``IPV6_V6ONLY``, so that it never touches IPv4. Otherwise bound as the IPv4 socket is
+    (ruling B7-10): ``SO_EXCLUSIVEADDRUSE`` on Windows (:data:`_EXCLUSIVE`), where a socket bound
+    without it can be shared by any that sets ``SO_REUSEADDR``, and ``SO_REUSEADDR`` wherever the
+    IPv4 socket takes it (:attr:`GuiServer.allow_reuse_address`, everywhere but Windows). Linux
+    lets a port be bound through the ``TIME_WAIT`` of a connection this server closed first only
+    when both sockets set it, and shares no port a socket listens on, whatever the other sets:
+    so a fixed ``--port`` is held again the moment ``ddd gui`` starts again, and still no stranger
+    can listen on ``[::1]`` beside the hold. Listened on with the backlog the IPv4 socket listens
+    with."""
     if not is_loopback(host):
         return None
-    address = "::1"
-    if _WILDCARD:
-        address = "::"
     try:
         held = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     except OSError as error:
         if error.errno == errno.EAFNOSUPPORT:
             return None
-        raise OSError(_IPV6_UNHELD.format(address=address, port=port, error=error)) from error
+        raise OSError(_IPV6_UNHELD.format(port=port, error=error)) from error
     try:
         held.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         if _EXCLUSIVE:
             held.setsockopt(socket.SOL_SOCKET, _SO_EXCLUSIVEADDRUSE, 1)
-        held.bind((address, port))
+        if GuiServer.allow_reuse_address:
+            held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind(("::1", port))
+        held.listen(GuiServer.request_queue_size)
     except OSError as error:
         held.close()
         if error.errno == errno.EADDRNOTAVAIL:
             return None
         if error.errno in (errno.EADDRINUSE, errno.EACCES):
             raise IPv6HeldError(_IPV6_HELD.format(port=port)) from error
-        raise OSError(_IPV6_UNHELD.format(address=address, port=port, error=error)) from error
+        raise OSError(_IPV6_UNHELD.format(port=port, error=error)) from error
     return held
 
 
@@ -381,12 +390,14 @@ class GuiServer(ThreadingHTTPServer):
 
     allow_reuse_address = sys.platform != "win32"
     """Not on Windows, where the socket option lets a second server bind a port the first still
-    listens on, so a taken ``--port`` would be shared instead of refused."""
+    listens on, so a taken ``--port`` would be shared instead of refused. The IPv6 hold takes it
+    where this socket does (:func:`_held_beside`)."""
 
     held: socket.socket | None = None
-    """The IPv6 hold, ``[::1]`` or on Windows ``[::]``, bound on this server's port and never
-    listened on (:func:`_held_beside`), closed with the server; ``None`` where nothing is held -
-    beyond loopback, or with no IPv6 loopback, and before the hold is made."""
+    """The IPv6 hold, ``[::1]``, bound on this server's port and listened on
+    (:func:`_held_beside`), answered as the IPv4 socket is (:meth:`serve_forever`) and closed with
+    the server; ``None`` where nothing is held - beyond loopback, or with no IPv6 loopback, and
+    before the hold is made."""
 
     def __init__(
         self,
@@ -421,6 +432,12 @@ class GuiServer(ThreadingHTTPServer):
         self.slots = threading.BoundedSemaphore(connections)
         """One for each connection being answered. Bounded: a slot given back when every slot
         is already free raises, rather than raising the cap."""
+        self._stop = threading.Event()
+        """Set by :meth:`shutdown`, and never cleared: the loop of :meth:`serve_forever` is to
+        end, and a server is served once, as ``run`` serves it."""
+        self._stopped = threading.Event()
+        """Set once :meth:`serve_forever` has ended, however it ended: what :meth:`shutdown`
+        waits for."""
 
     def server_bind(self) -> None:
         """Bind as ``http.server`` does - exclusively on Windows (:data:`_EXCLUSIVE`), so that no
@@ -431,17 +448,75 @@ class GuiServer(ThreadingHTTPServer):
         super().server_bind()
 
     def server_close(self) -> None:
-        """Close the socket served on, and the IPv6 hold beside it - that one even where closing
-        the first raises."""
+        """Close the IPv4 socket, and the IPv6 hold beside it - that one even where closing the
+        first raises."""
         try:
             super().server_close()
         finally:
             if self.held is not None:
                 self.held.close()
 
+    def serve_forever(self, poll_interval: float = 0.5) -> None:
+        """Answer the connections both listening sockets accept - the IPv4 socket, and the IPv6
+        hold beside it where there is one - until :meth:`shutdown`: each accepted on this thread
+        and answered on one of its own (:meth:`_accept`), so that the hold is answered as the
+        IPv4 socket is, through the same handler, gate and ``Host`` checks, within the same
+        :data:`MAX_CONNECTIONS`. ``socketserver``'s own loop watches one socket alone. A
+        shutdown is looked for every ``poll_interval`` seconds, as there."""
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(self.socket, selectors.EVENT_READ)
+                if self.held is not None:
+                    selector.register(self.held, selectors.EVENT_READ)
+                # A loop that never ends but by its break: the stop is looked for each time a
+                # wait ends, and a loop on the stop itself would leave its own end a branch
+                # nothing takes.
+                while True:
+                    ready = selector.select(poll_interval)
+                    if self._stop.is_set():
+                        break
+                    for key, _ in ready:
+                        self._accept(cast(socket.socket, key.fileobj))
+        finally:
+            self._stopped.set()
+
+    def shutdown(self) -> None:
+        """End :meth:`serve_forever` for good, and wait until it has ended: called from another
+        thread than the one it serves on, as ``socketserver``'s own is, or it never returns."""
+        self._stop.set()
+        self._stopped.wait()
+
+    def _accept(self, listening: socket.socket) -> None:
+        """Accept the connection waiting on ``listening`` and hand it to a thread of its own
+        (:meth:`process_request`), as ``socketserver`` hands on each its one socket accepts: one
+        whose client gave up before it was accepted is let go without a word, one that cannot be
+        handed on is closed and the error printed (:meth:`handle_error`), and an interrupt is
+        raised once its connection is closed."""
+        try:
+            request, client_address = listening.accept()
+        except OSError:
+            return
+        try:
+            self.process_request(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
+            self.shutdown_request(request)
+        except BaseException:
+            self.shutdown_request(request)
+            raise
+
     @property
     def port(self) -> int:
         return int(self.server_address[1])
+
+    @property
+    def origin(self) -> str:
+        """This server's own origin, as a browser spells it: ``http://127.0.0.1`` and this
+        server's port - left out on :data:`HTTP_PORT`, as a browser leaves it out (12:M4). What
+        every address it prints or opens a browser on begins with."""
+        if self.port == HTTP_PORT:
+            return "http://127.0.0.1"
+        return f"http://127.0.0.1:{self.port}"
 
     def issue_code(self) -> str:
         """Mint a single-use code that signs a browser in exactly as the long-lived token
@@ -494,8 +569,10 @@ class GuiServer(ThreadingHTTPServer):
         ``0.0.0.0`` - every interface, loopback included - and not when ``host`` names one
         interface that is neither, such as ``127.0.0.2`` or a specific address of a network
         this computer is also on: that interface alone answers, and this is a different one.
+        ``run`` takes no host but those two (:data:`SERVED_ON`). On :data:`HTTP_PORT` it names
+        no port, as a browser would not (:attr:`origin`).
         """
-        return f"http://127.0.0.1:{self.port}/open?token={self.token}"
+        return f"{self.origin}/open?token={self.token}"
 
     def process_request(self, request: Any, client_address: Any) -> None:
         """Answer on a thread of its own if a slot is free; else refuse from this thread.
@@ -540,6 +617,13 @@ class _Handler(BaseHTTPRequestHandler):
     ``ERR_NO_BUFFER_SPACE`` at a point that moved from run to run. The same twenty asks now share
     the handful of connections the browser keeps. Every answer here carries a ``Content-Length``,
     which is what lets the page tell one from the next on a connection it reads twice."""
+
+    default_request_version = "HTTP/1.1"
+    """The version a request is answered in until its own is read: this server's own, so that
+    every answer is a status line and headers (12:M7) - a request line the standard library
+    refuses before it has read its version (:meth:`send_error`), and one naming none, as
+    HTTP/0.9's did, among them. HTTP/0.9, the standard library's default, answers with neither,
+    and so with none of the headers every answer here carries."""
 
     timeout = IDLE_SECONDS
     """Applied to the socket, so a connection nobody is using does not hold its thread."""
@@ -626,9 +710,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "internal", "message": _INTERNAL})
 
     def _route(self, method: str) -> None:
-        port = self._gui.port
-        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
-            self._send(421, b"misdirected request", CONTENT_TYPES[".txt"])
+        if self.headers.get("Host") not in self._own_hosts():
+            # Never stored, as no refusal here is (12:M7).
+            never_stored = {"Cache-Control": "no-store"}
+            self._send(421, b"misdirected request", CONTENT_TYPES[".txt"], never_stored)
             return
         try:
             url = urlsplit(self.path)
@@ -651,7 +736,7 @@ class _Handler(BaseHTTPRequestHandler):
             if api:
                 self._send_json(403, {"error": "forbidden", "message": _ELSEWHERE})
             else:
-                self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"])
+                self._send(403, SIGN_IN_PAGE, CONTENT_TYPES[".html"], {"Cache-Control": "no-store"})
             return
         if url.path == "/open":
             # A POST alone: GET /open was answered above, before the gate. The sign-in needs
@@ -695,8 +780,26 @@ class _Handler(BaseHTTPRequestHandler):
         # value is kept too, a key given twice included, for the api to refuse
         # (`ddd.gui.routes.one_value_each`).
         query = parse_qs(url.query, keep_blank_values=True)
-        reply = self._gui.api.handle(method, url.path, query, body)
+        reply = self._gui.api.handle(method, url.path, query, body, gone=self._gone)
         self._send_json(reply.status, reply.body)
+
+    def _gone(self) -> bool:
+        """Whether this connection's client has gone - closed its end, or reset it - while its
+        request waits: what a long poll asks between the slices it waits in (12:M3,
+        :meth:`ddd.gui.api.Api._snapshot_after`). A peek, which neither waits nor takes anything
+        off the connection: a client that sent more is still there, and what it sent is read as
+        its next request. The connection's deadline is put back as it was however the peek
+        ends."""
+        connection = self.connection
+        connection.settimeout(0)
+        try:
+            return not connection.recv(1, socket.MSG_PEEK)
+        except BlockingIOError:
+            return False
+        except OSError:
+            return True
+        finally:
+            connection.settimeout(self.timeout)
 
     def _exchange(self, body: bytes) -> None:
         """``POST /open``: a launch code, or the token itself, traded for the token the page
@@ -730,13 +833,23 @@ class _Handler(BaseHTTPRequestHandler):
             given.encode("utf-8"), self._gui.token.encode("utf-8")
         )
 
-    def _own_origins(self) -> tuple[str, str]:
-        """This server's own origin, spelled the two ways a browser may carry it: by
-        127.0.0.1 and by localhost, both at this server's port. What :meth:`_from_elsewhere`
-        and :meth:`_from_this_page` both compare a request's ``Origin`` against, kept in this
-        one place rather than each holding a literal tuple of its own."""
+    def _own_hosts(self) -> tuple[str, ...]:
+        """This server's own host, spelled each way a request may name it: by 127.0.0.1 and by
+        localhost, each at this server's port - and on :data:`HTTP_PORT` each without it too, as
+        a browser names it there (12:M4). What the ``Host`` check of :meth:`_route` reads, and
+        :meth:`_own_origins` is spelled from."""
         port = self._gui.port
-        return (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+        hosts = (f"127.0.0.1:{port}", f"localhost:{port}")
+        if port == HTTP_PORT:
+            return (*hosts, "127.0.0.1", "localhost")
+        return hosts
+
+    def _own_origins(self) -> tuple[str, ...]:
+        """This server's own origin, spelled each way a browser may carry it: ``http://`` and one
+        of :meth:`_own_hosts`. What :meth:`_from_elsewhere` and :meth:`_from_this_page` both
+        compare a request's ``Origin`` against, kept in this one place rather than each holding a
+        literal tuple of its own."""
+        return tuple(f"http://{host}" for host in self._own_hosts())
 
     def _from_elsewhere(self) -> bool:
         """Whether the request says it came from somewhere other than this server's own page.
@@ -848,6 +961,35 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        """The answer the standard library gives a request it cannot read or does not handle -
+        ``400``, ``414``, ``431``, ``501`` or ``505`` - written as it writes one: its reason in
+        the status line, the page explaining it, escaped, and the connection closed behind it.
+        But with the headers every answer of this server carries (:func:`_head`): the policy of
+        the page served, ``nosniff``, no referrer, and ``no-store`` as every refusal here has it
+        (12:M7). Nothing is logged, as nothing is by this server (:meth:`log_message`). Never by
+        way of :meth:`_send`: the request may be one whose headers were never read, and
+        :meth:`_send` reads them for a ``POST``'s body."""
+        short, long = self.responses.get(code, ("???", "???"))
+        reason = short if message is None else message
+        page = self.error_message_format % {
+            "code": code,
+            "message": html.escape(reason, quote=False),
+            "explain": html.escape(long if explain is None else explain, quote=False),
+        }
+        data = page.encode("utf-8", "replace")
+        own = {
+            "Content-Security-Policy": self._gui.policy,
+            "Cache-Control": "no-store",
+            "Connection": "close",
+        }
+        self.send_response(code, reason)
+        for name, value in _head(CONTENT_TYPES[".html"], len(data), own).items():
+            self.send_header(name, value)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(data)
+
     def finish(self) -> None:
         """Close the files the connection was read and written through, then - if its last
         answer left a body unread - drain it before the server closes it (:func:`_linger`)."""
@@ -871,10 +1013,11 @@ _PAGES_ARE_READ: Final = "pages are read with GET"
 _NOT_A_TARGET: Final = "the request's target cannot be read"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
 _CODE_REUSED: Final = (
-    "ddd gui: a launch code that already signed a browser in was presented again; if your "
-    "browser is not signed in, another process on this computer may have signed in with it "
-    "first and now holds the token itself, so restart ddd gui rather than open the address it "
-    "printed"
+    "ddd gui: a launch code that already signed a browser in was presented again. If the "
+    "browser ddd gui opened landed on the project, nothing more is needed. If it says it is "
+    "signed out, stop ddd gui (Ctrl+C), start it again and open the address it prints then: "
+    "another program on this computer may hold this run's token, which this run's address, "
+    "opened since, does not take back"
 )
 
 
@@ -944,9 +1087,10 @@ def launched(server: GuiServer, opener: Callable[[str], object]) -> None:
 
     Not a file: a sandboxed browser (a snap, a flatpak) has its own private temporary
     directory, and cannot open one written to this computer's. An address of this server's
-    own reaches it the same way the printed one, pasted, would.
+    own reaches it the same way the printed one, pasted, would, and begins as it does
+    (:attr:`GuiServer.origin`).
     """
-    opener(f"http://127.0.0.1:{server.port}/open?code={server.issue_code()}")
+    opener(f"{server.origin}/open?code={server.issue_code()}")
 
 
 def run(
@@ -967,12 +1111,26 @@ def run(
     # raise past every usage-error handler - a bare TypeError, exit 1 with a traceback -
     # where getaddrinfo instead raises a UnicodeEncodeError (a ValueError) or a gaierror (an
     # OSError), both ordinary usage errors.
+    #
+    # The empty host names no address: refused before anything resolves it, whatever a system
+    # would answer for it, as any host is refused that resolves to neither address ddd gui
+    # listens on (12:M5, 9:M8) - before anything binds, and before the session starts.
+    if not host:
+        print(f"ddd: --host is empty, which names no address; {_HOSTS_TAKEN}", file=sys.stderr)
+        return EXIT_USAGE
     try:
         # str(): a general sockaddr's first element is typed str | int for every address
         # family this could be, and AF_INET's is always the former.
         address = str(socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0])
     except (OSError, ValueError) as error:
         return _refused(host, port, error)
+    if address not in SERVED_ON:
+        print(
+            f"ddd: --host {host} resolves to {address}, and ddd gui listens on 127.0.0.1 alone "
+            f"or on every interface; {_HOSTS_TAKEN}",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
     beyond_loopback = not is_loopback(address)
     if port == 0 and beyond_loopback:
         print(
@@ -1016,9 +1174,8 @@ def run(
                 server = GuiServer(Api(session, project), pages, port, address)
                 break
             except IPv6HeldError as error:
-                # --port 0 picked a port whose IPv6 hold - [::1], or [::] on Windows - another
-                # program's socket on IPv6 refused: another pick is another port. A port given is
-                # that port, or nothing.
+                # --port 0 picked a port whose IPv6 hold, [::1], another program's socket on IPv6
+                # refused: another pick is another port. A port given is that port, or nothing.
                 if port != 0 or attempt == PORT_TRIES:
                     return _refused(address, port, error)
                 attempt += 1
@@ -1034,8 +1191,9 @@ def run(
             print(
                 f"ddd gui: listening on {address}:{server.port}, beyond this computer's "
                 "loopback; publish it on the host's loopback only, "
-                f"-p 127.0.0.1:{server.port}:{server.port}, since the token in the address is "
-                "what keeps others out",
+                f"-p 127.0.0.1:{server.port}:{server.port}, since the token in the address runs "
+                "the project's plugins as the reader, as make runs what a Makefile names, and is "
+                "all that keeps others out",
                 file=sys.stderr,
             )
         elif open_browser:

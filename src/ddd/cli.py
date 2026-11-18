@@ -403,9 +403,9 @@ def _build_parser(plugin_artefact: str | None = None) -> argparse.ArgumentParser
         default="127.0.0.1",
         metavar="ADDRESS",
         help=(
-            "IPv4 address to listen on, or a name that resolves to one; the default answers "
-            "this computer alone, and 0.0.0.0 is what a container gives its host once the "
-            "same port is published"
+            "IPv4 address to listen on: 127.0.0.1, the default, which answers this computer "
+            "alone, or 0.0.0.0, every interface, which a container gives its host once the same "
+            "port is published - or a name that resolves to one of the two; any other is refused"
         ),
     )
     gui.add_argument(

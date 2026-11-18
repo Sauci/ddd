@@ -250,8 +250,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "it, and it is not an output of a component read alone",
                comparison=True),
         _check("renamed-read-object", Severity.ERROR,
-               "an object of the baseline that somebody read, or that a component read alone "
-               "produced, is offered under a different name, so a reader compiled against the "
+               "an object of the baseline that somebody read, or an output of a component read "
+               "alone, is offered under a different name, so a reader compiled against the "
                "baseline looks for a spelling that is gone",
                comparison=True),
         _check("removed-object", Severity.ERROR,
@@ -269,8 +269,8 @@ CHECKS: Final[dict[str, CheckInfo]] = {
                "the members of that structure in order, each with what it holds and its "
                "dimensions, nested and external ones included, an external one by its header "
                "too, save a member added at the end of it when the variable is no array, or "
-               "volatile turned on for an object a component reads or a component read alone "
-               "produces",
+               "volatile turned on for an object a component reads or an output of a component "
+               "read alone",
                comparison=True),
         _check("removed-constant", Severity.ERROR,
                "a constant of the baseline is gone, so a reader that uses its macro no longer "
@@ -285,35 +285,35 @@ CHECKS: Final[dict[str, CheckInfo]] = {
         _check("changed-storage", Severity.WARNING,
                "the initial value, volatility, memory section or measurement raster of an "
                "object changed, or the event or cycle of a raster; volatile turned on for an "
-               "object a component reads or a component read alone produces is "
+               "object a component reads or an output of a component read alone is "
                "changed-interface instead",
                comparison=True),
         _check("narrowed-limits", Severity.WARNING,
                "the physical limits of an object got tighter, so calibrated data may not fit; "
-               "a measurement somebody reads, or one a component read alone produces, is "
-               "widened-limits or narrowed-read-limits instead",
+               "a measurement somebody reads, or an output measurement of a component read "
+               "alone, is widened-limits or narrowed-read-limits instead",
                comparison=True),
         _check("widened-limits", Severity.WARNING,
-               "the physical limits of a measurement somebody reads, or of one a component "
-               "read alone produces, got wider, so a reader sized for the baseline's range may "
-               "meet a value it was not written for",
+               "the physical limits of a measurement somebody reads, or of an output measurement "
+               "of a component read alone, got wider, so a reader sized for the baseline's range "
+               "may meet a value it was not written for",
                comparison=True),
         _check("narrowed-read-limits", Severity.INFO,
-               "the physical limits of a measurement somebody reads, or of one a component "
-               "read alone produces, got tighter: a reader still gets values inside the range "
-               "it was written for",
+               "the physical limits of a measurement somebody reads, or of an output measurement "
+               "of a component read alone, got tighter: a reader still gets values inside the "
+               "range it was written for",
                comparison=True),
         _check("changed-owner", Severity.WARNING,
                "another component produces the object now",
                comparison=True),
         _check("narrowed-condition", Severity.ERROR,
-               "the preprocessor condition of an object somebody reads, or of one a component "
-               "read alone produces, was added or replaced, so a reader compiled against the "
+               "the preprocessor condition of an object somebody reads, or of any output of a "
+               "component read alone, was added or replaced, so a reader compiled against the "
                "baseline does not link in a build where the new condition is false",
                comparison=True),
         _check("changed-condition", Severity.WARNING,
                "the preprocessor condition of an object changed; one added or replaced on an "
-               "object somebody reads, or on one a component read alone produces, is "
+               "object somebody reads, or on an output of a component read alone, is "
                "narrowed-condition instead",
                comparison=True),
         _check("changed-a2l", Severity.WARNING, "the a2l entry of an object changed",

@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Protocol
@@ -132,6 +134,7 @@ from ddd.gui.queries import (
 from ddd.gui.routes import Policy, Route, one_value_each
 from ddd.gui.session import (
     GENERATED,
+    PLUGINS,
     Filed,
     NoProjectError,
     NotAnalysedError,
@@ -143,6 +146,7 @@ from ddd.gui.session import (
     Undoable,
     _name_in,
     _read_json,
+    _refuse_plugins,
     _served,
     _source,
     find_projects,
@@ -235,6 +239,25 @@ from ddd.variables import (
 WAIT_SECONDS: Final = 25.0
 """How long a request for a newer state waits before answering with the current one."""
 
+SLICE_SECONDS: Final = 1.0
+"""How long a request for a newer state waits at a time, before it looks whether its client has
+gone: a page that reloads or closes leaves its long poll behind, and the poll then answers at
+once, which gives its connection's slot back within this rather than at the end of
+:data:`WAIT_SECONDS` (12:M3). So a tab reloading never fills ``ddd gui``'s cap on connections."""
+
+
+def _staying() -> bool:
+    """Whether the client of a request asked of the api directly has gone: never, there being no
+    connection to lose - every test of the api, and any caller but the server."""
+    return False
+
+
+_CLIENT_GONE: ContextVar[Callable[[], bool]] = ContextVar("ddd_gui_client_gone", default=_staying)
+"""Whether the client of the request being answered has gone, for the long poll to ask between
+its slices (:meth:`Api._snapshot_after`): set by :meth:`Api.handle` for the length of one
+request, from what the server hands it. A context variable rather than a parameter of every
+route's answer, since only the long poll waits."""
+
 MEMO: Final = 256
 """How many answers the api keeps for the newest revision: the graph, the Types and Shared files
 tabs' rows, and the pages of findings a reader scrolls back to. A bound, the oldest dropped first:
@@ -246,7 +269,7 @@ ANALYSING: Final = "analysing"
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
 yet. Answered 409, and answered differently once the analysis lands."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED})
+REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED, PLUGINS})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
 _UNSEEN: Final = {
@@ -310,11 +333,17 @@ class Api:
     """The requests the page makes, answered from one session."""
 
     def __init__(
-        self, session: Session, project: Path | None = None, *, wait_seconds: float = WAIT_SECONDS
+        self,
+        session: Session,
+        project: Path | None = None,
+        *,
+        wait_seconds: float = WAIT_SECONDS,
+        slice_seconds: float = SLICE_SECONDS,
     ) -> None:
         self.session = session
         self.project = None if project is None else project.resolve()
         self.wait_seconds = wait_seconds
+        self.slice_seconds = slice_seconds
         self._compare_cache: BaselineCache = {}
         self._derived: Derived | None = None
         self._deriving = threading.Lock()
@@ -323,7 +352,15 @@ class Api:
         # until the version moves, every request of a page's long poll asking for it.
         self._state_kept: tuple[int, Reply] | None = None
 
-    def handle(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
+    def handle(
+        self,
+        method: str,
+        path: str,
+        query: Query,
+        body: bytes | None,
+        *,
+        gone: Callable[[], bool] = _staying,
+    ) -> Reply:
         """The answer to one request: its route looked up by path and method, its query read one
         value a key and as its route's model, and a ``POST``'s body as its own - each refused in
         that order, as the first problem it finds - and only then the route's handler asked, with
@@ -331,7 +368,18 @@ class Api:
         (:meth:`_serving`).
 
         The query is read before anything asks for the open project, on every route, so that a
-        malformed one is answered as one whether a project is open or not."""
+        malformed one is answered as one whether a project is open or not.
+
+        ``gone`` says whether the request's client has gone, which the long poll asks between
+        the slices it waits in (:meth:`_snapshot_after`): the server hands its connection's own."""
+        asking = _CLIENT_GONE.set(gone)
+        try:
+            return self._handled(method, path, query, body)
+        finally:
+            _CLIENT_GONE.reset(asking)
+
+    def _handled(self, method: str, path: str, query: Query, body: bytes | None) -> Reply:
+        """:meth:`handle`'s answer, ``gone`` set for the request."""
         routes = [each for each in ROUTES if each.path == path]
         if not routes:
             return _error(404, "not-found", f"{path} is not part of the api")
@@ -411,7 +459,7 @@ class Api:
 
     def _state(self, query: StateQuery, body: None) -> Reply:
         """What the session says: at once, or as soon as its version is past ``?after=``, or
-        once the wait runs out.
+        once the wait runs out, or once its client has gone (:meth:`_snapshot_after`).
 
         Made once a version and kept, every request of a page's long poll asking for it: the
         version moves at every change of what the answer says. Not guarded, unlike
@@ -419,11 +467,7 @@ class Api:
         both find nothing kept both make it from the one derivation, and one made at an older
         version can be kept over a newer one's, which the newer version's next request makes
         again. Each answer is the one its own version says; only work is repeated."""
-        after = query.after
-        if after is None:
-            snapshot = self.session.snapshot()
-        else:
-            snapshot = self.session.wait(after, self.wait_seconds)
+        snapshot = self._snapshot_after(query.after)
         if snapshot.project is None:
             raise NoProjectError("no project is open")
         kept = self._state_kept
@@ -432,6 +476,27 @@ class Api:
         reply = self._state_of(snapshot, snapshot.project)
         self._state_kept = (snapshot.version, reply)
         return reply
+
+    def _snapshot_after(self, after: int | None) -> Snapshot:
+        """What the session says: at once where no ``after`` is given, and otherwise as soon as
+        its version is past ``after``, once :attr:`wait_seconds` have passed, or once the
+        request's client has gone (12:M3) - waited for :attr:`slice_seconds` at a time, the
+        client asked after each slice but the last, and only while the version has not moved. A
+        client gone is answered at once, as a wait that ran out is, and its connection's slot is
+        given back as the answer is let go: a page that reloaded or closed holds none for the rest
+        of the wait.
+
+        A function with an early return rather than a conditional expression in :meth:`_state`,
+        which coverage.py counts no branch in."""
+        if after is None:
+            return self.session.snapshot()
+        gone = _CLIENT_GONE.get()
+        deadline = time.monotonic() + self.wait_seconds
+        while True:
+            left = deadline - time.monotonic()
+            snapshot = self.session.wait(after, min(left, self.slice_seconds))
+            if snapshot.version > after or left <= self.slice_seconds or gone():
+                return snapshot
 
     def _state_of(self, snapshot: Snapshot, project: Path) -> Reply:
         """The state ``snapshot`` says of ``project``, the one open: revision ``0``, no files and
@@ -1200,7 +1265,10 @@ class Api:
         ``not-found`` answered 404 and every other 409; a judgement a file saved or come since the
         revision would falsify is refused ``stale``. Every one of the three writes the project's
         description, so where a build generates it each is refused ``generated`` once the plan's
-        own refusals are asked, and before anything is judged.
+        own refusals are asked, and before anything is judged - and where it would change which
+        plugins the project's descriptions name, ``plugins``, by the edit's own check
+        (:func:`ddd.gui.session._refuse_plugins`), so an add or a creation the Apply would refuse
+        is refused here too, before the reader presses.
         """
         revision = self._opened()
         cache: dict[Path, Document] = {}
@@ -1212,6 +1280,26 @@ class Api:
                 (edit.path for edit in edits if edit.creates),
             )
             self._refuse_unanalysed(revision, (edit.path for edit in edits))
+            derived = self._derive(revision)
+            try:
+                _refuse_plugins(
+                    revision,
+                    [
+                        FileChange(
+                            edit.path,
+                            None if edit.creates else derived.stamps.get(edit.path),
+                            edit.operations,
+                        )
+                        for edit in edits
+                    ],
+                )
+            except EditError as refused:
+                # The plugins refusal is the one this early check answers. A description changed
+                # on disk since the analysis read it, or no longer read as utf-8, is the plan's
+                # own judgement's to report, in its own words, as it did before this was asked;
+                # the edit refuses either all the same.
+                if refused.code == PLUGINS:
+                    raise
 
         try:
             plan = _files_plan_of(query.root, revision, cache, refuse)

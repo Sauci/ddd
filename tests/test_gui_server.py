@@ -12,6 +12,7 @@ import json
 import os
 import re
 import select
+import selectors
 import shutil
 import socket
 import sys
@@ -37,7 +38,7 @@ from conftest import (
     project,
     write_tree,
 )
-from ddd.cli import EXIT_OK, EXIT_USAGE
+from ddd.cli import EXIT_OK, EXIT_USAGE, main
 from ddd.editing import fingerprint
 from ddd.file_names import device_named
 from ddd.gui import api as api_module
@@ -202,11 +203,11 @@ REFUSED: Final = {"error": "forbidden", "message": _SIGN_IN}
 """What ``POST /open`` answers a secret that signs nothing in."""
 
 
-def raw_answer(server: GuiServer, sent: bytes) -> tuple[int, bytes]:
-    """The status and body ``server`` answers ``sent`` with, over a connection of its own,
-    read to its end. For bytes ``http.client`` itself refuses to send - a request line that
-    is not well-formed, say - which is exactly what a hostile request is not."""
-    with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+def raw_answer(server: GuiServer, sent: bytes, *, address: str = "127.0.0.1") -> tuple[int, bytes]:
+    """The status and body ``server`` answers ``sent`` with, over a connection of its own to
+    ``address``, read to its end. For bytes ``http.client`` itself refuses to send - a request
+    line that is not well-formed, say - which is exactly what a hostile request is not."""
+    with socket.create_connection((address, server.port), timeout=10) as connection:
         connection.sendall(sent)
         with connection.makefile("rb") as answer:
             data = answer.read()
@@ -378,18 +379,23 @@ class TestTheSignInExchange:
         assert (again.status, json.loads(data)) == (403, REFUSED)
         assert capsys.readouterr().err == f"{_CODE_REUSED}\n"
 
-    def test_a_code_presented_again_says_why_to_restart(self, server, capsys) -> None:
-        """Its winner holds the token itself, which a restart takes from it and the printed
-        address does not. Pinned by its literal text: the test above compares against the
-        imported ``_CODE_REUSED``, which would drift along with any rewording of it."""
+    def test_a_code_presented_again_says_what_to_do(self, server, capsys) -> None:
+        """The line says what the reader does: nothing more where the browser ``ddd gui`` opened
+        landed on the project, and where it says it is signed out, stop the run, start it again
+        and open the address it prints then, since another program on the computer may hold this
+        run's token, which this run's address does not take back. Pinned by its literal text: the
+        test above compares against the imported ``_CODE_REUSED``, which would drift along with
+        any rewording of it."""
         code = server.issue_code()
         assert exchange(server, {"code": code})[0].status == 200
+        assert capsys.readouterr().err == ""
         exchange(server, {"code": code})
         assert capsys.readouterr().err == (
-            "ddd gui: a launch code that already signed a browser in was presented again; if "
-            "your browser is not signed in, another process on this computer may have signed "
-            "in with it first and now holds the token itself, so restart ddd gui rather than "
-            "open the address it printed\n"
+            "ddd gui: a launch code that already signed a browser in was presented again. If "
+            "the browser ddd gui opened landed on the project, nothing more is needed. If it "
+            "says it is signed out, stop ddd gui (Ctrl+C), start it again and open the address "
+            "it prints then: another program on this computer may hold this run's token, which "
+            "this run's address, opened since, does not take back\n"
         )
 
     def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
@@ -761,6 +767,86 @@ class TestTheAddressPrinted:
             ask(server, "GET", "/api/session")[0],
         ]
         assert [answer.getheader("Set-Cookie") for answer in answers] == [None] * 4
+
+
+def asked_at(
+    bound: int,
+    method: str,
+    path: str,
+    headers: dict[str, str],
+    body: bytes | None = None,
+) -> tuple[http.client.HTTPResponse, bytes]:
+    """``method path`` sent to the port ``bound`` of 127.0.0.1 with exactly ``headers`` - a
+    ``Host`` among them - and its answer read: for a server whose ``port`` reads as another."""
+    connection = http.client.HTTPConnection("127.0.0.1", bound, timeout=10)
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        return response, response.read()
+    finally:
+        connection.close()
+
+
+class TestPortEighty:
+    """``ddd gui --port 80`` (12:M4): a browser leaves HTTP's own port out of an address it opens,
+    and so out of the ``Host`` and the ``Origin`` it sends. The address ``ddd gui`` prints, and
+    the one it opens a browser on, leave it out too, and the host with no port is this server's
+    own there. The server binds a port of loopback the system picks, and reads as port 80 here:
+    nothing binds port 80 itself."""
+
+    @pytest.fixture
+    def eighty(self, server: GuiServer, monkeypatch: pytest.MonkeyPatch) -> tuple[GuiServer, int]:
+        """``server``, reading as port 80, and the port it is bound to."""
+        bound = int(server.server_address[1])
+        monkeypatch.setattr(GuiServer, "port", property(lambda self: 80))
+        return server, bound
+
+    def test_the_address_printed_leaves_the_port_out(self, eighty) -> None:
+        server, _ = eighty
+        assert server.address == f"http://127.0.0.1/open?token={server.token}"
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "127.0.0.1:80", "localhost:80"])
+    def test_the_host_a_browser_sends_is_this_server_s_own(self, eighty, host) -> None:
+        server, bound = eighty
+        signed_in = {"Host": host, "Authorization": f"Bearer {server.token}"}
+        response, data = asked_at(bound, "GET", "/api/session", signed_in)
+        assert response.status == 200, data
+
+    def test_a_host_naming_another_port_is_misdirected(self, eighty) -> None:
+        server, bound = eighty
+        signed_in = {"Host": f"127.0.0.1:{bound}", "Authorization": f"Bearer {server.token}"}
+        assert asked_at(bound, "GET", "/api/session", signed_in)[0].status == 421
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+    def test_the_browser_is_opened_on_the_address_and_signs_in_from_its_origin(
+        self, eighty, host
+    ) -> None:
+        server, bound = eighty
+        opener = Opened()
+        launched(server, opener)
+        opened = opener.wait()
+        assert opened.startswith("http://127.0.0.1/open?code=")
+        sent = {"Host": host, "Origin": f"http://{host}", "Content-Type": "application/json"}
+        body = json.dumps({"code": parse_qs(urlsplit(opened).query)["code"][0]}).encode("utf-8")
+        response, data = asked_at(bound, "POST", "/open", sent, body)
+        assert (response.status, json.loads(data)) == (200, {"token": server.token})
+        asking = {
+            "Host": host,
+            "Origin": f"http://{host}",
+            "Sec-Fetch-Site": "same-origin",
+            "Authorization": f"Bearer {server.token}",
+        }
+        assert asked_at(bound, "GET", "/api/session", asking)[0].status == 200
+
+    def test_on_any_other_port_the_host_without_it_is_misdirected(self, server) -> None:
+        response, _ = ask(server, "GET", "/api/session", host="127.0.0.1")
+        assert response.status == 421
+        assert server.address == f"http://127.0.0.1:{server.port}/open?token={server.token}"
+
+    def test_on_any_other_port_the_origin_without_it_is_another_page_s(self, server) -> None:
+        elsewhere = {"Origin": "http://127.0.0.1"}
+        response, data = exchange(server, {"token": server.token}, headers=elsewhere)
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
 
 
 class TestWhoMayAsk:
@@ -1273,6 +1359,55 @@ class TestWhatIsServed:
 
     def test_the_installed_pages_are_looked_for_beside_the_package(self) -> None:
         assert static_directory() == Path(ddd.__file__).parent / "gui" / "static"
+
+
+class TestWhatTheDirectoriesServedGuard:
+    """What the directories ``ddd gui`` serves guard (12:M2): a file the page names by its path -
+    read by ``GET /api/file``, written by an edit - lies in one of them, or is refused, ``404``.
+    They bound nothing the analysis reads: an edit may add a file above them to the project's
+    ``includes``, the analysis reads it there, as ``ddd check`` does, and the routes answering
+    from the analysis answer what it states."""
+
+    def test_a_file_included_from_above_is_answered_from_the_analysis_and_never_by_its_path(
+        self, tmp_path: Path, pages: Path
+    ) -> None:
+        write_tree(
+            tmp_path,
+            {
+                "outside.ddd.json": component("S", declare("output", "Pressure", unit="bar")),
+                "inside/p.ddd.json": project("P", "a.ddd.json"),
+                "inside/a.ddd.json": component("A", declare("output", "Speed", unit="rpm")),
+            },
+        )
+        described = tmp_path / "inside" / "p.ddd.json"
+        session = Session(described.parent)
+        session.open(described)
+        outside = (tmp_path / "outside.ddd.json").resolve()
+        for server in serving(Api(session, described, wait_seconds=0.05), pages):
+            included = {
+                "changes": [
+                    {
+                        "file": described.as_posix(),
+                        "fingerprint": fingerprint(described.read_bytes()),
+                        "operations": [
+                            {
+                                "op": "insert",
+                                "pointer": "project.includes[1]",
+                                "raw": '"../outside.ddd.json"',
+                            }
+                        ],
+                    }
+                ],
+                "label": "one more include",
+            }
+            answered(server, "POST", "/api/edit", included)
+            dictionary = answered(server, "GET", "/api/dictionary")["dictionary"]
+            assert {"Speed", "Pressure"} <= {entry["name"] for entry in dictionary["objects"]}
+            asked = answered(
+                server, "GET", f"/api/file?path={quote(outside.as_posix())}", status=404
+            )
+            assert asked["error"] == "not-found"
+            assert outside.as_posix() in asked["message"]
 
 
 INDEX: Final = (200, "text/html; charset=utf-8", b"stand-in")
@@ -2065,7 +2200,7 @@ class Held:
         self.asked = threading.Semaphore(0)
         self.release = threading.Event()
 
-    def handle(self, method, path, query, body):
+    def handle(self, method, path, query, body, *, gone=None):
         self.asked.release()
         assert self.release.wait(10), "the test never let the request go"
         return Reply(200, {"held": True})
@@ -2414,6 +2549,193 @@ class TestTheCap:
                 idle.close()
 
 
+def long_poll(server: GuiServer, after: int) -> socket.socket:
+    """A long poll of the state past version ``after``, as a page sends one, over a connection of
+    its own: its request sent, its answer left for the test to read or never read."""
+    connection = socket.create_connection(("127.0.0.1", server.port), timeout=10)
+    connection.sendall(
+        f"GET /api/state?after={after} HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{server.port}\r\n"
+        f"Authorization: Bearer {server.token}\r\n\r\n".encode("ascii")
+    )
+    return connection
+
+
+class Waiting:
+    """``Session.wait``, noting the thread of every request that waits in it, and saying once
+    ``count`` of them have."""
+
+    def __init__(self, session: Session, count: int) -> None:
+        self.wait = session.wait
+        self.count = count
+        self.threads: set[int] = set()
+        self.lock = threading.Lock()
+        self.all_waiting = threading.Event()
+
+    def __call__(self, after: int, timeout: float) -> Any:
+        with self.lock:
+            self.threads.add(threading.get_ident())
+            if len(self.threads) >= self.count:
+                self.all_waiting.set()
+        return self.wait(after, timeout)
+
+
+class TestALongPollWhoseClientHasGone:
+    """A long poll waits for the state to change in slices, and between two it looks whether its
+    client has gone - closed its connection, or reset it - and if so answers at once, which gives
+    its connection's slot back (12:M3, ruling B7-6): a page that reloads leaves its long poll
+    behind, and a tab reloading never fills the cap. The slice is shortened here, so that a slot
+    given back within one is given back at once."""
+
+    def test_the_poll_waits_twenty_five_seconds_a_second_at_a_time(self) -> None:
+        assert (api_module.WAIT_SECONDS, api_module.SLICE_SECONDS) == (25.0, 1.0)
+
+    @pytest.fixture
+    def polled(self, project_file: Path, pages: Path) -> Iterator[tuple[GuiServer, Api, int]]:
+        """A server of two slots whose long poll waits its full twenty-five seconds in slices of
+        five hundredths, and the version its state is at."""
+        session = Session(project_file.parent)
+        session.open(project_file)
+        api = Api(session, project_file, slice_seconds=0.05)
+        assert api.wait_seconds == api_module.WAIT_SECONDS
+        for server in serving(api, pages, connections=2):
+            yield server, api, session.snapshot().version
+
+    def test_clients_gone_give_their_slots_back_within_a_slice(self, polled, monkeypatch) -> None:
+        server, api, version = polled
+        waiting = Waiting(api.session, 2)
+        monkeypatch.setattr(api.session, "wait", waiting)
+        polls = [long_poll(server, version) for _ in range(2)]
+        assert waiting.all_waiting.wait(10), "the long polls never waited"
+        for poll in polls:
+            poll.close()
+        # Both slots given back well inside the poll's twenty-five seconds: waited for, since a
+        # slot comes back on its connection's own thread once its answer has been let go.
+        for _ in range(2):
+            assert server.slots.acquire(timeout=5), "a long poll held its slot past its client"
+        for _ in range(2):
+            server.slots.release()
+        response, data = ask(server, "GET", "/api/session")
+        assert response.status == 200, data
+
+    def test_a_poll_whose_client_stays_waits_past_its_slices_for_a_newer_version(
+        self, polled, project_file
+    ) -> None:
+        server, api, version = polled
+        with long_poll(server, version) as poll:
+            # Ten slices and more pass unanswered: the client is still there.
+            poll.settimeout(0.5)
+            with pytest.raises(TimeoutError):
+                poll.recv(1)
+            api.session.open(project_file)
+            poll.settimeout(10)
+            answer = http.client.HTTPResponse(poll)
+            answer.begin()
+            assert answer.status == 200
+            assert json.loads(answer.read())["version"] > version
+
+    def test_a_poll_answers_once_its_wait_runs_out_however_many_slices_it_takes(
+        self, project_file, pages
+    ) -> None:
+        session = Session(project_file.parent)
+        session.open(project_file)
+        version = session.snapshot().version
+        api = Api(session, project_file, wait_seconds=0.3, slice_seconds=0.05)
+        for server in serving(api, pages):
+            started = time.monotonic()
+            response, data = ask(server, "GET", f"/api/state?after={version}")
+            waited = time.monotonic() - started
+            assert (response.status, json.loads(data)["version"]) == (200, version)
+            assert waited >= 0.25, "answered before its wait ran out"
+
+    def test_the_api_answers_a_poll_whose_client_has_gone_after_one_slice(
+        self, project_file
+    ) -> None:
+        session = Session(project_file.parent)
+        session.open(project_file)
+        version = session.snapshot().version
+        api = Api(session, project_file, slice_seconds=0.05)
+        asked: list[float] = []
+
+        def gone() -> bool:
+            asked.append(time.monotonic())
+            return True
+
+        started = time.monotonic()
+        reply = api.handle("GET", "/api/state", {"after": [str(version)]}, None, gone=gone)
+        assert (reply.status, reply.body["version"]) == (200, version)
+        assert len(asked) == 1, "asked once, after its first slice"
+        assert asked[0] - started < 5
+
+    def test_a_poll_asked_of_the_api_directly_has_no_client_to_lose(self, project_file) -> None:
+        """Without ``gone`` - every test of the api, and any caller but the server - a poll waits
+        out its time, its client never gone. Asked on a thread of its own, joined with a
+        timeout, so that a wait that never ran out would fail this rather than hold the suite."""
+        session = Session(project_file.parent)
+        session.open(project_file)
+        version = session.snapshot().version
+        api = Api(session, project_file, wait_seconds=0.2, slice_seconds=0.05)
+        answers: list[Reply] = []
+
+        def asking() -> None:
+            answers.append(api.handle("GET", "/api/state", {"after": [str(version)]}, None))
+
+        poll = threading.Thread(target=asking, daemon=True)
+        started = time.monotonic()
+        poll.start()
+        poll.join(10)
+        waited = time.monotonic() - started
+        assert not poll.is_alive(), "the poll's wait never ran out"
+        (reply,) = answers
+        assert (reply.status, reply.body["version"]) == (200, version)
+        assert waited >= 0.15
+
+
+def gone_from(end: socket.socket, timeout: float = 30) -> bool:
+    """What the connection's handler says of ``end``, the server's end of a connection whose
+    deadline is ``timeout``: whether its client has gone."""
+    end.settimeout(timeout)
+    return module._Handler._gone(types.SimpleNamespace(connection=end, timeout=timeout))
+
+
+class TestWhetherAClientHasGone:
+    """``_Handler._gone``: a peek at the connection, which neither waits nor takes anything off
+    it, its deadline put back as it was however the peek ends."""
+
+    def test_a_client_that_sent_nothing_more_is_still_there(self) -> None:
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            assert gone_from(ours) is False
+            assert ours.gettimeout() == 30
+
+    def test_a_client_that_sent_more_is_still_there_and_what_it_sent_is_left(self) -> None:
+        ours, theirs = socket.socketpair()
+        with ours, theirs:
+            theirs.sendall(b"GET")
+            arrived_in_full(ours, b"GET")
+            assert gone_from(ours, 12) is False
+            assert ours.gettimeout() == 12
+            assert ours.recv(3) == b"GET"
+
+    def test_a_client_that_closed_its_end_has_gone(self) -> None:
+        ours, theirs = socket.socketpair()
+        with ours:
+            theirs.close()
+            arrived(ours)
+            assert gone_from(ours) is True
+            assert ours.gettimeout() == 30
+
+    def test_a_client_that_reset_the_connection_has_gone(self) -> None:
+        """Reset by closing with bytes it never read, as ``TestTheCap`` resets one."""
+        ours, theirs = socket.socketpair()
+        with ours:
+            ours.sendall(b"never read")
+            theirs.close()
+            arrived(ours)
+            assert gone_from(ours) is True
+            assert ours.gettimeout() == 30
+
+
 def request_line(length: int) -> bytes:
     """A ``GET`` of the session whose request line, its CRLF included, is ``length`` bytes."""
     start, end = b"GET /api/session?", b" HTTP/1.1\r\n"
@@ -2491,6 +2813,134 @@ class TestTheStandardLibrarysLimits:
         """Not 100: the standard library counts the blank line that ends the headers among its
         hundred, on python 3.12 to 3.14."""
         assert status_of(server, headed(server, 99)) == 401
+
+
+def whole_answer(
+    server: GuiServer, sent: bytes, *, ended: bool = False
+) -> tuple[str, dict[str, str], bytes]:
+    """The status line, the headers and the body ``server`` answers ``sent`` with, over a
+    connection of its own, read to its end. Where ``ended``, the client's sending side is closed
+    once ``sent`` is, which ends the request for a standard library that reads on for headers
+    after a request line naming no version, as python 3.12's does: the end of the file ends them,
+    and no byte is left for the server to leave unread."""
+    with socket.create_connection(("127.0.0.1", server.port), timeout=10) as connection:
+        connection.sendall(sent)
+        if ended:
+            connection.shutdown(socket.SHUT_WR)
+        with connection.makefile("rb") as answer:
+            data = answer.read()
+    head, _, body = data.partition(b"\r\n\r\n")
+    status, *fields = head.decode("latin-1").split("\r\n")
+    return status, dict(field.split(": ", 1) for field in fields), body
+
+
+def refusals_of(server: GuiServer) -> dict[str, tuple[int, bytes]]:
+    """A request the standard library refuses before this server reads it, for each of its
+    refusals, by status: each sent only as far as the line it is refused at."""
+    host = f"Host: 127.0.0.1:{server.port}\r\n".encode("ascii")
+    return {
+        "400-of-its-syntax": (400, b"GET / x HTTP/1.1\r\n"),
+        "400-of-its-version": (400, b"GET / HTTP/1.x\r\n"),
+        "400-of-no-version": (400, b"POST /\r\n"),
+        "414": (414, request_line(65537)),
+        "431": (431, b"GET / HTTP/1.1\r\n" + header_line(65537)),
+        "501": (501, b"PUT / HTTP/1.1\r\n" + host + b"Content-Length: 0\r\n\r\n"),
+        "505": (505, b"GET / HTTP/2.0\r\n"),
+    }
+
+
+class TestTheStandardLibrarysAnswers:
+    """What the standard library answers a request it cannot read or does not handle carries
+    the headers every answer of this server carries, as ``ddd gui``'s own refusals do: the
+    page's policy, ``nosniff``, no referrer, and ``no-store`` (12:M7). Each is a status line and
+    headers, whatever the request named for its version, and its page as the standard library
+    writes it."""
+
+    REFUSED: Final = (
+        "400-of-its-syntax",
+        "400-of-its-version",
+        "400-of-no-version",
+        "414",
+        "431",
+        "501",
+        "505",
+    )
+    """Each refusal of :func:`refusals_of`."""
+
+    @pytest.mark.parametrize("refused", REFUSED)
+    def test_each_refusal_carries_the_headers_of_every_answer(self, server, refused) -> None:
+        code, sent = refusals_of(server)[refused]
+        status, headers, body = whole_answer(server, sent)
+        assert status.startswith(f"HTTP/1.1 {code} ")
+        # Server and Date are the standard library's own, on every answer alike.
+        own = {name: value for name, value in headers.items() if name not in ("Server", "Date")}
+        assert own == {
+            **SECURITY_HEADERS,
+            "Content-Security-Policy": server.policy,
+            "Cache-Control": "no-store",
+            "Connection": "close",
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Length": str(len(body)),
+        }
+        assert f"Error code: {code}".encode("ascii") in body
+
+    def test_a_refusal_says_its_reason_in_its_status_line(self, server) -> None:
+        status, _, _ = whole_answer(server, b"GET / x HTTP/1.1\r\n")
+        assert status == "HTTP/1.1 400 Bad request syntax ('GET / x HTTP/1.1')"
+
+    def test_a_refusal_past_ascii_is_as_long_as_its_bytes_and_its_page_is_utf_8(
+        self, server
+    ) -> None:
+        """A request line is read as latin-1, a byte to a character, and the page that echoes it
+        is sent as UTF-8, as its type says: its length counts the bytes sent, never the page's
+        characters."""
+        status, headers, body = whole_answer(server, b"GET /caf\xe9 y HTTP/1.1\r\n")
+        assert status.startswith("HTTP/1.1 400 ")
+        assert headers["Content-Type"] == "text/html; charset=utf-8"
+        assert int(headers["Content-Length"]) == len(body)
+        assert "\N{LATIN SMALL LETTER E WITH ACUTE}".encode("utf-8") in body
+
+    def test_a_refusal_s_page_holds_what_the_request_said_escaped(self, server) -> None:
+        status, _, body = whole_answer(server, b"GET /<script> x HTTP/1.1\r\n")
+        assert status.startswith("HTTP/1.1 400 ")
+        assert b"&lt;script&gt;" in body
+        assert b"<script>" not in body
+
+    def test_a_head_is_refused_with_those_headers_and_no_page(self, server) -> None:
+        sent = b"HEAD / HTTP/1.1\r\n" + f"Host: 127.0.0.1:{server.port}\r\n\r\n".encode("ascii")
+        status, headers, body = whole_answer(server, sent)
+        assert status.startswith("HTTP/1.1 501 ")
+        assert (headers["Content-Security-Policy"], headers["Cache-Control"]) == (
+            server.policy,
+            "no-store",
+        )
+        assert int(headers["Content-Length"]) > 0
+        assert body == b""
+
+    def test_a_refusal_carries_the_policy_of_the_page_served(self, project_file, pages) -> None:
+        (pages / "index.html").write_bytes(INLINE_PAGE)
+        session = Session(project_file.parent)
+        session.open(project_file)
+        for inline in serving(Api(session, project_file, wait_seconds=0.05), pages):
+            _, headers, _ = whole_answer(inline, b"GET / HTTP/2.0\r\n")
+            assert headers["Content-Security-Policy"] == page_policy(INLINE_PAGE)
+
+    def test_a_request_naming_no_version_is_answered_with_a_status_line_and_headers(
+        self, server
+    ) -> None:
+        status, headers, body = whole_answer(server, b"GET /\r\n", ended=True)
+        assert (status, body) == ("HTTP/1.1 421 Misdirected Request", b"misdirected request")
+        assert headers["Content-Security-Policy"] == server.policy
+        assert headers["Cache-Control"] == "no-store"
+
+    def test_a_misdirected_request_is_never_stored(self, server) -> None:
+        response, _ = ask(server, "GET", "/api/session", host=f"evil.example:{server.port}")
+        assert (response.status, response.getheader("Cache-Control")) == (421, "no-store")
+
+    def test_the_sign_in_page_is_never_stored(self, server) -> None:
+        response, data = ask(server, "GET", "/project", headers={"Sec-Fetch-Site": "same-site"})
+        assert (response.status, data) == (403, SIGN_IN_PAGE)
+        assert response.getheader("Cache-Control") == "no-store"
 
 
 def answered(
@@ -2868,25 +3318,22 @@ class TestRunning:
     def test_an_unbindable_address_is_a_usage_error_like_a_taken_port(
         self, pages, capsys, monkeypatch
     ) -> None:
-        """Not an address of this machine, or malformed: refused the way a taken port is.
+        """An address the server cannot be made on: refused the way a taken port is.
 
-        203.0.113.5 is a documentation-only address (RFC 5737): never assigned to a real
-        machine, so it stands for one this computer cannot bind, but asking a real socket to
-        try could still hang or answer differently depending on the network this test runs
-        on. The construction is patched instead, standing in for whatever the platform's
-        socket would have refused; it resolves to itself (it is already numeric), so it is
-        what run() hands the fake, unlike the raw --host of a name that resolves elsewhere.
-        """
+        The construction is patched, standing in for whatever the platform's socket would have
+        refused: a real server listening on the wildcard can raise a firewall dialog on Windows,
+        and no test listens beyond loopback (ruling B7-3). It resolves to itself (it is already
+        numeric), so it is what run() hands the fake."""
 
         def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
             raise OSError("Cannot assign requested address")
 
         monkeypatch.setattr(GuiServer, "__init__", refuses_the_address)
-        result = run(None, [], 8123, open_browser=False, static=pages, host="203.0.113.5")
+        result = run(None, [], 8123, open_browser=False, static=pages, host="0.0.0.0")
         assert result == EXIT_USAGE
         message = capsys.readouterr().err
         assert message == (
-            "ddd: cannot serve 203.0.113.5 on port 8123: Cannot assign requested address\n"
+            "ddd: cannot serve 0.0.0.0 on port 8123: Cannot assign requested address\n"
         )
 
     def test_a_host_that_cannot_be_resolved_is_a_usage_error_not_a_crash(
@@ -2962,7 +3409,8 @@ class TestRunning:
         assert captured.err == (
             f"ddd gui: listening on 0.0.0.0:{server.port}, beyond this computer's loopback; "
             f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
-            "since the token in the address is what keeps others out\n"
+            "since the token in the address runs the project's plugins as the reader, as make "
+            "runs what a Makefile names, and is all that keeps others out\n"
         )
         assert opened == []
 
@@ -3010,11 +3458,11 @@ class TestRunning:
         assert result == EXIT_OK
         assert capsys.readouterr().err == ""
 
-    def test_localhost_resolving_beyond_loopback_needs_a_fixed_port(
+    def test_localhost_resolving_beyond_loopback_is_refused(
         self, pages, monkeypatch, capsys
     ) -> None:
-        """A hosts file that points localhost at a LAN address is judged by that address,
-        not by the name: the default port is refused exactly as --host 0.0.0.0 is."""
+        """A hosts file that points localhost at a LAN address is judged by that address, not by
+        the name: refused as any address but 127.0.0.1 and 0.0.0.0 is, whatever the port."""
 
         def getaddrinfo(host, port, family, kind):
             return [(family, kind, 0, "", ("192.168.1.50", port))]
@@ -3023,28 +3471,31 @@ class TestRunning:
         result = run(None, [], 0, open_browser=False, static=pages, host="localhost")
         assert result == EXIT_USAGE
         assert capsys.readouterr().err == (
-            "ddd: --host resolves to 192.168.1.50, beyond this computer's loopback; --port 0 "
-            "lets the system pick a free one there, which cannot be published in advance, so "
-            "give a fixed --port too\n"
+            "ddd: --host localhost resolves to 192.168.1.50, and ddd gui listens on 127.0.0.1 "
+            "alone or on every interface; give --host 127.0.0.1, the default, to answer this "
+            "computer alone, or --host 0.0.0.0 to answer a container's host, its port published "
+            "on the host's loopback\n"
         )
 
-    def test_localhost_resolving_beyond_loopback_warns_and_opens_no_browser(
+    def test_a_name_resolving_to_the_wildcard_warns_and_opens_no_browser(
         self, pages, monkeypatch, capsys
     ) -> None:
-        """Same as ``localhost`` resolving to a LAN address above, but with a fixed port: it
-        serves, warns once and opens no browser, exactly as --host 0.0.0.0 does."""
+        """Judged by what it resolves to, as ``localhost`` resolving to a LAN address is above: a
+        name resolving to 0.0.0.0, with a fixed port, serves, warns once and opens no browser,
+        exactly as --host 0.0.0.0 does."""
 
         def getaddrinfo(host, port, family, kind):
-            return [(family, kind, 0, "", ("192.168.1.50", port))]
+            assert host == "everywhere"
+            return [(family, kind, 0, "", ("0.0.0.0", port))]
 
         real_init = GuiServer.__init__
         received: list[tuple[str, int]] = []
 
         def binds_loopback_for_real(self, api, static, port=0, host="127.0.0.1"):
             received.append((host, port))
-            # Never 192.168.1.50 for real, for the same reason as every such fake in this
-            # file: this is about what run() decides from the address, not about a real
-            # socket answering on a LAN interface in a test.
+            # Never 0.0.0.0 for real, for the same reason as every such fake in this file: this
+            # is about what run() decides from the address, not about a real socket answering
+            # on every interface in a test.
             real_init(self, api, static, 0)
 
         monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
@@ -3056,11 +3507,11 @@ class TestRunning:
         opened: list[str] = []
         monkeypatch.setattr(module.webbrowser, "open", opened.append)
 
-        result = run(None, [], 8123, open_browser=True, static=pages, host="localhost")
+        result = run(None, [], 8123, open_browser=True, static=pages, host="everywhere")
 
         assert result == EXIT_OK
-        assert received == [("192.168.1.50", 8123)]
-        assert "listening on 192.168.1.50:" in capsys.readouterr().err
+        assert received == [("0.0.0.0", 8123)]
+        assert "listening on 0.0.0.0:" in capsys.readouterr().err
         assert opened == []
 
     @pytest.mark.parametrize("open_browser", [True, False])
@@ -3199,6 +3650,97 @@ class TestRunning:
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
 
 
+HOSTS_TAKEN: Final = (
+    "give --host 127.0.0.1, the default, to answer this computer alone, or --host 0.0.0.0 to "
+    "answer a container's host, its port published on the host's loopback"
+)
+"""What every refusal of a ``--host`` ends with: the two it takes."""
+
+
+class TestTheHostsServedOn:
+    """``--host`` takes loopback's ``127.0.0.1``, the default, and the wildcard ``0.0.0.0``, or a
+    name resolving to either (12:M5, 9:M8). Any other host is refused, exit 2, saying what to give
+    instead, before anything binds or the session starts. Only the refusals run here, and nothing
+    binds."""
+
+    @pytest.fixture
+    def nothing_starts(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """What the run went on to make: a session, a server. Each fails the run where made."""
+        made: list[str] = []
+
+        def session(*arguments: object, **keywords: object) -> None:
+            made.append("session")
+            raise AssertionError("the session was made")
+
+        def server(self: GuiServer, *arguments: object, **keywords: object) -> None:
+            made.append("server")
+            raise AssertionError("a server was bound")
+
+        monkeypatch.setattr(module, "Session", session)
+        monkeypatch.setattr(GuiServer, "__init__", server)
+        return made
+
+    @pytest.fixture
+    def resolved(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Every host the run resolves, each to an address of a network."""
+        asked: list[str] = []
+
+        def getaddrinfo(host, port, family, kind):
+            asked.append(host)
+            return [(family, kind, 0, "", ("192.168.1.50", port))]
+
+        monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        return asked
+
+    @pytest.mark.parametrize("port", [0, 8123])
+    def test_a_host_naming_no_address_is_refused_before_anything_resolves_it(
+        self, pages, capsys, nothing_starts, resolved, port
+    ) -> None:
+        assert run(None, [], port, open_browser=False, static=pages, host="") == EXIT_USAGE
+        said = capsys.readouterr().err
+        assert said == f"ddd: --host is empty, which names no address; {HOSTS_TAKEN}\n"
+        assert (resolved, nothing_starts) == ([], [])
+
+    @pytest.mark.parametrize("port", [0, 8123])
+    @pytest.mark.parametrize("host", ["127.0.0.2", "127.255.255.254"], ids=range(2))
+    def test_another_address_of_loopback_is_refused(
+        self, pages, capsys, nothing_starts, host, port
+    ) -> None:
+        """Resolved for real, being numeric and loopback's own."""
+        assert run(None, [], port, open_browser=False, static=pages, host=host) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: --host {host} resolves to {host}, and ddd gui listens on 127.0.0.1 alone or on "
+            f"every interface; {HOSTS_TAKEN}\n"
+        )
+        assert nothing_starts == []
+
+    @pytest.mark.parametrize("port", [0, 8123])
+    @pytest.mark.parametrize("host", ["192.168.1.50", "a-name.example"], ids=range(2))
+    def test_an_address_of_a_network_is_refused(
+        self, pages, capsys, nothing_starts, resolved, host, port
+    ) -> None:
+        """Resolved by a stand-in, each to an address of a network: no test asks the network."""
+        assert run(None, [], port, open_browser=False, static=pages, host=host) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: --host {host} resolves to 192.168.1.50, and ddd gui listens on 127.0.0.1 alone "
+            f"or on every interface; {HOSTS_TAKEN}\n"
+        )
+        assert (resolved, nothing_starts) == ([host], [])
+
+    def test_the_help_says_which_hosts_it_takes(self, capsys, monkeypatch) -> None:
+        monkeypatch.setenv("COLUMNS", "1000")
+        with pytest.raises(SystemExit) as exited:
+            main(["gui", "--help"])
+        assert exited.value.code == 0
+        said = " ".join(capsys.readouterr().out.split())
+        assert (
+            "IPv4 address to listen on: 127.0.0.1, the default, which answers this computer "
+            "alone, or 0.0.0.0, every interface, which a container gives its host once the same "
+            "port is published - or a name that resolves to one of the two; any other is "
+            "refused" in said
+        )
+
+
 def free_port() -> int:
     """A port of 127.0.0.1 that nothing holds, picked by the system and let go at once: for a
     test that must name a port before anything serves on it."""
@@ -3207,24 +3749,15 @@ def free_port() -> int:
         return int(picked.getsockname()[1])
 
 
-def held_address() -> str:
-    """The IPv6 address the server holds: ``::`` where it holds the wildcard (Windows,
-    ``_WILDCARD``), ``::1`` elsewhere - read at the call, so that a test which flips the flag
-    names what the server then holds."""
-    if module._WILDCARD:
-        return "::"
-    return "::1"
-
-
-def holding(port: int, address: str | None = None) -> socket.socket:
-    """A stranger's socket bound at ``port`` on ``address`` - by default where the server would
-    hold it (:func:`held_address`) - and never listened on: another program holding it. It sets
-    ``IPV6_V6ONLY`` and nothing else, so that on ``[::]`` it takes no IPv4 port from the server's
-    own. The caller closes it."""
+def holding(port: int, address: str = "::1") -> socket.socket:
+    """A stranger's socket bound at ``port`` on ``address`` - by default ``[::1]``, where the
+    server would hold it - and never listened on: another program holding it. It sets
+    ``IPV6_V6ONLY`` and nothing else, so that on ``[::]`` it takes no IPv4 port from the
+    server's own. The caller closes it."""
     stranger = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     try:
         stranger.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-        stranger.bind((held_address() if address is None else address, port))
+        stranger.bind((address, port))
     except OSError:
         stranger.close()
         raise
@@ -3232,12 +3765,12 @@ def holding(port: int, address: str | None = None) -> socket.socket:
 
 
 class TestIPv6Held:
-    """Spec §6.2: on loopback, ``ddd gui`` holds an IPv6 address on its port beside its IPv4
-    socket, and never listens there - ``[::1]``, or on Windows the wildcard ``[::]`` alone in
-    its place (ruling P19a-14). A browser opening ``localhost:<port>`` tries ``[::1]`` first:
-    part 18b's final review measured a program listening there receive the pasted address,
-    token and all, in Chrome 153, three times of three. Real sockets, except where a test says
-    otherwise."""
+    """On loopback, ``ddd gui`` holds ``[::1]`` on its port beside its IPv4 socket, on every
+    system, and listens there, answering it as it answers ``127.0.0.1`` (12:I1, ruling B7-2): a
+    browser opening ``localhost:<port>`` may try ``[::1]`` first, and reaches ``ddd gui``
+    itself. Real sockets, except where a test says otherwise: nothing listens beyond loopback,
+    and a stranger on the wildcard ``[::]`` sets ``IPV6_V6ONLY`` and never listens (ruling
+    B7-11)."""
 
     @pytest.fixture
     def started(self, tmp_path: Path, pages: Path) -> Iterator[GuiServer]:
@@ -3250,47 +3783,210 @@ class TestIPv6Held:
             server.server_close()
 
     @staticmethod
-    def binds(address: str, reusing: bool, port: int) -> bool:
-        """Whether a stranger's ``IPV6_V6ONLY`` socket binds ``address`` at ``port``, with
-        ``SO_REUSEADDR`` set or not."""
-        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as stranger:
-            stranger.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+    @contextlib.contextmanager
+    def stranger(address: str, reusing: bool, port: int) -> Iterator[bool]:
+        """A stranger's socket on ``address`` at ``port``, ``IPV6_V6ONLY`` and never listened
+        on, with ``SO_REUSEADDR`` set or not: whether it bound, kept bound while the block
+        runs."""
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as made:
+            made.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
             if reusing:
-                stranger.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                made.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                stranger.bind((address, port))
+                made.bind((address, port))
             except OSError:
-                return False
-            return True
+                bound = False
+            else:
+                bound = True
+            yield bound
 
-    def test_ipv6_is_held_beside_the_port(self, started) -> None:
-        """No stranger can bind ``[::1]`` or ``[::]`` on the port beside the IPv6 hold, not even
-        with ``SO_REUSEADDR`` - which Linux honours for a port nobody listens on only when both
-        sockets set it, and which Windows honours over any socket not bound with
-        ``SO_EXCLUSIVEADDRUSE``. A listener on either would take the connections to
-        ``localhost`` the hold never accepts, and a connection to ``[::1]`` is refused: held, and
-        never listened on.
-
-        Linux holds ``[::1]``, and refuses both strangers beside it. On Windows, run 37737377854
-        measured a stranger's ``[::]`` binding beside an exclusive ``[::1]`` hold, with and
-        without ``SO_REUSEADDR``, and run 37741191678 the server's own exclusive ``[::]``
-        refused beside its own exclusive ``[::1]``: so Windows holds the wildcard ``[::]`` alone
-        (``_WILDCARD``, ruling P19a-14). That it refuses a stranger's ``[::1]`` too is what
-        Microsoft documents of an exclusive wildcard; run 37744112657 measured this test
-        passing on Windows 3.12, 3.13 and 3.14.
+    def test_ipv6_loopback_is_listened_on_and_no_other_program_can_bind_it(self, server) -> None:
+        """The hold is ``[::1]`` itself, on every system, listened on, and bound as the IPv4
+        socket is: with ``SO_REUSEADDR`` where that takes it, everywhere but Windows (ruling
+        B7-10). No stranger can bind ``[::1]`` on the port beside it, with ``SO_REUSEADDR`` or
+        without: Linux shares no port a socket listens on, whatever the other sets, and Windows
+        none bound with ``SO_EXCLUSIVEADDRUSE``. Nor can one bind the wildcard ``[::]`` there on
+        Linux. On Windows one can, as run 37737377854 measured beside an exclusive ``[::1]`` (part
+        19a), and a connection to ``[::1]`` made while any stranger is held is answered by
+        ``ddd gui`` all the same. Every stranger sets ``IPV6_V6ONLY`` and never listens.
 
         The hold reads ``IPV6_V6ONLY``. Linux turns that on itself for any socket bound to
         ``::1`` (a fresh socket there reads 0, and 1 once bound), so the option's own call is
-        pinned by the tests that note each option set."""
+        pinned by the tests that note each option set. Each connection asks the server to close
+        it, so that the ``TIME_WAIT`` it leaves is the server's own, which a later hold binds
+        through, and none is left on a client's port."""
+        port = server.port
+        asked = f"GET / HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n"
         strangers = [(address, reusing) for address in ("::1", "::") for reusing in (False, True)]
-        let_in = [stranger for stranger in strangers if self.binds(*stranger, started.port)]
-        assert let_in == []
-        # Refused at once on Linux, and after about two seconds of retries on Windows.
-        with pytest.raises(ConnectionRefusedError):
-            socket.create_connection(("::1", started.port), timeout=10).close()
-        assert started.held is not None
-        assert started.held.getsockname()[:2] == (held_address(), started.port)
-        assert started.held.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 1
+        let_in: list[tuple[str, bool]] = []
+        for address, reusing in strangers:
+            with self.stranger(address, reusing, port) as bound:
+                if bound:
+                    let_in.append((address, reusing))
+        assert let_in == ([("::", False), ("::", True)] if sys.platform == "win32" else [])
+        for address, reusing in strangers:
+            with self.stranger(address, reusing, port):
+                answered = raw_answer(server, asked.encode("ascii"), address="::1")
+                assert answered == (200, b"stand-in")
+        held = server.held
+        assert held is not None
+        assert held.getsockname()[:2] == ("::1", port)
+        assert held.getsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY) == 1
+        assert held.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+        reused = held.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) != 0
+        assert reused is GuiServer.allow_reuse_address
+
+    def test_localhost_on_ipv6_is_answered_by_ddd_gui_and_signs_in_by_the_address_token(
+        self, server
+    ) -> None:
+        """A browser opening ``localhost`` may try ``[::1]`` first, and reaches ``ddd gui``
+        itself there, answered as on ``127.0.0.1``: its own page, and the API signed out until
+        the address is opened there, when the page trades the token the address carries for the
+        very token the printed address holds. The ``Host`` check is the same one: ``[::1]`` is no
+        name of this server's.
+
+        Asked over one connection, kept open as a browser keeps it, and closed by this end: on
+        Linux, the ``TIME_WAIT`` a client's closed connection leaves on the client's own port
+        holds that port's ``[::1]`` against a later server's hold there, so each test leaves as
+        few of them as it can."""
+        port = server.port
+        local = f"localhost:{port}"
+        connection = http.client.HTTPConnection("::1", port, timeout=10)
+
+        def asked(
+            method: str, path: str, headers: dict[str, str], body: bytes | None = None
+        ) -> tuple[int, bytes]:
+            connection.request(method, path, body=body, headers=headers)
+            response = connection.getresponse()
+            return response.status, response.read()
+
+        try:
+            assert asked("GET", "/", {"Host": local}) == (200, b"stand-in")
+            status, data = asked("GET", "/api/session", {"Host": local})
+            assert (status, json.loads(data)) == (
+                401,
+                {"error": "unauthorised", "message": _SIGN_IN},
+            )
+            sign_in = json.dumps({"token": server.token}).encode("utf-8")
+            own = {"Host": local, "Origin": f"http://{local}", "Content-Type": "application/json"}
+            status, data = asked("POST", "/open", own, sign_in)
+            assert (status, json.loads(data)) == (200, {"token": server.token})
+            bearer = {"Host": local, "Authorization": f"Bearer {server.token}"}
+            assert asked("GET", "/api/session", bearer)[0] == 200
+            assert asked("GET", "/", {"Host": f"[::1]:{port}"}) == (421, b"misdirected request")
+        finally:
+            connection.close()
+
+    def test_a_server_holding_nothing_serves_its_ipv4_socket_alone(
+        self, project_file, pages, monkeypatch
+    ) -> None:
+        """Where nothing is held - beyond loopback, or with no IPv6 loopback - the IPv4 socket is
+        served alone."""
+        monkeypatch.setattr(module, "_held_beside", lambda host, port: None)
+        for server in serving(Api(Session(project_file.parent)), pages):
+            assert server.held is None
+            response, data = ask(server, "GET", "/", signed_in=False)
+            assert (response.status, data) == (200, b"stand-in")
+
+    @staticmethod
+    def waiting(connection: socket.socket) -> Any:
+        """A stand-in for a listening socket with ``connection`` waiting on it, from ``[::1]``."""
+
+        class Waiting:
+            def accept(self) -> tuple[socket.socket, tuple[str, int, int, int]]:
+                return connection, ("::1", 0, 0, 0)
+
+        return Waiting()
+
+    def test_a_connection_gone_before_it_is_accepted_is_let_go(self, started, capsys) -> None:
+        """A connection its client gave up between the loop seeing it and accepting it is let
+        go without a word, as ``socketserver`` lets it go."""
+
+        class Gone:
+            def accept(self) -> tuple[socket.socket, Any]:
+                raise ConnectionAbortedError(errno.ECONNABORTED, "Software caused connection abort")
+
+        assert started._accept(Gone()) is None
+        assert capsys.readouterr().err == ""
+
+    def test_a_connection_whose_thread_cannot_start_is_closed_and_its_error_printed(
+        self, started, monkeypatch, capsys
+    ) -> None:
+        """Answered on a thread of its own, and none can start: the connection is closed and the
+        error printed, as ``socketserver`` does, and nothing is raised to end the loop."""
+        ours, theirs = socket.socketpair()
+        monkeypatch.setattr(threading.Thread, "start", _cannot_start)
+        with theirs:
+            assert started._accept(self.waiting(ours)) is None
+            monkeypatch.undo()
+            assert ours.fileno() == -1
+            theirs.settimeout(10)
+            assert theirs.recv(1) == b""
+        assert "RuntimeError: can't start new thread" in capsys.readouterr().err
+
+    def test_an_interrupt_while_a_connection_is_handed_on_closes_it_and_ends_the_loop(
+        self, started, monkeypatch
+    ) -> None:
+        """An interrupt landing while a connection is handed to its thread closes that
+        connection and ends the loop, raised from it as from ``socketserver``'s, and a shutdown
+        asked after that returns at once."""
+
+        def interrupted(request: Any, client_address: Any) -> None:
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(started, "process_request", interrupted)
+        ended: list[BaseException] = []
+
+        def serve() -> None:
+            try:
+                started.serve_forever()
+            except BaseException as error:  # handed to the test's own thread, which reads it
+                ended.append(error)
+
+        serving_thread = threading.Thread(target=serve, daemon=True)
+        serving_thread.start()
+        with socket.create_connection(("127.0.0.1", started.port), timeout=10) as client:
+            assert client.recv(1) == b""
+        serving_thread.join(10)
+        assert not serving_thread.is_alive(), "serve_forever did not end"
+        assert [type(error) for error in ended] == [KeyboardInterrupt]
+        stopping = threading.Thread(target=started.shutdown, daemon=True)
+        stopping.start()
+        stopping.join(10)
+        assert not stopping.is_alive(), "shutdown did not return"
+
+    def test_a_shutdown_waits_for_the_loop_to_end_and_then_returns(
+        self, started, monkeypatch
+    ) -> None:
+        """Asked from another thread, as these tests' teardowns ask it, a shutdown returns once
+        the loop serving both sockets has ended, and not before - so that the sockets it watches
+        are closed after it, never under it - and returns then, rather than never: bounded, so
+        that a shutdown that hangs fails here instead of in every other test's teardown. Through
+        a selector whose wait ends when the test says, as the loop's wait ends when the stop is
+        looked for."""
+        selector = selectors.DefaultSelector
+        waiting = threading.Event()
+        let_go = threading.Event()
+
+        class Stalling(selector):
+            def select(self, timeout: float | None = None) -> list[Any]:
+                waiting.set()
+                assert let_go.wait(10), "the test never let the wait end"
+                return super().select(0)
+
+        monkeypatch.setattr(selectors, "DefaultSelector", Stalling)
+        serving_thread = threading.Thread(target=started.serve_forever, daemon=True)
+        serving_thread.start()
+        assert waiting.wait(10), "the loop never waited"
+        stopping = threading.Thread(target=started.shutdown, daemon=True)
+        stopping.start()
+        stopping.join(0.5)
+        assert stopping.is_alive(), "shutdown returned while the loop was still waiting"
+        let_go.set()
+        stopping.join(10)
+        assert not stopping.is_alive(), "shutdown did not return"
+        serving_thread.join(10)
+        assert not serving_thread.is_alive(), "serve_forever did not end"
 
     def test_the_ipv4_port_is_not_shared_either(self, started) -> None:
         """Windows lets a socket that sets ``SO_REUSEADDR`` bind a port another socket listens
@@ -3302,17 +3998,13 @@ class TestIPv6Held:
                 stranger.bind(("127.0.0.1", started.port))
 
     def test_the_hold_ends_with_the_server(self, tmp_path, pages) -> None:
-        """``[::1]`` and ``[::]`` both free again once the server is closed, whichever of the two
-        it held: bound one after the other, since on Linux the two collide."""
+        """``[::1]`` free again once the server is closed."""
         server = GuiServer(Api(Session(tmp_path)), pages)
         try:
             assert server.held is not None
         finally:
             server.server_close()
-        for address in ("::1", "::"):
-            with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as after:
-                after.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-                after.bind((address, server.port))
+        holding(server.port).close()
 
     def test_the_ipv4_port_is_let_go_when_ipv6_is_held(self, tmp_path, pages) -> None:
         """A server refused for its IPv6 hold closes the IPv4 socket it had bound, rather than
@@ -3327,47 +4019,62 @@ class TestIPv6Held:
         assert isinstance(refused.value.__cause__, OSError)
 
     def test_a_program_already_on_ipv6_loopback_refuses_the_start(self, tmp_path, pages) -> None:
-        """The order ``test_ipv6_is_held_beside_the_port`` does not take: a program bound on
-        ``[::1]`` before the server starts on that port, where it could listen and take the
-        connections to ``localhost``. Linux refuses the ``[::1]`` hold beside it. On Windows the
-        exclusive ``[::]`` hold must be refused beside it too: run 37741191678 measured it
-        refused beside the server's own exclusive ``[::1]``, and beside a stranger's ``[::1]``,
-        bound with no option, this test measures it. The refusal names the port, and no address:
-        on Windows the program holds ``[::1]``, and the server tried ``[::]``."""
+        """The order ``test_ipv6_loopback_is_listened_on_and_no_other_program_can_bind_it`` does
+        not take: a program bound on ``[::1]`` before the server starts on that port, where it
+        could listen and take the connections to ``localhost``. The server's own ``[::1]`` is
+        refused beside it, on Linux and, bound exclusively, on Windows. The refusal names the
+        port on IPv6, the same sentence whatever socket refused the hold."""
         port = free_port()
-        with holding(port, "::1"), pytest.raises(module.IPv6HeldError) as refused:
+        with holding(port), pytest.raises(module.IPv6HeldError) as refused:
             GuiServer(Api(Session(tmp_path)), pages, port)
         assert str(refused.value) == (
             f"another program holds port {port} on IPv6, where a browser opening "
             f"localhost:{port} may reach it"
         )
 
-    def test_a_program_already_on_the_ipv6_wildcard_refuses_the_start(
+    def test_after_a_program_bound_the_ipv6_wildcard_ddd_gui_refuses_to_start_or_answers_localhost(
         self, tmp_path, pages
     ) -> None:
-        """The other address: a program bound on ``[::]`` before the server starts on that port,
-        where it could listen and take the connections to ``[::1]`` as well. Linux refuses the
-        ``[::1]`` hold beside it, and Windows its ``[::]`` hold. The refusal names the port, and
-        no address: on Linux the program holds ``[::]``, and the server tried ``[::1]``."""
+        """The other address: a program bound on the wildcard ``[::]`` before ``ddd gui`` starts
+        on that port, ``IPV6_V6ONLY`` and never listened on, and what each system makes of it.
+        On Linux the server's own ``[::1]`` is refused beside it, and the refusal names the port
+        and no address: the program holds ``[::]``, and the server tried ``[::1]``. On Windows
+        the exclusive ``[::1]`` binds beside it, as CI run 44242978861 found on 3.12, 3.13 and
+        3.14, and listens, and a request to ``[::1]`` made while the program stays bound is
+        answered by ``ddd gui`` itself. Whatever happens, a server started here is closed."""
         port = free_port()
-        with holding(port, "::"), pytest.raises(module.IPv6HeldError) as refused:
-            GuiServer(Api(Session(tmp_path)), pages, port)
-        assert str(refused.value) == (
-            f"another program holds port {port} on IPv6, where a browser opening "
-            f"localhost:{port} may reach it"
-        )
+        api = Api(Session(tmp_path))
+        with holding(port, "::"):
+            if sys.platform != "win32":
+                with pytest.raises(module.IPv6HeldError) as refused:
+                    GuiServer(api, pages, port).server_close()
+                assert str(refused.value) == (
+                    f"another program holds port {port} on IPv6, where a browser opening "
+                    f"localhost:{port} may reach it"
+                )
+                return
+            server = GuiServer(api, pages, port)
+            serving_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            serving_thread.start()
+            try:
+                assert server.held is not None
+                assert server.held.getsockname()[:2] == ("::1", port)
+                assert server.held.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+                asked = f"GET / HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n"
+                answered = raw_answer(server, asked.encode("ascii"), address="::1")
+                assert answered == (200, b"stand-in")
+            finally:
+                server.shutdown()
+                server.server_close()
+                serving_thread.join(10)
 
-    @pytest.mark.parametrize("wildcard", [False, True], ids=["loopback", "wildcard"])
     def test_a_fixed_port_held_on_ipv6_is_refused_naming_it(
-        self, pages, monkeypatch, capsys, wildcard
+        self, pages, monkeypatch, capsys
     ) -> None:
         """Spec §6.2: refused as a taken ``--port`` is, naming the port on IPv6 rather than
-        ``[::1]`` as the spec has it (ruling P19a-30) - the same sentence whether the hold is
-        ``[::1]`` or, where the wildcard is held (ruling P19a-14), ``[::]``, each on every
-        platform. A port given is that port or nothing, so it is tried once. Each of these tests
-        of the retry runs ``run`` bounded, so that a loop that never ends fails it rather than
-        hang the suite."""
-        monkeypatch.setattr(module, "_WILDCARD", wildcard)
+        ``[::1]`` as the spec has it (ruling P19a-30). A port given is that port or nothing, so it
+        is tried once. Each of these tests of the retry runs ``run`` bounded, so that a loop that
+        never ends fails it rather than hang the suite."""
         port = free_port()
         held_beside = module._held_beside
         asked: list[int] = []
@@ -3385,14 +4092,9 @@ class TestIPv6Held:
             f"IPv6, where a browser opening localhost:{port} may reach it\n"
         )
 
-    @pytest.mark.parametrize("wildcard", [False, True], ids=["loopback", "wildcard"])
-    def test_port_zero_tries_again_when_ipv6_is_held(
-        self, pages, monkeypatch, capsys, wildcard
-    ) -> None:
+    def test_port_zero_tries_again_when_ipv6_is_held(self, pages, monkeypatch, capsys) -> None:
         """Spec §6.2: ``--port 0`` serves on a port free on both addresses. The first pick held,
-        it picks again, holds ``[::1]`` - or ``[::]`` where the wildcard is held - on the second
-        for real, and says nothing of the first."""
-        monkeypatch.setattr(module, "_WILDCARD", wildcard)
+        it picks again, holds ``[::1]`` on the second for real, and says nothing of the first."""
         held_beside = module._held_beside
         asked: list[int] = []
 
@@ -3412,7 +4114,7 @@ class TestIPv6Held:
         assert bounded_run(None, (), 0, open_browser=False, static=pages) == EXIT_OK
         assert len(asked) == 2
         second = asked[1]
-        assert served == [(second, (held_address(), second))]
+        assert served == [(second, ("::1", second))]
         captured = capsys.readouterr()
         (line,) = captured.out.splitlines()
         assert line.startswith(f"ddd gui (preview) serving http://127.0.0.1:{second}/open?")
@@ -3444,22 +4146,13 @@ class TestIPv6Held:
             f"where a browser opening localhost:{last} may reach it\n"
         )
 
-    @pytest.mark.parametrize(
-        ("missing", "wildcard"),
-        [("the-family", False), ("the-family", True), ("the-address", False)],
-        ids=["the-family", "the-family-holding-the-wildcard", "the-address"],
-    )
+    @pytest.mark.parametrize("missing", ["the-family", "the-address"])
     def test_no_ipv6_loopback_holds_nothing_and_says_nothing(
-        self, pages, monkeypatch, capsys, missing, wildcard
+        self, pages, monkeypatch, capsys, missing
     ) -> None:
         """A computer with no IPv6 - no ``AF_INET6`` at all, or no ``::1`` to bind - has no
         ``[::1]`` for a browser to try first: nothing is held, and nothing said of it. Through a
-        socket that refuses either, as such a computer does. No address is missing for the
-        wildcard to be refused for: in a network namespace of its own, with no IPv6 address at
-        all, ``[::1]`` was refused ``EADDRNOTAVAIL`` and ``[::]`` bound (Linux, measured), so the
-        missing address is the ``[::1]`` hold's case alone, and the wildcard's is the missing
-        family."""
-        monkeypatch.setattr(module, "_WILDCARD", wildcard)
+        socket that refuses either, as such a computer does."""
         port = free_port()
         families: list[int] = []
         made: list[socket.socket] = []
@@ -3554,8 +4247,8 @@ class TestIPv6Held:
         assert made == [socket.AF_INET, socket.AF_INET6]
         (port,) = bound
         assert capsys.readouterr().err == (
-            f"ddd: cannot serve 127.0.0.1 on port 0: cannot hold [{held_address()}]:{port} beside "
-            "it: [Errno 24] Too many open files\n"
+            f"ddd: cannot serve 127.0.0.1 on port 0: cannot hold [::1]:{port} beside it: "
+            "[Errno 24] Too many open files\n"
         )
 
     def test_a_socket_that_cannot_be_made_is_raised_as_the_cause(self, monkeypatch) -> None:
@@ -3579,10 +4272,9 @@ class TestIPv6Held:
         self, pages, monkeypatch, capsys
     ) -> None:
         """P19a-12: only a port another socket holds is held. A bind of the IPv6 hold's own
-        address - ``[::1]``, or ``[::]`` where the wildcard is held (ruling P19a-14) - refused
-        for any other reason, here ``EPERM`` as a security module or a cgroup's bind hook
-        answers, is no proof of another program: it refuses the start in the system's own
-        words, naming the address held, and is not retried on ``--port 0``."""
+        address, ``[::1]``, refused for any other reason, here ``EPERM`` as a security module or
+        a cgroup's bind hook answers, is no proof of another program: it refuses the start in the
+        system's own words, naming the address held, and is not retried on ``--port 0``."""
         asked: list[int] = []
 
         class NotPermitted(socket.socket):
@@ -3597,8 +4289,8 @@ class TestIPv6Held:
         assert bounded_run(None, (), 0, open_browser=False, static=pages) == EXIT_USAGE
         (port,) = asked
         assert capsys.readouterr().err == (
-            f"ddd: cannot serve 127.0.0.1 on port 0: cannot hold [{held_address()}]:{port} beside "
-            "it: [Errno 1] Operation not permitted\n"
+            f"ddd: cannot serve 127.0.0.1 on port 0: cannot hold [::1]:{port} beside it: "
+            "[Errno 1] Operation not permitted\n"
         )
 
     def test_the_hold_is_closed_though_the_ipv4_socket_will_not_close(
@@ -3633,9 +4325,10 @@ class TestIPv6Held:
         tmp_path: Path, pages: Path, monkeypatch: pytest.MonkeyPatch, *, windows: bool
     ) -> dict[str, list[tuple[Any, ...]]]:
         """What each socket of a server is given, by the address it binds: every option set on
-        it, then its bind - with both of Windows' flags set as ``windows`` says. Through a socket
-        that notes each, and sets each but Windows' own exclusive option, whose value Linux
-        refuses."""
+        it, then its bind, then its listen - with both of a system's flags, ``_EXCLUSIVE`` and
+        ``GuiServer.allow_reuse_address``, set as Windows sets them or as every other system
+        does, as ``windows`` says. Through a socket that notes each, and sets each but Windows'
+        own exclusive option, whose value Linux refuses."""
         given: dict[str, list[tuple[Any, ...]]] = {}
 
         class Noting(socket.socket):
@@ -3649,79 +4342,67 @@ class TestIPv6Held:
                     super().setsockopt(level, option, value, *rest)
 
             def bind(self, address: Any) -> None:
-                given[address[0]] = [*self.noted, ("bind",)]
+                self.noted.append(("bind",))
+                given[address[0]] = self.noted
                 super().bind(address)
 
+            def listen(self, *backlog: int) -> None:
+                self.noted.append(("listen", *backlog))
+                super().listen(*backlog)
+
         monkeypatch.setattr(module, "_EXCLUSIVE", windows)
-        monkeypatch.setattr(module, "_WILDCARD", windows)
+        monkeypatch.setattr(GuiServer, "allow_reuse_address", not windows)
         monkeypatch.setattr(socket, "socket", Noting)
         GuiServer(Api(Session(tmp_path)), pages).server_close()
         return given
 
-    @staticmethod
-    def reusing() -> list[tuple[Any, ...]]:
-        """``SO_REUSEADDR``, where ``http.server`` sets it on the socket it serves on: everywhere
-        but Windows (``test_the_windows_server_does_not_share_a_port``)."""
-        if GuiServer.allow_reuse_address:
-            return [(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)]
-        return []
-
-    def test_windows_holds_the_wildcard_alone_and_binds_both_sockets_exclusively(
+    def test_windows_binds_both_sockets_exclusively_and_listens_on_both(
         self, tmp_path, pages, monkeypatch
     ) -> None:
-        """Spec §6.2 and ruling P19a-14: on Windows the IPv6 hold is the wildcard ``[::]``, in
-        place of ``[::1]``, and both sockets take ``SO_EXCLUSIVEADDRUSE`` before their bind, so
-        that no program can share either port through ``SO_REUSEADDR``. The hold never sets
-        ``SO_REUSEADDR`` itself."""
+        """On Windows both sockets take ``SO_EXCLUSIVEADDRUSE`` before their bind, and neither
+        ``SO_REUSEADDR``, so that no program can share either port through ``SO_REUSEADDR``; and
+        the hold is ``[::1]``, as everywhere: never the wildcard ``[::]``, which would answer on
+        every IPv6 interface. Both are listened on, with the same backlog."""
         given = self.given(tmp_path, pages, monkeypatch, windows=True)
         exclusive = (socket.SOL_SOCKET, module._SO_EXCLUSIVEADDRUSE, 1)
         v6only = (socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        listened = ("listen", GuiServer.request_queue_size)
         assert given == {
-            "127.0.0.1": [exclusive, *self.reusing(), ("bind",)],
-            "::": [v6only, exclusive, ("bind",)],
+            "127.0.0.1": [exclusive, ("bind",), listened],
+            "::1": [v6only, exclusive, ("bind",), listened],
         }
 
-    def test_elsewhere_loopback_is_held_and_nothing_is_exclusive(
+    def test_elsewhere_both_sockets_reuse_their_address_and_listen_and_nothing_is_exclusive(
         self, tmp_path, pages, monkeypatch
     ) -> None:
+        """Everywhere but Windows both sockets take ``SO_REUSEADDR`` before their bind, as
+        ``http.server`` gives it the socket it serves on (ruling B7-10), and neither is
+        exclusive. Both are listened on, with the same backlog."""
         given = self.given(tmp_path, pages, monkeypatch, windows=False)
+        reusing = (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         v6only = (socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        listened = ("listen", GuiServer.request_queue_size)
         assert given == {
-            "127.0.0.1": [*self.reusing(), ("bind",)],
-            "::1": [v6only, ("bind",)],
+            "127.0.0.1": [reusing, ("bind",), listened],
+            "::1": [v6only, reusing, ("bind",), listened],
         }
 
-    def test_the_two_ipv6_holds_collide_on_both_platforms(self) -> None:
-        """Why there is one IPv6 hold on each platform (ruling P19a-14): a ``[::]`` bound as the
-        server binds its hold - on Windows, exclusively - is refused beside a ``[::1]`` bound
-        the same way. Linux refuses it so; on Windows, run 37741191678 refused the server's own
-        exclusive ``[::]`` beside its own exclusive ``[::1]`` on every start."""
-
-        def made() -> socket.socket:
-            one = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            one.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-            if module._EXCLUSIVE:
-                one.setsockopt(socket.SOL_SOCKET, module._SO_EXCLUSIVEADDRUSE, 1)
-            return one
-
-        with made() as loopback, made() as wildcard:
-            loopback.bind(("::1", 0))
-            with pytest.raises(OSError):
-                wildcard.bind(("::", loopback.getsockname()[1]))
-
-    def test_a_port_served_on_is_served_on_again_at_once(self, tmp_path, pages) -> None:
-        """A fixed ``--port`` given again the moment ``ddd gui`` stopped. Microsoft documents that
-        a port whose listening socket was bound with ``SO_EXCLUSIVEADDRUSE`` cannot be bound
-        again while a connection it accepted is still active. Here the server closes first,
-        having answered ``Connection: close`` to a client that reads to its end, so the server's
-        end of that connection waits out ``TIME_WAIT`` on the port itself - measured with ``ss``
-        on Linux, where ``SO_REUSEADDR`` is what lets the port be bound again."""
+    @pytest.mark.parametrize("address", ["127.0.0.1", "::1"], ids=["ipv4", "ipv6"])
+    def test_a_port_served_on_is_served_on_again_at_once(self, tmp_path, pages, address) -> None:
+        """A fixed ``--port`` given again the moment ``ddd gui`` stopped, after a connection to
+        either address, named ``localhost`` as a browser names both. Microsoft documents that a
+        port whose listening socket was bound with ``SO_EXCLUSIVEADDRUSE`` cannot be bound again
+        while a connection it accepted is still active. Here the server closes first, having
+        answered ``Connection: close`` to a client that reads to its end, so the server's end of
+        that connection waits out ``TIME_WAIT`` on the port itself - measured with ``ss`` on
+        Linux, where ``SO_REUSEADDR``, set on both sockets there, is what lets the port be bound
+        again (ruling B7-10)."""
         first = GuiServer(Api(Session(tmp_path)), pages)
-        asked = f"GET / HTTP/1.1\r\nHost: 127.0.0.1:{first.port}\r\nConnection: close\r\n\r\n"
+        asked = f"GET / HTTP/1.1\r\nHost: localhost:{first.port}\r\nConnection: close\r\n\r\n"
         thread = threading.Thread(target=first.serve_forever, daemon=True)
         thread.start()
         try:
-            status, _ = raw_answer(first, asked.encode("ascii"))
+            status, _ = raw_answer(first, asked.encode("ascii"), address=address)
         finally:
             first.shutdown()
             first.server_close()
@@ -3735,9 +4416,6 @@ class TestIPv6Held:
 
     def test_sockets_are_bound_exclusively_on_windows_alone(self) -> None:
         assert module._EXCLUSIVE is (sys.platform == "win32")
-
-    def test_the_wildcard_is_held_on_windows_alone(self) -> None:
-        assert module._WILDCARD is (sys.platform == "win32")
 
     def test_the_exclusive_option_is_windows_own(self) -> None:
         """``~SO_REUSEADDR`` on Windows, where ``SO_REUSEADDR`` is 4: read from the socket module

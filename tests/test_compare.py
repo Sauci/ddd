@@ -547,9 +547,19 @@ class TestAStructuredVariableIsComparedAsAVariable:
         assert "cannot replace" in report
 
     @staticmethod
-    def limited(tree: Path, name: str, top: int, kind: str) -> Any:
-        """``X``, of a structure whose one member is limited to 0 .. ``top``, written by ``A`` and
-        read by ``B``."""
+    def limited(
+        tree: Path,
+        name: str,
+        top: int,
+        *,
+        scope: str = "output",
+        type_name: str = "S_t",
+        leading: tuple[dict[str, Any], ...] = (),
+        **declaration: Any,
+    ) -> Any:
+        """``X``, of a structure whose member ``v`` is limited to 0 .. ``top``, written by ``A``
+        and read by ``B``; ``scope``, ``type_name``, ``leading`` (members ahead of ``v``) and the
+        rest of the declaration, which both components state, are what a test changes."""
         member = value_member("v", "uint8", limits={"min": 0, "max": top})
         write_tree(
             tree,
@@ -557,12 +567,12 @@ class TestAStructuredVariableIsComparedAsAVariable:
                 f"{name}.ddd.json": project(
                     "P", f"{name}-t.ddd.json", f"{name}-a.ddd.json", f"{name}-b.ddd.json"
                 ),
-                f"{name}-t.ddd.json": types(struct_type("S_t", member)),
+                f"{name}-t.ddd.json": types(struct_type(type_name, *leading, member)),
                 f"{name}-a.ddd.json": component(
-                    "A", declare("output", "X", typename="S_t", kind=kind)
+                    "A", declare(scope, "X", typename=type_name, **declaration)
                 ),
                 f"{name}-b.ddd.json": component(
-                    "B", declare("input", "X", typename="S_t", kind=kind)
+                    "B", declare("input", "X", typename=type_name, **declaration)
                 ),
             },
         )
@@ -571,20 +581,60 @@ class TestAStructuredVariableIsComparedAsAVariable:
     @pytest.mark.parametrize(
         "top", [pytest.param(200, id="widened"), pytest.param(50, id="narrowed")]
     )
-    def test_a_members_limits_are_held_back_beside_its_variables_changed_kind(
+    @pytest.mark.parametrize(
+        ("before", "changed", "spelled"),
+        [
+            pytest.param({}, {"kind": "parameter"}, "kind: parameter != measurement", id="kind"),
+            pytest.param(
+                {"kind": "parameter"},
+                {"kind": "measurement"},
+                "kind: measurement != parameter",
+                id="kind-to-measurement",
+            ),
+            pytest.param({}, {"scope": "local"}, "local: true != false", id="locality"),
+            pytest.param({}, {"type_name": "T_t"}, "type: 'T_t' != 'S_t'", id="type"),
+            pytest.param({"dimensions": [2]}, {"dimensions": [3]}, "shape: [3] != [2]", id="shape"),
+            pytest.param(
+                {},
+                {"leading": (value_member("w", "uint8"),)},
+                "members of S_t: w, v != v",
+                id="layout",
+            ),
+        ],
+    )
+    def test_a_members_limits_are_held_back_beside_every_change_to_its_variables_interface(
+        self, tree: Path, top: int, before: dict[str, Any], changed: dict[str, Any], spelled: str
+    ) -> None:
+        """What the variable states is compared at the variable, and the limits of its member
+        that moved beside a change to its kind, whether it is local, its type, its shape or
+        where its members lie are not said, as a plain object's are not beside its own changed
+        interface: the interface change is the finding to act on, and graded by the kind the
+        variable had, a measurement turned into calibration data would be told as a
+        measurement's limits."""
+        old = self.limited(tree, "old", 100, **before)
+        new = self.limited(tree, "new", top, **changed)
+        bag = verdict(old, new)
+        assert "changed-interface" in checks(bag), messages(bag)
+        assert f"'X' is not the same object any more ({spelled}), read by B" in messages(bag)
+        assert not {"widened-limits", "narrowed-read-limits", "narrowed-limits"} & set(
+            checks(bag)
+        ), messages(bag)
+
+    @pytest.mark.parametrize(
+        "top", [pytest.param(200, id="widened"), pytest.param(50, id="narrowed")]
+    )
+    def test_a_members_limits_are_told_beside_a_change_to_its_variable_that_is_not_interface(
         self, tree: Path, top: int
     ) -> None:
-        """The kind is compared at the variable, and the limits of its member that moved beside
-        it are not said, as a plain object's are not beside its own changed kind: the interface
-        change is the finding to act on, and graded by the kind the variable had, a measurement
-        turned into calibration data would be told as a measurement's limits."""
-        old = self.limited(tree, "old", 100, "measurement")
-        new = self.limited(tree, "new", top, "parameter")
+        """A variable turned off ``volatile`` is storage, and a member's limits are said beside
+        it: only an interface change takes them in."""
+        old = self.limited(tree, "old", 100, volatile=True)
+        new = self.limited(tree, "new", top, volatile=False)
         bag = verdict(old, new)
-        assert checks(bag) == ["changed-interface"], messages(bag)
-        assert "'X' is not the same object any more (kind: parameter != measurement)" in (
-            messages(bag)
-        )
+        assert checks(bag) == [
+            "changed-storage",
+            "widened-limits" if top > 100 else "narrowed-read-limits",
+        ], messages(bag)
 
     def test_a_variable_produced_by_another_component_is_reported_once(
         self, tree: Path, capsys: pytest.CaptureFixture[str]
@@ -1244,7 +1294,8 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
         self, tree: Path
     ) -> None:
         """Where a cycle is closed depends on where its walk starts, which is the first of its
-        structures by name on either side, and never the order they are listed in."""
+        structures by name that enters it on either side, and never the order they are listed
+        in."""
         cycle = (
             self.holding("Rec_t", "A_t"),
             self.holding("A_t", "B_t"),
@@ -1255,6 +1306,37 @@ class TestTheLayoutOfAStructuredVariableIsInterface:
         )
         assert checks(verdict(looped, looped)) == []
         assert checks(verdict(self.listed_backwards(looped), looped)) == []
+
+    def test_a_cycle_entered_from_a_structure_another_walk_laid_out_closes_where_it_began(
+        self, tree: Path
+    ) -> None:
+        """The walk starts at each structure in name order and skips one an earlier walk laid
+        out, so a cycle is closed where the first structure of it by name closes it, even when
+        the structure that holds the variable reaches it by another way in. Walking ``B_t`` again
+        for ``Rec_t``'s sake would close the cycle at ``A_t`` instead, and a member added to
+        ``A_t`` would be told as the variable's changed interface, which the member closing a
+        cycle never holds."""
+        cycle = (
+            self.holding("Rec_t", "B_t"),
+            self.holding("A_t", "B_t"),
+            self.holding("B_t", "A_t"),
+        )
+        grown = (
+            cycle[0],
+            ResolvedStruct(
+                name="A_t",
+                members=(
+                    ResolvedMember(name="m0", type="B_t"),
+                    ResolvedMember(name="w", datatype=Datatype.UINT16),
+                ),
+            ),
+            cycle[2],
+        )
+        base = self.delivery(tree, "old", rec_t(*members_named("a")))
+        old = base.model_copy(update={"types": cycle})
+        new = base.model_copy(update={"types": grown})
+        assert checks(verdict(old, old)) == []
+        assert checks(verdict(old, new)) == [], messages(verdict(old, new))
 
     def test_a_structure_nesting_another_twice_at_each_level_is_laid_out_once(
         self, tree: Path

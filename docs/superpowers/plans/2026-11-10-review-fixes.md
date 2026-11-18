@@ -1456,14 +1456,14 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **Fingerprints across several build records** (task 3): a file several runs read takes the
   fingerprint of the first run that read it, not the index's run, so a file saved and put back
   between two runs can carry the fingerprint of bytes other than the index's; several records
-  only, and rare. Branch 7 and branch 10 list `gui/session.py`.
+  only, and rare. Branch 10 lists `gui/session.py` (R110).
 - **A generated project left unrecognised** (task 4): a record that does not parse is read as no
   record, and `ddd build-info --output` writes one unstaged, so a write that dies can leave it
   half written; and a build configured at another path, a container's mount, names a project the
   path opened does not match. Either can leave a generated description editable. An empty
   `CMAKE_HOME_DIRECTORY` reads as the working directory besides: the description's own directory
   is refused all the same, and only how much of the build tree around it is refused changes.
-  Branch 7 and branch 10 list `gui/session.py`, branch 12 `cli.py`.
+  Branch 10 lists `gui/session.py` (R110), branch 12 `cli.py`.
 - **An existing description added to a generated project** (task 4): is refused without the
   `ddd_add_component()` line a new file is offered with. Branch 10 lists `gui/*.py`.
 - **The editor's own id fix** (tasks 6 and 10): the language server places an id with
@@ -1505,8 +1505,8 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **A misdirected undo, and a print that fails** (task 12): a second window's undo of an entry no
   longer on top is refused `stale` and asks for a whole analysis; and the line printed for an
   analysis that failed on a refusing request raises where stderr cannot be written, replacing the
-  `409` with a `500`, which the analyser's own thread suppresses. Branch 7 and branch 10 list
-  `gui/session.py`.
+  `409` with a `500`, which the analyser's own thread suppresses. Branch 10 lists
+  `gui/session.py` (R110).
 - **One case the threat model sets aside** stays as `docs/gui_security.rst` draws that model. No
   branch owns it.
 
@@ -1689,10 +1689,15 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
   value in a dumped baseline; the message of a condition replaced on an object nobody reads; and,
   in `tests/test_compare_deliveries.py`, a `tmp_path` and a `capsys` nothing uses and a module
   imported in the body of a test. Branch 16 lists `tests/*`.
-- **The cost of reading a float** (task 4; R93): the loader takes the mantissa of every float
-  literal to tell a non-zero one that reads as 0, about 0.073 s against 0.028 s over 500,000
-  floats, where taking it only for a value that reads as 0 would cost nothing. Branch 13 lists
-  `loading.py`.
+- **The cost of reading a float** (task 4; R93): the loader reads every float literal through a
+  Python hook, `_read_float`, which takes the mantissa to tell a non-zero literal that reads as 0
+  from a zero. The gap is the hook against the C reader alone, and the mantissa is part of it
+  only. Over 500,000 floats (`json.loads` of one document, the best of five; first the re-review's
+  run, then D0's): the C reader alone 0.069 s and 0.069 s, a `parse_float=float` of no more than
+  the C reader's own 0.068 s, `_read_float` 0.119 s and 0.120 s, and a hook that takes the mantissa
+  when a value reads as 0, and at no other time, at 0.096 s and 0.096 s. Taking the mantissa only at 0 would
+  recover about half the gap, 0.024 s of 0.051 s, and leave the rest to the Python call every
+  literal still makes. Branch 13 lists `loading.py` and starts from half.
 - **A member that states `export: false`** (D0): the sentences D0 corrected on what the a2l
   checks hold put a condition on skipping such a member, which is always skipped, nothing naming
   a member from outside. Branch 13 lists `consistency_checks.rst`, branch 15 the other pages.
@@ -1706,6 +1711,74 @@ Recorded as each branch lands, so that nothing is lost between a task and the re
 - **An example plugin's account of `changed-interface`** (task 1): `examples/plugins/ddd_layout.py`
   describes what the check compares as a part of it. No branch lists the example plugins, so it is
   the maintainer's.
+
+**Branch 7:**
+- **Whether repairing a description's schema may let the plugins it names run** (task 1, `12:I2`;
+  R124): an edit cannot change which plugins the project's descriptions name, and a description
+  that does not load runs none of those it names, whichever way an edit leaves it. Whether an edit
+  that lets one load may so turn its plugins on is the maintainer's call under decision M7; were
+  the guard to read every changed document the loader's way instead, it would be branch 10's,
+  which lists `gui/*.py`.
+- **Whether the token should run what other projects and baselines name** (task 1, `12:I2`;
+  R124): the token may open a project the start page offers, or compare against a baseline under
+  the directory `ddd gui` was started in, and either runs the plugins its descriptions name, as
+  the security page says. A design question beyond decision M7's edit, so the maintainer's.
+- **The plugins guard's corners** (task 1; R113): an undo writes back only what an edit left, and
+  `restore` refuses a file changed since, but it asks no plugins refusal of its own; the walk has
+  no depth cap, where the loader stops at 64, and a `MemoryError` or a `RecursionError` in it is
+  answered `500`, failing closed, which `_read_json`'s comment and a test's docstring leave
+  unsaid; and a reorder of `includes`, allowed, reorders the plugins the included descriptions
+  name, as `_plugins_named`'s docstring says. Branch 10 lists `gui/*.py`.
+- **Three readings of `includes`** (task 1): `_plugins_named` and `_includes_of` are nearly one
+  function written twice, and `_named_by` reads `includes` a third way. Branch 14, which moves
+  code across `src/ddd/`, or branch 10, which lists `gui/*.py`.
+- **The create rule inside the plugins refusal** (task 1; R103, R111): what kind a created file
+  is, and that it is named `*.ddd.json`, are judged inside `_refuse_plugins`, whose call from the
+  Files plan keeps its `plugins` refusal alone. No plan names another, so nothing turns on it, but
+  the rule belongs beside `_creatable` or `_confined`. Branch 10 lists `gui/*.py`.
+- **The Files tab's `plugins` refusal on the screenshots** (task 1; R112): the tab can now show a
+  plan's `plugins` refusal, which no reference screenshot shows. Branch 11 lists
+  `gui/screenshots/references/`, or the pull request says so in a sentence.
+- **The directories a record is read under** (task 2, `12:I4`; R114): the builds that feed an open
+  project read a record under the start directory alone, and the record of how it is generated
+  under the project's own directory too, so a project given on the command line, from a network
+  share outside the start directory, is fed by none of its builds, though a request may name its
+  path; `_readable_project`'s docstring says so. Passing the project's own directory to the feed
+  too is branch 10's, which lists `gui/*.py`.
+- **A description's suffix and its case** (task 2): the record filter and the walk for
+  descriptions compare `.ddd.json` case-sensitively, where the create rule and the loader's
+  extension check do not, and `DESCRIPTION_SUFFIX` repeats `loading.DDD_SUFFIX`. Branch 14's
+  task 4 compares extensions without regard to case everywhere, the GUI included.
+- **The signed-out view after a launch code presented again** (task 4, `12:I3`; R125): the page,
+  signed out, tells the reader to open the address `ddd gui` printed, this run's, where the
+  terminal's line then says to start `ddd gui` again and open the address it prints then.
+  Branch 11 lists `components/*`.
+- **What `--host 0.0.0.0` costs a container on several networks** (task 5, `9:M8`; R106): a
+  container's user who named one of its interfaces gives `0.0.0.0`, which listens on every network
+  the container is attached to, wider than the interface chosen, as the changelog says. The plan
+  takes pass 9's change, so whether `--host` should take a container's own interface is the
+  maintainer's.
+- **The messages beside `--host`** (task 5, `9:M8`; R106): what `ddd gui` says of its `-b` and of
+  a project it is given sits beside `--host` in `cli.py`. Branch 12 lists `cli.py`.
+- **The standard library's refusals close with bytes unread** (task 5, `12:M7`): its own refusals
+  of a request `ddd gui` cannot read close without reading what follows, so on Windows a reset can
+  lose one before the browser reads it, where the refusals `ddd gui` writes itself read the rest
+  first. Branch 10 lists `gui/*.py`.
+- **A test's server takes up to half a second to stop** (task 3; R126): the serving loop reads its
+  stop only when `select` returns, as `socketserver`'s loop did, so every server-backed test waits
+  up to the poll interval as it ends; a wake-up the selector watches would end it at once.
+  Branch 16, whose task 6 makes the short loop, owns it.
+- **The walk's Windows stand-in** (task 5, `12:M1`): its `strict` branch is never taken. Branch 16
+  lists `tests/*`.
+- **A member's kind hold** (D0): it rests on the member's instance being paired, which every case
+  built here meets, a leaf's identity being its instance's id and its path below. No later branch
+  lists `compare.py`, so it is the maintainer's, or branch 16's for a probe.
+- **Lines past 100 columns** (D0): D0's rewordings run lines of SPEC's section 4.1, of the
+  comparing page and of the check reference past 100 columns, beside branch 6's entry on the
+  comparison's words. Branch 15 lists the pages.
+- **Two notes the page's gates print** (task 3; R119): Vite's warning on a chunk's size and a
+  deprecation biome reports, both from before the branch, and no task names them. The
+  maintainer's.
 
 ## Rulings taken
 
@@ -2223,10 +2296,129 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
   was read where the baseline records a consumer: a component file records no reader of its
   outputs, so a grade waiting for one could never be given. Renamed, such an output is
   `renamed-read-object`, given a condition `narrowed-condition`, turned `volatile`
-  `changed-interface`, and its limits widened are `widened-limits` and narrowed
+  `changed-interface`, and a measurement's limits widened are `widened-limits` and narrowed
   `narrowed-read-limits`, each message saying the readers are not known; a local object and an
   input keep their grades. The price is a supplier's gate that stops on a change to an output
   nobody in the whole project reads.
+
+**Branch 7:**
+- **R102.** Branch 7 runs a D0 first, the residuals branch 6's re-review left and its row of the
+  progress log, then tasks 1 to 5 in order, then its changelog as D1 (R4), then the whole-branch
+  review and one final wave, the order of branches 2 to 6 (R27, R42, R61, R73, R87).
+- **R103.** Task 1 holds a file an edit creates to a description's kind as well, the kind
+  `session.edit`'s docstring names, beside the project description and included by the edit's own
+  change of it, and refuses any other before a file is touched (ruling B7-1): decision M7's
+  promise is kept only if it covers every file an edit writes, a created one among them. The cost
+  falls on an edit creating a file of another kind, which none of the page's flows writes.
+- **R104.** Task 3 listens on `[::1]` on every system, beside the IPv4 socket and on its port, and
+  answers there as on `127.0.0.1`, through the one gate, and signed out until the printed address
+  is opened there (ruling B7-2). Part 19a's hold goes (P19a-14), since a listening `[::]` would
+  answer for `ddd gui` on each IPv6 interface, and the journey of `localhost` has its comments
+  brought to the change, though outside the Files list, by R100's rule that a changed rule reaches
+  every home. 12:I1's own trigger stays the maintainer's (*Not in any branch*).
+- **R105.** No test of branch 7 binds anything but loopback, `127.0.0.1` or `[::1]` - no wildcard,
+  no other host - and none names a network path except to loopback or opens a Windows device
+  unbounded (ruling B7-3), so that a regressing fix fails instead of hanging or reaching the
+  network. Every host beyond loopback, and 12:I1's own trigger, are the maintainer's (*Not in any
+  branch*). The cost: a test may prove a refusal by what it is given rather than by reaching what
+  it refuses.
+- **R106.** 9:M8 takes pass 9's change (ruling B7-4), so that a `--host` other than `127.0.0.1`,
+  `0.0.0.0` or a name resolving to either is refused before anything binds, saying what to give
+  instead. A container's user who named one of its own interfaces gives `0.0.0.0` instead, which
+  in a container attached to several networks listens on all of them; the final wave puts that
+  cost in the changelog, and weighing it is the maintainer's (*Left open*, branch 7). What
+  `ddd gui` says of its `-b` and of a project it is given, beside `--host` in `cli.py`, is branch
+  12's.
+- **R107.** 12:M2 says what the directories `ddd gui` serves guard - `GET /api/file`'s reads, and
+  the files an edit writes and a plan previews, each named by its path - rather than making them
+  a bound on what an analysis reads (ruling B7-5): decision M7 settled pass 12's open question by
+  refusing an edit of a `plugins` list. A reader learns the guard's limit instead of gaining a
+  boundary.
+- **R108.** 12:M3's long poll waits a second at a time and gives its connection back once its
+  client has gone, rather than the page's sentence on it being corrected (ruling B7-6): the
+  sentence states the design. It costs the long poll more code than a sentence would.
+- **R109.** Branch 7's commit messages and its pull request, under decision M4, say what changed,
+  by finding id, and so do the changelog's entries, the pages, and the names and docstrings of
+  the tests: each tells what `ddd gui` now does, and what a person meets of it, and never how a
+  weakness was reached, the input that reached it or what was measured of it (ruling B7-7). The
+  changelog says less of why.
+- **R110.** The three entries of branch 1 under *Left open* that named `gui/session.py` for branch
+  7 as well as branch 10 are branch 10's alone (ruling B7-8): branch 7 is pass 12's alone under
+  decision M4, while branch 10's list, `gui/*.py`, holds an edit's plan and the session's undo.
+  They wait three branches more.
+- **R111.** Task 1 reads ruling B7-1 as a rule on the name too (ruling B7-9): a file an edit
+  creates is named `*.ddd.json`, `loading.DDD_SUFFIX`, as each create flow of the page names one,
+  besides being of a description's kind, since `kind_of` tells a file not named as a plugin by its
+  content alone, and some systems run a file because of its name. A description given another
+  name, which none of the page's flows writes, is refused.
+- **R112.** `GET /api/files-plan` asks the edit's own plugins refusal where it asks `generated`,
+  so the Files tab refuses, `409 plugins`, a plan whose Apply would be refused, before the reader
+  presses: a plan offering what its Apply refuses would mislead. The page's words for that
+  refusal, and the screenshots that would show it, are branch 11's (*Left open*, branch 7).
+- **R113.** A reorder of `includes` stays allowed, bringing in and dropping nothing, though it
+  reorders the plugins the included descriptions name, where a reorder of one `plugins` list is
+  refused; the final wave says so on `_plugins_named`. The walk over what an includes change
+  brings in or drops reads under the session's lock, as its docstring says, so such a change
+  alone holds other requests while it reads.
+- **R114.** Task 2 reads a build record's `project` by one rule in each of its readers - the start
+  page's listing, the builds that feed an open project, and the record of how a project is
+  generated - since DDD itself writes no record naming anything but a `*.ddd.json` project, while
+  a record the rule refuses names no project a request could open. One opened by a path the rule
+  refuses, from the command line, opens, but its records' severities do not apply to it, as the
+  changelog says; the directories each reader allows are under *Left open* (branch 7).
+- **R115.** Task 2's commit message, unpushed, said how its finding was reached, so the controller
+  reworded that message alone, its tree the same (`6393102c`), against "never `--amend`":
+  decision M4 binds branch 7's messages, and nothing pushed was rewritten (R34, R57, R62).
+- **R116.** The `[::1]` listener sets `SO_REUSEADDR` wherever the IPv4 listener does, which is
+  every system but Windows, where both keep `SO_EXCLUSIVEADDRUSE` (ruling B7-10): without it a
+  fixed `--port` could not be listened on again for a while after a connection the server
+  closed, and the refusal would blame another program. What it costs, in the moment between the
+  listener's bind and its listen, is benign.
+- **R117.** Ruling B7-3 forbids a listener beyond loopback, and not a program that binds the IPv6
+  wildcard with `IPV6_V6ONLY` set and never listens (ruling B7-11): the suite's programs on `[::]`
+  come back beside the listener, each asserting what each system does, and where no run had shown
+  it, the refusal, for CI's Windows legs to settle. A bind that never listens serves nothing, and
+  they are part 19a's tests that no other program holds the wildcard at the port.
+- **R118.** Task 3's test of a program already on the IPv6 wildcard asserts what each system does,
+  as CI's Windows legs showed it, and the page's sentence on a fixed port names what refuses the
+  start on every system, a program listening on `[::1]` at that port; carried into task 3's round
+  beside its review's findings, one agent at a time.
+- **R119.** D1 replaces part 19a's changelog entry on the hold with branch 7's entry on `[::1]`, so
+  that a reader meets one entry on it, without its sentence on a fixed port held there. Two notes
+  the page's gates print, a warning of Vite's on a chunk's size and a deprecation biome reports,
+  come from before the branch and stay (*Left open*, branch 7).
+- **R120.** Task 5's commit for 12:M5 named, in its subject and body, the input that reached its
+  weakness, so before the push the controller rebuilt it and the three unpushed commits after it
+  with `git commit-tree`, each on its own tree, as `be7ee189`, `479af8a4`, `41cc5b02` and
+  `b17c1e8e` (ruling B7-12): the final tree is the same, so the gates stand, and the test name and
+  the two test docstrings naming that input were reworded in task 5's round. Against "never
+  rebase": nothing pushed was rewritten, and the originals stay in the local reflog.
+- **R121.** Task 5's round has the test that hung on python 3.12, of a request the standard
+  library refuses, close its client's sending side once the request line is sent, where a further
+  blank line could have been sent instead: bytes the server has not read when it closes can make
+  the close a reset, the reason `ddd gui` reads a refused `POST`'s body to its end.
+- **R122.** A source comment or a code docstring may say what the code does with an input it
+  refuses: ruling B7-7 holds the messages, the pull request, the changelog and the pages to it,
+  with the names and docstrings of the tests, and the code may say more than they do.
+- **R123.** D1's commit, unpushed, broke ruling B7-7 in its first entry, so before the push it and
+  its round's fix were joined by `git commit-tree` into one commit on `02a94de1`, `bbbdf781`, whose
+  tree is the fix's, and the first wording never reached the history (ruling B7-13), as R120
+  reasons.
+- **R124.** The final wave narrows what the branch says rather than the guard: the token names no
+  new code, an edit cannot change which plugins the project's descriptions name, and what the
+  token can run is what descriptions already name - the open project's, and those of a project the
+  start page offers or a baseline under the directory `ddd gui` was started in - in every home of
+  the rule. Reading every changed document the loader's way, and whether the token should run
+  what those other projects name, stay under *Left open* (branch 7).
+- **R125.** The final wave has the terminal's line for a launch code presented again say that
+  nothing more is needed only where the browser `ddd gui` opened landed on the project, and
+  otherwise to start `ddd gui` again and open the address it prints then, since this run's
+  address does not take the token back. What the signed-out view says is branch 11's (*Left
+  open*, branch 7).
+- **R126.** The final wave leaves four of the whole-branch review's points to later branches, each
+  under *Left open* (branch 7): one set of directories for a record's readers, and the create
+  rule's place, to branch 10; a description's suffix compared without regard to case, to branch
+  14's task 4; and a test's server that takes up to half a second to stop, to branch 16.
 
 ## Progress log
 
@@ -2235,8 +2427,9 @@ Every departure from a task's text, with its reason, numbered `R1`, `R2`, and so
 | 1, `fix/edit-engine` | #84 | 2026-11-15, into master (`ac0fb9b0`) | Its four Criticals and the edit engine's Importants; the re-review's residuals carried into branch 2's D0 |
 | 2, `fix/build-integration` | #85 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `9:C1` and `1:C2`, every stale build of the review, and the module's guards; the re-review's residuals carried into branch 3's D0 |
 | 3, `fix/gui-values` | #86 | 2026-11-15, into its stacked base; reached master through #87 (`7d1ff765`) the same day | `3:C1` and `15:C1`, what the page writes when a person types, picks or pastes a value; the re-review's residuals carried into branch 4's D0 |
-| 4, `fix/elf-and-addresses` | #88 | not merged | Its Critical (`11:C1`) and what the branch covers: what is read from a linked image, and where an address comes from; the re-review's residuals carried into branch 5's D0; task 6a's four Importants, 8b and 6b stay with the maintainer after two safety stops |
-| 5, `fix/generated-artefacts` | #89 | not merged | Its Critical (`1:C1`) and what the branch covers: what the C and a2l writers produce, and the option that made the C undefined; the re-review's residuals carried into branch 6's D0; branch 2's four *Left open* entries that named its Files list are now the maintainer's, it having taken none of them |
+| 4, `fix/elf-and-addresses` | #88 | 2026-11-17, into master (`287f9d0b`) | Its Critical (`11:C1`) and what the branch covers: what is read from a linked image, and where an address comes from; the re-review's residuals carried into branch 5's D0; task 6a's four Importants, 8b and 6b stay with the maintainer after two safety stops |
+| 5, `fix/generated-artefacts` | #89 | 2026-11-17, into its stacked base (`1883c717`); not on master yet | Its Critical (`1:C1`) and what the branch covers: what the C and a2l writers produce, and the option that made the C undefined; the re-review's residuals carried into branch 6's D0; branch 2's four *Left open* entries that named its Files list are now the maintainer's, it having taken none of them |
+| 6, `fix/comparison-verdicts` | #90 | not merged | Its two Criticals (`1:C3`, `7:C1`) and what the branch covers: whether a delivery can replace another, for readers that may be precompiled (decision M1); the re-review's residuals carried into branch 7's D0 |
 
 ## Self-review
 

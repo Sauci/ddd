@@ -110,10 +110,11 @@ What it defends against
   does by default, ``ddd gui`` listens on ``[::1]`` too, on the very same port, and answers
   there as it answers on ``127.0.0.1``: ``localhost`` is ``ddd gui`` itself, whichever of
   the two a browser tries, signed out until the address it printed is opened there. No
-  other program can bind ``[::1]`` at that port: on Windows, ``ddd gui`` binds both
+  other program can listen on ``[::1]`` at that port: on Windows, ``ddd gui`` binds both
   addresses exclusively (``SO_EXCLUSIVEADDRUSE``). A fixed ``--port`` another program
-  already holds on IPv6 is refused before ``ddd gui`` starts, naming the port; left to the
-  system, ``--port 0`` tries another port instead. None of this is tested on macOS.
+  already listens on at ``[::1]`` is refused before ``ddd gui`` starts, naming the port;
+  left to the system, ``--port 0`` tries another port instead. None of this is tested on
+  macOS.
 
 What it trusts
 --------------

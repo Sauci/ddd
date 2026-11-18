@@ -94,18 +94,18 @@ def test_the_page_says_localhost_is_ddd_gui_whichever_address_a_browser_tries() 
     )
 
 
-def test_the_page_says_no_other_program_can_bind_ipv6_loopback_at_the_port() -> None:
+def test_the_page_says_no_other_program_can_listen_on_ipv6_loopback_at_the_port() -> None:
     assert (
-        "No other program can bind ``[::1]`` at that port: on Windows, ``ddd gui`` binds both "
-        "addresses exclusively (``SO_EXCLUSIVEADDRUSE``)." in _prose()
+        "No other program can listen on ``[::1]`` at that port: on Windows, ``ddd gui`` binds "
+        "both addresses exclusively (``SO_EXCLUSIVEADDRUSE``)." in _prose()
     )
 
 
-def test_the_page_says_a_fixed_port_held_on_ipv6_is_refused_naming_it() -> None:
+def test_the_page_says_a_fixed_port_listened_on_at_ipv6_loopback_is_refused_naming_it() -> None:
     assert (
-        "A fixed ``--port`` another program already holds on IPv6 is refused before ``ddd gui`` "
-        "starts, naming the port; left to the system, ``--port 0`` tries another port "
-        "instead." in _prose()
+        "A fixed ``--port`` another program already listens on at ``[::1]`` is refused before "
+        "``ddd gui`` starts, naming the port; left to the system, ``--port 0`` tries another "
+        "port instead." in _prose()
     )
 
 

@@ -3492,20 +3492,41 @@ class TestIPv6Held:
             f"localhost:{port} may reach it"
         )
 
-    def test_a_program_already_on_the_ipv6_wildcard_refuses_the_start(
+    def test_after_a_program_bound_the_ipv6_wildcard_ddd_gui_refuses_to_start_or_answers_localhost(
         self, tmp_path, pages
     ) -> None:
-        """The other address: a program bound on the wildcard ``[::]``, ``IPV6_V6ONLY`` and
-        never listened on, before the server starts on that port. The server's own ``[::1]`` is
-        refused beside it, on Linux and, bound exclusively, on Windows. The refusal names the
-        port, and no address: the program holds ``[::]``, and the server tried ``[::1]``."""
+        """The other address: a program bound on the wildcard ``[::]`` before ``ddd gui`` starts
+        on that port, ``IPV6_V6ONLY`` and never listened on, and what each system makes of it.
+        On Linux the server's own ``[::1]`` is refused beside it, and the refusal names the port
+        and no address: the program holds ``[::]``, and the server tried ``[::1]``. On Windows
+        the exclusive ``[::1]`` binds beside it, as CI run 44242978861 found on 3.12, 3.13 and
+        3.14, and listens, and a request to ``[::1]`` made while the program stays bound is
+        answered by ``ddd gui`` itself. Whatever happens, a server started here is closed."""
         port = free_port()
-        with holding(port, "::"), pytest.raises(module.IPv6HeldError) as refused:
-            GuiServer(Api(Session(tmp_path)), pages, port)
-        assert str(refused.value) == (
-            f"another program holds port {port} on IPv6, where a browser opening "
-            f"localhost:{port} may reach it"
-        )
+        api = Api(Session(tmp_path))
+        with holding(port, "::"):
+            if sys.platform != "win32":
+                with pytest.raises(module.IPv6HeldError) as refused:
+                    GuiServer(api, pages, port).server_close()
+                assert str(refused.value) == (
+                    f"another program holds port {port} on IPv6, where a browser opening "
+                    f"localhost:{port} may reach it"
+                )
+                return
+            server = GuiServer(api, pages, port)
+            serving_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            serving_thread.start()
+            try:
+                assert server.held is not None
+                assert server.held.getsockname()[:2] == ("::1", port)
+                assert server.held.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+                asked = f"GET / HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n"
+                answered = raw_answer(server, asked.encode("ascii"), address="::1")
+                assert answered == (200, b"stand-in")
+            finally:
+                server.shutdown()
+                server.server_close()
+                serving_thread.join(10)
 
     def test_a_fixed_port_held_on_ipv6_is_refused_naming_it(
         self, pages, monkeypatch, capsys

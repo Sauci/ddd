@@ -27,7 +27,7 @@ this one trusts nothing it did not hand out itself:
 * on loopback, ``[::1]`` is listened on too, beside the IPv4 socket on the very same port, and
   answered as it is. So ``localhost`` is this server itself, whichever of the two addresses a
   browser tries, signed out until the address it printed is opened there, and no other program
-  can bind ``[::1]`` at that port;
+  can listen on ``[::1]`` at that port;
 * a ``POST`` refused before its body is read has that body read and thrown away, at most
   1,048,576 bytes of it, rather than left unread; where its length cannot be read this way, the
   connection closes behind the answer instead, draining until the client closes, two seconds
@@ -317,8 +317,8 @@ def _held_beside(host: str, port: int) -> socket.socket | None:
     """The IPv6 hold: ``[::1]``, bound on ``port`` beside a loopback ``host`` and listened on,
     on every system, for :meth:`GuiServer.serve_forever` to answer as it answers the IPv4 socket
     (12:I1, ruling B7-2). A browser opening ``localhost`` may try ``[::1]`` first, and so
-    reaches this server itself, and no other program can bind ``[::1]`` at that port. Never the
-    wildcard ``[::]``, which would answer on every IPv6 interface of the computer.
+    reaches this server itself, and no other program can listen on ``[::1]`` at that port. Never
+    the wildcard ``[::]``, which would answer on every IPv6 interface of the computer.
 
     ``None`` where nothing need or can be held: a host beyond loopback, or where the system says
     there is no IPv6 loopback - ``EAFNOSUPPORT`` making the socket, ``EADDRNOTAVAIL`` binding
@@ -335,7 +335,8 @@ def _held_beside(host: str, port: int) -> socket.socket | None:
     lets a port be bound through the ``TIME_WAIT`` of a connection this server closed first only
     when both sockets set it, and shares no port a socket listens on, whatever the other sets:
     so a fixed ``--port`` is held again the moment ``ddd gui`` starts again, and still no stranger
-    binds ``[::1]`` beside the hold. Listened on with the backlog the IPv4 socket listens with."""
+    can listen on ``[::1]`` beside the hold. Listened on with the backlog the IPv4 socket listens
+    with."""
     if not is_loopback(host):
         return None
     try:

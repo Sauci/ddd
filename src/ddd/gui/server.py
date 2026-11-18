@@ -137,6 +137,20 @@ HTTP_PORT: Final = 80
 ``Host`` and the ``Origin`` it sends: ``ddd gui --port 80`` prints its address without it, and
 takes the host without it for its own (12:M4)."""
 
+SERVED_ON: Final = ("127.0.0.1", "0.0.0.0")
+"""The addresses ``ddd gui`` listens on, a ``--host`` resolving to one of them (12:M5, 9:M8):
+loopback's ``127.0.0.1``, the default, and the wildcard ``0.0.0.0``, every interface, which a
+container needs to answer its host. Any other is refused before anything binds: the address
+``ddd gui`` prints names ``127.0.0.1`` (:attr:`GuiServer.address`), and it answers a request
+naming ``127.0.0.1`` or ``localhost`` alone (:meth:`_Handler._own_hosts`), so on any other
+interface of its own it would answer nobody."""
+
+_HOSTS_TAKEN: Final = (
+    "give --host 127.0.0.1, the default, to answer this computer alone, or --host 0.0.0.0 to "
+    "answer a container's host, its port published on the host's loopback"
+)
+"""What every refusal of a ``--host`` ends with: the two it takes (:data:`SERVED_ON`)."""
+
 _SO_EXCLUSIVEADDRUSE: Final[int] = getattr(socket, "SO_EXCLUSIVEADDRUSE", -5)
 """Windows' own option, which typeshed declares on win32 alone, so read rather than named for mypy
 on every platform; -5 is its value there, ``~SO_REUSEADDR``. Used only where :data:`_EXCLUSIVE`."""
@@ -556,8 +570,9 @@ class GuiServer(ThreadingHTTPServer):
         this computer, it reaches the process when ``host`` is ``127.0.0.1`` itself or
         ``0.0.0.0`` - every interface, loopback included - and not when ``host`` names one
         interface that is neither, such as ``127.0.0.2`` or a specific address of a network
-        this computer is also on: that interface alone answers, and this is a different one.
-        On :data:`HTTP_PORT` it names no port, as a browser would not (:attr:`origin`).
+        this computer is also on: that interface alone answers, and this is a different one,
+        which is why ``run`` refuses any host but those two (:data:`SERVED_ON`). On
+        :data:`HTTP_PORT` it names no port, as a browser would not (:attr:`origin`).
         """
         return f"{self.origin}/open?token={self.token}"
 
@@ -1060,12 +1075,27 @@ def run(
     # raise past every usage-error handler - a bare TypeError, exit 1 with a traceback -
     # where getaddrinfo instead raises a UnicodeEncodeError (a ValueError) or a gaierror (an
     # OSError), both ordinary usage errors.
+    #
+    # The empty host names no address: refused before anything resolves it, whatever a system
+    # would answer for it, as any host is refused that resolves to neither address ddd gui
+    # listens on (12:M5, 9:M8) - before anything binds, and before the session starts.
+    if not host:
+        print(f"ddd: --host is empty, which names no address; {_HOSTS_TAKEN}", file=sys.stderr)
+        return EXIT_USAGE
     try:
         # str(): a general sockaddr's first element is typed str | int for every address
         # family this could be, and AF_INET's is always the former.
         address = str(socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0])
     except (OSError, ValueError) as error:
         return _refused(host, port, error)
+    if address not in SERVED_ON:
+        print(
+            f"ddd: --host {host} resolves to {address}, where ddd gui would answer nobody: the "
+            "address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 or "
+            f"localhost alone; {_HOSTS_TAKEN}",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
     beyond_loopback = not is_loopback(address)
     if port == 0 and beyond_loopback:
         print(

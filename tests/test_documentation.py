@@ -6657,3 +6657,14 @@ class TestWhatThePagesSayOfTheNineSmallerVerdicts:
         assert "``[2]`` before ``[10]``, as are the removals, the additions and the entries" in (
             flattened(COMPARING_DELIVERIES)
         )
+
+
+def test_the_command_line_page_says_which_hosts_ddd_gui_takes() -> None:
+    """``ddd gui --host`` takes ``127.0.0.1``, ``0.0.0.0`` or a name resolving to either, and
+    refuses any other (12:M5, 9:M8), as its ``--help`` says (``tests/test_gui_server.py``)."""
+    flat = flattened(COMMAND_LINE_INTERFACE)
+    assert "``--host 0.0.0.0`` listens beyond this computer for a container" in flat
+    assert (
+        "``--host`` takes that address, the default ``127.0.0.1`` or a name resolving to either, "
+        "and refuses any other." in flat
+    )

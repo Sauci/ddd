@@ -38,7 +38,7 @@ from conftest import (
     project,
     write_tree,
 )
-from ddd.cli import EXIT_OK, EXIT_USAGE
+from ddd.cli import EXIT_OK, EXIT_USAGE, main
 from ddd.editing import fingerprint
 from ddd.file_names import device_named
 from ddd.gui import api as api_module
@@ -3177,25 +3177,22 @@ class TestRunning:
     def test_an_unbindable_address_is_a_usage_error_like_a_taken_port(
         self, pages, capsys, monkeypatch
     ) -> None:
-        """Not an address of this machine, or malformed: refused the way a taken port is.
+        """An address the server cannot be made on: refused the way a taken port is.
 
-        203.0.113.5 is a documentation-only address (RFC 5737): never assigned to a real
-        machine, so it stands for one this computer cannot bind, but asking a real socket to
-        try could still hang or answer differently depending on the network this test runs
-        on. The construction is patched instead, standing in for whatever the platform's
-        socket would have refused; it resolves to itself (it is already numeric), so it is
-        what run() hands the fake, unlike the raw --host of a name that resolves elsewhere.
-        """
+        The construction is patched, standing in for whatever the platform's socket would have
+        refused: a real bind of the wildcard can raise a firewall dialog on Windows, and no test
+        binds beyond loopback (ruling B7-3). It resolves to itself (it is already numeric), so it
+        is what run() hands the fake."""
 
         def refuses_the_address(self, api, static, port=0, host="127.0.0.1"):
             raise OSError("Cannot assign requested address")
 
         monkeypatch.setattr(GuiServer, "__init__", refuses_the_address)
-        result = run(None, [], 8123, open_browser=False, static=pages, host="203.0.113.5")
+        result = run(None, [], 8123, open_browser=False, static=pages, host="0.0.0.0")
         assert result == EXIT_USAGE
         message = capsys.readouterr().err
         assert message == (
-            "ddd: cannot serve 203.0.113.5 on port 8123: Cannot assign requested address\n"
+            "ddd: cannot serve 0.0.0.0 on port 8123: Cannot assign requested address\n"
         )
 
     def test_a_host_that_cannot_be_resolved_is_a_usage_error_not_a_crash(
@@ -3320,11 +3317,11 @@ class TestRunning:
         assert result == EXIT_OK
         assert capsys.readouterr().err == ""
 
-    def test_localhost_resolving_beyond_loopback_needs_a_fixed_port(
+    def test_localhost_resolving_beyond_loopback_is_refused(
         self, pages, monkeypatch, capsys
     ) -> None:
-        """A hosts file that points localhost at a LAN address is judged by that address,
-        not by the name: the default port is refused exactly as --host 0.0.0.0 is."""
+        """A hosts file that points localhost at a LAN address is judged by that address, not by
+        the name: refused as any address but 127.0.0.1 and 0.0.0.0 is, whatever the port."""
 
         def getaddrinfo(host, port, family, kind):
             return [(family, kind, 0, "", ("192.168.1.50", port))]
@@ -3333,28 +3330,32 @@ class TestRunning:
         result = run(None, [], 0, open_browser=False, static=pages, host="localhost")
         assert result == EXIT_USAGE
         assert capsys.readouterr().err == (
-            "ddd: --host resolves to 192.168.1.50, beyond this computer's loopback; --port 0 "
-            "lets the system pick a free one there, which cannot be published in advance, so "
-            "give a fixed --port too\n"
+            "ddd: --host localhost resolves to 192.168.1.50, where ddd gui would answer nobody: "
+            "the address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 "
+            "or localhost alone; give --host 127.0.0.1, the default, to answer this computer "
+            "alone, or --host 0.0.0.0 to answer a container's host, its port published on the "
+            "host's loopback\n"
         )
 
-    def test_localhost_resolving_beyond_loopback_warns_and_opens_no_browser(
+    def test_a_name_resolving_to_the_wildcard_warns_and_opens_no_browser(
         self, pages, monkeypatch, capsys
     ) -> None:
-        """Same as ``localhost`` resolving to a LAN address above, but with a fixed port: it
-        serves, warns once and opens no browser, exactly as --host 0.0.0.0 does."""
+        """Judged by what it resolves to, as ``localhost`` resolving to a LAN address is above: a
+        name resolving to 0.0.0.0, with a fixed port, serves, warns once and opens no browser,
+        exactly as --host 0.0.0.0 does."""
 
         def getaddrinfo(host, port, family, kind):
-            return [(family, kind, 0, "", ("192.168.1.50", port))]
+            assert host == "everywhere"
+            return [(family, kind, 0, "", ("0.0.0.0", port))]
 
         real_init = GuiServer.__init__
         received: list[tuple[str, int]] = []
 
         def binds_loopback_for_real(self, api, static, port=0, host="127.0.0.1"):
             received.append((host, port))
-            # Never 192.168.1.50 for real, for the same reason as every such fake in this
-            # file: this is about what run() decides from the address, not about a real
-            # socket answering on a LAN interface in a test.
+            # Never 0.0.0.0 for real, for the same reason as every such fake in this file: this
+            # is about what run() decides from the address, not about a real socket answering
+            # on every interface in a test.
             real_init(self, api, static, 0)
 
         monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
@@ -3366,11 +3367,11 @@ class TestRunning:
         opened: list[str] = []
         monkeypatch.setattr(module.webbrowser, "open", opened.append)
 
-        result = run(None, [], 8123, open_browser=True, static=pages, host="localhost")
+        result = run(None, [], 8123, open_browser=True, static=pages, host="everywhere")
 
         assert result == EXIT_OK
-        assert received == [("192.168.1.50", 8123)]
-        assert "listening on 192.168.1.50:" in capsys.readouterr().err
+        assert received == [("0.0.0.0", 8123)]
+        assert "listening on 0.0.0.0:" in capsys.readouterr().err
         assert opened == []
 
     @pytest.mark.parametrize("open_browser", [True, False])
@@ -3507,6 +3508,100 @@ class TestRunning:
         assert served == [(project_file.resolve(), None, True)]
         (line,) = capsys.readouterr().out.splitlines()
         assert line.startswith("ddd gui (preview) serving http://127.0.0.1:")
+
+
+HOSTS_TAKEN: Final = (
+    "give --host 127.0.0.1, the default, to answer this computer alone, or --host 0.0.0.0 to "
+    "answer a container's host, its port published on the host's loopback"
+)
+"""What every refusal of a ``--host`` ends with: the two it takes."""
+
+
+class TestTheHostsServedOn:
+    """``--host`` takes loopback's ``127.0.0.1``, the default, and the wildcard ``0.0.0.0``, or a
+    name resolving to either (12:M5, 9:M8). Any other host - the empty one, another address of
+    loopback, an address of a network - is refused, exit 2, saying what to give instead, before
+    anything binds or the session starts. Only the refusals run here, and nothing binds."""
+
+    @pytest.fixture
+    def nothing_starts(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """What the run went on to make: a session, a server. Each fails the run where made."""
+        made: list[str] = []
+
+        def session(*arguments: object, **keywords: object) -> None:
+            made.append("session")
+            raise AssertionError("the session was made")
+
+        def server(self: GuiServer, *arguments: object, **keywords: object) -> None:
+            made.append("server")
+            raise AssertionError("a server was bound")
+
+        monkeypatch.setattr(module, "Session", session)
+        monkeypatch.setattr(GuiServer, "__init__", server)
+        return made
+
+    @pytest.fixture
+    def resolved(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Every host the run resolves, each to an address of a network, as some systems answer
+        even the empty host."""
+        asked: list[str] = []
+
+        def getaddrinfo(host, port, family, kind):
+            asked.append(host)
+            return [(family, kind, 0, "", ("192.168.1.50", port))]
+
+        monkeypatch.setattr(module.socket, "getaddrinfo", getaddrinfo)
+        return asked
+
+    @pytest.mark.parametrize("port", [0, 8123])
+    def test_the_empty_host_is_refused_before_anything_resolves_it(
+        self, pages, capsys, nothing_starts, resolved, port
+    ) -> None:
+        assert run(None, [], port, open_browser=False, static=pages, host="") == EXIT_USAGE
+        said = capsys.readouterr().err
+        assert said == f"ddd: --host is empty, which names no address; {HOSTS_TAKEN}\n"
+        assert (resolved, nothing_starts) == ([], [])
+
+    @pytest.mark.parametrize("port", [0, 8123])
+    @pytest.mark.parametrize("host", ["127.0.0.2", "127.255.255.254"])
+    def test_another_address_of_loopback_is_refused(
+        self, pages, capsys, nothing_starts, host, port
+    ) -> None:
+        """Resolved for real, being numeric and loopback's own."""
+        assert run(None, [], port, open_browser=False, static=pages, host=host) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: --host {host} resolves to {host}, where ddd gui would answer nobody: the "
+            "address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 or "
+            f"localhost alone; {HOSTS_TAKEN}\n"
+        )
+        assert nothing_starts == []
+
+    @pytest.mark.parametrize("port", [0, 8123])
+    @pytest.mark.parametrize("host", ["192.168.1.50", "a-name.example"])
+    def test_an_address_of_a_network_is_refused(
+        self, pages, capsys, nothing_starts, resolved, host, port
+    ) -> None:
+        """Resolved by a stand-in, each to an address of a network: no test asks the network."""
+        assert run(None, [], port, open_browser=False, static=pages, host=host) == EXIT_USAGE
+        assert capsys.readouterr().err == (
+            f"ddd: --host {host} resolves to 192.168.1.50, where ddd gui would answer nobody: "
+            "the address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 "
+            f"or localhost alone; {HOSTS_TAKEN}\n"
+        )
+        assert (resolved, nothing_starts) == ([host], [])
+
+    def test_the_help_says_which_hosts_it_takes(self, capsys, monkeypatch) -> None:
+        monkeypatch.setenv("COLUMNS", "1000")
+        with pytest.raises(SystemExit) as exited:
+            main(["gui", "--help"])
+        assert exited.value.code == 0
+        said = " ".join(capsys.readouterr().out.split())
+        assert (
+            "IPv4 address to listen on: 127.0.0.1, the default, which answers this computer "
+            "alone, or 0.0.0.0, every interface, which a container gives its host once the same "
+            "port is published - or a name that resolves to one of the two; any other is "
+            "refused" in said
+        )
 
 
 def free_port() -> int:

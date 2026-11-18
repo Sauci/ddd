@@ -753,10 +753,11 @@ The commands
        Types, Units, Shared files and Files tabs' own, a component's own declarations, a
        unit's own places and a variable's keys - draws only the rows in view, in a box of
        its own.
-       ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host ADDRESS``
+       ``-b DIR`` names a build directory as for ``ddd lsp``, ``--host 0.0.0.0``
        listens beyond this computer for a container, ``--port N`` fixes the port and
-       ``--no-browser`` only prints the address. It serves until interrupted, and its
-       options are not yet part of the stable interface.
+       ``--no-browser`` only prints the address. ``--host`` takes that address, the
+       default ``127.0.0.1`` or a name resolving to either, and refuses any other. It
+       serves until interrupted, and its options are not yet part of the stable interface.
    * - ``ddd build-info FILE -o FILE``
      - record which project description a build runs DDD on, whether it was given to the build
        (``--origin given``, written into the record, which is then format 2) or collected by it

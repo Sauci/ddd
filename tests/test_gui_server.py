@@ -2667,15 +2667,26 @@ class TestALongPollWhoseClientHasGone:
 
     def test_a_poll_asked_of_the_api_directly_has_no_client_to_lose(self, project_file) -> None:
         """Without ``gone`` - every test of the api, and any caller but the server - a poll waits
-        out its time, its client never gone."""
+        out its time, its client never gone. Asked on a thread of its own, joined with a
+        timeout, so that a wait that never ran out would fail this rather than hold the suite."""
         session = Session(project_file.parent)
         session.open(project_file)
         version = session.snapshot().version
         api = Api(session, project_file, wait_seconds=0.2, slice_seconds=0.05)
+        answers: list[Reply] = []
+
+        def asking() -> None:
+            answers.append(api.handle("GET", "/api/state", {"after": [str(version)]}, None))
+
+        poll = threading.Thread(target=asking, daemon=True)
         started = time.monotonic()
-        reply = api.handle("GET", "/api/state", {"after": [str(version)]}, None)
+        poll.start()
+        poll.join(10)
+        waited = time.monotonic() - started
+        assert not poll.is_alive(), "the poll's wait never ran out"
+        (reply,) = answers
         assert (reply.status, reply.body["version"]) == (200, version)
-        assert time.monotonic() - started >= 0.15
+        assert waited >= 0.15
 
 
 def gone_from(end: socket.socket, timeout: float = 30) -> bool:

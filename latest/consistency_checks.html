@@ -256,7 +256,10 @@ examples/inconsistent/component_a.ddd.json#component.interface[1]: info[unused-o
 <p>The policy belongs to the project rather than to the engineer who happens to be typing: whoever
 checks the project should get the same verdict as the build server, so the overrides are best
 written once into the build system - the CMake integration takes them as <code class="docutils literal notranslate"><span class="pre">SEVERITY</span></code> and
-<code class="docutils literal notranslate"><span class="pre">STRICT</span></code> arguments, see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a> - instead of being remembered by hand.</p>
+<code class="docutils literal notranslate"><span class="pre">STRICT</span></code> arguments, see <a class="reference internal" href="build_integration.html"><span class="doc">Build integration</span></a> - instead of being remembered by hand. The
+relaxations of that policy reach a baseline given as a project description as well, so a project
+that builds with <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">missing-producer=ignore</span></code> can compare its branch against its trunk; its
+promotions and <code class="docutils literal notranslate"><span class="pre">--strict</span></code> do not, see <a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a>.</p>
 <p>A <a class="reference internal" href="plugins.html"><span class="doc">plugin</span></a> check is spelled <code class="docutils literal notranslate"><span class="pre">&lt;plugin&gt;/&lt;check&gt;</span></code> and takes the same overrides
 a built-in check does - <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">layout/duplicate-key=warning</span></code>, <code class="docutils literal notranslate"><span class="pre">--strict</span></code>, <code class="docutils literal notranslate"><span class="pre">ignore</span></code> - the
 prefix being the only thing that keeps two plugins, or a plugin and a built-in check, from
@@ -288,9 +291,11 @@ ok: 14 variables in 1 component are consistent
 <p><code class="docutils literal notranslate"><span class="pre">--standalone</span></code> is that policy, and the whole of it. It holds back the nine checks that need
 every component of a project - <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-constant</span></code>,
 <code class="docutils literal notranslate"><span class="pre">unknown-extension</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-raster</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-reference</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-section</span></code>,
-<code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - and touches nothing else, so
-everything DDD can decide from the file in front of it is still reported. A declaration one
-of the nine drops is left out of the dictionary in silence as well, because
+<code class="docutils literal notranslate"><span class="pre">unknown-type</span></code>, <code class="docutils literal notranslate"><span class="pre">unknown-unit</span></code> and <code class="docutils literal notranslate"><span class="pre">unused-output</span></code> - and touches nothing else of the
+analysis, so everything DDD can decide from the file in front of it is still reported. Beside
+<code class="docutils literal notranslate"><span class="pre">--baseline</span></code>, a producer the candidate lost is said by the comparison instead, as an error the
+floor does not reach (<code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> below). A declaration one of the nine drops is left
+out of the dictionary in silence as well, because
 <code class="docutils literal notranslate"><span class="pre">incomplete-project</span></code> - the trace a dropped declaration leaves when the finding that says
 why is silenced - has nothing to say where the missing file is the reason: the constant, the
 raster or the type is declared, in a file this run was not handed. The trace stays for the
@@ -613,11 +618,14 @@ enumeration value of ASAP2 1.6.1: <code class="docutils literal notranslate"><sp
 <code class="docutils literal notranslate"><span class="pre">MODULE</span></code> are among them, and the standard keeps identifiers off its index. The match is
 exact and case sensitive, so <code class="docutils literal notranslate"><span class="pre">map</span></code> is a name. It holds the project, a component that
 gets a group, an object the a2l carries, each member of a path and a
-<code class="docutils literal notranslate"><span class="pre">display_identifier</span></code>, judged from the descriptions alone: an object or a member that
-states <code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code> for the a2l is not held, but the check reads neither the image
-nor the map, so an object a run drops because its build holds none of it
-(<code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code>) still draws the error, and <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">a2l-keyword=ignore</span></code> relaxes it
-for that run. A member is the finding of the file that declares its structure, once. It
+<code class="docutils literal notranslate"><span class="pre">display_identifier</span></code>, judged from the descriptions alone. It skips what the a2l keeps
+out and holds what the closure over references brings in: an object or a member that
+states <code class="docutils literal notranslate"><span class="pre">export:</span> <span class="pre">false</span></code> for the a2l is skipped, unless an exported object names it, an
+axis under an exported curve or a measurement an exported axis names as its <code class="docutils literal notranslate"><span class="pre">input</span></code>,
+and is held then. It reads neither the image nor the map, so an object a run drops
+because its build holds none of it (<code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code>) still draws the error, and
+<code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">a2l-keyword=ignore</span></code> relaxes it for that run. A member is the finding of the file
+that declares its structure, once. It
 is separate from <code class="docutils literal notranslate"><span class="pre">reserved-identifier</span></code>, which is about c: a name can be fine for the
 compiler and forbidden by the a2l.</p></td>
 </tr>
@@ -684,7 +692,12 @@ the storage of a variable; two definitions would not even link.</p></td>
 <td><p>a variable is read as <code class="docutils literal notranslate"><span class="pre">input</span></code> but no component declares it as an output. The generated
 consumer header would declare a symbol nobody defines. A producer whose own declaration
 could not resolve still counts as a producer, so a consumer of the same variable is not
-told that nobody produces it.</p></td>
+told that nobody produces it. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> says it too of an object a dumped candidate
+lost the producer of while a component still reads it, at this severity and under this
+run’s <code class="docutils literal notranslate"><span class="pre">-W</span></code>, and so does <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span> <span class="pre">--baseline</span> <span class="pre">--standalone</span></code> of an output the component
+turned into an input, as an error whatever the floor says, since the floor does not reach a
+producer the baseline had; a project’s own <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">missing-producer=ignore</span></code> still silences
+it.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">local-conflict</span></code></p></td>
 <td><p>error</p></td>
@@ -837,10 +850,11 @@ variable, is at most 255 characters (<code class="docutils literal notranslate">
 (<code class="docutils literal notranslate"><span class="pre">MAX_IDENT</span></code>); and a part of that name is at most 128 (<code class="docutils literal notranslate"><span class="pre">MAX_PARTIAL_IDENT</span></code>), an
 array index counted within it, so an array of structures named with the full 128
 characters passes it. The file is written whole. A string or the name of a member is the finding of the
-file that states it, once. It fires for what the descriptions send to the a2l rather
-than for what asked to be exported, the closure over references included, so an object
-kept out of the a2l on its own is still reported where an exported axis names it as its
-<code class="docutils literal notranslate"><span class="pre">input</span></code>. It reads neither the image nor the map, so an object a run drops because its
+file that states it, once. It fires for what the descriptions send to the a2l: it skips what
+the a2l keeps out and holds what the closure over references brings in, so an object kept
+out of the a2l on its own, or a member, is skipped unless an exported object names it, an
+axis under an exported curve or a measurement an exported axis names as its <code class="docutils literal notranslate"><span class="pre">input</span></code>. It
+reads neither the image nor the map, so an object a run drops because its
 build holds none of it (<code class="docutils literal notranslate"><span class="pre">condition-left-out</span></code>) is reported all the same, and stops a
 <code class="docutils literal notranslate"><span class="pre">--strict</span></code> run; <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">a2l-unrepresentable=ignore</span></code> relaxes it for that run.</p></td>
 </tr>
@@ -992,16 +1006,40 @@ registry can be read in one place.</p>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">removed-object</span></code></p></td>
 <td><p>error</p></td>
-<td><p>an object of the baseline is gone and a component read it.</p></td>
+<td><p>an object of the baseline is gone and a component read it, or an output of a component
+read alone, whose readers the run was not shown: the readers of a component file read
+alone are the component itself, so the message does not claim that nobody read it, and
+every grade that waits on a reader takes such an output as read.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-interface</span></code></p></td>
 <td><p>error</p></td>
-<td><p>the kind, datatype, unit, scaling, shape, axes or locality of an object changed, or
-where a table keeps its point counts, or the layout a released structure fixed for
-its consumers: the width of a bitfield, the order of the members, or the type a
-structured variable names. Scaling compares an
-enum by its name and its ordered enumerators, whose descriptions are documentation
-and are not compared.</p></td>
+<td><p>kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
+counts changed, or the value of a constant, or the layout a released structure fixed: a
+bitfield’s width, the type a structured variable names, or the members of that structure
+in order, each with what it holds and its dimensions, nested and external ones included,
+an external one by its header too, save a member added at the end of it when the variable
+is no array, or volatile turned on for an object a component reads or a component read
+alone produces. Turned on, <code class="docutils literal notranslate"><span class="pre">volatile</span></code> is the interface of an object a reader was
+compiled against: a reader built without the qualifier reaches it through an lvalue that
+is not volatile, which C leaves undefined, and the finding is not repeated as
+<code class="docutils literal notranslate"><span class="pre">changed-storage</span></code>. Scaling compares an enum by its name and
+its ordered enumerators, whose descriptions are documentation and are not compared.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">renamed-read-object</span></code></p></td>
+<td><p>error</p></td>
+<td><p>an object of the baseline that a component read, or that a component read alone
+produced, is offered under a different name. A reader may be a binary compiled against
+the baseline’s headers, and it looks for a spelling that is gone. A structured variable’s rename is said under each leaf’s path,
+and each leaf answers for its variable’s readers. <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">renamed-object</span></code> relaxes the
+warning an unread object’s rename is, and does not reach this error.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code></p></td>
+<td><p>error</p></td>
+<td><p>the preprocessor condition of an object a component reads, or of one a component read
+alone produces, was added or replaced, so a reader compiled against the baseline does not
+link in a build where the new condition is false. DDD cannot weigh one condition against another and takes a replacement as the
+builds the object is present in changing. A <code class="docutils literal notranslate"><span class="pre">-W</span> <span class="pre">changed-condition</span></code> relaxation does not
+reach it.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reused-name</span></code></p></td>
 <td><p>error</p></td>
@@ -1009,21 +1047,27 @@ and are not compared.</p></td>
 was renamed or removed, and a new one took the spelling. Nothing about the delivery
 looks broken, and a dataset or a recording keyed by the name binds to the wrong storage.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">renamed-object</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">removed-constant</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a constant of the baseline is gone, so a reader that uses its macro no longer builds. It
+is an error whether or not an object is dimensioned by it, because a macro is what a
+reader compiled against the baseline’s headers names.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">renamed-object</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>an object of the baseline is offered under a different name; its <code class="docutils literal notranslate"><span class="pre">id</span></code> is what says
-so. The interface comparison still runs across the pair, and <code class="docutils literal notranslate"><span class="pre">--renames</span></code> writes the
+<td><p>an object of the baseline is offered under a different name and no component read it;
+its <code class="docutils literal notranslate"><span class="pre">id</span></code> is what says so. The interface comparison still runs across the pair, and <code class="docutils literal notranslate"><span class="pre">--renames</span></code> writes the
 old and the new spelling out, for migrating datasets and recordings.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">removed-unused-object</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">removed-unused-object</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>an object of the baseline is gone that no component read - a calibration dataset or an
 external tool still might.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">changed-storage</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>the initial value, the volatility, the memory section or the measurement raster of an
-object changed. A
+object changed, or the event or cycle of a raster. A
 calibration object whose <code class="docutils literal notranslate"><span class="pre">volatile</span></code> went from <code class="docutils literal notranslate"><span class="pre">true</span></code> to <code class="docutils literal notranslate"><span class="pre">false</span></code> is the case worth
 reading twice: it keeps its address and a tool can still write to it, but the compiler
 is now entitled to fold the initial value into the code that reads it, so tuning it
@@ -1033,13 +1077,23 @@ The initial value compares as the bytes it produces, so respelling one without m
 a byte is not a change; on a structured variable the three storage properties are the
 variable’s own and are reported at it, once, rather than under every member.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code></p></td>
 <td><p>warning</p></td>
 <td><p>the physical limits of an object got tighter, so calibrated data may no longer fit.
-Widening is silent, because every value the baseline allowed still fits. The ends are
-compared with the relative tolerance of <code class="docutils literal notranslate"><span class="pre">limits-out-of-range</span></code>: most limits are
-derived, and a candidate that writes down the ones its datatype implies is not
-narrowing the unrounded ends an older baseline carries.</p></td>
+Widening is silent, because every value the baseline allowed still fits; this is the
+grade of calibration data and of a measurement nobody reads. The ends are compared with
+the relative tolerance of <code class="docutils literal notranslate"><span class="pre">limits-out-of-range</span></code>: most limits are derived, and a
+candidate that writes down the ones its datatype implies is not narrowing the unrounded
+ends an older baseline carries. A project that relaxed <code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code> for a
+measurement a component reads relaxes <code class="docutils literal notranslate"><span class="pre">narrowed-read-limits</span></code> and <code class="docutils literal notranslate"><span class="pre">widened-limits</span></code>
+instead.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">widened-limits</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>the physical limits of a measurement a component reads, or of one a component read alone
+produces, got wider, so a reader sized for the range of the baseline may meet a value it
+was not written for. The ends are weighed
+as <code class="docutils literal notranslate"><span class="pre">narrowed-limits</span></code> weighs them.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-owner</span></code></p></td>
 <td><p>warning</p></td>
@@ -1047,7 +1101,9 @@ narrowing the unrounded ends an older baseline carries.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">changed-condition</span></code></p></td>
 <td><p>warning</p></td>
-<td><p>the preprocessor condition of an object changed.</p></td>
+<td><p>the preprocessor condition of an object changed; one added or replaced on an object a
+component reads, or on one a component read alone produces, is <code class="docutils literal notranslate"><span class="pre">narrowed-condition</span></code>
+instead.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">changed-a2l</span></code></p></td>
 <td><p>warning</p></td>
@@ -1068,6 +1124,22 @@ confident verdict with a hole in it.</p></td>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">added-object</span></code></p></td>
 <td><p>info</p></td>
 <td><p>the candidate declares an object the baseline did not.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">added-constant</span></code></p></td>
+<td><p>info</p></td>
+<td><p>the candidate declares a constant the baseline did not, which no reader of the baseline
+can be disturbed by.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">narrowed-read-limits</span></code></p></td>
+<td><p>info</p></td>
+<td><p>the physical limits of a measurement a component reads, or of one a component read alone
+produces, got tighter: a reader still gets values inside the range it was written for.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">removed-input</span></code></p></td>
+<td><p>info</p></td>
+<td><p>an input of a component read alone is gone: the component stops reading it, which harms
+nobody. Only for a baseline that is a component file, whose dictionary records no
+reader but the component itself.</p></td>
 </tr>
 </tbody>
 </table>

@@ -111,7 +111,10 @@ The json itself is read strictly as well. ``NaN``, ``Infinity`` and ``-Infinity`
 python's json reader would otherwise accept, are refused: none of them is json, and none of
 them survives the trip to an output, since there is no c literal and no a2l number for either.
 NaN is worse than merely unrepresentable, because every comparison against it is false, so a
-NaN limit would pass every range check in silence instead of failing one. A byte order mark in
+NaN limit would pass every range check in silence instead of failing one. A number no double
+has the bits for, such as ``1e-400``, is refused where it is written, naming it, for a related
+reason: python would read it as zero before the rule that a non-zero initial value which its
+storage rounds to zero is ``init-invalid`` could see it. A byte order mark in
 front of the file is accepted, on the other hand, since it is what several Windows editors and
 PowerShell redirection put there and the file is otherwise perfectly good json.
 

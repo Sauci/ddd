@@ -178,7 +178,8 @@ plugin's own backend. See :doc:`plugins` for what a plugin does with them.
    ``owner`` is ``null`` for an input that no component produces, which reaches the
    dictionary whenever ``missing-producer`` is relaxed - a component checked or dumped on its
    own, or an inconsistent project generated with ``ddd generate --force``; the c backend
-   files such an object under ``<unresolved>``. Every other field is always present.
+   files such an object under ``<unresolved>``. ``ddd compare`` says ``missing-producer`` of such
+   an object in a candidate dump when the baseline had a producer for it. Every other field is always present.
 
 Point counts ahead of a table
 -----------------------------
@@ -230,6 +231,11 @@ version of DDD, possibly years later. The ``format`` field stamps the shape of t
 tool. Format 10 lets a leaf's ``display_identifier`` be a path of identifiers, ``V[1].J.b``,
 which a member naming a structure composes for every leaf below it; a format 9 dictionary
 holds at most one identifier there, and reads back unchanged.
+
+It is also what tells a dictionary from any other json file: every dump states it, and a file that
+states neither it, nor ``project``, nor ``component`` - a file holding only a ``name``, say - is no
+delivery and is refused as such, where its missing ``format`` would otherwise have read as the
+current one and the file as an empty dictionary.
 
 It exists so that a later reader can say *this file is newer than I understand* rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses

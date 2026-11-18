@@ -277,7 +277,8 @@ plugin’s own backend. See <a class="reference internal" href="plugins.html"><s
 <p><code class="docutils literal notranslate"><span class="pre">owner</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code> for an input that no component produces, which reaches the
 dictionary whenever <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> is relaxed - a component checked or dumped on its
 own, or an inconsistent project generated with <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span> <span class="pre">--force</span></code>; the c backend
-files such an object under <code class="docutils literal notranslate"><span class="pre">&lt;unresolved&gt;</span></code>. Every other field is always present.</p>
+files such an object under <code class="docutils literal notranslate"><span class="pre">&lt;unresolved&gt;</span></code>. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> says <code class="docutils literal notranslate"><span class="pre">missing-producer</span></code> of such
+an object in a candidate dump when the baseline had a producer for it. Every other field is always present.</p>
 </div>
 </section>
 <section id="point-counts-ahead-of-a-table">
@@ -323,6 +324,10 @@ version of DDD, possibly years later. The <code class="docutils literal notransl
 tool. Format 10 lets a leaf’s <code class="docutils literal notranslate"><span class="pre">display_identifier</span></code> be a path of identifiers, <code class="docutils literal notranslate"><span class="pre">V[1].J.b</span></code>,
 which a member naming a structure composes for every leaf below it; a format 9 dictionary
 holds at most one identifier there, and reads back unchanged.</p>
+<p>It is also what tells a dictionary from any other json file: every dump states it, and a file that
+states neither it, nor <code class="docutils literal notranslate"><span class="pre">project</span></code>, nor <code class="docutils literal notranslate"><span class="pre">component</span></code> - a file holding only a <code class="docutils literal notranslate"><span class="pre">name</span></code>, say - is no
+delivery and is refused as such, where its missing <code class="docutils literal notranslate"><span class="pre">format</span></code> would otherwise have read as the
+current one and the file as an empty dictionary.</p>
 <p>It exists so that a later reader can say <em>this file is newer than I understand</em> rather than
 misread it. DDD accepts a dictionary whose format is the one it knows or older, and refuses
 one that is newer:</p>

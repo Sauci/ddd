@@ -610,9 +610,10 @@ The Compare tab’s baseline is a dumped dictionary, or a project or component
 description, at a path under the directory <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">gui</span></code> was started in, refused, and
 told why, when it is outside that directory, unreadable, not valid json, a
 description or a dictionary this DDD could not read, or json that is neither. Its
-verdict answers only whether the project can replace that
-baseline, not whether the project is itself consistent: the project’s own findings,
-the Findings tab’s own question, take no part in it. A finding that names a place in
+verdict is the one <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> exits on, and the project’s own errors count in it
+as the baseline’s and the comparison’s do, so that a project the Findings tab shows
+errors on cannot replace a baseline; the answer says how many errors the project has of
+its own. A finding that names a place in
 this project leads there, as on the Findings tab: a plugin’s comparison rule files at
 the declaration it is about. The comparison’s own findings name the whole delivery
 rather than a place in one file, and the baseline’s own, marked <code class="docutils literal notranslate"><span class="pre">in</span> <span class="pre">the</span> <span class="pre">baseline:</span></code>,
@@ -908,11 +909,17 @@ on the author’s word. <a class="reference internal" href="toolbox.html"><span 
 <p><code class="docutils literal notranslate"><span class="pre">FILE</span></code> is a project description or a single component description in every command that
 takes one. A component checks, lists and dumps on its own - with <code class="docutils literal notranslate"><span class="pre">--standalone</span></code> holding
 back the checks that need the rest of the project - which is what lets a supplier verify a
-component long before an integrator ever sees it. <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> takes no <code class="docutils literal notranslate"><span class="pre">--standalone</span></code>:
-generating from a component is generating the c and the a2l of a project of one, and the
-inputs nobody produces there are errors that stop the run. A supplier who wants the files
-anyway asks for them with <code class="docutils literal notranslate"><span class="pre">--force</span></code>, or silences the checks it has decided about with
-<code class="docutils literal notranslate"><span class="pre">-W</span></code>.</p>
+component long before an integrator ever sees it. With <code class="docutils literal notranslate"><span class="pre">--baseline</span></code> the gate compares that
+component with its predecessor, and what it can know is what one file shows: an output a
+component drops, renames, puts under a new condition or turns <code class="docutils literal notranslate"><span class="pre">volatile</span></code> fails that gate,
+whoever reads it, and one whose limits it widens is warned of, while an input it stops reading
+does not fail it. That holds when the baseline is the component file itself; an archived dump
+of a component carries no mark of how it was read, and <a class="reference internal" href="comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a> says what
+that costs.
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">generate</span></code> takes no <code class="docutils literal notranslate"><span class="pre">--standalone</span></code>: generating from a component is generating the c
+and the a2l of a project of one, and the inputs nobody produces there are errors that stop
+the run. A supplier who wants the files anyway asks for them with <code class="docutils literal notranslate"><span class="pre">--force</span></code>, or silences
+the checks it has decided about with <code class="docutils literal notranslate"><span class="pre">-W</span></code>.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">-t</span></code> of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD’s own.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd generate all examples/demo/demo.ddd.json -o build/gen

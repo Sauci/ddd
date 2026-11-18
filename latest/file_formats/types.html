@@ -442,8 +442,10 @@ description. Stating a position here would be stating something DDD cannot honou
 <p>The members are laid out in the order the file lists them, because that is the order the
 generated c declares them in and therefore the order the compiler lays out. Reordering the
 members of a structure that has already been delivered moves every address after the change,
-and nothing in the description changes value or name, so the diff of the json is the only place
-the move is visible before the next build measures it.</p>
+and nothing in the description changes value or name, so before the next build measures the
+move it shows in the diff of the json and in <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">compare</span></code> against the delivered dictionary,
+which reports it at each variable whose layout holds the structure
+(<a class="reference internal" href="../comparing_deliveries.html"><span class="doc">Comparing deliveries</span></a>).</p>
 </section>
 <section id="where-the-members-sit-is-not-stated-here">
 <h3>Where the members sit is not stated here<a class="headerlink" href="#where-the-members-sit-is-not-stated-here" title="Link to this heading"></a></h3>
@@ -517,10 +519,11 @@ than findings. The member reaches <strong>no a2l</strong> - the format cannot de
 layout DDD does not know - exactly as a <code class="docutils literal notranslate"><span class="pre">bits</span></code> member reaches none. A structure containing
 such a member gets <strong>no section-alignment estimate</strong>, because the strictest of the <em>other</em>
 members would be an estimate of part of the structure dressed up as the whole. And the member
-contributes <strong>no leaf</strong>: it does not appear in <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code>, in the dictionary’s <code class="docutils literal notranslate"><span class="pre">leaves</span></code>,
-or in a delivery comparison, because there is no datatype, unit or range to compare. The
-dictionary still records the member itself, name, external type and header included, so a
-generator consuming the dump never has to resolve the name a second time.</p>
+contributes <strong>no leaf</strong>: it does not appear in <code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">list</span></code> or in the dictionary’s
+<code class="docutils literal notranslate"><span class="pre">leaves</span></code>, because there is no datatype, unit or range to compare; a delivery comparison
+holds it by its type’s name, its header and its dimensions alone, as part of the layout of each
+variable that holds it. The dictionary still records the member itself, name, external type and header
+included, so a generator consuming the dump never has to resolve the name a second time.</p>
 </section>
 <section id="a-variable-of-a-declared-type">
 <h2>A variable of a declared type<a class="headerlink" href="#a-variable-of-a-declared-type" title="Link to this heading"></a></h2>

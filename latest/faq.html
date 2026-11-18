@@ -227,8 +227,9 @@ device.ddd.json cannot replace baseline.json
 <p>The other direction happens too: a delivery can be a flawless replacement for the baseline
 and still be internally broken, because the baseline says nothing about the components that
 were added since. Asking both questions in one exit code is what the <code class="docutils literal notranslate"><span class="pre">--baseline</span></code> option of
-<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> is for. The comparison itself is graded and directional - widening a limit is
-silent, narrowing it is a warning, changing a datatype is an error - and is described in
+<code class="docutils literal notranslate"><span class="pre">ddd</span> <span class="pre">check</span></code> is for. The comparison itself is graded and directional - widening the limits of calibration data is
+silent and narrowing them is a warning, the other way round for a measurement a component
+reads, and changing a datatype is an error - and is described in
 <a class="reference internal" href="comparing_deliveries.html"><span class="doc">comparing deliveries</span></a>.</p>
 </section>
 <section id="what-happened-to-this-variable">
@@ -331,7 +332,10 @@ range the datatype can represent under the declared conversion - so a consumer t
 does not repeat the producer’s physical range is saying nothing about it, and DDD reads that
 declaration as agreeing with whatever the producer says. Requiring the range to be repeated
 would push every project into copying the same two lines into every consumer, and copied
-lines are the ones that drift.</p>
+lines are the ones that drift. A consumer that leaves them out still depends on the producer’s
+range, though, and a comparison of two deliveries says so when that range is widened:
+<code class="docutils literal notranslate"><span class="pre">widened-limits</span></code> is a warning on a measurement a component reads, whether or not that
+component restated the limits.</p>
 <p>Stating limits that differ from the producer’s <em>is</em> a disagreement, and it is reported:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ ddd check device.ddd.json
 ok: 1 variable in 2 components is consistent

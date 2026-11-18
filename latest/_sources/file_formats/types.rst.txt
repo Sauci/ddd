@@ -339,8 +339,10 @@ Member order is significant
 The members are laid out in the order the file lists them, because that is the order the
 generated c declares them in and therefore the order the compiler lays out. Reordering the
 members of a structure that has already been delivered moves every address after the change,
-and nothing in the description changes value or name, so the diff of the json is the only place
-the move is visible before the next build measures it.
+and nothing in the description changes value or name, so before the next build measures the
+move it shows in the diff of the json and in ``ddd compare`` against the delivered dictionary,
+which reports it at each variable whose layout holds the structure
+(:doc:`../comparing_deliveries`).
 
 Where the members sit is not stated here
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -425,10 +427,11 @@ than findings. The member reaches **no a2l** - the format cannot describe storag
 layout DDD does not know - exactly as a ``bits`` member reaches none. A structure containing
 such a member gets **no section-alignment estimate**, because the strictest of the *other*
 members would be an estimate of part of the structure dressed up as the whole. And the member
-contributes **no leaf**: it does not appear in ``ddd list``, in the dictionary's ``leaves``,
-or in a delivery comparison, because there is no datatype, unit or range to compare. The
-dictionary still records the member itself, name, external type and header included, so a
-generator consuming the dump never has to resolve the name a second time.
+contributes **no leaf**: it does not appear in ``ddd list`` or in the dictionary's
+``leaves``, because there is no datatype, unit or range to compare; a delivery comparison
+holds it by its type's name, its header and its dimensions alone, as part of the layout of each
+variable that holds it. The dictionary still records the member itself, name, external type and header
+included, so a generator consuming the dump never has to resolve the name a second time.
 
 A variable of a declared type
 -----------------------------

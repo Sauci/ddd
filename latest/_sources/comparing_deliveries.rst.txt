@@ -140,7 +140,17 @@ rather than at its name, so an archived dictionary, a project description and a 
 component description are all acceptable on either side. Comparing two archived dumps is the
 release-to-release case, comparing a dump with the working tree is the daily case, and
 comparing two working trees is how a branch is judged against the trunk it will be merged
-into. Nothing has to be staged into a temporary file first.
+into. Nothing has to be staged into a temporary file first. A json file that is neither -
+one that states no ``format``, no ``project`` and no ``component``, a file holding only a ``name``
+for one - is no delivery, and is refused on either side in those words rather than read as an
+empty dictionary, of which every object would be an addition or a removal.
+
+``ddd compare`` has no ``--standalone``. It reads a component file given as the baseline under the
+floor ``ddd check --standalone`` reads one under, whether or not it is told so, as the section
+below on the baseline says; a component file given as the candidate it reads as a project's file
+is read, so that an input nobody in the file produces is an error of the candidate. A supplier
+comparing two versions of a component with inputs therefore uses
+``ddd check --baseline --standalone``, the command that takes the option.
 
 Renames
 -------
@@ -172,11 +182,28 @@ delivery that cannot be accepted still needs its renames listed so that whoever 
 what moved. This is what a calibration dataset, a recorded measurement or a test script keyed
 by the old spelling is migrated with.
 
-The comparison itself reports ``renamed-object`` for each pair it finds this way, and the
+The comparison itself reports ``renamed-object`` for each pair it finds this way, or
+``renamed-read-object``, an error, for a pair whose object a component reads, and the
 ordinary interface comparison still runs across the pair, so a rename that also changed the
-object is no longer invisible. And where a spelling freed by a rename has been claimed by a
+object is no longer invisible. The rename's pair of ids runs the other way from the removals':
+``renamed-object`` keeps the plain id for the unread rename, since a relaxation of it that a
+project already gives must not reach the rename of an object a component reads. And where a spelling freed by a rename has been claimed by a
 different object in the same delivery, it reports ``reused-name`` instead - the failure that
 binds an old dataset to new storage without anything about the delivery looking broken.
+
+A structured variable renamed with its ``id`` kept is each leaf's ``renamed-object``, or
+``renamed-read-object`` where a component reads the variable, and nothing more for the display identifiers a member composes, ``V.J.b`` becoming ``W.J.b``, since the
+instance's name at their head is the rename told again; an identifier that changed in any other
+way, or one a leaf's own member states, is still ``changed-a2l``.
+
+A structured variable of a structure that holds members of external types alone, at any depth,
+has no leaf, because DDD cannot see into storage its own types do not describe, and so nothing says its removal, its
+rename or its reuse: the variable is reported as an object is, at the variable. Dropped, it is
+``removed-object`` where a component read it and ``removed-unused-object`` where none did, and a
+baseline that is a component file read alone grades it by its scope, as it does an object; renamed
+with its ``id`` kept, it is ``renamed-read-object`` or ``renamed-object``, and ``renames.json``
+lists it under its own id; another ``id`` under its name is ``reused-name``; and one that arrived
+is ``added-object``. A variable that has leaves is not said a second time at the variable.
 
 The comparison checks
 ---------------------
@@ -197,34 +224,67 @@ them together with everything else.
      - reported when
    * - error
      - ``removed-object``
-     - an object of the baseline is gone and somebody read it
+     - an object of the baseline is gone and somebody read it, or an output of a component
+       read alone, whose readers the run was not shown; a structured variable with no leaf is an
+       object here
    * - error
      - ``changed-interface``
      - kind, datatype, unit, scaling, shape, axes, locality or where a table keeps its point
-       counts changed, or the layout a released structure fixed: a bitfield's width, the
-       order of the members, or the type a structured variable names
+       counts changed, or the value of a constant, or the layout a released structure fixed: a
+       bitfield's width, the type a structured variable names, or the members of that structure
+       in order, each with what it holds and its dimensions, nested and external ones included,
+       an external one by its header too, save a member added at the end of it when the variable
+       is no array, or volatile turned on for an object a component reads or a component read
+       alone produces
+   * - error
+     - ``renamed-read-object``
+     - an object of the baseline that a component read, or that a component read alone
+       produced, is offered under a different name, so a reader compiled against the baseline
+       looks for a spelling that is gone; its ``id`` says so. A ``-W renamed-object`` relaxation does not
+       reach it
+   * - error
+     - ``narrowed-condition``
+     - the preprocessor condition of an object a component reads, or of one a component read
+       alone produces, was added or replaced, so a reader compiled against the baseline does not
+       link in a build where the new condition is false; a ``-W changed-condition``
+       relaxation does not reach it
    * - error
      - ``reused-name``
      - a name of the baseline now names a different object
+   * - error
+     - ``removed-constant``
+     - a constant of the baseline is gone, so a reader that uses its macro no longer builds
    * - warning
      - ``renamed-object``
-     - an object of the baseline is offered under a different name; its ``id`` says so
+     - an object of the baseline is offered under a different name and no component read it;
+       its ``id`` says so
    * - warning
      - ``removed-unused-object``
-     - an object of the baseline is gone; no component read it
+     - an object of the baseline is gone; no component read it, a structured variable with no
+       leaf included
    * - warning
      - ``changed-storage``
-     - the initial value, volatility, memory section or measurement raster of an object
-       changed
+     - the initial value, volatility, memory section or measurement raster of an object changed,
+       or the event or cycle of a raster; volatile turned on for an object a component reads or a
+       component read alone produces is changed-interface instead
    * - warning
      - ``narrowed-limits``
-     - the physical limits of an object got tighter, so calibrated data may not fit
+     - the physical limits of an object got tighter, so calibrated data may not fit; on a
+       measurement a component reads, or on one a component read alone produces, it is
+       ``widened-limits`` or ``narrowed-read-limits`` instead
+   * - warning
+     - ``widened-limits``
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got wider, so a reader sized for the baseline's range may meet a value it was
+       not written for
    * - warning
      - ``changed-owner``
      - another component produces the object now
    * - warning
      - ``changed-condition``
-     - the preprocessor condition of an object changed
+     - the preprocessor condition of an object changed; one added or replaced on an object a
+       component reads, or on one a component read alone produces, is ``narrowed-condition``
+       instead
    * - warning
      - ``changed-a2l``
      - the a2l entry of an object changed
@@ -238,6 +298,17 @@ them together with everything else.
    * - info
      - ``added-object``
      - the candidate declares an object the baseline did not
+   * - info
+     - ``added-constant``
+     - the candidate declares a constant the baseline did not
+   * - info
+     - ``narrowed-read-limits``
+     - the physical limits of a measurement a component reads, or of one a component read alone
+       produces, got tighter: a reader still gets values inside the range it was written for
+   * - info
+     - ``removed-input``
+     - an input of a component read alone is gone: the component stops reading it, which harms
+       nobody
 
 ``changed-interface`` is one check rather than a dozen because the properties it covers -
 kind, datatype, unit, conversion, shape, the axes an object refers to, whether it is
@@ -253,33 +324,102 @@ different spellings of one size, and the spelling is what the generated code car
 respelling ``[8]`` as ``["PRESSURE_CELLS"]`` changes the interface even while the number
 stands. A baseline archived before dictionary format 4 recorded no spellings at all, so
 against such a baseline only the values are compared: adopting a constant for a size that
-stands reads clean, and a changed size still does not.
+stands reads clean, and a changed size still does not. A dimension a constant names is told with the
+size the constant gives, ``[N=8] != [N=4]``, because the spelling alone reads the same on both
+sides of a size that changed behind it.
 
-The layout of a :doc:`structure <file_formats/types>` is interface as well. A bitfield
-narrowed from three bits to two changes the value every reader takes out of the word, and
-widened it moves every member after it; two members swapped move every address after the
-first of them while each member still compares identical to the byte - same path, same
-datatype, same conversion, same limits - so a comparison that walked only the members said
-nothing whatsoever about a delivery that had moved every offset of every variable of that
-type. A reordering is reported once, at the structure, because the edit is one line of one
-types file however many variables of it the project declares. And a structured variable is
-compared as a variable, not only through its members: its ``type`` is what every consumer's
-header declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a
-changed interface.
+The layout of a :doc:`structure <file_formats/types>` is interface as well, because a reader
+may be a binary compiled against the previous delivery's headers, which takes each member out
+of the offset those headers gave it. A bitfield narrowed from three bits to two changes the
+value every reader takes out of the word, and widened it moves every member after it. A
+structured variable's layout is read from the dictionary's ``types``: the members of its
+structure in order, a nested structure expanded into its own members whatever it is called,
+an external member by its type's name, its header and its dimensions, and every dimension by
+its spelling and its value. A member inserted, removed, renamed or swapped with another leaves such a
+reader reading a member other than the one it was built to read, while every member the two
+deliveries share still compares identical to the byte - same path, same datatype, same
+conversion, same limits - and so may a nested structure that grew or was rearranged, a nested
+array that changed size, or an external member of another type, header or dimension. Each is
+reported once, at every variable whose layout it changed, naming the structure and where the
+two layouts part; a structure in no variable's layout changes nothing anybody reads, and is
+not compared. One change alone keeps every member where a reader of the previous delivery looks
+for it: a member added after every member of the structure of a single variable, which is
+the addition of its leaves and no more. Added to the structure of an array of structures, it
+moves every element after the first, and added to a structure nested in another, it is that
+structure grown, so neither is an addition alone. And a structured variable is compared as a
+variable, not only through its members: its ``type`` is what every consumer's header
+declares, so renaming ``Sensor_t`` to ``Sensor2_t`` with the members untouched is a changed
+interface, while a structure nested in it is reached through the member that holds it, so
+renaming that one with its layout kept changes nothing. Its ``kind`` is the variable's as well:
+a measurement turned into a parameter is one edit of one declaration, and the declaration in
+every reader's header gains a ``const``, so it is one ``changed-interface`` at the variable and
+not one per member, a structure of external members included.
 
-``changed-storage`` covers the four properties that change how an object behaves rather than
-what it means: the initial value, ``volatile``, the memory ``section`` and the measurement
+The vocabularies an object reaches the outputs through are compared as entries too, by name,
+because a change in one of them changes what a reader or a measuring tool is given while every
+object still compares identical to the byte. Every constant reaches the generated header as a
+macro and the a2l as a ``SYSTEM_CONSTANT``, whether or not an object is dimensioned by it, so a
+constant whose value changed is ``changed-interface``, said at the constant; a gain used by no
+object is the case that was silent. An object the constant dimensions says its own shape at the
+object as well, because the macro and the size are two facts and neither stands for the other. A
+constant that is gone is ``removed-constant``, an error, because a reader that uses the macro no
+longer builds, and a constant that arrived is ``added-constant``, an information, as an object
+that arrived is. A constant that was renamed is two findings, ``removed-constant`` for the old name
+and ``added-constant`` for the new one, because a constant has no ``id`` to pair a rename by. A baseline archived before dictionary format 4 recorded no
+constants, so against one none is compared. A raster whose event number or cycle changed is ``changed-storage``, said at the
+raster: every ``IF_DATA`` that names it carries the event, and it is the event a measuring tool
+receives the value in. The cycle compares as the period it resolves to, so ``10ms`` respelled
+``10000us`` is no change. A raster that came or went says nothing, because an object that names it
+says its own change of raster. The header of an external type is part of the layout above: the
+generated header includes it, so a member of the same type from another header is another
+definition to a reader compiled against the first, and it is the variable's one
+``changed-interface``. The sections a project declares are not yet compared, because the data
+dictionary does not carry them; a change of a section's access or alignment waits for it to.
+
+A reader may be a binary compiled against the previous headers, and two edits cost it more
+than they cost the people who keep an object nobody reads. Turning ``volatile`` on is a
+changed interface for an object a component reads: a reader built without the qualifier now
+reaches the object through an lvalue that is not volatile, which C leaves undefined, so the
+finding is ``changed-interface``, said once, at the variable for a structured one, and not
+again as ``changed-storage``. Renaming such an object is ``renamed-read-object``: the reader
+looks for a spelling that is gone. Both cannot replace the baseline. The same edits on an
+object nobody reads stay ``changed-storage`` and ``renamed-object``, warnings, and turning
+``volatile`` off is ``changed-storage`` everywhere. A structured variable's rename is still
+said under each leaf's path, since a dataset is keyed by it, and each leaf answers for the
+readers of its variable. ``-W renamed-object=ignore`` relaxes the warning only: an id carries
+one severity, so the error stands under its own.
+
+Wrapping an object a component reads in a condition costs its readers the same. Where the
+condition is false the object is neither declared nor defined, so the builds of a reader compiled
+against the baseline, which looks for it in every build, no longer link there. Adding a
+condition to such an object, or replacing one with another - which DDD cannot weigh, and takes
+as the builds the object is present in changing - is ``narrowed-condition``, an error, naming
+the readers. A condition going away puts the object in every build and stays
+``changed-condition``, a warning, as does any change of a condition on an object nobody reads.
+``-W changed-condition=ignore`` relaxes the warning only, and does not reach this error.
+
+``changed-storage`` covers the four properties of an object that change how it behaves rather than
+what it means, and the event and cycle of a raster: the initial value, ``volatile``, the memory ``section`` and the measurement
 ``raster``; a variable that moved from the 100 ms event to the 1 ms one changes the a2l a
 calibration engineer works with while invalidating nobody's code. An initial value compares
 as the bytes it produces and not as it was spelled - DDD offers ``7`` on a ``uint8[4]`` and
 ``[7, 7, 7, 7]`` as two spellings of one array, and a string's text as the character codes it
 stands for - so a delivery that respells one without moving a byte still replaces its
-predecessor. Where two of them do differ, the finding spells both the way the file spells
+predecessor. A scalar is the array it fills only when every element of the array holds it, so
+two tables that differ in any element - a square map and its transpose - are two initial
+values, and the finding names the first index they part at, in the order c lays the elements
+out. ``-0.0`` is not ``0.0``, since the sign bit is a stored byte, and changing one into the
+other is a change of the initial value; in an integer datatype ``-0`` is ``0``. An object stating
+no initial value stores zeros, so adding ``0``, ``[0, 0]`` or ``""`` to one that had none moves no
+byte and is no change, in either direction. Where two of them do differ, the finding spells both the way the file spells
 them, cut short past a few elements when the array is long, and names the first index they
 part at. On a structured variable those three properties are the variable's own, its members
 having no volatility, section or raster of their own, and are reported at the variable, once,
 as its producer and its condition are; what a member answers for is its own datatype,
-meaning, shape, bit width and a2l entry.
+meaning, shape, bit width and a2l entry. A member's own change is reported at every path that
+reaches it - an edit of one member of a structure that two arrays of a thousand hold is told at
+each element - and the paths are in the order ``ddd list`` gives them, an index counted as a number,
+``[2]`` before ``[10]``, as are the removals, the additions and the entries of ``renames.json``.
 
 ``changed-a2l`` covers the export flag, the display format and the display identifier, which
 move labels around in a calibration tool without touching the software.
@@ -288,9 +428,10 @@ move labels around in a calibration tool without touching the software.
 and a disagreement is a ``definition-mismatch`` error - see :doc:`consistency_checks`. The
 difference is who is left describing the object wrongly. Inside one project two components are
 compiled together against one address, so one of them is compiled against an assumption that
-does not hold. Between two deliveries there is only one answer at a time and every consumer is
-regenerated and recompiled against it, so nobody is left wrong; what changed is how the object
-behaves. On a calibration object, ``volatile`` losing
+does not hold. Between two deliveries there is only one answer at a time, but a reader may be a binary
+compiled against the previous headers and never regenerated, which is why turning
+``volatile`` on is an error for an object a component reads, as above; what changed for an
+object nobody reads is how it behaves. On a calibration object, ``volatile`` losing
 its ``true`` is more than a change of behaviour in the abstract: the compiler is then entitled
 to fold the value it was built with into the code that reads it, so the parameter keeps its
 address and its a2l entry but stops being tunable while the software runs.
@@ -459,19 +600,21 @@ Against the archived dictionary, the same five changes look rather different:
    $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
-   2 errors, 1 warning, 1 info
+   2 errors, 1 warning, 2 infos
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
-Four findings for five changes. Widening ``PressureRaw`` is an error because every consumer
+Five findings for five changes. Widening ``PressureRaw`` is an error because every consumer
 was compiled against a two-byte object and a calibration tool reads two bytes at its address;
 removing ``TemperatureRaw`` is an error because the baseline records that ``Controller`` read
-it. Tightening ``ValveDuty`` is a warning, because the code is unaffected but a calibration
-dataset holding 90 % no longer fits inside the new range. Adding ``AmbientPressure`` is
-information, since nothing that worked against the baseline can be disturbed by an object it
-never knew about. And relaxing the limits of ``SupplyVoltage`` produces nothing at all, for
-the reason given two sections further down.
+it. Relaxing the limits of ``SupplyVoltage`` is a warning, because ``Actuator`` reads it and a
+reader sized for 16 V may meet a value it was not written for, for the reason given two
+sections further down. Tightening ``ValveDuty`` is only information, because ``Actuator``
+still gets values inside the range it was written for. Adding ``AmbientPressure`` is
+information as well, since nothing that worked against the baseline can be disturbed by an
+object it never knew about.
 
 The last line names the two **files**, not the two projects, because two deliveries of one
 project share its name and naming the projects would print the same word twice.
@@ -509,24 +652,26 @@ additionally reads a ``ValvePosition`` that nobody produces:
    examples/pressure/work/components/actuator.ddd.json#component.interface[2]: error[missing-producer]: 'ValvePosition' is read by component 'Actuator' but no component declares it as output
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in PressureLoop (measurement, produced by Sensor)
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'ValvePosition' is new in PressureLoop (measurement, produced by nobody)
-   3 errors, 1 warning, 2 infos
+   3 errors, 1 warning, 3 infos
 
 The consistency findings point at the declaration that caused them, down to the json pointer
 inside the file, while the comparison findings point at the project as a whole, because a
 difference between two dictionaries belongs to the delivery rather than to one line of one
 description file.
 
-Limits: widening is silent, narrowing is not
---------------------------------------------
+Limits: the direction of the change decides, and so does where the data flows
+-----------------------------------------------------------------------------
 
-Limits are the one property where the direction of the change decides the verdict, and that
-is why ``SupplyVoltage`` produced no finding above. Its range grew from 0 .. 16 V to
-0 .. 18 V, and every value the baseline permitted is still permitted, so there is nothing a
-consumer or a calibration dataset can trip over. Reporting it would train the reader to
-ignore the check.
+Limits are the one property where the direction of the change decides the verdict, and which
+direction is the dangerous one depends on which way the data flows. Calibration data - a
+parameter, a value block, a curve, a map or an axis - flows into the software, so widening its
+limits from 0 .. 16 V to 0 .. 18 V is silent: every value the baseline permitted is still
+permitted, so there is nothing a calibration dataset can trip over. Reporting it would train
+the reader to ignore the check.
 
 The opposite direction is a warning, because a value that used to be legal may not be any
 more. A calibration dataset written against the baseline can hold a value outside the new
@@ -536,8 +681,8 @@ about it, which is exactly why the tool must:
 
 .. code-block:: text
 
-   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # PressureRaw's limits narrowed to 0 .. 250 instead
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'PressureRaw': limits tightened from [0, 400] to [0, 250]
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json  # FilterGain's limits narrowed to 0 .. 0.5 instead
+   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'FilterGain': limits tightened from [0, 1] to [0, 0.5]
    1 warning
    pressure.ddd.json can replace PressureLoop-1.4.0.json
 
@@ -546,14 +691,25 @@ it is not by itself a reason to refuse the delivery. A project that wants it to 
 it into an error, either individually with ``-W narrowed-limits=error`` or for every warning
 at once with ``--strict``.
 
+A measurement somebody reads is the other way round. Its limits are what the producer states
+for its readers, and a reader may hold a lookup indexed by the value or a clamp sized for
+it. Widening them is therefore ``widened-limits``, a warning: a measurement that was
+0 .. 100 and is now 0 .. 60000 hands its readers values they were never written for, which
+neither the compiler nor the linker can see, and which ``--strict`` turns into "cannot
+replace". Narrowing them is ``narrowed-read-limits``, an information, because a reader still
+gets values inside the range it was written for. A range that moved both ways is a widening.
+A measurement nobody reads has no reader to promise anything to, and keeps the grades of
+calibration data.
+
 A symptom is not reported under its cause
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tighter limits are very often a *consequence* of something bigger, and reporting the
+A different range is very often a *consequence* of something bigger, and reporting the
 consequence next to the cause buries the cause. When the interface of an object has changed,
-the narrowing that follows from it is therefore not reported separately. The next section
-shows the same 400 to 250 narrowing as above, this time accompanied by a rescaled conversion,
-and the ``narrowed-limits`` warning is gone: there is one thing to fix, and once it is fixed
+the change of limits that follows from it is therefore not reported separately. The next section
+shows ``PressureRaw`` with its limits brought down from 400 to 250, this time accompanied by a
+rescaled conversion, and the ``narrowed-read-limits`` information that the limits alone would
+give is gone: there is one thing to fix, and once it is fixed
 the limits question can be asked again on its own terms.
 
 A rescaled conversion is an error
@@ -610,9 +766,10 @@ likely explanation is that the wrong file was picked up:
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    examples/pressure/work/pressure.ddd.json: warning[project-mismatch]: the baseline describes project 'PressureLoop' and the candidate describes 'AirLoop'; the comparison below only makes sense if that rename was intended
-   examples/pressure/work/pressure.ddd.json: warning[narrowed-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80]
+   examples/pressure/work/pressure.ddd.json: warning[widened-limits]: 'SupplyVoltage': limits widened from [0, 16] to [0, 18], read by Actuator
+   examples/pressure/work/pressure.ddd.json: info[narrowed-read-limits]: 'ValveDuty': limits tightened from [0, 100] to [0, 80], read by Actuator
    examples/pressure/work/pressure.ddd.json: info[added-object]: 'AmbientPressure' is new in AirLoop (measurement, produced by Sensor)
-   2 errors, 2 warnings, 1 info
+   2 errors, 2 warnings, 2 infos
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
 The comparison is carried out anyway, and it is a warning rather than an error, because
@@ -620,7 +777,8 @@ renaming a project is a legitimate thing to do and the report is then exactly wh
 wants. It is reported before any object is compared, and among the warnings it comes first,
 because it should be looked at before anything below it is believed.
 
-A baseline that cannot be read at all is a different matter, and it stops the run:
+A baseline that cannot be read at all is a different matter: there is nothing to compare, so no
+verdict is printed, and what the candidate has of its own is reported all the same:
 
 .. code-block:: text
 
@@ -665,22 +823,75 @@ The verdict line names the two files rather than the two projects, because two d
 one project carry one project name - and, as here, one file name too, so where the two file
 names are the same it spells the paths out as they were typed.
 
-Neither does this run's ``-W`` reach it, for the same reason and in both directions.
-``-W unused-output=error`` is a run asking to be told about *its own* unread outputs; applied
+This run's ``-W`` reaches it in one direction only. A promotion does not:
+``-W unused-output=error`` is a run asking to be told about *its own* unread outputs, and applied
 to the baseline as well it promoted the ``ValveDuty`` above into an error about a delivery
-that went out long ago, carried it over and refused a verdict. ``--standalone`` does reach it,
-because that states how the file was handed over - a component read on its own - and the
+that went out long ago, carried it over and refused a verdict. ``--strict`` does not reach it
+either. A relaxation does: ``-W missing-producer=ignore`` is a project deciding it can live with
+an input nobody produces, and that is as true of the trunk it is compared against as of the working
+tree, so a project that builds with it can compare its branch against its trunk, as
+``ddd check`` of either is clean. Only a lower grade than the check has by default is a
+relaxation; the Compare tab reads a baseline under the relaxations every build record of the
+project makes, and a check one of them does not relax is not relaxed. A plugin's check has no grade
+to compare with until its plugin is loaded, so a ``-W`` of it reaches the baseline as ``ignore``
+alone. ``--standalone`` does reach
+it, because that states how the file was handed over - a component read on its own - and the
 baseline was handed over the same way.
 
-Its errors are another matter. A baseline that could not be read, as in the missing-file
-example above, or whose own components disagree has no dictionary that can be trusted, so
-every error it produces is carried over under the ``in the baseline:`` prefix, at the severity
-its own analysis gave it, and the run fails on them: with a description on the candidate side
-the comparison is not attempted and no verdict is printed, and with an archived dump on the
-candidate side the errors are reported beside the comparison and the verdict is a refusal.
-A ``-W`` of this run does not relax one of them either - the line saying the dictionary the
-comparison rests on cannot be trusted is not this run's to soften. A baseline that is to be
-compared against has to be one that checks clean of errors on its own.
+A baseline that is a component file is read alone, and the readers its dictionary records are
+the component's own and nobody else's, because the run was not shown the rest. So a supplier's
+gate grades an output by what one file can know: it is taken as read by every grade that waits
+on a reader, with a message that does not claim to know who read it, since "no component read
+it" is a claim about components the run never saw. An output the component stopped offering is
+``removed-object``; renamed, it is ``renamed-read-object``, given a condition or another one
+``narrowed-condition``, and turned ``volatile`` ``changed-interface``, each an error; and the
+limits of a measurement it widens are ``widened-limits`` and those it narrows
+``narrowed-read-limits``. An input the component stopped reading is ``removed-input``, an
+information, because a component that reads less harms nobody. An object it declares ``local``
+keeps its grade, ``removed-unused-object``, because no other component can read it, and every
+other grade of an object nobody reads.
+``ddd check --standalone --baseline``, ``ddd compare`` and the Compare tab of ``ddd gui`` take it
+from the file, and read it under the floor ``ddd check --standalone`` reads a component under
+whether or not the run said so, so that an input of the component nobody was shown the producer
+of is not an error of the baseline. A dictionary
+archived by ``ddd dump --standalone`` carries no mark of how it was read, and the mark is a
+change of the format, so it is deferred: a comparison against such a dump is graded as one of
+a whole project is, which costs the supplier's gate its scope until the baseline is the
+component file itself.
+
+Its errors are another matter. A baseline whose own components disagree has no dictionary that
+can be trusted, so every error it produces is carried over under the ``in the baseline:``
+prefix, at the severity its own analysis gave it, and the run fails on them: the comparison is
+made, the errors are reported beside it and the verdict is a refusal, whether the candidate is a
+dump or a description. A candidate given as a description is analysed all the same, and all its
+findings and its renames are reported - a broken baseline withholds nothing of the candidate's,
+as ``ddd check --baseline`` never withheld it. A baseline that could not be read at all, as in the
+missing-file example above, is carried over in the same way, but has no dictionary to compare
+with: no verdict is printed and no renames file is written, while the candidate's own findings are
+still reported. A promotion of this run does not make one of them an error, and a ``-W`` that
+relaxes the check relaxes it. A baseline that is to be compared against has to be one that checks
+clean of errors on its own, under the project's own policy.
+
+A dictionary dumped from a project that failed holds what the analysis left it: ``ddd dump`` exits
+1 on an input nobody produces and writes the file. Given as the candidate, an object that lost its
+producer while a component still reads it is ``missing-producer``, an error, as ``ddd check`` says
+of the same description, and so it cannot replace the baseline that had a producer for it; it is
+said in place of that pair's ``changed-owner``, being the one fact, and ``-W missing-producer=ignore``
+relaxes it as it relaxes the check. An object with no producer on both sides is no change the
+comparison makes - two dumps of one component read alone hold its inputs so, and the dictionary
+carries no mark of which a dump is - and an input that arrived with no producer is an
+``added-object`` and no more. A candidate given as a description has it said by its analysis, with no
+``changed-owner`` beside it. The one exception is the floor of ``ddd check --standalone``, which
+silences that analysis for what a component read alone was never shown and does not reach a producer
+the baseline had: the comparison then says it, once, as an error whatever the floor says, which is
+what makes a component that turns an output into an input fail that gate, and a project's own
+``-W missing-producer=ignore`` still silences it.
+
+One pair gets one verdict, whoever asks. ``ddd compare``, ``ddd check --baseline`` and the Compare
+tab of ``ddd gui`` ask the same function, and the delivery cannot replace the baseline when any
+finding of the run is an error, whether it is the candidate's own, one carried over from the
+baseline, or the comparison's. The tab counts the open project's own errors in its verdict as the commands do,
+and its answer says how many the project has of its own.
 
 In a build pipeline
 -------------------
@@ -694,18 +905,18 @@ the report is the whole of stdout and the verdict line is dropped, since a json 
 a job is about to parse must not have a sentence appended to it.
 
 Severities are tuned the same way as everywhere else, so a project that has decided a
-narrowing is acceptable but wants the new objects out of its build log can say so:
+widening is acceptable but wants the new objects out of its build log can say so:
 
 .. code-block:: text
 
-   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json -W narrowed-limits=ignore -W added-object=ignore
+   $ ddd compare examples/pressure/release/PressureLoop-1.4.0.json examples/pressure/work/pressure.ddd.json -W widened-limits=ignore -W narrowed-read-limits=ignore -W added-object=ignore
    examples/pressure/work/pressure.ddd.json: error[changed-interface]: 'PressureRaw' is not the same object any more (datatype: uint32 != uint16), read by Controller
    examples/pressure/work/pressure.ddd.json: error[removed-object]: 'TemperatureRaw' is gone, but was read by Controller
    2 errors
    pressure.ddd.json cannot replace PressureLoop-1.4.0.json
 
 A pipeline that treats the comparison as a release gate rather than as a report runs it with
-``--strict``, which turns every warning into an error, so that a narrowed limit, a changed
+``--strict``, which turns every warning into an error, so that a widened measurement, a narrowed limit of calibration data, a changed
 owner or a moved a2l entry also has to be acknowledged before the delivery goes out.
 
 The remaining piece is discipline about the archive itself. The dump has to be produced from
@@ -718,4 +929,6 @@ than a memory. Everything else about the comparison follows from that one habit.
    describes data rather than code. A delivery whose comparison is clean can still behave
    differently, because its algorithms changed; what a clean comparison guarantees is that
    everything built, calibrated and measured against the previous delivery still addresses the
-   same objects, with the same layout, the same scaling and the same meaning.
+   same objects, with the same layout, the same scaling and the same meaning. The layout is the
+   one the dictionary describes: what an external type holds is its own header's, which no
+   dictionary records.

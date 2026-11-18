@@ -494,9 +494,10 @@ The commands
        description, at a path under the directory ``ddd gui`` was started in, refused, and
        told why, when it is outside that directory, unreadable, not valid json, a
        description or a dictionary this DDD could not read, or json that is neither. Its
-       verdict answers only whether the project can replace that
-       baseline, not whether the project is itself consistent: the project's own findings,
-       the Findings tab's own question, take no part in it. A finding that names a place in
+       verdict is the one ``ddd compare`` exits on, and the project's own errors count in it
+       as the baseline's and the comparison's do, so that a project the Findings tab shows
+       errors on cannot replace a baseline; the answer says how many errors the project has of
+       its own. A finding that names a place in
        this project leads there, as on the Findings tab: a plugin's comparison rule files at
        the declaration it is about. The comparison's own findings name the whole delivery
        rather than a place in one file, and the baseline's own, marked ``in the baseline:``,
@@ -785,11 +786,17 @@ The commands
 ``FILE`` is a project description or a single component description in every command that
 takes one. A component checks, lists and dumps on its own - with ``--standalone`` holding
 back the checks that need the rest of the project - which is what lets a supplier verify a
-component long before an integrator ever sees it. ``ddd generate`` takes no ``--standalone``:
-generating from a component is generating the c and the a2l of a project of one, and the
-inputs nobody produces there are errors that stop the run. A supplier who wants the files
-anyway asks for them with ``--force``, or silences the checks it has decided about with
-``-W``.
+component long before an integrator ever sees it. With ``--baseline`` the gate compares that
+component with its predecessor, and what it can know is what one file shows: an output a
+component drops, renames, puts under a new condition or turns ``volatile`` fails that gate,
+whoever reads it, and one whose limits it widens is warned of, while an input it stops reading
+does not fail it. That holds when the baseline is the component file itself; an archived dump
+of a component carries no mark of how it was read, and :doc:`comparing_deliveries` says what
+that costs.
+``ddd generate`` takes no ``--standalone``: generating from a component is generating the c
+and the a2l of a project of one, and the inputs nobody produces there are errors that stop
+the run. A supplier who wants the files anyway asks for them with ``--force``, or silences
+the checks it has decided about with ``-W``.
 
 The ``-t`` of the c-rendering artefacts has no default at all: an invocation that renders c
 without it is refused rather than falling back to templates of DDD's own.

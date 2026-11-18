@@ -416,9 +416,9 @@ Running the checks
 
 ``mypy`` runs in strict mode over ``src/ddd`` and ``tools/`` with the pydantic plugin;
 ``ruff`` lints the sources, the tests, the release machinery and the documentation
-configuration with a line length of 100. The whole suite takes a couple of minutes in a warm
-checkout - longer in a fresh environment, where ``tests/test_cmake.py`` configures and builds
-the module - so ``--no-cov`` and a ``-k`` are what a single test is worth running under, and
+configuration with a line length of 100. The whole suite takes minutes rather than seconds, how
+many varying with the machine - about seven, in a fresh checkout, on the Linux machine it was
+last timed on - so ``--no-cov`` and a ``-k`` are what a single test is worth running under, and
 the whole of it is what a commit is worth running under. Not ``-q``: the ``addopts`` in
 ``pyproject.toml`` carry one already, pytest counts them, and a second drops the summary - the
 "N passed" line and the coverage total both - leaving the exit code as the only statement of
@@ -502,9 +502,9 @@ Continuous integration
 
 ``.github/workflows/ci.yml`` runs the commands above - the suite with its coverage gate,
 ``ruff`` twice and ``mypy`` - on every push to ``master`` and every pull request, in two jobs,
-and five more the commands above do not cover. ``extension`` installs node and the package,
-runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and uploads the
-``.vsix`` it produced. Its tests start a real language server, which is why it installs the
+``test`` and ``lint``, and six more the commands above do not cover. ``extension`` installs node
+and the package, runs ``npm ci``, ``npm test`` and ``npm run package`` in ``editors/vscode``, and
+uploads the ``.vsix`` it produced. Its tests start a real language server, which is why it installs the
 python package as well as compiling typescript, and packaging the extension there proves that
 the artefact a customer is handed can be produced at all.
 
@@ -523,6 +523,12 @@ again, into the wheel it publishes - an artifact expires, and needs a GitHub acc
 A manual run of the workflow (``workflow_dispatch``) takes a ``repeat`` input, one by default;
 above that it is a hunt, and only these three legs run, each journey repeated that many times
 (``--repeat-each``) while every other job is skipped.
+
+``gui-screenshots`` photographs every story of ``gui/`` and compares each with the reference
+image committed beside the stories, in Playwright's own Linux image, of the version
+``gui/package.json`` pins, which is the one place those images are made: a look that changes by
+accident fails here, and one changed on purpose arrives with its new references in the same pull
+request. A run of it that fails uploads the differences as ``screenshots-diff``.
 
 ``container`` builds the image behind ``docker compose``, checks that the package installed in
 it carries the pages of ``ddd gui`` and that neither node nor npm reached it, and runs the
@@ -619,9 +625,10 @@ upload has begun; a ``dev-publish`` that fails once its upload has begun leaves 
 whatever it had uploaded.
 
 ``dev-build`` waits for every other job of the run - ``test``, ``lint``, ``container``,
-``extension`` and ``gui`` - so that a commit any of them fails is never a build anybody is
-pointed at; a test holds a job added to ``ci.yml`` to joining the list. It checks the commit
-out - a pull request's own head, not the merge ``gui`` tests it as - and fails at once, with an
+``extension``, ``gui`` and ``gui-screenshots`` - so that a commit any of them fails is never a
+build anybody is pointed at; a test holds a job added to ``ci.yml`` to joining the list, and
+another holds this one to it. It checks the commit out - a pull request's own head, not the
+merge ``gui`` tests it as - and fails at once, with an
 error saying to merge ``master`` into the branch, when that head has no
 ``tools/dev_version.py``: a pull request whose branch was cut before development builds
 existed. It then stamps the development version into the checkout, compiles the pages and
@@ -1144,9 +1151,15 @@ overflows that worker's stack on a chain so deep, so the canvas is laid out in r
 state no example and no other generated project reaches. In Chrome on Linux the shortest chain
 laid out in ranks only is 908 components long, and the fixture's is more than twice that.
 
-The build refuses a bundled package whose licence is not MIT, ISC, Apache-2.0, BSD-2-Clause,
-BSD-3-Clause or 0BSD. The project screen's canvas is drawn with ``@xyflow/react`` and laid out
-with ``@dagrejs/dagre``, both MIT like every other bundled package.
+The build writes the licence of every package the pages bundle into
+``third-party-licenses.txt``, beside them, and refuses a bundled package whose licence is not
+MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or 0BSD. It lists every production package of
+``gui/package-lock.json`` that is installed: it walks npm's own tree of them, reads each one's
+directory off the lock file rather than off a path npm prints, and refuses, naming each, a
+production package of the lock file the walk did not list - which would ship without its notice,
+and past the licence check - and a package it listed that the lock file does not hold. The
+project screen's canvas is drawn with ``@xyflow/react`` and laid out with ``@dagrejs/dagre``, both
+MIT.
 
 ``.venv/bin/python tools/generate_project.py DIRECTORY --declarations N`` writes a project of
 ``N`` declarations, rounded down to even components and refused under 120, to measure ``ddd

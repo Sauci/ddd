@@ -3403,6 +3403,46 @@ class TestPackagedResources:
         assert named is not None, "the developer page no longer says which licences are accepted"
         assert re.split(r", | or ", named.group(1)) == re.findall(r'"([^"]+)"', listed.group(1))
 
+    def test_the_developer_page_says_what_the_licence_walk_lists_and_refuses(self) -> None:
+        """20:M11. The page called the canvas's two packages MIT like every other bundled one,
+        where the lock file's production packages are Apache-2.0, ISC, BSD-3-Clause and 0BSD as
+        well, and it said nothing of what the walk lists: since 20:I2, every installed production
+        package of the lock file, the build refusing one it missed. Held to the script, for what
+        the page says it reads and refuses, and to the lock file, for the two licences."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "what it writes": "The build writes the licence of every package the pages bundle "
+            "into ``third-party-licenses.txt``, beside them",
+            "what it lists": "It lists every production package of ``gui/package-lock.json`` "
+            "that is installed",
+            "how": "it walks npm's own tree of them, reads each one's directory off the lock "
+            "file rather than off a path npm prints",
+            "what it refuses": "refuses, naming each, a production package of the lock file the "
+            "walk did not list - which would ship without its notice, and past the licence check "
+            "- and a package it listed that the lock file does not hold",
+            "the canvas": "laid out with ``@dagrejs/dagre``, both MIT.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+        assert "like every other bundled package" not in said
+        script = (ROOT / "gui" / "scripts" / "licenses.mjs").read_text(encoding="utf-8")
+        for read in (
+            "npm ls --omit=dev --all --long --json",
+            'readFileSync(join(root, "package-lock.json")',
+            "const directory = join(root, key);",
+            "not listed, a production package of the lock file",
+            "not in the lock file",
+            "third-party-licenses.txt",
+        ):
+            assert read in script, f"gui/scripts/licenses.mjs no longer has {read!r}"
+        lock = json.loads((ROOT / "gui" / "package-lock.json").read_text(encoding="utf-8"))
+        licences = {
+            key.rpartition("node_modules/")[2]: entry.get("license")
+            for key, entry in lock["packages"].items()
+            if key and not entry.get("dev")
+        }
+        assert licences["@xyflow/react"] == licences["@dagrejs/dagre"] == "MIT"
+
 
 class TestTheCompileService:
     """The container that compiles what the c backend generates, and the README's account of it.
@@ -3778,6 +3818,73 @@ class TestContinuousIntegration:
         ]
         assert not missing, f"no longer said: {missing}"
         assert "os independent" not in said
+
+
+class TestWhatThePageSaysOfCi:
+    """20:M11. The developer page's account of ``ci.yml`` counted two jobs and five more where
+    the workflow has eight, never described ``gui-screenshots``, and left it out of the jobs
+    ``dev-build`` waits for; and it gave the suite a couple of minutes where it takes about
+    seven. Each count and list is held here to the workflow it describes."""
+
+    @staticmethod
+    def section() -> str:
+        """The page's section on continuous integration, its line breaks flattened."""
+        page = PAGES["docs/developer_documentation.rst"]
+        section = page.split("\nContinuous integration\n", 1)[1]
+        return flattened(section.split("\n.. _development-builds:", 1)[0])
+
+    def test_it_counts_every_job_of_ci_and_names_each(self) -> None:
+        said = self.section()
+        counted = re.search(r"in (\w+) jobs, ``test`` and ``lint``, and (\w+) more", said)
+        assert counted is not None, "the page no longer counts the jobs of ci.yml"
+        names = job_names(CI_WORKFLOW)
+        total = NUMBER_WORDS[counted.group(1)] + NUMBER_WORDS[counted.group(2)]
+        assert total == len(names), f"the page counts {total} jobs, and ci.yml has {names}"
+        unnamed = [name for name in names if f"``{name}``" not in said]
+        assert not unnamed, f"the page's section on ci never names {unnamed}"
+
+    def test_it_says_what_gui_screenshots_does(self) -> None:
+        said = self.section()
+        claims = {
+            "what it does": "``gui-screenshots`` photographs every story of ``gui/`` and "
+            "compares each with the reference image committed beside the stories",
+            "where": "in Playwright's own Linux image, of the version ``gui/package.json`` pins, "
+            "which is the one place those images are made",
+            "what it catches": "a look that changes by accident fails here, and one changed on "
+            "purpose arrives with its new references in the same pull request",
+            "what a failure leaves": "A run of it that fails uploads the differences as "
+            "``screenshots-diff``.",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+        assert "name: screenshots-diff" in job(CI_WORKFLOW, "gui-screenshots")
+
+    def test_it_lists_every_job_dev_build_waits_for(self) -> None:
+        """The development builds' section names what ``dev-build`` waits for, which its
+        ``needs`` states: a job added to ``ci.yml`` joins both, or this fails."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        listed = re.search(r"``dev-build`` waits for every other job of the run - (.+?) - so", said)
+        assert listed is not None, "the page no longer lists what dev-build waits for"
+        named = re.findall(r"``([\w-]+)``", listed.group(1))
+        waited = re.search(r"^    needs: \[([^]\n]*)\]$", job(CI_WORKFLOW, "dev-build"), re.M)
+        assert waited is not None, "dev-build no longer lists the jobs it waits for"
+        assert named == waited.group(1).split(", ")
+        assert (
+            "a test holds a job added to ``ci.yml`` to joining the list, and another holds this "
+            "one to it"
+        ) in said
+
+    def test_it_gives_the_suite_the_minutes_it_was_timed_at(self) -> None:
+        """Timed on a fresh checkout of the branch that wrote it, at c5adc2e0: 9670 tests in
+        6 m 55 s, and 6 m 35 s for the gates of the two commits after it, in the warm checkout. A
+        couple of minutes was neither."""
+        said = flattened(PAGES["docs/developer_documentation.rst"])
+        assert (
+            "The whole suite takes minutes rather than seconds, how many varying with the "
+            "machine - about seven, in a fresh checkout, on the Linux machine it was last timed "
+            "on -"
+        ) in said
+        assert "a couple of minutes" not in said
 
 
 SKIPPING = {"skip", "skipif", "importorskip", "xfail"}

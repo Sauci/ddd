@@ -712,6 +712,15 @@ starts one, which builds and deploys only if Publish's run was a release's and s
 from the commit the release's tag names, and under the tag. A release Publish failed is
 published once a re-run of Publish succeeds.
 
+A release's run is alone in a concurrency group of its own, so a push to ``master`` cannot
+cancel it. GitHub keeps one run going and one waiting in a group, and cancels the waiting one
+when another arrives: ``master``'s runs share a group, where that costs nothing, since the
+newer push builds everything the older one would have, but a release's run waiting there was
+cancelled by the next merge, with nothing red and no directory for the release. A release's
+deploy and ``master``'s can therefore run at once, and neither takes the branch to be where it
+found it: a push refused because ``gh-pages`` moved takes the branch as it now stands, puts its
+own directory back on it, rewrites the index from that, and pushes again.
+
 The site keeps one directory per version, and a menu in the bottom left corner of every page
 switches between them:
 

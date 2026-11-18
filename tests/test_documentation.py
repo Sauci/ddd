@@ -3984,6 +3984,130 @@ class TestPublishedDocumentation:
         assert not missing, f"the developer page no longer says {missing}"
         assert "a published release" not in said, "the page still has a release deploy itself"
 
+    def group(self, context: dict[str, Any]) -> tuple[str, bool]:
+        """The concurrency group a run is put in over ``context``, and whether it cancels the
+        run going in it."""
+        top = DOCS_WORKFLOW.split("\nconcurrency:\n", 1)[1]
+        block = re.split(r"\n(?=\S)", top, maxsplit=1)[0] + "\n"
+        group, cancels = setting(block, "group", 2), setting(block, "cancel-in-progress", 2)
+        assert group is not None and cancels is not None, "the workflow has no concurrency group"
+        return text_of(evaluated(group, context)), truthy(evaluated(cancels, context))
+
+    def test_a_release_s_run_is_alone_in_its_group(self) -> None:
+        """20:M5. GitHub keeps one run going and one waiting in a concurrency group, and cancels
+        the waiting one when another arrives. A release's run waiting behind master's was
+        therefore cancelled by the next push to master, with nothing red and no directory for
+        the release. Alone in a group of its own, a release's run never waits, and so is never
+        the waiting run anything replaces - not master's, not another release's, not a re-run
+        of its own Publish."""
+        release, cancels = self.group(completed())
+        others = {
+            self.group(other)[0]
+            for other in (
+                started_by("push", "refs/heads/master"),
+                started_by("workflow_dispatch", "refs/heads/master"),
+                started_by("workflow_dispatch", "refs/heads/feature"),
+                started_by("pull_request", "refs/pull/5/merge"),
+                completed(run_id="43"),
+                completed(head_branch="v0.11.1", run_id="44"),
+            )
+        }
+        assert release not in others, f"a release's run waits in {release} with other runs"
+        assert not cancels, "a release's run cancels the run going in its group"
+
+    def test_master_s_runs_still_queue_and_a_pull_request_s_are_superseded(self) -> None:
+        """What did not change: master's deploys wait behind one another, so that two never
+        push at once, and a pull request's newer build replaces the one it supersedes."""
+        queued = ("docs-publish", False)
+        assert self.group(started_by("push", "refs/heads/master")) == queued
+        assert self.group(started_by("workflow_dispatch", "refs/heads/master")) == queued
+        assert self.group(started_by("pull_request", "refs/pull/5/merge")) == (
+            "docs-refs/pull/5/merge",
+            True,
+        )
+
+    @pytest.mark.parametrize(
+        ("first", "directory", "versions"),
+        [
+            (started_by("push", "refs/heads/master"), "latest", ["latest", "v0.12.0", "v0.11.0"]),
+            (
+                completed(head_branch="v0.11.1", run_id="43"),
+                "v0.11.1",
+                ["latest", "v0.12.0", "v0.11.1", "v0.11.0"],
+            ),
+        ],
+        ids=["master's", "another release's"],
+    )
+    def test_a_deploy_the_branch_moved_under_publishes_over_what_it_now_holds(
+        self,
+        tmp_path: Path,
+        git: dict[str, str],
+        first: dict[str, Any],
+        directory: str,
+        versions: list[str],
+    ) -> None:
+        """20:M5's second half. With a release's run waiting in no group, its deploy and
+        another can run at once, each holding ``gh-pages`` as its checkout found it: the second
+        to push is refused, and a merge would not do, since both rewrote ``versions.json`` and
+        the root redirect. Both deploys check the site out here before either pushes, and the
+        second publishes over what the first left - the first's directory kept, the index
+        rewritten over both, and the branch's history unbroken."""
+        origin = self.site(tmp_path)
+        release = self.workspace(tmp_path, origin, "release")
+        other = self.workspace(tmp_path, origin, "other")
+        landed = self.publish(other, first, git)
+        assert landed.returncode == 0, landed.stdout + landed.stderr
+        done = self.publish(release, completed(), git)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "attempt 1: the push was refused" in done.stdout, "the branch never moved"
+        assert json.loads(self.git_in(origin, "show", "gh-pages:versions.json")) == {
+            "stable": "v0.12.0",
+            "versions": versions,
+        }
+        assert self.git_in(origin, "show", f"gh-pages:{directory}/index.html") == "other\n"
+        assert self.git_in(origin, "show", "gh-pages:v0.12.0/index.html") == "release\n"
+        published = self.git_in(origin, "log", "--format=%s", "gh-pages").splitlines()
+        assert published[0] == f"docs: publish v0.12.0 from {TAGGED}"
+        assert published[1].startswith(f"docs: publish {directory} from ")
+
+    def test_a_push_refused_every_time_fails_saying_so(
+        self, tmp_path: Path, git: dict[str, str]
+    ) -> None:
+        """Taking the branch again is for a branch that moved: a push the remote refuses every
+        time - a token that may not write, a protected branch - is tried five times, and the
+        run then fails saying what happened, with the site as it was."""
+        origin = self.site(tmp_path)
+        hook = origin / "hooks" / "pre-receive"
+        hook.write_bytes(b"#!/bin/sh\necho 'refused by the test'\nexit 1\n")
+        hook.chmod(0o755)
+        done = self.publish(self.workspace(tmp_path, origin, "release"), completed(), git)
+        assert done.returncode == 1, done.stdout + done.stderr
+        attempts = re.findall(r"^attempt (\d+): the push was refused", done.stdout, re.M)
+        assert attempts == ["1", "2", "3", "4", "5"], done.stdout
+        assert "::error::gh-pages refused the push of v0.12.0 five times" in done.stdout
+        assert "Nothing of v0.12.0 is published" in done.stdout
+        held = self.git_in(origin, "ls-tree", "--name-only", "gh-pages").split()
+        assert "v0.12.0" not in held, f"a refused push published something: {held}"
+
+    def test_the_page_says_a_push_to_master_cannot_cancel_a_release_s_run(self) -> None:
+        """20:M5 where a maintainer reads it, beside what a release's documentation does: what
+        GitHub does with a group's waiting run, what that cost a release, what holds now, and
+        what two deploys at once do."""
+        said = self.publishing_this_documentation()
+        claims = {
+            "what holds": "A release's run is alone in a concurrency group of its own, so a push "
+            "to ``master`` cannot cancel it.",
+            "what GitHub does": "cancels the waiting one when another arrives",
+            "why master's may queue": "``master``'s runs share a group, where that costs nothing",
+            "what queueing cost a release": "a release's run waiting there was cancelled by the "
+            "next merge",
+            "what follows": "A release's deploy and ``master``'s can therefore run at once",
+            "what a refused push does": "puts its own directory back on it, rewrites the index "
+            "from that, and pushes again",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"the developer page no longer says {missing}"
+
     def test_the_deployment_is_read_back_from_the_site_it_published_to(self) -> None:
         """The branch is the site, and a push that lands is still not proof that it is served.
 

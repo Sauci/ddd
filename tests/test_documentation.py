@@ -5756,43 +5756,129 @@ class TestWhatThePagesSayOfFormat10:
         ) in text
 
 
+def format_statements_of(text: str) -> tuple[list[tuple[int, str]], list[int]]:
+    """Every number the text states as a document's format, and which of them no rule places.
+
+    A statement is found by what surrounds a number - ``format 3``, ``format `1``` in either
+    spelling, ``` `format` is `10` ```, ``stamped `2``` and the numbers of the build record's
+    ``format`` row - and not by the sentences the specification uses today, so a statement in
+    other words is found too. Each is then placed by a rule naming what it states: a pair of
+    the rule's name and the number. What no rule places is returned by the offset of its number,
+    for the guard to fail on.
+    """
+    found: dict[int, int] = {}
+    for finder in (
+        r"[Ff]ormat `?(\d+)`?\b",
+        r"`format`[^.|`]{0,20}`(\d+)`",
+        r"\bstamped `?(\d+)`?",
+    ):
+        for match in re.finditer(finder, text):
+            found[match.start(1)] = int(match.group(1))
+    for row in re.finditer(r"\| `format` \|([^|]*)\|", text):
+        for number in re.finditer(r"`(\d+)`", row.group(1)):
+            found[row.start(1) + number.start(1)] = int(number.group(1))
+    rules = (
+        ("dictionary now", r"Its `format` is `(\d+)`"),
+        ("dictionary now", r"\(`format`, today `(\d+)`\)"),
+        ("dictionary older", r"(?:of|at) format (\d+) or older"),
+        (
+            "record collected, then given",
+            r"\| `format` \| version of this document format, raised only when its shape changes; "
+            r"`(\d+)`, or `(\d+)` for a record with an `origin`, which is the highest this "
+            r"version understands",
+        ),
+        ("record collected", r"as no record of format `(\d+)` has"),
+        ("record given", r"given description alone, and that record is stamped `(\d+)`"),
+        (
+            "record collected",
+            r"shape of format `(\d+)` and is stamped `(\d+)`",
+        ),
+        ("record read", r"reads a record of format `(\d+)` and of format `(\d+)` alike"),
+    )
+    placed: list[tuple[int, str]] = []
+    covered: set[int] = set()
+    for name, pattern in rules:
+        for match in re.finditer(pattern, text):
+            for group in range(1, (match.lastindex or 0) + 1):
+                covered.add(match.start(group))
+                label = name.split(", then ")[group - 1] if ", then " in name else name
+                placed.append((int(match.group(group)), label))
+    return placed, sorted(found[offset] for offset in found.keys() - covered)
+
+
 class TestEveryFormatNumberTheSpecStatesIsTheTools:
-    """The specification names the version of each document the tool writes: the dumped
-    dictionary's in two places and the build record's in two more. A raise of one constant that
-    leaves a number behind has a reader written from the specification refuse every file the
-    tool writes, so every statement is read out of the specification and held to the constant
-    in the code, which no test types a number for."""
+    """The specification names the version of each document the tool writes, and a raise of a
+    constant that leaves one number behind has a reader written from the specification refuse
+    every file the tool writes. Every statement is found in the specification, placed by what
+    it states and held to the constant in the code, which no test types a number for; one the
+    guard cannot place fails, so whoever writes a new statement places it here."""
 
     TEXT = flattened(SPEC)
 
-    def test_the_dictionary_is_stated_as_the_format_the_tool_writes(self) -> None:
+    @staticmethod
+    def _tools_formats() -> dict[str, int]:
+
+        from ddd.build_info import BUILD_INFO_FORMAT, BuildInfo, build_info_text
         from ddd.ir import DICTIONARY_FORMAT
 
-        for pattern in (
-            r"Its `format` is `(\d+)`",
-            r"its own format \(`format`, today `(\d+)`\)",
-        ):
-            stated = re.findall(pattern, self.TEXT)
-            assert stated, f"the specification no longer says it in the words {pattern!r}"
-            assert {int(number) for number in stated} == {DICTIONARY_FORMAT}, (
-                f"the specification states dictionary format {sorted(set(stated))}, and the "
-                f"tool writes {DICTIONARY_FORMAT}"
-            )
+        def written(origin: Literal["collected", "given"]) -> int:
+            record = build_info_text(BuildInfo(project="/p/project.ddd.json", origin=origin))
+            return int(json.loads(record)["format"])
 
-    def test_the_build_record_is_stated_as_the_format_the_tool_writes(self) -> None:
-        from ddd.build_info import BUILD_INFO_FORMAT
+        assert written("given") == BUILD_INFO_FORMAT
+        return {
+            "dictionary now": DICTIONARY_FORMAT,
+            "record given": written("given"),
+            "record collected": written("collected"),
+        }
 
-        for pattern in (
-            r"`1`, or `(\d+)` for a record with an `origin`, which is the highest this version "
-            r"understands",
-            r"given description alone, and that record is stamped `(\d+)`",
+    def test_every_statement_of_a_format_is_one_a_rule_places(self) -> None:
+        placed, unplaced = format_statements_of(self.TEXT)
+        assert not unplaced, (
+            f"the specification states the format numbers {unplaced} in words no rule of "
+            f"format_statements_of places: say which document each is the format of"
+        )
+        # Positive control: a scan that finds nothing places nothing and fails nothing.
+        assert {label for _, label in placed} >= {
+            "dictionary now",
+            "dictionary older",
+            "record collected",
+            "record given",
+            "record read",
+        }
+
+    def test_the_formats_it_says_the_tool_writes_are_the_formats_it_writes(self) -> None:
+        tools = self._tools_formats()
+        placed, _ = format_statements_of(self.TEXT)
+        for number, label in placed:
+            if label in tools:
+                assert number == tools[label], (
+                    f"the specification states {label} format {number}, and the tool writes "
+                    f"{tools[label]}"
+                )
+
+    def test_the_formats_it_says_are_older_were_older(self) -> None:
+        tools = self._tools_formats()
+        placed, _ = format_statements_of(self.TEXT)
+        older = [number for number, label in placed if label == "dictionary older"]
+        assert older
+        assert all(1 <= number < tools["dictionary now"] for number in older)
+
+    def test_the_record_formats_it_says_are_read_are_the_ones_the_tool_reads(self) -> None:
+        tools = self._tools_formats()
+        placed, _ = format_statements_of(self.TEXT)
+        read = sorted(number for number, label in placed if label == "record read")
+        assert read == list(range(tools["record collected"], tools["record given"] + 1))
+
+    def test_a_statement_in_other_words_is_found_and_not_placed(self) -> None:
+        for sentence in (
+            "The dictionary is at format 11 today.",
+            "A record is stamped `3` now.",
+            "A reader refuses format `9`.",
         ):
-            stated = re.findall(pattern, self.TEXT)
-            assert stated, f"the specification no longer says it in the words {pattern!r}"
-            assert {int(number) for number in stated} == {BUILD_INFO_FORMAT}, (
-                f"the specification states build record format {sorted(set(stated))}, and the "
-                f"tool writes {BUILD_INFO_FORMAT}"
-            )
+            _, unplaced = format_statements_of(self.TEXT + " " + sentence)
+            assert unplaced == [int(re.search(r"\d+", sentence).group())], sentence  # type: ignore[union-attr]
+        assert format_statements_of(self.TEXT)[1] == []
 
 
 class TestWhatARenameOfAnInstanceReportsOfItsDisplayIdentifiers:

@@ -140,11 +140,9 @@ takes the host without it for its own (12:M4)."""
 
 SERVED_ON: Final = ("127.0.0.1", "0.0.0.0")
 """The addresses ``ddd gui`` listens on, a ``--host`` resolving to one of them (12:M5, 9:M8):
-loopback's ``127.0.0.1``, the default, and the wildcard ``0.0.0.0``, every interface, which a
-container needs to answer its host. Any other is refused before anything binds: the address
-``ddd gui`` prints names ``127.0.0.1`` (:attr:`GuiServer.address`), and it answers a request
-naming ``127.0.0.1`` or ``localhost`` alone (:meth:`_Handler._own_hosts`), so on any other
-interface of its own it would answer nobody."""
+loopback's ``127.0.0.1`` alone, the default, or every interface, the wildcard ``0.0.0.0``, for a
+container, its port published on the host's loopback. Any other is refused before anything
+binds, exit 2, saying what to give instead."""
 
 _HOSTS_TAKEN: Final = (
     "give --host 127.0.0.1, the default, to answer this computer alone, or --host 0.0.0.0 to "
@@ -570,9 +568,9 @@ class GuiServer(ThreadingHTTPServer):
         this computer, it reaches the process when ``host`` is ``127.0.0.1`` itself or
         ``0.0.0.0`` - every interface, loopback included - and not when ``host`` names one
         interface that is neither, such as ``127.0.0.2`` or a specific address of a network
-        this computer is also on: that interface alone answers, and this is a different one,
-        which is why ``run`` refuses any host but those two (:data:`SERVED_ON`). On
-        :data:`HTTP_PORT` it names no port, as a browser would not (:attr:`origin`).
+        this computer is also on: that interface alone answers, and this is a different one.
+        ``run`` takes no host but those two (:data:`SERVED_ON`). On :data:`HTTP_PORT` it names
+        no port, as a browser would not (:attr:`origin`).
         """
         return f"{self.origin}/open?token={self.token}"
 
@@ -1128,9 +1126,8 @@ def run(
         return _refused(host, port, error)
     if address not in SERVED_ON:
         print(
-            f"ddd: --host {host} resolves to {address}, where ddd gui would answer nobody: the "
-            "address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 or "
-            f"localhost alone; {_HOSTS_TAKEN}",
+            f"ddd: --host {host} resolves to {address}, and ddd gui listens on 127.0.0.1 alone "
+            f"or on every interface; {_HOSTS_TAKEN}",
             file=sys.stderr,
         )
         return EXIT_USAGE

@@ -3446,11 +3446,10 @@ class TestRunning:
         result = run(None, [], 0, open_browser=False, static=pages, host="localhost")
         assert result == EXIT_USAGE
         assert capsys.readouterr().err == (
-            "ddd: --host localhost resolves to 192.168.1.50, where ddd gui would answer nobody: "
-            "the address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 "
-            "or localhost alone; give --host 127.0.0.1, the default, to answer this computer "
-            "alone, or --host 0.0.0.0 to answer a container's host, its port published on the "
-            "host's loopback\n"
+            "ddd: --host localhost resolves to 192.168.1.50, and ddd gui listens on 127.0.0.1 "
+            "alone or on every interface; give --host 127.0.0.1, the default, to answer this "
+            "computer alone, or --host 0.0.0.0 to answer a container's host, its port published "
+            "on the host's loopback\n"
         )
 
     def test_a_name_resolving_to_the_wildcard_warns_and_opens_no_browser(
@@ -3685,9 +3684,8 @@ class TestTheHostsServedOn:
         """Resolved for real, being numeric and loopback's own."""
         assert run(None, [], port, open_browser=False, static=pages, host=host) == EXIT_USAGE
         assert capsys.readouterr().err == (
-            f"ddd: --host {host} resolves to {host}, where ddd gui would answer nobody: the "
-            "address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 or "
-            f"localhost alone; {HOSTS_TAKEN}\n"
+            f"ddd: --host {host} resolves to {host}, and ddd gui listens on 127.0.0.1 alone or on "
+            f"every interface; {HOSTS_TAKEN}\n"
         )
         assert nothing_starts == []
 
@@ -3699,9 +3697,8 @@ class TestTheHostsServedOn:
         """Resolved by a stand-in, each to an address of a network: no test asks the network."""
         assert run(None, [], port, open_browser=False, static=pages, host=host) == EXIT_USAGE
         assert capsys.readouterr().err == (
-            f"ddd: --host {host} resolves to 192.168.1.50, where ddd gui would answer nobody: "
-            "the address it prints names 127.0.0.1, and it answers a request naming 127.0.0.1 "
-            f"or localhost alone; {HOSTS_TAKEN}\n"
+            f"ddd: --host {host} resolves to 192.168.1.50, and ddd gui listens on 127.0.0.1 alone "
+            f"or on every interface; {HOSTS_TAKEN}\n"
         )
         assert (resolved, nothing_starts) == ([host], [])
 

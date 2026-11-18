@@ -314,10 +314,15 @@ def _readable_project(project: str, *served: Path) -> bool:
     """Whether a build record's ``project`` may be read at all: a path a request may name
     (:func:`~ddd.gui.queries.is_a_path`) - judged as text, before anything resolves it, which a
     network or device spelling would have the system open - and named ``*.ddd.json``. The one
-    rule every reader of a record's ``project`` goes through. A network path is allowed only
-    under a directory of ``served``: the start directory, and a project's own directory where
-    its record is read. Narrower than the directories a request is served, deliberately: a
-    record never names more than the start page needs."""
+    rule every reader of a record's ``project`` goes through, a network path allowed only under a
+    directory of ``served``, which each reader gives. The start page's listing
+    (:func:`find_projects`), which an open asks as well, and the builds that feed the open
+    project's analysis (:meth:`Session._analysed`) read records through :func:`_offering`, under
+    the start directory alone - narrower than the directories a request is served, deliberately:
+    a record never names more than the start page needs. So a project opened from a network
+    share outside the start directory is fed by none of its builds, though a request may name
+    its path. The record beside the open project that says how it is generated
+    (:func:`_generated`) is read under the project's own directory too."""
     directories = tuple(directory.as_posix() for directory in served)
     return project.endswith(DESCRIPTION_SUFFIX) and is_a_path(project, directories)
 

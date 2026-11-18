@@ -883,7 +883,8 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   listing, its open and the builds that feed an open project read a `ddd-build.json` alike: a record
   whose `project` is not a path a request may name, or is not named `*.ddd.json`, is read as no
   record, so the project it names is not offered on the start page, and its builds do not feed it
-  when it is open.  Such a project is opened by its path, on the command line, instead.
+  when it is open.  Opened by its path, on the command line, instead, such a project opens, but its
+  records' severities still do not apply to it.
 
 * **`localhost` is `ddd gui` itself, whichever of its two addresses a browser tries.**  When `ddd
   gui` listens on loopback, as it does by default, it listens on `[::1]` as well as `127.0.0.1`, on

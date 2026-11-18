@@ -1628,6 +1628,16 @@ class TestPackaging:
         }
         assert listed == {"pydantic", "jinja2", "pyelftools"}
 
+    def test_the_requirements_name_both_commands_that_read_an_image(self) -> None:
+        """20:M12. The comment on pyelftools named ``ddd tool from-elf`` alone, "today", as though
+        it were the one reader of an image: ``ddd generate`` given ``--image`` is the other."""
+        said = comments_of((ROOT / "requirements.txt").read_text(encoding="utf-8"))
+        assert (
+            "What DDD reads ELF images and their DWARF with: `ddd tool from-elf`, and `ddd "
+            "generate` given `--image`."
+        ) in said
+        assert "today" not in said
+
     def test_the_extension_declines_an_untrusted_workspace_and_the_pages_say_why(self) -> None:
         """A description file names the plugins the server runs, and the server imports the
         plugins of every description file it reads at or above an opened file to find the
@@ -2373,6 +2383,17 @@ class TestTheReleaseNote:
             f"the release note announces dictionary format {sorted(set(stated))}, and the "
             f"tool writes {DICTIONARY_FORMAT}"
         )
+
+    def test_it_names_both_commands_that_import_pyelftools(self) -> None:
+        """20:M12. The toolbox's entry said that every other command runs without importing
+        pyelftools, beside the entry for ``ddd generate a2l --image``, which reads its image
+        through the same reader. Held to the whole changelog rather than to the topmost section,
+        since the entry stays in the section of the release that carries it."""
+        said = flattened(CHANGELOG)
+        assert (
+            "every command but it and `ddd generate` given `--image` runs without importing it"
+        ) in said
+        assert "every other command runs without importing it" not in said
 
 
 def exported_models() -> list[str]:
@@ -3714,6 +3735,50 @@ class TestContinuousIntegration:
             f"ci tests python {sorted(tested)} but the package advertises {sorted(advertised)}"
         )
 
+    def test_every_advertised_system_is_tested(self) -> None:
+        """20:M12, decision 20.6. The package claimed to run on any system, and ci runs ubuntu
+        and windows alone: no cell runs macOS. Its classifiers name the two systems the matrix
+        runs, and a system added to either without the other fails here."""
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        advertised = {
+            classifier
+            for classifier in metadata["project"]["classifiers"]
+            if classifier.startswith("Operating System ::")
+        }
+        listed = re.search(r"^        os: \[([^]]*)\]$", CI_WORKFLOW, re.M)
+        assert listed is not None, "the ci matrix no longer lists the systems"
+        systems = {
+            "ubuntu-latest": "Operating System :: POSIX :: Linux",
+            "windows-latest": "Operating System :: Microsoft :: Windows",
+        }
+        tested = {
+            systems.get(runner, f"a system for {runner}")
+            for runner in re.findall(r"[\w.-]+", listed.group(1))
+        }
+        assert tested == advertised, (
+            f"ci tests {sorted(tested)} but the package advertises {sorted(advertised)}"
+        )
+
+    def test_the_workflow_and_the_page_say_which_systems_are_claimed(self) -> None:
+        said = comments_of(CI_WORKFLOW)
+        page = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "the workflow": "The package claims python 3.12, 3.13 and 3.14, on Windows and "
+            "Linux, which its classifiers list.",
+            "the workflow, macOS": "No cell runs macOS, and the package does not claim it.",
+            "the page": "the six combinations the classifiers in ``pyproject.toml`` advertise: "
+            "Windows and Linux, and not macOS, which no cell runs",
+            "the page, the test": "so advertising a new interpreter or a new system without "
+            "testing it fails",
+        }
+        missing = [
+            what
+            for what, claim in claims.items()
+            if claim not in (said if what.startswith("the workflow") else page)
+        ]
+        assert not missing, f"no longer said: {missing}"
+        assert "os independent" not in said
+
 
 SKIPPING = {"skip", "skipif", "importorskip", "xfail"}
 """The four ways pytest is asked to report a test as something other than run or failed."""
@@ -4699,6 +4764,23 @@ class TestPublishedDocumentation:
             "the workflow no longer publishes by pushing the branch Pages serves"
         )
 
+    def test_the_workflow_says_why_the_branch_needs_its_nojekyll(self) -> None:
+        """20:M12. The comment beside ``.nojekyll`` said that an artifact this workflow uploaded
+        was served without Jekyll, and that the file was written so that the Pages source could
+        move to the branch. The source has moved: Pages serves the branch, the workflow uploads
+        no artifact Pages serves, and the file is what keeps Jekyll off the site."""
+        said = comments_of(DOCS_WORKFLOW)
+        claims = {
+            "why it is needed": "Pages serves this branch, so the .nojekyll at its root is what "
+            "keeps Jekyll off every version the branch holds",
+            "what would not notice": "the read-back below asks for a page and the version index, "
+            "and would not notice its loss",
+        }
+        missing = [what for what, claim in claims.items() if claim not in said]
+        assert not missing, f"docs.yml no longer says {missing}"
+        assert "currently uploads" not in said
+        assert "touch site/.nojekyll" in uncommented(DOCS_WORKFLOW)
+
 
 class TestTheVersionIndexOfTheSite:
     """What a reader arriving at the root of the documentation site lands on.
@@ -4827,6 +4909,13 @@ def job_names(workflow: str) -> list[str]:
 def uncommented(text: str) -> str:
     """What a workflow or a script runs, its comments left out."""
     return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+
+def comments_of(text: str) -> str:
+    """What a workflow, a requirements file or a manifest says in its comments, as one line of
+    prose: each comment line without its ``#``, the lines flattened as a page's are."""
+    said = [line.lstrip()[1:] for line in text.splitlines() if line.lstrip().startswith("#")]
+    return flattened(" ".join(said)).strip()
 
 
 def step(job_text: str, name: str) -> str:

@@ -1325,8 +1325,8 @@ An install and the tool's python:
   NAME`, a component file holding the types its structures need.  DDD itself checks every
   entry before it is printed, as `ddd check --standalone` checks a component; what an image
   does not state, a unit or a scaling, is left out and said once.  It reads images with
-  pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every other
-  command runs without importing it.  No file format changes.
+  pyelftools 0.32 or newer, which joins pydantic and jinja2 as a runtime dependency; every command
+  but it and `ddd generate` given `--image` runs without importing it.  No file format changes.
 
 * **`ddd gui` stays responsive on large projects.**  An edit shows at once and its findings
   follow once the project has been analysed again; a change replacing many plain values in one

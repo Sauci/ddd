@@ -542,11 +542,12 @@ without it the check would read the checkout rather than the image.
 :ref:`development-builds` below describes.
 
 The suite runs across a matrix of ubuntu and windows on python 3.12, 3.13 and 3.14, which is
-the six combinations the classifiers in ``pyproject.toml`` advertise. That is not thoroughness
-for its own sake: a path handling defect that only appeared on linux has already reached a
-user of this project, having passed the whole suite on windows first. A test in
-``tests/test_documentation.py`` keeps the matrix and those classifiers in agreement, so
-advertising a new interpreter without testing it fails.
+the six combinations the classifiers in ``pyproject.toml`` advertise: Windows and Linux, and not
+macOS, which no cell runs. That is not thoroughness for its own sake: a path handling defect
+that only appeared on linux has already reached a user of this project, having passed the whole
+suite on windows first. A test in ``tests/test_documentation.py`` keeps the matrix and those
+classifiers in agreement, so advertising a new interpreter or a new system without testing it
+fails.
 
 The two python jobs install the project with ``pip install -e ".[dev]"`` rather than running
 it out of ``src`` - the extension job installs ``pip install -e .``, since what it needs is a

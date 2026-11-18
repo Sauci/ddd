@@ -55,9 +55,10 @@ jobs:
     # mingw32-make as well. The limit is there to stop a hang, not to time the suite, so it
     # leaves a slow runner room.
     timeout-minutes: 40
-    # The package claims python 3.12, 3.13 and 3.14, and claims to be os independent. This is
-    # what turns both into tested claims: a path handling bug that appeared only on linux has
-    # already reached a user of this project once, having passed everything on windows.
+    # The package claims python 3.12, 3.13 and 3.14, on Windows and Linux, which its classifiers
+    # list. This is what turns both into tested claims: a path handling bug that appeared only on
+    # linux has already reached a user of this project once, having passed everything on
+    # windows. No cell runs macOS, and the package does not claim it.
     strategy:
       fail-fast: false # one cell failing must not hide whether the others do
       matrix:

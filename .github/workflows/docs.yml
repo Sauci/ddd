@@ -287,9 +287,9 @@ jobs:
       # branch it serves, treats a leading underscore as private and publishes none of them.
       # The result is a site that answers 200 on every page and 404 on every stylesheet and
       # diagram, which reads as a styling glitch rather than as a build that dropped a third
-      # of its output. The artifact this workflow currently uploads is served without Jekyll
-      # and does not need the file; it is written anyway so that the archive branch is
-      # servable on its own, which is what lets the Pages source move to it.
+      # of its output. Pages serves this branch, so the .nojekyll at its root is what keeps
+      # Jekyll off every version the branch holds; the read-back below asks for a page and the
+      # version index, and would not notice its loss.
       #
       # The commit says which commit of the repository it publishes: the one the build checked
       # out, which for a release is not the run's own sha - that is master's newest.

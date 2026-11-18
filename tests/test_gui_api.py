@@ -3056,6 +3056,27 @@ class TestAnEditCannotChangeWhichPluginsTheDescriptionsName:
         assert reply == Reply(409, {"error": "plugins", "message": REFUSED_CREATED})
         assert contents(root) == before
 
+    def test_a_created_file_whose_includes_bring_in_a_description_naming_plugins_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """The includes of a file an edit creates are walked, as a change of the project's
+        includes is: a created file bringing in a description that names plugins is refused by the
+        includes shape of the refusal, with nothing written. The plugin named does not exist, so
+        a regression reaches the loader and imports nothing."""
+        api = opened(
+            tmp_path,
+            {
+                "p.ddd.json": project("P", "a.ddd.json"),
+                "a.ddd.json": component("A"),
+                "other.ddd.json": project("Other", plugins=["nothere.py"]),
+            },
+        )
+        before = contents(tmp_path)
+        made = json.dumps({"project": {"name": "New", "includes": ["other.ddd.json"]}})
+        reply = post(api, "/api/edit", creating_doc(tmp_path, "new.ddd.json", made))
+        assert reply == Reply(409, {"error": "plugins", "message": REFUSED_INCLUDES})
+        assert contents(tmp_path) == before
+
     def test_including_an_existing_description_that_names_plugins_is_refused(
         self, tmp_path: Path
     ) -> None:

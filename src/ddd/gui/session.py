@@ -302,18 +302,22 @@ class FileContent:
     error: str | None
 
 
+def _readable_project(project: str, *served: Path) -> bool:
+    """Whether a build record's ``project`` may be read at all: a path a request may name
+    (:func:`~ddd.gui.queries.is_a_path`) - judged as text, before anything resolves it, which a
+    network or device spelling would have the system open - and named ``*.ddd.json``. The one
+    rule every reader of a record's ``project`` goes through. A network path is allowed only
+    under a directory of ``served``: the start directory, and a project's own directory where
+    its record is read. Narrower than the directories a request is served, deliberately: a
+    record never names more than the start page needs."""
+    directories = tuple(directory.as_posix() for directory in served)
+    return project.endswith(DESCRIPTION_SUFFIX) and is_a_path(project, directories)
+
+
 def _offering(records: Iterable[BuildInfo], root: Path) -> list[BuildInfo]:
-    """The build records whose ``project`` names a description the start page may read: a path a
-    request may name (:func:`~ddd.gui.queries.is_a_path`) - judged as text, before anything
-    resolves it, which a network or device spelling would have the system open - and named
-    ``*.ddd.json``. A record naming anything else reads as no record, and nothing is read at the
-    path it names."""
-    served = (root.as_posix(),)
-    return [
-        info
-        for info in records
-        if info.project.endswith(DESCRIPTION_SUFFIX) and is_a_path(info.project, served)
-    ]
+    """The build records whose ``project`` is readable (:func:`_readable_project`). A record
+    naming anything else reads as no record, and nothing is read at the path it names."""
+    return [info for info in records if _readable_project(info.project, root)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -740,7 +744,7 @@ class Session:
             index=next((run.index for run in runs if run.index is not None), None),
             served=served,
             resolved_paths=_resolved_paths(files, findings),
-            generated=_generated(project),
+            generated=_generated(project, self.root),
         )
 
     def _request(self) -> None:
@@ -1424,7 +1428,7 @@ def _named_by(project: Path) -> set[Path]:
     return named
 
 
-def _generated(project: Path) -> Generated | None:
+def _generated(project: Path, root: Path) -> Generated | None:
     """How a build generates the project description ``project``, where the build record beside
     it names it; ``None`` otherwise.
 
@@ -1451,7 +1455,7 @@ def _generated(project: Path) -> Generated | None:
     if not isinstance(record, dict):
         return None
     named = record.get("project")
-    if not isinstance(named, str):
+    if not isinstance(named, str) or not _readable_project(named, root, project.parent):
         return None
     if resolve_path(Path(named)) != project:
         return None

@@ -54,9 +54,10 @@ import json
 import re
 import shutil
 import threading
+import time
 import types
 import typing
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -494,17 +495,29 @@ def _record(root: Path, named: object) -> None:
     write_tree(root, {"build/ddd-build.json": {"format": 1, "project": named}})
 
 
-def _reads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Every path ``Path.read_bytes`` is asked for from now on."""
+def _touched(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every path a read, a resolve, a stat or an open is asked for from now on."""
     asked: list[str] = []
-    real = Path.read_bytes
-
-    def spy(self: Path) -> bytes:
-        asked.append(self.as_posix())
-        return real(self)
-
-    monkeypatch.setattr(Path, "read_bytes", spy)
+    for name in (
+        "read_bytes",
+        "read_text",
+        "resolve",
+        "stat",
+        "lstat",
+        "open",
+        "exists",
+        "is_file",
+    ):
+        monkeypatch.setattr(Path, name, _watching(getattr(Path, name), asked))
     return asked
+
+
+def _watching(real: Callable[..., Any], asked: list[str]) -> Callable[..., Any]:
+    def spy(self: Path, *arguments: Any, **keywords: Any) -> Any:
+        asked.append(self.as_posix())
+        return real(self, *arguments, **keywords)
+
+    return spy
 
 
 REFUSED_RECORD_PROJECTS: Final = (
@@ -524,14 +537,25 @@ REFUSED_RECORD_PROJECTS: Final = (
 """What a record's ``project`` may be, none of which the start page reads or offers."""
 
 
+REFUSED_MARKERS: Final = ("far.ddd.json", "a\x00b", "xxxx", "CON.ddd.json", "C:/dir", "/dir/not-a")
+"""What no path a refused record names may appear in, as read, resolved, stat'd or opened."""
+
+
+def _nothing_at_a_refused_path(asked: list[str]) -> None:
+    assert not [path for path in asked if any(marker in path for marker in REFUSED_MARKERS)]
+
+
 @pytest.mark.parametrize("named", REFUSED_RECORD_PROJECTS, ids=range(len(REFUSED_RECORD_PROJECTS)))
 def test_a_record_naming_what_a_request_s_path_is_refused_is_read_as_no_record(
-    start_page: tuple[GuiServer, Path], monkeypatch: pytest.MonkeyPatch, named: object
+    start_page: tuple[GuiServer, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    named: object,
 ) -> None:
     server, root = start_page
     monkeypatch.setattr(queries_module, "_OPENS_DEVICES", True)
     _record(root, named)
-    asked = _reads(monkeypatch)
+    asked = _touched(monkeypatch)
     status, listed = _ask(server, "GET", "/api/projects")
     assert status == 200
     assert [p["path"] for p in listed["projects"]] == [
@@ -542,9 +566,35 @@ def test_a_record_naming_what_a_request_s_path_is_refused_is_read_as_no_record(
     assert status == 200, opened_
     assert opened_["project"]["name"] == "Mine"
     assert [path for path in asked if path.endswith("ddd-build.json")], "the record was read"
-    assert not [path for path in asked if "far.ddd.json" in path or "a\x00b" in path]
-    assert not [path for path in asked if path.endswith(("CON.ddd.json", "other.ini", "dir"))]
-    assert not [path for path in asked if path.endswith("not-a-description.json")]
+    _nothing_at_a_refused_path(asked)
+    assert "Traceback" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("named", REFUSED_RECORD_PROJECTS, ids=range(len(REFUSED_RECORD_PROJECTS)))
+def test_a_record_beside_an_opened_project_naming_what_a_request_s_path_is_refused_names_nothing(
+    start_page: tuple[GuiServer, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    named: object,
+) -> None:
+    server, root = start_page
+    monkeypatch.setattr(queries_module, "_OPENS_DEVICES", True)
+    write_tree(root, {"ddd-build.json": {"format": 1, "project": named}})
+    asked = _touched(monkeypatch)
+    mine = f"{root.resolve().as_posix()}/mine.ddd.json"
+    status, opened_ = _ask(server, "POST", "/api/open", {"path": mine})
+    assert status == 200, opened_
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        _, state = _ask(server, "GET", "/api/state")
+        if state["revision"] >= 1 and not state["analysing"]:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("the project was never analysed")
+    assert [path for path in asked if path.endswith("/ddd-build.json")], "the record was read"
+    _nothing_at_a_refused_path(asked)
+    assert "Traceback" not in capsys.readouterr().err
 
 
 def test_a_record_naming_a_file_not_named_as_a_description_is_not_read_or_offered(
@@ -552,7 +602,7 @@ def test_a_record_naming_a_file_not_named_as_a_description_is_not_read_or_offere
 ) -> None:
     server, root = start_page
     _record(root, (root / "other.json").as_posix())
-    asked = _reads(monkeypatch)
+    asked = _touched(monkeypatch)
     status, listed = _ask(server, "GET", "/api/projects")
     assert status == 200
     assert [p["name"] for p in listed["projects"]] == ["Mine"]
@@ -568,13 +618,3 @@ def test_a_record_naming_an_ordinary_description_still_offers_it(
     status, listed = _ask(server, "GET", "/api/projects")
     assert status == 200
     assert {p["name"] for p in listed["projects"]} == {"Mine", "Built"}
-
-
-def test_a_record_naming_a_nul_writes_no_traceback(
-    start_page: tuple[GuiServer, Path], capsys: pytest.CaptureFixture[str]
-) -> None:
-    server, root = start_page
-    _record(root, f"{root.as_posix()}/a\x00b.ddd.json")
-    status, _ = _ask(server, "GET", "/api/projects")
-    assert status == 200
-    assert "Traceback" not in capsys.readouterr().err

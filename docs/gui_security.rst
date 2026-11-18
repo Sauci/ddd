@@ -133,9 +133,10 @@ What it trusts
 
 * **The directory** ``ddd gui`` **was started in.** The project's own files may name files
   above that directory, and ``ddd gui`` reads them.
-  Its build records are read as well, for the projects the start page offers: a record's
-  ``project`` is read only under the rule a request's path meets, and only a description's
-  name, and a record naming anything else is read as no record.
+  Its build records are read as well, for the projects the start page offers and for how a
+  project is generated: a record's ``project`` is read only under the rule a request's path
+  meets, and only as a file named ``*.ddd.json``, and a record naming anything else is read
+  as no record.
 
 * **Whoever holds the token.** It is code execution as the reader: whoever holds it acts on
   the project's descriptions as the reader does, and ``ddd gui`` runs the plugins they name,

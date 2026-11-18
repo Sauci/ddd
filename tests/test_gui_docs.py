@@ -43,3 +43,34 @@ def test_the_page_names_every_route_with_its_policy() -> None:
         for route in ROUTES
     ]
     assert _rows() == expected
+
+
+def _prose() -> str:
+    """The page as one line, every run of whitespace a single space, so a sentence is matched
+    whatever width it is wrapped to."""
+    return " ".join(PAGE.read_text(encoding="utf-8").split())
+
+
+def test_the_page_likens_running_a_project_to_make() -> None:
+    assert (
+        "``ddd gui`` runs the code a project names, as ``make`` runs the recipes a Makefile names"
+        in _prose()
+    )
+
+
+def test_the_page_says_what_holding_the_token_lets_one_do() -> None:
+    assert "It is code execution as the reader" in _prose()
+
+
+def test_the_page_says_an_edit_cannot_change_which_plugins_run() -> None:
+    assert "an edit that would change which plugins the project runs is refused" in _prose()
+
+
+def test_the_page_leaves_a_process_of_the_reader_s_own_account_undefended() -> None:
+    assert (
+        "A process already running as this same user is outside what this page defends" in _prose()
+    )
+
+
+def test_the_page_says_the_launch_race_winner_runs_the_project_code() -> None:
+    assert "holds the token, and so runs the project's code as the reader" in _prose()

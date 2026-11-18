@@ -125,7 +125,8 @@ What it trusts
 --------------
 
 * **The project the reader opens, and its plugins.** They run when the project is
-  analysed, exactly as they run under ``ddd check``.
+  analysed, exactly as they run under ``ddd check``: ``ddd gui`` runs the code a project
+  names, as ``make`` runs the recipes a Makefile names. Opening a project here is running it.
 
 * **A baseline the reader compares against, and its plugins.** They run exactly as they
   run under ``ddd compare``.
@@ -133,10 +134,16 @@ What it trusts
 * **The directory** ``ddd gui`` **was started in.** The project's own files may name files
   above that directory, and ``ddd gui`` reads them.
 
-* **Whoever holds the token.** It is the key: whoever started ``ddd gui`` holds it, and so
-  does anyone its terminal shows it to. The printed address is for pasting into a browser's
-  own address bar; clicked in the terminal instead, it is handed to an opener such as
-  ``xdg-open`` on its command line, which any local user can read while it runs.
+* **Whoever holds the token.** It is code execution as the reader: whoever holds it acts on
+  the project's descriptions as the reader does, and ``ddd gui`` runs the plugins they name,
+  as ``ddd check`` does. Whoever started ``ddd gui`` holds it, and so does anyone its terminal
+  shows it to. The printed address is for pasting into a browser's own address bar; clicked in
+  the terminal instead, it is handed to an opener such as ``xdg-open`` on its command line,
+  which any local user can read while it runs. The token no longer chooses *which* plugins
+  run: an edit that would change which plugins the project runs is refused, ``409``, so the
+  reader changes that list in a text editor, not through the page. A process already running
+  as this same user is outside what this page defends: it reads these files and runs this code
+  with no token at all.
 
 * **The page's own origin.** The token is kept in its ``localStorage``, readable only by
   script running in this origin; the content security policy runs no script but one served
@@ -212,8 +219,8 @@ What it does not defend against
   is answered. The browser is handed a one-time code instead of the long-lived token, so
   the token itself never sits on a command line. But a local process reading the
   launcher's command line - polling ``/proc``, on Linux - and presenting that code before
-  the reader's browser does is signed in with the token for as long as this run of
-  ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this happened:
+  the reader's browser does holds the token, and so runs the project's code as the reader,
+  for as long as this run of ``ddd gui`` lasts - not merely ahead of the reader once. Two things show this happened:
   the reader's own browser shows it is signed out instead of landing on the project, and
   presenting that same code again prints one line on the terminal, saying so and to
   restart ``ddd gui`` rather than open the address it printed - a restart takes the token

@@ -96,6 +96,20 @@ GENERATED: Final = "generated"
 tree holds, every one the build's. Answered 409, and refused again for as long as the build record
 beside the description names it."""
 
+PLUGINS: Final = "plugins"
+"""The refusal of an edit after which the open project would name plugins other than it names now
+(:func:`_refuse_plugins`): a change of a description's ``plugins`` list, a created file whose
+document names plugins, or a change of ``includes`` that brings in or drops a description naming
+plugins. Answered 409. ``ddd gui`` runs what a project names, as ``make`` runs what a Makefile
+names, so the token no longer chooses the code that runs (decision M7); the list is changed in a
+text editor."""
+
+_PLUGINS_REFUSED: Final = (
+    "ddd gui does not change which plugins a project runs; change the plugins list in a text editor"
+)
+"""The sentence every shape of a :data:`PLUGINS` refusal takes: ``ddd gui`` does not choose the
+code a project runs, and the reader changes the list by hand."""
+
 _CMAKE_CACHE: Final = "CMakeCache.txt"
 """The file CMake writes at the top of every build tree it configures: what says where a build
 tree begins (:func:`_build_tree`)."""
@@ -348,15 +362,17 @@ class Session:
     One lock guards the project, its newest revision, the undo stack, the counters, the request,
     the stamps and the files written since an analysis began, and every write of them is made
     holding it. An analysis runs without it, which is what lets an edit be written while one
-    runs. Nothing on disk is touched holding it but the files an edit or an undo writes, so that
-    the number it takes, the stack and the files waiting for an analysis move with the write: the
-    poll stamps the files without it (:meth:`poll`), an analysis stamps those it is about to read
-    without it (:meth:`_next`), and opening reads what a project includes before taking it
-    (:meth:`open`). While another thread computes, every system call waits out that thread's
-    turn of the interpreter, and a lock held across a project's thousands of files held every
-    edit, state and plan behind them: edits asked 0.2 to 3.0 s into an analysis of a generated
-    project of 100,000 declarations answered in 2 to 3,363 ms while the poll stamped holding it,
-    and in 2 to 129 ms since - one run each, seven edits, on the Linux development PC.
+    runs. Nothing on disk is touched holding it but the files an edit or an undo writes, and the
+    descriptions an edit's change of ``includes`` brings in or drops, read for the plugins they
+    name (:func:`_refuse_plugins`), so that the number it takes, the stack and the files waiting
+    for an analysis move with the write: the poll stamps the files without it (:meth:`poll`), an
+    analysis stamps those it is about to read without it (:meth:`_next`), and opening reads what a
+    project includes before taking it (:meth:`open`). While another thread computes, every system
+    call waits out that thread's turn of the interpreter, and a lock held across a project's
+    thousands of files held every edit, state and plan behind them: edits asked 0.2 to 3.0 s into
+    an analysis of a generated project of 100,000 declarations answered in 2 to 3,363 ms while the
+    poll stamped holding it, and in 2 to 129 ms since - one run each, seven edits, on the Linux
+    development PC.
     """
 
     def __init__(
@@ -539,9 +555,17 @@ class Session:
         """Make an edit of description files of the open project, ask for its analysis, and
         answer the number it took and what it wrote.
 
-        A change without a fingerprint creates its file, and only the kind of file adopting a
-        vocabulary writes: one beside the project description, in an edit whose change of that
-        description includes it. Any other is refused before a file is touched.
+        A change without a fingerprint creates its file, and only a project description file
+        ``ddd gui`` creates (:func:`kind_of`): one beside the project description, in an edit
+        whose change of that description includes it, and no plugin and no file of another kind.
+        Any other is refused before a file is touched.
+
+        ``ddd gui`` does not change which plugins a project runs (:func:`_refuse_plugins`): an
+        edit that would change a ``plugins`` list, create a file whose document names plugins, or
+        bring in or drop a description naming plugins through a change of ``includes`` is refused
+        before a file is touched, so the reader changes which code runs by editing the
+        description in a text editor, never through the page. ``ddd gui`` runs what a project
+        names, as ``make`` runs what a Makefile names (decision M7).
 
         Nothing is written under the build tree a description a build generates is in
         (:attr:`Revision.generated`): an edit changing that description, creating a file beside
@@ -565,6 +589,7 @@ class Session:
             _creatable(changes)
             _refuse_generated(revision, changes)
             confined = [_confined(revision, pending, changes) for pending in changes]
+            _refuse_plugins(revision, confined)
             written = apply_changes(confined)
             self._edits += 1
             self._stack.append(Undoable(self._edits, label, written))
@@ -1077,6 +1102,96 @@ def _refuse_generated(revision: Revision, changes: Sequence[FileChange]) -> None
     )
     if refused is not None:
         raise EditError(GENERATED, refused)
+
+
+def _refuse_plugins(revision: Revision, changes: Sequence[FileChange]) -> None:
+    """Refuse an edit after which the open project would name plugins other than it names now,
+    before any file is touched (decision M7): a change of a description's ``plugins`` list, the
+    project's or a sub-project's; a created file whose document names plugins, or a file of no
+    kind of description ``ddd gui`` creates; or a change of ``includes`` that brings in or drops
+    a description naming plugins. So the token no longer chooses the code that runs - ``ddd gui``
+    runs what a project names, as ``make`` runs what a Makefile names.
+
+    Each change is read as it would leave its file (:func:`ddd.editing.edited`), in memory, from
+    the confined changes so a file beyond what the session serves was refused already. Only a
+    project description carries a ``plugins`` or an ``includes`` list, so a change of any other
+    kind is passed over: an existing file's kind is the one its analysis read
+    (:attr:`Revision.files`), a created file's the one its own document states. A description
+    brought in or dropped is read for the plugins it names and those its own includes bring, by
+    the loader's reading of json alone and never by importing one
+    (:func:`_subtree_names_plugins`): the files the next analysis would read, and no other."""
+    kinds = {file.path: file.kind for file in revision.files}
+    for change in changes:
+        if change.fingerprint is None:
+            after = _parsed(edited(change)[1])
+            if kind_of(change.path, after) not in KINDS:
+                raise EditError(
+                    INVALID,
+                    f"{change.path.as_posix()} cannot be created: ddd gui creates a project's "
+                    "description files, and this is not one",
+                )
+            _refuse_plugin_change(change.path, None, after)
+        elif kinds.get(change.path) == "project":
+            original, new = edited(change)
+            # `original` is never None here: a change with a fingerprint edits a file that is
+            # there, where `edited` returns its bytes; None is a file the edit creates, above.
+            assert original is not None
+            _refuse_plugin_change(change.path, _parsed(original), _parsed(new))
+
+
+def _refuse_plugin_change(described: Path, before: Any, after: Any) -> None:
+    """Refuse where a project description would name plugins other than it names now: its own
+    ``plugins`` list changed, in order so a reorder of the hooks counts, or a change of its
+    ``includes`` bringing in or dropping a description that names plugins (:data:`PLUGINS`).
+    ``before`` is ``None`` for a file the edit creates, which named none before."""
+    if _plugins_named(before) != _plugins_named(after):
+        raise EditError(PLUGINS, _PLUGINS_REFUSED)
+    # Seeded with the edited description, so a tree that leads back to it is not read for the
+    # plugins it already names, which this edit of its includes does not change.
+    seen = {described}
+    for entry in set(_includes_of(before)) ^ set(_includes_of(after)):
+        for included in included_files(described, entry):
+            if _subtree_names_plugins(resolve_path(included), seen):
+                raise EditError(PLUGINS, _PLUGINS_REFUSED)
+
+
+def _plugins_named(data: Any) -> tuple[str, ...]:
+    """The ``project.plugins`` entries of a description's document, in the order it names them,
+    each a string: the code it runs. Empty where it states none, or the document is no project.
+    Ordered, so a reorder - which reorders the hooks that run - is a change."""
+    block = data.get("project") if isinstance(data, dict) else None
+    listed = block.get("plugins") if isinstance(block, dict) else None
+    if not isinstance(listed, list):
+        return ()
+    return tuple(entry for entry in listed if isinstance(entry, str))
+
+
+def _includes_of(data: Any) -> tuple[str, ...]:
+    """The ``project.includes`` entries of a description's document, each a string. Empty where it
+    states none, or the document is no project."""
+    block = data.get("project") if isinstance(data, dict) else None
+    listed = block.get("includes") if isinstance(block, dict) else None
+    if not isinstance(listed, list):
+        return ()
+    return tuple(entry for entry in listed if isinstance(entry, str))
+
+
+def _subtree_names_plugins(project: Path, seen: set[Path]) -> bool:
+    """Whether the description ``project`` names any plugin, or includes one that does, by the
+    loader's reading of json alone - never importing a plugin to find out, which is the very
+    thing the refusal is before. ``seen`` holds every description already read, so a tree that
+    includes itself is walked once and the walk ends; a path already in it is passed over."""
+    if project in seen:
+        return False
+    seen.add(project)
+    data = _read_json(project)
+    if _plugins_named(data):
+        return True
+    for entry in _includes_of(data):
+        for included in included_files(project, entry):
+            if _subtree_names_plugins(resolve_path(included), seen):
+                return True
+    return False
 
 
 def _confined(revision: Revision, pending: FileChange, changes: Sequence[FileChange]) -> FileChange:

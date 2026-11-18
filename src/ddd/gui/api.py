@@ -132,6 +132,7 @@ from ddd.gui.queries import (
 from ddd.gui.routes import Policy, Route, one_value_each
 from ddd.gui.session import (
     GENERATED,
+    PLUGINS,
     Filed,
     NoProjectError,
     NotAnalysedError,
@@ -246,7 +247,7 @@ ANALYSING: Final = "analysing"
 its first analysis has landed, or a plan changing a file an edit wrote that no analysis has read
 yet. Answered 409, and answered differently once the analysis lands."""
 
-REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED})
+REFUSALS: Final = frozenset({STALE, UNREADABLE, INVALID, UNVERIFIED, ANALYSING, GENERATED, PLUGINS})
 """The edit refusals a page can act on, answered 409; anything else an edit raises is a 500."""
 
 _UNSEEN: Final = {

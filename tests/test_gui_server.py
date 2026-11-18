@@ -2962,7 +2962,8 @@ class TestRunning:
         assert captured.err == (
             f"ddd gui: listening on 0.0.0.0:{server.port}, beyond this computer's loopback; "
             f"publish it on the host's loopback only, -p 127.0.0.1:{server.port}:{server.port}, "
-            "since the token in the address is what keeps others out\n"
+            "since the token in the address runs the project's plugins as the reader, as make "
+            "runs what a Makefile names, and is all that keeps others out\n"
         )
         assert opened == []
 

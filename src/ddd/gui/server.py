@@ -1034,8 +1034,9 @@ def run(
             print(
                 f"ddd gui: listening on {address}:{server.port}, beyond this computer's "
                 "loopback; publish it on the host's loopback only, "
-                f"-p 127.0.0.1:{server.port}:{server.port}, since the token in the address is "
-                "what keeps others out",
+                f"-p 127.0.0.1:{server.port}:{server.port}, since the token in the address runs "
+                "the project's plugins as the reader, as make runs what a Makefile names, and is "
+                "all that keeps others out",
                 file=sys.stderr,
             )
         elif open_browser:

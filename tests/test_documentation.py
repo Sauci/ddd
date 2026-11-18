@@ -5556,6 +5556,17 @@ class TestTheCiRun:
         ]
         assert unskipped == [], f"these jobs would run during a hunt: {unskipped}"
 
+    @pytest.mark.parametrize("repeat", [1, 5], ids=["an ordinary dispatch", "a hunt"])
+    def test_a_dispatch_s_repeat_decides_what_runs(self, repeat: int) -> None:
+        """Read over a dispatch as the runner reads it: a repeat of 1, the default, is an ordinary
+        run, every job but the development builds, which publish nothing on a dispatch; above
+        1 it is a hunt, and only the gui legs run."""
+        context = ci_run("workflow_dispatch", "refs/heads/feature", repeat=repeat)
+        names = job_names(CI_WORKFLOW)
+        ran = [name for name in names if job_runs(CI_WORKFLOW, name, context)]
+        ordinary = [name for name in names if name not in ("dev-build", "dev-publish")]
+        assert ran == (["gui"] if repeat > 1 else ordinary)
+
     def test_the_job_s_name_carries_its_browser(self) -> None:
         """Two of the three legs share windows-latest, chromium and msedge: without the
         browser in its name, a run's job list would show two legs both called
@@ -5626,10 +5637,12 @@ def publish_run(
     }
 
 
-def ci_run(event_name: str, ref: str, run_id: str = "44", os: str = "Linux") -> dict[str, Any]:
+def ci_run(
+    event_name: str, ref: str, run_id: str = "44", os: str = "Linux", repeat: int = 1
+) -> dict[str, Any]:
     """The context a run of ``ci.yml`` started by an event of its own gives a job on one runner:
-    its own name, CI, in ``github.workflow``, a dispatch's ``repeat`` at its default, and a pull
-    request from a branch of this repository."""
+    its own name, CI, in ``github.workflow``, a dispatch's ``repeat``, by default its default,
+    and a pull request from a branch of this repository."""
     context: dict[str, Any] = {
         "github": {
             "event_name": event_name,
@@ -5642,7 +5655,7 @@ def ci_run(event_name: str, ref: str, run_id: str = "44", os: str = "Linux") -> 
             "event": {},
         },
         "runner": {"os": os},
-        "inputs": {"repeat": 1} if event_name == "workflow_dispatch" else {},
+        "inputs": {"repeat": repeat} if event_name == "workflow_dispatch" else {},
     }
     if event_name == "pull_request":
         head = {"repo": {"full_name": "Sauci/ddd"}}
@@ -5799,7 +5812,9 @@ class TestWhatPublishRunsBeforeItUploads:
         """On a release, or a dispatch from a ``v`` tag, ``ddd --version`` has to answer the tag's
         version; a dry run from a branch has no tag, and is held to ``pyproject.toml``'s. Here
         ``pyproject.toml`` states another version than the tag, to tell the two apart: in a run,
-        the tag check before this step refuses such a tag."""
+        the tag check before this step refuses such a tag. The runner's directory is given as a
+        relative one: Git Bash, which runs the step on windows, rewrites an argument starting
+        with ``/`` into a windows path before python sees it."""
         (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.0.1"\n', encoding="utf-8")
         (tmp_path / "tools").mkdir()
         (tmp_path / "tools" / "installed_wheel.py").write_text(
@@ -5814,11 +5829,11 @@ class TestWhatPublishRunsBeforeItUploads:
             GITHUB_EVENT_NAME=event_name,
             GITHUB_REF=ref,
             GITHUB_REF_NAME=ref.split("/", 2)[2],
-            RUNNER_TEMP="/runner",
+            RUNNER_TEMP="runner-temp",
         )
         assert ran.returncode == 0, ran.stdout + ran.stderr
         wheel = "dist/ddd_tool-0.12.0-py3-none-any.whl"
-        assert ran.stdout == f"{[wheel, checked, '/runner/installed/bin/ddd']}\n"
+        assert ran.stdout == f"{[wheel, checked, 'runner-temp/installed/bin/ddd']}\n"
 
     def test_publish_keeps_what_its_documentation_waits_on(self) -> None:
         """A release's documentation waits on Publish's run (20:I3): on the workflow of that
@@ -5846,6 +5861,26 @@ class TestWhatPublishRunsBeforeItUploads:
         for name in uploads:
             assert setting(job(PUBLISH_WORKFLOW, name), "needs", 4) == "build", name
 
+    @pytest.mark.parametrize(
+        ("event_name", "ref", "target", "uploads"),
+        [
+            ("release", "refs/tags/v0.12.0", "", ["extension", "publish-pypi"]),
+            ("workflow_dispatch", "refs/heads/master", "testpypi", ["publish-testpypi"]),
+            ("workflow_dispatch", "refs/tags/v0.12.0", "pypi", ["publish-pypi"]),
+            ("workflow_dispatch", "refs/heads/master", "pypi", []),
+        ],
+        ids=[*PUBLISH_RUNS, "a dispatch to pypi from a branch"],
+    )
+    def test_each_run_of_publish_uploads_where_its_conditions_say(
+        self, event_name: str, ref: str, target: str, uploads: list[str]
+    ) -> None:
+        """Read over each run Publish makes as the runner reads them: a release attaches the
+        .vsix and uploads to pypi.org, the dry run uploads to TestPyPI, a dispatch from a
+        release's tag to pypi.org, and one to pypi.org from a branch nowhere."""
+        context = publish_run(event_name, ref, target)
+        names = ("extension", "publish-testpypi", "publish-pypi")
+        assert [name for name in names if job_runs(PUBLISH_WORKFLOW, name, context)] == uploads
+
     def test_the_page_says_what_publish_runs_before_it_uploads(self) -> None:
         """Where the maintainer reads it: what Publish runs and how, what the run it calls is
         given and does otherwise, and how the wheel is installed and held to itself."""
@@ -5868,6 +5903,7 @@ class TestWhatPublishRunsBeforeItUploads:
             "its development builds": "which run on a push or a pull request alone, never run "
             "for a release",
             "its permission": "The call allows ``id-token: write``, which ``dev-publish`` asks for",
+            "the heading": "Nothing is uploaded until the wheel has been installed and run.",
             "the gates first": "Every job of ``ci.yml`` has passed on the release's commit first",
             "the installation": "The build then installs the wheel it built into a fresh "
             "virtual environment, its dependencies from the index",
@@ -5877,6 +5913,7 @@ class TestWhatPublishRunsBeforeItUploads:
             "the directories": "``ddd templates-dir`` a directory holding exactly the templates "
             "the wheel carries; ``ddd cmake-dir`` one whose ``Ddd.cmake`` is the wheel's",
             "the page": "``ddd gui``, started, the wheel's ``index.html`` at the address it prints",
+            "only then": "Only then is the wheel handed to the jobs that upload it.",
             "what it was": "used to be a listing of the wheel for ``index.html``, and it was "
             "never installed",
         }

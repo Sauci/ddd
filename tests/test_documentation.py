@@ -5925,6 +5925,7 @@ LAUNCH = """\
 import sys
 from pathlib import Path
 
+sys.path.insert(0, sys.argv.pop(1))
 import ddd.gui.server
 
 pages = Path(sys.argv.pop(1))
@@ -5934,7 +5935,10 @@ from ddd.cli import main
 raise SystemExit(main())
 """
 """This checkout's ``ddd``, run as a program the way an installation runs it, serving the pages of
-a directory the test names: the pages are compiled by npm, which no test here runs."""
+a directory the test names: the pages are compiled by npm, which no test here runs. It is
+imported from the sources the suite tests, named first, rather than from whatever ``ddd`` the
+interpreter has installed, which may be another tree's: an editable install of another
+checkout, or an older release."""
 
 INDEX = b'<!doctype html>\n<title>DDD</title>\n<div id="root"></div>\n'
 """A page for ``ddd gui`` to serve, standing for the compiled one."""
@@ -6024,7 +6028,7 @@ class TestTheReleaseInstallsWhatItUploads:
         pages.mkdir()
         if page is not None:
             (pages / "index.html").write_bytes(page)
-        return [sys.executable, "-c", LAUNCH, str(pages)]
+        return [sys.executable, "-c", LAUNCH, str(ROOT / "src"), str(pages)]
 
     def test_an_installation_answering_as_the_release_passes(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

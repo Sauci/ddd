@@ -5751,10 +5751,22 @@ class TestTheDevelopmentBuild:
             "follow it, ``0.11.0rc2`` and ``0.11.0``",
             "what is refused": "The script refuses a version it cannot number after: an alpha "
             "or a beta, and a development, post or local release",
-            "a candidate fails no job": "so a candidate on ``master`` fails no job",
+            "a candidate's stamp": "A release candidate it numbers, so its stamp fails no job on "
+            "one.",
+            "the extension's version": "The extension's manifest states the version too, held "
+            "equal to ``__version__`` by a test, and ``0.12.0rc1`` is no semver version, which "
+            "semver would spell ``0.12.0-rc.1``",
+            "what npm does": "npm installs a manifest of that version as it is",
+            "what may fail": "whether vsce packages one is untried, so a candidate stated on "
+            "``master`` may still fail the ``extension`` job, in ci's own runs and in Publish's, "
+            "before anything is uploaded",
             "every wheel ci builds": "Every wheel ci builds is stamped so, and no other.",
-            "the gui's number": "numbered as ``dev-build``'s of the same run and naming the "
-            "commit it was built from - for a pull request, the merge ``gui`` tests",
+            "the gui's number": "with ``dev-build``'s run number, and naming the commit it was "
+            "built from - for a pull request, the merge ``gui`` tests, where ``dev-build`` builds "
+            "the head",
+            "when the two differ": "Each is numbered after the version its own commit states: "
+            "the two are one on a push, and differ on a pull request whose branch states another "
+            "version than ``master``, as one cut before a release's commit does.",
             "a local build": "A wheel built anywhere else, by ``python -m build`` in a checkout, "
             "carries the version its ``pyproject.toml`` states",
             "master's version": "``master`` states the last release's until the next release "
@@ -5768,6 +5780,42 @@ class TestTheDevelopmentBuild:
         }
         missing = [what for what, claim in claims.items() if claim not in said]
         assert not missing, f"the developer page no longer says {missing}"
+        assert "so a candidate on ``master`` fails no job" not in said
+        assert "numbered as ``dev-build``'s of the same run" not in said
+
+    def test_a_candidate_s_spelling_is_no_semver_version(self) -> None:
+        """What the page says of the extension's manifest under a candidate, held to semver
+        2.0.0's own grammar: PEP 440's ``0.12.0rc1`` is no version there, ``0.12.0-rc.1`` is one,
+        and the manifest is held equal to ``__version__`` by
+        ``test_the_editor_extension_carries_the_same_version``."""
+        identifier = r"(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+        semver = re.compile(
+            rf"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-{identifier}(?:\.{identifier})*)?"
+            r"(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?"
+        )
+        assert semver.fullmatch("0.12.0rc1") is None
+        assert semver.fullmatch("0.12.0-rc.1") is not None
+
+    def test_the_two_builds_of_a_run_read_one_commit_on_a_push_alone(self) -> None:
+        """What the page says of the two wheels' numbers: ``dev-build`` stamps the commit it
+        names, a pull request's own head, and ``gui`` the commit the run checked out, the merge
+        it tests. On a push the two are one commit; on a pull request, two."""
+        named = re.search(r"^      COMMIT: (.+)$", job(CI_WORKFLOW, "dev-build"), re.M)
+        assert named is not None, "dev-build no longer names the commit it builds"
+        assert 'stamp "$GITHUB_RUN_NUMBER" "$COMMIT"' in job(CI_WORKFLOW, "dev-build")
+        stamping = [
+            found
+            for found in steps_of(job(CI_WORKFLOW, "gui"))
+            if "name: Stamp the development version\n" in found
+        ]
+        assert len(stamping) == 1, "the gui job does not stamp the wheel it uploads"
+        assert 'stamp "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"' in stamping[0]
+        push = ci_run("push", "refs/heads/master")
+        assert text_of(evaluated(named.group(1), push)) == push["github"]["sha"]
+        request = ci_run("pull_request", "refs/pull/5/merge")
+        request["github"]["event"]["pull_request"]["head"]["sha"] = COMMIT
+        assert text_of(evaluated(named.group(1), request)) == COMMIT
+        assert request["github"]["sha"] != COMMIT
 
     @pytest.mark.parametrize(
         "version", ["0.10.1.dev57", "0.12.0rc2.dev57"], ids=["after a release", "after a candidate"]

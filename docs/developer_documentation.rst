@@ -679,14 +679,20 @@ installed package, and the rest is prose - the README's included, which the whee
 its description. The script refuses a version it cannot number after: an alpha or a beta, and a
 development, post or local release, none of which a commit of ``master`` states. A run whose
 commit states one fails ``dev-build``, and the ubuntu leg of ``gui``, which stamps the wheel it
-uploads the same way. A release candidate it numbers, so a candidate on ``master`` fails no job.
-``tests/test_documentation.py`` holds the script to all of this, and runs the checks
-``dev-publish`` makes.
+uploads the same way. A release candidate it numbers, so its stamp fails no job on one. The
+extension's manifest states the version too, held equal to ``__version__`` by a test, and
+``0.12.0rc1`` is no semver version, which semver would spell ``0.12.0-rc.1``: npm installs a
+manifest of that version as it is, but whether vsce packages one is untried, so a candidate
+stated on ``master`` may still fail the ``extension`` job, in ci's own runs and in Publish's,
+before anything is uploaded. ``tests/test_documentation.py`` holds the script to all of this,
+and runs the checks ``dev-publish`` makes.
 
 **Every wheel ci builds is stamped so, and no other.** ``dev-build``'s is, and so is the one the
-``gui`` job uploads as ``ddd-tool-<commit>``, numbered as ``dev-build``'s of the same run and
-naming the commit it was built from - for a pull request, the merge ``gui`` tests. A wheel built
-anywhere else, by ``python -m build`` in a checkout, carries the version its ``pyproject.toml``
+``gui`` job uploads as ``ddd-tool-<commit>``, with ``dev-build``'s run number, and naming the
+commit it was built from - for a pull request, the merge ``gui`` tests, where ``dev-build``
+builds the head. Each is numbered after the version its own commit states: the two are one on a
+push, and differ on a pull request whose branch states another version than ``master``, as one
+cut before a release's commit does. A wheel built anywhere else, by ``python -m build`` in a checkout, carries the version its ``pyproject.toml``
 states, and ``master`` states the last release's until the next release commit: built between
 releases, such a wheel holds every commit since that release and says it is that release - to
 ``ddd --version``, to the banner of every file it generates, to the module's handshake and to

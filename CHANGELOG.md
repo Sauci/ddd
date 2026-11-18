@@ -868,6 +868,68 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   of 20,000 declarations, the second ask took 0.92 s before and 0.14 s after.  A write that keeps a
   file's time and size exactly is not told, as the session's own watch does not tell it.
 
+* **An edit through `ddd gui` is held to what the reader could do by hand.**  An edit cannot change
+  which plugins the project runs: `POST /api/edit` answers it `409`, saying what to change in a
+  text editor, and the Files tab refuses such a plan before the reader presses.  A file an edit
+  creates is a description, named `*.ddd.json`, as every create flow of the page names one; any
+  other name is refused.  The security page, and the warning `ddd gui` prints for a `--host` beyond
+  loopback, say what the token amounts to: whoever holds it acts as the reader, since `ddd gui` runs
+  what the project names, as `make` does, and a process of the same user is outside what the page
+  defends.  A client that scripted `POST /api/edit` to change which plugins the project runs, or to
+  create a file that is not a description, now gets the `409`; the page's own flows need nothing
+  changed.
+
+* **A build record's `project` is read under the rule a request's path meets.**  The start page's
+  listing, its open and the builds that feed an open project read a `ddd-build.json` alike: a record
+  whose `project` is not a path a request may name, or is not named `*.ddd.json`, is read as no
+  record, so the project it names is not offered on the start page, and its builds do not feed it
+  when it is open.  Such a project is opened by its path, on the command line, instead.
+
+* **`localhost` is `ddd gui` itself, whichever of its two addresses a browser tries.**  When `ddd
+  gui` listens on loopback, as it does by default, it listens on `[::1]` as well as `127.0.0.1`, on
+  the same port, and answers on both alike, on every system.  `localhost` is an origin of its own,
+  so a page opened there is signed out until the address `ddd gui` printed is opened there.  A fixed
+  `--port` on which another program already listens at `[::1]` is refused before `ddd gui` starts,
+  naming the port, and `--port 0` tries another port instead; a program that is merely bound there,
+  and does not listen, does not take `localhost` from `ddd gui`.  A fixed port the previous run of
+  `ddd gui` served on is served on again at once when it is started again.  Beyond loopback, as in a
+  container, `ddd gui` listens on neither.
+
+* **`ddd gui` says what to do when a launch code is presented again.**  A launch code signs one
+  browser in, once; when it is presented a second time, `ddd gui` prints on stderr `ddd gui: a
+  launch code that already signed a browser in was presented again. If your browser is signed in,
+  nothing more is needed. If it is not, stop ddd gui (Ctrl+C) and start it again, which mints a new
+  code and a new token, and open the address it prints then, not this run's: another program on this
+  computer may have signed in with the code first, and holds this run's token`.  A tool that matched
+  the line's earlier text must match this one.
+
+* **The Compare tab refuses a baseline that cannot be opened as unreadable, on every system.**  `GET
+  /api/compare` answers `400` for a baseline whose path cannot be opened, on Windows as on every
+  other system.  Nothing to migrate.
+
+* **The page's wait for the state to change gives its connection back as soon as the page is gone.**
+  The wait is still up to 25 s, but it looks every second whether the page is still there, and gives
+  its connection back within a second of the page reloading or closing, so a tab that reloads never
+  fills the sixty-four connections `ddd gui` answers at once.  Nothing to migrate.
+
+* **`ddd gui --port 80` prints and opens an address a browser can use.**  The address it prints, and
+  the one it opens the browser on, name no port, as HTTP's own does,
+  `http://127.0.0.1/open?token=...`, and `ddd gui` answers the `Host` and `Origin` a browser sends
+  there.  Nothing to migrate.
+
+* **`ddd gui --host` takes the two addresses `ddd gui` listens on.**  `--host` takes `127.0.0.1`,
+  the default, `0.0.0.0`, or a name resolving to either; any other host is refused, exit 2, before
+  anything binds, saying what to give instead: `ddd gui` listens on `127.0.0.1` alone or on every
+  interface.  `--help` and the command line page say so.  A `--host` naming any other address, a
+  single interface of the container's own among them, gives `--host 0.0.0.0` instead, its port
+  published on the host's loopback, as the security page's section on a container says; a build
+  script or a CI job that passed one must change.
+
+* **Every answer of `ddd gui` carries its content security policy, `nosniff` and no referrer, and
+  every refusal is `no-store`.**  The standard library's own refusals of a request `ddd gui` cannot
+  read - `400`, `414`, `431`, `501` and `505` - carry them too, each with a status line.  Nothing to
+  migrate.
+
 * **A file that cannot be written is refused before anything is, on every system, and what is
   written is synced.**  On Windows a read-only file was staged, refused at the rename after
   a second of tries, and left a read-only stage beside it for each refusal; on Linux the rename
@@ -985,16 +1047,6 @@ published, as the specification requires ([section 4](SPEC.md#4-consistency-chec
   tab - no longer does.  Its panel instead says what removing it would change is planned once
   asked, behind a button, so an address someone else sent the reader to can no longer run the
   project's plugins without their own press.
-
-* **`ddd gui` now holds `localhost`'s other address too.**  When it listens on loopback, as it
-  does by default, it binds `[::1]` besides the usual `127.0.0.1`, on its own port without
-  listening there - the wildcard `[::]` in its place on Windows.  So no other program can
-  take `localhost` at that port, and a browser trying `[::1]` first, which resolving
-  `localhost` may do, is refused and falls back to `127.0.0.1` - each measured on Linux and
-  Windows, never on macOS - rather than reaching a stranger there, the program that an
-  address rewritten from `127.0.0.1` to `localhost` would otherwise have handed the token to.
-  A fixed `--port` already held there is refused at startup, naming the port; `--port 0`
-  tries another port instead.  Beyond loopback, as in a container, nothing is held.
 
 * **A refusal to a `POST` drains its body instead of risking a reset.**  Windows resets a
   connection it closes while part of a request's body is still arriving, which can erase the

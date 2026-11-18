@@ -6351,6 +6351,88 @@ class TestWhatPublishRunsBeforeItUploads:
         wheel = "dist/ddd_tool-0.12.0-py3-none-any.whl"
         assert ran.stdout == f"{[wheel, checked, 'runner-temp/installed/bin/ddd']}\n"
 
+    POINTING = "Point the description's links into the documentation at this release"
+    """The step of Publish's build that has the README, the release's page on the index, link
+    the documentation of the release rather than master's (20:M7)."""
+
+    def test_the_description_is_pointed_at_the_release_before_the_build_reads_it(self) -> None:
+        """20:M7. A release's page on the index is its README, whose links into the
+        documentation followed master: 0.11.0's page sent its reader to pages of what it had not
+        got. The build points them at the release before ``python -m build`` reads the README,
+        and the installed check, which holds the wheel's description to the release, runs after
+        it."""
+        build = job(PUBLISH_WORKFLOW, "build")
+        order = [
+            build.index(f"- name: {self.POINTING}"),
+            build.index("run: python -m build"),
+            build.index("- name: Check the installed wheel answers as the release"),
+        ]
+        assert order == sorted(order), "the README is pointed after the build has read it"
+
+    def test_the_step_points_every_link_into_the_documentation_at_the_release(
+        self, tmp_path: Path
+    ) -> None:
+        """Run on this checkout's own README, as the repository writes it, and its
+        ``pyproject.toml``: every link into the address ``pyproject.toml`` names as the
+        documentation - into ``latest/``, and to the root - names ``v<version>/`` instead, and
+        nothing else of the README changes."""
+        source = as_in_the_repository(README)
+        (tmp_path / "README.md").write_bytes(source.encode("utf-8"))
+        (tmp_path / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+        ran = run_step(step(job(PUBLISH_WORKFLOW, "build"), self.POINTING), tmp_path)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        pointed = (tmp_path / "README.md").read_bytes().decode("utf-8")
+        release = f"{DOCS_URL}v{__version__}/"
+        links = re.findall(LINKED, pointed)
+        assert links, "the README links nothing of the documentation, so this weighs nothing"
+        assert [link for link in links if not link.startswith(release)] == []
+        assert len(links) == source.count(DOCS_URL)
+        assert pointed.replace(release, "<the site>") == source.replace(
+            f"{DOCS_URL}latest/", "<the site>"
+        ).replace(f"<{DOCS_URL}>", "<<the site>>")
+        assert ran.stdout == (
+            f"README.md links {release} {len(links)} times, in place of latest/ and the root\n"
+        )
+
+    def test_the_readme_and_the_page_say_which_version_the_links_follow(self) -> None:
+        """The README is read in two places, the repository and a release's page on the index,
+        and says what its links follow in each; the page says what the build does to them, what
+        the installed check refuses, and when the directory they lead to is written."""
+        readme = flattened(README)
+        page = flattened(PAGES["docs/developer_documentation.rst"])
+        claims = {
+            "README, its rule": "The links below point into the version this README describes",
+            "README, in its tree": "in the repository, `latest/`, so that they describe the tree "
+            "this README sits in",
+            "README, for a release": "in the description PyPI shows for a release, that release's "
+            "own directory, which its build points them at",
+            "the page, the heading": "A release's page on the index links its own documentation.",
+            "the page, why": "The README is the description PyPI shows for a release, and in the "
+            "tree its links into the documentation point into ``latest/``, which follows "
+            "``master``",
+            "the page, what the build does": "So the build points each of them at "
+            "``v<version>/``, of the version ``pyproject.toml`` states, the link to the root of "
+            "the site among them, in its checkout and before ``python -m build`` reads the "
+            "README; nothing of that is committed.",
+            "the page, what the check refuses": "The installed check then refuses a wheel whose "
+            "description links the documentation anywhere else, links nothing of it, or names no "
+            "``Documentation`` url to hold its links to.",
+            "the page, the gap": "the release's page links pages that are not served yet",
+        }
+        missing = [
+            what
+            for what, claim in claims.items()
+            if claim not in (readme if what.startswith("README") else page)
+        ]
+        assert not missing, f"no longer said: {missing}"
+        assert "which is what the links below point into" not in readme
+        said = comments_of(job(PUBLISH_WORKFLOW, "build"))
+        assert (
+            "every link into the documentation's address - pyproject.toml's Documentation url, its "
+            "root included - is pointed at v<version>/"
+        ) in said
+        assert "and where its description links the documentation" in said
+
     def test_publish_keeps_what_its_documentation_waits_on(self) -> None:
         """A release's documentation waits on Publish's run (20:I3): on the workflow of that
         name, on a run a published release started, and on its success. So Publish keeps its
@@ -6466,6 +6548,26 @@ checkout, or an older release."""
 INDEX = b'<!doctype html>\n<title>DDD</title>\n<div id="root"></div>\n'
 """A page for ``ddd gui`` to serve, standing for the compiled one."""
 
+DESCRIPTION = (
+    f"The documentation of this release is at <{DOCS_URL}v{__version__}/>, and its plugins "
+    f"[there]({DOCS_URL}v{__version__}/plugins.html).\n"
+)
+"""A description as Publish's build leaves the README: each link into the documentation points
+at the directory of the release."""
+
+LINKED = re.escape(DOCS_URL) + r"[^\s)>\]\"'`]*"
+"""A link into the documentation, as markdown writes one: up to a space, or the bracket, quote or
+backtick that closes it."""
+
+
+def as_in_the_repository(readme: str) -> str:
+    """The README with its links into the documentation as the repository writes them, into
+    ``latest/``: this checkout's own text in a checkout, and in a release's sdist the README
+    Publish's build pointed at the release's directory before it built the archive, taken back.
+    The suite runs from either, so what a test feeds the pointing step is this."""
+    return readme.replace(f"{DOCS_URL}v{__version__}/", f"{DOCS_URL}latest/")
+
+
 BROKEN = [sys.executable, "-c", "raise SystemExit('no ddd here')"]
 """An installation whose ``ddd`` runs nothing: it says so, and exits 1."""
 
@@ -6521,20 +6623,26 @@ class TestTheReleaseInstallsWhatItUploads:
         templates: dict[str, bytes] | None = None,
         module: bytes | None = None,
         page: bytes | None = INDEX,
+        description: str = DESCRIPTION,
+        documentation: str | None = DOCS_URL,
     ) -> Path:
-        """A wheel of what the checks read, where hatchling puts it: its metadata, the example
-        templates under ``ddd/templates/``, ``ddd/cmake/Ddd.cmake`` and the page; by default
-        this checkout's. An empty ``templates`` or ``module`` is left out, as ``page=None`` is."""
+        """A wheel of what the checks read, where hatchling puts it: its metadata - its version,
+        its ``Documentation`` url unless ``documentation`` is None, and its description - the
+        example templates under ``ddd/templates/``, ``ddd/cmake/Ddd.cmake`` and the page; by
+        default this checkout's. An empty ``templates`` or ``module`` is left out, as
+        ``page=None`` is."""
         if templates is None:
             source = ROOT / "examples" / "templates"
             templates = {path.name: path.read_bytes() for path in source.iterdir()}
         if module is None:
             module = (ROOT / "cmake" / "Ddd.cmake").read_bytes()
+        urls = "" if documentation is None else f"Project-URL: Documentation, {documentation}\n"
         wheel = tmp_path / f"ddd_tool-{__version__}-py3-none-any.whl"
         with zipfile.ZipFile(wheel, "w") as archive:
             archive.writestr(
                 f"ddd_tool-{__version__}.dist-info/METADATA",
-                f"Metadata-Version: 2.4\nName: ddd-tool\nVersion: {__version__}\n",
+                f"Metadata-Version: 2.4\nName: ddd-tool\nVersion: {__version__}\n{urls}"
+                f"Description-Content-Type: text/markdown\n\n{description}",
             )
             for name, data in templates.items():
                 archive.writestr(f"ddd/templates/{name}", data)
@@ -6565,12 +6673,15 @@ class TestTheReleaseInstallsWhatItUploads:
         """The version a run publishes is stated three times over in what it installs: in the
         wheel's metadata, which pip installs by; in what ``ddd --version`` prints, which the
         banner of every generated file carries; and as the module's ``DDD_MODULE_VERSION``,
-        which the module compares with that, refusing a ``ddd`` of any other."""
+        which the module compares with that, refusing a ``ddd`` of any other. The description
+        the index shows names it a fourth time, in its links into the documentation (20:M7)."""
         found = installed_wheel.problems(self.wheel(tmp_path), "9.9.9", self.installed(tmp_path))
         assert found == [
             f"the wheel states version {__version__}, and the release is 9.9.9",
             "the wheel's ddd/cmake/Ddd.cmake does not state DDD_MODULE_VERSION 9.9.9, so the "
             "module refuses the ddd it is installed with",
+            "the wheel's description, the release's page on the index, links the documentation "
+            f"outside v9.9.9/ 2 times, the first at {DOCS_URL}v{__version__}/",
             f"ddd --version answers 'ddd {__version__}', and the release is 9.9.9",
         ]
 
@@ -6670,6 +6781,68 @@ class TestTheReleaseInstallsWhatItUploads:
     ) -> None:
         assert installed_wheel.main(arguments) == 2
         assert "usage:" in capsys.readouterr().err
+
+    def test_the_release_s_own_description_passes(self, tmp_path: Path) -> None:
+        """20:M7, end to end: this checkout's README as Publish's build leaves it, the step that
+        points its links run on it, is a description the check passes."""
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        (tree / "README.md").write_bytes(as_in_the_repository(README).encode("utf-8"))
+        (tree / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+        pointing = TestWhatPublishRunsBeforeItUploads.POINTING
+        ran = run_step(step(job(PUBLISH_WORKFLOW, "build"), pointing), tree)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        pointed = (tree / "README.md").read_bytes().decode("utf-8")
+        wheel = self.wheel(tmp_path, description=pointed)
+        assert installed_wheel.misdirected(installed_wheel.carried(wheel), __version__) == []
+
+    def test_a_description_linking_another_version_s_documentation_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """20:M7. The description is the page the index shows for the release, and its links into
+        the documentation of another version - ``latest/``, which follows master, or the root,
+        which lands on whichever release is newest - send that page's reader to pages of another
+        release. The README as the repository writes it links no release at all."""
+        source = as_in_the_repository(README)
+        wheel = installed_wheel.carried(self.wheel(tmp_path, description=source))
+        links = re.findall(LINKED, source)
+        assert links, "the README links nothing of the documentation, so this weighs nothing"
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's description, the release's page on the index, links the documentation "
+            f"outside v{__version__}/ {len(links)} times, the first at {links[0]}"
+        ]
+
+    def test_one_link_astray_is_named_alone(self, tmp_path: Path) -> None:
+        description = f"Its plugins are [there]({DOCS_URL}latest/plugins.html).\n"
+        wheel = installed_wheel.carried(self.wheel(tmp_path, description=description))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's description, the release's page on the index, links the documentation "
+            f"outside v{__version__}/ once, at {DOCS_URL}latest/plugins.html"
+        ]
+
+    def test_a_description_linking_nothing_of_the_documentation_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """A check that found no link would pass whatever the links were, a description that
+        moved them into a header of its own among them."""
+        wheel = installed_wheel.carried(self.wheel(tmp_path, description="No link at all.\n"))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            f"the wheel's description links nothing of the documentation at {DOCS_URL}"
+        ]
+
+    def test_a_wheel_naming_no_documentation_is_refused(self, tmp_path: Path) -> None:
+        wheel = installed_wheel.carried(self.wheel(tmp_path, documentation=None))
+        assert installed_wheel.misdirected(wheel, __version__) == [
+            "the wheel's metadata names no Documentation url, which the links of its "
+            "description are held to"
+        ]
+
+    def test_the_checker_says_what_it_holds_the_description_to(self) -> None:
+        said = flattened(installed_wheel.__doc__ or "")
+        assert (
+            "the description the wheel carries, which the index shows as the release's page, "
+            "links the documentation under ``v<version>/`` alone, as Publish's build points it"
+        ) in said
 
 
 class TestPreCommitHook:

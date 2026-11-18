@@ -14,7 +14,10 @@ empty directory, and holds what it answers to the wheel itself:
 * ``ddd cmake-dir`` answers a directory whose ``Ddd.cmake`` is the wheel's, and that module
   states the version as ``DDD_MODULE_VERSION``, which it compares with what ``ddd --version``
   prints, refusing a ``ddd`` of any other;
-* ``ddd gui`` starts, prints its address, and serves there the ``index.html`` the wheel carries.
+* ``ddd gui`` starts, prints its address, and serves there the ``index.html`` the wheel carries;
+* the description the wheel carries, which the index shows as the release's page, links the
+  documentation under ``v<version>/`` alone, as Publish's build points it: in the tree, the
+  README's links follow master, which a reader of a release has not got.
 
 It lives here, and not in the workflow, for the reason ``site_versions.py`` does: a rule nothing
 can run is a rule nothing can check. ``tests/test_documentation.py`` runs it against the tool
@@ -37,6 +40,7 @@ import urllib.request
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 TIMEOUT = 60.0
 """Seconds each answer is waited for. A first run compiles the package's modules, which takes a
@@ -54,23 +58,74 @@ PAGE = "ddd/gui/static/index.html"
 SERVING = re.compile(r"ddd gui \(preview\) serving (http://127\.0\.0\.1:\d+/\S*)")
 """The line ``ddd gui`` prints on its standard output once it listens, naming its address."""
 
+DOCUMENTATION = "Documentation"
+"""The label of the project url naming the documentation's address, which every link of the
+wheel's description into it is held to."""
 
-def carried(wheel: Path) -> tuple[str, dict[str, bytes]]:
-    """The version a wheel's metadata states, and the files of it the checks compare with."""
+LINK = r"[^\s)>\]\"'`]*"
+"""What a link runs on to past the address it starts with: up to a space, or the bracket, quote
+or backtick markdown closes it with."""
+
+
+class Carried(NamedTuple):
+    """What the checks read of a wheel: the version its metadata states, the project urls it
+    names by their labels, its description, and the files of it they compare with."""
+
+    version: str
+    urls: dict[str, str]
+    description: str
+    files: dict[str, bytes]
+
+
+def carried(wheel: Path) -> Carried:
+    """What a wheel's metadata states, and the files of it the checks compare with."""
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
         metadata = [name for name in names if re.fullmatch(r"[^/]+\.dist-info/METADATA", name)]
         if len(metadata) != 1:
             raise ValueError(f"{wheel.name} holds {len(metadata)} METADATA files, and a wheel one")
-        version = email.message_from_bytes(archive.read(metadata[0]))["Version"]
+        message = email.message_from_bytes(archive.read(metadata[0]))
         files = {
             name: archive.read(name)
             for name in names
             if (name.startswith(TEMPLATES) or name in (MODULE, PAGE)) and not name.endswith("/")
         }
+    version = message["Version"]
     if version is None:
         raise ValueError(f"the metadata of {wheel.name} states no version")
-    return str(version), files
+    urls: dict[str, str] = {}
+    for entry in message.get_all("Project-URL") or []:
+        label, _, url = str(entry).partition(",")
+        urls[label.strip()] = url.strip()
+    body = message.get_payload()
+    return Carried(str(version), urls, body if isinstance(body, str) else "", files)
+
+
+def misdirected(wheel: Carried, version: str) -> list[str]:
+    """What is wrong with where the wheel's description sends its reader into the documentation:
+    nothing, when each of its links into the address the ``Documentation`` url names leads under
+    ``v<version>/``. The description is the page the index shows for the release, and the site
+    serves each version under a directory of its own: ``latest/`` follows master, and the root
+    lands on whichever release is newest. A description linking nothing of the documentation is
+    refused too, since a check that found no link would pass whatever the links were."""
+    site = wheel.urls.get(DOCUMENTATION)
+    if not site:
+        return [
+            f"the wheel's metadata names no {DOCUMENTATION} url, which the links of its "
+            f"description are held to"
+        ]
+    site = site.rstrip("/") + "/"
+    links = re.findall(re.escape(site) + LINK, wheel.description)
+    if not links:
+        return [f"the wheel's description links nothing of the documentation at {site}"]
+    astray = [link for link in links if not link.startswith(f"{site}v{version}/")]
+    if not astray:
+        return []
+    times = "once, at" if len(astray) == 1 else f"{len(astray)} times, the first at"
+    return [
+        f"the wheel's description, the release's page on the index, links the documentation "
+        f"outside v{version}/ {times} {astray[0]}"
+    ]
 
 
 def answer(ddd: Sequence[str], where: Path, *arguments: str) -> tuple[str | None, str]:
@@ -178,15 +233,16 @@ def served(ddd: Sequence[str], where: Path, page: bytes) -> list[str]:
 def problems(wheel: Path, version: str, ddd: Sequence[str]) -> list[str]:
     """What is wrong with the installation ``ddd`` runs, held to ``wheel`` and ``version``:
     nothing, for one that answers as the release it was installed from."""
-    stated, files = carried(wheel)
+    read = carried(wheel)
+    files = read.files
     templates = {
         name.removeprefix(TEMPLATES): data
         for name, data in files.items()
         if name.startswith(TEMPLATES)
     }
     found = []
-    if stated != version:
-        found.append(f"the wheel states version {stated}, and the release is {version}")
+    if read.version != version:
+        found.append(f"the wheel states version {read.version}, and the release is {version}")
     module = files.get(MODULE)
     stating = rf'^set\(DDD_MODULE_VERSION "{re.escape(version)}"\)$'.encode()
     if module is not None and not re.search(stating, module, re.MULTILINE):
@@ -194,6 +250,7 @@ def problems(wheel: Path, version: str, ddd: Sequence[str]) -> list[str]:
             f"the wheel's {MODULE} does not state DDD_MODULE_VERSION {version}, so the module "
             f"refuses the ddd it is installed with"
         )
+    found.extend(misdirected(read, version))
     with tempfile.TemporaryDirectory() as empty:
         where = Path(empty)
         said, why = answer(ddd, where, "--version")

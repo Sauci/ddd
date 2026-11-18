@@ -71,6 +71,26 @@ jobs:
       - run: pip install -e .
       - run: npm ci && npm run schemas && npm run typecheck && npm run build
         working-directory: gui
+      # The README is the description the index shows as the release's page, and in the tree its
+      # links into the documentation point into latest/, which follows master: the pages of the
+      # tree, and for whoever installs the release, pages of what it may not have. So, in this
+      # job's checkout and before the build reads it, every link into the documentation's address
+      # - pyproject.toml's Documentation url, its root included - is pointed at v<version>/, of the
+      # version pyproject.toml states, which the tag check below holds a release's tag to. Nothing
+      # of it is committed, and the installed check below refuses a wheel whose description links
+      # the documentation anywhere else.
+      - name: Point the description's links into the documentation at this release
+        run: |
+          python - <<'EOF'
+          import pathlib, re, tomllib
+          project = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          site = project["urls"]["Documentation"].rstrip("/") + "/"
+          readme = pathlib.Path("README.md")
+          linked = re.escape(site) + r"(?:latest/|(?=[\s>)\]\"'`]|$))"
+          pointed, count = re.subn(linked, f"{site}v{project['version']}/", readme.read_bytes().decode("utf-8"))
+          readme.write_bytes(pointed.encode("utf-8"))
+          print(f"README.md links {site}v{project['version']}/ {count} times, in place of latest/ and the root")
+          EOF
       - run: python -m build
       - name: Check the wheel carries the compiled pages
         run: |
@@ -107,8 +127,8 @@ jobs:
       # dependencies from the index, and run from an empty directory. The one look the release
       # took at its artefact used to be the listing above, and it was never installed.
       # tools/installed_wheel.py holds what the installation answers to the wheel itself - its
-      # version, its templates, its cmake module and the page ddd gui serves - and says why
-      # each is asked.
+      # version, its templates, its cmake module and the page ddd gui serves - and where its
+      # description links the documentation, and says why each is asked.
       - name: Install the wheel into a fresh environment
         run: |
           python -m venv "$RUNNER_TEMP/installed"

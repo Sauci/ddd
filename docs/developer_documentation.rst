@@ -950,6 +950,17 @@ the address it prints. Only then is the wheel handed to the jobs that upload it.
 the release took at its artefact used to be a listing of the wheel for ``index.html``, and it
 was never installed.
 
+**A release's page on the index links its own documentation.** The README is the description
+PyPI shows for a release, and in the tree its links into the documentation point into
+``latest/``, which follows ``master``: the right pages for the tree, and for a reader of the
+release, pages of what it may not have. So the build points each of them at ``v<version>/``, of
+the version ``pyproject.toml`` states, the link to the root of the site among them, in its
+checkout and before ``python -m build`` reads the README; nothing of that is committed. The
+installed check then refuses a wheel whose description links the documentation anywhere else,
+links nothing of it, or names no ``Documentation`` url to hold its links to. That directory is
+written once Publish has succeeded, so for as long as Documentation takes after it - longer, for
+a release waiting on a re-run - the release's page links pages that are not served yet.
+
 **The version is spelled in ten files, and a test holds five of them together.**
 ``src/ddd/__init__.py`` is where it lives: ``docs/conf.py`` imports ``__version__`` rather than
 restating it, and the banner of every generated file carries it from there. ``pyproject.toml``,

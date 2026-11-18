@@ -106,9 +106,9 @@ def test_the_page_says_the_launch_race_winner_runs_the_project_code() -> None:
 
 def test_the_page_says_the_launch_race_winner_holds_what_any_holder_of_the_token_holds() -> None:
     assert (
-        "What the winner holds is what any holder of the token holds, as the first item above "
-        "says: it acts on the project's descriptions as the reader, and runs no code but what "
-        "descriptions already name." in _prose()
+        "What the winner holds is what any holder of the token holds, as *Whoever holds the "
+        "token*, under *What it trusts*, says: it acts on the project's descriptions as the "
+        "reader, and runs no code but what descriptions already name." in _prose()
     )
 
 
@@ -118,7 +118,7 @@ def test_the_page_says_the_launch_race_winner_may_be_any_local_user_s_program() 
         "on a shared machine, another user's program that wins holds the reader's power over "
         "the project for the rest of the run, which a program of another user did not hold "
         "before. A process already running as this same user is outside what this page "
-        "defends, as the first item above says; the race is where any other local user's "
+        "defends, as *Whoever holds the token* says; the race is where any other local user's "
         "program reaches the same ground." in _prose()
     )
 
@@ -130,19 +130,20 @@ def test_the_page_says_the_opener_s_command_line_is_readable_on_linux_and_macos_
     )
 
 
-def test_the_page_says_a_browser_not_signed_in_is_told_to_restart_either_way() -> None:
+def test_the_page_says_either_cause_leaves_the_browser_signed_out_and_the_advice_the_same() -> None:
     assert (
-        "Either way, if the browser is not signed in, the advice is the same: restart "
-        "``ddd gui``." in _prose()
+        "Either way, the browser ``ddd gui`` opened says it is signed out, and the advice is the "
+        "same: restart ``ddd gui``." in _prose()
     )
 
 
 def test_the_page_says_what_the_line_on_the_terminal_tells_the_reader_to_do() -> None:
     assert (
-        "The line says that if the browser is signed in nothing more is needed, and that if it "
-        "is not, the reader stops ``ddd gui`` and starts it again, which mints a new code and a "
-        "new token, and opens the address printed then, not the earlier one: a restart takes "
-        "the token from the winner, and the earlier address would not." in _prose()
+        "The line says that nothing more is needed only if the browser ``ddd gui`` opened "
+        "landed on the project, and that if it says it is signed out, the reader stops "
+        "``ddd gui`` and starts it again, which mints a new code and a new token, and opens the "
+        "address printed then: a restart takes the token from the winner, and this run's "
+        "address, opened since, does not." in _prose()
     )
 
 

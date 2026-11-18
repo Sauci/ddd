@@ -1013,11 +1013,11 @@ _PAGES_ARE_READ: Final = "pages are read with GET"
 _NOT_A_TARGET: Final = "the request's target cannot be read"
 _INTERNAL: Final = "ddd gui failed on this request; the terminal it runs in shows why"
 _CODE_REUSED: Final = (
-    "ddd gui: a launch code that already signed a browser in was presented again. If your "
-    "browser is signed in, nothing more is needed. If it is not, stop ddd gui (Ctrl+C) and "
-    "start it again, which mints a new code and a new token, and open the address it prints "
-    "then, not this run's: another program on this computer may have signed in with the code "
-    "first, and holds this run's token"
+    "ddd gui: a launch code that already signed a browser in was presented again. If the "
+    "browser ddd gui opened landed on the project, nothing more is needed. If it says it is "
+    "signed out, stop ddd gui (Ctrl+C), start it again and open the address it prints then: "
+    "another program on this computer may hold this run's token, which this run's address, "
+    "opened since, does not take back"
 )
 
 

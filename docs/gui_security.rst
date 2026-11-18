@@ -225,27 +225,28 @@ What it does not defend against
   is answered. The browser is handed a one-time code instead of the long-lived token, so
   the token itself never sits on a command line. But a local process reading the
   launcher's command line, which any local user can read on Linux and on macOS alike, and
-  presenting that code before the reader's browser does holds the token, and so runs the project's code as the reader,
-  for as long as this run of ``ddd gui`` lasts - not merely ahead of the reader once. What
-  the winner holds is what any holder of the token holds, as the first item above says: it
-  acts on the project's descriptions as the reader, and runs no code but what descriptions
-  already name. The winner may be any local user's program, not only one of the
-  reader's own account: on a shared machine, another user's program that wins holds the
-  reader's power over the project for the rest of the run, which a program of another user
-  did not hold before. A process already running as this same user is outside what this page
-  defends, as the first item above says; the race is where any other local user's program
-  reaches the same ground. Two things show this happened:
-  the reader's own browser shows it is signed out instead of landing on the project, and
-  presenting that same code again prints one line on the terminal. The line says that if the
-  browser is signed in nothing more is needed, and that if it is not, the reader stops
-  ``ddd gui`` and starts it again, which mints a new code and a new token, and opens the
-  address printed then, not the earlier one: a restart takes the token from the winner, and
-  the earlier address would not. The same two signs also follow an innocent cause: the first
-  ``POST /open`` reaches the server and spends the code, but its answer is lost on the way
-  back, so the page sends the same code once more; the server refuses it as already spent,
-  and the terminal prints the very same line - no other process involved. Either way, if
-  the browser is not signed in, the advice is the same: restart ``ddd gui``. A code that expired unused signed nobody in, and
-  prints nothing.
+  presenting that code before the reader's browser does holds the token, and so runs the
+  project's code as the reader, for as long as this run of ``ddd gui`` lasts - not merely
+  ahead of the reader once. What the winner holds is what any holder of the token holds, as
+  *Whoever holds the token*, under *What it trusts*, says: it acts on the project's
+  descriptions as the reader, and runs no code but what descriptions already name. The
+  winner may be any local user's program, not only one of the reader's own account: on a
+  shared machine, another user's program that wins holds the reader's power over the project
+  for the rest of the run, which a program of another user did not hold before. A process
+  already running as this same user is outside what this page defends, as *Whoever holds the
+  token* says; the race is where any other local user's program reaches the same ground. Two
+  things show this happened: the reader's own browser shows it is signed out instead of
+  landing on the project, and presenting that same code again prints one line on the
+  terminal. The line says that nothing more is needed only if the browser ``ddd gui`` opened
+  landed on the project, and that if it says it is signed out, the reader stops ``ddd gui``
+  and starts it again, which mints a new code and a new token, and opens the address printed
+  then: a restart takes the token from the winner, and this run's address, opened since,
+  does not. The same two signs also follow an innocent cause: the first ``POST /open``
+  reaches the server and spends the code, but its answer is lost on the way back, so the page
+  sends the same code once more; the server refuses it as already spent, and the terminal
+  prints the very same line - no other process involved. Either way, the browser ``ddd gui``
+  opened says it is signed out, and the advice is the same: restart ``ddd gui``. A code that
+  expired unused signed nobody in, and prints nothing.
 
 * **A server that used the same port before.** The page's origin is its address and port,
   and the browser keeps what a server on them left behind into any later run on that port.

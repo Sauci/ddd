@@ -380,20 +380,22 @@ class TestTheSignInExchange:
         assert capsys.readouterr().err == f"{_CODE_REUSED}\n"
 
     def test_a_code_presented_again_says_what_to_do(self, server, capsys) -> None:
-        """The line says what the reader does: stop the run and start it again, which mints a
-        new code and a new token, and when another program on the computer is to be suspected.
-        Pinned by its literal text: the test above compares against the imported
-        ``_CODE_REUSED``, which would drift along with any rewording of it."""
+        """The line says what the reader does: nothing more where the browser ``ddd gui`` opened
+        landed on the project, and where it says it is signed out, stop the run, start it again
+        and open the address it prints then, since another program on the computer may hold this
+        run's token, which this run's address does not take back. Pinned by its literal text: the
+        test above compares against the imported ``_CODE_REUSED``, which would drift along with
+        any rewording of it."""
         code = server.issue_code()
         assert exchange(server, {"code": code})[0].status == 200
         assert capsys.readouterr().err == ""
         exchange(server, {"code": code})
         assert capsys.readouterr().err == (
             "ddd gui: a launch code that already signed a browser in was presented again. If "
-            "your browser is signed in, nothing more is needed. If it is not, stop ddd gui "
-            "(Ctrl+C) and start it again, which mints a new code and a new token, and open "
-            "the address it prints then, not this run's: another program on this computer may "
-            "have signed in with the code first, and holds this run's token\n"
+            "the browser ddd gui opened landed on the project, nothing more is needed. If it "
+            "says it is signed out, stop ddd gui (Ctrl+C), start it again and open the address "
+            "it prints then: another program on this computer may hold this run's token, which "
+            "this run's address, opened since, does not take back\n"
         )
 
     def test_a_wrong_code_is_refused_and_leaves_the_right_one_waiting(self, server, capsys) -> None:
